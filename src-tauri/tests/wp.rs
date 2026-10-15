@@ -169,7 +169,9 @@ async fn dashboard_summarizes_orders_actions_and_health() {
         let d = dashboard(&db, &ctx, "wp_test").await.unwrap();
         let orders = d.orders.unwrap();
         assert_eq!(orders.total, 2, "subscriptions and refunds are not orders");
-        assert_eq!(orders.days.len(), 14);
+        // The fixture has orders on fewer than 3 days, so the chart falls back to 24 hourly buckets.
+        assert_eq!(orders.granularity, "hour");
+        assert_eq!(orders.days.len(), 24);
         assert_eq!(d.recent_orders[0].id, "4711");
         assert_eq!(d.recent_orders[0].total.as_deref(), Some("€49.90"));
         let actions = d.actions.unwrap();

@@ -1,16 +1,69 @@
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock, Info, RefreshCw } from "lucide-react";
-import { api } from "../../api";
+import { api, type HookFailures, type Insight } from "../../api";
 import { formatBytes, formatCount } from "../../lib/format";
 import { selectActiveSession, selectWp, useStore } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
 import { BreakdownChart } from "./BreakdownChart";
 import { Segments, StackedBars } from "./charts";
 import { Ago, Card, Loading, Stat, StatusPill } from "./ui";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useWpData } from "./useWpData";
 
 function compact(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
+}
+
+/** One alert with its action; writes always go through the pending tray. */
+function InsightRow({ insight }: { insight: Insight }) {
+  const { navigate, queueChange } = useStore.getState();
+  const a = insight.action;
+  return (
+    <div className={`insight ${insight.level}`}>
+      {insight.level === "info" ? <Info size="1rem" /> : <AlertTriangle size="1rem" />}
+      <span className="grow-text">{insight.text}</span>
+      {a && (
+        <button
+          className="btn tiny"
+          onClick={() => {
+            if (a.kind === "change" && a.change) void queueChange(a.change);
+            else if (a.kind === "navigate" && a.list) navigate({ screen: "list", list: a.list as never, params: a.status ? { status: a.status } : undefined });
+          }}
+        >
+          {a.label}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** A failed hook with its count; expanding lists the individual actions and their last log line. */
+function HookGroup({ group }: { group: HookFailures }) {
+  const [open, setOpen] = useState(false);
+  const openEntity = useStore((s) => s.openEntity);
+  const { data } = useWpData((s, d) => (open ? api.wpActions(s, d, { status: "failed", kind: group.hook, search: null, offset: 0, limit: 10 }) : Promise.resolve(null)), [open, group.hook]);
+  return (
+    <div className="hook-group">
+      <button className="mini-row" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {open ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" />}
+        <span className="mono grow-text">{group.hook}</span>
+        <span className="badge">×{formatCount(group.count)}</span>
+        <span className="muted">{group.lastFailure ? <>last <Ago unix={group.lastFailure} /></> : ""}</span>
+      </button>
+      {open && (
+        <div className="hook-items">
+          {!data && <div className="muted small">Loading…</div>}
+          {data?.items.map((a) => (
+            <button key={a.id} className="mini-row" onClick={() => openEntity("action", a.id)}>
+              <span className="muted">#{a.id}</span>
+              <span className="grow-text small">{a.message ?? "no log message"}</span>
+              <span className="muted small"><Ago unix={a.lastAttempt ?? a.scheduled} /></span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function DashboardScreen() {
@@ -85,9 +138,7 @@ export function DashboardScreen() {
       {data.insights.length > 0 && (
         <div className="insights">
           {data.insights.map((i) => (
-            <div key={i.text} className={`insight ${i.level}`}>
-              {i.level === "info" ? <Info size="1rem" /> : <AlertTriangle size="1rem" />} {i.text}
-            </div>
+            <InsightRow key={i.text} insight={i} />
           ))}
         </div>
       )}
@@ -108,7 +159,7 @@ export function DashboardScreen() {
 
       <div className="dash-row">
         {data.orders && (
-          <Card title="Orders · last 14 days" aside="hover a day" className="grow">
+          <Card title={data.orders.granularity === "hour" ? "Orders · last 24 h by hour" : "Orders · last 14 days"} aside={data.orders.granularity === "hour" ? "fewer than 3 active days; hover an hour" : "hover a day"} className="grow">
             <StackedBars days={data.orders.days} />
           </Card>
         )}
@@ -126,14 +177,10 @@ export function DashboardScreen() {
               {data.actions.overdue > 0 && <span className="tone-text-orange"> · {data.actions.overdue} overdue</span>}
             </div>
             <div className="mini-list">
-              {data.actions.recentFailed.map((a) => (
-                <button key={a.id} className="mini-row" onClick={() => openEntity("action", a.id)} title={a.message ?? undefined}>
-                  <AlertTriangle size="1rem" className="tone-text-red" />
-                  <span className="mono grow-text">{a.hook}</span>
-                  <span className="muted"><Ago unix={a.lastAttempt ?? a.scheduled} /></span>
-                </button>
+              {data.actions.byHook.map((g) => (
+                <HookGroup key={g.hook} group={g} />
               ))}
-              {data.actions.recentFailed.length === 0 && (
+              {data.actions.byHook.length === 0 && (
                 <div className="mini-row muted"><Clock size="1rem" /> No failed actions</div>
               )}
             </div>

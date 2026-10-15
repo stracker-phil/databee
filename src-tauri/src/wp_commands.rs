@@ -406,6 +406,7 @@ pub async fn plan_change(
         | C::SetOrderStatus { database, .. }
         | C::SetAutoload { database, .. }
         | C::DeleteExpiredTransients { database }
+        | C::DeleteLogsBefore { database, .. }
         | C::RetryAction { database, .. }
         | C::CancelAction { database, .. } => database.clone(),
     };

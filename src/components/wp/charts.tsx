@@ -18,9 +18,11 @@ export function StackedBars({ days, labels }: { days: DayBucket[]; labels?: Part
       <svg viewBox="0 0 100 50" preserveAspectRatio="none" className="bars-svg" role="img" aria-label="Per-day counts">
         {days.map((d, i) => {
           let y = 50;
+          const empty = d.completed + d.processing + d.failed + d.other === 0;
           return (
-            <g key={d.date} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+            <g key={`${d.date}-${i}`} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
               <rect x={i * width} y={0} width={width} height={50} fill="transparent" />
+              {empty && <rect x={i * width + width * 0.15} y={49.4} width={width * 0.7} height={0.6} fill="var(--border-strong)" />}
               {SERIES.map((s) => {
                 const h = (d[s.key] / max) * 46;
                 y -= h;

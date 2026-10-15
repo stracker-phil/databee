@@ -42,7 +42,7 @@ export function createApiMock(): typeof realApi {
     wpOrders: vi.fn(),
     wpCustomers: vi.fn(),
     wpProducts: vi.fn(),
-    wpActions: vi.fn(),
+    wpActions: vi.fn().mockResolvedValue({ items: [], hasMore: false, facets: [], kinds: [] }),
     wpActionHistogram: vi.fn().mockResolvedValue([]),
     wpSessions: vi.fn(),
     wpContent: vi.fn(),

@@ -32,18 +32,27 @@ const order = (id: string, status = "wc-processing"): OrderSummary => ({
 });
 
 const dashboard: Dashboard = {
-  orders: { total: 974, today: 12, byStatus: [{ value: "wc-completed", label: "Completed", count: 900 }], days: [{ date: "2026-10-15", completed: 3, processing: 1, failed: 1, other: 0 }] },
+  orders: { total: 974, today: 12, byStatus: [{ value: "wc-completed", label: "Completed", count: 900 }], days: [{ date: "2026-10-15", completed: 3, processing: 1, failed: 1, other: 0 }], granularity: "day" },
   recentOrders: [order("3229")],
   autoloadBytes: 82_637,
   autoloadHealthy: true,
   transientsExpired: 11,
-  actions: { total: 2611, byStatus: [{ value: "failed", label: "Failed", count: 3 }], recentFailed: [], overdue: 0 },
+  actions: {
+    total: 2611,
+    byStatus: [{ value: "failed", label: "Failed", count: 3 }],
+    recentFailed: [],
+    byHook: [{ hook: "woocommerce_paypal_payments_check_pui_payment_captured", count: 38, lastFailure: now - 3 * 86400, lastMessage: "PayPal API returned 500", owner: "PayPal Payments" }],
+    overdue: 0,
+  },
   hposDrift: 0,
   tables: [
     { name: "wp_woocommerce_log", rows: 44_000, bytes: 1, category: "logs", owner: "WooCommerce" },
     { name: "wp_wc_orders_meta", rows: 9_500, bytes: 1, category: "woocommerce", owner: "WooCommerce" },
   ],
-  insights: [{ level: "warning", text: "wp_woocommerce_log holds 54% of all rows. Consider a retention rule." }],
+  insights: [
+    { level: "warning", text: "wp_woocommerce_log holds 54% of all rows. Consider a retention rule.", action: { label: "Set retention", kind: "change", list: null, status: null, change: { type: "deleteLogsBefore", database: "db", days: 30, source: null } } },
+    { level: "danger", text: "3 scheduled actions failed.", action: { label: "Review", kind: "navigate", list: "actions", status: "failed", change: null } },
+  ],
 };
 
 describe("WordPress mode", () => {
@@ -88,6 +97,25 @@ describe("WordPress mode", () => {
     await userEvent.click(screen.getByRole("button", { name: "Table rows" }));
     expect(screen.getByRole("button", { name: "woocommerce_log: 44k rows" })).toBeInTheDocument();
     expect(screen.getByText("HPOS in sync")).toBeInTheDocument();
+  });
+
+  it("turns alerts into actions: changes queue with SQL, reviews open filtered lists", async () => {
+    render(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: "Set retention" }));
+    expect(mocked.planChange).toHaveBeenCalledWith("s1", { type: "deleteLogsBefore", database: "db", days: 30, source: null });
+    expect(await screen.findByText("1 pending change")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "actions", params: { status: "failed" } });
+  });
+
+  it("groups failed actions by hook and expands them with their last log line", async () => {
+    mocked.wpActions.mockResolvedValue({ items: [{ id: "77", hook: "woocommerce_paypal_payments_check_pui_payment_captured", status: "failed", scheduled: now - 3 * 86400, lastAttempt: now - 3 * 86400, attempts: 1, args: null, group: null, message: "PayPal API returned 500" }], hasMore: false, facets: [], kinds: [] });
+    render(<App />);
+    const group = await screen.findByRole("button", { name: /check_pui_payment_captured/ });
+    expect(group).toHaveTextContent("×38");
+    await userEvent.click(group);
+    expect(await screen.findByText("PayPal API returned 500")).toBeInTheDocument();
+    expect(mocked.wpActions).toHaveBeenCalledWith("s1", "db", expect.objectContaining({ status: "failed", kind: "woocommerce_paypal_payments_check_pui_payment_captured" }));
   });
 
   it("switches to the database view and back", async () => {

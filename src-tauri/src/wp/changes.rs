@@ -13,7 +13,7 @@ use crate::db::mysql::MySqlSession;
 use crate::db::{Cell, ResultSet, quote_ident};
 use crate::error::{AppError, AppResult};
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ChangeRequest {
     /// Any table cell, addressed by a unique key column.
@@ -76,6 +76,14 @@ pub enum ChangeRequest {
     },
     #[serde(rename_all = "camelCase")]
     DeleteExpiredTransients { database: String },
+    /// Retention for `woocommerce_log`: drop entries older than `days` (optionally one source).
+    #[serde(rename_all = "camelCase")]
+    DeleteLogsBefore {
+        database: String,
+        days: u32,
+        #[serde(default)]
+        source: Option<String>,
+    },
     #[serde(rename_all = "camelCase")]
     RetryAction { database: String, id: String },
     #[serde(rename_all = "camelCase")]
@@ -101,6 +109,14 @@ fn tref(db: &str, table: &str) -> String {
 
 fn wp_table(db: &str, ctx: &WpContext, table: &str) -> String {
     tref(db, &ctx.table(table))
+}
+
+pub fn logs_before_filter(days: u32, source: Option<&str>) -> String {
+    let mut f = format!("`timestamp` < UTC_TIMESTAMP() - INTERVAL {days} DAY");
+    if let Some(s) = source {
+        f.push_str(&format!(" AND `source` = {}", sql_string(s)));
+    }
+    f
 }
 
 /// `INSERT` statements that recreate the given rows exactly.
@@ -482,6 +498,42 @@ pub async fn plan(
                 undo: reinsert_sql(&t, &rows),
             }
         }
+        ChangeRequest::DeleteLogsBefore {
+            database,
+            days,
+            source,
+        } => {
+            let ctx = need_wp()?;
+            if !ctx.has_table("woocommerce_log") {
+                return Err(AppError::InvalidInput(
+                    "This site has no woocommerce_log table".into(),
+                ));
+            }
+            let t = wp_table(database, ctx, "woocommerce_log");
+            let filter = logs_before_filter(*days, source.as_deref());
+            let count = fetch(session, &format!("SELECT COUNT(*) FROM {t} WHERE {filter}")).await?;
+            let n = count
+                .rows
+                .first()
+                .and_then(|r| super::lists::num(&r[0]))
+                .unwrap_or(0);
+            if n == 0 {
+                return Err(AppError::InvalidInput(format!(
+                    "No log entries are older than {days} days"
+                )));
+            }
+            PlannedChange {
+                description: format!(
+                    "Delete {n} log entries older than {days} days{} (no undo)",
+                    source
+                        .as_deref()
+                        .map(|s| format!(" from {s}"))
+                        .unwrap_or_default()
+                ),
+                statements: vec![format!("DELETE FROM {t} WHERE {filter}")],
+                undo: vec![],
+            }
+        }
         ChangeRequest::RetryAction { database, id }
         | ChangeRequest::CancelAction { database, id } => {
             let ctx = need_wp()?;
@@ -720,6 +772,18 @@ mod tests {
         assert_eq!(out, r#"{"z":1,"a":{"b":"y"}}"#);
         let out = edit_serialized("[1,2]", &path(&["1"]), &NewValue::Int("5".into())).unwrap();
         assert_eq!(out, "[1,5]");
+    }
+
+    #[test]
+    fn log_retention_filter_targets_age_and_source() {
+        assert_eq!(
+            logs_before_filter(30, None),
+            "`timestamp` < UTC_TIMESTAMP() - INTERVAL 30 DAY"
+        );
+        assert_eq!(
+            logs_before_filter(7, Some("woocommerce-paypal-payments")),
+            "`timestamp` < UTC_TIMESTAMP() - INTERVAL 7 DAY AND `source` = 'woocommerce-paypal-payments'"
+        );
     }
 
     #[test]

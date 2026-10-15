@@ -387,16 +387,30 @@ export interface DayBucket {
   other: number;
 }
 
+export interface InsightAction {
+  label: string;
+  kind: "navigate" | "change";
+  list: string | null;
+  status: string | null;
+  change: ChangeRequest | null;
+}
+
+export interface Insight {
+  level: "info" | "warning" | "danger";
+  text: string;
+  action: InsightAction | null;
+}
+
 export interface Dashboard {
-  orders: { total: number; today: number; byStatus: Facet[]; days: DayBucket[] } | null;
+  orders: { total: number; today: number; byStatus: Facet[]; days: DayBucket[]; granularity: "day" | "hour" } | null;
   recentOrders: OrderSummary[];
   autoloadBytes: number;
   autoloadHealthy: boolean;
   transientsExpired: number;
-  actions: { total: number; byStatus: Facet[]; recentFailed: ActionSummary[]; overdue: number } | null;
+  actions: { total: number; byStatus: Facet[]; recentFailed: ActionSummary[]; byHook: HookFailures[]; overdue: number } | null;
   hposDrift: number | null;
   tables: { name: string; rows: number; bytes: number; category: string; owner: string | null }[];
-  insights: { level: "info" | "warning" | "danger"; text: string }[];
+  insights: Insight[];
 }
 
 export interface BrowserSection {
@@ -576,6 +590,7 @@ export type ChangeRequest =
   | { type: "setOrderStatus"; database: string; id: string; status: string }
   | { type: "setAutoload"; database: string; option: string; on: boolean }
   | { type: "deleteExpiredTransients"; database: string }
+  | { type: "deleteLogsBefore"; database: string; days: number; source?: string | null }
   | { type: "retryAction"; database: string; id: string }
   | { type: "cancelAction"; database: string; id: string };
 

@@ -3,8 +3,11 @@
 use chrono::{Duration, NaiveDate, Utc};
 use serde::Serialize;
 
+use super::changes::ChangeRequest;
 use super::context::{HposMode, WpContext};
-use super::lists::{self, ActionSummary, Facet, ListQuery, OrderSummary, num, status_label, text};
+use super::lists::{
+    self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary, num, status_label, text,
+};
 use super::{fetch, sql_string};
 use crate::db::mysql::MySqlSession;
 use crate::db::{TableInfo, quote_ident};
@@ -42,6 +45,8 @@ pub struct OrderStats {
     pub today: u64,
     pub by_status: Vec<Facet>,
     pub days: Vec<DayBucket>,
+    /// `day` (14 days) or `hour` (last 24 h, used when fewer than 3 days have orders).
+    pub granularity: &'static str,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -50,7 +55,21 @@ pub struct ActionStats {
     pub total: u64,
     pub by_status: Vec<Facet>,
     pub recent_failed: Vec<ActionSummary>,
+    /// Failed actions grouped by hook, newest first.
+    pub by_hook: Vec<HookFailures>,
     pub overdue: u64,
+}
+
+/// One button per alert: open a filtered list, or queue a reviewed change.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct InsightAction {
+    pub label: String,
+    /// `navigate` or `change`
+    pub kind: &'static str,
+    pub list: Option<&'static str>,
+    pub status: Option<&'static str>,
+    pub change: Option<ChangeRequest>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -59,6 +78,54 @@ pub struct Insight {
     /// info, warning, danger
     pub level: &'static str,
     pub text: String,
+    pub action: Option<InsightAction>,
+}
+
+fn go(label: &str, list: &'static str, status: Option<&'static str>) -> Option<InsightAction> {
+    Some(InsightAction {
+        label: label.into(),
+        kind: "navigate",
+        list: Some(list),
+        status,
+        change: None,
+    })
+}
+
+fn change(label: &str, change: ChangeRequest) -> Option<InsightAction> {
+    Some(InsightAction {
+        label: label.into(),
+        kind: "change",
+        list: None,
+        status: None,
+        change: Some(change),
+    })
+}
+
+/// 24 hourly buckets ending with the current hour, labelled `HH:00`.
+pub fn hour_buckets(rows: &[(String, String, u64)], now: chrono::DateTime<Utc>) -> Vec<DayBucket> {
+    (0..24)
+        .rev()
+        .map(|back| {
+            let at = now - Duration::hours(back);
+            let key = at.format("%Y-%m-%d %H:00").to_string();
+            let mut bucket = DayBucket {
+                date: at.format("%H:00").to_string(),
+                completed: 0,
+                processing: 0,
+                failed: 0,
+                other: 0,
+            };
+            for (_, status, count) in rows.iter().filter(|(d, _, _)| *d == key) {
+                match status.trim_start_matches("wc-") {
+                    "completed" => bucket.completed += count,
+                    "processing" => bucket.processing += count,
+                    "failed" | "cancelled" => bucket.failed += count,
+                    _ => bucket.other += count,
+                }
+            }
+            bucket
+        })
+        .collect()
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -154,7 +221,7 @@ pub fn day_buckets(rows: &[(String, String, u64)], today: NaiveDate) -> Vec<DayB
         .collect()
 }
 
-pub fn insights(d: &Dashboard) -> Vec<Insight> {
+pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
     let mut out = Vec::new();
     let total_rows: u64 = d.tables.iter().map(|t| t.rows).sum();
     if let Some(top) = d.tables.first().filter(|_| total_rows > 10_000) {
@@ -168,6 +235,18 @@ pub fn insights(d: &Dashboard) -> Vec<Insight> {
             out.push(Insight {
                 level: "warning",
                 text: format!("{} holds {share}% of all rows.{hint}", top.name),
+                action: if top.category == "logs" && top.name.ends_with("woocommerce_log") {
+                    change(
+                        "Set retention",
+                        ChangeRequest::DeleteLogsBefore {
+                            database: db.into(),
+                            days: 30,
+                            source: None,
+                        },
+                    )
+                } else {
+                    None
+                },
             });
         }
     }
@@ -178,6 +257,7 @@ pub fn insights(d: &Dashboard) -> Vec<Insight> {
                 "Autoloaded options weigh {} KB; every request loads them.",
                 d.autoload_bytes / 1024
             ),
+            action: go("Review", "settings", None),
         });
     }
     if let Some(a) = &d.actions {
@@ -190,6 +270,7 @@ pub fn insights(d: &Dashboard) -> Vec<Insight> {
             out.push(Insight {
                 level: "danger",
                 text: format!("{failed} scheduled actions failed."),
+                action: go("Review", "actions", Some("failed")),
             });
         }
         if a.overdue > 0 {
@@ -199,6 +280,7 @@ pub fn insights(d: &Dashboard) -> Vec<Insight> {
                     "{} pending actions are overdue by more than 10 minutes.",
                     a.overdue
                 ),
+                action: go("Review", "actions", Some("pending")),
             });
         }
     }
@@ -206,6 +288,7 @@ pub fn insights(d: &Dashboard) -> Vec<Insight> {
         out.push(Insight {
             level: "danger",
             text: format!("{drift} orders differ between wc_orders and their posts copy."),
+            action: None,
         });
     }
     if d.transients_expired > 0 {
@@ -214,6 +297,12 @@ pub fn insights(d: &Dashboard) -> Vec<Insight> {
             text: format!(
                 "{} expired transients can be cleaned up.",
                 d.transients_expired
+            ),
+            action: change(
+                "Clean up",
+                ChangeRequest::DeleteExpiredTransients {
+                    database: db.into(),
+                },
             ),
         });
     }
@@ -278,7 +367,47 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
                 .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, num(&r[2])?)))
                 .collect();
             let today = Utc::now().date_naive();
-            let buckets = day_buckets(&day_rows, today);
+            let mut buckets = day_buckets(&day_rows, today);
+            let mut granularity = "day";
+            let active_days = buckets
+                .iter()
+                .filter(|b| b.completed + b.processing + b.failed + b.other > 0)
+                .count();
+            if active_days < 3 {
+                let hours = fetch(
+                    session,
+                    &format!(
+                        "SELECT DATE_FORMAT({date_col}, '%Y-%m-%d %H:00'), {status_col}, COUNT(*) FROM {table} WHERE {type_filter} \
+                         AND {date_col} >= UTC_TIMESTAMP() - INTERVAL 24 HOUR GROUP BY 1, 2"
+                    ),
+                )
+                .await?;
+                let hour_rows: Vec<(String, String, u64)> = hours
+                    .rows
+                    .iter()
+                    .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, num(&r[2])?)))
+                    .collect();
+                let today_total = buckets
+                    .last()
+                    .map_or(0, |b| b.completed + b.processing + b.failed + b.other);
+                buckets = hour_buckets(&hour_rows, Utc::now());
+                // keep "today" from the day view
+                buckets.push(DayBucket {
+                    date: "__today".into(),
+                    completed: today_total,
+                    processing: 0,
+                    failed: 0,
+                    other: 0,
+                });
+                granularity = "hour";
+            }
+            let today_count = if granularity == "hour" {
+                buckets.pop().map_or(0, |b| b.completed)
+            } else {
+                buckets
+                    .last()
+                    .map_or(0, |b| b.completed + b.processing + b.failed + b.other)
+            };
             let mut facets: Vec<Facet> = by_status
                 .rows
                 .iter()
@@ -298,11 +427,10 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
                     .filter(|f| f.value != "trash")
                     .map(|f| f.count)
                     .sum(),
-                today: buckets
-                    .last()
-                    .map_or(0, |b| b.completed + b.processing + b.failed + b.other),
+                today: today_count,
                 by_status: facets,
                 days: buckets,
+                granularity,
             };
             let recent = lists::orders(
                 session,
@@ -378,6 +506,11 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
             total: facets.iter().map(|f| f.count).sum(),
             by_status: facets,
             recent_failed: failed.items,
+            by_hook: lists::failed_by_hook(session, ctx, db)
+                .await?
+                .into_iter()
+                .take(6)
+                .collect(),
             overdue: overdue.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
         })
     } else {
@@ -395,7 +528,7 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
         tables: tiles(ctx, &session.tables(db).await?),
         insights: Vec::new(),
     };
-    dash.insights = insights(&dash);
+    dash.insights = insights(&dash, db);
     Ok(dash)
 }
 
@@ -646,6 +779,7 @@ mod tests {
                     count: 3,
                 }],
                 recent_failed: vec![],
+                by_hook: vec![],
                 overdue: 0,
             }),
             hpos_drift: Some(2),
@@ -659,7 +793,7 @@ mod tests {
             ),
             insights: vec![],
         };
-        d.insights = insights(&d);
+        d.insights = insights(&d, "wp_test");
         let texts: Vec<&str> = d.insights.iter().map(|i| i.text.as_str()).collect();
         assert!(
             texts[0].starts_with(
@@ -674,5 +808,69 @@ mod tests {
         );
         assert!(texts.iter().any(|t| t.contains("2 orders differ")));
         assert!(texts.iter().any(|t| t.contains("11 expired transients")));
+
+        let retention = d.insights[0].action.as_ref().unwrap();
+        assert_eq!(
+            (retention.label.as_str(), retention.kind),
+            ("Set retention", "change")
+        );
+        assert!(matches!(
+            retention.change,
+            Some(ChangeRequest::DeleteLogsBefore { days: 30, .. })
+        ));
+        let failed = d
+            .insights
+            .iter()
+            .find(|i| i.text.contains("actions failed"))
+            .unwrap();
+        let a = failed.action.as_ref().unwrap();
+        assert_eq!(
+            (a.kind, a.list, a.status),
+            ("navigate", Some("actions"), Some("failed"))
+        );
+        let cleanup = d
+            .insights
+            .iter()
+            .find(|i| i.text.contains("expired transients"))
+            .unwrap();
+        assert!(matches!(
+            cleanup.action.as_ref().unwrap().change,
+            Some(ChangeRequest::DeleteExpiredTransients { .. })
+        ));
+    }
+
+    #[test]
+    fn hour_buckets_cover_the_last_day_by_hour() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-10-16T09:30:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let rows = vec![
+            (
+                "2026-10-16 09:00".to_string(),
+                "wc-processing".to_string(),
+                2,
+            ),
+            (
+                "2026-10-15 10:00".to_string(),
+                "wc-completed".to_string(),
+                1,
+            ),
+            (
+                "2026-10-15 09:00".to_string(),
+                "wc-completed".to_string(),
+                7,
+            ),
+        ];
+        let b = hour_buckets(&rows, now);
+        assert_eq!(b.len(), 24);
+        assert_eq!(b[0].date, "10:00");
+        assert_eq!(b[0].completed, 1);
+        assert_eq!(b[23].date, "09:00");
+        assert_eq!(b[23].processing, 2);
+        assert_eq!(
+            b.iter().map(|x| x.completed).sum::<u64>(),
+            1,
+            "09:00 yesterday is outside the window"
+        );
     }
 }
