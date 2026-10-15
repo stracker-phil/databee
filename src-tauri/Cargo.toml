@@ -27,9 +27,8 @@ tauri-plugin-single-instance = "2.5.4"
 tauri-plugin-opener = "2.7.2"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "time", "sync", "io-util"] }
-sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "mysql", "chrono", "rust_decimal", "json"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "mysql", "mysql-rsa"] }
 chrono = { version = "0.4.45", features = ["serde"] }
-rust_decimal = "1.43.0"
 url = "2.5.8"
 uuid = { version = "1.28.0", features = ["v4"] }
 futures-util = "0.3.34"

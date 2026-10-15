@@ -163,9 +163,9 @@ fn build_launch(
     } else if args.password_stdin {
         Some(read_password_line(stdin)?)
     } else if let Some(var) = args.password_env {
-        Some(Secret::new(
-            env(&var).ok_or_else(|| format!("Environment variable {var} is not set"))?,
-        ))
+        Some(Secret::new(env(&var).ok_or_else(|| {
+            format!("Environment variable {var} is not set")
+        })?))
     } else {
         url_password
     };
@@ -195,7 +195,8 @@ fn parse_url(raw: &str) -> Result<(UrlParts, Option<Secret>), String> {
         ));
     }
     let decode = |s: &str| {
-        percent_decode(s).map_err(|_| "Connection URL contains invalid percent-encoding".to_string())
+        percent_decode(s)
+            .map_err(|_| "Connection URL contains invalid percent-encoding".to_string())
     };
     let non_empty = |s: String| (!s.is_empty()).then_some(s);
 
@@ -314,7 +315,11 @@ mod tests {
 
     #[test]
     fn password_is_read_from_first_stdin_line() {
-        let outcome = run_with(&["-u", "wp", "--password-stdin"], "pa ss\nignored\n", &|_| None);
+        let outcome = run_with(
+            &["-u", "wp", "--password-stdin"],
+            "pa ss\nignored\n",
+            &|_| None,
+        );
         let CliOutcome::Run {
             launch: Some(l), ..
         } = outcome.unwrap()
@@ -362,7 +367,10 @@ mod tests {
     #[test]
     fn help_and_version_exit_without_launching() {
         assert!(matches!(run(&["--help"]).unwrap(), CliOutcome::Exit { .. }));
-        assert!(matches!(run(&["--version"]).unwrap(), CliOutcome::Exit { .. }));
+        assert!(matches!(
+            run(&["--version"]).unwrap(),
+            CliOutcome::Exit { .. }
+        ));
     }
 
     #[test]

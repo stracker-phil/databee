@@ -1,10 +1,13 @@
 pub mod cli;
 mod commands;
 pub mod connection;
+pub mod db;
+mod db_commands;
 pub mod error;
 pub mod ipc;
 mod launch;
 pub mod secrets;
+mod session;
 mod state;
 pub mod store;
 
@@ -74,7 +77,11 @@ pub fn run() {
             (IpcMessage::Error { message }, None)
         }
     };
-    let exit_code = if matches!(message, IpcMessage::Error { .. }) { 2 } else { 0 };
+    let exit_code = if matches!(message, IpcMessage::Error { .. }) {
+        2
+    } else {
+        0
+    };
 
     match ipc::try_forward(&socket, &message) {
         Ok(true) => std::process::exit(exit_code),
@@ -85,7 +92,12 @@ pub fn run() {
     start_app(config_dir, socket, message, log_override);
 }
 
-fn start_app(config_dir: PathBuf, socket: PathBuf, initial: IpcMessage, log_override: Option<LogLevel>) {
+fn start_app(
+    config_dir: PathBuf,
+    socket: PathBuf,
+    initial: IpcMessage,
+    log_override: Option<LogLevel>,
+) {
     tauri::Builder::default()
         .plugin(log_plugin())
         .plugin(tauri_plugin_opener::init())
@@ -119,6 +131,16 @@ fn start_app(config_dir: PathBuf, socket: PathBuf, initial: IpcMessage, log_over
             commands::list_recents,
             commands::remove_recent,
             commands::forget_password,
+            db_commands::connect,
+            db_commands::disconnect,
+            db_commands::list_databases,
+            db_commands::list_tables,
+            db_commands::describe_table,
+            db_commands::completion_schema,
+            db_commands::use_database,
+            db_commands::execute,
+            db_commands::cancel_query,
+            db_commands::browse_table,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

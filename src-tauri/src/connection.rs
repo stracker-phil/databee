@@ -29,7 +29,11 @@ impl ConnectionSpec {
 
     /// Stable key for recents, favorites and history: endpoint plus database.
     pub fn identity(&self) -> String {
-        format!("{}/{}", self.account(), self.database.as_deref().unwrap_or(""))
+        format!(
+            "{}/{}",
+            self.account(),
+            self.database.as_deref().unwrap_or("")
+        )
     }
 
     pub fn display_name(&self) -> String {

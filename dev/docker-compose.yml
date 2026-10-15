@@ -1,0 +1,24 @@
+# Test fixtures for `bun run test:db`. Both servers share the same seed data.
+name: databee-fixtures
+services:
+  mariadb:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+    ports: ["127.0.0.1:33306:3306"]
+    volumes: ["./fixture.sql:/docker-entrypoint-initdb.d/fixture.sql:ro"]
+    healthcheck:
+      # TCP + fixture table: the init-time temporary server has networking disabled.
+      test: ["CMD", "mariadb", "-h127.0.0.1", "-uroot", "-proot", "-e", "SELECT 1 FROM databee_test.types"]
+      interval: 2s
+      retries: 60
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports: ["127.0.0.1:33307:3306"]
+    volumes: ["./fixture.sql:/docker-entrypoint-initdb.d/fixture.sql:ro"]
+    healthcheck:
+      test: ["CMD", "mysql", "-h127.0.0.1", "-uroot", "-proot", "-e", "SELECT 1 FROM databee_test.types"]
+      interval: 2s
+      retries: 60

@@ -8,7 +8,10 @@ pub type AppResult<T> = Result<T, AppError>;
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("{message}")]
-    Database { message: String, code: Option<String> },
+    Database {
+        message: String,
+        code: Option<String>,
+    },
     #[error("Could not connect: {0}")]
     Connection(String),
     #[error("Access denied: {0}")]
@@ -79,7 +82,11 @@ impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
         match e {
             sqlx::Error::Database(db) => {
-                let code = db.code().map(|c| c.into_owned());
+                // Prefer the MySQL error number (e.g. 1146) over the generic SQLSTATE.
+                let code = db
+                    .try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
+                    .map(|e| e.number().to_string())
+                    .or_else(|| db.code().map(|c| c.into_owned()));
                 match code.as_deref() {
                     Some(MYSQL_ACCESS_DENIED) => AppError::AuthFailed(db.message().to_string()),
                     Some(MYSQL_QUERY_INTERRUPTED) => AppError::Cancelled,

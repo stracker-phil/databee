@@ -122,7 +122,9 @@ mod tests {
     #[test]
     fn explicit_password_wins_over_stored_one() {
         let store = MemoryStore::default();
-        store.set(&spec().account(), &Secret::new("stored")).unwrap();
+        store
+            .set(&spec().account(), &Secret::new("stored"))
+            .unwrap();
         assert_eq!(
             resolve_password(Some(Secret::new("given")), &store, &spec()),
             PasswordSource::Provided(Secret::new("given"))
@@ -132,7 +134,9 @@ mod tests {
     #[test]
     fn falls_back_to_stored_password() {
         let store = MemoryStore::default();
-        store.set(&spec().account(), &Secret::new("stored")).unwrap();
+        store
+            .set(&spec().account(), &Secret::new("stored"))
+            .unwrap();
         assert_eq!(
             resolve_password(None, &store, &spec()),
             PasswordSource::Stored(Secret::new("stored"))
@@ -152,6 +156,9 @@ mod tests {
         let store = MemoryStore::default();
         store.set(&spec().account(), &Secret::new("x")).unwrap();
         store.delete(&spec().account()).unwrap();
-        assert_eq!(resolve_password(None, &store, &spec()), PasswordSource::None);
+        assert_eq!(
+            resolve_password(None, &store, &spec()),
+            PasswordSource::None
+        );
     }
 }
