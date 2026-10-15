@@ -1088,6 +1088,130 @@ pub fn token_summary(kind: &str, meta: &HashMap<String, String>) -> String {
     }
 }
 
+/// A guest checkout customer: everything we know comes from the orders placed with this email.
+pub async fn guest_view(
+    session: &MySqlSession,
+    ctx: &WpContext,
+    db: &str,
+    email: &str,
+    with_gravatar: bool,
+) -> AppResult<CustomerView> {
+    let stats = fetch(
+        session,
+        &lists::guests_sql(db, ctx, None, Some(email), 1, 0),
+    )
+    .await?;
+    let summary = lists::guest_rows(&stats, ctx.site.currency.as_deref())
+        .pop()
+        .ok_or_else(|| AppError::InvalidInput(format!("No guest orders for {email}")))?;
+    let q = ListQuery {
+        search: Some(email.to_string()),
+        limit: 10,
+        ..Default::default()
+    };
+    let orders: Vec<OrderSummary> = lists::orders(session, ctx, db, "shop_order", &q)
+        .await?
+        .items
+        .into_iter()
+        .filter(|o| o.email.as_deref() == Some(email) && o.customer_id.is_none())
+        .collect();
+    let session_link = if ctx.has_table("woocommerce_sessions") {
+        let rs = fetch(
+            session,
+            &format!(
+                "SELECT session_id FROM {} WHERE session_value LIKE {} ORDER BY session_expiry DESC LIMIT 1",
+                t(db, ctx, "woocommerce_sessions"),
+                sql_string(&format!("%{email}%"))
+            ),
+        )
+        .await?;
+        rs.rows
+            .first()
+            .and_then(|r| text(&r[0]))
+            .map(|s| link("session", s))
+    } else {
+        None
+    };
+    let average = (summary.order_count > 0)
+        .then(|| {
+            stats
+                .rows
+                .first()
+                .and_then(|r| text(&r[2]))
+                .and_then(|v| v.parse::<f64>().ok())
+        })
+        .flatten()
+        .and_then(|spent| {
+            money(
+                &(spent / summary.order_count as f64).to_string(),
+                ctx.site.currency.as_deref(),
+            )
+        });
+    let name = summary.name.clone().unwrap_or_else(|| email.to_string());
+    let mut related = vec![RelatedChip {
+        label: "Orders".into(),
+        link: None,
+        count: Some(summary.order_count),
+        target: Some(format!("list:orders:search={email}")),
+    }];
+    if let Some(s) = &session_link {
+        related.push(RelatedChip {
+            label: "Session".into(),
+            link: Some(s.clone()),
+            count: None,
+            target: None,
+        });
+    }
+    let billing = Address {
+        name: summary.name.clone(),
+        company: None,
+        lines: Vec::new(),
+        country: None,
+        email: Some(email.to_string()),
+        phone: None,
+    };
+    Ok(CustomerView {
+        doc: EntityDoc {
+            entity: "user".into(),
+            label: "Guest".into(),
+            id: format!("{}{email}", lists::GUEST_PREFIX),
+            title: Some(name.clone()),
+            subtitle: Some("guest checkout".into()),
+            image: None,
+            table: if ctx.hpos() {
+                ctx.table("wc_orders")
+            } else {
+                ctx.table("postmeta")
+            },
+            id_column: if ctx.hpos() {
+                "billing_email".into()
+            } else {
+                "meta_value".into()
+            },
+            fields: Vec::new(),
+            meta: Vec::new(),
+            relations: Vec::new(),
+        },
+        name,
+        login: None,
+        avatar: with_gravatar.then(|| lists::gravatar(email)),
+        email: Some(email.to_string()),
+        roles: vec!["Guest".into()],
+        registered: summary.registered,
+        last_active: summary.last_order,
+        billing: Some(billing),
+        shipping: None,
+        order_count: summary.order_count,
+        total_spent: summary.total_spent,
+        average_order: average,
+        orders,
+        subscriptions: Vec::new(),
+        tokens: Vec::new(),
+        session: session_link,
+        related,
+    })
+}
+
 pub async fn customer_view(
     session: &MySqlSession,
     ctx: &WpContext,
@@ -1706,6 +1830,16 @@ pub async fn entity_view(
         "order" => EntityView::Order(Box::new(
             order_view(session, ctx, catalog, db, "order", id).await?,
         )),
+        "user" if id.starts_with(lists::GUEST_PREFIX) => EntityView::Customer(Box::new(
+            guest_view(
+                session,
+                ctx,
+                db,
+                &id[lists::GUEST_PREFIX.len()..],
+                with_gravatar,
+            )
+            .await?,
+        )),
         "user" => EntityView::Customer(Box::new(
             customer_view(session, ctx, catalog, db, id, with_gravatar).await?,
         )),
@@ -1836,6 +1970,28 @@ pub async fn search(
     if q.contains('@') {
         let rs = fetch(session, &format!("SELECT ID, display_name, user_email, 'email' FROM {users} WHERE user_email LIKE {like} LIMIT 8")).await?;
         out.extend(hits(&rs, "user", "email"));
+        if ctx.wc.is_some() {
+            let guests = if ctx.hpos() {
+                format!(
+                    "SELECT CONCAT('{prefix}', billing_email), billing_email, CONCAT('Guest · ', COUNT(*), ' orders'), 'billing_email' \
+                     FROM {orders} WHERE type = 'shop_order' AND customer_id = 0 AND billing_email LIKE {like} GROUP BY billing_email LIMIT 5",
+                    prefix = lists::GUEST_PREFIX,
+                    orders = t(db, ctx, "wc_orders"),
+                )
+            } else {
+                format!(
+                    "SELECT CONCAT('{prefix}', e.meta_value), e.meta_value, CONCAT('Guest · ', COUNT(*), ' orders'), 'billing_email' \
+                     FROM {posts} p JOIN {pm} e ON e.post_id = p.ID AND e.meta_key = '_billing_email' \
+                     LEFT JOIN {pm} c ON c.post_id = p.ID AND c.meta_key = '_customer_user' \
+                     WHERE p.post_type = 'shop_order' AND COALESCE(c.meta_value, '0') = '0' AND e.meta_value LIKE {like} GROUP BY e.meta_value LIMIT 5",
+                    prefix = lists::GUEST_PREFIX,
+                    posts = posts,
+                    pm = t(db, ctx, "postmeta"),
+                )
+            };
+            let rs = fetch(session, &guests).await?;
+            out.extend(hits(&rs, "user", "billing_email"));
+        }
         if ctx.hpos() {
             let rs = fetch(
                 session,

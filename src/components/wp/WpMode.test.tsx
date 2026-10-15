@@ -175,6 +175,26 @@ describe("WordPress mode", () => {
     expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3227" });
   });
 
+  it("lists guest checkouts as customers with a Guest badge", async () => {
+    window.innerWidth = 1200;
+    mocked.wpCustomers.mockResolvedValue({
+      items: [
+        { id: "12", login: "jane", email: "jane@shop.test", name: "Jane Doe", registered: now - 86400, roles: ["customer"], orderCount: 1, totalSpent: "€49.90", lastOrder: now - 3600, avatar: null },
+        { id: "guest:guest@shop.test", login: "guest@shop.test", email: "guest@shop.test", name: null, registered: now - 3 * 86400, roles: ["Guest"], orderCount: 1, totalSpent: null, lastOrder: now - 3 * 86400, avatar: null },
+      ],
+      hasMore: false,
+      facets: [],
+      kinds: [{ value: "customer", label: "Customer", count: 1 }, { value: "guest", label: "Guest", count: 1 }],
+    });
+    useStore.getState().navigate({ screen: "list", list: "customers" });
+    render(<WpWorkspace />);
+    const row = await screen.findByRole("row", { name: /guest@shop.test/ });
+    expect(within(row).getByText("Guest")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Guest (1)" })).toBeInTheDocument();
+    await userEvent.click(row);
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "user", id: "guest:guest@shop.test" });
+  });
+
   it("falls back to full-page navigation on narrow windows", async () => {
     window.innerWidth = 1200;
     useStore.getState().navigate({ screen: "list", list: "orders" });

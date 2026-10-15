@@ -448,6 +448,81 @@ pub fn customers_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
     )
 }
 
+/// Virtual customers for guest checkouts are addressed as `guest:<billing email>`.
+pub const GUEST_PREFIX: &str = "guest:";
+
+/// Guest customers: orders without a user, grouped by billing email (emails that belong to a
+/// registered user are excluded). Columns: email, orders, spent, last order, first order, name.
+pub fn guests_sql(
+    db: &str,
+    ctx: &WpContext,
+    search: Option<&str>,
+    email: Option<&str>,
+    limit: u32,
+    offset: u64,
+) -> String {
+    let users = t(db, ctx, "users");
+    let mut extra = String::new();
+    if let Some(s) = search {
+        extra += &format!(" AND {{email}} LIKE {}", like(s));
+    }
+    if let Some(e) = email {
+        extra += &format!(" AND {{email}} = {}", sql_string(e));
+    }
+    if ctx.hpos() {
+        let extra = extra.replace("{email}", "o.billing_email");
+        format!(
+            "SELECT o.billing_email, COUNT(*), SUM(CASE WHEN o.status IN ('wc-completed', 'wc-processing') THEN o.total_amount ELSE 0 END), \
+             MAX({created}), MIN({created}), MAX(TRIM(CONCAT(COALESCE(a.first_name, ''), ' ', COALESCE(a.last_name, '')))) \
+             FROM {orders} o LEFT JOIN {addr} a ON a.order_id = o.id AND a.address_type = 'billing' \
+             WHERE o.type = 'shop_order' AND o.customer_id = 0 AND o.billing_email <> '' \
+             AND o.billing_email NOT IN (SELECT user_email FROM {users}){extra} \
+             GROUP BY o.billing_email ORDER BY MAX(o.date_created_gmt) DESC LIMIT {limit} OFFSET {offset}",
+            created = epoch("o.date_created_gmt"),
+            orders = t(db, ctx, "wc_orders"),
+            addr = t(db, ctx, "wc_order_addresses"),
+        )
+    } else {
+        let extra = extra.replace("{email}", "e.meta_value");
+        format!(
+            "SELECT e.meta_value, COUNT(*), SUM(CASE WHEN p.post_status IN ('wc-completed', 'wc-processing') THEN tot.meta_value ELSE 0 END), \
+             MAX({created}), MIN({created}), MAX(TRIM(CONCAT(COALESCE(f.meta_value, ''), ' ', COALESCE(l.meta_value, '')))) \
+             FROM {posts} p JOIN {pm} e ON e.post_id = p.ID AND e.meta_key = '_billing_email' \
+             LEFT JOIN {pm} c ON c.post_id = p.ID AND c.meta_key = '_customer_user' \
+             LEFT JOIN {pm} tot ON tot.post_id = p.ID AND tot.meta_key = '_order_total' \
+             LEFT JOIN {pm} f ON f.post_id = p.ID AND f.meta_key = '_billing_first_name' \
+             LEFT JOIN {pm} l ON l.post_id = p.ID AND l.meta_key = '_billing_last_name' \
+             WHERE p.post_type = 'shop_order' AND COALESCE(c.meta_value, '0') = '0' AND e.meta_value <> '' \
+             AND e.meta_value NOT IN (SELECT user_email FROM {users}){extra} \
+             GROUP BY e.meta_value ORDER BY MAX(p.post_date_gmt) DESC LIMIT {limit} OFFSET {offset}",
+            created = epoch("p.post_date_gmt"),
+            posts = t(db, ctx, "posts"),
+            pm = t(db, ctx, "postmeta"),
+        )
+    }
+}
+
+pub fn guest_rows(rs: &ResultSet, currency: Option<&str>) -> Vec<CustomerSummary> {
+    rs.rows
+        .iter()
+        .filter_map(|r| {
+            let email = text(&r[0])?;
+            Some(CustomerSummary {
+                id: format!("{GUEST_PREFIX}{email}"),
+                login: email.clone(),
+                name: text(&r[5]).filter(|n| !n.trim().is_empty()),
+                registered: int(&r[4]),
+                roles: vec!["Guest".into()],
+                order_count: num(&r[1]).unwrap_or(0),
+                total_spent: text(&r[2]).and_then(|v| money(&v, currency)),
+                last_order: int(&r[3]),
+                avatar: None,
+                email: Some(email),
+            })
+        })
+        .collect()
+}
+
 /// (count, sum of totals, last order) per customer for paid-ish orders.
 pub fn customer_stats_sql(db: &str, ctx: &WpContext, ids: &[String]) -> Option<String> {
     let list = ids
@@ -503,6 +578,22 @@ pub async fn customers(
     q: &ListQuery,
     with_gravatar: bool,
 ) -> AppResult<Page<CustomerSummary>> {
+    let guests_wanted = ctx.wc.is_some() && q.kind.as_deref().is_none_or(|k| k == "guest");
+    let currency = ctx.site.currency.as_deref();
+    if ctx.wc.is_some() && q.kind.as_deref() == Some("guest") {
+        let rs = fetch(
+            session,
+            &guests_sql(db, ctx, q.search(), None, q.limit() + 1, q.offset),
+        )
+        .await?;
+        let (items, has_more) = page_split(guest_rows(&rs, currency), q.limit());
+        return Ok(Page {
+            items,
+            has_more,
+            facets: Vec::new(),
+            kinds: customer_kinds(session, ctx, db).await?,
+        });
+    }
     let rs = fetch(session, &customers_sql(db, ctx, q)).await?;
     let rows: Vec<CustomerSummary> = rs
         .rows
@@ -540,6 +631,25 @@ pub async fn customers(
             }
         }
     }
+    // Guests follow the registered users once those are exhausted.
+    if guests_wanted && !has_more {
+        let rs = fetch(session, &guests_sql(db, ctx, q.search(), None, PAGE_MAX, 0)).await?;
+        items.extend(guest_rows(&rs, currency));
+    }
+    Ok(Page {
+        items,
+        has_more,
+        facets: Vec::new(),
+        kinds: customer_kinds(session, ctx, db).await?,
+    })
+}
+
+/// Role counts for the kind filter, plus a `guest` entry when the shop has guest orders.
+async fn customer_kinds(
+    session: &MySqlSession,
+    ctx: &WpContext,
+    db: &str,
+) -> AppResult<Vec<Facet>> {
     let roles = fetch(
         session,
         &format!(
@@ -564,12 +674,25 @@ pub async fn customers(
         })
         .collect();
     kinds.sort_by_key(|a| std::cmp::Reverse(a.count));
-    Ok(Page {
-        items,
-        has_more,
-        facets: Vec::new(),
-        kinds,
-    })
+    if ctx.wc.is_some() {
+        let rs = fetch(
+            session,
+            &format!(
+                "SELECT COUNT(*) FROM ({}) g",
+                guests_sql(db, ctx, None, None, 100_000, 0)
+            ),
+        )
+        .await?;
+        let n = rs.rows.first().and_then(|r| num(&r[0])).unwrap_or(0);
+        if n > 0 {
+            kinds.push(Facet {
+                value: "guest".into(),
+                label: "Guest".into(),
+                count: n,
+            });
+        }
+    }
+    Ok(kinds)
 }
 
 // ---------- products ----------

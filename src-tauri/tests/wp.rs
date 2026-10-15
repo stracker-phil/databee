@@ -236,6 +236,73 @@ async fn lists_sort_by_whitelisted_keys() {
 
 #[tokio::test]
 #[ignore]
+async fn guest_checkouts_appear_as_virtual_customers() {
+    for (db, ctx, catalog) in env().await {
+        let all = lists::customers(&db, &ctx, "wp_test", &lists::ListQuery::default(), false)
+            .await
+            .unwrap();
+        let guest = all
+            .items
+            .iter()
+            .find(|c| c.id == "guest:guest@shop.test")
+            .expect("guest listed after users");
+        assert_eq!(guest.roles, ["Guest"]);
+        assert_eq!(guest.order_count, 1);
+        assert_eq!(guest.email.as_deref(), Some("guest@shop.test"));
+        assert!(
+            !all.items.iter().any(|c| c.id == "guest:jane@shop.test"),
+            "registered emails are not guests"
+        );
+        assert!(all.kinds.iter().any(|k| k.value == "guest" && k.count == 1));
+
+        let only = lists::customers(
+            &db,
+            &ctx,
+            "wp_test",
+            &lists::ListQuery {
+                kind: Some("guest".into()),
+                ..Default::default()
+            },
+            false,
+        )
+        .await
+        .unwrap();
+        assert!(only.items.iter().all(|c| c.id.starts_with("guest:")));
+
+        let EntityView::Customer(c) = entity_view(
+            &db,
+            &ctx,
+            &catalog,
+            "wp_test",
+            "user",
+            "guest:guest@shop.test",
+            false,
+        )
+        .await
+        .unwrap() else {
+            panic!("expected customer view")
+        };
+        assert_eq!(c.email.as_deref(), Some("guest@shop.test"));
+        assert_eq!(
+            c.orders.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
+            ["4713"]
+        );
+        assert_eq!(c.roles, ["Guest"]);
+        assert!(c.tokens.is_empty());
+
+        let hits = databee_lib::wp::detail::search(&db, &ctx, "wp_test", "guest@")
+            .await
+            .unwrap();
+        assert!(
+            hits.iter()
+                .any(|h| h.entity == "user" && h.id == "guest:guest@shop.test"),
+            "{hits:?}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
 async fn peek_summarizes_an_entity_in_a_few_facts() {
     for (db, ctx, catalog) in env().await {
         let facts = databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "order", "4711")
