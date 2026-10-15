@@ -6,6 +6,7 @@ mod db_commands;
 pub mod error;
 pub mod ipc;
 mod launch;
+mod menu;
 pub mod secrets;
 mod session;
 mod state;
@@ -101,7 +102,9 @@ fn start_app(
     tauri::Builder::default()
         .plugin(log_plugin())
         .plugin(tauri_plugin_opener::init())
+        .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
         .setup(move |app| {
+            app.set_menu(menu::build(app)?)?;
             let state = AppState::open(&config_dir, Box::new(secrets::Keychain));
             let level = log_override.unwrap_or(state.settings.get().log_level);
             log::set_max_level(level.into());

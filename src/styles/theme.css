@@ -1,0 +1,107 @@
+/* Design tokens. Theme: data-theme on <html> (absent = follow system). */
+:root {
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --editor-font-size: 13px;
+
+  --accent-blue: #0a84ff;
+  --accent-purple: #a259ff;
+  --accent-pink: #ff375f;
+  --accent-orange: #ff9f0a;
+  --accent-green: #30b158;
+  --accent-graphite: #8e8e93;
+  --accent: var(--accent-blue);
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-text: #fff;
+
+  --bg: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-sidebar: #f3f3f5;
+  --bg-toolbar: #f7f7f8;
+  --bg-hover: rgba(0, 0, 0, 0.045);
+  --bg-active: rgba(0, 0, 0, 0.08);
+  --bg-input: #ffffff;
+  --bg-grid-stripe: rgba(0, 0, 0, 0.022);
+  --border: rgba(0, 0, 0, 0.1);
+  --border-strong: rgba(0, 0, 0, 0.18);
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #a1a1a6;
+  --danger: #d70015;
+  --danger-soft: rgba(215, 0, 21, 0.08);
+  --success: #248a3d;
+  --warning: #b25000;
+  --shadow-popover: 0 8px 28px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+
+  --type-number: #1c55c6;
+  --type-temporal: #8a3ffc;
+  --type-json: #b25000;
+  --type-null: var(--text-tertiary);
+
+  --radius-sm: 5px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --row-height: 26px;
+  --toolbar-height: 52px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1e1e20;
+    --bg-elevated: #2a2a2d;
+    --bg-sidebar: #252528;
+    --bg-toolbar: #232326;
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-active: rgba(255, 255, 255, 0.11);
+    --bg-input: #2c2c2f;
+    --bg-grid-stripe: rgba(255, 255, 255, 0.025);
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --text: #f2f2f4;
+    --text-secondary: #a1a1a8;
+    --text-tertiary: #6c6c72;
+    --danger: #ff6961;
+    --danger-soft: rgba(255, 105, 97, 0.12);
+    --success: #4cd964;
+    --warning: #ffb340;
+    --shadow-popover: 0 10px 34px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+    --type-number: #7cacf8;
+    --type-temporal: #c5a3ff;
+    --type-json: #ffb340;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #1e1e20;
+  --bg-elevated: #2a2a2d;
+  --bg-sidebar: #252528;
+  --bg-toolbar: #232326;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.11);
+  --bg-input: #2c2c2f;
+  --bg-grid-stripe: rgba(255, 255, 255, 0.025);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #f2f2f4;
+  --text-secondary: #a1a1a8;
+  --text-tertiary: #6c6c72;
+  --danger: #ff6961;
+  --danger-soft: rgba(255, 105, 97, 0.12);
+  --success: #4cd964;
+  --warning: #ffb340;
+  --shadow-popover: 0 10px 34px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  --type-number: #7cacf8;
+  --type-temporal: #c5a3ff;
+  --type-json: #ffb340;
+  color-scheme: dark;
+}
+
+:root[data-accent="purple"] { --accent: var(--accent-purple); }
+:root[data-accent="pink"] { --accent: var(--accent-pink); }
+:root[data-accent="orange"] { --accent: var(--accent-orange); }
+:root[data-accent="green"] { --accent: var(--accent-green); }
+:root[data-accent="graphite"] { --accent: var(--accent-graphite); }
+
+:root[data-density="compact"] { --row-height: 21px; }

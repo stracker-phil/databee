@@ -16,14 +16,23 @@
     "test:db": "docker compose -f dev/docker-compose.yml up -d --wait && cargo test --manifest-path src-tauri/Cargo.toml -- --ignored"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.14",
+    "@tanstack/react-virtual": "^3.14.20",
     "@tauri-apps/api": "^2",
+    "@uiw/react-codemirror": "^4.25.12",
+    "lucide-react": "^1.57.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/node": "^26.6.5",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",

@@ -1,0 +1,197 @@
+import { useEffect, useState } from "react";
+import { Database, Trash2 } from "lucide-react";
+import { api, type AppError, type ConnectionSpec, type RecentConnection } from "../api";
+import { relativeTime } from "../lib/format";
+import { useStore } from "../state/store";
+
+interface FormState {
+  name: string;
+  host: string;
+  port: string;
+  socket: string;
+  useSocket: boolean;
+  user: string;
+  password: string;
+  database: string;
+  savePassword: boolean;
+}
+
+function toForm(spec: ConnectionSpec | undefined, defaultPort: number): FormState {
+  return {
+    name: spec?.name ?? "",
+    host: spec?.host ?? "127.0.0.1",
+    port: String(spec?.port ?? defaultPort),
+    socket: spec?.socket ?? "",
+    useSocket: !!spec?.socket,
+    user: spec?.user ?? "root",
+    password: "",
+    database: spec?.database ?? "",
+    savePassword: true,
+  };
+}
+
+/** Returns the spec, or an error message describing the first invalid field. */
+export function validate(form: FormState): ConnectionSpec | string {
+  const port = Number(form.port);
+  if (!form.useSocket && !form.host.trim()) return "Host is required";
+  if (!form.useSocket && (!Number.isInteger(port) || port < 1 || port > 65535)) return "Port must be between 1 and 65535";
+  if (form.useSocket && !form.socket.trim()) return "Socket path is required";
+  if (!form.user.trim()) return "User is required";
+  return {
+    name: form.name.trim() || null,
+    host: form.host.trim() || "127.0.0.1",
+    port: Number.isInteger(port) && port > 0 ? port : 3306,
+    socket: form.useSocket ? form.socket.trim() : null,
+    user: form.user.trim(),
+    database: form.database.trim() || null,
+  };
+}
+
+function describe(spec: ConnectionSpec) {
+  const where = spec.socket ?? `${spec.host}:${spec.port}`;
+  return `${spec.user}@${where}${spec.database ? ` / ${spec.database}` : ""}`;
+}
+
+export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; error?: AppError }) {
+  const defaultPort = useStore((s) => s.settings?.defaultPort ?? 3306);
+  const connect = useStore((s) => s.connect);
+  const [form, setForm] = useState(() => toForm(initial, defaultPort));
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [recents, setRecents] = useState<RecentConnection[]>([]);
+
+  useEffect(() => {
+    api.listRecents().then(setRecents, () => setRecents([]));
+  }, []);
+
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
+
+  const submit = async (spec: ConnectionSpec, password?: string, savePassword?: boolean) => {
+    setBusy(true);
+    await connect({ spec, password: password || undefined, savePassword });
+    setBusy(false);
+  };
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const result = validate(form);
+    if (typeof result === "string") {
+      setProblem(result);
+      return;
+    }
+    setProblem(null);
+    void submit(result, form.password, form.savePassword);
+  };
+
+  const removeRecent = async (identity: string) => {
+    await api.removeRecent(identity).catch(() => {});
+    setRecents((r) => r.filter((x) => x.identity !== identity));
+  };
+
+  const shownError = problem ?? error?.message;
+
+  return (
+    <div className="connect-card">
+      <form className="connect-form" onSubmit={onSubmit} noValidate>
+        <h1>New connection</h1>
+        <p className="muted" style={{ margin: "-6px 0 2px" }}>MySQL or MariaDB, local or in Docker.</p>
+        {shownError && (
+          <div className="form-error" role="alert">
+            {shownError}
+          </div>
+        )}
+        <label className="field">
+          <span>Name (optional)</span>
+          <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Shop (DDEV)" />
+        </label>
+        <div className="segmented" style={{ alignSelf: "flex-start" }}>
+          <button type="button" aria-pressed={!form.useSocket} onClick={() => set("useSocket", false)}>TCP</button>
+          <button type="button" aria-pressed={form.useSocket} onClick={() => set("useSocket", true)}>Socket</button>
+        </div>
+        {form.useSocket ? (
+          <label className="field">
+            <span>Socket path</span>
+            <input className="input mono" value={form.socket} onChange={(e) => set("socket", e.target.value)} placeholder="/tmp/mysql.sock" />
+          </label>
+        ) : (
+          <div className="field-row">
+            <label className="field" style={{ flex: 3 }}>
+              <span>Host</span>
+              <input className="input" value={form.host} onChange={(e) => set("host", e.target.value)} />
+            </label>
+            <label className="field" style={{ flex: 1 }}>
+              <span>Port</span>
+              <input className="input" inputMode="numeric" value={form.port} onChange={(e) => set("port", e.target.value)} />
+            </label>
+          </div>
+        )}
+        <div className="field-row">
+          <label className="field">
+            <span>User</span>
+            <input className="input" value={form.user} onChange={(e) => set("user", e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Password</span>
+            <input className="input" type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="Keychain" />
+          </label>
+        </div>
+        <label className="field">
+          <span>Database (optional)</span>
+          <input className="input" value={form.database} onChange={(e) => set("database", e.target.value)} />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={form.savePassword} onChange={(e) => set("savePassword", e.target.checked)} />
+          Save password in Keychain
+        </label>
+        <button type="submit" className="btn btn-primary" disabled={busy} style={{ alignSelf: "flex-end", height: 28, padding: "0 16px" }}>
+          {busy ? "Connecting…" : "Connect"}
+        </button>
+      </form>
+      <aside className="recents">
+        <h2>Recent</h2>
+        {recents.length === 0 && <div className="sidebar-empty">Connections you open appear here.</div>}
+        {recents.map((r) => (
+          <div
+            key={r.identity}
+            className="recent"
+            role="button"
+            aria-label={`Connect to ${r.spec.name ?? describe(r.spec)}`}
+            onDoubleClick={() => void submit(r.spec)}
+            onClick={() => setForm(toForm(r.spec, defaultPort))}
+          >
+            <Database size={16} className="muted" />
+            <div className="info">
+              <div className="title">{r.spec.name ?? r.spec.database ?? r.spec.host}</div>
+              <div className="sub">
+                {describe(r.spec)} · {relativeTime(r.lastUsed)}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={`Remove ${r.identity}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                void removeRecent(r.identity);
+              }}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        ))}
+        {recents.length > 0 && <div className="hint" style={{ padding: "8px" }}>Click to edit, double-click to connect.</div>}
+      </aside>
+    </div>
+  );
+}
+
+export function ConnectScreen() {
+  const dialog = useStore((s) => s.dialog);
+  const state = dialog?.type === "connect" ? dialog : undefined;
+  return (
+    <div className="connect-screen">
+      <div className="drag-strip" data-tauri-drag-region />
+      <ConnectForm key={state?.spec ? JSON.stringify(state.spec) : "empty"} initial={state?.spec} error={state?.error} />
+    </div>
+  );
+}

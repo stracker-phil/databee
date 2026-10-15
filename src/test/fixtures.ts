@@ -1,0 +1,65 @@
+import type { Cell, ResultSet, SessionInfo, Settings, TableInfo } from "../api";
+import { settings } from "./settings";
+
+export { settings };
+import { resetStore, type QueryTab } from "../state/store";
+
+export const session: SessionInfo = {
+  id: "s1",
+  spec: { name: "Shop", host: "127.0.0.1", port: 52958, user: "root", database: "db" },
+  identity: "root@127.0.0.1:52958/db",
+  displayName: "Shop",
+  serverVersion: "10.3.39-MariaDB",
+  database: "db",
+};
+
+export function table(name: string, patch: Partial<TableInfo> = {}): TableInfo {
+  return { name, isView: false, rowsEstimate: 10, sizeBytes: 16384, comment: "", ...patch };
+}
+
+export const text = (v: string): Cell => ({ t: "text", v });
+export const num = (v: string): Cell => ({ t: "number", v });
+
+export function resultSet(patch: Partial<ResultSet> = {}): ResultSet {
+  return {
+    columns: [
+      { name: "ID", typeName: "BIGINT UNSIGNED" },
+      { name: "post_title", typeName: "TEXT" },
+    ],
+    rows: [
+      [num("1"), text("Hello world")],
+      [num("2"), { t: "null" }],
+    ],
+    totalRows: 2,
+    truncated: false,
+    affectedRows: 0,
+    lastInsertId: null,
+    returnsRows: true,
+    ...patch,
+  };
+}
+
+export function queryTab(patch: Partial<QueryTab> = {}): QueryTab {
+  return { id: "q1", kind: "query", sessionId: "s1", title: "Query 1", sql: "", running: false, activeResult: 0, ...patch };
+}
+
+/** A store with one connected session showing the given tabs. */
+export function connectedStore(opts: { tabs?: QueryTab[]; tables?: TableInfo[]; settings?: Partial<Settings> } = {}) {
+  const tabs = opts.tabs ?? [queryTab()];
+  resetStore({
+    settings: settings(opts.settings),
+    sessions: [session],
+    activeSessionId: session.id,
+    tabs,
+    activeTabId: tabs[0]?.id ?? null,
+    schema: {
+      [session.id]: {
+        databases: [
+          { name: "db", isSystem: false },
+          { name: "mysql", isSystem: true },
+        ],
+        tables: { db: opts.tables ?? [table("wp_options"), table("wp_posts"), table("wp_postmeta")] },
+      },
+    },
+  });
+}

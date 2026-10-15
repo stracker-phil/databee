@@ -4,13 +4,12 @@
 
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
-use tokio::net::UnixListener;
 
 use crate::cli::Launch;
 use crate::connection::{ConnectionSpec, Secret};
@@ -82,21 +81,31 @@ pub fn try_forward(socket: &Path, message: &IpcMessage) -> io::Result<bool> {
     Ok(reply.trim() == ACK)
 }
 
-/// Binds the socket (replacing a stale one) and calls `handler` for every message.
+/// Binds the socket, replacing a stale one. Blocking std listener, so it can be created
+/// outside the async runtime; `serve` converts it.
 pub fn bind(socket: &Path) -> io::Result<UnixListener> {
     if let Some(dir) = socket.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let _ = std::fs::remove_file(socket);
     let listener = UnixListener::bind(socket)?;
+    listener.set_nonblocking(true)?;
     std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
     Ok(listener)
 }
 
+/// Calls `handler` for every message received on the listener.
 pub async fn serve<F>(listener: UnixListener, handler: F)
 where
     F: Fn(IpcMessage) + Send + Sync + 'static,
 {
+    let listener = match tokio::net::UnixListener::from_std(listener) {
+        Ok(l) => l,
+        Err(e) => {
+            log::error!("Cannot serve IPC socket: {e}");
+            return;
+        }
+    };
     let handler = std::sync::Arc::new(handler);
     loop {
         let (stream, _) = match listener.accept().await {
@@ -173,8 +182,8 @@ mod tests {
         assert_eq!(rx.recv().await.unwrap().into_launch(), Some(launch));
     }
 
-    #[tokio::test]
-    async fn socket_is_private_to_the_user() {
+    #[test]
+    fn socket_is_private_to_the_user() {
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("db.sock");
         let _listener = bind(&socket).unwrap();
