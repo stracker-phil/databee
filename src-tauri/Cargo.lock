@@ -898,6 +898,7 @@ dependencies = [
  "clap",
  "futures-util",
  "log",
+ "percent-encoding",
  "rust_decimal",
  "security-framework",
  "serde",
