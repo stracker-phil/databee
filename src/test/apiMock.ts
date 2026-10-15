@@ -49,6 +49,8 @@ export function createApiMock(): typeof realApi {
     wpView: vi.fn(),
     wpOrderLogs: vi.fn().mockResolvedValue([]),
     wpSearch: vi.fn().mockResolvedValue([]),
+    wpPeek: vi.fn().mockResolvedValue([]),
+    wpFindValue: vi.fn().mockResolvedValue([]),
     wpFailedByHook: vi.fn().mockResolvedValue([]),
     wpOptionsGroup: vi.fn().mockResolvedValue([]),
     planChange: vi.fn(async (_s, change) => ({ description: `planned ${change.type}`, statements: [`-- ${change.type}`], undo: [`-- undo ${change.type}`] })),

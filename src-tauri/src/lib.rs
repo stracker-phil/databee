@@ -196,6 +196,8 @@ fn start_app(
             wp_commands::wp_view,
             wp_commands::wp_order_logs,
             wp_commands::wp_search,
+            wp_commands::wp_peek,
+            wp_commands::wp_find_value,
             wp_commands::wp_options_group,
             wp_commands::wp_snapshot_take,
             wp_commands::wp_snapshots,

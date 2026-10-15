@@ -15,7 +15,9 @@ import type {
   DayBucket,
   DocField,
   EntityViewData,
+  FindGroup,
   HookFailures,
+  PeekFact,
   ListQuery,
   OrderSummary,
   Page,
@@ -126,6 +128,10 @@ export const api = {
     invoke<EntityViewData>("wp_view", { sessionId, database, entity, id }),
   wpOrderLogs: (sessionId: string, database: string, id: string) =>
     invoke<TimelineEvent[]>("wp_order_logs", { sessionId, database, id }),
+  wpPeek: (sessionId: string, database: string, entity: string, id: string) =>
+    invoke<PeekFact[]>("wp_peek", { sessionId, database, entity, id }),
+  wpFindValue: (sessionId: string, database: string, value: string) =>
+    invoke<FindGroup[]>("wp_find_value", { sessionId, database, value }),
   wpSearch: (sessionId: string, database: string, query: string) =>
     invoke<SearchHit[]>("wp_search", { sessionId, database, query }),
   wpOptionsGroup: (sessionId: string, database: string, prefix: string) =>

@@ -11,6 +11,7 @@ pub mod lists;
 pub mod logs;
 pub mod media;
 pub mod options;
+pub mod peek;
 pub mod php;
 pub mod plugins;
 pub mod snapshot;

@@ -132,3 +132,21 @@ describe("FieldValue editing", () => {
     expect(screen.queryByRole("button", { name: "Edit status" })).not.toBeInTheDocument();
   });
 });
+
+describe("Value pivots", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wpStore();
+  });
+
+  it("filters the matching list by a value and finds a value everywhere", async () => {
+    render(<FieldList fields={[field("billing_email", "jane@shop.test"), field("_ppcp_paypal_order_id", "66M12696JX411763D")]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Actions for billing_email" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Filter orders by this value" }));
+    expect(useStore.getState().wpNav.stack.at(-1)).toEqual({ screen: "list", list: "orders", params: { search: "jane@shop.test" } });
+    await userEvent.click(screen.getByRole("button", { name: "Actions for _ppcp_paypal_order_id" }));
+    expect(screen.queryByRole("menuitem", { name: /Filter/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Find everywhere" }));
+    expect(useStore.getState().wpNav.stack.at(-1)).toEqual({ screen: "find", value: "66M12696JX411763D" });
+  });
+});

@@ -650,6 +650,28 @@ export interface HookFailures {
   owner: string | null;
 }
 
+export interface PeekFact {
+  label: string;
+  value: string;
+  kind: "text" | "status" | "money" | "time";
+}
+
+export interface FindHit {
+  rowId: string;
+  label: string;
+  entity: string | null;
+  entityId: string | null;
+  column: string;
+}
+
+export interface FindGroup {
+  source: string;
+  table: string;
+  idColumn: string;
+  count: number;
+  hits: FindHit[];
+}
+
 export interface SearchHit {
   entity: string;
   id: string;

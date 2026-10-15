@@ -642,3 +642,12 @@ button.flag-pill:not(:disabled):hover { outline: 1px solid var(--accent); }
 .tl-expand:hover { color: var(--accent); }
 .tl-raw { margin: 0.385rem 0 0; padding: 0.615rem; border-radius: var(--radius-sm); background: var(--bg-sidebar); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-word; user-select: text; max-height: 18rem; overflow: auto; }
 .link-btn.plain.small { font-size: inherit; display: inline-flex; align-items: center; gap: 0.154rem; }
+
+/* ---------- peek cards ---------- */
+.peekable { position: relative; display: inline-flex; max-width: 100%; }
+.peek { position: absolute; left: 0; top: calc(100% + 0.385rem); z-index: 40; min-width: 16rem; max-width: 24rem; padding: 0.615rem 0.769rem; border-radius: var(--radius); background: var(--bg-elevated); box-shadow: var(--shadow-popover); animation: pop .12s ease-out; text-align: left; font-weight: 400; white-space: normal; }
+.peek-title { font-weight: 600; margin-bottom: 0.385rem; text-transform: capitalize; }
+.peek-facts { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.231rem 0.769rem; }
+.peek-row { display: contents; }
+.peek-facts dt { color: var(--text-secondary); white-space: nowrap; }
+.peek-facts dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

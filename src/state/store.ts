@@ -65,7 +65,8 @@ export type WpRoute =
   | { screen: "list"; list: WpList; params?: Record<string, string>; selected?: { entity: string; id: string } }
   | { screen: "entity"; entity: string; id: string }
   | { screen: "compare"; entity: string; a: string; b: string }
-  | { screen: "snapshots" };
+  | { screen: "snapshots" }
+  | { screen: "find"; value: string };
 
 export type Mode = "wp" | "db";
 

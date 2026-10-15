@@ -8,6 +8,7 @@ import { ListScreen } from "./Lists";
 import { EntityScreen } from "./views/EntityScreen";
 import { SettingsScreen } from "./Settings";
 import { CompareScreen, SnapshotsScreen } from "./Debugging";
+import { FindScreen } from "./FindScreen";
 import { useWpData } from "./useWpData";
 
 const ICONS: Record<string, typeof ShoppingCart> = {
@@ -54,6 +55,8 @@ export function routeTitle(route: WpRoute): string {
       return `Compare #${route.a} ↔ #${route.b}`;
     case "snapshots":
       return "Snapshots";
+    case "find":
+      return `Find “${route.value}”`;
   }
 }
 
@@ -154,6 +157,7 @@ export function WpWorkspace() {
           {route.screen === "entity" && <EntityScreen key={`${route.entity}:${route.id}`} entity={route.entity} id={route.id} />}
           {route.screen === "compare" && <CompareScreen entity={route.entity} a={route.a} b={route.b} />}
           {route.screen === "snapshots" && <SnapshotsScreen />}
+          {route.screen === "find" && <FindScreen key={route.value} value={route.value} />}
         </div>
       </main>
     </div>

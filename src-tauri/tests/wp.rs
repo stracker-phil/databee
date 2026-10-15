@@ -236,6 +236,57 @@ async fn lists_sort_by_whitelisted_keys() {
 
 #[tokio::test]
 #[ignore]
+async fn peek_summarizes_an_entity_in_a_few_facts() {
+    for (db, ctx, catalog) in env().await {
+        let facts = databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "order", "4711")
+            .await
+            .unwrap();
+        let labels: Vec<&str> = facts.iter().map(|f| f.label.as_str()).collect();
+        assert!(
+            labels.contains(&"Status") && labels.contains(&"Total"),
+            "{labels:?}"
+        );
+        assert!(facts.len() <= 5);
+        let total = facts.iter().find(|f| f.label == "Total").unwrap();
+        assert_eq!((total.kind, total.value.as_str()), ("money", "€49.90"));
+        let user = databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "user", "1")
+            .await
+            .unwrap();
+        assert!(user.iter().any(|f| f.label == "Email"));
+        assert!(
+            databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "order", "999999")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn find_value_scans_meta_options_actions_and_logs() {
+    for (db, ctx, _) in env().await {
+        let groups = databee_lib::wp::peek::find_value(&db, &ctx, "wp_test", "66M12696JX411763D")
+            .await
+            .unwrap();
+        let sources: Vec<&str> = groups.iter().map(|g| g.source.as_str()).collect();
+        assert!(sources.contains(&"WooCommerce log"), "{sources:?}");
+        assert!(sources.iter().any(|s| s.ends_with("meta")), "{sources:?}");
+        let meta = groups.iter().find(|g| g.source.ends_with("meta")).unwrap();
+        assert!(meta.count >= 1);
+        assert_eq!(meta.hits[0].column, "meta_value");
+        assert!(meta.hits[0].entity.is_some());
+        assert!(
+            databee_lib::wp::peek::find_value(&db, &ctx, "wp_test", "no-such-value-anywhere")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
 async fn failed_actions_group_by_hook_with_last_message() {
     for (db, ctx, _) in env().await {
         let groups = databee_lib::wp::lists::failed_by_hook(&db, &ctx, "wp_test")

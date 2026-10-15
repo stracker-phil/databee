@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Check, Copy, Eye, Maximize2, Minimize2, Minus, MonitorSmartphone, Pencil, Trash2 } from "lucide-react";
+import { Check, Copy, Eye, Maximize2, Minimize2, Minus, MonitorSmartphone, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { api, type DocField, type NewValue } from "../../api";
 import { cellText } from "../../lib/format";
 import { absoluteFromUnix, flagEmoji, relativeFromUnix, shorten } from "../../lib/wpFormat";
-import { selectActiveSession, useStore } from "../../state/store";
+import { selectActiveSession, useStore, type WpList } from "../../state/store";
+import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { ValueTree } from "../ValueTree";
 import { LinkChip } from "./LinkChip";
 
@@ -96,6 +97,33 @@ function TextEditor({ initial, onSave, onCancel, nullable }: { initial: string; 
   );
 }
 
+/** Fields whose value filters a list: the list and which query parameter carries the value. */
+const PIVOTS: Record<string, { list: WpList; param: "search" | "kind" | "status"; label: string }> = {
+  billing_email: { list: "orders", param: "search", label: "orders" },
+  _billing_email: { list: "orders", param: "search", label: "orders" },
+  user_email: { list: "orders", param: "search", label: "orders" },
+  payment_method: { list: "orders", param: "kind", label: "orders" },
+  _payment_method: { list: "orders", param: "kind", label: "orders" },
+  status: { list: "orders", param: "status", label: "orders" },
+  post_status: { list: "content", param: "status", label: "content" },
+  hook: { list: "actions", param: "kind", label: "actions" },
+  transaction_id: { list: "orders", param: "search", label: "orders" },
+  _transaction_id: { list: "orders", param: "search", label: "orders" },
+};
+
+/** Context-menu entries for a value: copy, filter the matching list, find it everywhere. */
+export function valueMenu(name: string, text: string, actions: { copy: () => void; navigate: (route: Parameters<ReturnType<typeof useStore.getState>["navigate"]>[0]) => void }): MenuEntry[] {
+  const items: MenuEntry[] = [{ label: "Copy value", action: actions.copy }];
+  const pivot = PIVOTS[name];
+  if (pivot && text && (pivot.param !== "status" || text.startsWith("wc-") || pivot.list === "content")) {
+    items.push({ label: `Filter ${pivot.label} by this value`, action: () => actions.navigate({ screen: "list", list: pivot.list, params: { [pivot.param]: text } }) });
+  }
+  if (text.trim().length >= 2) {
+    items.push("separator", { label: "Find everywhere", action: () => actions.navigate({ screen: "find", value: text.trim() }) });
+  }
+  return items;
+}
+
 const FLAG_OPPOSITE: Record<string, string> = { yes: "no", no: "yes", true: "false", false: "true", on: "off", off: "on", "1": "0", "0": "1" };
 
 /** Renders one field according to its render hint; raw text is always one toggle away. */
@@ -104,6 +132,7 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
   const toast = useStore((s) => s.toast);
   const [raw, setRaw] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const save = useFieldEditor(field, target);
   const { value, hint, decoded, link, sensitive } = field;
   const text = cellText(value);
@@ -199,9 +228,36 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
   }
 
   const canToggle = (decoded || (hint && hint.type !== "email")) && sensitive !== "secret" && !link;
+  const menuItems = () =>
+    valueMenu(field.name, text, {
+      copy: () => void navigator.clipboard.writeText(text).then(() => toast("success", "Copied value")),
+      navigate: (route) => useStore.getState().navigate(route),
+    });
+  const openMenu = (x: number, y: number) => value.t !== "null" && setMenu({ x, y });
   return (
-    <span className={`field-value${sensitive === "pii" ? " pii" : ""}`}>
+    <span
+      className={`field-value${sensitive === "pii" ? " pii" : ""}`}
+      onContextMenu={(e) => {
+        if (value.t === "null") return;
+        e.preventDefault();
+        openMenu(e.clientX, e.clientY);
+      }}
+    >
       {body}
+      {value.t !== "null" && (
+        <button
+          className="row-action"
+          aria-label={`Actions for ${field.name}`}
+          title="Copy · filter · find everywhere"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            openMenu(r.left, r.bottom);
+          }}
+        >
+          <MoreHorizontal size="0.846rem" />
+        </button>
+      )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />}
       {canToggle && (
         <button className="raw-toggle" onClick={() => setRaw(!raw)} title={raw ? "Show formatted" : "Show raw value"}>
           {raw ? "fmt" : "raw"}

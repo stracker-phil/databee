@@ -293,6 +293,29 @@ pub async fn wp_view(
 }
 
 #[tauri::command]
+pub async fn wp_peek(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    entity: String,
+    id: String,
+) -> AppResult<Vec<crate::wp::peek::PeekFact>> {
+    let (ctx, catalog, s) = wp_env(&state, &session_id, &database).await?;
+    crate::wp::peek::peek(&s.db, &ctx, &catalog, &database, &entity, &id).await
+}
+
+#[tauri::command]
+pub async fn wp_find_value(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    value: String,
+) -> AppResult<Vec<crate::wp::peek::FindGroup>> {
+    let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
+    crate::wp::peek::find_value(&s.db, &ctx, &database, &value).await
+}
+
+#[tauri::command]
 pub async fn wp_search(
     state: State<'_, AppState>,
     session_id: String,
