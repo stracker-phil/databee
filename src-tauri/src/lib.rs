@@ -11,6 +11,8 @@ pub mod secrets;
 mod session;
 mod state;
 pub mod store;
+pub mod wp;
+mod wp_commands;
 
 use std::path::PathBuf;
 
@@ -151,6 +153,12 @@ fn start_app(
             db_commands::execute,
             db_commands::cancel_query,
             db_commands::browse_table,
+            wp_commands::wp_detect,
+            wp_commands::wp_load,
+            wp_commands::wp_expand,
+            wp_commands::wp_options,
+            wp_commands::wp_transient_cleanup_sql,
+            wp_commands::decode_value,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

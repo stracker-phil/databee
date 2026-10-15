@@ -1,0 +1,121 @@
+# Built-in WordPress / WooCommerce entities. Table names are relative to the detected
+# prefix. `when`: always (default), woocommerce, hpos, legacy_orders.
+# Users can add or override entities in <config dir>/entities.toml (same format).
+
+[[entity]]
+name = "post"
+label = "Post"
+table = "posts"
+id = "ID"
+title = "post_title"
+subtitle = "post_type"
+meta = { table = "postmeta", fk = "post_id" }
+links = { post_author = "user", post_parent = "post" }
+meta_links = { _thumbnail_id = "post", _product_id = "post", _variation_id = "post", _customer_user = "user" }
+relations = [
+  { name = "children", label = "Children", entity = "post", fk = "post_parent" },
+  { name = "comments", label = "Comments", entity = "comment", fk = "comment_post_ID" },
+]
+
+[[entity]]
+name = "user"
+label = "User"
+table = "users"
+id = "ID"
+title = "display_name"
+subtitle = "user_email"
+hidden = ["user_pass", "user_activation_key"]
+meta = { table = "usermeta", fk = "user_id" }
+relations = [
+  { name = "posts", label = "Posts", entity = "post", fk = "post_author" },
+  { name = "orders", label = "Orders", entity = "order", fk = "customer_id", when = "hpos" },
+  { name = "tokens", label = "Payment tokens", entity = "payment_token", fk = "user_id", when = "woocommerce" },
+]
+
+[[entity]]
+name = "comment"
+label = "Comment"
+table = "comments"
+id = "comment_ID"
+title = "comment_author"
+subtitle = "comment_type"
+meta = { table = "commentmeta", fk = "comment_id" }
+links = { comment_post_ID = "post", user_id = "user", comment_parent = "comment" }
+
+[[entity]]
+name = "order"
+label = "Order"
+when = "hpos"
+table = "wc_orders"
+id = "id"
+title = "billing_email"
+subtitle = "status"
+meta = { table = "wc_orders_meta", fk = "order_id" }
+links = { customer_id = "user", parent_order_id = "order" }
+relations = [
+  { name = "addresses", label = "Addresses", entity = "order_address", fk = "order_id" },
+  { name = "operational", label = "Operational data", entity = "order_operational", fk = "order_id" },
+  { name = "items", label = "Items", entity = "order_item", fk = "order_id" },
+  { name = "notes", label = "Notes", entity = "comment", fk = "comment_post_ID", filter = "comment_type = 'order_note'" },
+  { name = "refunds", label = "Refunds", entity = "order", fk = "parent_order_id", filter = "type = 'shop_order_refund'" },
+]
+
+[[entity]]
+name = "order"
+label = "Order"
+when = "legacy_orders"
+table = "posts"
+id = "ID"
+title = "post_title"
+subtitle = "post_status"
+filter = "post_type IN ('shop_order', 'shop_order_refund')"
+meta = { table = "postmeta", fk = "post_id" }
+links = { post_parent = "order" }
+meta_links = { _customer_user = "user" }
+relations = [
+  { name = "items", label = "Items", entity = "order_item", fk = "order_id" },
+  { name = "notes", label = "Notes", entity = "comment", fk = "comment_post_ID", filter = "comment_type = 'order_note'" },
+  { name = "refunds", label = "Refunds", entity = "order", fk = "post_parent", filter = "post_type = 'shop_order_refund'" },
+]
+
+[[entity]]
+name = "order_item"
+label = "Order item"
+when = "woocommerce"
+table = "woocommerce_order_items"
+id = "order_item_id"
+title = "order_item_name"
+subtitle = "order_item_type"
+meta = { table = "woocommerce_order_itemmeta", fk = "order_item_id" }
+links = { order_id = "order" }
+meta_links = { _product_id = "post", _variation_id = "post" }
+
+[[entity]]
+name = "order_address"
+label = "Order address"
+when = "hpos"
+table = "wc_order_addresses"
+id = "id"
+title = "address_type"
+subtitle = "email"
+links = { order_id = "order" }
+
+[[entity]]
+name = "order_operational"
+label = "Operational data"
+when = "hpos"
+table = "wc_order_operational_data"
+id = "id"
+title = "created_via"
+links = { order_id = "order" }
+
+[[entity]]
+name = "payment_token"
+label = "Payment token"
+when = "woocommerce"
+table = "woocommerce_payment_tokens"
+id = "token_id"
+title = "gateway_id"
+subtitle = "type"
+meta = { table = "woocommerce_payment_tokenmeta", fk = "payment_token_id" }
+links = { user_id = "user" }

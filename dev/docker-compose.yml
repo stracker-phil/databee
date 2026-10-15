@@ -9,7 +9,7 @@ services:
     volumes: ["./fixture.sql:/docker-entrypoint-initdb.d/fixture.sql:ro"]
     healthcheck:
       # TCP + fixture table: the init-time temporary server has networking disabled.
-      test: ["CMD", "mariadb", "-h127.0.0.1", "-uroot", "-proot", "-e", "SELECT 1 FROM databee_test.types"]
+      test: ["CMD", "mariadb", "-h127.0.0.1", "-uroot", "-proot", "-e", "SELECT 1 FROM wp_test.wp_comments"]
       interval: 2s
       retries: 60
   mysql:
@@ -19,6 +19,6 @@ services:
     ports: ["127.0.0.1:33307:3306"]
     volumes: ["./fixture.sql:/docker-entrypoint-initdb.d/fixture.sql:ro"]
     healthcheck:
-      test: ["CMD", "mysql", "-h127.0.0.1", "-uroot", "-proot", "-e", "SELECT 1 FROM databee_test.types"]
+      test: ["CMD", "mysql", "-h127.0.0.1", "-uroot", "-proot", "-e", "SELECT 1 FROM wp_test.wp_comments"]
       interval: 2s
       retries: 60

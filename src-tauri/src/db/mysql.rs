@@ -310,6 +310,19 @@ impl MySqlSession {
         Ok(BrowsePage { result, has_more })
     }
 
+    /// Runs a read query on the metadata pool and returns its (last) result set.
+    pub async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet> {
+        const MAX_ROWS: usize = 50_000;
+        let mut conn = self.meta.acquire().await?;
+        match tokio::time::timeout(timeout, run_script(&mut conn, sql, MAX_ROWS)).await {
+            Ok(results) => Ok(results?.pop().unwrap_or_default()),
+            Err(_) => {
+                conn.close_on_drop();
+                Err(AppError::Timeout(timeout.as_secs() as u32))
+            }
+        }
+    }
+
     /// Runs a metadata query with bound parameters; every column must be text (CAST as needed).
     async fn strings(
         &self,
