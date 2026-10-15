@@ -2,4 +2,11 @@
 target/
 node_modules/
 dist/
+dist-ssr/
+*.local
+*.log
+src-tauri/gen/schemas/
+
+# Track project Claude tooling (overrides global ignore), but not local settings
+!.claude/
 .claude/settings.local.json
