@@ -235,7 +235,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 /* ---------- connect screen ---------- */
 .connect-screen { display: grid; place-items: center; height: 100%; background: var(--bg-sidebar); padding: 40px 20px; overflow: auto; }
 .connect-card {
-  display: grid; grid-template-columns: 360px 300px; width: min(700px, 100%);
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px; width: min(700px, 100%);
   background: var(--bg-elevated); border-radius: var(--radius-lg); box-shadow: var(--shadow-popover); overflow: hidden;
 }
 .connect-form { padding: 22px; display: flex; flex-direction: column; gap: 12px; }

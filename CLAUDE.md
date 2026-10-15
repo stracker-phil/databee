@@ -1,22 +1,28 @@
 # databee
 
-Minimalistic SQL client for personal use (mainly MySQL/MariaDB for WordPress dev, SQLite later).
+Minimalistic SQL client for personal use: MySQL/MariaDB for WordPress/WooCommerce dev
+(often DDEV/Docker), SQLite later. See README.md for features and CLI, docs/roadmap.md for ideas.
 
 ## Stack
-- Backend: Rust (rustup stable, `src-tauri/`)
-- UI: Tauri 2 + React + TypeScript (`src/`), bun as package manager
-- Target: macOS 27, Apple Silicon only
+- Rust backend in `src-tauri/` (rustup stable; Homebrew rustup is keg-only: `/opt/homebrew/opt/rustup/bin`)
+- Tauri 2 + React 19 + TypeScript in `src/`, bun as package manager
+- macOS 27, Apple Silicon only
 
-## Product constraints
-- Primary entry point is a CLI: another app/script launches databee with connection details.
-- Databases are local but may run in Docker (host port mapping, socket-less TCP).
-- Secrets (passwords) live in the macOS Keychain, never in files or logs.
+## Architecture
+- Rust owns all logic; React only renders. `src/api/index.ts` is the only `invoke` caller (tests mock it).
+- `src-tauri/src/`: `cli.rs` (argv), `ipc.rs` (single-instance socket), `db/` (lexer, safety, cell decoding,
+  `mysql.rs` session: dedicated editor connection + metadata pool), `store/` (JSON files), `wp/` (WordPress lens:
+  `context` detection, lossless `php` serialize parser, `value` trees, TOML `entities` + resolver, `options`).
+- Frontend state: zustand store in `src/state/store.ts`; components in `src/components/`.
+- Errors cross the boundary as `{ kind, message, code }` (`error.rs`); passwords use the redacting `Secret` type.
 
 ## Commands
-- `bun run test` — all tests (Vitest + cargo test)
-- `bun run lint` — tsc + clippy (warnings are errors)
-- `bun run app` — debug build of the .app bundle and launch it
+- `bun run test`: Vitest and Rust unit tests
+- `bun run test:db`: Docker fixtures (`dev/`) and integration tests (MariaDB 11.4 and MySQL 8.4)
+- `bun run lint`: tsc and clippy (warnings are errors)
+- `bun run app`: debug build of the .app bundle and launch it
+- `scripts/dev/screenshot.sh` and `scripts/dev/ui.sh`: capture and drive the running window for visual checks
 
 ## Workflow
-Finish every step with the `ship-step` skill: test → lint → launch → commit.
-See `.claude/rules/` for testing and commit rules.
+Finish every step with the `ship-step` skill. Rules in `.claude/rules/`.
+Never write to the user's DDEV databases; they are read-only test material.
