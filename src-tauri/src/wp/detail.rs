@@ -141,6 +141,20 @@ pub struct TimelineEvent {
     /// info, warning, error
     pub level: &'static str,
     pub link: Option<EntityLink>,
+    /// The full original text when `title` is a summary (log lines).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<String>,
+    /// The table row behind the event, for "Source row".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row: Option<RowRef>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RowRef {
+    pub table: String,
+    pub id_column: String,
+    pub id: String,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -721,6 +735,8 @@ pub async fn order_view(
                 detail,
                 level,
                 link,
+                raw: None,
+                row: None,
             });
         }
     };
@@ -997,19 +1013,21 @@ pub async fn order_logs(
         .iter()
         .filter_map(|r| {
             let message = text(&r[4]).unwrap_or_default();
+            let source = text(&r[3]);
+            let summary = super::logs::humanize(source.as_deref(), &message);
             Some(TimelineEvent {
                 at: int(&r[1])?,
                 kind: "log",
-                title: message
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .chars()
-                    .take(160)
-                    .collect(),
-                detail: text(&r[3]),
+                title: summary.title,
+                detail: source,
                 level: log_level(num(&r[2])),
                 link: None,
+                raw: Some(message),
+                row: text(&r[0]).map(|id| RowRef {
+                    table: ctx.table("woocommerce_log"),
+                    id_column: "log_id".into(),
+                    id,
+                }),
             })
         })
         .collect())

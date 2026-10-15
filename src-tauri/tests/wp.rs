@@ -436,6 +436,17 @@ async fn order_view_tells_the_story_of_a_checkout() {
             2,
             "PayPal order ID and #4711 match, #14711 does not"
         );
+        let paypal = logs
+            .iter()
+            .find(|l| l.detail.as_deref() == Some("woocommerce-paypal-payments"))
+            .unwrap();
+        assert_eq!(paypal.title, "PayPal API · PATCH order");
+        assert!(paypal.raw.as_deref().unwrap().contains("66M12696JX411763D"));
+        let row = paypal.row.as_ref().unwrap();
+        assert_eq!(
+            (row.table.as_str(), row.id_column.as_str()),
+            ("wp_woocommerce_log", "log_id")
+        );
         for k in ["session", "created", "paid", "note", "action", "refund"] {
             assert!(kinds.contains(&k), "timeline lacks {k}: {kinds:?}");
         }

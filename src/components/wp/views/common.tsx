@@ -1,8 +1,9 @@
-import { ChevronRight, Lock } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronRight, Lock, Table2 } from "lucide-react";
 import type { Address, EntityDoc, RelatedChip, TimelineEvent } from "../../../api";
 import { cellText } from "../../../lib/format";
 import { flagEmoji } from "../../../lib/wpFormat";
-import { useStore } from "../../../state/store";
+import { selectActiveSession, useStore } from "../../../state/store";
 import { FieldList } from "../FieldValue";
 import { LinkChip } from "../LinkChip";
 import { Ago, Card } from "../ui";
@@ -71,29 +72,57 @@ const KIND_ICON: Record<string, string> = {
   refund: "↩︎",
 };
 
-export function Timeline({ events }: { events: TimelineEvent[] }) {
+function TimelineItem({ e }: { e: TimelineEvent }) {
   const openEntity = useStore((s) => s.openEntity);
+  const session = useStore(selectActiveSession);
+  const [open, setOpen] = useState(false);
+  const expandable = !!e.raw && e.raw.trim() !== e.title.trim();
+  const openRow = () => {
+    if (!e.row || !session?.database) return;
+    const s = useStore.getState();
+    s.setMode("db");
+    s.openTableTab(session.database, e.row.table, "data", `\`${e.row.idColumn}\` = ${e.row.id}`);
+  };
+  return (
+    <li className={`tl-item tl-${e.level}`}>
+      <span className="tl-icon" aria-hidden>{KIND_ICON[e.kind] ?? "•"}</span>
+      <div className="tl-body">
+        <div className="tl-title">
+          {e.link ? (
+            <button className="link-btn plain" onClick={() => openEntity(e.link!.entity, e.link!.id)}>{e.title}</button>
+          ) : expandable ? (
+            <button className="link-btn plain tl-expand" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+              {open ? <ChevronDown size="0.769rem" /> : <ChevronRight size="0.769rem" />} {e.title}
+            </button>
+          ) : (
+            e.title
+          )}
+        </div>
+        <div className="tl-meta">
+          <span className="tl-kind">{e.kind.replace("_", " ")}</span>
+          {e.detail && <span> · {e.detail}</span>}
+          <span> · <Ago unix={e.at} /></span>
+          {e.row && (
+            <>
+              {" · "}
+              <button className="link-btn plain small" onClick={openRow} title={`${e.row.table} where ${e.row.idColumn} = ${e.row.id}`}>
+                <Table2 size="0.692rem" /> Source row
+              </button>
+            </>
+          )}
+        </div>
+        {open && e.raw && <pre className="tl-raw">{e.raw}</pre>}
+      </div>
+    </li>
+  );
+}
+
+export function Timeline({ events }: { events: TimelineEvent[] }) {
   if (events.length === 0) return <div className="muted">No events.</div>;
   return (
     <ol className="timeline">
       {events.map((e, i) => (
-        <li key={i} className={`tl-item tl-${e.level}`}>
-          <span className="tl-icon" aria-hidden>{KIND_ICON[e.kind] ?? "•"}</span>
-          <div className="tl-body">
-            <div className="tl-title">
-              {e.link ? (
-                <button className="link-btn plain" onClick={() => openEntity(e.link!.entity, e.link!.id)}>{e.title}</button>
-              ) : (
-                e.title
-              )}
-            </div>
-            <div className="tl-meta">
-              <span className="tl-kind">{e.kind.replace("_", " ")}</span>
-              {e.detail && <span> · {e.detail}</span>}
-              <span> · <Ago unix={e.at} /></span>
-            </div>
-          </div>
-        </li>
+        <TimelineItem key={`${e.at}-${i}`} e={e} />
       ))}
     </ol>
   );

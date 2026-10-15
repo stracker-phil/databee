@@ -185,14 +185,32 @@ describe("WordPress mode", () => {
   });
 
   it("shows an order with addresses, items, payment waterfall and timeline", async () => {
-    mocked.wpOrderLogs.mockResolvedValue([{ at: now - 1800, kind: "log", title: "PATCH /v2/checkout/orders/66M", detail: "woocommerce-paypal-payments", level: "info", link: null }]);
+    mocked.wpOrderLogs.mockResolvedValue([
+      {
+        at: now - 1800,
+        kind: "log",
+        title: "PayPal API · capture order → 201",
+        detail: "woocommerce-paypal-payments",
+        level: "info",
+        link: null,
+        raw: "#7199.REST - POST https://api-m.sandbox.paypal.com/v2/checkout/orders/66M/capture\nResponse: Array ( [code] => 201 )",
+        row: { table: "wp_woocommerce_log", idColumn: "log_id", id: "1732" },
+      },
+    ]);
     useStore.getState().openEntity("order", "4711");
     render(<WpWorkspace />);
     expect(await screen.findByText("Marktstraße 1")).toBeInTheDocument();
     expect(screen.getByText("MUG-1")).toBeInTheDocument();
     expect(screen.getByLabelText("Fees")).toHaveTextContent("gross €49.90→ fee €2.04→ net €47.86");
-    expect(await screen.findByText("PATCH /v2/checkout/orders/66M")).toBeInTheDocument();
+    const summary = await screen.findByRole("button", { name: /PayPal API · capture order → 201/ });
+    expect(screen.queryByText(/#7199.REST/)).not.toBeInTheDocument();
+    await userEvent.click(summary);
+    expect(screen.getByText(/#7199.REST - POST/)).toBeInTheDocument();
     expect(screen.getByText("Order created")).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole("list")).getByRole("button", { name: /Source row/ }));
+    const tab = useStore.getState().tabs.at(-1)!;
+    expect(tab.kind === "table" && [tab.table, tab.filter]).toEqual(["wp_woocommerce_log", "`log_id` = 1732"]);
+    expect(useStore.getState().mode).toBe("db");
   });
 
   it("queues an order status change from the header", async () => {

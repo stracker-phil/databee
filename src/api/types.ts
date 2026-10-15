@@ -439,6 +439,10 @@ export interface TimelineEvent {
   detail: string | null;
   level: "info" | "warning" | "error";
   link: EntityLink | null;
+  /** Full original text when the title is a summary (log lines). */
+  raw?: string | null;
+  /** The table row behind the event. */
+  row?: { table: string; idColumn: string; id: string } | null;
 }
 
 export interface RelatedChip {

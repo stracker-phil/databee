@@ -60,7 +60,8 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
   const p = o.payment;
 
   return (
-    <div className="entity">
+    <div className="entity order-layout">
+      <div className="order-main">
       <div className="entity-head">
         <span className="badge">{subscription ? "Subscription" : o.kind === "shop_order_refund" ? "Refund" : "Order"}</span>
         <h2>#{o.doc.id}</h2>
@@ -169,13 +170,15 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
         )}
       </div>
 
-      <Card title="Timeline" aside={logs == null ? "loading logs…" : `${timeline.length} events`}>
-        <div id="order-timeline">
-          <Timeline events={timeline} />
-        </div>
-      </Card>
-
       <AllFields doc={o.doc} changed={changed} />
+      </div>
+      <aside className="order-rail">
+        <Card title="Timeline" aside={logs == null ? "loading logs…" : `${timeline.length} events`}>
+          <div id="order-timeline">
+            <Timeline events={timeline} />
+          </div>
+        </Card>
+      </aside>
     </div>
   );
 }
