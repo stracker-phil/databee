@@ -61,6 +61,7 @@ const SCREENS: Command[] = [
   go("go.sessions", "Sessions", { screen: "list", list: "sessions" }),
   go("go.content", "Content", { screen: "list", list: "content" }),
   go("go.settings", "Settings & options", { screen: "list", list: "settings" }),
+  go("go.plugins", "Plugins", { screen: "list", list: "plugins" }),
   go("go.snapshots", "Snapshots & diff", { screen: "snapshots" }),
 ];
 
@@ -159,6 +160,7 @@ export const LIST_LABELS: Record<WpList, string> = {
   sessions: "Sessions",
   content: "Content",
   settings: "Settings & options",
+  plugins: "Plugins",
 };
 
 let installed = false;

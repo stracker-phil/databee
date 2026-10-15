@@ -29,7 +29,7 @@ const DEFAULT_SPLIT = 560;
 
 type Loader = (sessionId: string, database: string, q: ListQuery) => Promise<Page<unknown>>;
 
-const LOADERS: Record<Exclude<WpList, "settings">, Loader> = {
+const LOADERS: Record<Exclude<WpList, "settings" | "plugins">, Loader> = {
   orders: (s, d, q) => api.wpOrders(s, d, "shop_order", q),
   subscriptions: (s, d, q) => api.wpOrders(s, d, "shop_subscription", q),
   customers: api.wpCustomers,
@@ -56,7 +56,7 @@ interface Column {
 }
 
 /** Header columns mirror the row layout classes so labels line up with values. */
-const COLUMNS: Record<Exclude<WpList, "settings">, Column[]> = {
+const COLUMNS: Record<Exclude<WpList, "settings" | "plugins">, Column[]> = {
   orders: [
     { label: "Order", className: "row-id", sort: "id" },
     { label: "Customer", className: "grow-text" },
@@ -347,7 +347,7 @@ function Splitter({ onResize }: { onResize: (dx: number) => void }) {
   return <div className="splitter" role="separator" aria-orientation="vertical" aria-label="Resize detail pane" onMouseDown={start} />;
 }
 
-export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">; params?: Record<string, string> }) {
+export function ListScreen({ list, params }: { list: Exclude<WpList, "settings" | "plugins">; params?: Record<string, string> }) {
   const [status, setStatus] = useState<string | null>(params?.status ?? null);
   const [kind, setKind] = useState<string | null>(params?.kind ?? null);
   const [searchInput, setSearchInput] = useState(params?.search ?? "");

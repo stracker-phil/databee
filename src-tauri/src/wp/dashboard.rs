@@ -669,6 +669,12 @@ pub async fn browser(
         count: rs.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
         breakdown: Vec::new(),
     });
+    out.push(BrowserSection {
+        list: "plugins",
+        label: "Plugins",
+        count: ctx.site.active_plugins.len() as u64,
+        breakdown: Vec::new(),
+    });
     Ok(out)
 }
 

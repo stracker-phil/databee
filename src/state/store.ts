@@ -58,7 +58,8 @@ export type WpList =
   | "actions"
   | "sessions"
   | "content"
-  | "settings";
+  | "settings"
+  | "plugins";
 
 export type WpRoute =
   | { screen: "dashboard" }

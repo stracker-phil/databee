@@ -651,3 +651,6 @@ button.flag-pill:not(:disabled):hover { outline: 1px solid var(--accent); }
 .peek-row { display: contents; }
 .peek-facts dt { color: var(--text-secondary); white-space: nowrap; }
 .peek-facts dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.badge.tone-warning { background: var(--warning-soft); color: var(--warning); }
+.confidence { display: inline-flex; align-items: center; gap: 0.308rem; min-width: 7rem; justify-content: flex-end; }

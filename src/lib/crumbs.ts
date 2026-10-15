@@ -39,7 +39,8 @@ export function routeCrumbs(route: WpRoute, meta?: Pick<EntityMeta, "parent" | "
       const status = route.params?.status;
       const kind = route.params?.kind;
       const search = route.params?.search;
-      if (status) crumbs.push({ label: statusLabel(status) });
+      if (route.params?.name) crumbs.push({ label: route.params.name });
+      else if (status) crumbs.push({ label: statusLabel(status) });
       else if (kind) crumbs.push({ label: kind });
       if (search) crumbs.push({ label: `“${search}”` });
       return crumbs;

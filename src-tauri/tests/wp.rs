@@ -444,6 +444,7 @@ async fn entity_browser_counts_sections() {
         assert_eq!(count("products"), Some(2));
         assert_eq!(count("actions"), Some(4));
         assert_eq!(count("sessions"), Some(2));
+        assert_eq!(count("plugins"), Some(1), "active plugins");
         let content = sections.iter().find(|s| s.list == "content").unwrap();
         assert!(content.breakdown.iter().any(|f| f.value == "post"));
         assert!(
