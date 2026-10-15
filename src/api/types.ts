@@ -167,3 +167,68 @@ export interface HistoryEntry {
   elapsedMs: number;
   error: string | null;
 }
+
+// ---------- WordPress lens ----------
+
+export interface ValueNode {
+  kind: "null" | "bool" | "int" | "float" | "string" | "array" | "object" | "ref" | "enum" | "custom";
+  text?: string;
+  class?: string;
+  children?: { key: string; keyKind: "int" | "string" | "public" | "protected" | "private"; node: ValueNode }[];
+  note?: string;
+}
+
+export interface DecodedValue {
+  format: "php" | "json";
+  root: ValueNode | null;
+  warning: string | null;
+  error: string | null;
+}
+
+export type HposMode = "off" | "on" | "on_with_sync";
+
+export interface WpContext {
+  prefix: string;
+  version: string | null;
+  sites: { blogId: number; prefix: string; domain: string | null; path: string | null }[];
+  wc: { version: string | null; hpos: HposMode; hasActionScheduler: boolean } | null;
+}
+
+export interface WpInfo {
+  context: WpContext;
+  entities: [string, string][];
+  tableEntities: Record<string, { entity: string; idColumn: string }>;
+}
+
+export interface EntityLink {
+  entity: string;
+  id: string;
+}
+
+export interface DocField {
+  name: string;
+  value: Cell;
+  decoded: DecodedValue | null;
+  link: EntityLink | null;
+}
+
+export interface EntityDoc {
+  entity: string;
+  label: string;
+  id: string;
+  title: string | null;
+  subtitle: string | null;
+  table: string;
+  idColumn: string;
+  fields: DocField[];
+  meta: { name: string; private: boolean; entries: DocField[] }[];
+  relations: { name: string; label: string; entity: string; count: number }[];
+}
+
+export interface OptionsOverview {
+  table: string;
+  totalCount: number;
+  autoloadBytes: number;
+  groups: { prefix: string; count: number; bytes: number; autoloadCount: number; autoloadBytes: number }[];
+  transients: { name: string; siteWide: boolean; bytes: number; expiresAt: number | null; expired: boolean }[];
+}

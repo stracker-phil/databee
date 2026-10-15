@@ -13,6 +13,8 @@ interface Props {
   rowOffset?: number;
   sort?: { column: string | null; descending: boolean };
   onSort?: (column: string) => void;
+  /** Extra context-menu entries for a row (e.g. "Open as document"). */
+  rowActions?: (row: number) => MenuEntry[];
 }
 
 const ROW_NUMBER_WIDTH = 52;
@@ -27,7 +29,7 @@ function columnWidths(columns: ColumnMeta[], rows: Cell[][], nullLabel: string):
   });
 }
 
-export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort }: Props) {
+export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowActions }: Props) {
   const settings = useStore((s) => s.settings);
   const selectCell = useStore((s) => s.selectCell);
   const toast = useStore((s) => s.toast);
@@ -75,6 +77,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort }: Prop
         "separator",
         { label: `Copy all ${rows.length} rows as TSV`, action: () => copy(rowsToTsv(names, rows), `${rows.length} rows`) },
         { label: `Copy all ${rows.length} rows as JSON`, action: () => copy(rowsToJson(names, rows), `${rows.length} rows as JSON`) },
+        ...(rowActions ? (["separator", ...rowActions(row)] as MenuEntry[]) : []),
       ],
     });
   };

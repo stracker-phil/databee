@@ -30,6 +30,12 @@ export function createApiMock(): typeof realApi {
     reorderFavorites: vi.fn().mockResolvedValue(undefined),
     listHistory: vi.fn().mockResolvedValue([]),
     clearHistory: vi.fn().mockResolvedValue(undefined),
+    wpDetect: vi.fn().mockResolvedValue(null),
+    wpLoad: vi.fn().mockResolvedValue([]),
+    wpExpand: vi.fn().mockResolvedValue([]),
+    wpOptions: vi.fn(),
+    wpTransientCleanupSql: vi.fn().mockResolvedValue("-- No expired transients"),
+    decodeValue: vi.fn().mockResolvedValue(null),
     onLaunch: vi.fn().mockResolvedValue(() => {}),
     onMenu: vi.fn().mockResolvedValue(() => {}),
   };

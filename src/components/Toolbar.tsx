@@ -1,12 +1,14 @@
 import { FilePlus2, PlugZap, Settings as SettingsIcon, Unplug } from "lucide-react";
-import { selectActiveSession, useStore } from "../state/store";
+import { selectActiveSession, selectWp, useStore } from "../state/store";
+import { hposLabel } from "./WordPressPanel";
 
 export function Toolbar() {
   const sessions = useStore((s) => s.sessions);
   const session = useStore(selectActiveSession);
   const schema = useStore((s) => (session ? s.schema[session.id] : undefined));
   const showSystem = useStore((s) => s.settings?.showSystemSchemas ?? false);
-  const { setActiveSession, switchDatabase, disconnect, openQueryTab, openDialog } = useStore.getState();
+  const wp = useStore(selectWp);
+  const { setActiveSession, switchDatabase, disconnect, openQueryTab, openDialog, setSidebarPanel } = useStore.getState();
 
   const databases = (schema?.databases ?? []).filter((d) => showSystem || !d.isSystem || d.name === session?.database);
 
@@ -40,6 +42,11 @@ export function Toolbar() {
         </div>
       ) : (
         <span className="app-title">databee</span>
+      )}
+      {wp && (
+        <button className="wp-badge" title="WordPress details" onClick={() => setSidebarPanel("wordpress")}>
+          WordPress{wp.context.wc ? ` · WooCommerce ${wp.context.wc.version ?? ""} · ${hposLabel(wp)}` : ""}
+        </button>
       )}
       <div className="spacer" data-tauri-drag-region />
       <button className="icon-btn" aria-label="New connection" title="New connection (⌘N)" onClick={() => openDialog({ type: "connect" })}>

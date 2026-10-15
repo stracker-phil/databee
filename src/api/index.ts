@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppError,
+  DecodedValue,
+  EntityDoc,
+  OptionsOverview,
+  WpInfo,
   BrowsePage,
   BrowseRequest,
   ConnectionSpec,
@@ -60,6 +64,17 @@ export const api = {
 
   listHistory: (account: string) => invoke<HistoryEntry[]>("list_history", { account }),
   clearHistory: (account: string) => invoke<void>("clear_history", { account }),
+
+  wpDetect: (sessionId: string, database: string, refresh = false) =>
+    invoke<WpInfo | null>("wp_detect", { sessionId, database, refresh }),
+  wpLoad: (sessionId: string, database: string, entity: string, ids: string[]) =>
+    invoke<EntityDoc[]>("wp_load", { sessionId, database, entity, ids }),
+  wpExpand: (sessionId: string, database: string, entity: string, id: string, relation: string) =>
+    invoke<EntityDoc[]>("wp_expand", { sessionId, database, entity, id, relation }),
+  wpOptions: (sessionId: string, database: string) => invoke<OptionsOverview>("wp_options", { sessionId, database }),
+  wpTransientCleanupSql: (sessionId: string, database: string) =>
+    invoke<string>("wp_transient_cleanup_sql", { sessionId, database }),
+  decodeValue: (text: string) => invoke<DecodedValue | null>("decode_value", { text }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   onMenu: (handler: (id: string) => void): Promise<UnlistenFn> =>

@@ -15,6 +15,7 @@ import {
   type SessionInfo,
   type Settings,
   type TableInfo,
+  type WpInfo,
 } from "../api";
 
 export interface QueryTab {
@@ -37,9 +38,29 @@ export interface TableTab {
   database: string;
   table: string;
   view: "data" | "structure";
+  /** Initial WHERE filter, e.g. when opened from a document's source link. */
+  filter?: string;
 }
 
-export type Tab = QueryTab | TableTab;
+export interface DocumentTab {
+  id: string;
+  kind: "document";
+  sessionId: string;
+  title: string;
+  database: string;
+  entity: string;
+  entityId: string;
+}
+
+export interface OptionsTab {
+  id: string;
+  kind: "options";
+  sessionId: string;
+  title: string;
+  database: string;
+}
+
+export type Tab = QueryTab | TableTab | DocumentTab | OptionsTab;
 
 export interface Toast {
   id: number;
@@ -75,7 +96,9 @@ interface State {
   toasts: Toast[];
   dialog: Dialog | null;
   selectedCell: SelectedCell | null;
-  sidebarPanel: "tables" | "history";
+  sidebarPanel: "tables" | "history" | "wordpress";
+  /** WordPress detection per `session/database`; null = not WordPress. */
+  wp: Record<string, WpInfo | null>;
 }
 
 interface Actions {
@@ -89,7 +112,10 @@ interface Actions {
   loadDatabases(sessionId: string): Promise<void>;
   loadTables(sessionId: string, database: string): Promise<void>;
   openQueryTab(sql?: string): void;
-  openTableTab(database: string, table: string, view?: TableTab["view"]): void;
+  openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string): void;
+  openDocument(entity: string, entityId: string, label?: string): void;
+  openOptions(): void;
+  loadWp(sessionId: string, database: string, refresh?: boolean): Promise<void>;
   updateTab(id: string, patch: Partial<QueryTab> | Partial<TableTab>): void;
   activateTab(id: string): void;
   closeTab(id: string): void;
@@ -125,6 +151,7 @@ const initialState: State = {
   dialog: null,
   selectedCell: null,
   sidebarPanel: "tables",
+  wp: {},
 };
 
 let nextId = 1;
@@ -239,6 +266,7 @@ export const useStore = create<Store>()((set, get) => {
           sessions: s.sessions.map((x) => (x.id === sessionId ? { ...x, database } : x)),
         }));
         void get().loadTables(sessionId, database);
+        void get().loadWp(sessionId, database);
       } catch (e) {
         fail(e, `Cannot switch to ${database}`);
       }
@@ -254,7 +282,10 @@ export const useStore = create<Store>()((set, get) => {
           },
         }));
         const current = get().sessions.find((x) => x.id === sessionId)?.database;
-        if (current) void get().loadTables(sessionId, current);
+        if (current) {
+          void get().loadTables(sessionId, current);
+          void get().loadWp(sessionId, current);
+        }
       } catch (e) {
         fail(e, "Could not list databases");
       }
@@ -292,11 +323,12 @@ export const useStore = create<Store>()((set, get) => {
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
     },
 
-    openTableTab(database, table, view = "data") {
+    openTableTab(database, table, view = "data", filter) {
       const session = activeSession();
       if (!session) return;
       const existing = get().tabs.find(
-        (t) => t.kind === "table" && t.sessionId === session.id && t.database === database && t.table === table,
+        (t) =>
+          t.kind === "table" && t.sessionId === session.id && t.database === database && t.table === table && t.filter === filter,
       );
       if (existing) {
         set((s) => ({
@@ -310,12 +342,56 @@ export const useStore = create<Store>()((set, get) => {
         id: newId("table"),
         kind: "table",
         sessionId: session.id,
-        title: table,
+        title: filter ? `${table} (filtered)` : table,
         database,
         table,
         view,
+        filter,
       };
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
+    },
+
+    openDocument(entity, entityId, label) {
+      const session = activeSession();
+      if (!session?.database) return;
+      const existing = get().tabs.find(
+        (t) => t.kind === "document" && t.sessionId === session.id && t.entity === entity && t.entityId === entityId,
+      );
+      if (existing) {
+        set({ activeTabId: existing.id, selectedCell: null });
+        return;
+      }
+      const tab: DocumentTab = {
+        id: newId("doc"),
+        kind: "document",
+        sessionId: session.id,
+        title: `${label ?? entity} #${entityId}`,
+        database: session.database,
+        entity,
+        entityId,
+      };
+      set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
+    },
+
+    openOptions() {
+      const session = activeSession();
+      if (!session?.database) return;
+      const existing = get().tabs.find((t) => t.kind === "options" && t.sessionId === session.id && t.database === session.database);
+      if (existing) {
+        set({ activeTabId: existing.id });
+        return;
+      }
+      const tab: OptionsTab = { id: newId("options"), kind: "options", sessionId: session.id, title: "Options", database: session.database };
+      set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
+    },
+
+    async loadWp(sessionId, database, refresh = false) {
+      try {
+        const info = await api.wpDetect(sessionId, database, refresh);
+        set((s) => ({ wp: { ...s.wp, [`${sessionId}/${database}`]: info } }));
+      } catch (e) {
+        fail(e, "WordPress detection failed");
+      }
     },
 
     updateTab(id, patch) {
@@ -419,6 +495,10 @@ export const useStore = create<Store>()((set, get) => {
     addCurrentTabToFavorites() {
       const tab = get().tabs.find((t) => t.id === get().activeTabId);
       if (!tab) return;
+      if (tab.kind === "document" || tab.kind === "options") {
+        get().toast("info", "Only tables and queries can be pinned for now");
+        return;
+      }
       if (tab.kind === "table") {
         void get().addFavorite(tab.table, { kind: "table", database: tab.database, table: tab.table });
         return;
@@ -524,3 +604,9 @@ export function resetStore(patch: Partial<State> = {}) {
 
 export const selectActiveSession = (s: Store) => s.sessions.find((x) => x.id === s.activeSessionId) ?? null;
 export const selectActiveTab = (s: Store) => s.tabs.find((t) => t.id === s.activeTabId) ?? null;
+
+/** WordPress info for the active session's current database (undefined = not probed yet). */
+export const selectWp = (s: Store): WpInfo | null | undefined => {
+  const session = selectActiveSession(s);
+  return session?.database ? s.wp[`${session.id}/${session.database}`] : null;
+};

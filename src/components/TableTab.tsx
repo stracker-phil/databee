@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Copy, Filter, Loader2, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, FileText, Filter, Loader2, RefreshCw } from "lucide-react";
 import { api, toAppError, type AppError, type BrowsePage, type TableStructure } from "../api";
-import { useStore, type TableTab as TableTabState } from "../state/store";
+import { cellText } from "../lib/format";
+import { selectWp, useStore, type TableTab as TableTabState } from "../state/store";
 import { ErrorPanel } from "./QueryTab";
 import { ResultsGrid } from "./ResultsGrid";
 
@@ -16,8 +17,10 @@ interface Browse {
 
 function DataView({ tab }: { tab: TableTabState }) {
   const pageSize = useStore((s) => Math.min(s.settings?.rowLimit ?? 200, MAX_PAGE));
-  const [browse, setBrowse] = useState<Browse>({ offset: 0, orderBy: null, descending: false, filter: "" });
-  const [filterInput, setFilterInput] = useState("");
+  const [browse, setBrowse] = useState<Browse>({ offset: 0, orderBy: null, descending: false, filter: tab.filter ?? "" });
+  const [filterInput, setFilterInput] = useState(tab.filter ?? "");
+  const entity = useStore((s) => (s.sessions.find((x) => x.id === tab.sessionId)?.database === tab.database ? selectWp(s)?.tableEntities[tab.table] : undefined));
+  const openDocument = useStore((s) => s.openDocument);
   const [page, setPage] = useState<BrowsePage | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [loading, setLoading] = useState(false);
@@ -80,6 +83,11 @@ function DataView({ tab }: { tab: TableTabState }) {
         <button className="icon-btn" aria-label="Reload" title="Reload" onClick={() => void load()}>
           {loading ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
         </button>
+        {entity && (
+          <span className="hint" title="Right-click a row to open it as a document">
+            <FileText size={11} style={{ verticalAlign: -1 }} /> {entity.entity} documents
+          </span>
+        )}
         <div className="spacer" />
         <span className="muted" style={{ fontVariantNumeric: "tabular-nums" }}>
           {rows === 0 ? "No rows" : `${browse.offset + 1}–${browse.offset + rows}`}
@@ -110,6 +118,15 @@ function DataView({ tab }: { tab: TableTabState }) {
           rowOffset={browse.offset}
           sort={{ column: browse.orderBy, descending: browse.descending }}
           onSort={sortBy}
+          rowActions={
+            entity
+              ? (row) => {
+                  const idIndex = page.result.columns.findIndex((c) => c.name.toLowerCase() === entity.idColumn.toLowerCase());
+                  const id = idIndex >= 0 ? cellText(page.result.rows[row][idIndex]) : "";
+                  return id ? [{ label: `Open ${entity.entity} #${id} as document`, action: () => openDocument(entity.entity, id) }] : [];
+                }
+              : undefined
+          }
         />
       ) : (
         <div className="empty-state">Loading…</div>
