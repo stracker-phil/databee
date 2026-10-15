@@ -8,7 +8,7 @@ Ideas collected during the MVP. Not ordered by priority.
 - SSH tunnels (staging databases), e.g. via `russh`.
 - Stream large results over `tauri::ipc::Channel` instead of one JSON payload.
 - Generate TS types from Rust DTOs (ts-rs or tauri-specta).
-- Multiple windows; resizable grid columns; query plan (EXPLAIN) view.
+- Multiple windows; query plan (EXPLAIN) view.
 
 ## WordPress lens
 - Taxonomies resolved by name (`product_cat: [Mugs, Sale]`).
@@ -19,5 +19,15 @@ Ideas collected during the MVP. Not ordered by priority.
 - Integrity scanner: orphaned meta, dangling term relationships, items pointing to deleted products, overdue actions, HPOS sync drift.
 - Multisite: switch the lens between sub-site prefixes.
 
+## Plugin lens
+- PHP code scanning (tree-sitter) of installed plugins to learn their option/meta keys exactly.
+- Runtime attribution via a mu-plugin that records which plugin writes which key.
+- Attribute Action Scheduler groups and log sources that use generic names.
+- Rebuild the native menu live when a menu-bound shortcut changes (today: after restart).
+- Split view for entity pages opened from the palette (open in a new tab).
+
 ## Done (WordPress mode)
-Dashboard, list screens, purpose-built pages, order timeline, ⌘K search, edits with a pending tray and undo, serialized-value tree editing, live mode, snapshots and diffs, side-by-side comparison, options treemap, screen-share mode.
+Dashboard with actionable alerts, list screens with split view and sorting, purpose-built pages, humanized order
+timeline, global ⌘K palette with a command registry and rebindable shortcuts, peek cards, value pivots and
+find-everywhere, guest customers, plugins lens with leftover cleanup, edits with a pending tray and undo,
+serialized-value tree editing, live mode, snapshots and diffs, side-by-side comparison, screen-share mode.
