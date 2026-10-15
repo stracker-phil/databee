@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Copy, FileText, Filter, Loader2, Plus, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, FileText, Filter, Hash, Loader2, Plus, RefreshCw } from "lucide-react";
 import { api, toAppError, type AppError, type BrowsePage, type TableStructure } from "../api";
 import { EVENTS } from "../commands";
 import { cellText } from "../lib/format";
@@ -26,7 +26,11 @@ function DataView({ tab }: { tab: TableTabState }) {
   const dataVersion = useStore((s) => s.dataVersion);
   const [primaryKey, setPrimaryKey] = useState<string | null>(null);
   const [structure, setStructure] = useState<TableStructure | null>(null);
+  const [showFilterSql, setShowFilterSql] = useState(false);
   const whereRef = useRef<HTMLInputElement>(null);
+  const identity = useStore((s) => s.sessions.find((x) => x.id === tab.sessionId)?.identity ?? null);
+  const savedWidths = useStore((s) => (identity ? s.uiState[identity]?.tables[`${tab.database}.${tab.table}`]?.widths : undefined));
+  const setTableWidths = useStore((s) => s.setTableWidths);
   const isActive = useStore((s) => s.activeTabId === tab.id);
 
   useEffect(() => {
@@ -61,6 +65,7 @@ function DataView({ tab }: { tab: TableTabState }) {
         orderBy: browse.orderBy,
         descending: browse.descending,
         filter: browse.filter || null,
+        primaryKey,
       });
       setPage(result);
       setError(null);
@@ -70,7 +75,7 @@ function DataView({ tab }: { tab: TableTabState }) {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.sessionId, tab.database, tab.table, browse, pageSize, dataVersion]);
+  }, [tab.sessionId, tab.database, tab.table, browse, pageSize, dataVersion, primaryKey]);
 
   useEffect(() => {
     void load();
@@ -107,11 +112,16 @@ function DataView({ tab }: { tab: TableTabState }) {
             className="input mono"
             style={{ paddingLeft: 24 }}
             aria-label="WHERE filter"
-            placeholder="WHERE …   e.g. post_type = 'shop_order'   ⌘F · ↵ to apply"
+            placeholder={primaryKey ? `WHERE … or IDs: 3229, 3220-3229   ⌘F · ↵ to apply` : "WHERE …   e.g. post_type = 'shop_order'   ⌘F · ↵ to apply"}
             value={filterInput}
             onChange={(e) => setFilterInput(e.target.value)}
           />
         </form>
+        {page?.filter?.kind === "ids" && (
+          <button className="filter-chip" title="Interpreted as a primary-key lookup; click to see the SQL" onClick={() => setShowFilterSql((v) => !v)}>
+            <Hash size="0.846rem" /> {showFilterSql ? <code>{page.filter.sql}</code> : page.filter.label}
+          </button>
+        )}
         <button
           className="icon-btn"
           aria-label="Insert row"
@@ -159,6 +169,8 @@ function DataView({ tab }: { tab: TableTabState }) {
           rowOffset={browse.offset}
           sort={{ column: browse.orderBy, descending: browse.descending }}
           onSort={sortBy}
+          columnWidths={savedWidths}
+          onColumnWidthsChange={(w) => identity && setTableWidths(identity, `${tab.database}.${tab.table}`, w)}
           rowActions={(row) => {
             const items = [];
             if (entity) {

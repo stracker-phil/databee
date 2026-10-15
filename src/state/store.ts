@@ -18,6 +18,7 @@ import {
   type SessionInfo,
   type Settings,
   type TableInfo,
+  type UiState,
   type WpInfo,
 } from "../api";
 
@@ -133,6 +134,8 @@ interface State {
   entityMeta: EntityMeta | null;
   /** Recently opened entities and tables, newest first. */
   recentNav: RecentNav[];
+  /** Per-connection UI state (column widths, split width) by connection identity. */
+  uiState: Record<string, UiState>;
   /** Planned edits waiting for review, and applied batches that can be undone. */
   pending: (PlannedChange & { id: number; sessionId: string })[];
   applied: { sessionId: string; changes: PlannedChange[] }[];
@@ -165,6 +168,9 @@ interface Actions {
   setPaletteOpen(open: boolean, seed?: string): void;
   saveKeybindings(bindings: Keybindings): Promise<void>;
   setEntityMeta(meta: EntityMeta | null): void;
+  loadUiState(identity: string): Promise<void>;
+  setTableWidths(identity: string, table: string, widths: Record<string, number>): void;
+  setSplitWidth(identity: string, width: number): void;
   /** Activates the next (+1) or previous (-1) tab of the active session. */
   cycleTab(delta: number): void;
   loadWp(sessionId: string, database: string, refresh?: boolean): Promise<void>;
@@ -213,6 +219,7 @@ const initialState: State = {
   keybindings: {},
   entityMeta: null,
   recentNav: [],
+  uiState: {},
   pending: [],
   applied: [],
 };
@@ -278,6 +285,7 @@ export const useStore = create<Store>()((set, get) => {
         get().openQueryTab();
         void get().loadDatabases(session.id);
         void get().loadFavorites();
+        void get().loadUiState(session.identity);
         get().toast("success", `Connected to ${session.displayName}`);
         return true;
       } catch (e) {
@@ -542,6 +550,30 @@ export const useStore = create<Store>()((set, get) => {
       set({ entityMeta });
     },
 
+    async loadUiState(identity) {
+      if (get().uiState[identity]) return;
+      try {
+        const ui = await api.getUiState(identity);
+        set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
+      } catch (e) {
+        fail(e, "Could not load view state");
+      }
+    },
+
+    setTableWidths(identity, table, widths) {
+      const current = get().uiState[identity] ?? { tables: {}, splitWidth: null };
+      const ui: UiState = { ...current, tables: { ...current.tables, [table]: { widths } } };
+      set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
+      persistUiState(identity, ui);
+    },
+
+    setSplitWidth(identity, width) {
+      const current = get().uiState[identity] ?? { tables: {}, splitWidth: null };
+      const ui: UiState = { ...current, splitWidth: width };
+      set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
+      persistUiState(identity, ui);
+    },
+
     cycleTab(delta) {
       const s = get();
       const tabs = s.tabs.filter((t) => t.sessionId === s.activeSessionId);
@@ -762,6 +794,20 @@ export const useStore = create<Store>()((set, get) => {
     },
   };
 });
+
+const uiTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Writes UI state at most twice a second per connection (drags fire constantly). */
+function persistUiState(identity: string, ui: UiState) {
+  clearTimeout(uiTimers.get(identity));
+  uiTimers.set(
+    identity,
+    setTimeout(() => {
+      uiTimers.delete(identity);
+      void api.setUiState(identity, ui).catch(() => {});
+    }, 500),
+  );
+}
 
 /** Keeps the last 20 opened entities and tables for the palette's Recent section. */
 function remember(item: RecentNav) {

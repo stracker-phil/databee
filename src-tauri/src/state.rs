@@ -11,6 +11,7 @@ use crate::store::keybindings::KeybindingsStore;
 use crate::store::recents::RecentsStore;
 use crate::store::settings::SettingsStore;
 use crate::store::snapshots::SnapshotStore;
+use crate::store::ui_state::UiStateStore;
 use crate::wp::context::WpContext;
 
 pub struct AppState {
@@ -20,6 +21,7 @@ pub struct AppState {
     pub favorites: FavoritesStore,
     pub history: HistoryStore,
     pub snapshots: SnapshotStore,
+    pub ui_state: UiStateStore,
     pub launches: LaunchQueue,
     pub secrets: Box<dyn SecretStore>,
     pub sessions: Sessions,
@@ -37,6 +39,7 @@ impl AppState {
             favorites: FavoritesStore::open(config_dir),
             history: HistoryStore::open(config_dir),
             snapshots: SnapshotStore::open(config_dir),
+            ui_state: UiStateStore::open(config_dir),
             launches: LaunchQueue::default(),
             secrets,
             sessions: Sessions::default(),

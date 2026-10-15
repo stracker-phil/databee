@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { Keybindings, api as realApi } from "../api";
+import type { Keybindings, UiState, api as realApi } from "../api";
 // Must not import the store: it would load the real api module while it is being mocked.
 import { settings } from "./settings";
 
@@ -61,6 +61,8 @@ export function createApiMock(): typeof realApi {
     onLaunch: vi.fn().mockResolvedValue(() => {}),
     onCommand: vi.fn().mockResolvedValue(() => {}),
     getKeybindings: vi.fn().mockResolvedValue({}),
+    getUiState: vi.fn().mockResolvedValue({ tables: {}, splitWidth: null }),
+    setUiState: vi.fn().mockImplementation(async (_i: string, ui: UiState) => ui),
     setKeybindings: vi.fn().mockImplementation(async (b: Keybindings) => b),
   };
 }

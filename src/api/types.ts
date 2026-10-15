@@ -149,11 +149,26 @@ export interface BrowseRequest {
   orderBy?: string | null;
   descending?: boolean;
   filter?: string | null;
+  /** Single-column primary key; enables ID shorthand in `filter`. */
+  primaryKey?: string | null;
+}
+
+export interface AppliedFilter {
+  kind: "ids" | "sql";
+  sql: string;
+  label: string;
 }
 
 export interface BrowsePage {
   result: ResultSet;
   hasMore: boolean;
+  filter?: AppliedFilter | null;
+}
+
+/** Per-connection UI state, keyed by connection identity on the Rust side. */
+export interface UiState {
+  tables: Record<string, { widths: Record<string, number> }>;
+  splitWidth: number | null;
 }
 
 export type FavoriteTarget =

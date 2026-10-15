@@ -152,6 +152,8 @@ fn start_app(
             commands::update_settings,
             commands::get_keybindings,
             commands::set_keybindings,
+            commands::get_ui_state,
+            commands::set_ui_state,
             commands::open_log_folder,
             commands::open_url,
             commands::take_launch_events,

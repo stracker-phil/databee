@@ -10,6 +10,7 @@ use crate::store::history::HistoryEntry;
 use crate::store::keybindings::Keybindings;
 use crate::store::recents::RecentConnection;
 use crate::store::settings::Settings;
+use crate::store::ui_state::UiState;
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Settings {
@@ -35,6 +36,20 @@ pub fn set_keybindings(
     bindings: Keybindings,
 ) -> AppResult<Keybindings> {
     state.keybindings.update(bindings)
+}
+
+#[tauri::command]
+pub fn get_ui_state(state: State<'_, AppState>, identity: String) -> UiState {
+    state.ui_state.get(&identity)
+}
+
+#[tauri::command]
+pub fn set_ui_state(
+    state: State<'_, AppState>,
+    identity: String,
+    ui: UiState,
+) -> AppResult<UiState> {
+    state.ui_state.set(&identity, ui)
 }
 
 #[tauri::command]

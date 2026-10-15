@@ -12,7 +12,8 @@ use super::lexer::split_statements;
 use super::safety::returns_rows;
 use super::{
     BrowsePage, BrowseRequest, Cell, ColumnInfo, ColumnMeta, DatabaseInfo, ExecuteResponse,
-    IndexInfo, ResultSet, SYSTEM_SCHEMAS, TableInfo, TableStructure, browse_sql, cell, quote_ident,
+    IndexInfo, ResultSet, SYSTEM_SCHEMAS, TableInfo, TableStructure, applied_filter, browse_sql,
+    cell, quote_ident,
 };
 use crate::connection::{ConnectionSpec, Secret};
 use crate::error::{AppError, AppResult};
@@ -307,7 +308,11 @@ impl MySqlSession {
         let has_more = result.truncated;
         result.truncated = false;
         result.total_rows = result.rows.len() as u64;
-        Ok(BrowsePage { result, has_more })
+        Ok(BrowsePage {
+            result,
+            has_more,
+            filter: applied_filter(req)?,
+        })
     }
 
     /// Runs the statements in one transaction (all or nothing for transactional tables).

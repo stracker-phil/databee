@@ -42,6 +42,7 @@ import type {
   Settings,
   TableInfo,
   TableStructure,
+  UiState,
 } from "./types";
 
 export * from "./types";
@@ -52,6 +53,8 @@ export const api = {
   updateSettings: (settings: Settings) => invoke<Settings>("update_settings", { settings }),
   getKeybindings: () => invoke<Keybindings>("get_keybindings"),
   setKeybindings: (bindings: Keybindings) => invoke<Keybindings>("set_keybindings", { bindings }),
+  getUiState: (identity: string) => invoke<UiState>("get_ui_state", { identity }),
+  setUiState: (identity: string, ui: UiState) => invoke<UiState>("set_ui_state", { identity, ui }),
   openLogFolder: () => invoke<void>("open_log_folder"),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   logError: (message: string) => invoke<void>("log_frontend_error", { message }),
