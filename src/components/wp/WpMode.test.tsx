@@ -6,11 +6,12 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import App from "../../App";
 import { api, type Dashboard, type OrderSummary } from "../../api";
+import { installCommands } from "../../commands";
 import { selectWpRoute, useStore } from "../../state/store";
 import { orderView, wpStore } from "../../test/wpFixtures";
+import { CommandPalette } from "../CommandPalette";
 import { PendingTray } from "../PendingTray";
 import { CompareScreen, SnapshotsScreen } from "./Debugging";
-import { Omnisearch } from "./Omnisearch";
 import { WpWorkspace } from "./WpWorkspace";
 
 const mocked = vi.mocked(api, true);
@@ -131,16 +132,17 @@ describe("WordPress mode", () => {
   });
 });
 
-describe("Omnisearch", () => {
+describe("Command palette", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     wpStore();
+    installCommands();
   });
 
   it("finds pasted identifiers and opens the match", async () => {
     mocked.wpSearch.mockResolvedValue([{ entity: "order", id: "3229", title: "Order #3229", subtitle: null, matched: "_ppcp_paypal_order_id" }]);
     useStore.getState().setPaletteOpen(true);
-    render(<Omnisearch />);
+    render(<CommandPalette />);
     await userEvent.type(screen.getByLabelText("Search everything"), "3UT60541JW9211534");
     expect(await screen.findByText("Order #3229")).toBeInTheDocument();
     expect(screen.getByText(/matched _ppcp_paypal_order_id/)).toBeInTheDocument();
@@ -151,10 +153,42 @@ describe("Omnisearch", () => {
 
   it("jumps to screens by name", async () => {
     useStore.getState().setPaletteOpen(true);
-    render(<Omnisearch />);
+    render(<CommandPalette />);
     await userEvent.type(screen.getByLabelText("Search everything"), "failed act");
     await userEvent.click(screen.getByText("Failed actions"));
     expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "actions", params: { status: "failed" } });
+  });
+
+  it("filters with prefixes and shows command bindings", async () => {
+    useStore.getState().setPaletteOpen(true);
+    render(<CommandPalette />);
+    const input = screen.getByLabelText("Search everything");
+    await userEvent.type(input, ">zoom");
+    expect(screen.getByText("Zoom in")).toBeInTheDocument();
+    expect(screen.getByText("⌘=")).toBeInTheDocument();
+    expect(screen.queryByText("wp_options")).not.toBeInTheDocument();
+    await userEvent.clear(input);
+    await userEvent.type(input, "t:wp_opt");
+    expect(screen.getByText("wp_options")).toBeInTheDocument();
+    expect(screen.queryByText("Zoom in")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText("wp_options"));
+    expect(useStore.getState().mode).toBe("db");
+    expect(useStore.getState().tabs.some((t) => t.kind === "table" && t.table === "wp_options")).toBe(true);
+  });
+
+  it("lists every entity type that has a numeric ID", async () => {
+    mocked.wpSearch.mockResolvedValue([
+      { entity: "order", id: "3229", title: "Order #3229", subtitle: null, matched: "id" },
+      { entity: "post", id: "3229", title: "Post #3229", subtitle: "page", matched: "id" },
+      { entity: "user", id: "3229", title: "User #3229", subtitle: null, matched: "id" },
+    ]);
+    useStore.getState().setPaletteOpen(true);
+    render(<CommandPalette />);
+    await userEvent.type(screen.getByLabelText("Search everything"), "#3229");
+    expect(await screen.findByText("Order #3229")).toBeInTheDocument();
+    expect(screen.getByText("Post #3229")).toBeInTheDocument();
+    expect(screen.getByText("User #3229")).toBeInTheDocument();
+    expect(mocked.wpSearch).toHaveBeenCalledWith("s1", "db", "3229");
   });
 });
 

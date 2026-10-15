@@ -1,4 +1,4 @@
-import { Database, Eye, EyeOff, FilePlus2, LayoutDashboard, PlugZap, Search, Settings as SettingsIcon, Unplug } from "lucide-react";
+import { Database, Eye, EyeOff, FilePlus2, LayoutDashboard, PlugZap, Settings as SettingsIcon, Unplug } from "lucide-react";
 import { selectActiveSession, selectWp, useStore } from "../state/store";
 
 export function Toolbar() {
@@ -8,7 +8,7 @@ export function Toolbar() {
   const settings = useStore((s) => s.settings);
   const wp = useStore(selectWp);
   const mode = useStore((s) => s.mode);
-  const { setActiveSession, switchDatabase, disconnect, openQueryTab, openDialog, setMode, saveSettings, setPaletteOpen } = useStore.getState();
+  const { setActiveSession, switchDatabase, disconnect, openQueryTab, openDialog, setMode, saveSettings } = useStore.getState();
 
   const showSystem = settings?.showSystemSchemas ?? false;
   const databases = (schema?.databases ?? []).filter((d) => showSystem || !d.isSystem || d.name === session?.database);
@@ -52,11 +52,6 @@ export function Toolbar() {
         </div>
       )}
       <div className="spacer" data-tauri-drag-region />
-      {wp && mode === "wp" && (
-        <button className="icon-btn" aria-label="Search" title="Search (⌘K)" onClick={() => setPaletteOpen(true)}>
-          <Search size="1.231rem" />
-        </button>
-      )}
       {settings && (
         <button
           className={`icon-btn${screenShare ? " on" : ""}`}

@@ -13,6 +13,7 @@ import {
   type ExecuteResponse,
   type Favorite,
   type FavoriteTarget,
+  type Keybindings,
   type LaunchEvent,
   type SessionInfo,
   type Settings,
@@ -85,6 +86,20 @@ export interface SchemaState {
   tables: Record<string, TableInfo[]>;
 }
 
+export interface EntityMeta {
+  key: string;
+  /** Which list the entity belongs to, e.g. products for a product post. */
+  parent?: WpList;
+  title?: string;
+  table: string;
+  idColumn: string;
+  id: string;
+}
+
+export type RecentNav =
+  | { kind: "entity"; entity: string; id: string; title: string }
+  | { kind: "table"; database: string; table: string };
+
 export interface SelectedCell {
   column: ColumnMeta;
   cell: Cell;
@@ -111,6 +126,13 @@ interface State {
   /** Bumped when data may have changed (applied edits, live refresh); views reload on change. */
   dataVersion: number;
   paletteOpen: boolean;
+  /** Text the palette opens with, e.g. `t:` for tables. */
+  paletteSeed: string;
+  keybindings: Keybindings;
+  /** Facts about the loaded entity page for breadcrumbs and the source-row command. */
+  entityMeta: EntityMeta | null;
+  /** Recently opened entities and tables, newest first. */
+  recentNav: RecentNav[];
   /** Planned edits waiting for review, and applied batches that can be undone. */
   pending: (PlannedChange & { id: number; sessionId: string })[];
   applied: { sessionId: string; changes: PlannedChange[] }[];
@@ -140,7 +162,11 @@ interface Actions {
   applyChanges(): Promise<void>;
   undoLast(): Promise<void>;
   takeSnapshot(entity: string, id: string): Promise<void>;
-  setPaletteOpen(open: boolean): void;
+  setPaletteOpen(open: boolean, seed?: string): void;
+  saveKeybindings(bindings: Keybindings): Promise<void>;
+  setEntityMeta(meta: EntityMeta | null): void;
+  /** Activates the next (+1) or previous (-1) tab of the active session. */
+  cycleTab(delta: number): void;
   loadWp(sessionId: string, database: string, refresh?: boolean): Promise<void>;
   updateTab(id: string, patch: Partial<QueryTab> | Partial<TableTab>): void;
   activateTab(id: string): void;
@@ -183,6 +209,10 @@ const initialState: State = {
   wpNav: { stack: [{ screen: "dashboard" }], index: 0 },
   dataVersion: 0,
   paletteOpen: false,
+  paletteSeed: "",
+  keybindings: {},
+  entityMeta: null,
+  recentNav: [],
   pending: [],
   applied: [],
 };
@@ -207,7 +237,8 @@ export const useStore = create<Store>()((set, get) => {
 
     async loadSettings() {
       try {
-        set({ settings: await api.getSettings() });
+        const [settings, keybindings] = await Promise.all([api.getSettings(), api.getKeybindings().catch(() => ({}))]);
+        set({ settings, keybindings });
       } catch (e) {
         fail(e, "Could not load settings");
       }
@@ -377,6 +408,7 @@ export const useStore = create<Store>()((set, get) => {
         }));
         return;
       }
+      remember({ kind: "table", database, table });
       const tab: TableTab = {
         id: newId("table"),
         kind: "table",
@@ -413,6 +445,7 @@ export const useStore = create<Store>()((set, get) => {
 
     openEntity(entity, id) {
       get().navigate({ screen: "entity", entity, id });
+      remember({ kind: "entity", entity, id, title: `${entity.charAt(0).toUpperCase() + entity.slice(1)} #${id}` });
     },
 
     bumpData() {
@@ -492,8 +525,30 @@ export const useStore = create<Store>()((set, get) => {
       }
     },
 
-    setPaletteOpen(paletteOpen) {
-      set({ paletteOpen });
+    setPaletteOpen(paletteOpen, seed = "") {
+      set({ paletteOpen, paletteSeed: seed });
+    },
+
+    async saveKeybindings(bindings) {
+      try {
+        const saved = await api.setKeybindings(bindings);
+        set({ keybindings: saved });
+      } catch (e) {
+        fail(e, "Could not save shortcuts");
+      }
+    },
+
+    setEntityMeta(entityMeta) {
+      set({ entityMeta });
+    },
+
+    cycleTab(delta) {
+      const s = get();
+      const tabs = s.tabs.filter((t) => t.sessionId === s.activeSessionId);
+      if (tabs.length < 2) return;
+      const index = tabs.findIndex((t) => t.id === s.activeTabId);
+      const next = tabs[(index + delta + tabs.length) % tabs.length];
+      set({ activeTabId: next.id, selectedCell: null });
     },
 
     async loadWp(sessionId, database, refresh = false) {
@@ -707,6 +762,15 @@ export const useStore = create<Store>()((set, get) => {
     },
   };
 });
+
+/** Keeps the last 20 opened entities and tables for the palette's Recent section. */
+function remember(item: RecentNav) {
+  useStore.setState((s) => {
+    const key = JSON.stringify(item.kind === "entity" ? [item.kind, item.entity, item.id] : [item.kind, item.database, item.table]);
+    const rest = s.recentNav.filter((r) => JSON.stringify(r.kind === "entity" ? [r.kind, r.entity, r.id] : [r.kind, r.database, r.table]) !== key);
+    return { recentNav: [item, ...rest].slice(0, 20) };
+  });
+}
 
 /** Restores the initial state; for tests. */
 export function resetStore(patch: Partial<State> = {}) {

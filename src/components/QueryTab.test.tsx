@@ -8,6 +8,7 @@ import { api } from "../api";
 import { useStore } from "../state/store";
 import { connectedStore, queryTab, resultSet } from "../test/fixtures";
 import { Dialogs } from "./Dialogs";
+import { handleKeydown, installCommands } from "../commands";
 import { QueryTab } from "./QueryTab";
 import { StatusBar } from "./StatusBar";
 
@@ -45,11 +46,18 @@ describe("QueryTab", () => {
   });
 
   it("runs only the statement under the cursor with ⌘↵", async () => {
-    mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 1, database: "db" });
-    const { container } = renderTab("SELECT 1;\nSELECT 2;");
-    const content = container.querySelector(".cm-content") as HTMLElement;
-    fireEvent.keyDown(content, { key: "Enter", metaKey: true });
-    expect(mocked.execute).toHaveBeenCalledWith("s1", expect.stringMatching(/^SELECT \d$/), false);
+    // The shortcut is an app command; the window listener is what App installs.
+    installCommands();
+    window.addEventListener("keydown", handleKeydown, true);
+    try {
+      mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 1, database: "db" });
+      const { container } = renderTab("SELECT 1;\nSELECT 2;");
+      const content = container.querySelector(".cm-content") as HTMLElement;
+      fireEvent.keyDown(content, { key: "Enter", metaKey: true });
+      expect(mocked.execute).toHaveBeenCalledWith("s1", expect.stringMatching(/^SELECT \d$/), false);
+    } finally {
+      window.removeEventListener("keydown", handleKeydown, true);
+    }
   });
 
   it("explains when the row limit cut the result", async () => {

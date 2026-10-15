@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { api as realApi } from "../api";
+import type { Keybindings, api as realApi } from "../api";
 // Must not import the store: it would load the real api module while it is being mocked.
 import { settings } from "./settings";
 
@@ -59,6 +59,8 @@ export function createApiMock(): typeof realApi {
     wpSnapshotDelete: vi.fn().mockResolvedValue(undefined),
     wpCompare: vi.fn().mockResolvedValue([]),
     onLaunch: vi.fn().mockResolvedValue(() => {}),
-    onMenu: vi.fn().mockResolvedValue(() => {}),
+    onCommand: vi.fn().mockResolvedValue(() => {}),
+    getKeybindings: vi.fn().mockResolvedValue({}),
+    setKeybindings: vi.fn().mockImplementation(async (b: Keybindings) => b),
   };
 }

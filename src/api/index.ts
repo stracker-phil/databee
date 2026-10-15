@@ -35,6 +35,7 @@ import type {
   ExecuteResponse,
   Favorite,
   HistoryEntry,
+  Keybindings,
   LaunchEvent,
   RecentConnection,
   SessionInfo,
@@ -49,6 +50,8 @@ export * from "./types";
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   updateSettings: (settings: Settings) => invoke<Settings>("update_settings", { settings }),
+  getKeybindings: () => invoke<Keybindings>("get_keybindings"),
+  setKeybindings: (bindings: Keybindings) => invoke<Keybindings>("set_keybindings", { bindings }),
   openLogFolder: () => invoke<void>("open_log_folder"),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   logError: (message: string) => invoke<void>("log_frontend_error", { message }),
@@ -135,8 +138,9 @@ export const api = {
     invoke<CompareRow[]>("wp_compare", { sessionId, database, entity, a, b }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
-  onMenu: (handler: (id: string) => void): Promise<UnlistenFn> =>
-    listen<string>("menu", (e) => handler(e.payload)),
+  /** Native menu items emit the id of the command they run. */
+  onCommand: (handler: (id: string) => void): Promise<UnlistenFn> =>
+    listen<string>("command", (e) => handler(e.payload)),
 };
 
 export function toAppError(e: unknown): AppError {

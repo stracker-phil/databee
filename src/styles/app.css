@@ -189,6 +189,8 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .grid-head {
   position: sticky; top: 0; z-index: 2; display: flex; background: var(--bg-toolbar);
   border-bottom: 0.5px solid var(--border-strong);
+  /* fractional scroll offsets leave a hairline above a sticky header; paint over it */
+  box-shadow: 0 -2px 0 0 var(--bg-toolbar);
 }
 .grid-row { display: flex; position: absolute; left: 0; height: var(--row-height); }
 .grid-row:nth-child(even) { background: var(--bg-grid-stripe); }
@@ -397,6 +399,7 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .crumb button { border: none; background: none; color: var(--text-secondary); padding: 2px 0.308rem; border-radius: 0.308rem; }
 .crumb button:hover { background: var(--bg-hover); }
 .crumb.current button { color: var(--text); font-weight: 600; }
+.crumb > span { padding: 0.154rem 0.308rem; color: var(--text); font-weight: 600; }
 .search-trigger { display: inline-flex; align-items: center; gap: 0.615rem; height: 2rem; padding: 0 0.615rem; border: 0.5px solid var(--border-strong); border-radius: 0.538rem; background: var(--bg-input); color: var(--text-tertiary); min-width: 23.077rem; }
 .search-trigger kbd { margin-left: auto; font-family: var(--font-ui); font-size: 0.808rem; border: 0.5px solid var(--border-strong); border-radius: 0.308rem; padding: 0 0.308rem; }
 .wp-content { flex: 1; overflow: auto; min-height: 0; }
@@ -558,3 +561,18 @@ button.flag-pill:not(:disabled):hover { outline: 1px solid var(--accent); }
 .palette-list { list-style: none; margin: 0; padding: 0.462rem; max-height: 50vh; overflow: auto; }
 .palette-list li { display: flex; align-items: center; gap: 0.769rem; padding: 0.538rem 0.769rem; border-radius: 0.538rem; }
 .palette-list li.active { background: var(--accent-soft); }
+
+.palette-list li { position: relative; }
+.palette-section { position: absolute; left: 0.769rem; top: -0.5rem; display: none; }
+.palette-list li:has(.palette-section) { margin-top: 1.4rem; }
+.palette-list li .palette-section { display: block; top: -1.25rem; font-size: 0.808rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); }
+.kbd-chip { font-family: var(--font-ui); font-size: 0.808rem; color: var(--text-secondary); border: 0.5px solid var(--border-strong); border-radius: 0.308rem; padding: 0 0.385rem; line-height: 1.4; }
+
+/* ---------- shortcuts settings ---------- */
+.shortcuts { border-collapse: collapse; width: 100%; max-height: 18rem; display: block; overflow: auto; }
+.shortcuts tr { display: grid; grid-template-columns: 1fr 5.5rem 7rem 2rem; align-items: center; gap: 0.462rem; border-bottom: 0.5px solid var(--border); padding: 0.231rem 0; }
+.shortcuts td { padding: 0; }
+.shortcut-field { display: inline-flex; align-items: center; justify-content: center; width: 100%; height: 1.692rem; border: 0.5px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-input); font-family: var(--font-ui); }
+.shortcut-field.recording { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); color: var(--text-tertiary); }
+.shortcut-field.unbound { color: var(--text-tertiary); font-style: italic; }
+.shortcut-conflicts { padding: 0.462rem 0.615rem; border-radius: var(--radius-sm); background: var(--warning-soft); color: var(--warning); font-size: 0.885rem; }

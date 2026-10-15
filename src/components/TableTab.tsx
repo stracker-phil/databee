@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Copy, FileText, Filter, Loader2, Plus, RefreshCw } from "lucide-react";
 import { api, toAppError, type AppError, type BrowsePage, type TableStructure } from "../api";
+import { EVENTS } from "../commands";
 import { cellText } from "../lib/format";
 import { selectWp, useStore, type TableTab as TableTabState } from "../state/store";
 import { ErrorPanel } from "./QueryTab";
@@ -25,6 +26,15 @@ function DataView({ tab }: { tab: TableTabState }) {
   const dataVersion = useStore((s) => s.dataVersion);
   const [primaryKey, setPrimaryKey] = useState<string | null>(null);
   const [structure, setStructure] = useState<TableStructure | null>(null);
+  const whereRef = useRef<HTMLInputElement>(null);
+  const isActive = useStore((s) => s.activeTabId === tab.id);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const focus = () => (whereRef.current?.focus(), whereRef.current?.select());
+    window.addEventListener(EVENTS.focusWhere, focus);
+    return () => window.removeEventListener(EVENTS.focusWhere, focus);
+  }, [isActive]);
 
   useEffect(() => {
     api.describeTable(tab.sessionId, tab.database, tab.table).then(
@@ -93,10 +103,11 @@ function DataView({ tab }: { tab: TableTabState }) {
         >
           <Filter size="0.923rem" style={{ position: "absolute", left: "0.615rem", top: "0.538rem", color: "var(--text-tertiary)" }} />
           <input
+            ref={whereRef}
             className="input mono"
             style={{ paddingLeft: 24 }}
             aria-label="WHERE filter"
-            placeholder="WHERE …   e.g. post_type = 'shop_order'   ↵ to apply"
+            placeholder="WHERE …   e.g. post_type = 'shop_order'   ⌘F · ↵ to apply"
             value={filterInput}
             onChange={(e) => setFilterInput(e.target.value)}
           />

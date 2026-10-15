@@ -27,6 +27,9 @@ export interface Settings {
 
 export const ACCENTS = ["blue", "purple", "pink", "graphite"] as const;
 
+/** Shortcut overrides by command id; `null` unbinds. */
+export type Keybindings = Record<string, string | null>;
+
 export interface ConnectionSpec {
   name?: string | null;
   host: string;

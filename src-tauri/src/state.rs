@@ -7,6 +7,7 @@ use crate::secrets::SecretStore;
 use crate::session::Sessions;
 use crate::store::favorites::FavoritesStore;
 use crate::store::history::HistoryStore;
+use crate::store::keybindings::KeybindingsStore;
 use crate::store::recents::RecentsStore;
 use crate::store::settings::SettingsStore;
 use crate::store::snapshots::SnapshotStore;
@@ -14,6 +15,7 @@ use crate::wp::context::WpContext;
 
 pub struct AppState {
     pub settings: SettingsStore,
+    pub keybindings: KeybindingsStore,
     pub recents: RecentsStore,
     pub favorites: FavoritesStore,
     pub history: HistoryStore,
@@ -30,6 +32,7 @@ impl AppState {
     pub fn open(config_dir: &Path, secrets: Box<dyn SecretStore>) -> Self {
         Self {
             settings: SettingsStore::open(config_dir),
+            keybindings: KeybindingsStore::open(config_dir),
             recents: RecentsStore::open(config_dir),
             favorites: FavoritesStore::open(config_dir),
             history: HistoryStore::open(config_dir),

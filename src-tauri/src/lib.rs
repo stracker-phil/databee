@@ -107,8 +107,8 @@ fn start_app(
         .plugin(tauri_plugin_opener::init())
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
         .setup(move |app| {
-            app.set_menu(menu::build(app)?)?;
             let state = AppState::open(&config_dir, Box::new(secrets::Keychain));
+            app.set_menu(menu::build(app, &state.keybindings)?)?;
             let level = log_override.unwrap_or(state.settings.get().log_level);
             log::set_max_level(level.into());
             log::info!("databee {} started", env!("CARGO_PKG_VERSION"));
@@ -150,6 +150,8 @@ fn start_app(
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::update_settings,
+            commands::get_keybindings,
+            commands::set_keybindings,
             commands::open_log_folder,
             commands::open_url,
             commands::take_launch_events,

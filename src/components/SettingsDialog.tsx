@@ -1,8 +1,93 @@
 import { useState } from "react";
-import { FolderOpen } from "lucide-react";
-import { ACCENTS, api, type Settings } from "../api";
+import { FolderOpen, RotateCcw } from "lucide-react";
+import { ACCENTS, api, type Keybindings, type Settings } from "../api";
+import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, type Command } from "../commands";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
+
+const SCOPE_LABEL: Record<Command["scope"], string> = { global: "Everywhere", wp: "WordPress", db: "Database", table: "Table", editor: "Editor", document: "Document" };
+
+function ShortcutField({ value, onChange }: { value: string | null; onChange: (binding: string | null) => void }) {
+  const [recording, setRecording] = useState(false);
+  return (
+    <button
+      type="button"
+      className={`shortcut-field${recording ? " recording" : ""}${value === null && !recording ? " unbound" : ""}`}
+      aria-label={recording ? "Press the new shortcut" : "Record shortcut"}
+      onClick={() => setRecording(true)}
+      onBlur={() => setRecording(false)}
+      onKeyDown={(e) => {
+        if (!recording) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === "Escape") return setRecording(false);
+        if (e.key === "Backspace" || e.key === "Delete") {
+          onChange(null);
+          return setRecording(false);
+        }
+        const binding = bindingFromEvent(e);
+        if (!binding) return;
+        onChange(binding);
+        setRecording(false);
+      }}
+    >
+      {recording ? "Press keys…" : value ? bindingLabel(value) : "unbound"}
+    </button>
+  );
+}
+
+function ShortcutsSection({ bindings, onChange }: { bindings: Keybindings; onChange: (next: Keybindings) => void }) {
+  const [search, setSearch] = useState("");
+  const needle = search.trim().toLowerCase();
+  const list = allCommands().filter((c) => !needle || c.title.toLowerCase().includes(needle) || c.id.includes(needle));
+  const clashes = conflicts(bindings);
+  const set = (id: string, binding: string | null) => onChange({ ...bindings, [id]: binding });
+  const reset = (id: string) => {
+    const { [id]: _gone, ...rest } = bindings;
+    onChange(rest);
+  };
+  return (
+    <section>
+      <h3>Shortcuts</h3>
+      <input className="input" aria-label="Search shortcuts" placeholder="Search commands…" value={search} onChange={(e) => setSearch(e.target.value)} />
+      {clashes.length > 0 && (
+        <div className="shortcut-conflicts" role="alert">
+          {clashes.map((c) => (
+            <div key={`${c.a.id}:${c.b.id}`}>
+              {bindingLabel(c.binding)} is used by both “{c.a.title}” and “{c.b.title}”.
+            </div>
+          ))}
+        </div>
+      )}
+      <table className="shortcuts">
+        <tbody>
+          {list.map((c) => {
+            const overridden = Object.prototype.hasOwnProperty.call(bindings, c.id);
+            return (
+              <tr key={c.id}>
+                <td>
+                  {c.title}
+                  {c.menu && overridden && <div className="hint">Menu shortcut: applies after restart</div>}
+                </td>
+                <td className="muted small">{SCOPE_LABEL[c.scope]}</td>
+                <td>
+                  <ShortcutField value={bindingFor(c.id, bindings)} onChange={(b) => set(c.id, b)} />
+                </td>
+                <td>
+                  {overridden && (
+                    <button type="button" className="icon-btn tiny" aria-label={`Reset ${c.title}`} title="Reset to default" onClick={() => reset(c.id)}>
+                      <RotateCcw size="0.846rem" />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
 
 const ACCENT_VARS: Record<string, string> = Object.fromEntries(ACCENTS.map((a) => [a, `var(--accent-${a})`]));
 
@@ -24,9 +109,12 @@ function NumberField({ label, value, onChange, min, max, suffix }: { label: stri
 
 export function SettingsDialog() {
   const current = useStore((s) => s.settings);
+  const currentBindings = useStore((s) => s.keybindings);
   const save = useStore((s) => s.saveSettings);
+  const saveKeybindings = useStore((s) => s.saveKeybindings);
   const close = useStore((s) => s.closeDialog);
   const [draft, setDraft] = useState<Settings | null>(current);
+  const [bindings, setBindings] = useState<Keybindings>(currentBindings);
   if (!draft) return null;
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setDraft({ ...draft, [key]: value });
@@ -132,6 +220,8 @@ export function SettingsDialog() {
         {draft.logLevel === "trace" && <div className="hint">Trace logs include the SQL text of every query.</div>}
       </section>
 
+      <ShortcutsSection bindings={bindings} onChange={setBindings} />
+
       <div className="actions">
         <button type="button" className="btn" onClick={close}>Cancel</button>
         <button
@@ -139,6 +229,7 @@ export function SettingsDialog() {
           className="btn btn-primary"
           onClick={async () => {
             await save(draft);
+            if (JSON.stringify(bindings) !== JSON.stringify(currentBindings)) await saveKeybindings(bindings);
             close();
           }}
         >

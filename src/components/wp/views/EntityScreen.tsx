@@ -17,7 +17,7 @@ export function docOf(v: EntityViewData): EntityDoc {
 
 export function EntityScreen({ entity, id }: { entity: string; id: string }) {
   const session = useStore(selectActiveSession);
-  const { openTableTab, setMode, navigate, takeSnapshot } = useStore.getState();
+  const { openTableTab, setMode, navigate, takeSnapshot, setEntityMeta } = useStore.getState();
   const [live, setLive] = useState(false);
   const [changed, setChanged] = useState<Set<string>>(new Set());
   const [updatedAt, setUpdatedAt] = useState<number>(Date.now());
@@ -32,7 +32,16 @@ export function EntityScreen({ entity, id }: { entity: string; id: string }) {
 
   useEffect(() => {
     if (!data) return;
-    const now = flattenDoc(docOf(data));
+    const d = docOf(data);
+    setEntityMeta({
+      key: `${entity}:${id}`,
+      parent: data.view === "product" ? "products" : data.view === "customer" ? "customers" : undefined,
+      title: data.view === "order" || !d.title ? `#${id}` : d.title,
+      table: d.table,
+      idColumn: d.idColumn,
+      id: d.id,
+    });
+    const now = flattenDoc(d);
     const before = previous.current;
     if (before) {
       const diff = new Set(Object.keys({ ...before, ...now }).filter((k) => before[k] !== now[k]));
@@ -41,6 +50,8 @@ export function EntityScreen({ entity, id }: { entity: string; id: string }) {
     previous.current = now;
     setUpdatedAt(Date.now());
   }, [data]);
+
+  useEffect(() => () => setEntityMeta(null), [setEntityMeta]);
 
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data) return <Loading />;

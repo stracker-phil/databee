@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Database, Eye, History, RefreshCw, Search, Table2, Trash2 } from "lucide-react";
 import { accountOf, api, type HistoryEntry, type TableInfo } from "../api";
+import { EVENTS } from "../commands";
 import { formatBytes, formatCount, relativeTime } from "../lib/format";
 import { selectActiveSession, selectActiveTab, useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
-
-export const FOCUS_FILTER_EVENT = "databee:focus-filter";
 
 function TablesPanel() {
   const session = useStore(selectActiveSession);
@@ -20,8 +19,8 @@ function TablesPanel() {
 
   useEffect(() => {
     const focus = () => filterRef.current?.focus();
-    window.addEventListener(FOCUS_FILTER_EVENT, focus);
-    return () => window.removeEventListener(FOCUS_FILTER_EVENT, focus);
+    window.addEventListener(EVENTS.focusTableFilter, focus);
+    return () => window.removeEventListener(EVENTS.focusTableFilter, focus);
   }, []);
 
   const current = session?.database ?? null;
@@ -69,7 +68,7 @@ function TablesPanel() {
             ref={filterRef}
             className="input"
             style={{ paddingLeft: 24 }}
-            placeholder="Filter tables  ⌘K"
+            placeholder="Filter tables  ⌘⇧F"
             aria-label="Filter tables"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}

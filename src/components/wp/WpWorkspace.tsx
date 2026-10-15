@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, Boxes, CalendarClock, ChevronRight, FileText, LayoutDashboard, Repeat, Search, Settings2, ShoppingBag, ShoppingCart, Users } from "lucide-react";
 import { api, type BrowserSection } from "../../api";
+import { routeCrumbs } from "../../lib/crumbs";
 import { selectWp, selectWpRoute, useStore, type WpList, type WpRoute } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
 import { Segments } from "./charts";
@@ -91,9 +92,11 @@ function Nav({ route }: { route: WpRoute }) {
 
 function Header() {
   const { stack, index } = useStore((s) => s.wpNav);
-  const { goBack, goForward, setPaletteOpen } = useStore.getState();
-  const crumbs = stack.slice(Math.max(0, index - 3), index + 1);
-  const first = Math.max(0, index - 3);
+  const route = useStore(selectWpRoute);
+  const meta = useStore((s) => s.entityMeta);
+  const { goBack, goForward, setPaletteOpen, navigate } = useStore.getState();
+  const metaKey = route.screen === "entity" ? `${route.entity}:${route.id}` : null;
+  const crumbs = routeCrumbs(route, meta && meta.key === metaKey ? meta : null);
   return (
     <div className="wp-header">
       <button className="icon-btn" aria-label="Back" title="Back (⌘[)" disabled={index === 0} onClick={goBack}>
@@ -103,16 +106,19 @@ function Header() {
         <ArrowRight size="1.077rem" />
       </button>
       <nav className="crumbs" aria-label="Breadcrumbs">
-        {crumbs.map((r, i) => (
-          <span key={first + i} className={first + i === index ? "crumb current" : "crumb"}>
-            {i > 0 && <ChevronRight size="0.846rem" />}
-            <button onClick={() => useStore.setState((s) => ({ wpNav: { ...s.wpNav, index: first + i } }))}>{routeTitle(r)}</button>
-          </span>
-        ))}
+        {crumbs.map((c, i) => {
+          const current = i === crumbs.length - 1;
+          return (
+            <span key={`${i}:${c.label}`} className={current ? "crumb current" : "crumb"}>
+              {i > 0 && <ChevronRight size="0.846rem" />}
+              {c.route && !current ? <button onClick={() => navigate(c.route!)}>{c.label}</button> : <span aria-current={current ? "page" : undefined}>{c.label}</span>}
+            </span>
+          );
+        })}
       </nav>
       <div className="spacer" />
       <button className="search-trigger" onClick={() => setPaletteOpen(true)}>
-        <Search size="1rem" /> Search orders, emails, PayPal IDs… <kbd>⌘K</kbd>
+        <Search size="1rem" /> Search or run a command… <kbd>⌘K</kbd>
       </button>
     </div>
   );

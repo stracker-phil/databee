@@ -7,6 +7,7 @@ use crate::launch::LaunchEvent;
 use crate::state::AppState;
 use crate::store::favorites::Favorite;
 use crate::store::history::HistoryEntry;
+use crate::store::keybindings::Keybindings;
 use crate::store::recents::RecentConnection;
 use crate::store::settings::Settings;
 
@@ -21,6 +22,19 @@ pub fn update_settings(state: State<'_, AppState>, settings: Settings) -> AppRes
     log::set_max_level(saved.log_level.into());
     log::info!("Settings updated");
     Ok(saved)
+}
+
+#[tauri::command]
+pub fn get_keybindings(state: State<'_, AppState>) -> Keybindings {
+    state.keybindings.get()
+}
+
+#[tauri::command]
+pub fn set_keybindings(
+    state: State<'_, AppState>,
+    bindings: Keybindings,
+) -> AppResult<Keybindings> {
+    state.keybindings.update(bindings)
 }
 
 #[tauri::command]

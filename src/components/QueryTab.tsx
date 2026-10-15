@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { AlertTriangle, CheckCircle2, Loader2, Play, PlayCircle, Square } from "lucide-react";
 import { api } from "../api";
+import { EVENTS } from "../commands";
 import { formatCount } from "../lib/format";
 import { useResolvedTheme } from "../lib/theme";
 import { useStore, type QueryTab as QueryTabState } from "../state/store";
@@ -44,6 +45,17 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
   const viewRef = useRef<EditorView | null>(null);
 
   const run = (sql: string) => void runQuery(tab.id, sql);
+  const isActive = useStore((s) => s.activeTabId === tab.id);
+  useEffect(() => {
+    if (!isActive) return;
+    const onRun = (e: Event) => {
+      const which = (e as CustomEvent<string>).detail;
+      run(which === "all" || !viewRef.current ? tab.sql : currentStatement(viewRef.current));
+    };
+    window.addEventListener(EVENTS.runQuery, onRun);
+    return () => window.removeEventListener(EVENTS.runQuery, onRun);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, tab.id, tab.sql]);
   const results = tab.response?.results ?? [];
   const result = results[tab.activeResult];
 
@@ -52,7 +64,6 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
       <QueryEditor
         value={tab.sql}
         onChange={(sql) => updateTab(tab.id, { sql })}
-        onRun={run}
         schema={schema}
         theme={theme}
         onView={(v) => (viewRef.current = v)}

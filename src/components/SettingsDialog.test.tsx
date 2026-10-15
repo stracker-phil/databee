@@ -8,6 +8,7 @@ import App from "../App";
 import { api } from "../api";
 import { resetStore } from "../state/store";
 import { settings } from "../test/fixtures";
+import { installCommands } from "../commands";
 import { SettingsDialog } from "./SettingsDialog";
 
 const mocked = vi.mocked(api, true);
@@ -43,6 +44,30 @@ describe("SettingsDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.accent).toBe("purple");
+  });
+
+  it("records, resets and saves shortcut overrides", async () => {
+    installCommands();
+    render(<SettingsDialog />);
+    await userEvent.type(screen.getByLabelText("Search shortcuts"), "Command palette");
+    const field = screen.getByRole("button", { name: "Record shortcut" });
+    expect(field).toHaveTextContent("⌘K");
+    await userEvent.click(field);
+    await userEvent.keyboard("{Meta>}{Shift>}p{/Shift}{/Meta}");
+    expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⇧P");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(mocked.setKeybindings).toHaveBeenCalledWith({ "palette.open": "Mod+Shift+P" });
+  });
+
+  it("warns when two commands in overlapping scopes share a binding", async () => {
+    installCommands();
+    render(<SettingsDialog />);
+    await userEvent.type(screen.getByLabelText("Search shortcuts"), "Zoom in");
+    await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await userEvent.keyboard("{Meta>}k{/Meta}");
+    expect(screen.getByRole("alert")).toHaveTextContent(/⌘K is used by both/);
+    await userEvent.click(screen.getByRole("button", { name: "Reset Zoom in" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("warns that trace logging records SQL", async () => {

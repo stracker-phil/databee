@@ -1,31 +1,35 @@
 use tauri::menu::{AboutMetadata, Menu, MenuItemBuilder, SubmenuBuilder};
 use tauri::{App, Emitter, Wry};
 
-pub const MENU_EVENT: &str = "menu";
+use crate::store::keybindings::{KeybindingsStore, MENU_DEFAULTS, accelerator};
 
-/// Custom items emit `menu` events with their id; the UI maps ids to actions.
-const ITEMS: &[(&str, &str, &str)] = &[
-    ("new_connection", "New Connection…", "CmdOrCtrl+N"),
-    ("new_query", "New Query Tab", "CmdOrCtrl+T"),
-    ("close_tab", "Close Tab", "CmdOrCtrl+W"),
-    ("add_favorite", "Add to Favorites", "CmdOrCtrl+D"),
-    ("settings", "Settings…", "CmdOrCtrl+,"),
-    ("apply_changes", "Apply Pending Changes", "CmdOrCtrl+S"),
-    ("go_back", "Back", "CmdOrCtrl+["),
-    ("go_forward", "Forward", "CmdOrCtrl+]"),
+/// Menu items emit `command` events with the command id; the UI's registry runs them.
+pub const COMMAND_EVENT: &str = "command";
+
+const LABELS: &[(&str, &str)] = &[
+    ("connection.new", "New Connection…"),
+    ("tabs.new", "New Query Tab"),
+    ("tabs.close", "Close Tab"),
+    ("favorites.add", "Add to Favorites"),
+    ("settings.open", "Settings…"),
+    ("changes.apply", "Apply Pending Changes"),
+    ("nav.back", "Back"),
+    ("nav.forward", "Forward"),
 ];
 
-pub fn build(app: &App) -> tauri::Result<Menu<Wry>> {
+pub fn build(app: &App, bindings: &KeybindingsStore) -> tauri::Result<Menu<Wry>> {
     let item = |id: &str| {
-        let (id, label, accel) = ITEMS.iter().find(|i| i.0 == id).unwrap();
-        MenuItemBuilder::with_id(*id, *label)
-            .accelerator(*accel)
-            .build(app)
+        let (id, label) = LABELS.iter().find(|i| i.0 == id).unwrap();
+        let mut builder = MenuItemBuilder::with_id(*id, *label);
+        if let Some(binding) = bindings.menu_binding(id) {
+            builder = builder.accelerator(accelerator(&binding));
+        }
+        builder.build(app)
     };
     let app_menu = SubmenuBuilder::new(app, "databee")
         .about(Some(AboutMetadata::default()))
         .separator()
-        .item(&item("settings")?)
+        .item(&item("settings.open")?)
         .separator()
         .services()
         .separator()
@@ -36,12 +40,12 @@ pub fn build(app: &App) -> tauri::Result<Menu<Wry>> {
         .quit()
         .build()?;
     let file = SubmenuBuilder::new(app, "File")
-        .item(&item("new_connection")?)
-        .item(&item("new_query")?)
+        .item(&item("connection.new")?)
+        .item(&item("tabs.new")?)
         .separator()
-        .item(&item("apply_changes")?)
+        .item(&item("changes.apply")?)
         .separator()
-        .item(&item("close_tab")?)
+        .item(&item("tabs.close")?)
         .build()?;
     let edit = SubmenuBuilder::new(app, "Edit")
         .undo()
@@ -52,11 +56,11 @@ pub fn build(app: &App) -> tauri::Result<Menu<Wry>> {
         .paste()
         .select_all()
         .separator()
-        .item(&item("add_favorite")?)
+        .item(&item("favorites.add")?)
         .build()?;
     let go = SubmenuBuilder::new(app, "Go")
-        .item(&item("go_back")?)
-        .item(&item("go_forward")?)
+        .item(&item("nav.back")?)
+        .item(&item("nav.forward")?)
         .build()?;
     let window = SubmenuBuilder::new(app, "Window")
         .minimize()
@@ -69,7 +73,7 @@ pub fn build(app: &App) -> tauri::Result<Menu<Wry>> {
 }
 
 pub fn forward(app: &tauri::AppHandle, id: &str) {
-    if ITEMS.iter().any(|i| i.0 == id) {
-        let _ = app.emit(MENU_EVENT, id);
+    if MENU_DEFAULTS.iter().any(|i| i.0 == id) {
+        let _ = app.emit(COMMAND_EVENT, id);
     }
 }

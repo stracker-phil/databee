@@ -8,8 +8,6 @@ import { statementAt } from "../lib/sql";
 interface Props {
   value: string;
   onChange: (value: string) => void;
-  /** Called with the statement under the cursor (or the selection). */
-  onRun: (sql: string) => void;
   schema: Record<string, string[]>;
   theme: "light" | "dark";
   onView?: (view: EditorView) => void;
@@ -22,32 +20,14 @@ export function currentStatement(view: EditorView): string {
   return range ? state.sliceDoc(range.from, range.to) : "";
 }
 
-export function QueryEditor({ value, onChange, onRun, schema, theme, onView }: Props) {
+export function QueryEditor({ value, onChange, schema, theme, onView }: Props) {
   const ref = useRef<ReactCodeMirrorRef>(null);
-  const onRunRef = useRef(onRun);
-  onRunRef.current = onRun;
 
   const extensions = useMemo(
     () => [
       sql({ dialect: MySQL, schema, upperCaseKeywords: true }),
-      Prec.highest(
-        keymap.of([
-          {
-            key: "Mod-Enter",
-            run: (view) => {
-              onRunRef.current(currentStatement(view));
-              return true;
-            },
-          },
-          {
-            key: "Shift-Mod-Enter",
-            run: (view) => {
-              onRunRef.current(view.state.doc.toString());
-              return true;
-            },
-          },
-        ]),
-      ),
+      // ⌘↵ / ⇧⌘↵ are app commands (editor.run / editor.runAll); keep CodeMirror from inserting a newline.
+      Prec.highest(keymap.of([{ key: "Mod-Enter", run: () => true }, { key: "Shift-Mod-Enter", run: () => true }])),
       EditorView.lineWrapping,
     ],
     [schema],
