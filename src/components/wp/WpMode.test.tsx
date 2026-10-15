@@ -1,0 +1,216 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
+
+import App from "../../App";
+import { api, type Dashboard, type OrderSummary } from "../../api";
+import { selectWpRoute, useStore } from "../../state/store";
+import { orderView, wpStore } from "../../test/wpFixtures";
+import { PendingTray } from "../PendingTray";
+import { CompareScreen, SnapshotsScreen } from "./Debugging";
+import { Omnisearch } from "./Omnisearch";
+import { WpWorkspace } from "./WpWorkspace";
+
+const mocked = vi.mocked(api, true);
+const now = Math.round(Date.now() / 1000);
+
+const order = (id: string, status = "wc-processing"): OrderSummary => ({
+  id,
+  kind: "shop_order",
+  status,
+  total: "€49.90",
+  gateway: "ppcp-gateway",
+  gatewayTitle: "PayPal",
+  email: "jane@shop.test",
+  name: "Jane Doe",
+  customerId: "12",
+  created: now - 3600,
+  itemCount: 2,
+});
+
+const dashboard: Dashboard = {
+  orders: { total: 974, today: 12, byStatus: [{ value: "wc-completed", label: "Completed", count: 900 }], days: [{ date: "2026-10-15", completed: 3, processing: 1, failed: 1, other: 0 }] },
+  recentOrders: [order("3229")],
+  autoloadBytes: 82_637,
+  autoloadHealthy: true,
+  transientsExpired: 11,
+  actions: { total: 2611, byStatus: [{ value: "failed", label: "Failed", count: 3 }], recentFailed: [], overdue: 0 },
+  hposDrift: 0,
+  tables: [
+    { name: "wp_woocommerce_log", rows: 44_000, bytes: 1, category: "logs" },
+    { name: "wp_wc_orders_meta", rows: 9_500, bytes: 1, category: "woocommerce" },
+  ],
+  insights: [{ level: "warning", text: "wp_woocommerce_log holds 54% of all rows. Consider a retention rule." }],
+};
+
+describe("WordPress mode", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wpStore();
+    mocked.wpDashboard.mockResolvedValue(dashboard);
+    mocked.wpBrowser.mockResolvedValue([{ list: "orders", label: "Orders", count: 974, breakdown: [] }]);
+    mocked.wpOrders.mockResolvedValue({
+      items: [order("3229"), order("3227", "wc-failed")],
+      hasMore: false,
+      facets: [
+        { value: "wc-processing", label: "Processing", count: 1 },
+        { value: "wc-failed", label: "Failed", count: 1 },
+      ],
+      kinds: [],
+    });
+    mocked.wpView.mockResolvedValue(orderView);
+  });
+
+  it("opens WordPress databases on the dashboard", async () => {
+    render(<App />);
+    const ordersTile = (await screen.findByText("+12 today")).closest(".stat-tile")!;
+    expect(within(ordersTile as HTMLElement).getByText("974")).toBeInTheDocument();
+    expect(screen.getByText("80.7 KB")).toBeInTheDocument();
+    expect(screen.getByText(/holds 54% of all rows/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /woocommerce_log/ })).toBeInTheDocument();
+    expect(screen.getByText("HPOS in sync")).toBeInTheDocument();
+  });
+
+  it("switches to the database view and back", async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /Database/ }));
+    expect(screen.getByRole("tree", { name: "Databases" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /WordPress/ }));
+    expect(await screen.findByText("Recent orders")).toBeInTheDocument();
+  });
+
+  it("navigates from the dashboard to an order and back", async () => {
+    render(<WpWorkspace />);
+    await userEvent.click(await screen.findByRole("button", { name: /#3229/ }));
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3229" });
+    expect(await screen.findByText("City/postcode differs")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "dashboard" });
+  });
+
+  it("filters orders by status chips and search", async () => {
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    expect(await screen.findByText("#3227")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Failed 1/ }));
+    expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ status: "wc-failed" }));
+    await userEvent.type(screen.getByLabelText("Search list"), "jane");
+    await vi.waitFor(() => expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ search: "jane" })));
+  });
+
+  it("shows an order with addresses, items, payment waterfall and timeline", async () => {
+    mocked.wpOrderLogs.mockResolvedValue([{ at: now - 1800, kind: "log", title: "PATCH /v2/checkout/orders/66M", detail: "woocommerce-paypal-payments", level: "info", link: null }]);
+    useStore.getState().openEntity("order", "4711");
+    render(<WpWorkspace />);
+    expect(await screen.findByText("Marktstraße 1")).toBeInTheDocument();
+    expect(screen.getByText("MUG-1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Fees")).toHaveTextContent("gross €49.90→ fee €2.04→ net €47.86");
+    expect(await screen.findByText("PATCH /v2/checkout/orders/66M")).toBeInTheDocument();
+    expect(screen.getByText("Order created")).toBeInTheDocument();
+  });
+
+  it("queues an order status change from the header", async () => {
+    useStore.getState().openEntity("order", "4711");
+    render(<WpWorkspace />);
+    await userEvent.selectOptions(await screen.findByLabelText("Change status"), "completed");
+    expect(mocked.planChange).toHaveBeenCalledWith("s1", { type: "setOrderStatus", database: "db", id: "4711", status: "completed" });
+  });
+
+  it("highlights fields that changed in live mode", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    useStore.getState().openEntity("order", "4711");
+    render(<WpWorkspace />);
+    await screen.findByText("Marktstraße 1");
+    mocked.wpView.mockResolvedValue({ ...orderView, doc: { ...orderView.doc, fields: [orderView.doc.fields[0], { ...orderView.doc.fields[1], value: { t: "text", v: "wc-completed" } }] } });
+    await userEvent.click(screen.getByRole("button", { name: /Live mode/ }));
+    await vi.advanceTimersByTimeAsync(3100);
+    await vi.waitFor(() => expect(screen.getByText(/1 changed/)).toBeInTheDocument());
+    vi.useRealTimers();
+  });
+});
+
+describe("Omnisearch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wpStore();
+  });
+
+  it("finds pasted identifiers and opens the match", async () => {
+    mocked.wpSearch.mockResolvedValue([{ entity: "order", id: "3229", title: "Order #3229", subtitle: null, matched: "_ppcp_paypal_order_id" }]);
+    useStore.getState().setPaletteOpen(true);
+    render(<Omnisearch />);
+    await userEvent.type(screen.getByLabelText("Search everything"), "3UT60541JW9211534");
+    expect(await screen.findByText("Order #3229")).toBeInTheDocument();
+    expect(screen.getByText(/matched _ppcp_paypal_order_id/)).toBeInTheDocument();
+    await userEvent.keyboard("{Enter}");
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3229" });
+    expect(useStore.getState().paletteOpen).toBe(false);
+  });
+
+  it("jumps to screens by name", async () => {
+    useStore.getState().setPaletteOpen(true);
+    render(<Omnisearch />);
+    await userEvent.type(screen.getByLabelText("Search everything"), "failed act");
+    await userEvent.click(screen.getByText("Failed actions"));
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "actions", params: { status: "failed" } });
+  });
+});
+
+describe("Pending changes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wpStore();
+  });
+
+  it("applies queued SQL in one batch and can undo it", async () => {
+    await useStore.getState().queueChange({ type: "retryAction", database: "db", id: "1" });
+    await useStore.getState().queueChange({ type: "setAutoload", database: "db", option: "x", on: false });
+    render(<PendingTray />);
+    expect(screen.getByText("2 pending changes")).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: "Show SQL" })[0]);
+    expect(screen.getByText("-- retryAction;")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
+    expect(mocked.applyChanges).toHaveBeenCalledWith("s1", ["-- retryAction", "-- setAutoload"]);
+    await userEvent.click(await screen.findByRole("button", { name: /Undo last apply/ }));
+    expect(mocked.applyChanges).toHaveBeenLastCalledWith("s1", ["-- undo setAutoload", "-- undo retryAction"]);
+  });
+
+  it("discards single changes without writing", async () => {
+    await useStore.getState().queueChange({ type: "retryAction", database: "db", id: "1" });
+    render(<PendingTray />);
+    await userEvent.click(screen.getByRole("button", { name: /Discard planned retryAction/ }));
+    expect(screen.queryByText(/pending change/)).not.toBeInTheDocument();
+    expect(mocked.applyChanges).not.toHaveBeenCalled();
+  });
+});
+
+describe("Snapshots and compare", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wpStore();
+  });
+
+  it("diffs a snapshot against now", async () => {
+    mocked.wpSnapshots.mockResolvedValue([{ id: "a", label: "order #4711", scope: { entity: "order", id: "4711", includeRelated: true, optionPattern: null, includeActions: true }, created: new Date().toISOString(), paths: 40 }]);
+    mocked.wpSnapshotDiff.mockResolvedValue([{ path: "order#4711/field/status", before: "wc-pending", after: "wc-processing" }]);
+    render(<SnapshotsScreen />);
+    await userEvent.click(await screen.findByRole("button", { name: /Diff now/ }));
+    const row = (await screen.findByText("order#4711/field/status")).closest("tr")!;
+    expect(within(row).getByText("wc-pending")).toBeInTheDocument();
+    expect(within(row).getByText("wc-processing")).toBeInTheDocument();
+  });
+
+  it("compares two entities showing only differences by default", async () => {
+    mocked.wpCompare.mockResolvedValue([
+      { path: "field/status", a: "wc-processing", b: "wc-failed" },
+      { path: "field/currency", a: "EUR", b: "EUR" },
+    ]);
+    render(<CompareScreen entity="order" a="4711" b="4713" />);
+    expect(await screen.findByText("field/status")).toBeInTheDocument();
+    expect(screen.queryByText("field/currency")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(screen.getByText("field/currency")).toBeInTheDocument();
+  });
+});

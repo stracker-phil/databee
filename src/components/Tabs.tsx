@@ -1,8 +1,6 @@
-import { FileCode2, FileText, Loader2, Plus, Settings2, Table2, X } from "lucide-react";
+import { FileCode2, Loader2, Plus, Table2, X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useStore } from "../state/store";
-import { DocumentTab } from "./DocumentTab";
-import { OptionsTab } from "./OptionsTab";
 import { QueryTab } from "./QueryTab";
 import { TableTab } from "./TableTab";
 
@@ -28,10 +26,6 @@ export function TabBar() {
             <Loader2 size={12} className="spin" />
           ) : t.kind === "query" ? (
             <FileCode2 size={12} />
-          ) : t.kind === "document" ? (
-            <FileText size={12} />
-          ) : t.kind === "options" ? (
-            <Settings2 size={12} />
           ) : (
             <Table2 size={12} />
           )}
@@ -64,15 +58,7 @@ export function TabPanels() {
     <>
       {tabs.map((t) => (
         <div key={t.id} role="tabpanel" className="tab-content" hidden={t.id !== activeTabId} style={t.id === activeTabId ? undefined : { display: "none" }}>
-          {t.kind === "query" ? (
-            <QueryTab tab={t} />
-          ) : t.kind === "table" ? (
-            <TableTab tab={t} />
-          ) : t.kind === "document" ? (
-            <DocumentTab tab={t} />
-          ) : (
-            <OptionsTab tab={t} />
-          )}
+          {t.kind === "query" ? <QueryTab tab={t} /> : <TableTab tab={t} />}
         </div>
       ))}
     </>

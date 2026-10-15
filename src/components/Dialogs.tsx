@@ -98,6 +98,42 @@ export function PasswordDialog({ spec, error, savePassword }: { spec: Parameters
   );
 }
 
+function InsertRowDialog({ database, table, columns }: { database: string; table: string; columns: import("../api").ColumnInfo[] }) {
+  const close = useStore((s) => s.closeDialog);
+  const queueChange = useStore((s) => s.queueChange);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const editable = columns.filter((c) => !c.extra.includes("auto_increment") && !c.extra.includes("GENERATED"));
+  return (
+    <Modal onClose={close} className="wide" labelledBy="insert-title">
+      <form
+        style={{ display: "contents" }}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const entries = Object.entries(values).filter(([, v]) => v !== "");
+          if (await queueChange({ type: "insertRow", database, table, values: entries.map(([k, v]) => [k, v === "NULL" ? null : v]) })) close();
+        }}
+      >
+        <h2 id="insert-title">Insert into {table}</h2>
+        <p className="hint" style={{ margin: 0 }}>Empty fields use the column default; type NULL for NULL.</p>
+        <div className="insert-grid">
+          {editable.map((c) => (
+            <label key={c.name} className="field">
+              <span>
+                {c.name} <span className="muted">{c.columnType}{c.nullable ? "" : " · required"}</span>
+              </span>
+              <input className="input mono" placeholder={c.default ?? ""} value={values[c.name] ?? ""} onChange={(e) => setValues({ ...values, [c.name]: e.target.value })} />
+            </label>
+          ))}
+        </div>
+        <div className="actions">
+          <button type="button" className="btn" onClick={close}>Cancel</button>
+          <button type="submit" className="btn btn-primary">Queue insert</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function Dialogs() {
   const dialog = useStore((s) => s.dialog);
   const hasSessions = useStore((s) => s.sessions.length > 0);
@@ -112,6 +148,8 @@ export function Dialogs() {
       return <PasswordDialog key={accountOf(dialog.spec)} {...dialog} />;
     case "settings":
       return <SettingsDialog />;
+    case "insertRow":
+      return <InsertRowDialog {...dialog} />;
     case "connect":
       // Without sessions the connect screen is the main view and shows this state itself.
       if (!hasSessions) return null;

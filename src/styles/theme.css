@@ -38,6 +38,21 @@
   --type-json: #b25000;
   --type-null: var(--text-tertiary);
 
+  --chart-green: #3a9b6f;
+  --chart-blue: #4a7fd6;
+  --chart-red: #d65a5a;
+  --chart-orange: #e09a3a;
+  --chart-purple: #8b6fd6;
+  --chart-gray: #9a9aa2;
+  --tile-green: #d7efe3;
+  --tile-blue: #dbe6fb;
+  --tile-purple: #e6defb;
+  --tile-red: #f8dcd6;
+  --tile-orange: #fbe8cf;
+  --tile-gray: #ececef;
+  --tile-text: #1d1d1f;
+  --flash: rgba(255, 196, 0, 0.35);
+
   --radius-sm: 5px;
   --radius: 8px;
   --radius-lg: 12px;
@@ -69,6 +84,20 @@
     --type-number: #7cacf8;
     --type-temporal: #c5a3ff;
     --type-json: #ffb340;
+    --chart-green: #48a77a;
+    --chart-blue: #5b8fe6;
+    --chart-red: #e06a62;
+    --chart-orange: #e8a24a;
+    --chart-purple: #9a82e8;
+    --chart-gray: #6c6c74;
+    --tile-green: #12332a;
+    --tile-blue: #172846;
+    --tile-purple: #231d4a;
+    --tile-red: #3a1a12;
+    --tile-orange: #3a2a12;
+    --tile-gray: #2a2a2e;
+    --tile-text: #f2f2f4;
+    --flash: rgba(255, 196, 0, 0.25);
     color-scheme: dark;
   }
 }
@@ -95,6 +124,20 @@
   --type-number: #7cacf8;
   --type-temporal: #c5a3ff;
   --type-json: #ffb340;
+  --chart-green: #48a77a;
+  --chart-blue: #5b8fe6;
+  --chart-red: #e06a62;
+  --chart-orange: #e8a24a;
+  --chart-purple: #9a82e8;
+  --chart-gray: #6c6c74;
+  --tile-green: #12332a;
+  --tile-blue: #172846;
+  --tile-purple: #231d4a;
+  --tile-red: #3a1a12;
+  --tile-orange: #3a2a12;
+  --tile-gray: #2a2a2e;
+  --tile-text: #f2f2f4;
+  --flash: rgba(255, 196, 0, 0.25);
   color-scheme: dark;
 }
 

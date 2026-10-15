@@ -4,6 +4,8 @@ import {
   api,
   toAppError,
   type AppError,
+  type ChangeRequest,
+  type PlannedChange,
   type Cell,
   type ColumnMeta,
   type ConnectionSpec,
@@ -42,25 +44,27 @@ export interface TableTab {
   filter?: string;
 }
 
-export interface DocumentTab {
-  id: string;
-  kind: "document";
-  sessionId: string;
-  title: string;
-  database: string;
-  entity: string;
-  entityId: string;
-}
+export type Tab = QueryTab | TableTab;
 
-export interface OptionsTab {
-  id: string;
-  kind: "options";
-  sessionId: string;
-  title: string;
-  database: string;
-}
+export type WpList =
+  | "orders"
+  | "subscriptions"
+  | "customers"
+  | "products"
+  | "actions"
+  | "sessions"
+  | "content"
+  | "settings";
 
-export type Tab = QueryTab | TableTab | DocumentTab | OptionsTab;
+export type WpRoute =
+  | { screen: "dashboard" }
+  | { screen: "list"; list: WpList; params?: Record<string, string> }
+  | { screen: "entity"; entity: string; id: string }
+  | { screen: "compare"; entity: string; a: string; b: string }
+  | { screen: "snapshots" };
+
+export type Mode = "wp" | "db";
+
 
 export interface Toast {
   id: number;
@@ -73,7 +77,8 @@ export type Dialog =
   | { type: "connect"; spec?: ConnectionSpec; error?: AppError }
   | { type: "password"; spec: ConnectionSpec; error?: string; savePassword: boolean }
   | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }
-  | { type: "prompt"; title: string; value: string; onSubmit: (value: string) => void };
+  | { type: "prompt"; title: string; value: string; onSubmit: (value: string) => void }
+  | { type: "insertRow"; database: string; table: string; columns: import("../api").ColumnInfo[] };
 
 export interface SchemaState {
   databases: DatabaseInfo[];
@@ -99,6 +104,16 @@ interface State {
   sidebarPanel: "tables" | "history" | "wordpress";
   /** WordPress detection per `session/database`; null = not WordPress. */
   wp: Record<string, WpInfo | null>;
+  mode: Mode;
+  /** The user picked a mode explicitly; don't switch automatically anymore. */
+  modeChosen: boolean;
+  wpNav: { stack: WpRoute[]; index: number };
+  /** Bumped when data may have changed (applied edits, live refresh); views reload on change. */
+  dataVersion: number;
+  paletteOpen: boolean;
+  /** Planned edits waiting for review, and applied batches that can be undone. */
+  pending: (PlannedChange & { id: number; sessionId: string })[];
+  applied: { sessionId: string; changes: PlannedChange[] }[];
 }
 
 interface Actions {
@@ -113,8 +128,19 @@ interface Actions {
   loadTables(sessionId: string, database: string): Promise<void>;
   openQueryTab(sql?: string): void;
   openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string): void;
-  openDocument(entity: string, entityId: string, label?: string): void;
-  openOptions(): void;
+  setMode(mode: Mode): void;
+  navigate(route: WpRoute): void;
+  goBack(): void;
+  goForward(): void;
+  openEntity(entity: string, id: string): void;
+  bumpData(): void;
+  queueChange(change: ChangeRequest): Promise<boolean>;
+  discardChange(id: number): void;
+  discardAll(): void;
+  applyChanges(): Promise<void>;
+  undoLast(): Promise<void>;
+  takeSnapshot(entity: string, id: string): Promise<void>;
+  setPaletteOpen(open: boolean): void;
   loadWp(sessionId: string, database: string, refresh?: boolean): Promise<void>;
   updateTab(id: string, patch: Partial<QueryTab> | Partial<TableTab>): void;
   activateTab(id: string): void;
@@ -152,6 +178,13 @@ const initialState: State = {
   selectedCell: null,
   sidebarPanel: "tables",
   wp: {},
+  mode: "db",
+  modeChosen: false,
+  wpNav: { stack: [{ screen: "dashboard" }], index: 0 },
+  dataVersion: 0,
+  paletteOpen: false,
+  pending: [],
+  applied: [],
 };
 
 let nextId = 1;
@@ -255,7 +288,12 @@ export const useStore = create<Store>()((set, get) => {
 
     setActiveSession(sessionId) {
       const tab = get().tabs.find((t) => t.sessionId === sessionId);
-      set({ activeSessionId: sessionId, activeTabId: tab?.id ?? null, selectedCell: null });
+      set({
+        activeSessionId: sessionId,
+        activeTabId: tab?.id ?? null,
+        selectedCell: null,
+        wpNav: { stack: [{ screen: "dashboard" }], index: 0 },
+      });
       void get().loadFavorites();
     },
 
@@ -265,6 +303,7 @@ export const useStore = create<Store>()((set, get) => {
         set((s) => ({
           sessions: s.sessions.map((x) => (x.id === sessionId ? { ...x, database } : x)),
         }));
+        set({ wpNav: { stack: [{ screen: "dashboard" }], index: 0 } });
         void get().loadTables(sessionId, database);
         void get().loadWp(sessionId, database);
       } catch (e) {
@@ -351,44 +390,120 @@ export const useStore = create<Store>()((set, get) => {
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
     },
 
-    openDocument(entity, entityId, label) {
-      const session = activeSession();
-      if (!session?.database) return;
-      const existing = get().tabs.find(
-        (t) => t.kind === "document" && t.sessionId === session.id && t.entity === entity && t.entityId === entityId,
-      );
-      if (existing) {
-        set({ activeTabId: existing.id, selectedCell: null });
-        return;
-      }
-      const tab: DocumentTab = {
-        id: newId("doc"),
-        kind: "document",
-        sessionId: session.id,
-        title: `${label ?? entity} #${entityId}`,
-        database: session.database,
-        entity,
-        entityId,
-      };
-      set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
+    setMode(mode) {
+      set({ mode, modeChosen: true });
     },
 
-    openOptions() {
+    navigate(route) {
+      set((s) => {
+        const current = s.wpNav.stack[s.wpNav.index];
+        if (JSON.stringify(current) === JSON.stringify(route)) return { mode: "wp" as Mode };
+        const stack = [...s.wpNav.stack.slice(0, s.wpNav.index + 1), route].slice(-100);
+        return { mode: "wp" as Mode, wpNav: { stack, index: stack.length - 1 } };
+      });
+    },
+
+    goBack() {
+      set((s) => ({ wpNav: { ...s.wpNav, index: Math.max(0, s.wpNav.index - 1) } }));
+    },
+
+    goForward() {
+      set((s) => ({ wpNav: { ...s.wpNav, index: Math.min(s.wpNav.stack.length - 1, s.wpNav.index + 1) } }));
+    },
+
+    openEntity(entity, id) {
+      get().navigate({ screen: "entity", entity, id });
+    },
+
+    bumpData() {
+      set((s) => ({ dataVersion: s.dataVersion + 1 }));
+    },
+
+    async queueChange(change) {
       const session = activeSession();
-      if (!session?.database) return;
-      const existing = get().tabs.find((t) => t.kind === "options" && t.sessionId === session.id && t.database === session.database);
-      if (existing) {
-        set({ activeTabId: existing.id });
+      if (!session) return false;
+      try {
+        const planned = await api.planChange(session.id, change);
+        set((s) => ({ pending: [...s.pending, { ...planned, id: nextId++, sessionId: session.id }] }));
+        return true;
+      } catch (e) {
+        fail(e, "Cannot prepare change");
+        return false;
+      }
+    },
+
+    discardChange(id) {
+      set((s) => ({ pending: s.pending.filter((p) => p.id !== id) }));
+    },
+
+    discardAll() {
+      set({ pending: [] });
+    },
+
+    async applyChanges() {
+      const session = activeSession();
+      const batch = get().pending.filter((p) => p.sessionId === session?.id);
+      if (!session || batch.length === 0) return;
+      try {
+        await api.applyChanges(session.id, batch.flatMap((p) => p.statements));
+        set((s) => ({
+          pending: s.pending.filter((p) => !batch.includes(p)),
+          applied: [...s.applied, { sessionId: session.id, changes: batch }].slice(-20),
+        }));
+        get().toast("success", `Applied ${batch.length} ${batch.length === 1 ? "change" : "changes"}`);
+        get().bumpData();
+      } catch (e) {
+        fail(e, "Changes were not applied");
+      }
+    },
+
+    async undoLast() {
+      const session = activeSession();
+      const last = [...get().applied].reverse().find((a) => a.sessionId === session?.id);
+      if (!session || !last) return;
+      const statements = [...last.changes].reverse().flatMap((c) => c.undo);
+      if (statements.length === 0) {
+        get().toast("info", "This change can't be undone automatically");
         return;
       }
-      const tab: OptionsTab = { id: newId("options"), kind: "options", sessionId: session.id, title: "Options", database: session.database };
-      set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
+      try {
+        await api.applyChanges(session.id, statements);
+        set((s) => ({ applied: s.applied.filter((a) => a !== last) }));
+        get().toast("success", "Undone");
+        get().bumpData();
+      } catch (e) {
+        fail(e, "Undo failed");
+      }
+    },
+
+    async takeSnapshot(entity, id) {
+      const session = activeSession();
+      if (!session?.database) return;
+      try {
+        const info = await api.wpSnapshotTake(
+          session.id,
+          session.database,
+          { entity, id, includeRelated: true, optionPattern: null, includeActions: true },
+          `${entity} #${id}`,
+        );
+        get().toast("success", `Snapshot saved (${info.paths} values). Diff it under Snapshots.`);
+      } catch (e) {
+        fail(e, "Snapshot failed");
+      }
+    },
+
+    setPaletteOpen(paletteOpen) {
+      set({ paletteOpen });
     },
 
     async loadWp(sessionId, database, refresh = false) {
       try {
         const info = await api.wpDetect(sessionId, database, refresh);
-        set((s) => ({ wp: { ...s.wp, [`${sessionId}/${database}`]: info } }));
+        set((s) => ({
+          wp: { ...s.wp, [`${sessionId}/${database}`]: info },
+          // WordPress databases open in WordPress mode until the user picks a mode.
+          mode: info && !s.modeChosen && s.activeSessionId === sessionId ? "wp" : s.mode,
+        }));
       } catch (e) {
         fail(e, "WordPress detection failed");
       }
@@ -495,10 +610,6 @@ export const useStore = create<Store>()((set, get) => {
     addCurrentTabToFavorites() {
       const tab = get().tabs.find((t) => t.id === get().activeTabId);
       if (!tab) return;
-      if (tab.kind === "document" || tab.kind === "options") {
-        get().toast("info", "Only tables and queries can be pinned for now");
-        return;
-      }
       if (tab.kind === "table") {
         void get().addFavorite(tab.table, { kind: "table", database: tab.database, table: tab.table });
         return;
@@ -603,6 +714,8 @@ export function resetStore(patch: Partial<State> = {}) {
 }
 
 export const selectActiveSession = (s: Store) => s.sessions.find((x) => x.id === s.activeSessionId) ?? null;
+export const selectWpRoute = (s: Store): WpRoute => s.wpNav.stack[s.wpNav.index] ?? { screen: "dashboard" };
+
 export const selectActiveTab = (s: Store) => s.tabs.find((t) => t.id === s.activeTabId) ?? null;
 
 /** WordPress info for the active session's current database (undefined = not probed yet). */

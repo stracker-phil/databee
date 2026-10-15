@@ -18,6 +18,8 @@ export interface Settings {
   defaultPort: number;
   showSystemSchemas: boolean;
   logLevel: LogLevel;
+  screenShareMode: boolean;
+  gravatar: boolean;
 }
 
 export const ACCENTS = ["blue", "purple", "pink", "orange", "green", "graphite"] as const;
@@ -192,6 +194,15 @@ export interface WpContext {
   version: string | null;
   sites: { blogId: number; prefix: string; domain: string | null; path: string | null }[];
   wc: { version: string | null; hpos: HposMode; hasActionScheduler: boolean } | null;
+  site: {
+    name: string | null;
+    url: string | null;
+    currency: string | null;
+    gmtOffsetSecs: number;
+    theme: string | null;
+    activePlugins: string[];
+    uploadsUrl: string | null;
+  };
 }
 
 export interface WpInfo {
@@ -203,13 +214,31 @@ export interface WpInfo {
 export interface EntityLink {
   entity: string;
   id: string;
+  label: string | null;
+  image: string | null;
 }
+
+export type Hint =
+  | { type: "money"; text: string }
+  | { type: "time"; unix: number; utc: boolean }
+  | { type: "flag"; on: boolean }
+  | { type: "url"; href: string }
+  | { type: "userAgent"; text: string }
+  | { type: "email" }
+  | { type: "roles"; roles: string[] }
+  | { type: "country"; code: string }
+  | { type: "guest" };
+
+export type Sensitive = "secret" | "pii";
 
 export interface DocField {
   name: string;
+  label: string | null;
   value: Cell;
   decoded: DecodedValue | null;
   link: EntityLink | null;
+  hint: Hint | null;
+  sensitive: Sensitive | null;
 }
 
 export interface EntityDoc {
@@ -218,10 +247,11 @@ export interface EntityDoc {
   id: string;
   title: string | null;
   subtitle: string | null;
+  image: string | null;
   table: string;
   idColumn: string;
   fields: DocField[];
-  meta: { name: string; private: boolean; entries: DocField[] }[];
+  meta: { name: string; private: boolean; known: boolean; entries: DocField[] }[];
   relations: { name: string; label: string; entity: string; count: number }[];
 }
 
@@ -231,4 +261,348 @@ export interface OptionsOverview {
   autoloadBytes: number;
   groups: { prefix: string; count: number; bytes: number; autoloadCount: number; autoloadBytes: number }[];
   transients: { name: string; siteWide: boolean; bytes: number; expiresAt: number | null; expired: boolean }[];
+}
+
+// ---------- WordPress mode ----------
+
+export interface Facet {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface Page<T> {
+  items: T[];
+  hasMore: boolean;
+  facets: Facet[];
+  kinds: Facet[];
+}
+
+export interface ListQuery {
+  status?: string | null;
+  kind?: string | null;
+  search?: string | null;
+  offset?: number;
+  limit?: number;
+}
+
+export interface OrderSummary {
+  id: string;
+  kind: string;
+  status: string;
+  total: string | null;
+  gateway: string | null;
+  gatewayTitle: string | null;
+  email: string | null;
+  name: string | null;
+  customerId: string | null;
+  created: number | null;
+  itemCount: number;
+}
+
+export interface CustomerSummary {
+  id: string;
+  login: string;
+  email: string | null;
+  name: string | null;
+  registered: number | null;
+  roles: string[];
+  orderCount: number;
+  totalSpent: string | null;
+  lastOrder: number | null;
+  avatar: string | null;
+}
+
+export interface ProductSummary {
+  id: string;
+  name: string;
+  status: string;
+  kind: string | null;
+  sku: string | null;
+  price: string | null;
+  stockStatus: string | null;
+  stock: string | null;
+  totalSales: number;
+  variations: number;
+  image: string | null;
+}
+
+export interface ActionSummary {
+  id: string;
+  hook: string;
+  status: string;
+  scheduled: number | null;
+  lastAttempt: number | null;
+  attempts: number;
+  args: string | null;
+  group: string | null;
+  message: string | null;
+}
+
+export interface SessionSummary {
+  key: string;
+  expires: number | null;
+  customerId: string | null;
+  email: string | null;
+  items: number;
+  total: string | null;
+}
+
+export interface PostSummary {
+  id: string;
+  title: string | null;
+  kind: string;
+  status: string;
+  author: string | null;
+  date: number | null;
+  modified: number | null;
+}
+
+export interface DayBucket {
+  date: string;
+  completed: number;
+  processing: number;
+  failed: number;
+  other: number;
+}
+
+export interface Dashboard {
+  orders: { total: number; today: number; byStatus: Facet[]; days: DayBucket[] } | null;
+  recentOrders: OrderSummary[];
+  autoloadBytes: number;
+  autoloadHealthy: boolean;
+  transientsExpired: number;
+  actions: { total: number; byStatus: Facet[]; recentFailed: ActionSummary[]; overdue: number } | null;
+  hposDrift: number | null;
+  tables: { name: string; rows: number; bytes: number; category: string }[];
+  insights: { level: "info" | "warning" | "danger"; text: string }[];
+}
+
+export interface BrowserSection {
+  list: string;
+  label: string;
+  count: number;
+  breakdown: Facet[];
+}
+
+export interface Address {
+  name: string | null;
+  company: string | null;
+  lines: string[];
+  country: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface TimelineEvent {
+  at: number;
+  kind: string;
+  title: string;
+  detail: string | null;
+  level: "info" | "warning" | "error";
+  link: EntityLink | null;
+}
+
+export interface RelatedChip {
+  label: string;
+  link: EntityLink | null;
+  count: number | null;
+  target: string | null;
+}
+
+export interface OrderView {
+  view: "order";
+  doc: EntityDoc;
+  kind: string;
+  status: string;
+  total: string | null;
+  currency: string | null;
+  created: number | null;
+  paid: number | null;
+  completed: number | null;
+  customer: EntityLink | null;
+  customerEmail: string | null;
+  parent: EntityLink | null;
+  billing: Address | null;
+  shipping: Address | null;
+  addressNotes: string[];
+  items: {
+    id: string;
+    name: string;
+    kind: string;
+    quantity: string | null;
+    total: string | null;
+    product: EntityLink | null;
+    sku: string | null;
+    meta: [string, string][];
+  }[];
+  totals: [string, string][];
+  payment: {
+    gateway: string | null;
+    gatewayTitle: string | null;
+    transactionId: string | null;
+    paypalOrderId: string | null;
+    intent: string | null;
+    mode: string | null;
+    source: string | null;
+    payerEmail: string | null;
+    fees: { gross: string; fee: string; net: string; feeRatio: number } | null;
+  } | null;
+  attribution: {
+    source: string | null;
+    sourceType: string | null;
+    referrer: string | null;
+    entry: string | null;
+    pages: string | null;
+    sessions: string | null;
+    device: string | null;
+    userAgent: string | null;
+    sessionStart: number | null;
+    utm: [string, string][];
+  } | null;
+  timeline: TimelineEvent[];
+  related: RelatedChip[];
+}
+
+export interface CustomerView {
+  view: "customer";
+  doc: EntityDoc;
+  name: string;
+  login: string | null;
+  email: string | null;
+  avatar: string | null;
+  roles: string[];
+  registered: number | null;
+  lastActive: number | null;
+  billing: Address | null;
+  shipping: Address | null;
+  orderCount: number;
+  totalSpent: string | null;
+  averageOrder: string | null;
+  orders: OrderSummary[];
+  subscriptions: OrderSummary[];
+  tokens: { id: string; gateway: string; kind: string; isDefault: boolean; summary: string }[];
+  session: EntityLink | null;
+  related: RelatedChip[];
+}
+
+export interface ProductView {
+  view: "product";
+  doc: EntityDoc;
+  name: string;
+  status: string;
+  kind: string | null;
+  image: string | null;
+  sku: string | null;
+  price: string | null;
+  regularPrice: string | null;
+  salePrice: string | null;
+  stockStatus: string | null;
+  stock: string | null;
+  totalSales: string | null;
+  terms: [string, string[]][];
+  attributes: [string, string[]][];
+  variations: {
+    id: string;
+    attributes: [string, string][];
+    sku: string | null;
+    price: string | null;
+    stockStatus: string | null;
+    stock: string | null;
+    image: string | null;
+  }[];
+  related: RelatedChip[];
+}
+
+export interface ActionView {
+  view: "action";
+  doc: EntityDoc;
+  hook: string;
+  status: string;
+  scheduled: number | null;
+  args: DecodedValue | null;
+  group: string | null;
+  logs: { at: number | null; message: string }[];
+}
+
+export interface SessionView {
+  view: "session";
+  doc: EntityDoc;
+  key: string;
+  expires: number | null;
+  customer: EntityLink | null;
+  items: number;
+  total: string | null;
+  email: string | null;
+  value: DecodedValue | null;
+}
+
+export type EntityViewData =
+  | OrderView
+  | CustomerView
+  | ProductView
+  | ActionView
+  | SessionView
+  | ({ view: "generic" } & EntityDoc);
+
+export type ChangeRequest =
+  | { type: "setCell"; database: string; table: string; keyColumn: string; key: string; column: string; value: string | null }
+  | { type: "deleteRow"; database: string; table: string; keyColumn: string; key: string }
+  | { type: "duplicateRow"; database: string; table: string; keyColumn: string; key: string }
+  | { type: "insertRow"; database: string; table: string; values: [string, string | null][] }
+  | { type: "setMeta"; database: string; entity: string; id: string; key: string; value: string }
+  | { type: "deleteMeta"; database: string; entity: string; id: string; key: string }
+  | { type: "setOrderStatus"; database: string; id: string; status: string }
+  | { type: "setAutoload"; database: string; option: string; on: boolean }
+  | { type: "deleteExpiredTransients"; database: string }
+  | { type: "retryAction"; database: string; id: string }
+  | { type: "cancelAction"; database: string; id: string };
+
+export interface PlannedChange {
+  description: string;
+  statements: string[];
+  undo: string[];
+}
+
+export type NewValue =
+  | { kind: "string"; text: string }
+  | { kind: "int"; text: string }
+  | { kind: "float"; text: string }
+  | { kind: "bool"; text: boolean }
+  | { kind: "null" };
+
+export interface SnapshotScope {
+  entity: string | null;
+  id: string | null;
+  includeRelated: boolean;
+  optionPattern: string | null;
+  includeActions: boolean;
+}
+
+export interface SnapshotInfo {
+  id: string;
+  label: string;
+  scope: SnapshotScope;
+  created: string;
+  paths: number;
+}
+
+export interface DiffEntry {
+  path: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface CompareRow {
+  path: string;
+  a: string | null;
+  b: string | null;
+}
+
+export interface SearchHit {
+  entity: string;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  matched: string;
 }

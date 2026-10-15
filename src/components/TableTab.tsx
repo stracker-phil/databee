@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Copy, FileText, Filter, Loader2, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, FileText, Filter, Loader2, Plus, RefreshCw } from "lucide-react";
 import { api, toAppError, type AppError, type BrowsePage, type TableStructure } from "../api";
 import { cellText } from "../lib/format";
 import { selectWp, useStore, type TableTab as TableTabState } from "../state/store";
@@ -20,7 +20,22 @@ function DataView({ tab }: { tab: TableTabState }) {
   const [browse, setBrowse] = useState<Browse>({ offset: 0, orderBy: null, descending: false, filter: tab.filter ?? "" });
   const [filterInput, setFilterInput] = useState(tab.filter ?? "");
   const entity = useStore((s) => (s.sessions.find((x) => x.id === tab.sessionId)?.database === tab.database ? selectWp(s)?.tableEntities[tab.table] : undefined));
-  const openDocument = useStore((s) => s.openDocument);
+  const openEntity = useStore((s) => s.openEntity);
+  const queueChange = useStore((s) => s.queueChange);
+  const dataVersion = useStore((s) => s.dataVersion);
+  const [primaryKey, setPrimaryKey] = useState<string | null>(null);
+  const [structure, setStructure] = useState<TableStructure | null>(null);
+
+  useEffect(() => {
+    api.describeTable(tab.sessionId, tab.database, tab.table).then(
+      (s) => {
+        setStructure(s);
+        const pk = s.indexes.find((i) => i.name === "PRIMARY");
+        setPrimaryKey(pk && pk.columns.length === 1 ? pk.columns[0] : null);
+      },
+      () => setPrimaryKey(null),
+    );
+  }, [tab.sessionId, tab.database, tab.table]);
   const [page, setPage] = useState<BrowsePage | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [loading, setLoading] = useState(false);
@@ -44,7 +59,8 @@ function DataView({ tab }: { tab: TableTabState }) {
     } finally {
       setLoading(false);
     }
-  }, [tab.sessionId, tab.database, tab.table, browse, pageSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab.sessionId, tab.database, tab.table, browse, pageSize, dataVersion]);
 
   useEffect(() => {
     void load();
@@ -59,6 +75,11 @@ function DataView({ tab }: { tab: TableTabState }) {
     }));
 
   const rows = page?.result.rows.length ?? 0;
+  const keyOf = (row: number): string | null => {
+    if (!page || !primaryKey) return null;
+    const i = page.result.columns.findIndex((c) => c.name === primaryKey);
+    return i >= 0 ? cellText(page.result.rows[row][i]) : null;
+  };
   return (
     <>
       <div className="table-head">
@@ -80,6 +101,15 @@ function DataView({ tab }: { tab: TableTabState }) {
             onChange={(e) => setFilterInput(e.target.value)}
           />
         </form>
+        <button
+          className="icon-btn"
+          aria-label="Insert row"
+          title={primaryKey ? "Insert row" : "Editing needs a single-column primary key"}
+          disabled={!structure}
+          onClick={() => structure && useStore.getState().openDialog({ type: "insertRow", database: tab.database, table: tab.table, columns: structure.columns })}
+        >
+          <Plus size={13} />
+        </button>
         <button className="icon-btn" aria-label="Reload" title="Reload" onClick={() => void load()}>
           {loading ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
         </button>
@@ -118,12 +148,35 @@ function DataView({ tab }: { tab: TableTabState }) {
           rowOffset={browse.offset}
           sort={{ column: browse.orderBy, descending: browse.descending }}
           onSort={sortBy}
-          rowActions={
-            entity
-              ? (row) => {
-                  const idIndex = page.result.columns.findIndex((c) => c.name.toLowerCase() === entity.idColumn.toLowerCase());
-                  const id = idIndex >= 0 ? cellText(page.result.rows[row][idIndex]) : "";
-                  return id ? [{ label: `Open ${entity.entity} #${id} as document`, action: () => openDocument(entity.entity, id) }] : [];
+          rowActions={(row) => {
+            const items = [];
+            if (entity) {
+              const idIndex = page.result.columns.findIndex((c) => c.name.toLowerCase() === entity.idColumn.toLowerCase());
+              const id = idIndex >= 0 ? cellText(page.result.rows[row][idIndex]) : "";
+              if (id) items.push({ label: `Open ${entity.entity} #${id} in WordPress view`, action: () => openEntity(entity.entity, id) });
+            }
+            const key = keyOf(row);
+            if (primaryKey && key != null) {
+              const base = { database: tab.database, table: tab.table, keyColumn: primaryKey, key };
+              items.push({ label: "Duplicate row", action: () => void queueChange({ type: "duplicateRow", ...base }) });
+              items.push({ label: "Delete row", action: () => void queueChange({ type: "deleteRow", ...base }) });
+            }
+            return items;
+          }}
+          onEditCell={
+            primaryKey
+              ? (row, col, value) => {
+                  const key = keyOf(row);
+                  if (key == null) return;
+                  void queueChange({
+                    type: "setCell",
+                    database: tab.database,
+                    table: tab.table,
+                    keyColumn: primaryKey,
+                    key,
+                    column: page.result.columns[col].name,
+                    value,
+                  });
                 }
               : undefined
           }

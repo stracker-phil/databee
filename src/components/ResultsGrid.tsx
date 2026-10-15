@@ -15,6 +15,8 @@ interface Props {
   onSort?: (column: string) => void;
   /** Extra context-menu entries for a row (e.g. "Open as document"). */
   rowActions?: (row: number) => MenuEntry[];
+  /** Enables double-click editing; called with the new text (or null). */
+  onEditCell?: (row: number, col: number, value: string | null) => void;
 }
 
 const ROW_NUMBER_WIDTH = 52;
@@ -29,7 +31,7 @@ function columnWidths(columns: ColumnMeta[], rows: Cell[][], nullLabel: string):
   });
 }
 
-export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowActions }: Props) {
+export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowActions, onEditCell }: Props) {
   const settings = useStore((s) => s.settings);
   const selectCell = useStore((s) => s.selectCell);
   const toast = useStore((s) => s.toast);
@@ -39,6 +41,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<{ row: number; col: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
+  const [editing, setEditing] = useState<{ row: number; col: number; text: string } | null>(null);
 
   const widths = useMemo(() => columnWidths(columns, rows, nullLabel), [columns, rows, nullLabel]);
   const totalWidth = ROW_NUMBER_WIDTH + widths.reduce((a, b) => a + b, 0);
@@ -72,6 +75,12 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
       y: e.clientY,
       items: [
         { label: "Copy value", action: () => copy(cellText(rows[row][col]), "value") },
+        ...(onEditCell
+          ? ([
+              { label: "Edit value", action: () => setEditing({ row, col, text: cellText(rows[row][col]) }) },
+              { label: "Set to NULL", action: () => onEditCell(row, col, null) },
+            ] as MenuEntry[])
+          : []),
         { label: "Copy row as TSV", action: () => copy(rowsToTsv(names, [rows[row]]), "row") },
         { label: "Copy row as JSON", action: () => copy(rowsToJson(names, [rows[row]]), "row as JSON") },
         "separator",
@@ -146,9 +155,29 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
                   className={`grid-cell t-${cell.t}${selected?.row === v.index && selected.col === ci ? " selected" : ""}`}
                   style={{ width: widths[ci] }}
                   onMouseDown={() => select(v.index, ci)}
+                  onDoubleClick={() => onEditCell && setEditing({ row: v.index, col: ci, text: cellText(cell) })}
                   onContextMenu={(e) => openMenu(e, v.index, ci)}
                 >
-                  {cellDisplay(cell, nullLabel, maxChars)}
+                  {editing?.row === v.index && editing.col === ci ? (
+                    <input
+                      className="cell-input"
+                      autoFocus
+                      aria-label="Edit cell"
+                      value={editing.text}
+                      onChange={(e) => setEditing({ ...editing, text: e.target.value })}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Escape") setEditing(null);
+                        if (e.key === "Enter") {
+                          onEditCell?.(editing.row, editing.col, editing.text);
+                          setEditing(null);
+                        }
+                      }}
+                      onBlur={() => setEditing(null)}
+                    />
+                  ) : (
+                    cellDisplay(cell, nullLabel, maxChars)
+                  )}
                 </div>
               ))}
             </div>

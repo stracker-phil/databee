@@ -9,8 +9,11 @@ import { StatusBar } from "./components/StatusBar";
 import { TabBar, TabPanels } from "./components/Tabs";
 import { Toasts } from "./components/Toasts";
 import { Toolbar } from "./components/Toolbar";
+import { PendingTray } from "./components/PendingTray";
+import { Omnisearch } from "./components/wp/Omnisearch";
+import { WpWorkspace } from "./components/wp/WpWorkspace";
 import { applyAppearance } from "./lib/theme";
-import { useStore } from "./state/store";
+import { selectWp, useStore } from "./state/store";
 import "./styles/theme.css";
 import "./styles/app.css";
 
@@ -28,6 +31,12 @@ export function runMenuAction(id: string) {
       return s.addCurrentTabToFavorites();
     case "settings":
       return s.openDialog({ type: "settings" });
+    case "apply_changes":
+      return void s.applyChanges();
+    case "go_back":
+      return s.goBack();
+    case "go_forward":
+      return s.goForward();
   }
 }
 
@@ -43,7 +52,9 @@ function useBackendEvents() {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        window.dispatchEvent(new Event(FOCUS_FILTER_EVENT));
+        const s = useStore.getState();
+        if (s.mode === "wp" && selectWp(s)) s.setPaletteOpen(true);
+        else window.dispatchEvent(new Event(FOCUS_FILTER_EVENT));
       }
     };
     const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);
@@ -64,10 +75,14 @@ export default function App() {
   const settings = useStore((s) => s.settings);
   const hasSessions = useStore((s) => s.sessions.length > 0);
   const inspecting = useStore((s) => s.selectedCell !== null);
+  const wpMode = useStore((s) => s.mode === "wp" && !!selectWp(s));
   useBackendEvents();
 
   useEffect(() => {
-    if (settings) applyAppearance(settings);
+    if (settings) {
+      applyAppearance(settings);
+      document.documentElement.dataset.screenShare = settings.screenShareMode ? "on" : "off";
+    }
   }, [settings]);
 
   return (
@@ -76,20 +91,26 @@ export default function App() {
         <div className="app">
           <Toolbar />
           <FavoritesBar />
-          <div className={`workspace${inspecting ? " with-inspector" : ""}`}>
-            <Sidebar />
-            <main className="main">
-              <TabBar />
-              <TabPanels />
-            </main>
-            {inspecting && <Inspector />}
-          </div>
+          {wpMode ? (
+            <WpWorkspace />
+          ) : (
+            <div className={`workspace${inspecting ? " with-inspector" : ""}`}>
+              <Sidebar />
+              <main className="main">
+                <TabBar />
+                <TabPanels />
+              </main>
+              {inspecting && <Inspector />}
+            </div>
+          )}
+          <PendingTray />
           <StatusBar />
         </div>
       ) : (
         <ConnectScreen />
       )}
       <Dialogs />
+      <Omnisearch />
       <Toasts />
     </>
   );

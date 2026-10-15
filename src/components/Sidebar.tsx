@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Database, Eye, History, RefreshCw, Search, Table2, Trash2 } from "lucide-react";
-import { WordPressPanel } from "./WordPressPanel";
 import { accountOf, api, type HistoryEntry, type TableInfo } from "../api";
 import { formatBytes, formatCount, relativeTime } from "../lib/format";
-import { selectActiveSession, selectActiveTab, selectWp, useStore } from "../state/store";
+import { selectActiveSession, selectActiveTab, useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 export const FOCUS_FILTER_EVENT = "databee:focus-filter";
@@ -188,8 +187,7 @@ function HistoryPanel() {
 export function Sidebar() {
   const storedPanel = useStore((s) => s.sidebarPanel);
   const setPanel = useStore((s) => s.setSidebarPanel);
-  const isWp = !!useStore(selectWp);
-  const panel = storedPanel === "wordpress" && !isWp ? "tables" : storedPanel;
+  const panel = storedPanel === "wordpress" ? "tables" : storedPanel;
   return (
     <aside className="sidebar">
       <div style={{ padding: "8px 8px 0" }}>
@@ -200,14 +198,9 @@ export function Sidebar() {
           <button style={{ flex: 1 }} aria-pressed={panel === "history"} onClick={() => setPanel("history")}>
             <History size={12} style={{ verticalAlign: -2 }} /> History
           </button>
-          {isWp && (
-            <button style={{ flex: 1 }} aria-pressed={panel === "wordpress"} onClick={() => setPanel("wordpress")}>
-              WP
-            </button>
-          )}
         </div>
       </div>
-      {panel === "tables" ? <TablesPanel /> : panel === "history" ? <HistoryPanel /> : <WordPressPanel />}
+      {panel === "tables" ? <TablesPanel /> : <HistoryPanel />}
     </aside>
   );
 }

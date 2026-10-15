@@ -19,10 +19,20 @@ WordPress & WooCommerce development. Tauri 2 + Rust + React.
 - **Results grid:** virtualized, typed rendering. Copy cells or rows as TSV/JSON.
 - **Value inspector:** decodes **PHP-serialized** and **JSON** values into a tree, including serialized data nested inside strings. Values with broken string lengths are decoded leniently, with a warning.
 - **Favorites bar** (⌘D) for tables and saved queries, and **query history** per server.
-- **WordPress lens** (when a WP database is detected):
-  - detects the table prefix, multisite, WooCommerce version and HPOS mode (off / on / with sync)
-  - entity documents: posts, users, comments, orders (HPOS or legacy), order items, addresses, payment tokens. Meta is split into public and private and grouped by prefix. Values are decoded, IDs link to other documents, and relations load lazily.
-  - options inspector: autoload weight per plugin prefix, transients with expiry, cleanup SQL to review
+- **WordPress mode** (the default for WordPress databases; switch to **Database** mode for tables and SQL any time):
+  - **Dashboard:** orders, autoload weight, failed actions and expired transients at a glance; a table-size treemap; 14-day order bars; Action Scheduler health; recent orders; insights such as "the log table holds 54% of all rows".
+  - **Browse:** orders, subscriptions, customers, products, scheduled actions, sessions and content, each with status chips, filters, search and counts in the sidebar.
+  - **Purpose-built pages:**
+    - Orders: addresses side by side with mismatch hints, line items with thumbnails, totals, a PayPal panel with a fee waterfall, attribution, and a timeline merging notes, actions, logs, refunds and the shopping session.
+    - Customers: roles, addresses, orders, subscriptions and saved cards.
+    - Products: variation matrix.
+    - Actions: arguments and log.
+    - Sessions: decoded cart.
+  - **Readable values:** money, relative times, flags, links, user agents, countries, roles and guest badges; secrets stay masked; long values collapse; meta is grouped by a key registry (Profile, Billing, PayPal, Attribution, Admin UI, …).
+  - **⌘K omnisearch:** paste an order ID, email, PayPal order or transaction ID, or SKU to jump straight to the record. A relation strip, breadcrumbs and ⌘[ / ⌘] handle navigation.
+  - **Editing without silent writes:** inline field edits, serialized values edited as a tree (re-serialized with correct byte lengths), order status, autoload toggles, retrying or cancelling actions, transient cleanup, and grid editing in Database mode. Every change goes into a pending tray with its SQL, applies in one transaction (⌘S) and can be undone.
+  - **Debugging:** live mode highlights fields as they change; snapshot an order (with related records and actions) or an options pattern, then diff it; compare two entities side by side.
+  - **Screen-share mode** blurs names, emails and addresses.
 - **Settings:** theme, accent, density, row limit, timeouts, NULL label, log level, and more.
 
 ## CLI
