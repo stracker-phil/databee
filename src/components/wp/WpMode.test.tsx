@@ -64,6 +64,21 @@ describe("WordPress mode", () => {
     mocked.wpView.mockResolvedValue(orderView);
   });
 
+  it("shows attention badges in the sidebar only for actionable statuses", async () => {
+    mocked.wpBrowser.mockResolvedValue([
+      { list: "orders", label: "Orders", count: 974, breakdown: [{ value: "wc-completed", label: "Completed", count: 900 }, { value: "wc-failed", label: "Failed", count: 63 }] },
+      { list: "products", label: "Products", count: 32, breakdown: [{ value: "publish", label: "Published", count: 30 }, { value: "draft", label: "Draft", count: 2 }] },
+      { list: "actions", label: "Scheduled actions", count: 2624, breakdown: [{ value: "failed", label: "Failed", count: 60 }] },
+    ]);
+    render(<WpWorkspace />);
+    const nav = await screen.findByRole("navigation", { name: "WordPress" });
+    expect(within(nav).getByText("63 failed")).toBeInTheDocument();
+    expect(within(nav).getByText("60 failed")).toBeInTheDocument();
+    expect(within(nav).getByText("974")).toBeInTheDocument();
+    expect(within(nav).queryByText(/draft/i)).not.toBeInTheDocument();
+    expect(within(nav).queryByText(/completed/i)).not.toBeInTheDocument();
+  });
+
   it("opens WordPress databases on the dashboard", async () => {
     render(<App />);
     const ordersTile = (await screen.findByText("+12 today")).closest(".stat-tile")!;

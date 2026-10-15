@@ -8,7 +8,7 @@ export function TabBar() {
   const sessionId = useStore((s) => s.activeSessionId);
   const tabs = useStore(useShallow((s) => s.tabs.filter((t) => t.sessionId === s.activeSessionId)));
   const activeTabId = useStore((s) => s.activeTabId);
-  const { activateTab, closeTab, openQueryTab } = useStore.getState();
+  const { activateTab, closeTab, openQueryTab, pinTab } = useStore.getState();
   if (!sessionId) return null;
   return (
     <div className="tabbar" role="tablist">
@@ -17,10 +17,11 @@ export function TabBar() {
           key={t.id}
           role="tab"
           aria-selected={t.id === activeTabId}
-          className={`tab${t.id === activeTabId ? " active" : ""}`}
+          className={`tab${t.id === activeTabId ? " active" : ""}${t.kind === "table" && t.preview ? " preview" : ""}`}
           onMouseDown={(e) => e.button === 0 && activateTab(t.id)}
+          onDoubleClick={() => pinTab(t.id)}
           onAuxClick={(e) => e.button === 1 && closeTab(t.id)}
-          title={t.kind === "table" ? `${t.database}.${t.table}${t.filter ? ` WHERE ${t.filter}` : ""}` : t.title}
+          title={t.kind === "table" ? `${t.database}.${t.table}${t.filter ? ` WHERE ${t.filter}` : ""}${t.preview ? " · preview (double-click to keep)" : ""}` : t.title}
         >
           {t.kind === "query" && t.running ? (
             <Loader2 size="0.923rem" className="spin" />

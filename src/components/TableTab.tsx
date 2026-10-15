@@ -23,6 +23,7 @@ function DataView({ tab }: { tab: TableTabState }) {
   const entity = useStore((s) => (s.sessions.find((x) => x.id === tab.sessionId)?.database === tab.database ? selectWp(s)?.tableEntities[tab.table] : undefined));
   const openEntity = useStore((s) => s.openEntity);
   const queueChange = useStore((s) => s.queueChange);
+  const pinTab = useStore((s) => s.pinTab);
   const dataVersion = useStore((s) => s.dataVersion);
   const [primaryKey, setPrimaryKey] = useState<string | null>(null);
   const [structure, setStructure] = useState<TableStructure | null>(null);
@@ -191,6 +192,7 @@ function DataView({ tab }: { tab: TableTabState }) {
               ? (row, col, value) => {
                   const key = keyOf(row);
                   if (key == null) return;
+                  pinTab(tab.id);
                   void queueChange({
                     type: "setCell",
                     database: tab.database,

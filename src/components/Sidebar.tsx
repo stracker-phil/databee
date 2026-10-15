@@ -105,7 +105,8 @@ function TablesPanel() {
                         role="treeitem"
                         className={`tree-row${active ? " active" : ""}`}
                         title={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}
-                        onClick={() => openTableTab(d.name, t.name)}
+                        onClick={(e) => openTableTab(d.name, t.name, "data", undefined, { preview: !e.metaKey })}
+                        onDoubleClick={() => openTableTab(d.name, t.name)}
                         onContextMenu={(e) => tableMenu(d.name, t, e)}
                       >
                         {t.isView ? <Eye size="1rem" /> : <Table2 size="1rem" />}

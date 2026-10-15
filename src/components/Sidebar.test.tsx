@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,6 +39,31 @@ describe("Sidebar", () => {
     const tables = useStore.getState().tabs.filter((t) => t.kind === "table");
     expect(tables).toHaveLength(1);
     expect(useStore.getState().activeTabId).toBe(tables[0].id);
+  });
+
+  it("reuses one preview tab for single clicks and keeps pinned tabs", async () => {
+    render(<Sidebar />);
+    await userEvent.click(screen.getByText("wp_options"));
+    await userEvent.click(screen.getByText("wp_posts"));
+    let tables = useStore.getState().tabs.filter((t) => t.kind === "table");
+    expect(tables.map((t) => t.kind === "table" && t.table)).toEqual(["wp_posts"]);
+    expect(tables[0].kind === "table" && tables[0].preview).toBe(true);
+
+    await userEvent.dblClick(screen.getByText("wp_posts"));
+    await userEvent.click(screen.getByText("wp_options"));
+    tables = useStore.getState().tabs.filter((t) => t.kind === "table");
+    expect(tables.map((t) => t.kind === "table" && [t.table, !!t.preview])).toEqual([
+      ["wp_posts", false],
+      ["wp_options", true],
+    ]);
+
+    fireEvent.click(screen.getByText("wp_postmeta"), { metaKey: true });
+    tables = useStore.getState().tabs.filter((t) => t.kind === "table");
+    expect(tables.map((t) => t.kind === "table" && [t.table, !!t.preview])).toEqual([
+      ["wp_posts", false],
+      ["wp_options", true],
+      ["wp_postmeta", false],
+    ]);
   });
 
   it("shows query history for the server and reopens an entry", async () => {

@@ -3,13 +3,11 @@ import { api, type BrowserSection } from "../../api";
 import { routeCrumbs } from "../../lib/crumbs";
 import { selectWp, selectWpRoute, useStore, type WpList, type WpRoute } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
-import { Segments } from "./charts";
 import { DashboardScreen } from "./Dashboard";
 import { ListScreen } from "./Lists";
 import { EntityScreen } from "./views/EntityScreen";
 import { SettingsScreen } from "./Settings";
 import { CompareScreen, SnapshotsScreen } from "./Debugging";
-import { statusTone } from "./ui";
 import { useWpData } from "./useWpData";
 
 const ICONS: Record<string, typeof ShoppingCart> = {
@@ -23,14 +21,26 @@ const ICONS: Record<string, typeof ShoppingCart> = {
   settings: Settings2,
 };
 
-const TONE_COLORS: Record<string, string> = {
-  green: "var(--chart-green)",
-  blue: "var(--chart-blue)",
-  red: "var(--chart-red)",
-  orange: "var(--chart-orange)",
-  purple: "var(--chart-purple)",
-  gray: "var(--chart-gray)",
+/** Statuses that need a look; everything else is just a number. */
+const ATTENTION: Record<string, { statuses: string[]; tone: "red" | "orange"; label: string }[]> = {
+  orders: [
+    { statuses: ["wc-failed"], tone: "red", label: "failed" },
+    { statuses: ["wc-on-hold"], tone: "orange", label: "on hold" },
+  ],
+  subscriptions: [{ statuses: ["wc-on-hold", "wc-pending-cancel"], tone: "orange", label: "on hold" }],
+  actions: [{ statuses: ["failed"], tone: "red", label: "failed" }],
+  sessions: [{ statuses: ["expired"], tone: "orange", label: "expired" }],
 };
+
+export function attentionBadges(section: BrowserSection): { count: number; tone: "red" | "orange"; label: string }[] {
+  return (ATTENTION[section.list] ?? [])
+    .map((rule) => ({
+      ...rule,
+      count: section.breakdown.filter((f) => rule.statuses.includes(f.value)).reduce((s, f) => s + f.count, 0),
+    }))
+    .filter((b) => b.count > 0)
+    .map(({ count, tone, label }) => ({ count, tone, label }));
+}
 
 export function routeTitle(route: WpRoute): string {
   switch (route.screen) {
@@ -50,16 +60,21 @@ export function routeTitle(route: WpRoute): string {
 function NavItem({ section, active }: { section: BrowserSection; active: boolean }) {
   const navigate = useStore((s) => s.navigate);
   const Icon = ICONS[section.list] ?? FileText;
+  // Only the most severe badge fits the row; the rest are in the tooltip.
+  const badges = attentionBadges(section);
   return (
     <button className={`nav-item${active ? " active" : ""}`} onClick={() => navigate({ screen: "list", list: section.list as WpList })}>
       <span className="nav-row">
         <Icon size="1.077rem" />
         <span className="nav-label">{section.label}</span>
+        {badges.length > 0 && (
+          <span className={`nav-badge tone-${badges[0].tone}`} title={badges.map((b) => `${b.count.toLocaleString("en-US")} ${b.label}`).join(" · ")}>
+            {badges[0].count.toLocaleString("en-US")} {badges[0].label}
+            {badges.length > 1 && ` +${badges.length - 1}`}
+          </span>
+        )}
         <span className="nav-count">{section.count.toLocaleString("en-US")}</span>
       </span>
-      {section.breakdown.length > 1 && section.list !== "content" && (
-        <Segments parts={section.breakdown.map((f) => ({ label: f.label, value: f.count, color: TONE_COLORS[statusTone(f.value)] }))} />
-      )}
     </button>
   );
 }

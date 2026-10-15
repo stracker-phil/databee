@@ -44,6 +44,8 @@ export interface TableTab {
   view: "data" | "structure";
   /** Initial WHERE filter, e.g. when opened from a document's source link. */
   filter?: string;
+  /** Preview tabs (single click in the sidebar) are replaced by the next preview; pinning keeps them. */
+  preview?: boolean;
 }
 
 export type Tab = QueryTab | TableTab;
@@ -72,6 +74,8 @@ export interface Toast {
   id: number;
   kind: "error" | "info" | "success";
   message: string;
+  /** How many times the same message was reported while it was showing. */
+  count: number;
 }
 
 export type Dialog =
@@ -152,7 +156,8 @@ interface Actions {
   loadDatabases(sessionId: string): Promise<void>;
   loadTables(sessionId: string, database: string): Promise<void>;
   openQueryTab(sql?: string): void;
-  openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string): void;
+  openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean }): void;
+  pinTab(id: string): void;
   setMode(mode: Mode): void;
   navigate(route: WpRoute): void;
   goBack(): void;
@@ -401,7 +406,7 @@ export const useStore = create<Store>()((set, get) => {
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
     },
 
-    openTableTab(database, table, view = "data", filter) {
+    openTableTab(database, table, view = "data", filter, opts = {}) {
       const session = activeSession();
       if (!session) return;
       const existing = get().tabs.find(
@@ -411,7 +416,7 @@ export const useStore = create<Store>()((set, get) => {
       if (existing) {
         set((s) => ({
           activeTabId: existing.id,
-          tabs: s.tabs.map((t) => (t.id === existing.id ? { ...t, view } : t)),
+          tabs: s.tabs.map((t) => (t.id === existing.id && t.kind === "table" ? { ...t, view, preview: opts.preview ? t.preview : false } : t)),
           selectedCell: null,
         }));
         return;
@@ -426,8 +431,19 @@ export const useStore = create<Store>()((set, get) => {
         table,
         view,
         filter,
+        preview: opts.preview ?? false,
       };
-      set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
+      set((s) => {
+        // A preview tab takes the place of the previous preview tab of this session.
+        const replaced = opts.preview ? s.tabs.find((t): t is TableTab => t.kind === "table" && !!t.preview && t.sessionId === session.id) : undefined;
+        const kept = s.tabs.filter((t) => t.id !== replaced?.id);
+        const at = replaced ? s.tabs.indexOf(replaced) : kept.length;
+        return { tabs: [...kept.slice(0, at), tab, ...kept.slice(at)], activeTabId: tab.id, selectedCell: null };
+      });
+    },
+
+    pinTab(id) {
+      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind === "table" && t.preview ? { ...t, preview: false } : t)) }));
     },
 
     setMode(mode) {
@@ -768,9 +784,14 @@ export const useStore = create<Store>()((set, get) => {
     },
 
     toast(kind, message) {
-      const id = nextId++;
-      set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message }] }));
       if (kind === "error") void api.logError(message).catch(() => {});
+      const same = get().toasts.find((t) => t.kind === kind && t.message === message);
+      if (same) {
+        set((s) => ({ toasts: s.toasts.map((t) => (t.id === same.id ? { ...t, count: t.count + 1 } : t)) }));
+        return;
+      }
+      const id = nextId++;
+      set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message, count: 1 }] }));
     },
 
     dismissToast(id) {

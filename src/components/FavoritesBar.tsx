@@ -17,7 +17,7 @@ export function FavoritesBar() {
       <button className="icon-btn" aria-label="Add current tab to favorites" title="Add to favorites (⌘D)" disabled={!canAdd} onClick={addCurrentTabToFavorites}>
         <Star size="1.077rem" />
       </button>
-      {favorites.length === 0 && <span className="empty">Pin tables and queries here with ⌘D</span>}
+      {favorites.length === 0 && <span className="empty">⌘D pins the current table or query here</span>}
       {favorites.map((f) => (
         <button
           key={f.id}

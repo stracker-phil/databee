@@ -48,6 +48,7 @@ export default function App() {
   const hasSessions = useStore((s) => s.sessions.length > 0);
   const inspecting = useStore((s) => s.selectedCell !== null);
   const wpMode = useStore((s) => s.mode === "wp" && !!selectWp(s));
+  const showFavorites = useStore((s) => !(s.mode === "wp" && selectWp(s)) || s.favorites.length > 0);
   useBackendEvents();
 
   useEffect(() => {
@@ -62,7 +63,7 @@ export default function App() {
       {hasSessions ? (
         <div className="app">
           <Toolbar />
-          <FavoritesBar />
+          {showFavorites && <FavoritesBar />}
           {wpMode ? (
             <WpWorkspace />
           ) : (

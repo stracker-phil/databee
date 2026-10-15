@@ -1,13 +1,25 @@
 import { formatCount } from "../lib/format";
-import { selectActiveSession, selectActiveTab, useStore } from "../state/store";
+import { selectActiveSession, selectActiveTab, selectWp, useStore } from "../state/store";
 
 export function StatusBar() {
   const session = useStore(selectActiveSession);
   const tab = useStore(selectActiveTab);
   const rowLimit = useStore((s) => s.settings?.rowLimit ?? 0);
+  const wp = useStore(selectWp);
+  const wpMode = useStore((s) => s.mode === "wp");
+  const pending = useStore((s) => s.pending.length);
 
   let left: React.ReactNode = null;
-  if (tab?.kind === "query" && tab.response && !tab.error) {
+  if (wpMode && wp) {
+    const wc = wp.context.wc;
+    left = (
+      <>
+        {wp.context.site.url && <span>{wp.context.site.url.replace(/^https?:\/\//, "")}</span>}
+        <span>prefix {wp.context.prefix}</span>
+        {wc && <span>WooCommerce {wc.version ?? "?"}{wc.hpos === "off" ? " · legacy orders" : wc.hpos === "on_with_sync" ? " · HPOS + sync" : " · HPOS"}</span>}
+      </>
+    );
+  } else if (tab?.kind === "query" && tab.response && !tab.error) {
     const r = tab.response.results[tab.activeResult];
     left = (
       <>
@@ -30,6 +42,7 @@ export function StatusBar() {
     <footer className="statusbar">
       {left}
       <div className="spacer" />
+      {pending > 0 && <span className="warn">{pending} pending {pending === 1 ? "change" : "changes"} · ⌘S applies</span>}
       {session && <span title={session.identity}>{session.serverVersion}</span>}
     </footer>
   );
