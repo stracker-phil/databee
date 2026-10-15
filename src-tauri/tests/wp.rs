@@ -133,7 +133,7 @@ async fn options_overview_reports_groups_and_expired_transients() {
     for db in sessions().await {
         let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
         let o = options_overview(&db, &ctx, "wp_test").await.unwrap();
-        assert_eq!(o.total_count, 15);
+        assert_eq!(o.total_count, 16);
         assert!(
             o.groups
                 .iter()
@@ -298,6 +298,67 @@ async fn guest_checkouts_appear_as_virtual_customers() {
                 .any(|h| h.entity == "user" && h.id == "guest:guest@shop.test"),
             "{hits:?}"
         );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn plugin_lens_attributes_keys_and_reports_leftovers() {
+    use databee_lib::wp::lens::{self, Confidence, KeyKind};
+    use databee_lib::wp::plugins::Lookup;
+    for (db, ctx, _) in env().await {
+        let r = lens::lens(
+            &db,
+            &ctx,
+            "wp_test",
+            &Lookup::default(),
+            &Default::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(r.active_plugins, ["woocommerce"]);
+        let ppcp = r
+            .plugins
+            .iter()
+            .find(|p| p.slug == "woocommerce-paypal-payments")
+            .expect("PayPal data is attributed");
+        assert!(!ppcp.active, "PayPal is not active → leftover data");
+        assert!(
+            ppcp.keys
+                .iter()
+                .any(|k| k.stat.key.name == "_ppcp_paypal_order_id"
+                    && k.confidence == Some(Confidence::Exact))
+        );
+        assert_eq!(
+            ppcp.orders, 2,
+            "orders paid via ppcp-gateway count as value attribution"
+        );
+        let wc = r.plugins.iter().find(|p| p.slug == "woocommerce").unwrap();
+        assert!(wc.active);
+        assert!(wc.option_count >= 5);
+        assert!(wc.tables.iter().any(|t| t.key.name == "wc_orders"));
+        assert!(r.unattributed.iter().any(
+            |k| k.stat.key.name == "zzz_mystery_setting" && k.stat.key.kind == KeyKind::Option
+        ));
+        let core = r.plugins.iter().find(|p| p.slug == "core").unwrap();
+        assert!(core.tables.iter().any(|t| t.key.name == "posts"));
+
+        // Manual assignment wins and the leftover cleanup only touches options and meta.
+        let mut manual = lens::Assignments::new();
+        manual.insert("option:zzz_mystery_setting".into(), "woocommerce".into());
+        let r2 = lens::lens(&db, &ctx, "wp_test", &Lookup::default(), &manual)
+            .await
+            .unwrap();
+        assert!(
+            !r2.unattributed
+                .iter()
+                .any(|k| k.stat.key.name == "zzz_mystery_setting")
+        );
+        let ids: Vec<String> = ppcp.keys.iter().map(|k| k.stat.key.id()).collect();
+        let sql = lens::cleanup_statements("wp_test", &ctx, &ids);
+        assert!(sql.iter().all(|s| s.starts_with("DELETE FROM")));
+        assert!(sql.iter().any(|s| s.contains("_ppcp_paypal_order_id")));
+        assert!(!sql.iter().any(|s| s.contains("DROP")));
     }
 }
 

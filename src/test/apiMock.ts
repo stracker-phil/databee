@@ -50,6 +50,8 @@ export function createApiMock(): typeof realApi {
     wpOrderLogs: vi.fn().mockResolvedValue([]),
     wpSearch: vi.fn().mockResolvedValue([]),
     wpPeek: vi.fn().mockResolvedValue([]),
+    wpLens: vi.fn().mockResolvedValue({ activePlugins: [], plugins: [], unattributed: [] }),
+    wpPluginAssign: vi.fn().mockResolvedValue({}),
     wpFindValue: vi.fn().mockResolvedValue([]),
     wpFailedByHook: vi.fn().mockResolvedValue([]),
     wpOptionsGroup: vi.fn().mockResolvedValue([]),

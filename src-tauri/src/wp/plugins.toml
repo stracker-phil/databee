@@ -29,6 +29,7 @@ meta_prefixes = ["wc", "woocommerce", "billing", "shipping", "customer", "order"
 hook_prefixes = ["woocommerce", "wc", "wc-admin", "adjust", "generate", "action"]
 log_sources = ["wc", "woocommerce", "transactional-emails", "class-wc-payment-gateways", "fatal-errors", "order-notes", "wc-admin"]
 tables = ["wc_", "woocommerce_"]
+gateways = ["bacs", "cheque", "cod", "paypal"]
 
 [[plugin]]
 slug = "woocommerce-subscriptions"
@@ -47,6 +48,7 @@ meta_prefixes = ["ppcp", "_ppcp"]
 hook_prefixes = ["woocommerce_paypal_payments", "ppcp"]
 log_sources = ["woocommerce-paypal-payments", "woocommerce-paypal-agentic"]
 tables = ["ppcp_"]
+gateways = ["ppcp-gateway", "ppcp-credit-card-gateway", "ppcp-card-button-gateway", "ppcp-pay-upon-invoice-gateway", "ppcp-googlepay", "ppcp-applepay", "ppcp-axo-gateway", "ppcp-oxxo-gateway", "ppcp-multibanco"]
 
 [[plugin]]
 slug = "jetpack"
@@ -87,6 +89,7 @@ meta_prefixes = ["wcpay"]
 hook_prefixes = ["wcpay"]
 log_sources = ["woocommerce-payments"]
 tables = ["wcpay_"]
+gateways = ["woocommerce_payments"]
 
 [[plugin]]
 slug = "stripe"
@@ -95,3 +98,4 @@ option_prefixes = ["wc_stripe", "woocommerce_stripe"]
 meta_prefixes = ["stripe"]
 hook_prefixes = ["wc_stripe"]
 log_sources = ["woocommerce-gateway-stripe"]
+gateways = ["stripe", "stripe_sepa", "stripe_ideal"]

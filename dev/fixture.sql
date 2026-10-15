@@ -83,6 +83,7 @@ INSERT INTO wp_options (option_name, option_value, autoload) VALUES
   ('woocommerce_custom_orders_table_enabled', 'yes', 'yes'),
   ('woocommerce_custom_orders_table_data_sync_enabled', 'yes', 'yes'),
   ('woocommerce_ppcp-settings', 'a:2:{s:7:"enabled";s:3:"yes";s:5:"title";s:6:"PayPal";}', 'yes'),
+  ('zzz_mystery_setting', 'x', 'no'),
   ('_transient_old_cache', 'x', 'no'),
   ('_transient_timeout_old_cache', '1000', 'no'),
   ('_transient_fresh_cache', 'y', 'no'),

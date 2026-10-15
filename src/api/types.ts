@@ -598,6 +598,7 @@ export type ChangeRequest =
   | { type: "setAutoload"; database: string; option: string; on: boolean }
   | { type: "deleteExpiredTransients"; database: string }
   | { type: "deleteLogsBefore"; database: string; days: number; source?: string | null }
+  | { type: "deletePluginData"; database: string; slug: string; keys: string[] }
   | { type: "retryAction"; database: string; id: string }
   | { type: "cancelAction"; database: string; id: string };
 
@@ -670,6 +671,48 @@ export interface FindGroup {
   idColumn: string;
   count: number;
   hits: FindHit[];
+}
+
+export type LensKeyKind = "option" | "transient" | "meta" | "hook" | "log_source" | "table";
+
+export interface LensKey {
+  kind: LensKeyKind;
+  /** Meta table for `meta` keys. */
+  table?: string;
+  name: string;
+  count: number;
+  bytes: number;
+  autoload: boolean;
+  lastWritten: number | null;
+  plugin: string | null;
+  confidence: "exact" | "likely" | "guess" | null;
+  source: "registry" | "prefix" | "value" | "manual" | null;
+}
+
+export interface PluginReport {
+  slug: string;
+  name: string;
+  active: boolean;
+  optionCount: number;
+  optionBytes: number;
+  autoloadBytes: number;
+  transientCount: number;
+  transientBytes: number;
+  meta: { table: string; keys: number; rows: number; bytes: number }[];
+  hookCount: number;
+  logEntries: number;
+  logBytes: number;
+  tables: { kind: "table"; name: string; count: number; bytes: number; autoload: boolean; lastWritten: number | null }[];
+  orders: number;
+  lastWritten: number | null;
+  totalBytes: number;
+  keys: LensKey[];
+}
+
+export interface LensReport {
+  activePlugins: string[];
+  plugins: PluginReport[];
+  unattributed: LensKey[];
 }
 
 export interface SearchHit {

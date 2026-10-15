@@ -7,6 +7,7 @@ pub mod dashboard;
 pub mod detail;
 pub mod entity;
 pub mod hints;
+pub mod lens;
 pub mod lists;
 pub mod logs;
 pub mod media;
