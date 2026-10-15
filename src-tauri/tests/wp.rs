@@ -196,6 +196,25 @@ async fn dashboard_summarizes_orders_actions_and_health() {
 
 #[tokio::test]
 #[ignore]
+async fn failed_actions_group_by_hook_with_last_message() {
+    for (db, ctx, _) in env().await {
+        let groups = databee_lib::wp::lists::failed_by_hook(&db, &ctx, "wp_test")
+            .await
+            .unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].hook, "ppcp_check_payment_status");
+        assert_eq!(groups[0].count, 1);
+        assert_eq!(
+            groups[0].last_message.as_deref(),
+            Some("action failed via WP Cron: PayPal API returned 500")
+        );
+        assert_eq!(groups[0].owner.as_deref(), Some("PayPal Payments"));
+        assert!(groups[0].last_failure.is_some());
+    }
+}
+
+#[tokio::test]
+#[ignore]
 async fn entity_browser_counts_sections() {
     for (db, ctx, _) in env().await {
         let sections = browser(&db, &ctx, "wp_test").await.unwrap();

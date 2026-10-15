@@ -190,6 +190,7 @@ fn start_app(
             wp_commands::wp_products,
             wp_commands::wp_actions,
             wp_commands::wp_action_histogram,
+            wp_commands::wp_failed_by_hook,
             wp_commands::wp_sessions,
             wp_commands::wp_content,
             wp_commands::wp_view,

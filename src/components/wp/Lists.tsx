@@ -13,9 +13,10 @@ import {
   type SessionSummary,
 } from "../../api";
 import { formatCount } from "../../lib/format";
-import { shorten } from "../../lib/wpFormat";
+import { relativeFromUnix, shorten } from "../../lib/wpFormat";
 import { useStore, type WpList } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
+import { BreakdownChart } from "./BreakdownChart";
 import { StackedBars } from "./charts";
 import { Ago, Avatar, Card, StatusPill, Thumb } from "./ui";
 import { useWpData } from "./useWpData";
@@ -218,6 +219,23 @@ function ActionHistogram({ hook }: { hook: string | null }) {
   );
 }
 
+function FailedByHook({ onPick }: { onPick: (hook: string) => void }) {
+  const { data } = useWpData(api.wpFailedByHook, []);
+  if (!data || data.length === 0) return null;
+  const items = data.map((h) => ({
+    id: h.hook,
+    label: h.hook,
+    value: h.count,
+    sublabel: [h.owner, h.lastFailure ? `last ${relativeFromUnix(h.lastFailure)}` : null].filter(Boolean).join(" · "),
+    onOpen: () => onPick(h.hook),
+  }));
+  return (
+    <Card title="Failed actions by hook" aside="click a hook to list its failures">
+      <BreakdownChart items={items} format={(v) => `${formatCount(v)}×`} totalLabel="failed" />
+    </Card>
+  );
+}
+
 export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">; params?: Record<string, string> }) {
   const [status, setStatus] = useState<string | null>(params?.status ?? null);
   const [kind, setKind] = useState<string | null>(params?.kind ?? null);
@@ -261,6 +279,7 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
       </div>
       {list === "content" && <Chips facets={kindFacets} value={kind ?? kindFacets.find((k) => k.value === "post")?.value ?? null} onChange={setKind} allLabel="Types" />}
       <Chips facets={data?.facets ?? []} value={status} onChange={setStatus} />
+      {list === "actions" && !kind && <FailedByHook onPick={(hook) => (setKind(hook), setStatus("failed"))} />}
       {list === "actions" && <ActionHistogram hook={kind} />}
       {error ? (
         <ErrorPanel message={error.message} code={error.code} />

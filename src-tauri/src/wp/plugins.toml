@@ -1,0 +1,97 @@
+# Built-in plugin registry: how stored keys map to the plugin that owns them.
+# Prefixes are matched against the first token of option names, meta keys, hooks,
+# log sources and table names (after the WordPress table prefix). Exact matches are `Exact`
+# attributions; the lens (P2) adds prefix clustering and value rules on top.
+
+[[plugin]]
+slug = "core"
+name = "WordPress core"
+option_prefixes = ["wp", "widget", "sidebars", "active", "theme", "stylesheet", "template", "blogname", "blogdescription", "siteurl", "home", "admin", "users", "default", "permalink", "page", "posts", "comment", "comments", "cron", "db", "initial", "uninstall", "recently", "upload", "blog", "finished", "fresh", "can", "auto", "html", "links", "mailserver", "medium", "large", "thumbnail", "thumbnails", "image", "timezone", "gmt", "date", "time", "start", "use", "category", "close", "ping", "moderation", "require", "show", "rss", "new", "avatar", "sticky", "https", "WPLANG", "site", "nav", "disallowed"]
+meta_prefixes = ["wp", "edit", "thumbnail", "menu", "encoded", "oembed", "session", "nickname", "first", "last", "description", "rich", "syntax", "admin", "use", "show", "locale", "dismissed", "default", "closedpostboxes", "metaboxhidden", "community", "wp_capabilities", "wp_user_level"]
+hook_prefixes = ["wp", "do", "delete", "publish", "recovery"]
+tables = ["posts", "postmeta", "options", "users", "usermeta", "comments", "commentmeta", "terms", "termmeta", "term_taxonomy", "term_relationships", "links", "blogs", "site", "sitemeta", "signups", "registration_log", "blog_versions", "blogmeta"]
+
+[[plugin]]
+slug = "rewrite"
+name = "Rewrite rules · core"
+option_prefixes = ["rewrite"]
+
+[[plugin]]
+slug = "transients"
+name = "Transients"
+option_prefixes = ["transients"]
+
+[[plugin]]
+slug = "woocommerce"
+name = "WooCommerce"
+option_prefixes = ["woocommerce", "wc", "wcs", "wp_wc"]
+meta_prefixes = ["wc", "woocommerce", "billing", "shipping", "customer", "order", "payment", "paying", "last", "wptests", "product", "price", "regular", "sale", "sku", "stock", "manage", "backorders", "sold", "total", "tax", "virtual", "downloadable", "download", "purchase", "featured", "weight", "length", "width", "height", "upsell", "crosssell", "cart", "created", "completed", "paid", "recorded", "prices", "transaction", "new", "date", "edit", "wp"]
+hook_prefixes = ["woocommerce", "wc", "wc-admin", "adjust", "generate", "action"]
+log_sources = ["wc", "woocommerce", "transactional-emails", "class-wc-payment-gateways", "fatal-errors", "order-notes", "wc-admin"]
+tables = ["wc_", "woocommerce_"]
+
+[[plugin]]
+slug = "woocommerce-subscriptions"
+name = "WooCommerce Subscriptions"
+option_prefixes = ["wcs", "woocommerce_subscriptions"]
+meta_prefixes = ["subscription", "schedule", "billing_period", "billing_interval", "trial", "requires", "switch", "suspension"]
+hook_prefixes = ["woocommerce_scheduled_subscription", "wcs"]
+log_sources = ["wcs-functions", "woocommerce-subscriptions-dedicated-queue", "woocommerce-subscriptions-queue-isolator", "wcs-cache", "wcs-switch-cart-items"]
+tables = ["wcs_"]
+
+[[plugin]]
+slug = "woocommerce-paypal-payments"
+name = "PayPal Payments"
+option_prefixes = ["ppcp", "woocommerce-ppcp", "woocommerce_ppcp", "wc_ppcp", "wcppcp"]
+meta_prefixes = ["ppcp", "_ppcp"]
+hook_prefixes = ["woocommerce_paypal_payments", "ppcp"]
+log_sources = ["woocommerce-paypal-payments", "woocommerce-paypal-agentic"]
+tables = ["ppcp_"]
+
+[[plugin]]
+slug = "jetpack"
+name = "Jetpack"
+option_prefixes = ["jetpack", "jp", "jetpack_sync"]
+meta_prefixes = ["jetpack"]
+hook_prefixes = ["jetpack", "jp"]
+log_sources = ["jetpack"]
+tables = ["jetpack_"]
+
+[[plugin]]
+slug = "action-scheduler"
+name = "Action Scheduler"
+option_prefixes = ["action_scheduler", "actionscheduler"]
+hook_prefixes = ["action_scheduler"]
+tables = ["actionscheduler_"]
+
+[[plugin]]
+slug = "woopay"
+name = "WooPay"
+option_prefixes = ["woopay"]
+meta_prefixes = ["woopay"]
+hook_prefixes = ["woopay"]
+
+[[plugin]]
+slug = "payoneer"
+name = "Payoneer Checkout"
+option_prefixes = ["payoneer"]
+meta_prefixes = ["payoneer"]
+hook_prefixes = ["payoneer"]
+log_sources = ["payoneer-checkout"]
+
+[[plugin]]
+slug = "woocommerce-payments"
+name = "WooPayments"
+option_prefixes = ["wcpay", "woocommerce_woocommerce_payments"]
+meta_prefixes = ["wcpay"]
+hook_prefixes = ["wcpay"]
+log_sources = ["woocommerce-payments"]
+tables = ["wcpay_"]
+
+[[plugin]]
+slug = "stripe"
+name = "WooCommerce Stripe"
+option_prefixes = ["wc_stripe", "woocommerce_stripe"]
+meta_prefixes = ["stripe"]
+hook_prefixes = ["wc_stripe"]
+log_sources = ["woocommerce-gateway-stripe"]

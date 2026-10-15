@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { DayBucket } from "../../api";
-import { squarify } from "../../lib/treemap";
 
 const SERIES: { key: keyof Omit<DayBucket, "date">; label: string; color: string }[] = [
   { key: "completed", label: "completed", color: "var(--chart-green)" },
@@ -47,44 +46,6 @@ export function StackedBars({ days, labels }: { days: DayBucket[]; labels?: Part
           ))
         )}
       </div>
-    </div>
-  );
-}
-
-export interface TreemapItem {
-  key: string;
-  label: string;
-  value: number;
-  sub: string;
-  color: string;
-}
-
-export function Treemap({ items, height = 260, onSelect }: { items: TreemapItem[]; height?: number; onSelect?: (key: string) => void }) {
-  const width = 1000;
-  const rects = useMemo(() => squarify(items.map((i) => ({ value: i.value, data: i })), width, height), [items, height]);
-  return (
-    <div className="treemap" style={{ height }}>
-      {rects.map((r) => {
-        const small = r.w < 90 || r.h < 44;
-        return (
-          <button
-            key={r.data.key}
-            className="tile"
-            title={`${r.data.label} · ${r.data.sub}`}
-            style={{
-              left: `${(r.x / width) * 100}%`,
-              top: r.y,
-              width: `calc(${(r.w / width) * 100}% - 4px)`,
-              height: r.h - 4,
-              background: r.data.color,
-            }}
-            onClick={() => onSelect?.(r.data.key)}
-          >
-            {!small || r.w > 60 ? <span className="tile-label">{r.data.label}</span> : null}
-            {!small && <span className="tile-sub">{r.data.sub}</span>}
-          </button>
-        );
-      })}
     </div>
   );
 }

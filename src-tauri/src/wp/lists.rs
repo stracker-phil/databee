@@ -725,6 +725,68 @@ pub async fn actions(
     })
 }
 
+/// Failed actions grouped by hook, newest failure first.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HookFailures {
+    pub hook: String,
+    pub count: u64,
+    pub last_failure: Option<i64>,
+    pub last_message: Option<String>,
+    /// Owning plugin from the registry, when known.
+    pub owner: Option<String>,
+}
+
+pub async fn failed_by_hook(
+    session: &MySqlSession,
+    ctx: &WpContext,
+    db: &str,
+) -> AppResult<Vec<HookFailures>> {
+    let actions = t(db, ctx, "actionscheduler_actions");
+    let logs = t(db, ctx, "actionscheduler_logs");
+    let rs = fetch(
+        session,
+        &format!(
+            "SELECT a.hook, COUNT(*), MAX({last}), MAX(a.action_id) \
+             FROM {actions} a WHERE a.status = 'failed' \
+             GROUP BY a.hook ORDER BY MAX(a.action_id) DESC LIMIT 100",
+            last = epoch("IF(a.last_attempt_gmt < '1000-01-01', NULL, a.last_attempt_gmt)"),
+        ),
+    )
+    .await?;
+    let latest_ids: Vec<String> = rs.rows.iter().filter_map(|r| text(&r[3])).collect();
+    let mut messages: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if !latest_ids.is_empty() {
+        let ms = fetch(
+            session,
+            &format!(
+                "SELECT action_id, message FROM {logs} WHERE action_id IN ({}) ORDER BY log_id",
+                latest_ids.join(", ")
+            ),
+        )
+        .await?;
+        for r in &ms.rows {
+            if let (Some(id), Some(m)) = (text(&r[0]), text(&r[1])) {
+                messages.insert(id, m);
+            }
+        }
+    }
+    Ok(rs
+        .rows
+        .iter()
+        .map(|r| {
+            let hook = text(&r[0]).unwrap_or_default();
+            HookFailures {
+                owner: super::plugins::for_hook(&hook).map(|p| p.name.clone()),
+                count: num(&r[1]).unwrap_or(0),
+                last_failure: int(&r[2]),
+                last_message: text(&r[3]).and_then(|id| messages.get(&id).cloned()),
+                hook,
+            }
+        })
+        .collect())
+}
+
 // ---------- sessions ----------
 
 #[derive(Serialize, Debug, Clone, PartialEq)]

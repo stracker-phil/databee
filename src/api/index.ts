@@ -15,6 +15,7 @@ import type {
   DayBucket,
   DocField,
   EntityViewData,
+  HookFailures,
   ListQuery,
   OrderSummary,
   Page,
@@ -114,6 +115,7 @@ export const api = {
     invoke<Page<ProductSummary>>("wp_products", { sessionId, database, query }),
   wpActions: (sessionId: string, database: string, query: ListQuery) =>
     invoke<Page<ActionSummary>>("wp_actions", { sessionId, database, query }),
+  wpFailedByHook: (sessionId: string, database: string) => invoke<HookFailures[]>("wp_failed_by_hook", { sessionId, database }),
   wpActionHistogram: (sessionId: string, database: string, hook: string | null) =>
     invoke<DayBucket[]>("wp_action_histogram", { sessionId, database, hook }),
   wpSessions: (sessionId: string, database: string, query: ListQuery) =>

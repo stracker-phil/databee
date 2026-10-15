@@ -150,7 +150,7 @@ export function WpWorkspace() {
         <Header />
         <div className="wp-content">
           {route.screen === "dashboard" && <DashboardScreen />}
-          {route.screen === "list" && (route.list === "settings" ? <SettingsScreen /> : <ListScreen key={route.list} list={route.list} params={route.params} />)}
+          {route.screen === "list" && (route.list === "settings" ? <SettingsScreen key={JSON.stringify(route.params ?? {})} params={route.params} /> : <ListScreen key={route.list} list={route.list} params={route.params} />)}
           {route.screen === "entity" && <EntityScreen key={`${route.entity}:${route.id}`} entity={route.entity} id={route.id} />}
           {route.screen === "compare" && <CompareScreen entity={route.entity} a={route.a} b={route.b} />}
           {route.screen === "snapshots" && <SnapshotsScreen />}

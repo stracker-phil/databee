@@ -229,6 +229,16 @@ pub async fn wp_actions(
 }
 
 #[tauri::command]
+pub async fn wp_failed_by_hook(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+) -> AppResult<Vec<lists::HookFailures>> {
+    let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
+    lists::failed_by_hook(&s.db, &ctx, &database).await
+}
+
+#[tauri::command]
 pub async fn wp_action_histogram(
     state: State<'_, AppState>,
     session_id: String,

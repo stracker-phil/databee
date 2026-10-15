@@ -40,8 +40,8 @@ const dashboard: Dashboard = {
   actions: { total: 2611, byStatus: [{ value: "failed", label: "Failed", count: 3 }], recentFailed: [], overdue: 0 },
   hposDrift: 0,
   tables: [
-    { name: "wp_woocommerce_log", rows: 44_000, bytes: 1, category: "logs" },
-    { name: "wp_wc_orders_meta", rows: 9_500, bytes: 1, category: "woocommerce" },
+    { name: "wp_woocommerce_log", rows: 44_000, bytes: 1, category: "logs", owner: "WooCommerce" },
+    { name: "wp_wc_orders_meta", rows: 9_500, bytes: 1, category: "woocommerce", owner: "WooCommerce" },
   ],
   insights: [{ level: "warning", text: "wp_woocommerce_log holds 54% of all rows. Consider a retention rule." }],
 };
@@ -85,7 +85,8 @@ describe("WordPress mode", () => {
     expect(within(ordersTile as HTMLElement).getByText("974")).toBeInTheDocument();
     expect(screen.getByText("80.7 KB")).toBeInTheDocument();
     expect(screen.getByText(/holds 54% of all rows/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /woocommerce_log/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Table rows" }));
+    expect(screen.getByRole("button", { name: "woocommerce_log: 44k rows" })).toBeInTheDocument();
     expect(screen.getByText("HPOS in sync")).toBeInTheDocument();
   });
 

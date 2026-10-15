@@ -1,19 +1,13 @@
+import { useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock, Info, RefreshCw } from "lucide-react";
 import { api } from "../../api";
 import { formatBytes, formatCount } from "../../lib/format";
 import { selectActiveSession, selectWp, useStore } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
-import { Segments, StackedBars, Treemap } from "./charts";
+import { BreakdownChart } from "./BreakdownChart";
+import { Segments, StackedBars } from "./charts";
 import { Ago, Card, Loading, Stat, StatusPill } from "./ui";
 import { useWpData } from "./useWpData";
-
-const CATEGORY: Record<string, { label: string; color: string }> = {
-  woocommerce: { label: "WooCommerce", color: "var(--tile-green)" },
-  action_scheduler: { label: "Action Scheduler", color: "var(--tile-purple)" },
-  logs: { label: "Logs", color: "var(--tile-red)" },
-  core: { label: "Core", color: "var(--tile-gray)" },
-  plugins: { label: "Plugins", color: "var(--tile-blue)" },
-};
 
 function compact(n: number) {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
@@ -24,27 +18,34 @@ export function DashboardScreen() {
   const wp = useStore(selectWp);
   const { navigate, openEntity, openTableTab, setMode } = useStore.getState();
   const { data, error, loading, reload } = useWpData(api.wpDashboard, []);
+  const { data: options } = useWpData(api.wpOptions, []);
+  const [breakdown, setBreakdown] = useState<"autoload" | "rows">("autoload");
 
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data || !wp || !session) return <Loading />;
 
   const ctx = wp.context;
   const failed = data.actions?.byStatus.find((f) => f.value === "failed")?.count ?? 0;
-  const totalRows = data.tables.reduce((s, t) => s + t.rows, 0) || 1;
-  const top = data.tables.slice(0, 10);
-  const rest = data.tables.slice(10);
-  const tiles = [
-    ...top.map((t) => ({
-      key: t.name,
-      label: t.name.replace(ctx.prefix, ""),
-      value: Math.max(t.rows, 1),
-      sub: `${compact(t.rows)} rows · ${Math.round((t.rows / totalRows) * 100)}%`,
-      color: CATEGORY[t.category]?.color ?? "var(--tile-gray)",
-    })),
-    ...(rest.length
-      ? [{ key: "__rest", label: `+${rest.length}`, value: Math.max(1, rest.reduce((s, t) => s + t.rows, 0)), sub: `${compact(rest.reduce((s, t) => s + t.rows, 0))} rows`, color: "var(--tile-gray)" }]
-      : []),
-  ];
+  const rowItems = data.tables.map((t) => ({
+    id: t.name,
+    label: t.name.replace(ctx.prefix, ""),
+    value: t.rows,
+    sublabel: t.owner ?? undefined,
+    onOpen: () => {
+      if (!session.database) return;
+      setMode("db");
+      openTableTab(session.database, t.name);
+    },
+  }));
+  const autoloadItems = (options?.groups ?? [])
+    .filter((g) => g.autoloadBytes > 0)
+    .map((g) => ({
+      id: g.prefix,
+      label: g.label,
+      value: g.autoloadBytes,
+      sublabel: `${formatCount(g.autoloadCount)} options`,
+      onOpen: () => navigate({ screen: "list", list: "settings", params: { prefix: g.prefix } }),
+    }));
   const syncLabel =
     ctx.wc?.hpos === "on_with_sync"
       ? data.hposDrift
@@ -91,23 +92,17 @@ export function DashboardScreen() {
         </div>
       )}
 
-      <Card
-        title="Table sizes by rows · click a tile"
-        aside={
-          <span className="legend">
-            {Object.entries(CATEGORY).map(([k, c]) => (
-              <span key={k} className="legend-item"><i style={{ background: c.color }} /> {c.label}</span>
-            ))}
-          </span>
-        }
-      >
-        <Treemap
-          items={tiles}
-          onSelect={(key) => {
-            if (key === "__rest" || !session.database) return;
-            setMode("db");
-            openTableTab(session.database, key);
-          }}
+      <Card title={breakdown === "autoload" ? "Who bloats autoload?" : "Table sizes by rows"} aside="click a row to open it">
+        <BreakdownChart
+          items={breakdown === "autoload" ? autoloadItems : rowItems}
+          format={breakdown === "autoload" ? formatBytes : (v) => `${compact(v)} rows`}
+          totalLabel={breakdown === "autoload" ? "autoloaded" : "rows"}
+          modes={[
+            { id: "autoload", label: "Autoload" },
+            { id: "rows", label: "Table rows" },
+          ]}
+          mode={breakdown}
+          onModeChange={(m) => setBreakdown(m as "autoload" | "rows")}
         />
       </Card>
 

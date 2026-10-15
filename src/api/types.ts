@@ -280,7 +280,7 @@ export interface OptionsOverview {
   table: string;
   totalCount: number;
   autoloadBytes: number;
-  groups: { prefix: string; count: number; bytes: number; autoloadCount: number; autoloadBytes: number }[];
+  groups: { prefix: string; label: string; count: number; bytes: number; autoloadCount: number; autoloadBytes: number }[];
   transients: { name: string; siteWide: boolean; bytes: number; expiresAt: number | null; expired: boolean }[];
 }
 
@@ -395,7 +395,7 @@ export interface Dashboard {
   transientsExpired: number;
   actions: { total: number; byStatus: Facet[]; recentFailed: ActionSummary[]; overdue: number } | null;
   hposDrift: number | null;
-  tables: { name: string; rows: number; bytes: number; category: string }[];
+  tables: { name: string; rows: number; bytes: number; category: string; owner: string | null }[];
   insights: { level: "info" | "warning" | "danger"; text: string }[];
 }
 
@@ -618,6 +618,14 @@ export interface CompareRow {
   path: string;
   a: string | null;
   b: string | null;
+}
+
+export interface HookFailures {
+  hook: string;
+  count: number;
+  lastFailure: number | null;
+  lastMessage: string | null;
+  owner: string | null;
 }
 
 export interface SearchHit {

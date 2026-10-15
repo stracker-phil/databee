@@ -21,6 +21,8 @@ pub struct TableTile {
     pub bytes: u64,
     /// core, woocommerce, action_scheduler, logs, plugins
     pub category: &'static str,
+    /// Owning plugin from the registry, e.g. `WooCommerce`; `None` when unknown.
+    pub owner: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -116,6 +118,8 @@ pub fn tiles(ctx: &WpContext, tables: &[TableInfo]) -> Vec<TableTile> {
             rows: t.rows_estimate.unwrap_or(0),
             bytes: t.size_bytes.unwrap_or(0),
             category: table_category(ctx, &t.name),
+            owner: super::plugins::for_table(t.name.strip_prefix(&ctx.prefix).unwrap_or(&t.name))
+                .map(|p| p.name.clone()),
         })
         .collect();
     tiles.sort_by_key(|a| std::cmp::Reverse(a.rows));

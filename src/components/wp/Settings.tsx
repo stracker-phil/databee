@@ -4,12 +4,10 @@ import { api } from "../../api";
 import { formatBytes, formatCount } from "../../lib/format";
 import { selectActiveSession, selectWp, useStore } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
-import { Treemap } from "./charts";
+import { BreakdownChart } from "./BreakdownChart";
 import { FieldList } from "./FieldValue";
 import { Ago, Card, Loading, Stat } from "./ui";
 import { useWpData } from "./useWpData";
-
-const PALETTE = ["var(--tile-blue)", "var(--tile-green)", "var(--tile-purple)", "var(--tile-orange)", "var(--tile-red)", "var(--tile-gray)"];
 
 function OptionGroup({ prefix }: { prefix: string }) {
   const session = useStore(selectActiveSession);
@@ -43,23 +41,22 @@ function OptionGroup({ prefix }: { prefix: string }) {
   );
 }
 
-export function SettingsScreen() {
+export function SettingsScreen({ params }: { params?: Record<string, string> }) {
   const session = useStore(selectActiveSession);
   const queueChange = useStore((s) => s.queueChange);
-  const [prefix, setPrefix] = useState<string | null>(null);
+  const [prefix, setPrefix] = useState<string | null>(params?.prefix ?? null);
   const { data, error } = useWpData(api.wpOptions, []);
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data || !session?.database) return <Loading />;
   const expired = data.transients.filter((t) => t.expired);
-  const tiles = data.groups
+  const owners = data.groups
     .filter((g) => g.autoloadBytes > 0)
-    .slice(0, 24)
-    .map((g, i) => ({
-      key: g.prefix,
-      label: g.prefix,
+    .map((g) => ({
+      id: g.prefix,
+      label: g.label,
       value: g.autoloadBytes,
-      sub: `${formatBytes(g.autoloadBytes)} autoloaded · ${g.count} options`,
-      color: PALETTE[i % PALETTE.length],
+      sublabel: `${formatCount(g.autoloadCount)} of ${formatCount(g.count)} options`,
+      onOpen: () => setPrefix(g.prefix),
     }));
 
   return (
@@ -70,22 +67,10 @@ export function SettingsScreen() {
         <Stat label="Transients" value={formatCount(data.transients.length)} />
         <Stat label="Expired" value={formatCount(expired.length)} tone={expired.length ? "orange" : undefined} sub={expired.length ? "cleanup ready" : undefined} />
       </div>
-      <Card title="Who bloats autoload? · click a tile">
-        <Treemap items={tiles} height={220} onSelect={setPrefix} />
+      <Card title="Who bloats autoload?" aside="click an owner to list its options">
+        <BreakdownChart items={owners} format={formatBytes} totalLabel="autoloaded" />
       </Card>
       {prefix && <OptionGroup key={prefix} prefix={prefix} />}
-      <Card title="By prefix">
-        <div className="rows">
-          {data.groups.map((g) => (
-            <button key={g.prefix} className={`row-link${prefix === g.prefix ? " selected" : ""}`} onClick={() => setPrefix(g.prefix)}>
-              <span className="grow-text">{g.prefix}</span>
-              <span className="muted">{formatCount(g.count)} options</span>
-              <span className="muted">{formatBytes(g.bytes)}</span>
-              <span className="money row-total">{g.autoloadCount ? `${formatBytes(g.autoloadBytes)} autoload` : "—"}</span>
-            </button>
-          ))}
-        </div>
-      </Card>
       <Card
         title="Transients"
         aside={

@@ -18,6 +18,8 @@ pub struct OptionRow {
 #[serde(rename_all = "camelCase")]
 pub struct OptionGroup {
     pub prefix: String,
+    /// Human owner name from the plugin registry, e.g. `PayPal Payments`; the prefix otherwise.
+    pub label: String,
     pub count: u64,
     pub bytes: u64,
     pub autoload_count: u64,
@@ -90,6 +92,7 @@ pub fn overview(
         }
         let prefix = option_prefix(&row.name);
         let g = groups.entry(prefix.clone()).or_insert_with(|| OptionGroup {
+            label: super::plugins::option_prefix_label(&prefix),
             prefix,
             count: 0,
             bytes: 0,
