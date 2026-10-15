@@ -35,7 +35,7 @@ impl LaunchQueue {
     pub fn push(&self, message: IpcMessage) -> bool {
         let event = match message {
             IpcMessage::Error { message } => LaunchEvent::Error { message },
-            IpcMessage::Activate => return false,
+            IpcMessage::Activate | IpcMessage::Eval { .. } => return false,
             launch @ IpcMessage::Launch { .. } => {
                 let Some(launch) = launch.into_launch() else {
                     return false;

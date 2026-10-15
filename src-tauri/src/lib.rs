@@ -3,6 +3,7 @@ mod commands;
 pub mod connection;
 pub mod db;
 mod db_commands;
+mod dev;
 pub mod error;
 pub mod ipc;
 mod launch;
@@ -114,14 +115,32 @@ fn start_app(
             state.launches.push(initial);
             app.manage(state);
 
+            if let (Some((x, y, w, h)), Some(window)) =
+                (dev::window_frame(), app.get_webview_window("main"))
+            {
+                let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+                let _ = window.set_size(tauri::LogicalSize::new(w, h));
+            }
+
             let listener = ipc::bind(&socket)?;
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(ipc::serve(listener, move |message| {
+                let window = handle.get_webview_window("main");
+                if let IpcMessage::Eval { js } = &message {
+                    if cfg!(debug_assertions)
+                        && let Some(w) = &window
+                    {
+                        let _ = w.eval(js);
+                    }
+                    return;
+                }
                 log::info!("Received launch request from another process");
                 if handle.state::<AppState>().launches.push(message) {
                     let _ = handle.emit(LAUNCH_EVENT, ());
                 }
-                if let Some(window) = handle.get_webview_window("main") {
+                if let Some(window) = window
+                    && !dev::background()
+                {
                     let _ = window.unminimize();
                     let _ = window.set_focus();
                 }

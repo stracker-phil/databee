@@ -27,6 +27,10 @@ pub enum IpcMessage {
         message: String,
     },
     Activate,
+    /// Debug builds only: run JavaScript in the window (used by scripts/dev to drive the UI).
+    Eval {
+        js: String,
+    },
 }
 
 impl From<Launch> for IpcMessage {

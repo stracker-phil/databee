@@ -21,7 +21,8 @@ Minimalistic SQL client for personal use: MySQL/MariaDB for WordPress/WooCommerc
 - `bun run test:db`: Docker fixtures (`dev/`) and integration tests (MariaDB 11.4 and MySQL 8.4)
 - `bun run lint`: tsc and clippy (warnings are errors)
 - `bun run app`: debug build of the .app bundle and launch it
-- `scripts/dev/screenshot.sh` and `scripts/dev/ui.sh`: capture and drive the running window for visual checks
+- `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus
+- `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive and capture the running window in the background
 
 ## Workflow
 Finish every step with the `ship-step` skill. Rules in `.claude/rules/`.
