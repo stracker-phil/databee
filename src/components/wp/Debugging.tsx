@@ -54,7 +54,7 @@ export function SnapshotsScreen() {
         <div style={{ display: "flex", gap: 8 }}>
           <input className="input mono" style={{ maxWidth: 320 }} aria-label="Option pattern" value={pattern} onChange={(e) => setPattern(e.target.value)} />
           <button className="btn" onClick={() => void takeOptions()}>
-            <Camera size={12} /> Snapshot options
+            <Camera size="0.923rem" /> Snapshot options
           </button>
         </div>
       </Card>
@@ -67,7 +67,7 @@ export function SnapshotsScreen() {
             {data.length === 0 && <div className="muted">No snapshots yet.</div>}
             {data.map((s) => (
               <div key={s.id} className="row-link" role="row">
-                <Camera size={14} />
+                <Camera size="1.077rem" />
                 <span className="grow-text">{s.label}</span>
                 <span className="muted">{s.paths} values · {relativeTime(s.created)}</span>
                 <button
@@ -80,10 +80,10 @@ export function SnapshotsScreen() {
                     }
                   }}
                 >
-                  <GitCompare size={12} /> Diff now
+                  <GitCompare size="0.923rem" /> Diff now
                 </button>
                 <button className="icon-btn" aria-label={`Delete snapshot ${s.label}`} onClick={() => void api.wpSnapshotDelete(s.id).then(reload)}>
-                  <Trash2 size={13} />
+                  <Trash2 size="1rem" />
                 </button>
               </div>
             ))}

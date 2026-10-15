@@ -46,14 +46,19 @@ impl From<LogLevel> for log::LevelFilter {
     }
 }
 
-pub const ACCENTS: &[&str] = &["blue", "purple", "pink", "orange", "green", "graphite"];
+/// Green and orange are status colors in the UI, so they are not offered as accents.
+pub const ACCENTS: &[&str] = &["blue", "purple", "pink", "graphite"];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     pub theme: Theme,
     pub accent: String,
-    pub editor_font_size: u8,
+    /// Chrome: sidebar, tabs, labels, buttons (also scales rem).
+    pub ui_font_size: u8,
+    /// Data: grid cells, document values, trees, SQL editor. Reads the old `editorFontSize` key.
+    #[serde(alias = "editorFontSize")]
+    pub data_font_size: u8,
     pub density: Density,
     pub row_limit: u32,
     pub query_timeout_secs: u32,
@@ -75,7 +80,8 @@ impl Default for Settings {
         Self {
             theme: Theme::System,
             accent: "blue".into(),
-            editor_font_size: 13,
+            ui_font_size: 13,
+            data_font_size: 12,
             density: Density::Comfortable,
             row_limit: 1000,
             query_timeout_secs: 30,
@@ -99,7 +105,8 @@ impl Settings {
         if !ACCENTS.contains(&self.accent.as_str()) {
             self.accent = d.accent;
         }
-        self.editor_font_size = self.editor_font_size.clamp(9, 28);
+        self.ui_font_size = self.ui_font_size.clamp(10, 24);
+        self.data_font_size = self.data_font_size.clamp(9, 28);
         self.row_limit = self.row_limit.clamp(10, 100_000);
         self.query_timeout_secs = self.query_timeout_secs.clamp(1, 3600);
         self.max_cell_chars = self.max_cell_chars.clamp(20, 100_000);
@@ -171,19 +178,35 @@ mod tests {
     }
 
     #[test]
+    fn old_editor_font_size_and_retired_accents_migrate() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("settings.json"),
+            r#"{"editorFontSize": 15, "accent": "green"}"#,
+        )
+        .unwrap();
+        let settings = SettingsStore::open(dir.path()).get();
+        assert_eq!(settings.data_font_size, 15);
+        assert_eq!(settings.ui_font_size, 13);
+        assert_eq!(settings.accent, "blue");
+    }
+
+    #[test]
     fn out_of_range_values_are_clamped_on_update() {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::open(dir.path());
         let saved = store
             .update(Settings {
                 row_limit: 0,
-                editor_font_size: 99,
+                data_font_size: 99,
+                ui_font_size: 2,
                 accent: "neon".into(),
                 ..Settings::default()
             })
             .unwrap();
         assert_eq!(saved.row_limit, 10);
-        assert_eq!(saved.editor_font_size, 28);
+        assert_eq!(saved.data_font_size, 28);
+        assert_eq!(saved.ui_font_size, 10);
         assert_eq!(saved.accent, "blue");
     }
 }

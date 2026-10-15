@@ -39,10 +39,10 @@ describe("SettingsDialog", () => {
     mocked.getSettings.mockResolvedValue(settings());
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: "Dark" }));
-    await userEvent.click(screen.getByRole("button", { name: "Accent green" }));
+    await userEvent.click(screen.getByRole("button", { name: "Accent purple" }));
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(document.documentElement.dataset.accent).toBe("green");
+    expect(document.documentElement.dataset.accent).toBe("purple");
   });
 
   it("warns that trace logging records SQL", async () => {

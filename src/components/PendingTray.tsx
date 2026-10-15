@@ -20,7 +20,7 @@ export function PendingTray() {
         <div className="spacer" />
         {canUndo && (
           <button className="btn" onClick={() => void undoLast()}>
-            <RotateCcw size={12} /> Undo last apply
+            <RotateCcw size="0.923rem" /> Undo last apply
           </button>
         )}
         {pending.length > 0 && (
@@ -36,12 +36,12 @@ export function PendingTray() {
             <li key={p.id}>
               <div className="tray-row">
                 <button className="icon-btn tiny" aria-label="Show SQL" onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))}>
-                  {open[p.id] ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                  {open[p.id] ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" />}
                 </button>
                 <span className="grow-text">{p.description}</span>
                 {p.undo.length === 0 && <span className="badge" title="No automatic undo">no undo</span>}
                 <button className="icon-btn tiny" aria-label={`Discard ${p.description}`} onClick={() => discardChange(p.id)}>
-                  <X size={11} />
+                  <X size="0.846rem" />
                 </button>
               </div>
               {open[p.id] && <pre className="tray-sql">{p.statements.join(";\n")};</pre>}

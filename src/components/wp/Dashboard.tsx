@@ -65,12 +65,12 @@ export function DashboardScreen() {
         {ctx.wc?.version && <span className="wp-badge">WooCommerce {ctx.wc.version}</span>}
         {syncLabel && (
           <span className={`wp-badge ${data.hposDrift ? "tone-red" : "tone-green"}`}>
-            {data.hposDrift ? <AlertTriangle size={11} /> : <CheckCircle2 size={11} />} {syncLabel}
+            {data.hposDrift ? <AlertTriangle size="0.846rem" /> : <CheckCircle2 size="0.846rem" />} {syncLabel}
           </span>
         )}
         <div className="spacer" />
         <button className="icon-btn" aria-label="Refresh dashboard" onClick={reload}>
-          <RefreshCw size={13} className={loading ? "spin" : undefined} />
+          <RefreshCw size="1rem" className={loading ? "spin" : undefined} />
         </button>
       </div>
 
@@ -85,7 +85,7 @@ export function DashboardScreen() {
         <div className="insights">
           {data.insights.map((i) => (
             <div key={i.text} className={`insight ${i.level}`}>
-              {i.level === "info" ? <Info size={13} /> : <AlertTriangle size={13} />} {i.text}
+              {i.level === "info" ? <Info size="1rem" /> : <AlertTriangle size="1rem" />} {i.text}
             </div>
           ))}
         </div>
@@ -133,13 +133,13 @@ export function DashboardScreen() {
             <div className="mini-list">
               {data.actions.recentFailed.map((a) => (
                 <button key={a.id} className="mini-row" onClick={() => openEntity("action", a.id)} title={a.message ?? undefined}>
-                  <AlertTriangle size={13} className="tone-text-red" />
+                  <AlertTriangle size="1rem" className="tone-text-red" />
                   <span className="mono grow-text">{a.hook}</span>
                   <span className="muted"><Ago unix={a.lastAttempt ?? a.scheduled} /></span>
                 </button>
               ))}
               {data.actions.recentFailed.length === 0 && (
-                <div className="mini-row muted"><Clock size={13} /> No failed actions</div>
+                <div className="mini-row muted"><Clock size="1rem" /> No failed actions</div>
               )}
             </div>
             <button className="link-btn" style={{ marginTop: 8 }} onClick={() => navigate({ screen: "list", list: "actions", params: { status: "failed" } })}>

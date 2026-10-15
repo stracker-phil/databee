@@ -75,7 +75,7 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
 
       {o.addressNotes.length > 0 && (
         <div className="insight warning">
-          <AlertTriangle size={13} /> {o.addressNotes.join(" · ")}
+          <AlertTriangle size="1rem" /> {o.addressNotes.join(" · ")}
         </div>
       )}
       <div className="address-grid">
@@ -89,7 +89,7 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
             .filter((i) => i.kind !== "tax")
             .map((i) => (
               <div key={i.id} className="item-row">
-                <Thumb src={i.product?.image} size={40} />
+                <Thumb src={i.product?.image} size="3.077rem" />
                 <div className="grow-text">
                   <div>
                     {i.product ? <button className="link-btn plain" onClick={() => useStore.getState().openEntity(i.product!.entity, i.product!.id)}>{i.name}</button> : i.name}
@@ -154,7 +154,7 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
               <Row label="Entry page">
                 {o.attribution.entry && (
                   <a className="url" href={o.attribution.entry} onClick={(e) => (e.preventDefault(), void api.openUrl(o.attribution!.entry!))}>
-                    {o.attribution.entry.replace(/^https?:\/\//, "")} <ExternalLink size={10} />
+                    {o.attribution.entry.replace(/^https?:\/\//, "")} <ExternalLink size="0.769rem" />
                   </a>
                 )}
               </Row>

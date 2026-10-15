@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { connectedStore, resultSet } from "../test/fixtures";
+import { connectedStore, num, resultSet, settings, text } from "../test/fixtures";
 import { ResultsGrid } from "./ResultsGrid";
 
 describe("ResultsGrid editing", () => {
@@ -39,5 +39,32 @@ describe("ResultsGrid editing", () => {
     render(<ResultsGrid columns={rs.columns} rows={rs.rows} />);
     await userEvent.dblClick(screen.getByText("Hello world"));
     expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
+  });
+});
+
+describe("ResultsGrid sizing", () => {
+  const rowTops = () =>
+    screen
+      .getAllByRole("row")
+      .slice(1)
+      .map((r) => parseFloat((r as HTMLElement).style.top));
+
+  it("lays rows out without gaps or overlap at any data size", () => {
+    const rows = Array.from({ length: 5 }, (_, i) => [num(String(i)), text(`row ${i}`)]);
+    const rs = resultSet({ rows });
+    connectedStore({ settings: settings({ dataFontSize: 12 }) });
+    const { unmount } = render(<ResultsGrid columns={rs.columns} rows={rs.rows} />);
+    const small = rowTops();
+    expect(small.slice(1).map((top, i) => top - small[i])).toEqual([26, 26, 26, 26]);
+    unmount();
+
+    connectedStore({ settings: settings({ dataFontSize: 18 }) });
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} />);
+    const large = rowTops();
+    const step = large[1] - large[0];
+    expect(step).toBe(39);
+    expect(large.slice(1).map((top, i) => top - large[i])).toEqual([step, step, step, step]);
+    const row = screen.getAllByRole("row")[1] as HTMLElement;
+    expect(parseFloat(row.style.height)).toBe(step);
   });
 });

@@ -35,7 +35,7 @@ export function Toolbar() {
             ))}
           </select>
           <button className="icon-btn" aria-label="Disconnect" title="Disconnect" onClick={() => void disconnect(session.id)}>
-            <Unplug size={14} />
+            <Unplug size="1.077rem" />
           </button>
         </div>
       ) : (
@@ -44,17 +44,17 @@ export function Toolbar() {
       {wp && (
         <div className="segmented mode-switch" role="group" aria-label="Mode">
           <button aria-pressed={mode === "wp"} onClick={() => setMode("wp")} title="WordPress dashboard">
-            <LayoutDashboard size={12} /> WordPress
+            <LayoutDashboard size="0.923rem" /> WordPress
           </button>
           <button aria-pressed={mode === "db"} onClick={() => setMode("db")} title="Tables and SQL">
-            <Database size={12} /> Database
+            <Database size="0.923rem" /> Database
           </button>
         </div>
       )}
       <div className="spacer" data-tauri-drag-region />
       {wp && mode === "wp" && (
         <button className="icon-btn" aria-label="Search" title="Search (⌘K)" onClick={() => setPaletteOpen(true)}>
-          <Search size={16} />
+          <Search size="1.231rem" />
         </button>
       )}
       {settings && (
@@ -65,17 +65,17 @@ export function Toolbar() {
           title={screenShare ? "Screen-share mode on: personal data is blurred" : "Screen-share mode: blur emails, names and addresses"}
           onClick={() => void saveSettings({ ...settings, screenShareMode: !screenShare })}
         >
-          {screenShare ? <EyeOff size={16} /> : <Eye size={16} />}
+          {screenShare ? <EyeOff size="1.231rem" /> : <Eye size="1.231rem" />}
         </button>
       )}
       <button className="icon-btn" aria-label="New connection" title="New connection (⌘N)" onClick={() => openDialog({ type: "connect" })}>
-        <PlugZap size={16} />
+        <PlugZap size="1.231rem" />
       </button>
       <button className="icon-btn" aria-label="New query" title="New query (⌘T)" disabled={!session} onClick={() => (setMode("db"), openQueryTab())}>
-        <FilePlus2 size={16} />
+        <FilePlus2 size="1.231rem" />
       </button>
       <button className="icon-btn" aria-label="Settings" title="Settings (⌘,)" onClick={() => openDialog({ type: "settings" })}>
-        <SettingsIcon size={16} />
+        <SettingsIcon size="1.231rem" />
       </button>
     </header>
   );

@@ -86,7 +86,7 @@ function Row({ label, keyKind, node, depth, path, onEdit }: { label?: string; ke
   return (
     <div className="vt-row" role="treeitem" aria-expanded={hasChildren ? open : undefined}>
       <div className="vt-line" onClick={() => hasChildren && setOpen(!open)}>
-        <span className="vt-toggle">{hasChildren ? open ? <ChevronDown size={11} /> : <ChevronRight size={11} /> : null}</span>
+        <span className="vt-toggle">{hasChildren ? open ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" /> : null}</span>
         {label !== undefined && (
           <span className={`vt-key${keyKind === "int" ? " int" : ""}`}>
             {label}
@@ -110,7 +110,7 @@ function Row({ label, keyKind, node, depth, path, onEdit }: { label?: string; ke
         {node.note && <span className="badge" style={{ marginLeft: 6 }}>{node.note}</span>}
         {editable && !editing && (
           <button className="vt-edit" aria-label={`Edit ${path.join("/") || "value"}`} onClick={(e) => (e.stopPropagation(), setEditing(true))}>
-            <Pencil size={10} />
+            <Pencil size="0.769rem" />
           </button>
         )}
       </div>
@@ -130,12 +130,12 @@ export function ValueTree({ value, onEdit }: { value: DecodedValue; onEdit?: Tre
     <div className="vt" role="tree" aria-label={`${value.format.toUpperCase()} value`}>
       {value.warning && (
         <div className="vt-warning" role="note">
-          <AlertTriangle size={12} /> {value.warning}
+          <AlertTriangle size="0.923rem" /> {value.warning}
         </div>
       )}
       {value.error && (
         <div className="vt-error" role="alert">
-          <AlertTriangle size={12} /> Could not decode: {value.error}
+          <AlertTriangle size="0.923rem" /> Could not decode: {value.error}
         </div>
       )}
       {value.root && <Row node={value.root} depth={0} path={[]} onEdit={onEdit} />}

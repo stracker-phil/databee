@@ -71,8 +71,8 @@ export function PasswordDialog({ spec, error, savePassword }: { spec: Parameters
           setBusy(false);
         }}
       >
-        <h2 id="pw-title" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <KeyRound size={16} /> Password for {accountOf(spec)}
+        <h2 id="pw-title" style={{ display: "flex", gap: "0.615rem", alignItems: "center" }}>
+          <KeyRound size="1.231rem" /> Password for {accountOf(spec)}
         </h2>
         {error && <div className="form-error">{error}</div>}
         <input

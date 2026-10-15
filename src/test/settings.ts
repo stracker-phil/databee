@@ -4,7 +4,8 @@ export function settings(patch: Partial<Settings> = {}): Settings {
   return {
     theme: "system",
     accent: "blue",
-    editorFontSize: 13,
+    uiFontSize: 13,
+    dataFontSize: 12,
     density: "comfortable",
     rowLimit: 1000,
     queryTimeoutSecs: 30,

@@ -1,14 +1,17 @@
-/* Design tokens. Theme: data-theme on <html> (absent = follow system). */
+/* Design tokens. Theme: data-theme on <html> (absent = follow system).
+   Sizing: everything is rem; `--ui-font-size` drives chrome (html font-size), `--data-font-size` drives
+   grid cells, document values, trees and the SQL editor. Only hairlines and focus rings stay in px.
+   Color roles: `--accent` = interactive only; `--success/--warning/--danger/--info` = status only;
+   `--category-*` = chart slices and group colors. */
 :root {
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
-  --editor-font-size: 13px;
+  --ui-font-size: 13px;
+  --data-font-size: 12px;
 
   --accent-blue: #0a84ff;
   --accent-purple: #a259ff;
   --accent-pink: #ff375f;
-  --accent-orange: #ff9f0a;
-  --accent-green: #30b158;
   --accent-graphite: #8e8e93;
   --accent: var(--accent-blue);
   --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -27,23 +30,41 @@
   --text: #1d1d1f;
   --text-secondary: #6e6e73;
   --text-tertiary: #a1a1a6;
+
   --danger: #d70015;
   --danger-soft: rgba(215, 0, 21, 0.08);
   --success: #248a3d;
+  --success-soft: rgba(36, 138, 61, 0.12);
   --warning: #b25000;
-  --shadow-popover: 0 8px 28px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  --warning-soft: rgba(178, 80, 0, 0.12);
+  --info: #1c55c6;
+  --info-soft: rgba(28, 85, 198, 0.1);
+  --shadow-popover: 0 0.6rem 2.2rem rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
 
   --type-number: #1c55c6;
   --type-temporal: #8a3ffc;
   --type-json: #b25000;
   --type-null: var(--text-tertiary);
 
+  /* status hues for pills and charts (not the accent) */
   --chart-green: #3a9b6f;
   --chart-blue: #4a7fd6;
   --chart-red: #d65a5a;
   --chart-orange: #e09a3a;
   --chart-purple: #8b6fd6;
   --chart-gray: #9a9aa2;
+
+  /* category palette: 7 hues + neutral for "Other" */
+  --category-1: #4a7fd6;
+  --category-2: #3aa391;
+  --category-3: #d6894a;
+  --category-4: #8b6fd6;
+  --category-5: #d65a8a;
+  --category-6: #b9a63a;
+  --category-7: #5aa0c8;
+  --category-other: #a7a7ae;
+
+  /* soft fills for the (legacy) treemap tiles */
   --tile-green: #d7efe3;
   --tile-blue: #dbe6fb;
   --tile-purple: #e6defb;
@@ -53,11 +74,12 @@
   --tile-text: #1d1d1f;
   --flash: rgba(255, 196, 0, 0.35);
 
-  --radius-sm: 5px;
-  --radius: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 0.385rem;
+  --radius: 0.615rem;
+  --radius-lg: 0.923rem;
+  /* set in px by lib/theme.ts from the data size and density, so the virtualizer and CSS agree */
   --row-height: 26px;
-  --toolbar-height: 52px;
+  --toolbar-height: 4rem;
   color-scheme: light;
 }
 
@@ -79,8 +101,12 @@
     --danger: #ff6961;
     --danger-soft: rgba(255, 105, 97, 0.12);
     --success: #4cd964;
+    --success-soft: rgba(76, 217, 100, 0.14);
     --warning: #ffb340;
-    --shadow-popover: 0 10px 34px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+    --warning-soft: rgba(255, 179, 64, 0.14);
+    --info: #7cacf8;
+    --info-soft: rgba(124, 172, 248, 0.14);
+    --shadow-popover: 0 0.8rem 2.6rem rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
     --type-number: #7cacf8;
     --type-temporal: #c5a3ff;
     --type-json: #ffb340;
@@ -90,6 +116,14 @@
     --chart-orange: #e8a24a;
     --chart-purple: #9a82e8;
     --chart-gray: #6c6c74;
+    --category-1: #5b8fe6;
+    --category-2: #48b5a1;
+    --category-3: #e39a5c;
+    --category-4: #9a82e8;
+    --category-5: #e46d9c;
+    --category-6: #cdb94c;
+    --category-7: #6cb3dc;
+    --category-other: #6c6c74;
     --tile-green: #12332a;
     --tile-blue: #172846;
     --tile-purple: #231d4a;
@@ -119,8 +153,12 @@
   --danger: #ff6961;
   --danger-soft: rgba(255, 105, 97, 0.12);
   --success: #4cd964;
+  --success-soft: rgba(76, 217, 100, 0.14);
   --warning: #ffb340;
-  --shadow-popover: 0 10px 34px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  --warning-soft: rgba(255, 179, 64, 0.14);
+  --info: #7cacf8;
+  --info-soft: rgba(124, 172, 248, 0.14);
+  --shadow-popover: 0 0.8rem 2.6rem rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
   --type-number: #7cacf8;
   --type-temporal: #c5a3ff;
   --type-json: #ffb340;
@@ -130,6 +168,14 @@
   --chart-orange: #e8a24a;
   --chart-purple: #9a82e8;
   --chart-gray: #6c6c74;
+  --category-1: #5b8fe6;
+  --category-2: #48b5a1;
+  --category-3: #e39a5c;
+  --category-4: #9a82e8;
+  --category-5: #e46d9c;
+  --category-6: #cdb94c;
+  --category-7: #6cb3dc;
+  --category-other: #6c6c74;
   --tile-green: #12332a;
   --tile-blue: #172846;
   --tile-purple: #231d4a;
@@ -143,8 +189,4 @@
 
 :root[data-accent="purple"] { --accent: var(--accent-purple); }
 :root[data-accent="pink"] { --accent: var(--accent-pink); }
-:root[data-accent="orange"] { --accent: var(--accent-orange); }
-:root[data-accent="green"] { --accent: var(--accent-green); }
 :root[data-accent="graphite"] { --accent: var(--accent-graphite); }
-
-:root[data-density="compact"] { --row-height: 21px; }

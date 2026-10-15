@@ -13,10 +13,10 @@ function ToastItem({ toast }: { toast: Toast }) {
   const Icon = toast.kind === "error" ? AlertTriangle : toast.kind === "success" ? CheckCircle2 : Info;
   return (
     <div className={`toast ${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>
-      <Icon size={15} />
+      <Icon size="1.154rem" />
       <span className="text">{toast.message}</span>
-      <button className="icon-btn" style={{ width: 18, height: 18 }} aria-label="Dismiss" onClick={() => dismiss(toast.id)}>
-        <X size={12} />
+      <button className="icon-btn" style={{ width: "1.385rem", height: 18 }} aria-label="Dismiss" onClick={() => dismiss(toast.id)}>
+        <X size="0.923rem" />
       </button>
     </div>
   );

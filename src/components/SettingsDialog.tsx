@@ -75,8 +75,12 @@ export function SettingsDialog() {
               ))}
             </div>
           </div>
-          <NumberField label="Editor font size" suffix="px" value={draft.editorFontSize} min={9} max={28} onChange={(v) => set("editorFontSize", v)} />
         </div>
+        <div className="field-row">
+          <NumberField label="UI size" suffix="px" value={draft.uiFontSize} min={10} max={24} onChange={(v) => set("uiFontSize", v)} />
+          <NumberField label="Data size" suffix="px" value={draft.dataFontSize} min={9} max={28} onChange={(v) => set("dataFontSize", v)} />
+        </div>
+        <div className="hint">UI size scales sidebar, tabs and labels; data size scales table cells, document values and the SQL editor. ⌘= / ⌘- zoom both.</div>
       </section>
 
       <section>
@@ -122,7 +126,7 @@ export function SettingsDialog() {
             </select>
           </label>
           <button type="button" className="btn" onClick={() => void api.openLogFolder()}>
-            <FolderOpen size={14} /> Open log folder
+            <FolderOpen size="1.077rem" /> Open log folder
           </button>
         </div>
         {draft.logLevel === "trace" && <div className="hint">Trace logs include the SQL text of every query.</div>}

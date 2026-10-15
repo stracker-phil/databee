@@ -95,7 +95,7 @@ export function Omnisearch() {
     <div className="overlay palette-overlay" onMouseDown={(e) => e.target === e.currentTarget && setPaletteOpen(false)}>
       <div className="palette" role="dialog" aria-label="Search">
         <div className="palette-input">
-          <Search size={15} />
+          <Search size="1.154rem" />
           <input
             ref={inputRef}
             aria-label="Search everything"
@@ -122,7 +122,7 @@ export function Omnisearch() {
                 {it.title}
                 {it.subtitle && <span className="muted"> · {it.subtitle}</span>}
               </span>
-              {i === index && <CornerDownLeft size={12} className="muted" />}
+              {i === index && <CornerDownLeft size="0.923rem" className="muted" />}
             </li>
           ))}
           {items.length === 0 && <li className="muted">Nothing found.</li>}

@@ -24,7 +24,7 @@ function Secret({ text }: { text: string }) {
   if (shown) return <span className="mono">{text}</span>;
   return (
     <button className="masked" aria-label="Reveal secret" onClick={() => setShown(true)}>
-      <Eye size={11} /> ••••••••
+      <Eye size="0.846rem" /> ••••••••
     </button>
   );
 }
@@ -37,14 +37,14 @@ function LongText({ text }: { text: string }) {
       <span className={open ? "long-full" : "mono"}>{open ? text : shorten(text, 32, 6)}</span>
       {!open && <span className="hint"> ({formatBytesShort(new TextEncoder().encode(text).length)})</span>}
       <button className="icon-btn tiny" aria-label={open ? "Collapse value" : "Expand value"} onClick={() => setOpen(!open)}>
-        {open ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+        {open ? <Minimize2 size="0.846rem" /> : <Maximize2 size="0.846rem" />}
       </button>
       <button
         className="icon-btn tiny"
         aria-label="Copy value"
         onClick={() => void navigator.clipboard.writeText(text).then(() => toast("success", "Copied value"))}
       >
-        <Copy size={11} />
+        <Copy size="0.846rem" />
       </button>
     </span>
   );
@@ -158,7 +158,7 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
             title={save && opposite ? `Click to queue “${opposite}”` : undefined}
             onClick={() => save && opposite && void save(opposite)}
           >
-            {hint.on ? <Check size={10} /> : <Minus size={10} />} {text}
+            {hint.on ? <Check size="0.769rem" /> : <Minus size="0.769rem" />} {text}
           </button>
         );
         break;
@@ -173,7 +173,7 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
       case "userAgent":
         body = (
           <span title={text}>
-            <MonitorSmartphone size={12} style={{ verticalAlign: -2 }} /> {hint.text}
+            <MonitorSmartphone size="0.923rem" style={{ verticalAlign: -2 }} /> {hint.text}
           </span>
         );
         break;
@@ -210,11 +210,11 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
       {save && (
         <>
           <button className="row-action" aria-label={`Edit ${field.name}`} onClick={() => setEditing(true)} title="Edit">
-            <Pencil size={11} />
+            <Pencil size="0.846rem" />
           </button>
           {target?.kind === "meta" && (
             <button className="row-action" aria-label={`Delete ${field.name}`} onClick={() => void save(null)} title="Delete meta">
-              <Trash2 size={11} />
+              <Trash2 size="0.846rem" />
             </button>
           )}
         </>

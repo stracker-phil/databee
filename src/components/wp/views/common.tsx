@@ -105,7 +105,7 @@ export function AllFields({ doc, changed, open = false }: { doc: EntityDoc; chan
   return (
     <details className="all-fields" open={open}>
       <summary>
-        <ChevronRight size={12} /> All fields & meta <span className="badge">{doc.fields.length + meta}</span>
+        <ChevronRight size="0.923rem" /> All fields & meta <span className="badge">{doc.fields.length + meta}</span>
         <span className="muted"> · {doc.table}</span>
       </summary>
       <Card title="Fields">
@@ -114,8 +114,8 @@ export function AllFields({ doc, changed, open = false }: { doc: EntityDoc; chan
       {doc.meta.map((g) => (
         <details key={`${g.known}-${g.private}-${g.name}`} className="meta-group" open={g.known || doc.meta.length <= 4}>
           <summary>
-            <ChevronRight size={11} />
-            {!g.known && g.private && <Lock size={10} />}
+            <ChevronRight size="0.846rem" />
+            {!g.known && g.private && <Lock size="0.769rem" />}
             {g.name}
             <span className="badge">{g.entries.length}</span>
           </summary>

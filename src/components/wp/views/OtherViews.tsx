@@ -32,7 +32,7 @@ export function CustomerView({ c, changed }: { c: CustomerData; changed: Set<str
   return (
     <div className="entity">
       <div className="entity-head">
-        <Avatar name={c.name} src={c.avatar} size={44} />
+        <Avatar name={c.name} src={c.avatar} size="3.385rem" />
         <div>
           <h2 className="pii">{c.name}</h2>
           <div className="muted pii">{[c.login, c.email].filter(Boolean).join(" · ")}</div>
@@ -61,7 +61,7 @@ export function CustomerView({ c, changed }: { c: CustomerData; changed: Set<str
           <div className="rows">
             {c.tokens.map((t) => (
               <div key={t.id} className="row-link">
-                <CreditCard size={15} />
+                <CreditCard size="1.154rem" />
                 <span className="grow-text">{t.summary}</span>
                 <span className="muted mono">{t.gateway}</span>
                 {t.isDefault && <span className="pill tone-green">default</span>}
@@ -80,7 +80,7 @@ export function ProductView({ p, changed }: { p: ProductData; changed: Set<strin
   return (
     <div className="entity">
       <div className="product-head">
-        <Thumb src={p.image} size={120} />
+        <Thumb src={p.image} size="9.231rem" />
         <div className="grow-text">
           <div className="entity-head" style={{ padding: 0 }}>
             <span className="badge">{p.kind ?? "product"}</span>
@@ -137,7 +137,7 @@ export function ProductView({ p, changed }: { p: ProductData; changed: Set<strin
             <tbody>
               {p.variations.map((v) => (
                 <tr key={v.id}>
-                  <td><Thumb src={v.image ?? p.image} size={28} /></td>
+                  <td><Thumb src={v.image ?? p.image} size="2.154rem" /></td>
                   {attrNames.map((a) => (
                     <td key={a}>{v.attributes.find(([k]) => k === a)?.[1] ?? "Any"}</td>
                   ))}
@@ -170,12 +170,12 @@ export function ActionView({ a, changed }: { a: ActionData; changed: Set<string>
         <span className="muted">scheduled <Ago unix={a.scheduled} /></span>
         {db && a.status !== "pending" && (
           <button className="btn" onClick={() => void queueChange({ type: "retryAction", database: db, id: a.doc.id })}>
-            <Play size={12} /> Retry
+            <Play size="0.923rem" /> Retry
           </button>
         )}
         {db && a.status === "pending" && (
           <button className="btn" onClick={() => void queueChange({ type: "cancelAction", database: db, id: a.doc.id })}>
-            <XCircle size={12} /> Cancel
+            <XCircle size="0.923rem" /> Cancel
           </button>
         )}
       </div>
@@ -235,7 +235,7 @@ export function GenericView({ doc, changed }: { doc: EntityDoc; changed: Set<str
   return (
     <div className="entity">
       <div className="entity-head">
-        {doc.image && <Thumb src={doc.image} size={44} />}
+        {doc.image && <Thumb src={doc.image} size="3.385rem" />}
         <span className="badge">{doc.label}</span>
         <h2>#{doc.id} {doc.title && <span style={{ fontWeight: 400 }}>{doc.title}</span>}</h2>
         {doc.subtitle && <span className="badge">{doc.subtitle}</span>}

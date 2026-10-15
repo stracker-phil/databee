@@ -42,10 +42,10 @@ export function Ago({ unix }: { unix: number | null | undefined }) {
   return <span title={absoluteFromUnix(unix)}>{relativeFromUnix(unix)}</span>;
 }
 
-export function Avatar({ name, src, size = 28 }: { name: string; src?: string | null; size?: number }) {
+export function Avatar({ name, src, size = "2.154rem" }: { name: string; src?: string | null; size?: string }) {
   const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
   return (
-    <span className="avatar pii" style={{ width: size, height: size, fontSize: size * 0.38, background: `hsl(${hue} 45% 45%)` }}>
+    <span className="avatar pii" style={{ width: size, height: size, fontSize: `calc(${size} * 0.38)`, background: `hsl(${hue} 45% 45%)` }}>
       {src ? <img src={src} alt="" onError={(e) => (e.currentTarget.style.display = "none")} /> : null}
       <span>{initials(name)}</span>
     </span>
@@ -76,7 +76,7 @@ export function Card({ title, aside, children, className = "" }: { title?: React
   );
 }
 
-export function Thumb({ src, size = 36 }: { src: string | null | undefined; size?: number }) {
+export function Thumb({ src, size = "2.769rem" }: { src: string | null | undefined; size?: string }) {
   return src ? (
     <img className="thumb" src={src} alt="" loading="lazy" style={{ width: size, height: size }} />
   ) : (

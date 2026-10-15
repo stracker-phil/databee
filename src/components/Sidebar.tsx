@@ -64,7 +64,7 @@ function TablesPanel() {
     <>
       <div className="sidebar-head">
         <div style={{ position: "relative", flex: 1 }}>
-          <Search size={12} style={{ position: "absolute", left: 8, top: 7, color: "var(--text-tertiary)" }} />
+          <Search size="0.923rem" style={{ position: "absolute", left: "0.615rem", top: "0.538rem", color: "var(--text-tertiary)" }} />
           <input
             ref={filterRef}
             className="input"
@@ -77,7 +77,7 @@ function TablesPanel() {
           />
         </div>
         <button className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => void loadDatabases(session.id)}>
-          <RefreshCw size={13} />
+          <RefreshCw size="1rem" />
         </button>
       </div>
       <div className="sidebar-body" role="tree" aria-label="Databases">
@@ -87,8 +87,8 @@ function TablesPanel() {
           return (
             <div key={d.name} role="treeitem" aria-expanded={open}>
               <div className={`tree-row${d.isSystem ? " system" : ""}`} onClick={() => toggle(d.name)}>
-                {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                <Database size={13} />
+                {open ? <ChevronDown size="0.923rem" /> : <ChevronRight size="0.923rem" />}
+                <Database size="1rem" />
                 <span className="label" style={{ fontWeight: d.name === current ? 600 : 400 }}>{d.name}</span>
                 {schema?.tables[d.name] && <span className="meta">{schema.tables[d.name].length}</span>}
               </div>
@@ -109,7 +109,7 @@ function TablesPanel() {
                         onClick={() => openTableTab(d.name, t.name)}
                         onContextMenu={(e) => tableMenu(d.name, t, e)}
                       >
-                        {t.isView ? <Eye size={13} /> : <Table2 size={13} />}
+                        {t.isView ? <Eye size="1rem" /> : <Table2 size="1rem" />}
                         <span className="label">{t.name}</span>
                         {t.rowsEstimate != null && !t.isView && <span className="meta">{compact(t.rowsEstimate)}</span>}
                       </div>
@@ -159,7 +159,7 @@ function HistoryPanel() {
             setEntries([]);
           }}
         >
-          <Trash2 size={13} />
+          <Trash2 size="1rem" />
         </button>
       </div>
       <div className="sidebar-body">
@@ -193,10 +193,10 @@ export function Sidebar() {
       <div style={{ padding: "8px 8px 0" }}>
         <div className="segmented" style={{ width: "100%" }}>
           <button style={{ flex: 1 }} aria-pressed={panel === "tables"} onClick={() => setPanel("tables")}>
-            <Table2 size={12} style={{ verticalAlign: -2 }} /> Tables
+            <Table2 size="0.923rem" style={{ verticalAlign: -2 }} /> Tables
           </button>
           <button style={{ flex: 1 }} aria-pressed={panel === "history"} onClick={() => setPanel("history")}>
-            <History size={12} style={{ verticalAlign: -2 }} /> History
+            <History size="0.923rem" style={{ verticalAlign: -2 }} /> History
           </button>
         </div>
       </div>

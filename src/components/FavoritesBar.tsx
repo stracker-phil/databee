@@ -15,7 +15,7 @@ export function FavoritesBar() {
   return (
     <nav className="favorites" aria-label="Favorites">
       <button className="icon-btn" aria-label="Add current tab to favorites" title="Add to favorites (⌘D)" disabled={!canAdd} onClick={addCurrentTabToFavorites}>
-        <Star size={14} />
+        <Star size="1.077rem" />
       </button>
       {favorites.length === 0 && <span className="empty">Pin tables and queries here with ⌘D</span>}
       {favorites.map((f) => (
@@ -45,7 +45,7 @@ export function FavoritesBar() {
             setOverId(null);
           }}
         >
-          {f.target.kind === "table" ? <Table2 size={12} /> : <FileCode2 size={12} />}
+          {f.target.kind === "table" ? <Table2 size="0.923rem" /> : <FileCode2 size="0.923rem" />}
           {f.name}
         </button>
       ))}

@@ -50,12 +50,12 @@ export function EntityScreen({ entity, id }: { entity: string; id: string }) {
     <>
       <div className="entity-tools">
         <button className={`btn${live ? " btn-live" : ""}`} aria-pressed={live} onClick={() => setLive(!live)} title="Poll every 3 s and highlight changes">
-          <Radio size={12} /> {live ? "Live" : "Live mode"}
+          <Radio size="0.923rem" /> {live ? "Live" : "Live mode"}
         </button>
         {live && <span className="muted small">updated {Math.round((Date.now() - updatedAt) / 1000)}s ago{changed.size ? ` · ${changed.size} changed` : ""}</span>}
         <div className="spacer" />
         <button className="btn" onClick={() => void takeSnapshot(entity, id)} title="Store the current state to diff later">
-          <Camera size={12} /> Snapshot
+          <Camera size="0.923rem" /> Snapshot
         </button>
         <button
           className="btn"
@@ -68,7 +68,7 @@ export function EntityScreen({ entity, id }: { entity: string; id: string }) {
             })
           }
         >
-          <Columns2 size={12} /> Compare…
+          <Columns2 size="0.923rem" /> Compare…
         </button>
         <button
           className="btn"
@@ -78,10 +78,10 @@ export function EntityScreen({ entity, id }: { entity: string; id: string }) {
             openTableTab(session.database, doc.table, "data", `\`${doc.idColumn}\` = ${doc.id}`);
           }}
         >
-          <Table2 size={12} /> Source row
+          <Table2 size="0.923rem" /> Source row
         </button>
         <button className="icon-btn" aria-label="Reload" onClick={reload}>
-          <RefreshCw size={13} className={loading ? "spin" : undefined} />
+          <RefreshCw size="1rem" className={loading ? "spin" : undefined} />
         </button>
       </div>
       {data.view === "order" && <OrderView o={data} changed={changed} />}

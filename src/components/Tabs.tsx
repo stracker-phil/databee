@@ -23,11 +23,11 @@ export function TabBar() {
           title={t.kind === "table" ? `${t.database}.${t.table}${t.filter ? ` WHERE ${t.filter}` : ""}` : t.title}
         >
           {t.kind === "query" && t.running ? (
-            <Loader2 size={12} className="spin" />
+            <Loader2 size="0.923rem" className="spin" />
           ) : t.kind === "query" ? (
-            <FileCode2 size={12} />
+            <FileCode2 size="0.923rem" />
           ) : (
-            <Table2 size={12} />
+            <Table2 size="0.923rem" />
           )}
           <span className="title">{t.title}</span>
           <button
@@ -36,12 +36,12 @@ export function TabBar() {
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => closeTab(t.id)}
           >
-            <X size={11} />
+            <X size="0.846rem" />
           </button>
         </div>
       ))}
       <button className="icon-btn" style={{ alignSelf: "center", marginLeft: 4 }} aria-label="New query tab" onClick={() => openQueryTab()}>
-        <Plus size={14} />
+        <Plus size="1.077rem" />
       </button>
     </div>
   );

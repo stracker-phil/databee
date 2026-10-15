@@ -11,7 +11,7 @@ import { ResultsGrid } from "./ResultsGrid";
 export function ErrorPanel({ message, code }: { message: string; code: string | null }) {
   return (
     <div className="error-panel" role="alert">
-      <AlertTriangle size={16} style={{ flex: "none", marginTop: 1 }} />
+      <AlertTriangle size="1.231rem" style={{ flex: "none", marginTop: 1 }} />
       <div>
         {code && <div className="code">Error {code}</div>}
         <div className="msg">{message}</div>
@@ -60,7 +60,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
       <div className="action-bar">
         {tab.running ? (
           <button className="btn" onClick={() => void cancelQuery(tab.id)}>
-            <Square size={12} /> Cancel
+            <Square size="0.923rem" /> Cancel
           </button>
         ) : (
           <>
@@ -69,10 +69,10 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
               disabled={!tab.sql.trim()}
               onClick={() => run(viewRef.current ? currentStatement(viewRef.current) : tab.sql)}
             >
-              <Play size={12} /> Run
+              <Play size="0.923rem" /> Run
             </button>
             <button className="btn" disabled={!tab.sql.trim()} onClick={() => run(tab.sql)}>
-              <PlayCircle size={12} /> Run all
+              <PlayCircle size="0.923rem" /> Run all
             </button>
           </>
         )}
@@ -91,7 +91,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
       <div className="results">
         {tab.running ? (
           <div className="empty-state">
-            <span><Loader2 size={16} className="spin" style={{ verticalAlign: -3 }} /> Running…</span>
+            <span><Loader2 size="1.231rem" className="spin" style={{ verticalAlign: -3 }} /> Running…</span>
           </div>
         ) : tab.error ? (
           <ErrorPanel message={tab.error.message} code={tab.error.code} />
@@ -101,7 +101,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
           <ResultsGrid columns={result.columns} rows={result.rows} />
         ) : (
           <div className="message-panel">
-            <CheckCircle2 size={20} style={{ color: "var(--success)" }} />
+            <CheckCircle2 size="1.538rem" style={{ color: "var(--success)" }} />
             <div className="big">{formatCount(result.affectedRows)} {result.affectedRows === 1 ? "row" : "rows"} affected</div>
             {result.lastInsertId != null && <div className="muted">Last insert ID: {result.lastInsertId}</div>}
           </div>

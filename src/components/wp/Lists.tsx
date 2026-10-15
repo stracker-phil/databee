@@ -132,7 +132,7 @@ function ActionRow({ a }: { a: ActionSummary }) {
         <span className="mono">{a.hook}</span>
         {a.args && <span className="muted mono"> {shorten(a.args, 40, 8)}</span>}
         {a.status === "failed" && a.message && (
-          <span className="row-sub tone-text-red"><AlertTriangle size={11} /> {shorten(a.message, 90, 10)}</span>
+          <span className="row-sub tone-text-red"><AlertTriangle size="0.846rem" /> {shorten(a.message, 90, 10)}</span>
         )}
       </span>
       {a.group && <span className="badge">{a.group}</span>}
@@ -237,7 +237,7 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
     <div className="list-screen">
       <div className="list-tools">
         <div className="list-search">
-          <Search size={13} />
+          <Search size="1rem" />
           <input aria-label="Search list" placeholder="Search…" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
         </div>
         {kindFacets.length > 0 && list !== "content" && (
@@ -253,10 +253,10 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
         <div className="spacer" />
         <span className="muted">{data ? `${offset + 1}–${offset + data.items.length}` : ""}</span>
         <button className="icon-btn" aria-label="Previous page" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>
-          <ChevronLeft size={14} />
+          <ChevronLeft size="1.077rem" />
         </button>
         <button className="icon-btn" aria-label="Next page" disabled={!data?.hasMore} onClick={() => setOffset(offset + PAGE)}>
-          <ChevronRight size={14} />
+          <ChevronRight size="1.077rem" />
         </button>
       </div>
       {list === "content" && <Chips facets={kindFacets} value={kind ?? kindFacets.find((k) => k.value === "post")?.value ?? null} onChange={setKind} allLabel="Types" />}

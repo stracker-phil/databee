@@ -90,7 +90,7 @@ export function SettingsScreen() {
         title="Transients"
         aside={
           <button className="btn" disabled={!expired.length} onClick={() => void queueChange({ type: "deleteExpiredTransients", database: session.database! })}>
-            <Eraser size={12} /> Queue cleanup of {expired.length} expired
+            <Eraser size="0.923rem" /> Queue cleanup of {expired.length} expired
           </button>
         }
       >

@@ -7,7 +7,10 @@ export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 export interface Settings {
   theme: Theme;
   accent: string;
-  editorFontSize: number;
+  /** Chrome size in px; also the rem base. */
+  uiFontSize: number;
+  /** Grid cells, document values, trees and the SQL editor, in px. */
+  dataFontSize: number;
   density: Density;
   rowLimit: number;
   queryTimeoutSecs: number;
@@ -22,7 +25,7 @@ export interface Settings {
   gravatar: boolean;
 }
 
-export const ACCENTS = ["blue", "purple", "pink", "orange", "green", "graphite"] as const;
+export const ACCENTS = ["blue", "purple", "pink", "graphite"] as const;
 
 export interface ConnectionSpec {
   name?: string | null;

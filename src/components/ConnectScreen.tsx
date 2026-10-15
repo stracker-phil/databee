@@ -143,7 +143,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
           <input type="checkbox" checked={form.savePassword} onChange={(e) => set("savePassword", e.target.checked)} />
           Save password in Keychain
         </label>
-        <button type="submit" className="btn btn-primary" disabled={busy} style={{ alignSelf: "flex-end", height: 28, padding: "0 16px" }}>
+        <button type="submit" className="btn btn-primary" disabled={busy} style={{ alignSelf: "flex-end", height: "2.154rem", padding: "0 16px" }}>
           {busy ? "Connecting…" : "Connect"}
         </button>
       </form>
@@ -159,7 +159,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
             onDoubleClick={() => void submit(r.spec)}
             onClick={() => setForm(toForm(r.spec, defaultPort))}
           >
-            <Database size={16} className="muted" />
+            <Database size="1.231rem" className="muted" />
             <div className="info">
               <div className="title">{r.spec.name ?? r.spec.database ?? r.spec.host}</div>
               <div className="sub">
@@ -175,7 +175,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
                 void removeRecent(r.identity);
               }}
             >
-              <Trash2 size={13} />
+              <Trash2 size="1rem" />
             </button>
           </div>
         ))}

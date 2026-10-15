@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { Cell, ColumnMeta } from "../api";
 import { cellDisplay, cellText, rowsToJson, rowsToTsv } from "../lib/format";
+import { rowHeightFor } from "../lib/theme";
 import { useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
@@ -20,14 +21,15 @@ interface Props {
 }
 
 const ROW_NUMBER_WIDTH = 52;
-const CHAR_WIDTH = 7.2;
 
-function columnWidths(columns: ColumnMeta[], rows: Cell[][], nullLabel: string): number[] {
+/** Initial widths from a sample of rows; one character is ~0.6 of the data font size. */
+function columnWidths(columns: ColumnMeta[], rows: Cell[][], nullLabel: string, fontSize: number): number[] {
   const sample = rows.slice(0, 50);
+  const charWidth = fontSize * 0.6;
   return columns.map((col, i) => {
     const header = col.name.length + col.typeName.length * 0.8 + 2;
     const longest = sample.reduce((max, r) => Math.max(max, Math.min(cellDisplay(r[i], nullLabel, 60).length, 60)), 0);
-    return Math.round(Math.min(380, Math.max(64, Math.max(header, longest) * CHAR_WIDTH + 20)));
+    return Math.round(Math.min(380, Math.max(64, Math.max(header, longest) * charWidth + 20)));
   });
 }
 
@@ -37,13 +39,14 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
   const toast = useStore((s) => s.toast);
   const nullLabel = settings?.nullLabel ?? "NULL";
   const maxChars = settings?.maxCellChars ?? 500;
-  const rowHeight = settings?.density === "compact" ? 21 : 26;
+  const dataFontSize = settings?.dataFontSize ?? 12;
+  const rowHeight = rowHeightFor({ dataFontSize, density: settings?.density ?? "comfortable" });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<{ row: number; col: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
   const [editing, setEditing] = useState<{ row: number; col: number; text: string } | null>(null);
 
-  const widths = useMemo(() => columnWidths(columns, rows, nullLabel), [columns, rows, nullLabel]);
+  const widths = useMemo(() => columnWidths(columns, rows, nullLabel, dataFontSize), [columns, rows, nullLabel, dataFontSize]);
   const totalWidth = ROW_NUMBER_WIDTH + widths.reduce((a, b) => a + b, 0);
   const names = columns.map((c) => c.name);
 
@@ -54,6 +57,8 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
     overscan: 12,
     initialRect: { width: 1000, height: 800 },
   });
+  // Row height follows the data size setting; re-measure so rows neither overlap nor gap.
+  useEffect(() => virtualizer.measure(), [rowHeight, virtualizer]);
 
   const copy = (text: string, what: string) => {
     void navigator.clipboard.writeText(text).then(
@@ -135,7 +140,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
               <span className="type">{c.typeName.toLowerCase()}</span>
-              {sorted && (sort?.descending ? <ArrowDown size={11} /> : <ArrowUp size={11} />)}
+              {sorted && (sort?.descending ? <ArrowDown size="0.846rem" /> : <ArrowUp size="0.846rem" />)}
             </div>
           );
         })}
@@ -152,7 +157,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
                 <div
                   key={ci}
                   role="gridcell"
-                  className={`grid-cell t-${cell.t}${selected?.row === v.index && selected.col === ci ? " selected" : ""}`}
+                  className={`grid-cell t-${cell.t}${selected?.row === v.index && selected.col === ci ? " selected" : ""}${editing?.row === v.index && editing.col === ci ? " editing" : ""}`}
                   style={{ width: widths[ci] }}
                   onMouseDown={() => select(v.index, ci)}
                   onDoubleClick={() => onEditCell && setEditing({ row: v.index, col: ci, text: cellText(cell) })}

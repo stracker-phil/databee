@@ -52,7 +52,7 @@ function NavItem({ section, active }: { section: BrowserSection; active: boolean
   return (
     <button className={`nav-item${active ? " active" : ""}`} onClick={() => navigate({ screen: "list", list: section.list as WpList })}>
       <span className="nav-row">
-        <Icon size={14} />
+        <Icon size="1.077rem" />
         <span className="nav-label">{section.label}</span>
         <span className="nav-count">{section.count.toLocaleString("en-US")}</span>
       </span>
@@ -71,7 +71,7 @@ function Nav({ route }: { route: WpRoute }) {
     <nav className="wp-nav" aria-label="WordPress">
       <button className={`nav-item${route.screen === "dashboard" ? " active" : ""}`} onClick={() => navigate({ screen: "dashboard" })}>
         <span className="nav-row">
-          <LayoutDashboard size={14} />
+          <LayoutDashboard size="1.077rem" />
           <span className="nav-label">Dashboard</span>
         </span>
       </button>
@@ -81,7 +81,7 @@ function Nav({ route }: { route: WpRoute }) {
       <div className="nav-sep" />
       <button className={`nav-item${route.screen === "snapshots" ? " active" : ""}`} onClick={() => navigate({ screen: "snapshots" })}>
         <span className="nav-row">
-          <CalendarClock size={14} />
+          <CalendarClock size="1.077rem" />
           <span className="nav-label">Snapshots & diff</span>
         </span>
       </button>
@@ -97,22 +97,22 @@ function Header() {
   return (
     <div className="wp-header">
       <button className="icon-btn" aria-label="Back" title="Back (⌘[)" disabled={index === 0} onClick={goBack}>
-        <ArrowLeft size={14} />
+        <ArrowLeft size="1.077rem" />
       </button>
       <button className="icon-btn" aria-label="Forward" title="Forward (⌘])" disabled={index >= stack.length - 1} onClick={goForward}>
-        <ArrowRight size={14} />
+        <ArrowRight size="1.077rem" />
       </button>
       <nav className="crumbs" aria-label="Breadcrumbs">
         {crumbs.map((r, i) => (
           <span key={first + i} className={first + i === index ? "crumb current" : "crumb"}>
-            {i > 0 && <ChevronRight size={11} />}
+            {i > 0 && <ChevronRight size="0.846rem" />}
             <button onClick={() => useStore.setState((s) => ({ wpNav: { ...s.wpNav, index: first + i } }))}>{routeTitle(r)}</button>
           </span>
         ))}
       </nav>
       <div className="spacer" />
       <button className="search-trigger" onClick={() => setPaletteOpen(true)}>
-        <Search size={13} /> Search orders, emails, PayPal IDs… <kbd>⌘K</kbd>
+        <Search size="1rem" /> Search orders, emails, PayPal IDs… <kbd>⌘K</kbd>
       </button>
     </div>
   );

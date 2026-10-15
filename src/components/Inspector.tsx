@@ -53,10 +53,10 @@ export function Inspector() {
           aria-label="Copy value"
           onClick={() => void navigator.clipboard.writeText(raw).then(() => toast("success", "Copied value"))}
         >
-          <Copy size={13} />
+          <Copy size="1rem" />
         </button>
         <button className="icon-btn" aria-label="Close inspector" onClick={() => selectCell(null)}>
-          <X size={13} />
+          <X size="1rem" />
         </button>
       </div>
       <div className="inspector-body">

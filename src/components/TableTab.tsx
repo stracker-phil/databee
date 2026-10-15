@@ -91,7 +91,7 @@ function DataView({ tab }: { tab: TableTabState }) {
             setBrowse((b) => ({ ...b, offset: 0, filter: filterInput.trim() }));
           }}
         >
-          <Filter size={12} style={{ position: "absolute", left: 8, top: 7, color: "var(--text-tertiary)" }} />
+          <Filter size="0.923rem" style={{ position: "absolute", left: "0.615rem", top: "0.538rem", color: "var(--text-tertiary)" }} />
           <input
             className="input mono"
             style={{ paddingLeft: 24 }}
@@ -108,14 +108,14 @@ function DataView({ tab }: { tab: TableTabState }) {
           disabled={!structure}
           onClick={() => structure && useStore.getState().openDialog({ type: "insertRow", database: tab.database, table: tab.table, columns: structure.columns })}
         >
-          <Plus size={13} />
+          <Plus size="1rem" />
         </button>
         <button className="icon-btn" aria-label="Reload" title="Reload" onClick={() => void load()}>
-          {loading ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
+          {loading ? <Loader2 size="1rem" className="spin" /> : <RefreshCw size="1rem" />}
         </button>
         {entity && (
           <span className="hint" title="Right-click a row to open it as a document">
-            <FileText size={11} style={{ verticalAlign: -1 }} /> {entity.entity} documents
+            <FileText size="0.846rem" style={{ verticalAlign: -1 }} /> {entity.entity} documents
           </span>
         )}
         <div className="spacer" />
@@ -128,7 +128,7 @@ function DataView({ tab }: { tab: TableTabState }) {
           disabled={browse.offset === 0}
           onClick={() => setBrowse((b) => ({ ...b, offset: Math.max(0, b.offset - pageSize) }))}
         >
-          <ChevronLeft size={14} />
+          <ChevronLeft size="1.077rem" />
         </button>
         <button
           className="icon-btn"
@@ -136,7 +136,7 @@ function DataView({ tab }: { tab: TableTabState }) {
           disabled={!page?.hasMore}
           onClick={() => setBrowse((b) => ({ ...b, offset: b.offset + pageSize }))}
         >
-          <ChevronRight size={14} />
+          <ChevronRight size="1.077rem" />
         </button>
       </div>
       {error ? (
@@ -255,7 +255,7 @@ function StructureView({ tab }: { tab: TableTabState }) {
             aria-label="Copy DDL"
             onClick={() => void navigator.clipboard.writeText(structure.ddl).then(() => toast("success", "Copied DDL"))}
           >
-            <Copy size={12} />
+            <Copy size="0.923rem" />
           </button>
         </h3>
         <pre className="ddl">{structure.ddl}</pre>
