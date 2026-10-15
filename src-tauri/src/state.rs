@@ -3,12 +3,16 @@ use std::path::Path;
 use crate::launch::LaunchQueue;
 use crate::secrets::SecretStore;
 use crate::session::Sessions;
+use crate::store::favorites::FavoritesStore;
+use crate::store::history::HistoryStore;
 use crate::store::recents::RecentsStore;
 use crate::store::settings::SettingsStore;
 
 pub struct AppState {
     pub settings: SettingsStore,
     pub recents: RecentsStore,
+    pub favorites: FavoritesStore,
+    pub history: HistoryStore,
     pub launches: LaunchQueue,
     pub secrets: Box<dyn SecretStore>,
     pub sessions: Sessions,
@@ -19,6 +23,8 @@ impl AppState {
         Self {
             settings: SettingsStore::open(config_dir),
             recents: RecentsStore::open(config_dir),
+            favorites: FavoritesStore::open(config_dir),
+            history: HistoryStore::open(config_dir),
             launches: LaunchQueue::default(),
             secrets,
             sessions: Sessions::default(),

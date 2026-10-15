@@ -14,6 +14,7 @@ use crate::error::{AppError, AppResult};
 use crate::secrets::{PasswordSource, resolve_password};
 use crate::session::{Session, SessionInfo};
 use crate::state::AppState;
+use crate::store::history::HistoryEntry;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -163,6 +164,8 @@ pub async fn execute(
     log::debug!("Executing query on {}", session.spec.identity());
     log::trace!("SQL: {sql}");
     let timeout = Duration::from_secs(settings.query_timeout_secs.into());
+    let database = session.db.current_database();
+    let started = std::time::Instant::now();
     let response = session
         .db
         .execute(&sql, settings.row_limit as usize, timeout)
@@ -170,6 +173,17 @@ pub async fn execute(
     match &response {
         Ok(r) => log::debug!("Query finished in {} ms", r.elapsed_ms),
         Err(e) => log::info!("Query failed: {e}"),
+    }
+    let entry = HistoryEntry {
+        account: session.spec.account(),
+        database,
+        sql,
+        executed_at: chrono::Utc::now(),
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        error: response.as_ref().err().map(ToString::to_string),
+    };
+    if let Err(e) = state.history.record(entry) {
+        log::warn!("Could not record history: {e}");
     }
     response
 }
