@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 use super::context::WpContext;
+use super::hints::{GROUP_ORDER, Hint, HintContext, Sensitive, annotate};
 use super::value::{self, DecodedValue};
 use crate::db::{Cell, ResultSet, quote_ident};
 use crate::error::{AppError, AppResult};
@@ -284,22 +285,33 @@ pub fn relation_ids_sql(
 pub struct EntityLink {
     pub entity: String,
     pub id: String,
+    /// Title of the target (e.g. product name), resolved in a batch after assembly.
+    pub label: Option<String>,
+    pub image: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DocField {
     pub name: String,
+    pub label: Option<String>,
     pub value: Cell,
     pub decoded: Option<DecodedValue>,
     pub link: Option<EntityLink>,
+    pub hint: Option<Hint>,
+    pub sensitive: Option<Sensitive>,
+    #[serde(skip)]
+    pub group: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaGroup {
     pub name: String,
+    /// All keys start with `_` (hidden from the WordPress UI).
     pub private: bool,
+    /// Group comes from the key registry rather than a shared prefix.
+    pub known: bool,
     pub entries: Vec<DocField>,
 }
 
@@ -320,6 +332,8 @@ pub struct EntityDoc {
     pub id: String,
     pub title: Option<String>,
     pub subtitle: Option<String>,
+    /// Featured image (posts/products), resolved after assembly.
+    pub image: Option<String>,
     /// Where the row lives, so the UI can jump to the table view.
     pub table: String,
     pub id_column: String,
@@ -328,7 +342,32 @@ pub struct EntityDoc {
     pub relations: Vec<RelationInfo>,
 }
 
-fn cell_str(cell: &Cell) -> Option<&str> {
+impl EntityDoc {
+    /// Every field and meta entry, e.g. to resolve links in one batch.
+    pub fn all_fields_mut(&mut self) -> impl Iterator<Item = &mut DocField> {
+        self.fields
+            .iter_mut()
+            .chain(self.meta.iter_mut().flat_map(|g| g.entries.iter_mut()))
+    }
+
+    pub fn all_fields(&self) -> impl Iterator<Item = &DocField> {
+        self.fields
+            .iter()
+            .chain(self.meta.iter().flat_map(|g| g.entries.iter()))
+    }
+
+    pub fn field(&self, name: &str) -> Option<&DocField> {
+        self.all_fields().find(|f| f.name == name)
+    }
+
+    pub fn text(&self, name: &str) -> Option<&str> {
+        self.field(name)
+            .and_then(|f| cell_str(&f.value))
+            .filter(|s| !s.is_empty())
+    }
+}
+
+pub fn cell_str(cell: &Cell) -> Option<&str> {
     match cell {
         Cell::Number(s) | Cell::Text(s) | Cell::Temporal(s) | Cell::Json(s) => Some(s),
         _ => None,
@@ -341,13 +380,26 @@ fn link_for(catalog: &Catalog, entity: Option<&String>, cell: &Cell) -> Option<E
     (catalog.has(entity) && id.parse::<u64>().is_ok_and(|n| n > 0)).then(|| EntityLink {
         entity: entity.clone(),
         id: id.to_string(),
+        label: None,
+        image: None,
     })
 }
 
-fn field(catalog: &Catalog, name: String, value: Cell, link_target: Option<&String>) -> DocField {
+pub(crate) fn field(
+    catalog: &Catalog,
+    hints: &HintContext,
+    name: String,
+    value: Cell,
+    link_target: Option<&String>,
+) -> DocField {
+    let a = annotate(&name, cell_str(&value), hints);
     DocField {
         decoded: cell_str(&value).and_then(value::decode),
         link: link_for(catalog, link_target, &value),
+        label: a.label,
+        hint: a.hint,
+        sensitive: a.sensitive,
+        group: a.group,
         name,
         value,
     }
@@ -363,39 +415,60 @@ fn meta_prefix(key: &str) -> &str {
         .unwrap_or("")
 }
 
-/// Splits meta into public and `_private` keys, grouped by shared prefix. Prefixes used
-/// by a single key go to an "other" group. Public groups come first.
+/// Groups meta by the key registry; unknown keys fall back to shared prefixes (split into
+/// public and `_private`), and single leftovers go to "Other". Known groups come first, in
+/// `GROUP_ORDER`.
 pub fn group_meta(entries: Vec<DocField>) -> Vec<MetaGroup> {
+    let fallback_key = |e: &DocField| (e.name.starts_with('_'), meta_prefix(&e.name).to_string());
     let mut counts: HashMap<(bool, String), usize> = HashMap::new();
-    for e in &entries {
-        *counts
-            .entry((e.name.starts_with('_'), meta_prefix(&e.name).to_string()))
-            .or_default() += 1;
+    for e in entries.iter().filter(|e| e.group.is_none()) {
+        *counts.entry(fallback_key(e)).or_default() += 1;
     }
     let mut groups: Vec<MetaGroup> = Vec::new();
     for e in entries {
         let private = e.name.starts_with('_');
-        let prefix = meta_prefix(&e.name).to_string();
-        let name = if !prefix.is_empty() && counts[&(private, prefix.clone())] > 1 {
-            prefix
-        } else {
-            "other".to_string()
+        let (name, known) = match &e.group {
+            Some(g) => (g.clone(), true),
+            None => {
+                let key = fallback_key(&e);
+                if !key.1.is_empty() && counts[&key] > 1 {
+                    (key.1, false)
+                } else {
+                    ("Other".to_string(), false)
+                }
+            }
         };
         match groups
             .iter_mut()
-            .find(|g| g.private == private && g.name == name)
+            .find(|g| g.name == name && (g.known || name == "Other" || g.private == private))
         {
-            Some(g) => g.entries.push(e),
+            Some(g) => {
+                g.private &= private;
+                g.entries.push(e);
+            }
             None => groups.push(MetaGroup {
                 name,
                 private,
+                known,
                 entries: vec![e],
             }),
         }
     }
-    groups.sort_by(|a, b| {
-        (a.private, a.name == "other", &a.name).cmp(&(b.private, b.name == "other", &b.name))
-    });
+    let rank = |g: &MetaGroup| {
+        if g.known {
+            (
+                0,
+                GROUP_ORDER
+                    .iter()
+                    .position(|n| *n == g.name)
+                    .unwrap_or(usize::MAX),
+                false,
+            )
+        } else {
+            (if g.name == "Other" { 2 } else { 1 }, 0, g.private)
+        }
+    };
+    groups.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| a.name.cmp(&b.name)));
     groups
 }
 
@@ -416,6 +489,7 @@ pub fn assemble(
     counts: &HashMap<String, HashMap<String, u64>>,
 ) -> Vec<EntityDoc> {
     let id_idx = column_index(rows, &def.id);
+    let currency_idx = column_index(rows, "currency");
     let text_of = |row: &[Cell], col: &Option<String>| {
         col.as_ref()
             .and_then(|c| column_index(rows, c))
@@ -423,19 +497,16 @@ pub fn assemble(
             .filter(|s| !s.is_empty())
     };
 
-    let mut meta_by_id: HashMap<String, Vec<DocField>> = HashMap::new();
+    // Raw meta first: the currency (and other doc-wide facts) must be known before hinting.
+    let mut raw_meta: HashMap<String, Vec<(String, Cell)>> = HashMap::new();
     if let Some(meta_rows) = meta {
         for r in &meta_rows.rows {
-            let (Some(fk), Some(key)) = (cell_str(&r[0]), cell_str(&r[1])) else {
-                continue;
-            };
-            let f = field(
-                catalog,
-                key.to_string(),
-                r[2].clone(),
-                def.meta_links.get(key),
-            );
-            meta_by_id.entry(fk.to_string()).or_default().push(f);
+            if let (Some(fk), Some(key)) = (cell_str(&r[0]), cell_str(&r[1])) {
+                raw_meta
+                    .entry(fk.to_string())
+                    .or_default()
+                    .push((key.to_string(), r[2].clone()));
+            }
         }
     }
 
@@ -446,12 +517,43 @@ pub fn assemble(
                 .and_then(|i| cell_str(&row[i]))
                 .unwrap_or_default()
                 .to_string();
+            let doc_meta = raw_meta.remove(&id).unwrap_or_default();
+            let currency = currency_idx
+                .and_then(|i| cell_str(&row[i]).map(String::from))
+                .or_else(|| {
+                    doc_meta
+                        .iter()
+                        .find(|(k, _)| k == "_order_currency")
+                        .and_then(|(_, v)| cell_str(v).map(String::from))
+                })
+                .filter(|c| !c.is_empty())
+                .or_else(|| ctx.site.currency.clone());
+            let hints = HintContext {
+                currency,
+                gmt_offset_secs: ctx.site.gmt_offset_secs,
+            };
+
             let fields = rows
                 .columns
                 .iter()
                 .zip(row)
                 .filter(|(c, _)| !def.hidden.iter().any(|h| h.eq_ignore_ascii_case(&c.name)))
-                .map(|(c, v)| field(catalog, c.name.clone(), v.clone(), def.links.get(&c.name)))
+                .map(|(c, v)| {
+                    field(
+                        catalog,
+                        &hints,
+                        c.name.clone(),
+                        v.clone(),
+                        def.links.get(&c.name),
+                    )
+                })
+                .collect();
+            let meta_fields = doc_meta
+                .into_iter()
+                .map(|(k, v)| {
+                    let link = def.meta_links.get(&k).cloned();
+                    field(catalog, &hints, k, v, link.as_ref())
+                })
                 .collect();
             let relations = def
                 .relations
@@ -473,10 +575,11 @@ pub fn assemble(
                 label: def.label.clone(),
                 title: text_of(row, &def.title),
                 subtitle: text_of(row, &def.subtitle),
+                image: None,
                 table: ctx.table(&def.table),
                 id_column: def.id.clone(),
                 fields,
-                meta: group_meta(meta_by_id.remove(&id).unwrap_or_default()),
+                meta: group_meta(meta_fields),
                 relations,
                 id,
             }
@@ -513,6 +616,7 @@ mod tests {
                 hpos,
                 has_action_scheduler: true,
             }),
+            site: Default::default(),
             tables,
         }
     }
@@ -545,12 +649,13 @@ mod tests {
     }
 
     fn meta_field(name: &str) -> DocField {
-        DocField {
-            name: name.into(),
-            value: text("x"),
-            decoded: None,
-            link: None,
-        }
+        field(
+            &catalog(HposMode::On),
+            &HintContext::default(),
+            name.into(),
+            text("x"),
+            None,
+        )
     }
 
     #[test]
@@ -653,7 +758,7 @@ mod tests {
     }
 
     #[test]
-    fn meta_is_split_into_public_private_and_prefix_groups() {
+    fn meta_groups_come_from_the_registry_with_prefix_fallback() {
         let groups = group_meta(
             [
                 "_ppcp_paypal_order_id",
@@ -661,7 +766,12 @@ mod tests {
                 "_transaction_id",
                 "billing_email",
                 "billing_country",
+                "foo_a",
+                "foo_b",
+                "_myplugin_a",
+                "_myplugin_b",
                 "color",
+                "_lonely",
             ]
             .into_iter()
             .map(meta_field)
@@ -669,17 +779,20 @@ mod tests {
         );
         let shape: Vec<_> = groups
             .iter()
-            .map(|g| (g.private, g.name.as_str(), g.entries.len()))
+            .map(|g| (g.name.as_str(), g.known, g.entries.len()))
             .collect();
         assert_eq!(
             shape,
             [
-                (false, "billing", 2),
-                (false, "other", 1),
-                (true, "ppcp", 2),
-                (true, "other", 1)
+                ("Billing address", true, 2),
+                ("Payment", true, 1),
+                ("PayPal", true, 2),
+                ("foo", false, 2),
+                ("myplugin", false, 2),
+                ("Other", false, 2),
             ]
         );
+        assert!(groups[4].private);
     }
 
     #[test]
@@ -729,7 +842,9 @@ mod tests {
             customer.link,
             Some(EntityLink {
                 entity: "user".into(),
-                id: "12".into()
+                id: "12".into(),
+                label: None,
+                image: None,
             })
         );
         let parent = doc
@@ -739,8 +854,10 @@ mod tests {
             .unwrap();
         assert_eq!(parent.link, None, "0 is not a reference");
 
-        assert_eq!(doc.meta[0].name, "ppcp");
+        assert_eq!(doc.meta[0].name, "PayPal");
         assert!(doc.meta[0].private);
+        let total = doc.fields.iter().find(|f| f.name == "status").unwrap();
+        assert_eq!(total.hint, None);
         assert_eq!(
             doc.meta[0].entries[1].decoded.as_ref().unwrap().format,
             "php"

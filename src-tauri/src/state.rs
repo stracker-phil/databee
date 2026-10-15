@@ -9,6 +9,7 @@ use crate::store::favorites::FavoritesStore;
 use crate::store::history::HistoryStore;
 use crate::store::recents::RecentsStore;
 use crate::store::settings::SettingsStore;
+use crate::store::snapshots::SnapshotStore;
 use crate::wp::context::WpContext;
 
 pub struct AppState {
@@ -16,6 +17,7 @@ pub struct AppState {
     pub recents: RecentsStore,
     pub favorites: FavoritesStore,
     pub history: HistoryStore,
+    pub snapshots: SnapshotStore,
     pub launches: LaunchQueue,
     pub secrets: Box<dyn SecretStore>,
     pub sessions: Sessions,
@@ -31,6 +33,7 @@ impl AppState {
             recents: RecentsStore::open(config_dir),
             favorites: FavoritesStore::open(config_dir),
             history: HistoryStore::open(config_dir),
+            snapshots: SnapshotStore::open(config_dir),
             launches: LaunchQueue::default(),
             secrets,
             sessions: Sessions::default(),

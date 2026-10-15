@@ -64,6 +64,10 @@ pub struct Settings {
     pub default_port: u16,
     pub show_system_schemas: bool,
     pub log_level: LogLevel,
+    /// Blurs personal data (emails, names, addresses) for screen sharing.
+    pub screen_share_mode: bool,
+    /// Loads avatars from Gravatar (sends hashed emails to gravatar.com).
+    pub gravatar: bool,
 }
 
 impl Default for Settings {
@@ -82,6 +86,8 @@ impl Default for Settings {
             default_port: 3306,
             show_system_schemas: false,
             log_level: LogLevel::Info,
+            screen_share_mode: false,
+            gravatar: false,
         }
     }
 }

@@ -14,6 +14,22 @@ pub struct SiteInfo {
     pub path: Option<String>,
 }
 
+/// Site-level facts read from `wp_options`.
+#[derive(Serialize, Debug, Clone, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteMeta {
+    pub name: Option<String>,
+    pub url: Option<String>,
+    pub currency: Option<String>,
+    /// From `gmt_offset` (hours); 0 when the site uses a named timezone.
+    pub gmt_offset_secs: i64,
+    pub theme: Option<String>,
+    /// Plugin slugs from `active_plugins`, e.g. `woocommerce`.
+    pub active_plugins: Vec<String>,
+    /// Base URL for uploads, from `upload_url_path` or `<siteurl>/wp-content/uploads`.
+    pub uploads_url: Option<String>,
+}
+
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum HposMode {
@@ -38,6 +54,7 @@ pub struct WpContext {
     /// Sub-sites of a multisite network (blog 1 uses the main prefix).
     pub sites: Vec<SiteInfo>,
     pub wc: Option<WcContext>,
+    pub site: SiteMeta,
     /// All tables in the database, so definitions for missing plugin tables can be skipped.
     #[serde(skip)]
     pub tables: BTreeSet<String>,
@@ -89,7 +106,53 @@ pub const PROBED_OPTIONS: &[&str] = &[
     "woocommerce_version",
     "woocommerce_custom_orders_table_enabled",
     "woocommerce_custom_orders_table_data_sync_enabled",
+    "siteurl",
+    "blogname",
+    "woocommerce_currency",
+    "gmt_offset",
+    "template",
+    "stylesheet",
+    "active_plugins",
+    "upload_url_path",
 ];
+
+fn site_meta(options: &HashMap<String, String>) -> SiteMeta {
+    let opt = |k: &str| options.get(k).filter(|v| !v.is_empty()).cloned();
+    let url = opt("siteurl").map(|u| u.trim_end_matches('/').to_string());
+    let active_plugins = opt("active_plugins")
+        .and_then(|raw| super::php::parse(raw.as_bytes()).ok())
+        .map(|v| match v {
+            super::php::PhpValue::Array(items) => items
+                .into_iter()
+                .filter_map(|(_, v)| match v {
+                    super::php::PhpValue::Str(s) => String::from_utf8(s).ok(),
+                    _ => None,
+                })
+                .map(|path| {
+                    path.split('/')
+                        .next()
+                        .unwrap_or(&path)
+                        .trim_end_matches(".php")
+                        .to_string()
+                })
+                .collect(),
+            _ => Vec::new(),
+        })
+        .unwrap_or_default();
+    SiteMeta {
+        name: opt("blogname"),
+        uploads_url: opt("upload_url_path")
+            .map(|u| u.trim_end_matches('/').to_string())
+            .or_else(|| url.as_ref().map(|u| format!("{u}/wp-content/uploads"))),
+        url,
+        currency: opt("woocommerce_currency"),
+        gmt_offset_secs: opt("gmt_offset")
+            .and_then(|o| o.parse::<f64>().ok())
+            .map_or(0, |h| (h * 3600.0) as i64),
+        theme: opt("stylesheet").or_else(|| opt("template")),
+        active_plugins,
+    }
+}
 
 /// Builds the context from the table list and the `PROBED_OPTIONS` values.
 pub fn build(
@@ -138,6 +201,7 @@ pub fn build(
         prefix,
         sites,
         wc,
+        site: site_meta(options),
         tables: tables.iter().cloned().collect(),
     })
 }
@@ -240,6 +304,36 @@ mod tests {
         )
         .unwrap();
         assert_eq!(ctx.wc.unwrap().hpos, HposMode::Off);
+    }
+
+    #[test]
+    fn site_facts_come_from_options() {
+        let ctx = build(
+            &tables(CORE),
+            &opts(&[
+                ("siteurl", "https://wc-pp.ddev.site/"),
+                ("woocommerce_currency", "USD"),
+                ("gmt_offset", "-5.5"),
+                ("stylesheet", "storefront"),
+                (
+                    "active_plugins",
+                    r#"a:2:{i:0;s:27:"woocommerce/woocommerce.php";i:1;s:59:"woocommerce-paypal-payments/woocommerce-paypal-payments.php";}"#,
+                ),
+            ]),
+            &HashMap::new(),
+        )
+        .unwrap();
+        assert_eq!(ctx.site.url.as_deref(), Some("https://wc-pp.ddev.site"));
+        assert_eq!(
+            ctx.site.uploads_url.as_deref(),
+            Some("https://wc-pp.ddev.site/wp-content/uploads")
+        );
+        assert_eq!(ctx.site.gmt_offset_secs, -19800);
+        assert_eq!(
+            ctx.site.active_plugins,
+            ["woocommerce", "woocommerce-paypal-payments"]
+        );
+        assert_eq!(ctx.site.theme.as_deref(), Some("storefront"));
     }
 
     #[test]

@@ -310,6 +310,28 @@ impl MySqlSession {
         Ok(BrowsePage { result, has_more })
     }
 
+    /// Runs the statements in one transaction (all or nothing for transactional tables).
+    pub async fn apply(&self, statements: &[String], timeout: Duration) -> AppResult<u64> {
+        use sqlx::Connection;
+        let mut conn = self.meta.acquire().await?;
+        let work = async {
+            let mut tx = conn.begin().await?;
+            let mut affected = 0;
+            for sql in statements {
+                affected += sqlx::raw_sql(AssertSqlSafe(sql.clone()))
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected();
+            }
+            tx.commit().await?;
+            Ok::<u64, sqlx::Error>(affected)
+        };
+        match tokio::time::timeout(timeout, work).await {
+            Ok(result) => Ok(result?),
+            Err(_) => Err(AppError::Timeout(timeout.as_secs() as u32)),
+        }
+    }
+
     /// Runs a read query on the metadata pool and returns its (last) result set.
     pub async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet> {
         const MAX_ROWS: usize = 50_000;

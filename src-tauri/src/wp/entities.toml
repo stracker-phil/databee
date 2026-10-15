@@ -119,3 +119,19 @@ title = "gateway_id"
 subtitle = "type"
 meta = { table = "woocommerce_payment_tokenmeta", fk = "payment_token_id" }
 links = { user_id = "user" }
+
+[[entity]]
+name = "action"
+label = "Scheduled action"
+table = "actionscheduler_actions"
+id = "action_id"
+title = "hook"
+subtitle = "status"
+
+[[entity]]
+name = "session"
+label = "Session"
+when = "woocommerce"
+table = "woocommerce_sessions"
+id = "session_id"
+title = "session_key"

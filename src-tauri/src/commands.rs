@@ -34,6 +34,21 @@ pub fn open_log_folder(app: AppHandle) -> AppResult<()> {
         .map_err(|e| AppError::Io(e.to_string()))
 }
 
+/// Only web links may be opened from data; anything else (file:, custom schemes) is refused.
+fn is_web_url(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|u| matches!(u.scheme(), "http" | "https"))
+}
+
+#[tauri::command]
+pub fn open_url(app: AppHandle, url: String) -> AppResult<()> {
+    if !is_web_url(&url) {
+        return Err(AppError::InvalidInput(format!("Not a web link: {url}")));
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| AppError::Io(e.to_string()))
+}
+
 #[tauri::command]
 pub fn take_launch_events(state: State<'_, AppState>) -> Vec<LaunchEvent> {
     state.launches.take_events()
@@ -89,4 +104,18 @@ pub fn clear_history(state: State<'_, AppState>, account: String) -> AppResult<(
 #[tauri::command]
 pub fn log_frontend_error(message: String) {
     log::error!(target: "frontend", "{message}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_web_links_can_be_opened() {
+        assert!(is_web_url("https://wc-pp.ddev.site/checkout"));
+        assert!(is_web_url("http://localhost:8080"));
+        assert!(!is_web_url("file:///etc/passwd"));
+        assert!(!is_web_url("javascript:alert(1)"));
+        assert!(!is_web_url("not a url"));
+    }
 }

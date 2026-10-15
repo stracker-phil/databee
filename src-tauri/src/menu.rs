@@ -10,6 +10,9 @@ const ITEMS: &[(&str, &str, &str)] = &[
     ("close_tab", "Close Tab", "CmdOrCtrl+W"),
     ("add_favorite", "Add to Favorites", "CmdOrCtrl+D"),
     ("settings", "Settings…", "CmdOrCtrl+,"),
+    ("apply_changes", "Apply Pending Changes", "CmdOrCtrl+S"),
+    ("go_back", "Back", "CmdOrCtrl+["),
+    ("go_forward", "Forward", "CmdOrCtrl+]"),
 ];
 
 pub fn build(app: &App) -> tauri::Result<Menu<Wry>> {
@@ -36,6 +39,8 @@ pub fn build(app: &App) -> tauri::Result<Menu<Wry>> {
         .item(&item("new_connection")?)
         .item(&item("new_query")?)
         .separator()
+        .item(&item("apply_changes")?)
+        .separator()
         .item(&item("close_tab")?)
         .build()?;
     let edit = SubmenuBuilder::new(app, "Edit")
@@ -49,6 +54,10 @@ pub fn build(app: &App) -> tauri::Result<Menu<Wry>> {
         .separator()
         .item(&item("add_favorite")?)
         .build()?;
+    let go = SubmenuBuilder::new(app, "Go")
+        .item(&item("go_back")?)
+        .item(&item("go_forward")?)
+        .build()?;
     let window = SubmenuBuilder::new(app, "Window")
         .minimize()
         .maximize()
@@ -56,7 +65,7 @@ pub fn build(app: &App) -> tauri::Result<Menu<Wry>> {
         .separator()
         .bring_all_to_front()
         .build()?;
-    Menu::with_items(app, &[&app_menu, &file, &edit, &window])
+    Menu::with_items(app, &[&app_menu, &file, &edit, &go, &window])
 }
 
 pub fn forward(app: &tauri::AppHandle, id: &str) {
