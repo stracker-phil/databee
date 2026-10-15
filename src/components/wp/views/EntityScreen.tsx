@@ -15,7 +15,7 @@ export function docOf(v: EntityViewData): EntityDoc {
   return v.view === "generic" ? v : v.doc;
 }
 
-export function EntityScreen({ entity, id }: { entity: string; id: string }) {
+export function EntityScreen({ entity, id, embedded = false }: { entity: string; id: string; embedded?: boolean }) {
   const session = useStore(selectActiveSession);
   const { openTableTab, setMode, navigate, takeSnapshot, setEntityMeta } = useStore.getState();
   const [live, setLive] = useState(false);
@@ -33,7 +33,7 @@ export function EntityScreen({ entity, id }: { entity: string; id: string }) {
   useEffect(() => {
     if (!data) return;
     const d = docOf(data);
-    setEntityMeta({
+    if (!embedded) setEntityMeta({
       key: `${entity}:${id}`,
       parent: data.view === "product" ? "products" : data.view === "customer" ? "customers" : undefined,
       title: data.view === "order" || !d.title ? `#${id}` : d.title,
@@ -51,7 +51,7 @@ export function EntityScreen({ entity, id }: { entity: string; id: string }) {
     setUpdatedAt(Date.now());
   }, [data]);
 
-  useEffect(() => () => setEntityMeta(null), [setEntityMeta]);
+  useEffect(() => () => (embedded ? undefined : setEntityMeta(null)), [setEntityMeta, embedded]);
 
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data) return <Loading />;

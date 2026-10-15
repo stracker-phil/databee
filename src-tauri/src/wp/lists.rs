@@ -24,6 +24,90 @@ pub struct ListQuery {
     pub search: Option<String>,
     pub offset: u64,
     pub limit: u32,
+    /// Sort key from the list's whitelist (see `order_by`); unknown keys use the default.
+    pub sort: Option<String>,
+    pub descending: Option<bool>,
+}
+
+/// Sort keys per list, mapped to SQL expressions; the first entry is the default.
+pub const SORT_KEYS: &[(&str, &[(&str, &str)])] = &[
+    (
+        "orders_hpos",
+        &[
+            ("created", "o.date_created_gmt"),
+            ("total", "o.total_amount"),
+            ("status", "o.status"),
+            ("id", "o.id"),
+        ],
+    ),
+    (
+        "orders_legacy",
+        &[
+            ("created", "p.post_date_gmt"),
+            (
+                "total",
+                "CAST(MAX(CASE WHEN m.meta_key = '_order_total' THEN m.meta_value END) AS DECIMAL(18,4))",
+            ),
+            ("status", "p.post_status"),
+            ("id", "p.ID"),
+        ],
+    ),
+    (
+        "customers",
+        &[
+            ("registered", "u.user_registered"),
+            ("name", "u.display_name"),
+            ("email", "u.user_email"),
+        ],
+    ),
+    (
+        "products",
+        &[
+            ("created", "p.post_date_gmt"),
+            ("name", "p.post_title"),
+            ("price", "l.min_price"),
+            ("sales", "l.total_sales"),
+            ("status", "p.post_status"),
+        ],
+    ),
+    (
+        "actions",
+        &[
+            ("scheduled", "a.scheduled_date_gmt"),
+            ("hook", "a.hook"),
+            ("status", "a.status"),
+            ("attempts", "a.attempts"),
+        ],
+    ),
+    (
+        "content",
+        &[
+            ("date", "p.post_date_gmt"),
+            ("title", "p.post_title"),
+            ("status", "p.post_status"),
+            ("modified", "p.post_modified_gmt"),
+        ],
+    ),
+];
+
+/// `ORDER BY <expr> <dir>, <tiebreak>` for a list; defaults to the first key, descending.
+pub fn order_by(list: &str, q: &ListQuery, tiebreak: &str) -> String {
+    let keys = SORT_KEYS
+        .iter()
+        .find(|(l, _)| *l == list)
+        .map(|(_, k)| *k)
+        .unwrap_or(&[]);
+    let (key, expr) = q
+        .sort
+        .as_deref()
+        .and_then(|s| keys.iter().find(|(k, _)| *k == s))
+        .or_else(|| keys.first())
+        .copied()
+        .unwrap_or(("", tiebreak));
+    let default_desc = key != "name" && key != "title" && key != "hook" && key != "email";
+    let desc = q.descending.unwrap_or(default_desc);
+    let dir = if desc { "DESC" } else { "ASC" };
+    format!("ORDER BY {expr} {dir}, {tiebreak} {dir}")
 }
 
 impl ListQuery {
@@ -168,7 +252,8 @@ pub fn orders_sql(db: &str, ctx: &WpContext, order_type: &str, q: &ListQuery) ->
              o.billing_email, TRIM(CONCAT(COALESCE(a.first_name, ''), ' ', COALESCE(a.last_name, ''))), o.customer_id, {created}, \
              (SELECT COUNT(*) FROM {items} i WHERE i.order_id = o.id AND i.order_item_type = 'line_item') \
              FROM {orders} o LEFT JOIN {addr} a ON a.order_id = o.id AND a.address_type = 'billing' \
-             WHERE {filter} ORDER BY o.date_created_gmt DESC, o.id DESC LIMIT {limit} OFFSET {offset}",
+             WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
+            order = order_by("orders_hpos", q, "o.id"),
             created = epoch("o.date_created_gmt"),
             items = t(db, ctx, "woocommerce_order_items"),
             orders = t(db, ctx, "wc_orders"),
@@ -213,7 +298,8 @@ pub fn orders_sql(db: &str, ctx: &WpContext, order_type: &str, q: &ListQuery) ->
              FROM {posts} p LEFT JOIN {postmeta} m ON m.post_id = p.ID AND m.meta_key IN \
              ('_order_total', '_order_currency', '_payment_method', '_payment_method_title', '_billing_email', \
              '_billing_first_name', '_billing_last_name', '_customer_user', '_transaction_id') \
-             WHERE {filter} GROUP BY p.ID{having} ORDER BY p.post_date_gmt DESC, p.ID DESC LIMIT {limit} OFFSET {offset}",
+             WHERE {filter} GROUP BY p.ID{having} {order} LIMIT {limit} OFFSET {offset}",
+            order = order_by("orders_legacy", q, "p.ID"),
             total = meta("_order_total"),
             currency = meta("_order_currency"),
             gw = meta("_payment_method"),
@@ -352,7 +438,8 @@ pub fn customers_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
     format!(
         "SELECT u.ID, u.user_login, u.user_email, u.display_name, {registered}, c.meta_value \
          FROM {users} u LEFT JOIN {usermeta} c ON c.user_id = u.ID AND c.meta_key = {caps} \
-         WHERE {filter} ORDER BY u.user_registered DESC, u.ID DESC LIMIT {limit} OFFSET {offset}",
+         WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
+        order = order_by("customers", q, "u.ID"),
         registered = epoch("u.user_registered"),
         users = t(db, ctx, "users"),
         usermeta = t(db, ctx, "usermeta"),
@@ -542,7 +629,23 @@ pub fn products_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
          FROM {posts} p{join} \
          LEFT JOIN (SELECT tr.object_id, te.slug FROM {tr} tr JOIN {tt} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_type' \
          JOIN {terms} te ON te.term_id = tt.term_id) pt ON pt.object_id = p.ID \
-         WHERE {filter} ORDER BY p.post_date_gmt DESC, p.ID DESC LIMIT {limit} OFFSET {offset}",
+         WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
+        order = if lookup {
+            order_by("products", q, "p.ID")
+        } else {
+            order_by(
+                "content",
+                &ListQuery {
+                    sort: q
+                        .sort
+                        .clone()
+                        .filter(|s| s == "name" || s == "status")
+                        .map(|s| if s == "name" { "title".to_string() } else { s }),
+                    ..q.clone()
+                },
+                "p.ID",
+            )
+        },
         posts = t(db, ctx, "posts"),
         tr = t(db, ctx, "term_relationships"),
         tt = t(db, ctx, "term_taxonomy"),
@@ -665,7 +768,8 @@ pub fn actions_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
         "SELECT a.action_id, a.hook, a.status, {sched}, {last}, a.attempts, a.args, g.slug, \
          (SELECT l.message FROM {logs} l WHERE l.action_id = a.action_id ORDER BY l.log_id DESC LIMIT 1) \
          FROM {actions} a LEFT JOIN {groups} g ON g.group_id = a.group_id \
-         WHERE {filter} ORDER BY a.scheduled_date_gmt DESC, a.action_id DESC LIMIT {limit} OFFSET {offset}",
+         WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
+        order = order_by("actions", q, "a.action_id"),
         sched = epoch("a.scheduled_date_gmt"),
         last = epoch("IF(a.last_attempt_gmt < '1000-01-01', NULL, a.last_attempt_gmt)"),
         logs = t(db, ctx, "actionscheduler_logs"),
@@ -987,7 +1091,8 @@ pub async fn content(
         session,
         &format!(
             "SELECT p.ID, p.post_title, p.post_type, p.post_status, u.display_name, {date}, {modified} FROM {posts} p \
-             LEFT JOIN {users} u ON u.ID = p.post_author WHERE {filter} ORDER BY p.post_date_gmt DESC, p.ID DESC LIMIT {limit} OFFSET {offset}",
+             LEFT JOIN {users} u ON u.ID = p.post_author WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
+            order = order_by("content", q, "p.ID"),
             date = epoch("IF(p.post_date_gmt < '1000-01-01', NULL, p.post_date_gmt)"),
             modified = epoch("IF(p.post_modified_gmt < '1000-01-01', NULL, p.post_modified_gmt)"),
             users = t(db, ctx, "users"),
@@ -1026,6 +1131,36 @@ pub async fn content(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sort_keys_are_whitelisted_with_sensible_defaults() {
+        let q = |sort: Option<&str>, desc: Option<bool>| ListQuery {
+            sort: sort.map(String::from),
+            descending: desc,
+            ..Default::default()
+        };
+        assert_eq!(
+            order_by("orders_hpos", &q(None, None), "o.id"),
+            "ORDER BY o.date_created_gmt DESC, o.id DESC"
+        );
+        assert_eq!(
+            order_by("orders_hpos", &q(Some("total"), Some(false)), "o.id"),
+            "ORDER BY o.total_amount ASC, o.id ASC"
+        );
+        assert_eq!(
+            order_by("orders_hpos", &q(Some("DROP TABLE"), None), "o.id"),
+            "ORDER BY o.date_created_gmt DESC, o.id DESC"
+        );
+        // Text columns sort ascending unless told otherwise.
+        assert_eq!(
+            order_by("actions", &q(Some("hook"), None), "a.action_id"),
+            "ORDER BY a.hook ASC, a.action_id ASC"
+        );
+        assert_eq!(
+            order_by("unknown", &q(Some("x"), None), "id"),
+            "ORDER BY id DESC, id DESC"
+        );
+    }
     use crate::db::ColumnMeta;
     use crate::wp::context::{HposMode, WcContext};
 

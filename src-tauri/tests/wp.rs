@@ -198,6 +198,44 @@ async fn dashboard_summarizes_orders_actions_and_health() {
 
 #[tokio::test]
 #[ignore]
+async fn lists_sort_by_whitelisted_keys() {
+    for (db, ctx, _) in env().await {
+        let asc = lists::orders(
+            &db,
+            &ctx,
+            "wp_test",
+            "shop_order",
+            &lists::ListQuery {
+                sort: Some("total".into()),
+                descending: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let desc = lists::orders(
+            &db,
+            &ctx,
+            "wp_test",
+            "shop_order",
+            &lists::ListQuery {
+                sort: Some("total".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(asc.items.len(), 2);
+        assert_eq!(asc.items.first().unwrap().id, desc.items.last().unwrap().id);
+        assert_ne!(
+            asc.items.first().unwrap().id,
+            desc.items.first().unwrap().id
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
 async fn failed_actions_group_by_hook_with_last_message() {
     for (db, ctx, _) in env().await {
         let groups = databee_lib::wp::lists::failed_by_hook(&db, &ctx, "wp_test")

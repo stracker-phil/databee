@@ -145,6 +145,45 @@ describe("WordPress mode", () => {
     await vi.waitFor(() => expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ search: "jane" })));
   });
 
+  it("sorts lists from the header row", async () => {
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    await screen.findByText("#3227");
+    const total = screen.getByRole("columnheader", { name: "Total" });
+    await userEvent.click(total);
+    await vi.waitFor(() => expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ sort: "total", descending: true })));
+    expect(screen.getByRole("columnheader", { name: "Total" })).toHaveAttribute("aria-sort", "descending");
+    await userEvent.click(screen.getByRole("columnheader", { name: "Total" }));
+    await vi.waitFor(() => expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ sort: "total", descending: false })));
+  });
+
+  it("opens rows in a side pane on wide windows, moves the selection with arrows and opens the page with Enter", async () => {
+    window.innerWidth = 1600;
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    await userEvent.click(await screen.findByRole("row", { name: /#3229/ }));
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "orders", selected: { entity: "order", id: "3229" } });
+    expect(await screen.findByRole("complementary", { name: "Detail" })).toBeInTheDocument();
+    expect(mocked.wpView).toHaveBeenCalledWith("s1", "db", "order", "3229");
+    expect(screen.getByRole("row", { name: /#3229/ })).toHaveAttribute("aria-selected", "true");
+
+    screen.getByRole("grid", { name: "orders list" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "orders", selected: { entity: "order", id: "3227" } });
+    expect(useStore.getState().wpNav.stack.filter((r) => r.screen === "list")).toHaveLength(1);
+    await userEvent.keyboard("{Enter}");
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3227" });
+  });
+
+  it("falls back to full-page navigation on narrow windows", async () => {
+    window.innerWidth = 1200;
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    await userEvent.click(await screen.findByRole("row", { name: /#3229/ }));
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3229" });
+    expect(screen.queryByRole("complementary", { name: "Detail" })).not.toBeInTheDocument();
+  });
+
   it("shows an order with addresses, items, payment waterfall and timeline", async () => {
     mocked.wpOrderLogs.mockResolvedValue([{ at: now - 1800, kind: "log", title: "PATCH /v2/checkout/orders/66M", detail: "woocommerce-paypal-payments", level: "info", link: null }]);
     useStore.getState().openEntity("order", "4711");

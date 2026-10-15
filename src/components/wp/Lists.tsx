@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink, Search, X } from "lucide-react";
 import {
   api,
   type ActionSummary,
@@ -14,14 +14,18 @@ import {
 } from "../../api";
 import { formatCount } from "../../lib/format";
 import { relativeFromUnix, shorten } from "../../lib/wpFormat";
-import { useStore, type WpList } from "../../state/store";
+import { selectActiveSession, selectWpRoute, useStore, type WpList } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
 import { BreakdownChart } from "./BreakdownChart";
 import { StackedBars } from "./charts";
 import { Ago, Avatar, Card, StatusPill, Thumb } from "./ui";
 import { useWpData } from "./useWpData";
+import { EntityScreen } from "./views/EntityScreen";
 
 const PAGE = 50;
+/** Below this window width the detail opens as a full page instead of a side pane. */
+export const SPLIT_MIN_WIDTH = 1400;
+const DEFAULT_SPLIT = 560;
 
 type Loader = (sessionId: string, database: string, q: ListQuery) => Promise<Page<unknown>>;
 
@@ -44,6 +48,71 @@ const KIND_LABEL: Partial<Record<WpList, string>> = {
   content: "Type",
 };
 
+interface Column {
+  label: string;
+  className: string;
+  /** Sort key accepted by the backend; absent = not sortable. */
+  sort?: string;
+}
+
+/** Header columns mirror the row layout classes so labels line up with values. */
+const COLUMNS: Record<Exclude<WpList, "settings">, Column[]> = {
+  orders: [
+    { label: "Order", className: "row-id", sort: "id" },
+    { label: "Customer", className: "grow-text" },
+    { label: "Status", className: "col-status", sort: "status" },
+    { label: "Gateway", className: "row-gateway" },
+    { label: "Items", className: "row-items" },
+    { label: "Total", className: "row-total", sort: "total" },
+    { label: "Created", className: "row-when", sort: "created" },
+  ],
+  subscriptions: [
+    { label: "Subscription", className: "row-id", sort: "id" },
+    { label: "Customer", className: "grow-text" },
+    { label: "Status", className: "col-status", sort: "status" },
+    { label: "Gateway", className: "row-gateway" },
+    { label: "Items", className: "row-items" },
+    { label: "Total", className: "row-total", sort: "total" },
+    { label: "Created", className: "row-when", sort: "created" },
+  ],
+  customers: [
+    { label: "", className: "col-avatar" },
+    { label: "Customer", className: "grow-text", sort: "name" },
+    { label: "Roles", className: "row-roles" },
+    { label: "Orders", className: "row-items" },
+    { label: "Spent", className: "row-total" },
+    { label: "Last order", className: "row-when", sort: "registered" },
+  ],
+  products: [
+    { label: "", className: "col-avatar" },
+    { label: "Product", className: "grow-text", sort: "name" },
+    { label: "Stock", className: "col-status" },
+    { label: "Sold", className: "row-items", sort: "sales" },
+    { label: "Price", className: "row-total", sort: "price" },
+  ],
+  actions: [
+    { label: "Status", className: "col-status", sort: "status" },
+    { label: "Hook", className: "grow-text", sort: "hook" },
+    { label: "Group", className: "row-gateway" },
+    { label: "Tries", className: "row-items", sort: "attempts" },
+    { label: "Scheduled", className: "row-when", sort: "scheduled" },
+  ],
+  sessions: [
+    { label: "Session", className: "grow-text" },
+    { label: "Customer", className: "row-gateway" },
+    { label: "Cart", className: "row-items" },
+    { label: "Total", className: "row-total" },
+    { label: "Expires", className: "row-when" },
+  ],
+  content: [
+    { label: "ID", className: "row-id" },
+    { label: "Title", className: "grow-text", sort: "title" },
+    { label: "Status", className: "col-status", sort: "status" },
+    { label: "Author", className: "row-gateway" },
+    { label: "Date", className: "row-when", sort: "date" },
+  ],
+};
+
 function useDebounced<T>(value: T, ms = 250): T {
   const [v, setV] = useState(value);
   useEffect(() => {
@@ -51,6 +120,16 @@ function useDebounced<T>(value: T, ms = 250): T {
     return () => clearTimeout(t);
   }, [value, ms]);
   return v;
+}
+
+function useWindowWidth() {
+  const [w, setW] = useState(window.innerWidth);
+  useEffect(() => {
+    const on = () => setW(window.innerWidth);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return w;
 }
 
 function Chips({ facets, value, onChange, allLabel = "All" }: { facets: Facet[]; value: string | null; onChange: (v: string | null) => void; allLabel?: string }) {
@@ -70,29 +149,52 @@ function Chips({ facets, value, onChange, allLabel = "All" }: { facets: Facet[];
   );
 }
 
-function OrderRow({ o }: { o: OrderSummary }) {
-  const openEntity = useStore((s) => s.openEntity);
+/** What a row opens: the entity kind and id. */
+export function rowTarget(list: WpList, item: unknown): { entity: string; id: string } {
+  switch (list) {
+    case "orders":
+    case "subscriptions":
+      return { entity: "order", id: (item as OrderSummary).id };
+    case "customers":
+      return { entity: "user", id: (item as CustomerSummary).id };
+    case "actions":
+      return { entity: "action", id: (item as ActionSummary).id };
+    case "sessions":
+      return { entity: "session", id: (item as SessionSummary).key };
+    default:
+      return { entity: "post", id: (item as PostSummary).id };
+  }
+}
+
+function Row({ active, onOpen, children, title }: { active: boolean; onOpen: () => void; children: ReactNode; title?: string }) {
   return (
-    <button className="row-link" onClick={() => openEntity("order", o.id)}>
+    <button className={`row-link${active ? " selected" : ""}`} role="row" aria-selected={active} data-active={active || undefined} onClick={onOpen} title={title}>
+      {children}
+    </button>
+  );
+}
+
+function OrderCells({ o }: { o: OrderSummary }) {
+  return (
+    <>
       <span className="row-id">#{o.id}</span>
       <span className="grow-text">
         <span className="pii">{o.name || o.email || <span className="badge">Guest</span>}</span>
         {o.name && o.email && <span className="muted pii"> · {o.email}</span>}
       </span>
-      <StatusPill status={o.status} />
+      <span className="col-status"><StatusPill status={o.status} /></span>
       <span className="row-gateway">{o.gatewayTitle ?? o.gateway ?? ""}</span>
       <span className="muted row-items">{o.itemCount} {o.itemCount === 1 ? "item" : "items"}</span>
       <span className="money row-total">{o.total}</span>
       <span className="muted row-when"><Ago unix={o.created} /></span>
-    </button>
+    </>
   );
 }
 
-function CustomerRow({ c }: { c: CustomerSummary }) {
-  const openEntity = useStore((s) => s.openEntity);
+function CustomerCells({ c }: { c: CustomerSummary }) {
   return (
-    <button className="row-link" onClick={() => openEntity("user", c.id)}>
-      <Avatar name={c.name || c.login} src={c.avatar} />
+    <>
+      <span className="col-avatar"><Avatar name={c.name || c.login} src={c.avatar} /></span>
       <span className="grow-text">
         <span className="pii">{c.name || c.login}</span>
         <span className="muted pii"> · {c.email}</span>
@@ -101,34 +203,32 @@ function CustomerRow({ c }: { c: CustomerSummary }) {
       <span className="muted row-items">{c.orderCount} {c.orderCount === 1 ? "order" : "orders"}</span>
       <span className="money row-total">{c.totalSpent ?? ""}</span>
       <span className="muted row-when"><Ago unix={c.lastOrder ?? c.registered} /></span>
-    </button>
+    </>
   );
 }
 
-function ProductRow({ p }: { p: ProductSummary }) {
-  const openEntity = useStore((s) => s.openEntity);
+function ProductCells({ p }: { p: ProductSummary }) {
   return (
-    <button className="row-link" onClick={() => openEntity("post", p.id)}>
-      <Thumb src={p.image} />
+    <>
+      <span className="col-avatar"><Thumb src={p.image} /></span>
       <span className="grow-text">
         {p.name}
         {p.sku && <span className="muted mono"> · {p.sku}</span>}
+        {p.kind && <span className="badge" style={{ marginLeft: "0.462rem" }}>{p.kind}</span>}
+        {p.variations > 0 && <span className="muted small"> · {p.variations} variations</span>}
+        {p.status !== "publish" && <span style={{ marginLeft: "0.462rem" }}><StatusPill status={p.status} /></span>}
       </span>
-      {p.kind && <span className="badge">{p.kind}</span>}
-      {p.variations > 0 && <span className="muted">{p.variations} variations</span>}
-      {p.stockStatus && <StatusPill status={p.stockStatus} label={p.stockStatus === "instock" ? `In stock${p.stock ? ` · ${p.stock}` : ""}` : undefined} />}
-      {p.status !== "publish" && <StatusPill status={p.status} />}
+      <span className="col-status">{p.stockStatus && <StatusPill status={p.stockStatus} label={p.stockStatus === "instock" ? `In stock${p.stock ? ` · ${p.stock}` : ""}` : undefined} />}</span>
       <span className="muted row-items">{p.totalSales} sold</span>
       <span className="money row-total">{p.price}</span>
-    </button>
+    </>
   );
 }
 
-function ActionRow({ a }: { a: ActionSummary }) {
-  const openEntity = useStore((s) => s.openEntity);
+function ActionCells({ a }: { a: ActionSummary }) {
   return (
-    <button className="row-link" onClick={() => openEntity("action", a.id)} title={a.message ?? undefined}>
-      <StatusPill status={a.status} />
+    <>
+      <span className="col-status"><StatusPill status={a.status} /></span>
       <span className="grow-text">
         <span className="mono">{a.hook}</span>
         {a.args && <span className="muted mono"> {shorten(a.args, 40, 8)}</span>}
@@ -136,75 +236,67 @@ function ActionRow({ a }: { a: ActionSummary }) {
           <span className="row-sub tone-text-red"><AlertTriangle size="0.846rem" /> {shorten(a.message, 90, 10)}</span>
         )}
       </span>
-      {a.group && <span className="badge">{a.group}</span>}
+      <span className="row-gateway">{a.group && <span className="badge">{a.group}</span>}</span>
       <span className="muted row-items">{a.attempts}×</span>
       <span className="muted row-when"><Ago unix={a.scheduled} /></span>
-    </button>
+    </>
   );
 }
 
-function SessionRow({ s }: { s: SessionSummary }) {
-  const openEntity = useStore((st) => st.openEntity);
+function SessionCells({ s }: { s: SessionSummary }) {
   const expired = s.expires != null && s.expires < Date.now() / 1000;
   return (
-    <div className="row-link" role="row">
+    <>
       <span className="mono grow-text">{shorten(s.key, 20, 4)}</span>
-      {s.customerId ? (
-        <button className="chip" onClick={() => openEntity("user", s.customerId!)}>
-          <span className="chip-label pii">{s.email ?? `User #${s.customerId}`}</span>
-        </button>
-      ) : (
-        <span className="badge">Guest</span>
-      )}
+      <span className="row-gateway pii">{s.customerId ? (s.email ?? `User #${s.customerId}`) : <span className="badge">Guest</span>}</span>
       <span className="muted row-items">{s.items} in cart</span>
       <span className="money row-total">{s.total}</span>
       <span className={`row-when ${expired ? "tone-text-red" : "muted"}`}>
         {expired ? "expired " : "expires "}
         <Ago unix={s.expires} />
       </span>
-    </div>
+    </>
   );
 }
 
-function PostRow({ p }: { p: PostSummary }) {
-  const openEntity = useStore((s) => s.openEntity);
+function PostCells({ p }: { p: PostSummary }) {
   return (
-    <button className="row-link" onClick={() => openEntity("post", p.id)}>
+    <>
       <span className="row-id">#{p.id}</span>
       <span className="grow-text">{p.title || <span className="muted">(no title)</span>}</span>
-      <StatusPill status={p.status} />
-      <span className="muted">{p.author}</span>
+      <span className="col-status"><StatusPill status={p.status} /></span>
+      <span className="muted row-gateway">{p.author}</span>
       <span className="muted row-when"><Ago unix={p.date} /></span>
-    </button>
+    </>
   );
 }
 
-function rowFor(list: WpList, item: unknown): ReactNode {
+function cellsFor(list: WpList, item: unknown): { key: string; node: ReactNode; title?: string } {
   switch (list) {
     case "orders":
     case "subscriptions": {
       const o = item as OrderSummary;
-      return <OrderRow key={o.id} o={o} />;
+      return { key: o.id, node: <OrderCells o={o} /> };
     }
     case "customers": {
       const c = item as CustomerSummary;
-      return <CustomerRow key={c.id} c={c} />;
+      return { key: c.id, node: <CustomerCells c={c} /> };
     }
     case "products": {
       const p = item as ProductSummary;
-      return <ProductRow key={p.id} p={p} />;
+      return { key: p.id, node: <ProductCells p={p} /> };
     }
     case "actions": {
       const a = item as ActionSummary;
-      return <ActionRow key={a.id} a={a} />;
+      return { key: a.id, node: <ActionCells a={a} />, title: a.message ?? undefined };
     }
     case "sessions": {
       const s = item as SessionSummary;
-      return <SessionRow key={s.key} s={s} />;
+      return { key: s.key, node: <SessionCells s={s} /> };
     }
     default: {
       const p = item as PostSummary;
-      return <PostRow key={p.id} p={p} />;
+      return { key: p.id, node: <PostCells p={p} /> };
     }
   }
 }
@@ -236,22 +328,79 @@ function FailedByHook({ onPick }: { onPick: (hook: string) => void }) {
   );
 }
 
+/** Drag handle between list and detail; the width is kept per connection. */
+function Splitter({ onResize }: { onResize: (dx: number) => void }) {
+  const start = (e: React.MouseEvent) => {
+    e.preventDefault();
+    let last = e.clientX;
+    const move = (ev: MouseEvent) => {
+      onResize(last - ev.clientX);
+      last = ev.clientX;
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  return <div className="splitter" role="separator" aria-orientation="vertical" aria-label="Resize detail pane" onMouseDown={start} />;
+}
+
 export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">; params?: Record<string, string> }) {
   const [status, setStatus] = useState<string | null>(params?.status ?? null);
   const [kind, setKind] = useState<string | null>(params?.kind ?? null);
   const [searchInput, setSearchInput] = useState(params?.search ?? "");
+  const [sort, setSort] = useState<{ key: string; descending: boolean } | null>(null);
   const [offset, setOffset] = useState(0);
   const search = useDebounced(searchInput);
   const load = LOADERS[list];
   const { data, error, loading } = useWpData(
-    (s, d) => load(s, d, { status, kind, search: search || null, offset, limit: PAGE }),
-    [list, status, kind, search, offset],
+    (s, d) => load(s, d, { status, kind, search: search || null, offset, limit: PAGE, sort: sort?.key ?? null, descending: sort?.descending ?? null }),
+    [list, status, kind, search, offset, sort?.key, sort?.descending],
   );
 
-  useEffect(() => setOffset(0), [status, kind, search]);
+  const route = useStore(selectWpRoute);
+  const session = useStore(selectActiveSession);
+  const { replaceRoute, openEntity, setSplitWidth } = useStore.getState();
+  const splitWidth = useStore((s) => (session ? (s.uiState[session.identity]?.splitWidth ?? null) : null)) ?? DEFAULT_SPLIT;
+  const width = useWindowWidth();
+  const split = width >= SPLIT_MIN_WIDTH;
+  const selected = route.screen === "list" && route.list === list ? (route.selected ?? null) : null;
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setOffset(0), [status, kind, search, sort]);
+
+  const items = data?.items ?? [];
+  const select = useCallback(
+    (item: unknown) => {
+      const target = rowTarget(list, item);
+      if (!split) return openEntity(target.entity, target.id);
+      if (route.screen === "list") replaceRoute({ ...route, selected: target });
+    },
+    [list, split, route, replaceRoute, openEntity],
+  );
+
+  const onKey = (e: KeyboardEvent) => {
+    if (!items.length) return;
+    const index = selected ? items.findIndex((i) => rowTarget(list, i).id === selected.id) : -1;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = items[Math.min(items.length - 1, Math.max(0, index + (e.key === "ArrowDown" ? 1 : -1)))];
+      select(next);
+      listRef.current?.querySelector<HTMLElement>(`[data-active]`)?.scrollIntoView?.({ block: "nearest" });
+    } else if (e.key === "Enter" && selected) {
+      e.preventDefault();
+      openEntity(selected.entity, selected.id);
+    }
+  };
+
+  const toggleSort = (key: string) =>
+    setSort((s) => (s?.key === key ? (s.descending ? { key, descending: false } : null) : { key, descending: true }));
 
   const kindFacets = data?.kinds ?? [];
-  return (
+  const columns = COLUMNS[list];
+  const listPane = (
     <div className="list-screen">
       <div className="list-tools">
         <div className="list-search">
@@ -259,7 +408,7 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
           <input aria-label="Search list" placeholder="Search…" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
         </div>
         {kindFacets.length > 0 && list !== "content" && (
-          <select className="input" style={{ width: 220 }} aria-label={KIND_LABEL[list] ?? "Kind"} value={kind ?? ""} onChange={(e) => setKind(e.target.value || null)}>
+          <select className="input" style={{ width: "16.923rem" }} aria-label={KIND_LABEL[list] ?? "Kind"} value={kind ?? ""} onChange={(e) => setKind(e.target.value || null)}>
             <option value="">All {(KIND_LABEL[list] ?? "kinds").toLowerCase()}s</option>
             {kindFacets.map((k) => (
               <option key={k.value} value={k.value}>
@@ -279,8 +428,8 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
       </div>
       {list === "content" && <Chips facets={kindFacets} value={kind ?? kindFacets.find((k) => k.value === "post")?.value ?? null} onChange={setKind} allLabel="Types" />}
       <Chips facets={data?.facets ?? []} value={status} onChange={setStatus} />
-      {list === "actions" && !kind && <FailedByHook onPick={(hook) => (setKind(hook), setStatus("failed"))} />}
-      {list === "actions" && <ActionHistogram hook={kind} />}
+      {list === "actions" && !kind && !selected && <FailedByHook onPick={(hook) => (setKind(hook), setStatus("failed"))} />}
+      {list === "actions" && !selected && <ActionHistogram hook={kind} />}
       {error ? (
         <ErrorPanel message={error.message} code={error.code} />
       ) : !data ? (
@@ -288,8 +437,54 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
       ) : data.items.length === 0 ? (
         <div className="empty-state">{loading ? "Loading…" : "Nothing matches these filters."}</div>
       ) : (
-        <div className={`rows${loading ? " stale" : ""}`}>{data.items.map((item) => rowFor(list, item))}</div>
+        <div className={`rows${loading ? " stale" : ""}`} role="grid" aria-label={`${list} list`} tabIndex={0} ref={listRef} onKeyDown={onKey}>
+          <div className="list-head" role="row">
+            {columns.map((c) => {
+              const active = sort?.key === c.sort;
+              return c.sort ? (
+                <button key={c.label || c.className} role="columnheader" aria-sort={active ? (sort!.descending ? "descending" : "ascending") : "none"} className={`${c.className} sortable`} onClick={() => toggleSort(c.sort!)}>
+                  {c.label}
+                  {active && (sort!.descending ? <ArrowDown size="0.769rem" /> : <ArrowUp size="0.769rem" />)}
+                </button>
+              ) : (
+                <span key={c.label || c.className} role="columnheader" className={c.className}>{c.label}</span>
+              );
+            })}
+          </div>
+          {data.items.map((item) => {
+            const { key, node, title } = cellsFor(list, item);
+            const target = rowTarget(list, item);
+            return (
+              <Row key={key} active={selected?.id === target.id} onOpen={() => select(item)} title={title}>
+                {node}
+              </Row>
+            );
+          })}
+        </div>
       )}
+    </div>
+  );
+
+  if (!split || !selected) return listPane;
+  return (
+    <div className="list-split" style={{ gridTemplateColumns: `minmax(0, 1fr) 0.385rem ${splitWidth}px` }}>
+      {listPane}
+      <Splitter onResize={(dx) => session && setSplitWidth(session.identity, Math.max(360, Math.min(width - 480, splitWidth + dx)))} />
+      <aside className="detail-pane" aria-label="Detail">
+        <div className="detail-head">
+          <span className="muted small">{selected.entity} #{selected.id}</span>
+          <div className="spacer" />
+          <button className="btn tiny" onClick={() => openEntity(selected.entity, selected.id)} title="Open as a full page (↵)">
+            <ExternalLink size="0.846rem" /> Open page
+          </button>
+          <button className="icon-btn tiny" aria-label="Close detail" onClick={() => route.screen === "list" && replaceRoute({ ...route, selected: undefined })}>
+            <X size="0.846rem" />
+          </button>
+        </div>
+        <div className="detail-body">
+          <EntityScreen key={`${selected.entity}:${selected.id}`} entity={selected.entity} id={selected.id} embedded />
+        </div>
+      </aside>
     </div>
   );
 }

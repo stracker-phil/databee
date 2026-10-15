@@ -609,3 +609,24 @@ button.flag-pill:not(:disabled):hover { outline: 1px solid var(--accent); }
 .breakdown-value { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .breakdown-pct { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 50rem) { .breakdown-body { grid-template-columns: 1fr; } }
+
+/* ---------- list header, split view ---------- */
+.list-head { display: flex; align-items: center; gap: 0.923rem; padding: 0.231rem 0.462rem; color: var(--text-secondary); font-size: 0.885rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 0.5px solid var(--border-strong); position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.list-head [role="columnheader"] { display: inline-flex; align-items: center; gap: 0.231rem; border: none; background: none; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; padding: 0.154rem 0; text-align: inherit; border-radius: var(--radius-sm); }
+.list-head .sortable:hover { color: var(--text); }
+.list-head [aria-sort="ascending"], .list-head [aria-sort="descending"] { color: var(--accent); }
+.col-status { min-width: 7.5rem; display: inline-flex; }
+.col-avatar { width: 2.154rem; flex: none; display: inline-flex; }
+.row-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rows:focus { outline: none; }
+.rows:focus-within .row-link.selected { background: var(--accent-soft); }
+.list-split { display: grid; min-height: 0; height: 100%; }
+.list-split > .list-screen { overflow: auto; min-height: 0; }
+.splitter { cursor: col-resize; background: var(--border); }
+.splitter:hover, .splitter:active { background: var(--accent); }
+.detail-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 0.5px solid var(--border); background: var(--bg); }
+.detail-head { display: flex; align-items: center; gap: 0.462rem; padding: 0.385rem 0.769rem; border-bottom: 0.5px solid var(--border); background: var(--bg-toolbar); }
+.detail-body { flex: 1; overflow: auto; min-height: 0; }
+.detail-body .entity { padding: 0.769rem 1rem 2rem; }
+.wp-content { display: flex; flex-direction: column; }
+.wp-content > .list-split { flex: 1; }

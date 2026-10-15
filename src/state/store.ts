@@ -62,7 +62,7 @@ export type WpList =
 
 export type WpRoute =
   | { screen: "dashboard" }
-  | { screen: "list"; list: WpList; params?: Record<string, string> }
+  | { screen: "list"; list: WpList; params?: Record<string, string>; selected?: { entity: string; id: string } }
   | { screen: "entity"; entity: string; id: string }
   | { screen: "compare"; entity: string; a: string; b: string }
   | { screen: "snapshots" };
@@ -160,6 +160,8 @@ interface Actions {
   pinTab(id: string): void;
   setMode(mode: Mode): void;
   navigate(route: WpRoute): void;
+  /** Changes the current route without adding a history entry (selection, filters). */
+  replaceRoute(route: WpRoute): void;
   goBack(): void;
   goForward(): void;
   openEntity(entity: string, id: string): void;
@@ -456,6 +458,14 @@ export const useStore = create<Store>()((set, get) => {
         if (JSON.stringify(current) === JSON.stringify(route)) return { mode: "wp" as Mode };
         const stack = [...s.wpNav.stack.slice(0, s.wpNav.index + 1), route].slice(-100);
         return { mode: "wp" as Mode, wpNav: { stack, index: stack.length - 1 } };
+      });
+    },
+
+    replaceRoute(route) {
+      set((s) => {
+        const stack = [...s.wpNav.stack];
+        stack[s.wpNav.index] = route;
+        return { wpNav: { ...s.wpNav, stack } };
       });
     },
 

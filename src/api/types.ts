@@ -305,6 +305,9 @@ export interface ListQuery {
   search?: string | null;
   offset?: number;
   limit?: number;
+  /** Whitelisted per list on the Rust side (created, total, status, …). */
+  sort?: string | null;
+  descending?: boolean | null;
 }
 
 export interface OrderSummary {
