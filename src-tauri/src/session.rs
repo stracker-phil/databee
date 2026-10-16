@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::connection::ConnectionSpec;
 use crate::db::mysql::MySqlSession;
 use crate::error::{AppError, AppResult};
+use crate::lock::RwLockExt;
 
 pub struct Session {
     pub id: String,
@@ -44,22 +45,20 @@ impl Sessions {
     pub fn insert(&self, session: Session) -> Arc<Session> {
         let session = Arc::new(session);
         self.0
-            .write()
-            .unwrap()
+            .write_unpoisoned()
             .insert(session.id.clone(), session.clone());
         session
     }
 
     pub fn get(&self, id: &str) -> AppResult<Arc<Session>> {
         self.0
-            .read()
-            .unwrap()
+            .read_unpoisoned()
             .get(id)
             .cloned()
             .ok_or_else(|| AppError::SessionNotFound(id.to_string()))
     }
 
     pub fn remove(&self, id: &str) -> Option<Arc<Session>> {
-        self.0.write().unwrap().remove(id)
+        self.0.write_unpoisoned().remove(id)
     }
 }

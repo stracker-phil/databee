@@ -136,7 +136,10 @@ SELECT * FROM `db`.`t` [WHERE (<filter>\n)] [ORDER BY `col` ASC|DESC] LIMIT <lim
 - **Sorting:** one column at a time, quoted with `Dialect::quote_ident`.
 - **Filter:**
   - If the table has a single-column primary key and the text matches the id grammar, the text becomes
-    `pk = n`, `pk IN (…)` or `pk BETWEEN a AND b`.
+    `pk = n`, `pk IN (…)` or `pk BETWEEN a AND b`. The grammar (`db::id_filter::parse_ids`) is comma-separated tokens, each
+    a number or `a-b` (a reversed range is swapped); a number is ASCII digits only (no sign, `007` is 7) and
+    must fit in `u64`. Anything else, such as `+5`, `1-2-3` or an overflowing number, is not an id filter
+    and goes through as SQL.
   - Any other text is inserted **verbatim** as a WHERE clause. It must be a single statement; `1; DROP …` is
     rejected.
   - The filter is wrapped as `WHERE (<filter>\n)`: the newline ends a trailing `#` or `-- ` comment, so it

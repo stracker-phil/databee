@@ -19,6 +19,7 @@ use super::{
 };
 use crate::connection::{ConnectionSpec, Secret};
 use crate::error::{AppError, AppResult, human_duration};
+use crate::lock::MutexExt;
 
 const META_POOL_SIZE: u32 = 3;
 
@@ -124,7 +125,7 @@ impl MySqlSession {
     }
 
     pub fn current_database(&self) -> Option<String> {
-        self.database.lock().unwrap().clone()
+        self.database.lock_unpoisoned().clone()
     }
 
     pub async fn close(&self) {
@@ -165,7 +166,7 @@ impl MySqlSession {
         // The script already ran (and may have committed), so a failed probe must not lose it.
         let database = match database {
             Ok(database) => {
-                *self.database.lock().unwrap() = database.clone();
+                *self.database.lock_unpoisoned() = database.clone();
                 database
             }
             Err(e) => {
@@ -233,7 +234,7 @@ impl MySqlSession {
             Ok(())
         })
         .await?;
-        *self.database.lock().unwrap() = Some(database.to_string());
+        *self.database.lock_unpoisoned() = Some(database.to_string());
         Ok(())
     }
 

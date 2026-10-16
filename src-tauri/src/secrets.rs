@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use crate::connection::{ConnectionSpec, Secret};
 use crate::error::{AppError, AppResult};
+use crate::lock::MutexExt;
 
 pub trait SecretStore: Send + Sync {
     fn get(&self, account: &str) -> AppResult<Option<Secret>>;
@@ -50,19 +51,18 @@ pub struct MemoryStore(Mutex<HashMap<String, Secret>>);
 
 impl SecretStore for MemoryStore {
     fn get(&self, account: &str) -> AppResult<Option<Secret>> {
-        Ok(self.0.lock().unwrap().get(account).cloned())
+        Ok(self.0.lock_unpoisoned().get(account).cloned())
     }
 
     fn set(&self, account: &str, secret: &Secret) -> AppResult<()> {
         self.0
-            .lock()
-            .unwrap()
+            .lock_unpoisoned()
             .insert(account.to_string(), secret.clone());
         Ok(())
     }
 
     fn delete(&self, account: &str) -> AppResult<()> {
-        self.0.lock().unwrap().remove(account);
+        self.0.lock_unpoisoned().remove(account);
         Ok(())
     }
 }

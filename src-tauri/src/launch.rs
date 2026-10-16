@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::cli::Launch;
 use crate::connection::{ConnectionSpec, Secret};
 use crate::ipc::IpcMessage;
+use crate::lock::MutexExt;
 
 /// Something the UI should act on after a (CLI) launch. Passwords stay in Rust;
 /// the UI only learns whether one is available for the request.
@@ -43,7 +44,7 @@ impl LaunchQueue {
             }
             _ => return false,
         };
-        self.events.lock().unwrap().push(event);
+        self.events.lock_unpoisoned().push(event);
         true
     }
 
@@ -52,8 +53,7 @@ impl LaunchQueue {
         let has_password = launch.password.is_some();
         if let Some(password) = launch.password {
             self.passwords
-                .lock()
-                .unwrap()
+                .lock_unpoisoned()
                 .insert(request_id.clone(), password);
         }
         LaunchEvent::Connect {
@@ -65,12 +65,12 @@ impl LaunchQueue {
     }
 
     pub fn take_events(&self) -> Vec<LaunchEvent> {
-        std::mem::take(&mut *self.events.lock().unwrap())
+        std::mem::take(&mut *self.events.lock_unpoisoned())
     }
 
     /// Hands out a request's password once.
     pub fn take_password(&self, request_id: &str) -> Option<Secret> {
-        self.passwords.lock().unwrap().remove(request_id)
+        self.passwords.lock_unpoisoned().remove(request_id)
     }
 }
 

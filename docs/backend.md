@@ -17,7 +17,7 @@ Stage hook each have their own page.
    - An error: it becomes `IpcMessage::Error`, and the app shows it.
 3. **Single-instance handoff.** `ipc::try_forward` sends the message to a running instance (see
    [below](#cli-and-single-instance-handoff)). Only when no instance listens does startup continue, after
-   taking the instance lock. The handoff is custom: `tauri-plugin-single-instance` is a dependency but unused.
+   taking the instance lock. The handoff is custom (no `tauri-plugin-single-instance`).
 4. **`start_app`** builds Tauri:
    - plugins: log (stdout plus a rotating file, 3 × 5 MiB; `sqlx` is capped at Warn so SQL text stays out of
      the log) and opener;
@@ -40,7 +40,9 @@ with the `sidebar` vibrancy effect. No Rust code creates windows.
 ## AppState
 
 `state.rs`. Tauri manages it, and every command receives it as `State<'_, AppState>`. Each store has its own
-mutex inside.
+mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic while a guard is held poisons a
+`std::sync` lock: code takes these locks with `lock::MutexExt::lock_unpoisoned` and
+`lock::RwLockExt::{read_unpoisoned, write_unpoisoned}` instead of `unwrap()`, and keeps working with the data.
 
 | Field | Type | Holds |
 |---|---|---|
@@ -231,7 +233,6 @@ The menu isn't rebuilt when a binding changes, so a new menu accelerator takes e
 | `tauri` (feature `macos-private-api`), `tauri-build` | app framework; the feature allows a transparent window |
 | `tauri-plugin-log`, `log` | logging |
 | `tauri-plugin-opener` | open URLs and the log folder |
-| `tauri-plugin-single-instance` | unused (the custom socket replaces it) |
 | `sqlx` (`mysql`, `mysql-rsa`, no TLS) | MySQL/MariaDB driver |
 | `tokio` | runtime, IPC socket, Stage HTTP server |
 | `serde`, `serde_json` (`preserve_order`) | IPC, stores, JSON values in their stored key order |
@@ -244,5 +245,22 @@ The menu isn't rebuilt when a binding changes, so a new menu accelerator takes e
 | `libc` | `getuid` for the IPC peer check |
 | `tempfile` (dev) | store and socket tests |
 
-The release profile uses LTO, `codegen-units = 1`, `panic = "abort"` and strip. The toolchain is pinned to
+The library builds as `rlib` only (the `staticlib`/`cdylib` types of the Tauri template are for mobile). The
+release profile uses LTO, `codegen-units = 1` and strip, and keeps the default `panic = "unwind"`: Tauri and
+tokio catch a panic per command or task, so one bug fails one call instead of killing the process with the
+user's open transactions ([ADR 0017](adr/0017-panic-unwind.md)). The toolchain is pinned to
 stable in `rust-toolchain.toml` at the repo root. The crate uses edition 2024 and let-chains.
+
+## Content security policy
+
+`app.security.csp` in `tauri.conf.json` limits what the webview may load, because it renders arbitrary database
+content:
+
+- `default-src 'self'`: scripts, fonts and frames come from the bundle only;
+- `img-src 'self' data: https: http:`: Gravatar avatars and WordPress thumbnails, which come from the site's own
+  uploads URL (any local host, such as `*.ddev.site`);
+- `style-src 'self' 'unsafe-inline'`: React `style` attributes;
+- `connect-src ipc: http://ipc.localhost`: Tauri IPC (commands and events).
+
+`app.security.devCsp` applies under `tauri dev` and adds inline scripts (the React refresh preamble) and Vite's
+HMR websocket on `localhost:1420`/`1421`.

@@ -4,14 +4,14 @@
 use super::quote_ident;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Part {
+pub(super) enum Part {
     Single(u64),
     Range(u64, u64),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IdFilter {
-    pub parts: Vec<Part>,
+    pub(super) parts: Vec<Part>,
 }
 
 /// Parses the shorthand; `None` when the input is not purely IDs, ranges and commas.
@@ -28,38 +28,35 @@ pub fn parse_ids(input: &str) -> Option<IdFilter> {
         }
         match token.split_once('-') {
             Some((a, b)) => {
-                let (a, b) = (a.trim().parse::<u64>().ok()?, b.trim().parse::<u64>().ok()?);
-                parts.push(if a <= b {
-                    Part::Range(a, b)
-                } else {
-                    Part::Range(b, a)
-                });
+                let (a, b) = (parse_id(a)?, parse_id(b)?);
+                parts.push(Part::Range(a.min(b), a.max(b)));
             }
-            None => parts.push(Part::Single(token.parse().ok()?)),
+            None => parts.push(Part::Single(parse_id(token)?)),
         }
     }
     Some(IdFilter { parts })
 }
 
+/// Digits only: `u64::from_str` would also accept a leading `+`, and overflow is `None`.
+fn parse_id(text: &str) -> Option<u64> {
+    let text = text.trim();
+    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    text.parse().ok()
+}
+
 impl IdFilter {
     pub fn to_sql(&self, pk: &str) -> String {
         let col = quote_ident(pk);
-        let singles: Vec<String> = self
-            .parts
-            .iter()
-            .filter_map(|p| match p {
-                Part::Single(n) => Some(n.to_string()),
-                Part::Range(..) => None,
-            })
-            .collect();
-        let mut clauses: Vec<String> = self
-            .parts
-            .iter()
-            .filter_map(|p| match p {
-                Part::Range(a, b) => Some(format!("{col} BETWEEN {a} AND {b}")),
-                Part::Single(_) => None,
-            })
-            .collect();
+        let mut singles = Vec::new();
+        let mut clauses = Vec::new();
+        for part in &self.parts {
+            match part {
+                Part::Single(n) => singles.push(n.to_string()),
+                Part::Range(a, b) => clauses.push(format!("{col} BETWEEN {a} AND {b}")),
+            }
+        }
         match singles.len() {
             0 => {}
             1 => clauses.push(format!("{col} = {}", singles[0])),
@@ -120,6 +117,42 @@ mod tests {
             assert_eq!(f.to_sql("ID"), sql, "{input}");
             assert_eq!(f.label("ID"), label, "{input}");
         }
+    }
+
+    #[test]
+    fn u64_max_parses_and_one_more_overflows() {
+        assert_eq!(
+            parse_ids("18446744073709551615").map(|f| f.to_sql("ID")),
+            Some("`ID` = 18446744073709551615".to_string())
+        );
+        for input in [
+            "18446744073709551616",
+            "18446744073709551616-1",
+            "1-18446744073709551616",
+        ] {
+            assert!(parse_ids(input).is_none(), "{input}");
+        }
+    }
+
+    #[test]
+    fn signs_and_chained_ranges_are_rejected() {
+        for input in ["+5", "1-+5", "+1-5", "1-2-3"] {
+            assert!(parse_ids(input).is_none(), "{input}");
+        }
+    }
+
+    #[test]
+    fn leading_zeros_are_normalized() {
+        let f = parse_ids("007").unwrap();
+        assert_eq!(f.to_sql("ID"), "`ID` = 7");
+        assert_eq!(f.label("ID"), "ID = 7");
+    }
+
+    #[test]
+    fn duplicate_ids_are_kept() {
+        let f = parse_ids("5,5").unwrap();
+        assert_eq!(f.to_sql("ID"), "`ID` IN (5, 5)");
+        assert_eq!(f.label("ID"), "ID in (5, 5)");
     }
 
     #[test]

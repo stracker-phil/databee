@@ -13,6 +13,7 @@ use it, see the [project README](../README.md).
 | [stage.md](stage.md) | Optional local HTTP API for the Stage presenter app |
 | [testing.md](testing.md) | Unit and integration tests, Docker fixtures, scripts that drive the app in the background |
 | [adapting.md](adapting.md) | Renaming, porting to Linux or Windows, removing layers, conventions to keep |
+| [adr/](adr/README.md) | Architecture decision records: why the design is the way it is |
 | [roadmap.md](roadmap.md) | Ideas not built yet |
 | [refactoring-plan.md](refactoring-plan.md) | Code review of 2026-10-16: findings per file, and the phased plan to modularize and fix them |
 

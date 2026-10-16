@@ -18,6 +18,8 @@ use super::protocol::{
     required, to_screen_rect,
 };
 
+use crate::lock::MutexExt;
+
 pub const COLLECT_EVENT: &str = "stage:collect";
 pub const ACT_EVENT: &str = "stage:act";
 pub const INFO_EVENT: &str = "stage:info";
@@ -134,7 +136,7 @@ impl Hub {
 
     /// When a presenter last used the hook (shown in Settings).
     pub fn last_request(&self) -> Option<chrono::DateTime<chrono::Utc>> {
-        *self.last_request.lock().unwrap()
+        *self.last_request.lock_unpoisoned()
     }
 
     // Page replies -------------------------------------------------------------------------
@@ -143,7 +145,7 @@ impl Hub {
         if page != MAIN {
             return None;
         }
-        self.waiting.lock().unwrap().remove(request)
+        self.waiting.lock_unpoisoned().remove(request)
     }
 
     pub fn receive_anchors(&self, reply: AnchorsReply) {
@@ -175,8 +177,7 @@ impl Hub {
         let request = uuid::Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
         self.waiting
-            .lock()
-            .unwrap()
+            .lock_unpoisoned()
             .insert(request.clone(), waiter(tx));
         payload.insert("request".into(), Value::String(request.clone()));
         self.host.emit(event, Value::Object(payload));
@@ -184,7 +185,7 @@ impl Hub {
             .await
             .ok()
             .and_then(Result::ok);
-        self.waiting.lock().unwrap().remove(&request);
+        self.waiting.lock_unpoisoned().remove(&request);
         reply
     }
 
@@ -650,7 +651,7 @@ impl Hub {
 
     /// `/v1/stage/<verb>`; the result is sent as `{ ok: true, ...result }`.
     pub async fn run(&self, verb: &str, params: &Params) -> StageResult<Map<String, Value>> {
-        *self.last_request.lock().unwrap() = Some(chrono::Utc::now());
+        *self.last_request.lock_unpoisoned() = Some(chrono::Utc::now());
         match verb {
             "describe" => Ok(self.describe().await),
             "state" => {

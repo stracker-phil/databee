@@ -78,6 +78,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/secrets.rs           Keychain-backed SecretStore
   src/menu.rs              native menu from the command ids
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
+  src/lock.rs              poison-tolerant std lock access
   tests/                   integration tests (Docker, #[ignore])
   tauri.conf.json          window, bundle and identifier config
 src/                       React app

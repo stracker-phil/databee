@@ -74,11 +74,13 @@ fn readable_text(raw: &[u8]) -> Option<String> {
 }
 
 fn bytes(raw: &[u8]) -> Cell {
-    let hex_preview = raw
-        .iter()
-        .take(HEX_PREVIEW_BYTES)
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    use std::fmt::Write;
+    let preview = &raw[..raw.len().min(HEX_PREVIEW_BYTES)];
+    // One buffer for the whole preview; this runs for every binary cell of a result set.
+    let mut hex_preview = String::with_capacity(2 * preview.len());
+    for b in preview {
+        let _ = write!(hex_preview, "{b:02x}");
+    }
     Cell::Bytes {
         len: raw.len(),
         hex_preview,
@@ -149,6 +151,102 @@ mod tests {
         assert_eq!(
             decode("JSON", Some(b"{\"a\":1}")),
             Cell::Json("{\"a\":1}".into())
+        );
+    }
+
+    #[test]
+    fn invalid_utf8_in_a_text_column_is_bytes() {
+        assert_eq!(
+            decode("VARCHAR", Some(&[0xff, 0xfe])),
+            Cell::Bytes {
+                len: 2,
+                hex_preview: "fffe".into()
+            }
+        );
+    }
+
+    #[test]
+    fn binary_columns_treat_control_bytes_as_binary_but_keep_whitespace() {
+        assert_eq!(
+            decode("VARBINARY", Some(b"a\x01b")),
+            Cell::Bytes {
+                len: 3,
+                hex_preview: "610162".into()
+            }
+        );
+        assert_eq!(
+            decode("VARBINARY", Some(b"a\tb\nc\r")),
+            Cell::Text("a\tb\nc\r".into())
+        );
+    }
+
+    #[test]
+    fn empty_binary_values_are_empty_text() {
+        for type_name in ["BLOB", "VARBINARY"] {
+            assert_eq!(
+                decode(type_name, Some(b"")),
+                Cell::Text(String::new()),
+                "{type_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn time_year_and_boolean_decode_by_family() {
+        let cases = [
+            (
+                "TIME",
+                &b"838:59:59"[..],
+                Cell::Temporal("838:59:59".into()),
+            ),
+            ("TIME", b"-12:00:00", Cell::Temporal("-12:00:00".into())),
+            ("YEAR", b"2024", Cell::Number("2024".into())),
+            ("BOOLEAN", b"1", Cell::Number("1".into())),
+        ];
+        for (type_name, raw, expected) in cases {
+            assert_eq!(
+                decode(type_name, Some(raw)),
+                expected,
+                "{type_name} {raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn geometry_is_bytes_and_unknown_types_are_text() {
+        assert_eq!(
+            decode("GEOMETRY", Some(&[0, 0, 0, 0, 1])),
+            Cell::Bytes {
+                len: 5,
+                hex_preview: "0000000001".into()
+            }
+        );
+        assert_eq!(
+            decode("SOMETHING_NEW", Some(b"abc")),
+            Cell::Text("abc".into())
+        );
+    }
+
+    #[test]
+    fn hex_preview_is_lowercase_and_zero_padded() {
+        assert_eq!(
+            decode("VARBINARY", Some(&[0x00, 0x0f, 0xab, 0xff])),
+            Cell::Bytes {
+                len: 4,
+                hex_preview: "000fabff".into()
+            }
+        );
+    }
+
+    #[test]
+    fn hex_preview_is_capped_at_sixteen_bytes_but_len_is_full() {
+        let raw = [0u8; 17];
+        assert_eq!(
+            decode("BLOB", Some(&raw)),
+            Cell::Bytes {
+                len: 17,
+                hex_preview: "00".repeat(16)
+            }
         );
     }
 

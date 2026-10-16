@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::lock::MutexExt;
 use crate::store::settings::StageSettings;
 use hooks::{Frame, Hub, StageHost, Timeouts};
 use protocol::{MAIN, ScreenRect, register_command, stage_url};
@@ -142,7 +143,7 @@ impl Stage {
     /// (Re)starts the API with these settings; off means stopped.
     pub fn start(&self, settings: &StageSettings) {
         self.stop();
-        let mut server = self.server.lock().unwrap();
+        let mut server = self.server.lock_unpoisoned();
         server.enabled = settings.enabled;
         server.port = settings.port;
         server.token = settings.token.clone();
@@ -176,7 +177,7 @@ impl Stage {
     }
 
     pub fn stop(&self) {
-        let mut server = self.server.lock().unwrap();
+        let mut server = self.server.lock_unpoisoned();
         if let Some(task) = server.task.take() {
             task.abort();
         }
@@ -184,7 +185,7 @@ impl Stage {
     }
 
     pub fn status(&self) -> StageStatus {
-        let server = self.server.lock().unwrap();
+        let server = self.server.lock_unpoisoned();
         StageStatus {
             enabled: server.enabled,
             running: server.task.is_some(),

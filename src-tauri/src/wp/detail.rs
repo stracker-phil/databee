@@ -859,8 +859,10 @@ pub async fn order_view(
             target: None,
         });
     }
-    for item in items.iter().filter(|i| i.product.is_some()) {
-        let p = item.product.clone().unwrap();
+    for item in &items {
+        let Some(p) = item.product.clone() else {
+            continue;
+        };
         related.push(RelatedChip {
             label: p.label.clone().unwrap_or_else(|| item.name.clone()),
             link: Some(p),

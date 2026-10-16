@@ -1,6 +1,7 @@
 use tauri::State;
 
 use crate::error::{AppError, AppResult};
+use crate::lock::MutexExt;
 use crate::state::AppState;
 use crate::wp::context::WpContext;
 use crate::wp::dashboard::{self, BrowserSection, Dashboard, DayBucket};
@@ -30,7 +31,7 @@ async fn context(
     refresh: bool,
 ) -> AppResult<Option<WpContext>> {
     let key = format!("{session_id}/{database}");
-    if !refresh && let Some(cached) = state.wp_cache.lock().unwrap().get(&key) {
+    if !refresh && let Some(cached) = state.wp_cache.lock_unpoisoned().get(&key) {
         return Ok(cached.clone());
     }
     let session = state.sessions.get(session_id)?;
@@ -44,7 +45,7 @@ async fn context(
         ),
         None => log::debug!("{database} is not a WordPress database"),
     }
-    state.wp_cache.lock().unwrap().insert(key, ctx.clone());
+    state.wp_cache.lock_unpoisoned().insert(key, ctx.clone());
     Ok(ctx)
 }
 

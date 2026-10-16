@@ -7,6 +7,7 @@ mod dev;
 pub mod error;
 pub mod ipc;
 mod launch;
+mod lock;
 mod menu;
 pub mod secrets;
 mod session;
