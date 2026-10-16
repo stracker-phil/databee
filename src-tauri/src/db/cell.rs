@@ -19,13 +19,11 @@ pub enum Cell {
 
 const HEX_PREVIEW_BYTES: usize = 16;
 
-/// Converts a raw text-protocol value into a `Cell`, guided by the column type name
-/// (as reported by sqlx, e.g. `BIGINT UNSIGNED`, `VARBINARY`, `DATETIME`).
-pub fn decode(type_name: &str, raw: Option<&[u8]>) -> Cell {
+/// Converts a raw text-protocol value into a `Cell` of its column's family.
+pub(crate) fn decode(family: Family, raw: Option<&[u8]>) -> Cell {
     let Some(raw) = raw else {
         return Cell::Null;
     };
-    let family = family(type_name);
     match family {
         Family::Number => text(raw).map_or_else(|| bytes(raw), Cell::Number),
         // Kept as text: WordPress uses zero dates like 0000-00-00 00:00:00.
@@ -38,7 +36,8 @@ pub fn decode(type_name: &str, raw: Option<&[u8]>) -> Cell {
     }
 }
 
-enum Family {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Family {
     Number,
     Temporal,
     Json,
@@ -47,7 +46,8 @@ enum Family {
     Text,
 }
 
-fn family(type_name: &str) -> Family {
+/// The family of a column type name as reported by sqlx, e.g. `BIGINT UNSIGNED`, `VARBINARY`.
+pub(crate) fn family(type_name: &str) -> Family {
     let base = type_name.split_whitespace().next().unwrap_or("");
     match base {
         "BOOLEAN" | "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INT" | "BIGINT" | "FLOAT"
@@ -94,18 +94,18 @@ mod tests {
 
     #[test]
     fn null_is_null_for_every_type() {
-        assert_eq!(decode("VARCHAR", None), Cell::Null);
-        assert_eq!(decode("BIGINT", None), Cell::Null);
+        assert_eq!(decode(family("VARCHAR"), None), Cell::Null);
+        assert_eq!(decode(family("BIGINT"), None), Cell::Null);
     }
 
     #[test]
     fn numbers_keep_full_precision() {
         assert_eq!(
-            decode("BIGINT UNSIGNED", Some(b"18446744073709551615")),
+            decode(family("BIGINT UNSIGNED"), Some(b"18446744073709551615")),
             Cell::Number("18446744073709551615".into())
         );
         assert_eq!(
-            decode("DECIMAL", Some(b"49.90")),
+            decode(family("DECIMAL"), Some(b"49.90")),
             Cell::Number("49.90".into())
         );
     }
@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn zero_dates_are_preserved() {
         assert_eq!(
-            decode("DATETIME", Some(b"0000-00-00 00:00:00")),
+            decode(family("DATETIME"), Some(b"0000-00-00 00:00:00")),
             Cell::Temporal("0000-00-00 00:00:00".into())
         );
     }
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn binary_columns_with_readable_utf8_are_text() {
         assert_eq!(
-            decode("VARBINARY", Some(b"hello")),
+            decode(family("VARBINARY"), Some(b"hello")),
             Cell::Text("hello".into())
         );
     }
@@ -130,7 +130,7 @@ mod tests {
     fn real_binary_data_shows_length_and_hex_preview() {
         let raw: Vec<u8> = (0u8..40).collect();
         assert_eq!(
-            decode("BLOB", Some(&raw)),
+            decode(family("BLOB"), Some(&raw)),
             Cell::Bytes {
                 len: 40,
                 hex_preview: "000102030405060708090a0b0c0d0e0f".into()
@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn bit_values_are_bytes() {
         assert!(matches!(
-            decode("BIT", Some(&[1])),
+            decode(family("BIT"), Some(&[1])),
             Cell::Bytes { len: 1, .. }
         ));
     }
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn json_columns_are_tagged() {
         assert_eq!(
-            decode("JSON", Some(b"{\"a\":1}")),
+            decode(family("JSON"), Some(b"{\"a\":1}")),
             Cell::Json("{\"a\":1}".into())
         );
     }
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn invalid_utf8_in_a_text_column_is_bytes() {
         assert_eq!(
-            decode("VARCHAR", Some(&[0xff, 0xfe])),
+            decode(family("VARCHAR"), Some(&[0xff, 0xfe])),
             Cell::Bytes {
                 len: 2,
                 hex_preview: "fffe".into()
@@ -168,14 +168,14 @@ mod tests {
     #[test]
     fn binary_columns_treat_control_bytes_as_binary_but_keep_whitespace() {
         assert_eq!(
-            decode("VARBINARY", Some(b"a\x01b")),
+            decode(family("VARBINARY"), Some(b"a\x01b")),
             Cell::Bytes {
                 len: 3,
                 hex_preview: "610162".into()
             }
         );
         assert_eq!(
-            decode("VARBINARY", Some(b"a\tb\nc\r")),
+            decode(family("VARBINARY"), Some(b"a\tb\nc\r")),
             Cell::Text("a\tb\nc\r".into())
         );
     }
@@ -184,7 +184,7 @@ mod tests {
     fn empty_binary_values_are_empty_text() {
         for type_name in ["BLOB", "VARBINARY"] {
             assert_eq!(
-                decode(type_name, Some(b"")),
+                decode(family(type_name), Some(b"")),
                 Cell::Text(String::new()),
                 "{type_name}"
             );
@@ -205,7 +205,7 @@ mod tests {
         ];
         for (type_name, raw, expected) in cases {
             assert_eq!(
-                decode(type_name, Some(raw)),
+                decode(family(type_name), Some(raw)),
                 expected,
                 "{type_name} {raw:?}"
             );
@@ -215,14 +215,14 @@ mod tests {
     #[test]
     fn geometry_is_bytes_and_unknown_types_are_text() {
         assert_eq!(
-            decode("GEOMETRY", Some(&[0, 0, 0, 0, 1])),
+            decode(family("GEOMETRY"), Some(&[0, 0, 0, 0, 1])),
             Cell::Bytes {
                 len: 5,
                 hex_preview: "0000000001".into()
             }
         );
         assert_eq!(
-            decode("SOMETHING_NEW", Some(b"abc")),
+            decode(family("SOMETHING_NEW"), Some(b"abc")),
             Cell::Text("abc".into())
         );
     }
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn hex_preview_is_lowercase_and_zero_padded() {
         assert_eq!(
-            decode("VARBINARY", Some(&[0x00, 0x0f, 0xab, 0xff])),
+            decode(family("VARBINARY"), Some(&[0x00, 0x0f, 0xab, 0xff])),
             Cell::Bytes {
                 len: 4,
                 hex_preview: "000fabff".into()
@@ -242,7 +242,7 @@ mod tests {
     fn hex_preview_is_capped_at_sixteen_bytes_but_len_is_full() {
         let raw = [0u8; 17];
         assert_eq!(
-            decode("BLOB", Some(&raw)),
+            decode(family("BLOB"), Some(&raw)),
             Cell::Bytes {
                 len: 17,
                 hex_preview: "00".repeat(16)

@@ -18,7 +18,7 @@ commands, files or extension points change. Document by file and symbol, never b
 ## Architecture
 - Rust owns all logic; React only renders. `src/api/index.ts` is the only `invoke` caller (tests mock it).
 - `src-tauri/src/`: `cli.rs` (argv), `ipc.rs` (single-instance socket), `db/` (lexer, safety, cell decoding,
-  `mysql.rs` session: dedicated editor connection + metadata pool), `store/` (JSON files), `wp/` (WordPress lens:
+  `mysql/` session: dedicated editor connection + metadata pool), `store/` (JSON files), `wp/` (WordPress lens:
   `context` detection, lossless `php` serialize parser, `value` trees, TOML `entities` + resolver, `options`), `stage/` (Stage presentation hook: local HTTP API,
   registered with `stage register`; the page side is `src/stage/`, anchors are `data-stage` attributes; see docs/stage.md).
 - Frontend state: zustand store in `src/state/store.ts`; components in `src/components/`.

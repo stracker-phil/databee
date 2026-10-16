@@ -11,12 +11,16 @@ in `src-tauri/src/db_commands.rs`.
 | `db/types.rs` | Shared DTOs (`ResultSet`, `ExecuteResponse`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage`, `AppliedFilter`, `FilterKind`) |
 | `db/dialect.rs` | `Dialect { backslash_escapes }` (`Dialect::MYSQL`, or `from_sql_mode`): `quote_ident` (backticks), `sql_string`, `like` / `like_contains`, `table_ref`, `system_schemas`; `escape_like` |
 | `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
-| `db/mysql.rs` | `MySqlSession`, the only driver, implementing `Database`. It owns all I/O. |
+| `db/mysql/mod.rs` | `MySqlSession`, the only driver, implementing `Database`: the metadata pool, the editor connection, `connect_options`. It owns all I/O. |
+| `db/mysql/editor.rs` | `EditorConnection`: the editor connection's lock, thread id, current database, `reconnect` and `kill` |
+| `db/mysql/introspect.rs` | `databases`, `tables`, `structure`, `completion` over the pool; rows are read by column alias |
+| `db/mysql/script.rs` | `run_script` (text protocol, one `ResultSet` per statement, column recovery), `scalar`, `thread_id`, `read_dialect` |
+| `db/mysql/timeouts.rs` | `connect_within`, `query_within`, and `pooled_within`, which closes a timed-out pool connection |
 | `db/fake.rs` | `FakeDatabase`, an in-memory `Database` for unit tests (canned results matched by SQL fragment, recorded `apply` batches); behind `cfg(any(test, feature = "test-util"))` |
 | `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements`, `words`, `is_terminated`, `is_blank` |
 | `db/classify.rs` | What a statement is: `verb_index` (the deciding word, also after a `WITH` clause) and `returns_rows` |
 | `db/safety.rs` | `destructive_reason` (which statements need confirmation) |
-| `db/cell.rs` | `Cell`: decodes text-protocol bytes by column type |
+| `db/cell.rs` | `Cell`: decodes text-protocol bytes by column `Family`, computed once per result set from the type name |
 | `db/id_filter.rs` | Primary-key shorthand in the WHERE field: `3229`, `3229, 3227`, `3220-3229` |
 
 Outside `db/`:
@@ -52,7 +56,8 @@ Other details:
     (`connect_within`; a timeout is a `connection` error).
   - `query_timeout_secs` covers `execute`, `browse`, `fetch` and `apply` (read per call) and the metadata
     calls `use_database`, `databases`, `tables`, `structure` and `completion` (`query_within`, using the value
-    stored on `MySqlSession` at connect time). A timeout is a `timeout` error.
+    stored on `MySqlSession` at connect time; `browse`, `fetch` and `apply` use `pooled_within`). A timeout is a
+    `timeout` error.
   - When an `execute` times out, DataBee kills the whole editor connection, reconnects it, and returns
     `timeout`. A timed-out `browse`, `fetch` or `apply` closes its pool connection instead of returning it.
     If `apply` times out after `COMMIT` was sent, it returns a `database` error saying the outcome is
@@ -66,7 +71,9 @@ Other details:
   with the current database. The query itself is not retried. A failed reconnect is logged; the next run
   tries again.
 - **TLS:** none. sqlx is compiled without a TLS backend. `mysql-rsa` handles `caching_sha2_password` over
-  plaintext connections. To add TLS:
+  plaintext connections by fetching the server's RSA key unencrypted, so a man in the middle could swap the key
+  and read the password. That is fine on loopback and sockets, the intended use; sqlx has no option to refuse
+  it for remote hosts. To add TLS:
   1. Enable `tls-rustls` in `Cargo.toml`.
   2. Add `ssl_mode`/CA fields to `ConnectionSpec`.
   3. Set them in `connect_options`.
