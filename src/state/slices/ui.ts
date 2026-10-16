@@ -13,7 +13,7 @@ export interface Toast {
 }
 
 export type Dialog =
-  /** `page`: the Settings page shown (SETTINGS_PAGES ids); the first one when absent. */
+  /** `page`: the Settings page shown (ids from `settingsPages()` in `registry/settingsPages.ts`); the first one when absent. */
   | { type: "settings"; page?: string }
   | { type: "connect"; spec?: ConnectionSpec; error?: AppError }
   | { type: "password"; spec: ConnectionSpec; account: string | null; error?: string; savePassword: boolean }

@@ -54,8 +54,10 @@ The page side lives in `src/stage/`:
 
 | File | Responsibility |
 |---|---|
+| `install.ts` | `installStage()`, called once from `App.tsx`: registers the Presentations Settings page (`registerStageSettingsPage`) and starts the hooks (`installStageHooks`) |
+| `PresentationsPage.tsx` | Settings → Presentations: the switch, status, port, token and register command. It loads and saves `StageSettings` itself (`stageSettings`, `stageUpdateSettings`, `stageNewToken`) and polls `stageStatus` while open |
 | `hooks.ts` | Answers `stage:collect`: anchors, read from the `data-stage*` attributes, with their rects, visibility, role, list and states. Answers `stage:act` with reveal, click, type (replace or append; CodeMirror too), keys, scroll and wait, then replies with `stage_anchors` or `stage_done`. |
-| `state.ts` | `stageView()` (`connect`, `db`, `wp:<screen>`), `stageSurfaces()`, `stageUi()` and the flat `stageState()`. `stageState()` never includes SQL text or passwords. |
+| `state.ts` | `stageView()` (`connect`, `db`, `wp:<screen>`), `stageSurfaces()` (the settings window's sections are `settingsSections()`, from the settings page registry), `stageUi()` and the flat `stageState()`. `stageState()` never includes SQL text or passwords. |
 | `commands.ts` | The registry's commands in Stage form, with shortcuts in Stage notation. Conventional ids: `app:settings`, `view:palette`. Families: `settings:open:<page>`, `table:open:<table>`, `wp:open:<entity>:<id>` |
 | `src/lib/stage.ts` | Rectangle math (`intersectRect`, `visiblePart`, `isInView`, `centerOf`) |
 

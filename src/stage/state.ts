@@ -1,6 +1,6 @@
 /** What Stage reads about DataBee: the main window's view and panels, its sheets, and a short state. */
 import type { StageInfoReply, StageRect, StageSurface } from "../api";
-import { SETTINGS_PAGES } from "../components/SettingsDialog";
+import { resolveSettingsPage, settingsPages } from "../registry/settingsPages";
 import { selectActiveSession, selectActiveTab, selectWp, selectWpRoute, useStore } from "../state/store";
 
 type Flat = StageInfoReply["state"];
@@ -22,9 +22,16 @@ export function stageView(): string {
   return "db";
 }
 
+/** The Settings pages as the settings window's sections, in nav order. */
+export function settingsSections(): { id: string; title: string }[] {
+  return settingsPages().map(({ id, label }) => ({ id, title: label }));
+}
+
+/** The page the dialog shows: the named one, or the first when the name is absent or unknown. */
 function settingsPage(): string | null {
   const dialog = useStore.getState().dialog;
-  return dialog?.type === "settings" ? (dialog.page ?? SETTINGS_PAGES[0].id) : null;
+  if (dialog?.type !== "settings") return null;
+  return resolveSettingsPage(dialog.page)?.id ?? null;
 }
 
 /** Settings and the palette are sheets in the main window; Stage sees them as windows. */
@@ -34,7 +41,7 @@ export function stageSurfaces(): StageSurface[] {
       id: "settings",
       title: "Settings",
       rect: rectOf(document.querySelector('[data-stage-window="settings"]')),
-      sections: SETTINGS_PAGES,
+      sections: settingsSections(),
       section: settingsPage(),
     },
     { id: "palette", title: "Command Palette", rect: rectOf(document.querySelector('[data-stage-window="palette"]')) },

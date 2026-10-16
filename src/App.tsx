@@ -13,7 +13,8 @@ import { Toolbar } from "./components/Toolbar";
 import { CommandPalette } from "./components/CommandPalette";
 import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { PendingTray } from "./components/PendingTray";
-import { installStageHooks } from "./stage/hooks";
+import { registerCoreSettingsPages } from "./components/settings/pages";
+import { installStage } from "./stage/install";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
 import { applyAppearance } from "./lib/theme";
 import { flushUiState, selectWp, useStore } from "./state/store";
@@ -26,9 +27,10 @@ function useBackendEvents() {
     const drainLaunches = () =>
       api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
+    registerCoreSettingsPages();
     installCommands();
     void loadSettings().then(() => (installCommands(), drainLaunches()));
-    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), ...installStageHooks()];
+    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), ...installStage()];
 
     const onKey = handleKeydown;
     const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);

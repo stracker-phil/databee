@@ -8,7 +8,8 @@ import { api, type StageActRequest, type StageKeys } from "../api";
 import { installCommands } from "../commands";
 import { resetStore, useStore } from "../state/store";
 import { connectedStore } from "../test/fixtures";
-import { installStageHooks } from "./hooks";
+import { registerCoreSettingsPages } from "../components/settings/pages";
+import { installStage } from "./install";
 
 const mocked = vi.mocked(api, true);
 
@@ -26,7 +27,7 @@ const key = (k: string, code: string, mods: Partial<StageKeys> = {}): StageKeys 
 
 /** Installs the hooks and returns what Rust would send them. */
 function hooks() {
-  installStageHooks();
+  installStage();
   const handler = <T,>(on: { mock: { calls: unknown[][] } }) => on.mock.calls.at(-1)![0] as (arg: T) => void;
   const act = async (request: Omit<StageActRequest, "request">) => {
     mocked.stageDone.mockClear();
@@ -48,6 +49,7 @@ describe("Stage page hooks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore();
+    registerCoreSettingsPages();
     stubLayout();
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
   });

@@ -1,14 +1,17 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Blocks } from "lucide-react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
+vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import App from "../App";
-import { api } from "../api";
-import { resetStore, useStore } from "../state/store";
-import { connectedStore, settings } from "../test/fixtures";
-import { installCommands } from "../commands";
+import App from "../../App";
+import { api, LOG_LEVELS } from "../../api";
+import { registerSettingsPage } from "../../registry/settingsPages";
+import { resetStore, useStore } from "../../state/store";
+import { connectedStore, settings } from "../../test/fixtures";
+import { installCommands } from "../../commands";
+import { registerCoreSettingsPages } from "./pages";
 import { SettingsDialog } from "./SettingsDialog";
 
 const mocked = vi.mocked(api, true);
@@ -16,6 +19,7 @@ const mocked = vi.mocked(api, true);
 describe("SettingsDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    registerCoreSettingsPages();
     resetStore({ settings: settings(), dialog: { type: "settings" } });
   });
 
@@ -178,57 +182,56 @@ describe("SettingsDialog", () => {
     expect(screen.getByText(/include the SQL text/)).toBeInTheDocument();
   });
 
-  it("shows the hook's status and the command that registers it with Stage", async () => {
-    const command = "stage register http://127.0.0.1:27184/v1/stage --token token-123";
-    mocked.stageStatus.mockResolvedValue({ enabled: true, running: true, error: null, url: "http://127.0.0.1:27184/v1/stage", registerCommand: command, lastRequest: new Date(Date.now() - 120_000).toISOString() });
+  it("lists every log level", async () => {
     render(<SettingsDialog />);
-    await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
-    expect(await screen.findByText("Ready")).toBeInTheDocument();
-    expect(screen.getByText(command)).toBeInTheDocument();
-    expect(screen.getByText("2 min ago")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Copy" }));
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(command);
-
-    expect(screen.queryByText("token-123")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "••••••••••••" }));
-    expect(screen.getByText("token-123")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "New Token" }));
-    expect(await screen.findByText("token-new")).toBeInTheDocument();
-
-    mocked.stageStatus.mockResolvedValue({ enabled: false, running: false, error: null, url: "http://127.0.0.1:27184/v1/stage", registerCommand: command, lastRequest: null });
-    await userEvent.click(screen.getByLabelText("Allow presentations"));
-    expect(mocked.stageUpdateSettings).toHaveBeenLastCalledWith({ enabled: false, port: 27184, token: "token-new" });
-    expect(await screen.findByText("Off")).toBeInTheDocument();
-    expect(screen.getByText("None yet")).toBeInTheDocument();
-  });
-
-  it("copies the token", async () => {
-    render(<SettingsDialog />);
-    await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Copy token" }));
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("token-123");
-  });
-
-  it("saves a changed port through the Stage settings", async () => {
-    render(<SettingsDialog />);
-    await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
-    const port = await screen.findByLabelText("Port");
-    await userEvent.clear(port);
-    await userEvent.type(port, "30000");
-    await userEvent.tab();
-    expect(mocked.stageUpdateSettings).toHaveBeenLastCalledWith({ enabled: true, port: 30000, token: "token-123" });
-  });
-
-  it("names the port conflict when the API can't start", async () => {
-    mocked.stageStatus.mockResolvedValue({ enabled: true, running: false, error: "Port 27184 is already used by another app.", url: "http://127.0.0.1:27184/v1/stage", registerCommand: "stage register http://127.0.0.1:27184/v1/stage --token t", lastRequest: null });
-    render(<SettingsDialog />);
-    await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
-    expect(await screen.findByText("Port 27184 is already used by another app.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Logging" }));
+    const options = within(screen.getByLabelText("Log level")).getAllByRole("option");
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual([...LOG_LEVELS]);
   });
 
   it("opens on the page the dialog names", () => {
     resetStore({ settings: settings(), dialog: { type: "settings", page: "logging" } });
     render(<SettingsDialog />);
     expect(screen.getByRole("heading", { name: "Logging" })).toBeInTheDocument();
+  });
+
+  it("opens on the first page when the dialog names an unknown one", () => {
+    resetStore({ settings: settings(), dialog: { type: "settings", page: "no-such-page" } });
+    render(<SettingsDialog />);
+    expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+  });
+
+  describe("registered pages", () => {
+    const body = (text: string) => () => <p>{text}</p>;
+
+    it("lists a registered page in the nav under its group and renders its body", async () => {
+      registerSettingsPage({ id: "test-extra", group: "Test Group", label: "Extra", icon: Blocks, intro: "Extra intro", Body: body("Extra body") });
+      render(<SettingsDialog />);
+      const nav = screen.getByRole("navigation", { name: "Settings pages" });
+      expect(within(nav).getByText("Test Group")).toBeInTheDocument();
+      await userEvent.click(within(nav).getByRole("button", { name: "Extra" }));
+      expect(screen.getByRole("heading", { name: "Extra" })).toBeInTheDocument();
+      expect(screen.getByText("Extra intro")).toBeInTheDocument();
+      expect(screen.getByText("Extra body")).toBeInTheDocument();
+    });
+
+    it("keeps one nav entry with the later definition when an id is registered twice", () => {
+      registerSettingsPage({ id: "test-twice", group: "Test Group", label: "Twice old", icon: Blocks, Body: body("Old body") });
+      registerSettingsPage({ id: "test-twice", group: "Test Group", label: "Twice new", icon: Blocks, Body: body("New body") });
+      resetStore({ settings: settings(), dialog: { type: "settings", page: "test-twice" } });
+      render(<SettingsDialog />);
+      const nav = screen.getByRole("navigation", { name: "Settings pages" });
+      expect(within(nav).getAllByRole("button", { name: /^Twice/ })).toHaveLength(1);
+      expect(within(nav).getByRole("button", { name: "Twice new" })).toBeInTheDocument();
+      expect(screen.getByText("New body")).toBeInTheDocument();
+      expect(screen.queryByText("Old body")).not.toBeInTheDocument();
+    });
+
+    it("adds a page registered while the dialog is open", () => {
+      render(<SettingsDialog />);
+      expect(screen.queryByRole("button", { name: "Late" })).not.toBeInTheDocument();
+      act(() => registerSettingsPage({ id: "test-late", group: "Test Group", label: "Late", icon: Blocks, Body: body("Late body") }));
+      expect(screen.getByRole("button", { name: "Late" })).toBeInTheDocument();
+    });
   });
 });

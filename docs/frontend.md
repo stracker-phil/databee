@@ -9,11 +9,12 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 2. `main.tsx` exposes the store as `window.databee` for the dev scripts. It renders
    `<ErrorBoundary><App/></ErrorBoundary>`.
 3. `App.tsx` loads the two stylesheets and calls `useBackendEvents()` once:
-   1. `installCommands()` registers the command registry.
+   1. `registerCoreSettingsPages()` registers the core Settings pages, then `installCommands()` registers the
+      command registry.
    2. `loadSettings()` loads settings and keybindings. Commands are re-installed with the user's bindings,
       then `drainLaunches()` pulls the queued launch requests (`take_launch_events`).
-   3. It subscribes to `launch` (drain again), `command` (menu clicks → `runCommand`) and the Stage events
-      (`installStageHooks()`).
+   3. It subscribes to `launch` (drain again) and `command` (menu clicks → `runCommand`), and installs Stage
+      (`installStage()` in `src/stage/install.ts`: its Settings page and the Stage events).
    4. It adds a capture-phase `keydown` → `handleKeydown`, plus `error` / `unhandledrejection` → error toast.
 4. `applyAppearance(settings)` runs whenever settings change.
 
@@ -131,7 +132,9 @@ subscriptions `onLaunch`, `onCommand` and `onStage*`. The IPC types are generate
 ([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts`; never edit it. `bun run types`
 regenerates it (it runs the `export_bindings_*` tests), and `bun run lint` fails when the committed file is
 stale. `src/api/types.ts` re-exports the generated types plus the few frontend-only ones (`Keybindings`,
-`StageWindow`, `StageActRequest`, `PaneSize`, `EMPTY_UI_STATE`, `TEXT_SIZES`, `ACCENTS`). Command signatures in
+`StageWindow`, `StageActRequest`, `PaneSize`, `EMPTY_UI_STATE`, `TEXT_SIZES`, `SETTINGS_LIMITS`, `LOG_LEVELS`,
+`ACCENTS`). `TEXT_SIZES` and `SETTINGS_LIMITS` mirror the clamps in Rust's `Settings::sanitized`, which stays the
+source of truth; change both together. Command signatures in
 `api` stay hand-written. `toAppError(e)` normalizes rejections to `AppError` and accepts only a known `kind`. Derived connection facts come from Rust and are never recomputed in the page: the
 Keychain `account` (which also scopes favorites and history) is on `SessionInfo`, `RecentConnection` and login
 errors (`AppError.account`).
@@ -198,8 +201,37 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Shell | `Toolbar`, `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary` |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, structure view), `Inspector` + `ValueTree` (PHP/JSON decode) |
-| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (pages: Appearance, Shortcuts, Queries, Display, Connections, WordPress, Presentations, Logging), `CommandPalette`, `ContextMenu`, `Toasts` |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `CommandPalette`, `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens) |
+
+### Settings pages
+
+`src/registry/settingsPages.ts` holds the pages; `components/settings/SettingsDialog.tsx` only renders them.
+
+```ts
+interface SettingsPage { id, group, label, icon, intro?, Body, order? }
+registerSettingsPage(page)   // replaces a page with the same id
+settingsPages()              // by group (Interface, Database, WordPress, System, then others by name), order, label
+settingsGroups()             // the same, grouped for the nav
+```
+
+- `Body` gets `{ s, set }`: the current `Settings` and a patch function that saves quietly. A page with its
+  own settings file (Stage's Presentations page) ignores them and loads its own.
+- The dialog shows the page `dialog.page` names, or the first page when it is absent or unknown. It
+  re-renders on registration (`useSettingsPagesVersion`), so a page may register after the dialog opened.
+- The Stage hook lists `settingsPages()` as the settings window's sections and the `settings:open:<page>`
+  choices, so a registered page is reachable from Stage without further code.
+- `components/settings/`: `controls.tsx` (`Group`, `Row`, `Switch`, `Segmented`, `TextField`,
+  `NumberField`), `ShortcutsPage.tsx`, `pages.tsx` (`registerCoreSettingsPages()`: Appearance, Shortcuts,
+  Queries, Display, Connections, WordPress, Logging). Numeric bounds come from `SETTINGS_LIMITS` /
+  `TEXT_SIZES`, the log levels from `LOG_LEVELS`.
+
+Adding a page from a module: write the component next to the module's code (it may import the shared
+controls), then call `registerSettingsPage` from the module's install function:
+
+```ts
+registerSettingsPage({ id: "presentations", group: "System", label: "Presentations", icon: Presentation, order: 10, intro: "…", Body: PresentationsPage });
+```
 
 ### Workspace layout
 

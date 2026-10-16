@@ -87,8 +87,9 @@ src/                       React app
   api/                     the IPC boundary + types generated from Rust (ts-rs)
   state/                   zustand store: store.ts (composition root), slices/, selectors, session events
   commands/                command registry, scopes, default shortcuts
-  components/              UI; components/wp/ is WordPress mode
-  stage/                   page side of the Stage hook
+  registry/                extension points modules register into (settingsPages.ts)
+  components/              UI; components/wp/ is WordPress mode, components/settings/ the Settings dialog
+  stage/                   page side of the Stage hook, its Settings page, installStage()
   lib/                     pure helpers (formatting, SQL ranges, theme)
   styles/                  theme.css (tokens) + app.css (components)
   test/                    api mock, fixtures

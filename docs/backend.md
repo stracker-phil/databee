@@ -207,8 +207,9 @@ Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.d
 **Adding a setting:**
 1. Add the field to `Settings` in `store/settings.rs`, with a default.
 2. Clamp it in `sanitized`; give an enum field `#[serde(deserialize_with = "lenient")]`.
-3. Mirror it in `src/api/types.ts` and `src/test/settings.ts`.
-4. Render it in `SettingsDialog.tsx`.
+3. Regenerate `src/api/types.gen.ts` (`bun run types`), mirror a numeric clamp in `SETTINGS_LIMITS`
+   (`src/api/types.ts`), and add the default to `src/test/settings.ts`.
+4. Render it on its page in `src/components/settings/pages.tsx`.
 
 ## Secrets
 

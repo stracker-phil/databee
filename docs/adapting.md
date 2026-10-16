@@ -57,7 +57,7 @@ Objective-C or NSWindow calls. The macOS behavior comes from dependencies, paths
 | **Fonts**: `-apple-system`, SF Pro, SF Mono | `theme.css` | Add `system-ui`, `Cantarell` and `DejaVu Sans Mono` fallbacks | `Segoe UI`, `Cascadia Mono` |
 | **Bundle targets**: only `app` | `tauri.conf.json` `bundle.targets`; `package.json` scripts open `bundle/macos/DataBee.app` | `deb`, `appimage`, `rpm` | `nsis`, `msi`; `icons/icon.ico` exists but `bundle.icon` doesn't list it; `main.rs` needs the `windows_subsystem` attribute so release builds open no console |
 | **Install and dev scripts** (zsh, Swift, CoreGraphics, `screencapture`, `pkill`) | `scripts/` | Rewrite with `xdotool`/`wmctrl` plus `grim`/`import`, or drop `launch.sh` and use `bun tauri dev` | PowerShell |
-| **Wording**: "Keychain", "Finder", the `~/Library/...` socket example | `db_commands.rs`, `error.rs`, `cli.rs` help, `SettingsDialog.tsx`, `ConnectScreen.tsx`, `Dialogs.tsx` | "keyring", "file manager" | "Credential Manager", "Explorer" |
+| **Wording**: "Keychain", "Finder", the `~/Library/...` socket example | `db_commands.rs`, `error.rs`, `cli.rs` help, `components/settings/pages.tsx`, `ConnectScreen.tsx`, `Dialogs.tsx` | "keyring", "file manager" | "Credential Manager", "Explorer" |
 | **Stage hook**: the presenter app is macOS-only | `stage/`, `src/stage/` | Remove or leave off | Remove or leave off |
 | **Tests**: `navigator.platform = "MacIntel"` | `src/test-setup.ts`; tests that type `{Meta>}` | Make the platform a parameter, or drop it | Same |
 

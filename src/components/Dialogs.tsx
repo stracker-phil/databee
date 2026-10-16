@@ -4,7 +4,7 @@ import { type ColumnInfo, type ConnectionSpec } from "../api";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
 import { CONNECT_TITLE_ID, ConnectForm } from "./ConnectScreen";
-import { SettingsDialog } from "./SettingsDialog";
+import { SettingsDialog } from "./settings/SettingsDialog";
 
 function ConfirmDialog({ title, message, confirmLabel, onConfirm }: { title: string; message: string; confirmLabel: string; onConfirm: () => void }) {
   const close = useStore((s) => s.closeDialog);

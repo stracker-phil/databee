@@ -4,8 +4,8 @@
  */
 import type { StageCommand } from "../api";
 import { activeScopes, allCommands, bindingFor, getCommand, resolveKeydown, runCommand, type KeyLike } from "../commands";
-import { SETTINGS_PAGES } from "../components/SettingsDialog";
 import { selectActiveSession, selectWp, useStore } from "../state/store";
+import { settingsSections } from "./state";
 
 const MAX_CHOICES = 30;
 
@@ -50,8 +50,8 @@ const FAMILIES: Family[] = [
     help: "Open Settings on a page",
     arg: "<section>",
     enabled: () => true,
-    choices: () => SETTINGS_PAGES.map((p) => ({ argument: p.id, title: p.title })),
-    run: (page) => SETTINGS_PAGES.some((p) => p.id === page) && (useStore.getState().openDialog({ type: "settings", page }), true),
+    choices: () => settingsSections().map((p) => ({ argument: p.id, title: p.title })),
+    run: (page) => settingsSections().some((p) => p.id === page) && (useStore.getState().openDialog({ type: "settings", page }), true),
   },
   {
     id: "table:open:",
