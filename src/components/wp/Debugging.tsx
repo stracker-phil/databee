@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Camera, GitCompare, Trash2 } from "lucide-react";
-import { api, type DiffEntry } from "../../api";
+import { api, toAppError, type DiffEntry, type SnapshotInfo } from "../../api";
 import { relativeTime } from "../../lib/format";
 import { selectActiveSession, useStore } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
@@ -29,12 +29,31 @@ function DiffTable({ entries }: { entries: DiffEntry[] }) {
 
 export function SnapshotsScreen() {
   const session = useStore(selectActiveSession);
-  const toast = useStore((s) => s.toast);
+  const { toast, openDialog } = useStore.getState();
   const [pattern, setPattern] = useState("woocommerce\\_ppcp%");
   const [diff, setDiff] = useState<{ id: string; entries: DiffEntry[] } | null>(null);
-  const { data, error, reload } = useWpData(api.wpSnapshots, []);
+  const { data, error, reload } = useWpData([], api.wpSnapshots);
   if (!session?.database) return null;
   const db = session.database;
+
+  const deleteSnapshot = async (snapshot: SnapshotInfo) => {
+    try {
+      await api.wpSnapshotDelete(snapshot.id);
+      setDiff((d) => (d?.id === snapshot.id ? null : d));
+      reload();
+    } catch (e) {
+      toast("error", `Could not delete the snapshot: ${toAppError(e).message}`);
+    }
+  };
+
+  const confirmDelete = (snapshot: SnapshotInfo) =>
+    openDialog({
+      type: "confirm",
+      title: "Delete snapshot",
+      message: `Delete the snapshot "${snapshot.label}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      onConfirm: () => void deleteSnapshot(snapshot),
+    });
 
   const takeOptions = async () => {
     try {
@@ -82,7 +101,7 @@ export function SnapshotsScreen() {
                 >
                   <GitCompare size="0.923rem" /> Diff now
                 </button>
-                <button className="icon-btn" aria-label={`Delete snapshot ${s.label}`} onClick={() => void api.wpSnapshotDelete(s.id).then(reload)}>
+                <button className="icon-btn" aria-label={`Delete snapshot ${s.label}`} onClick={() => confirmDelete(s)}>
                   <Trash2 size="1rem" />
                 </button>
               </div>
@@ -101,7 +120,7 @@ export function SnapshotsScreen() {
 
 export function CompareScreen({ entity, a, b }: { entity: string; a: string; b: string }) {
   const [onlyDiff, setOnlyDiff] = useState(true);
-  const { data, error } = useWpData((s, d) => api.wpCompare(s, d, entity, a, b), [entity, a, b]);
+  const { data, error } = useWpData([entity, a, b], (s, d) => api.wpCompare(s, d, entity, a, b));
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data) return <Loading />;
   const rows = onlyDiff ? data.filter((r) => r.a !== r.b) : data;

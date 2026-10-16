@@ -47,6 +47,35 @@ describe("Peek cards", () => {
     expect(mocked.wpPeek).toHaveBeenCalledTimes(1);
   });
 
+  describe("cache scope", () => {
+    const link = { entity: "order", id: "4711", label: "Order #4711", image: null };
+    const hover = async () => {
+      const wrapper = screen.getByRole("button", { name: "Open order 4711" }).parentElement!;
+      fireEvent.mouseEnter(wrapper);
+      await act(() => vi.advanceTimersByTimeAsync(PEEK_DELAY_MS + 10));
+      const card = await screen.findByRole("tooltip");
+      fireEvent.mouseLeave(wrapper);
+      return card;
+    };
+
+    it("fetches fresh facts after the data version changes", async () => {
+      mocked.wpPeek.mockResolvedValueOnce([{ label: "Status", value: "wc-pending", kind: "text" }]).mockResolvedValueOnce([{ label: "Status", value: "wc-completed", kind: "text" }]);
+      render(<LinkChip link={link} />);
+      expect(await hover()).toHaveTextContent("wc-pending");
+      act(() => useStore.getState().bumpData());
+      expect(await hover()).toHaveTextContent("wc-completed");
+      expect(mocked.wpPeek).toHaveBeenCalledTimes(2);
+    });
+
+    it("peeks the same entity again under another active database", async () => {
+      render(<LinkChip link={link} />);
+      await hover();
+      act(() => useStore.setState((s) => ({ sessions: s.sessions.map((x) => ({ ...x, database: "other" })) })));
+      await hover();
+      expect(mocked.wpPeek).toHaveBeenLastCalledWith("s1", "other", "order", "4711");
+    });
+  });
+
   it("does not peek on a quick pass-over, and a click still navigates", async () => {
     render(<LinkChip link={{ entity: "order", id: "4711", label: "Order #4711", image: null }} />);
     const chip = screen.getByRole("button", { name: "Open order 4711" });

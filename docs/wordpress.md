@@ -139,8 +139,15 @@ opened as its row.
 ## Screens
 
 Routes are a `WpRoute` union in `src/state/store.ts`: dashboard, list, entity, compare, snapshots and find.
-Navigation keeps a browser-like history. `useWpData` loads data and reloads it whenever the session,
-database, dependencies or the store's `dataVersion` change. `dataVersion` is bumped after every apply.
+Navigation keeps a browser-like history. `useWpData(key, load)` loads data and reloads it whenever the
+session, database, `key` tuple or the store's `dataVersion` change; it never returns another database's data.
+`dataVersion` is bumped after every apply.
+
+List filters (status, kind, search, sort, order, offset) are part of the route: `Lists.tsx`
+`useListFilters` writes them to `route.params` with `replaceRoute`, and any change except paging resets the
+offset in the same update, so back and forward restore them. Arrow keys move the selection only while the
+split detail pane is shown. The content list without a kind lists every visible post type. Peek facts
+(`Peek.tsx`) are cached per session, database, entity and id for one `dataVersion`.
 
 | Screen | Backend | Component |
 |---|---|---|

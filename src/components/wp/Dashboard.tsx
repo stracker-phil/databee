@@ -41,7 +41,7 @@ function InsightRow({ insight }: { insight: Insight }) {
 function HookGroup({ group }: { group: HookFailures }) {
   const [open, setOpen] = useState(false);
   const openEntity = useStore((s) => s.openEntity);
-  const { data } = useWpData((s, d) => (open ? api.wpActions(s, d, { status: "failed", kind: group.hook, search: null, offset: 0, limit: 10 }) : Promise.resolve(null)), [open, group.hook]);
+  const { data } = useWpData([open, group.hook], (s, d) => (open ? api.wpActions(s, d, { status: "failed", kind: group.hook, search: null, offset: 0, limit: 10 }) : Promise.resolve(null)));
   return (
     <div className="hook-group">
       <button className="mini-row" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -70,8 +70,8 @@ export function DashboardScreen() {
   const session = useStore(selectActiveSession);
   const wp = useStore(selectWp);
   const { navigate, openEntity, openTableTab, setMode } = useStore.getState();
-  const { data, error, loading, reload } = useWpData(api.wpDashboard, []);
-  const { data: options } = useWpData(api.wpOptions, []);
+  const { data, error, loading, reload } = useWpData([], api.wpDashboard);
+  const { data: options } = useWpData([], api.wpOptions);
   const [breakdown, setBreakdown] = useState<"autoload" | "rows">("autoload");
 
   if (error) return <ErrorPanel message={error.message} code={error.code} />;

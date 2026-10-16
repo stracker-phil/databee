@@ -6,30 +6,42 @@ import { StatusPill } from "./ui";
 
 export const PEEK_DELAY_MS = 300;
 
-/** Facts per `session:entity:id`; a session's peeks don't change while it is open. */
+/** Facts per `session/database/entity/id`, valid for one `dataVersion`. */
 const cache = new Map<string, Promise<PeekFact[]>>();
+let cachedVersion = 0;
 
 export function clearPeekCache() {
   cache.clear();
 }
 
+function cachedPeek(sessionId: string, database: string, entity: string, id: string, version: number) {
+  if (version !== cachedVersion) {
+    cache.clear();
+    cachedVersion = version;
+  }
+  const key = `${sessionId}/${database}/${entity}/${id}`;
+  let facts = cache.get(key);
+  if (!facts) {
+    facts = api.wpPeek(sessionId, database, entity, id).catch(() => []);
+    cache.set(key, facts);
+  }
+  return facts;
+}
+
 export function usePeek(entity: string, id: string, enabled: boolean): PeekFact[] | null {
   const session = useStore(selectActiveSession);
+  const version = useStore((s) => s.dataVersion);
   const [facts, setFacts] = useState<PeekFact[] | null>(null);
+  const sessionId = session?.id;
+  const database = session?.database;
   useEffect(() => {
-    if (!enabled || !session?.database) return;
-    const key = `${session.id}:${entity}:${id}`;
-    let p = cache.get(key);
-    if (!p) {
-      p = api.wpPeek(session.id, session.database, entity, id).catch(() => []);
-      cache.set(key, p);
-    }
+    if (!enabled || !sessionId || !database) return;
     let alive = true;
-    void p.then((f) => alive && setFacts(f));
+    void cachedPeek(sessionId, database, entity, id, version).then((f) => alive && setFacts(f));
     return () => {
       alive = false;
     };
-  }, [enabled, entity, id, session?.id, session?.database]);
+  }, [enabled, entity, id, sessionId, database, version]);
   return facts;
 }
 

@@ -1115,25 +1115,12 @@ pub async fn content(
     )
     .await?;
     let kinds = facets(&kinds, str::to_string);
-    let kind = q.kind.clone().or_else(|| {
-        kinds
-            .iter()
-            .find(|k| k.value == "post")
-            .or(kinds.first())
-            .map(|k| k.value.clone())
-    });
-    let Some(kind) = kind else {
-        return Ok(Page {
-            items: Vec::new(),
-            has_more: false,
-            facets: Vec::new(),
-            kinds,
-        });
+    // No kind lists every visible type, so the "All" chip shows what was fetched.
+    let type_filter = match &q.kind {
+        Some(kind) => format!("p.post_type = {}", sql_string(kind)),
+        None => format!("p.post_type NOT IN ({hidden})"),
     };
-    let mut filter = format!(
-        "p.post_type = {} AND p.post_status <> 'auto-draft'",
-        sql_string(&kind)
-    );
+    let mut filter = format!("{type_filter} AND p.post_status <> 'auto-draft'");
     if let Some(s) = &q.status {
         filter += &format!(" AND p.post_status = {}", sql_string(s));
     }
@@ -1177,7 +1164,7 @@ pub async fn content(
     let (items, has_more) = page_split(rows, q.limit());
     let statuses = fetch(
         session,
-        &format!("SELECT post_status, COUNT(*) FROM {posts} WHERE post_type = {} AND post_status <> 'auto-draft' GROUP BY post_status", sql_string(&kind)),
+        &format!("SELECT p.post_status, COUNT(*) FROM {posts} p WHERE {type_filter} AND p.post_status <> 'auto-draft' GROUP BY p.post_status"),
     )
     .await?;
     Ok(Page {

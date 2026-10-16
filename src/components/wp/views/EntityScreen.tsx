@@ -22,7 +22,7 @@ export function EntityScreen({ entity, id, embedded = false }: { entity: string;
   const [changed, setChanged] = useState<Set<string>>(new Set());
   const [updatedAt, setUpdatedAt] = useState<number>(Date.now());
   const previous = useRef<Record<string, string> | null>(null);
-  const { data, error, loading, reload } = useWpData((s, d) => api.wpView(s, d, entity, id), [entity, id]);
+  const { data, error, loading, reload } = useWpData([entity, id], (s, d) => api.wpView(s, d, entity, id));
 
   useEffect(() => {
     if (!live) return;

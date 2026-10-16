@@ -92,7 +92,7 @@ function NavItem({ section, active }: { section: BrowserSection; active: boolean
 
 function Nav({ route }: { route: WpRoute }) {
   const navigate = useStore((s) => s.navigate);
-  const { data } = useWpData(api.wpBrowser, []);
+  const { data } = useWpData([], api.wpBrowser);
   const activeList = route.screen === "list" ? route.list : null;
   return (
     <nav className="wp-nav" aria-label="WordPress" data-stage="wp:nav" data-stage-label="WordPress navigation">
@@ -163,6 +163,8 @@ function Header() {
 export function WpWorkspace() {
   const route = useStore(selectWpRoute);
   const wp = useStore(selectWp);
+  // A list remounts per history entry, so back and forward also restore its search input.
+  const historyIndex = useStore((s) => s.wpNav.index);
   if (!wp) return <ErrorPanel message="This database is not a WordPress install." code={null} />;
   return (
     <div className="wp-workspace">
@@ -171,7 +173,8 @@ export function WpWorkspace() {
         <Header />
         <div className="wp-content" data-stage="wp:content" data-stage-label={`WordPress ${route.screen}`}>
           {route.screen === "dashboard" && <DashboardScreen />}
-          {route.screen === "list" && (route.list === "settings" ? <SettingsScreen key={JSON.stringify(route.params ?? {})} params={route.params} /> : <ListScreen key={route.list} list={route.list} params={route.params} />)}
+          {/* ListScreen seeds its search input once, so back and forward must remount it via the history index. */}
+          {route.screen === "list" && (route.list === "settings" ? <SettingsScreen key={JSON.stringify(route.params ?? {})} params={route.params} /> : <ListScreen key={`${route.list}:${historyIndex}`} list={route.list} params={route.params} />)}
           {route.screen === "entity" && <EntityScreen key={`${route.entity}:${route.id}`} entity={route.entity} id={route.id} />}
           {route.screen === "compare" && <CompareScreen entity={route.entity} a={route.a} b={route.b} />}
           {route.screen === "snapshots" && <SnapshotsScreen />}

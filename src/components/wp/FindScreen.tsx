@@ -10,7 +10,7 @@ import { useWpData } from "./useWpData";
 export function FindScreen({ value }: { value: string }) {
   const session = useStore(selectActiveSession);
   const { openEntity, navigate, openTableTab, setMode } = useStore.getState();
-  const { data, error } = useWpData((s, d) => api.wpFindValue(s, d, value), [value]);
+  const { data, error } = useWpData([value], (s, d) => api.wpFindValue(s, d, value));
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data) return <Loading />;
   const total = data.reduce((s, g) => s + g.count, 0);

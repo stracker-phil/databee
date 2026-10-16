@@ -24,6 +24,7 @@ import { useWpData } from "./useWpData";
 import { EntityScreen } from "./views/EntityScreen";
 
 const PAGE = 50;
+const SEARCH_DEBOUNCE_MS = 250;
 /** Below this window width the detail opens as a full page instead of a side pane. */
 export const SPLIT_MIN_WIDTH = 1400;
 const DEFAULT_SPLIT = 560;
@@ -40,14 +41,16 @@ const LOADERS: Record<Exclude<WpList, "settings">, Loader> = {
   content: api.wpContent,
 };
 
-const KIND_LABEL: Partial<Record<WpList, string>> = {
-  orders: "Gateway",
-  subscriptions: "Gateway",
-  users: "Role",
-  products: "Type",
-  actions: "Hook",
-  content: "Type",
+/** The kind filter's label per list, singular and plural. */
+const KIND_LABEL: Partial<Record<WpList, { one: string; many: string }>> = {
+  orders: { one: "Gateway", many: "gateways" },
+  subscriptions: { one: "Gateway", many: "gateways" },
+  users: { one: "Role", many: "roles" },
+  products: { one: "Type", many: "types" },
+  actions: { one: "Hook", many: "hooks" },
+  content: { one: "Type", many: "types" },
 };
+const DEFAULT_KIND_LABEL = { one: "Kind", many: "kinds" };
 
 interface Column {
   label: string;
@@ -113,15 +116,6 @@ const COLUMNS: Record<Exclude<WpList, "settings">, Column[]> = {
     { label: "Date", className: "row-when", sort: "date" },
   ],
 };
-
-function useDebounced<T>(value: T, ms = 250): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
 
 function Chips({ facets, value, onChange, allLabel = "All" }: { facets: Facet[]; value: string | null; onChange: (v: string | null) => void; allLabel?: string }) {
   if (facets.length === 0) return null;
@@ -293,7 +287,7 @@ function cellsFor(list: WpList, item: unknown): { key: string; node: ReactNode; 
 }
 
 function ActionHistogram({ hook }: { hook: string | null }) {
-  const { data } = useWpData((s, d) => api.wpActionHistogram(s, d, hook), [hook]);
+  const { data } = useWpData([hook], (s, d) => api.wpActionHistogram(s, d, hook));
   if (!data) return null;
   return (
     <Card title={`Scheduled actions per day${hook ? ` · ${hook}` : ""}`}>
@@ -303,7 +297,7 @@ function ActionHistogram({ hook }: { hook: string | null }) {
 }
 
 function FailedByHook({ onPick }: { onPick: (hook: string) => void }) {
-  const { data } = useWpData(api.wpFailedByHook, []);
+  const { data } = useWpData([], api.wpFailedByHook);
   if (!data || data.length === 0) return null;
   const items = data.map((h) => ({
     id: h.hook,
@@ -319,17 +313,58 @@ function FailedByHook({ onPick }: { onPick: (hook: string) => void }) {
   );
 }
 
+type Filters = Record<string, string | undefined>;
+
+/** Filters live in `route.params`, so back and forward restore them. */
+function useListFilters(list: WpList, params: Record<string, string> = {}) {
+  const sort = params.sort ? { key: params.sort, descending: params.order !== "asc" } : null;
+  const filters = {
+    status: params.status ?? null,
+    kind: params.kind ?? null,
+    search: params.search ?? "",
+    offset: Number(params.offset ?? 0),
+    sort,
+  };
+  /** Any filter change except paging starts at the first page, in the same route update. */
+  const update = (patch: Filters) => {
+    const { wpNav, replaceRoute } = useStore.getState();
+    const route = wpNav.stack[wpNav.index];
+    if (route?.screen !== "list" || route.list !== list) return;
+    const next: Filters = { ...route.params, offset: undefined, ...patch };
+    const kept = Object.entries(next).filter((entry): entry is [string, string] => entry[1] != null && entry[1] !== "");
+    replaceRoute({ ...route, params: Object.fromEntries(kept) });
+  };
+  return { filters, update };
+}
+
+/** Clicking a column header cycles its sort: descending, ascending, then unsorted. */
+function nextSort(current: { key: string; descending: boolean } | null, key: string): Filters {
+  if (current?.key !== key) return { sort: key, order: "desc" };
+  if (current.descending) return { sort: key, order: "asc" };
+  return { sort: undefined, order: undefined };
+}
+
+/** Runs only the latest scheduled callback once `ms` pass quietly; a pending one is dropped on unmount. */
+function useDebouncedCallback(ms: number) {
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return useCallback(
+    (run: () => void) => {
+      clearTimeout(timer.current);
+      timer.current = setTimeout(run, ms);
+    },
+    [ms],
+  );
+}
+
 export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">; params?: Record<string, string> }) {
-  const [status, setStatus] = useState<string | null>(params?.status ?? null);
-  const [kind, setKind] = useState<string | null>(params?.kind ?? null);
-  const [searchInput, setSearchInput] = useState(params?.search ?? "");
-  const [sort, setSort] = useState<{ key: string; descending: boolean } | null>(null);
-  const [offset, setOffset] = useState(0);
-  const search = useDebounced(searchInput);
+  const { filters, update } = useListFilters(list, params);
+  const { status, kind, search, offset, sort } = filters;
+  const [searchInput, setSearchInput] = useState(search);
+  const scheduleSearch = useDebouncedCallback(SEARCH_DEBOUNCE_MS);
   const load = LOADERS[list];
-  const { data, error, loading } = useWpData(
-    (s, d) => load(s, d, { status, kind, search: search || null, offset, limit: PAGE, sort: sort?.key ?? null, descending: sort?.descending ?? null }),
-    [list, status, kind, search, offset, sort?.key, sort?.descending],
+  const { data, error, loading } = useWpData([list, status, kind, search, offset, sort?.key, sort?.descending], (s, d) =>
+    load(s, d, { status, kind, search: search || null, offset, limit: PAGE, sort: sort?.key ?? null, descending: sort?.descending ?? null }),
   );
 
   const route = useStore(selectWpRoute);
@@ -343,7 +378,9 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
   const selected = route.screen === "list" && route.list === list ? (route.selected ?? null) : null;
   const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setOffset(0), [status, kind, search, sort]);
+  useEffect(() => {
+    listRef.current?.querySelector<HTMLElement>("[data-active]")?.scrollIntoView?.({ block: "nearest" });
+  }, [selected?.id]);
 
   const items = data?.items ?? [];
   const select = useCallback(
@@ -355,35 +392,48 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
     [list, split, route, replaceRoute, openEntity],
   );
 
-  const onKey = (e: KeyboardEvent) => {
-    if (!items.length) return;
+  /** Without a selection, the first step lands on the first row. */
+  const moveSelection = (step: number) => {
     const index = selected ? items.findIndex((i) => rowTarget(list, i).id === selected.id) : -1;
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const next = items[Math.min(items.length - 1, Math.max(0, index + (e.key === "ArrowDown" ? 1 : -1)))];
-      select(next);
-      listRef.current?.querySelector<HTMLElement>(`[data-active]`)?.scrollIntoView?.({ block: "nearest" });
-    } else if (e.key === "Enter" && selected) {
-      e.preventDefault();
-      openEntity(selected.entity, selected.id);
-    }
+    select(items[Math.min(items.length - 1, Math.max(0, index + step))]);
   };
 
-  const toggleSort = (key: string) =>
-    setSort((s) => (s?.key === key ? (s.descending ? { key, descending: false } : null) : { key, descending: true }));
+  const onKey = (e: KeyboardEvent) => {
+    if (!items.length) return;
+    if (e.key === "Enter" && selected) {
+      e.preventDefault();
+      openEntity(selected.entity, selected.id);
+      return;
+    }
+    // Arrows move the side pane's selection; without the pane a row opens as a full page.
+    if (!split || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+    e.preventDefault();
+    moveSelection(e.key === "ArrowDown" ? 1 : -1);
+  };
+
+  const toggleSort = (key: string) => update(nextSort(sort, key));
+  const setStatus = (value: string | null) => update({ status: value ?? undefined });
+  const setKind = (value: string | null) => update({ kind: value ?? undefined });
+  /** The route takes the search once typing pauses; a route change reaches the input by remounting. */
+  const typeSearch = (value: string) => {
+    setSearchInput(value);
+    scheduleSearch(() => update({ search: value }));
+  };
+  const setOffset = (value: number) => update({ offset: value > 0 ? String(value) : undefined });
 
   const kindFacets = data?.kinds ?? [];
   const columns = COLUMNS[list];
+  const kindLabel = KIND_LABEL[list] ?? DEFAULT_KIND_LABEL;
   const listPane = (
     <div className="list-screen">
       <div className="list-tools">
         <div className="list-search">
           <Search size="1rem" />
-          <input data-stage="list:search" aria-label="Search list" placeholder="Search…" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
+          <input data-stage="list:search" aria-label="Search list" placeholder="Search…" value={searchInput} onChange={(e) => typeSearch(e.target.value)} />
         </div>
         {kindFacets.length > 0 && list !== "content" && (
-          <select className="input" style={{ width: "16.923rem" }} aria-label={KIND_LABEL[list] ?? "Kind"} value={kind ?? ""} onChange={(e) => setKind(e.target.value || null)}>
-            <option value="">All {(KIND_LABEL[list] ?? "kinds").toLowerCase()}s</option>
+          <select className="input" style={{ width: "16.923rem" }} aria-label={kindLabel.one} value={kind ?? ""} onChange={(e) => setKind(e.target.value || null)}>
+            <option value="">All {kindLabel.many}</option>
             {kindFacets.map((k) => (
               <option key={k.value} value={k.value}>
                 {k.label} ({formatCount(k.count)})
@@ -400,9 +450,9 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
           <ChevronRight size="1.077rem" />
         </button>
       </div>
-      {list === "content" && <Chips facets={kindFacets} value={kind ?? kindFacets.find((k) => k.value === "post")?.value ?? null} onChange={setKind} allLabel="Types" />}
+      {list === "content" && <Chips facets={kindFacets} value={kind} onChange={setKind} allLabel={`All ${kindLabel.many}`} />}
       <Chips facets={data?.facets ?? []} value={status} onChange={setStatus} />
-      {list === "actions" && !kind && !selected && <FailedByHook onPick={(hook) => (setKind(hook), setStatus("failed"))} />}
+      {list === "actions" && !kind && !selected && <FailedByHook onPick={(hook) => update({ kind: hook, status: "failed" })} />}
       {list === "actions" && !selected && <ActionHistogram hook={kind} />}
       {error ? (
         <ErrorPanel message={error.message} code={error.code} />

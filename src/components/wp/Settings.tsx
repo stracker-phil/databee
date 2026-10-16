@@ -14,7 +14,7 @@ function OptionGroup({ prefix }: { prefix: string }) {
   const session = useStore(selectActiveSession);
   const queueChange = useStore((s) => s.queueChange);
   const wp = useStore(selectWp);
-  const { data, error } = useWpData((s, d) => api.wpOptionsGroup(s, d, prefix), [prefix]);
+  const { data, error } = useWpData([prefix], (s, d) => api.wpOptionsGroup(s, d, prefix));
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data || !session?.database || !wp) return <Loading />;
   return (
@@ -47,7 +47,7 @@ export function SettingsScreen({ params }: { params?: Record<string, string> }) 
   const queueChange = useStore((s) => s.queueChange);
   const openInDatabase = useStore((s) => s.openInDatabase);
   const [prefix, setPrefix] = useState<string | null>(params?.prefix ?? null);
-  const { data, error } = useWpData(api.wpOptions, []);
+  const { data, error } = useWpData([], api.wpOptions);
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data || !session?.database) return <Loading />;
   const expired = data.transients.filter((t) => t.expired);

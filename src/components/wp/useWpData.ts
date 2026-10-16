@@ -1,44 +1,60 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toAppError, type AppError } from "../../api";
 import { selectActiveSession, useStore } from "../../state/store";
 
-/**
- * Loads data for the active session/database and reloads when inputs change or the
- * store's `dataVersion` is bumped. Keeps the previous data while reloading.
- */
-export function useWpData<T>(load: (sessionId: string, database: string) => Promise<T>, deps: unknown[]) {
+type Loader<T> = (sessionId: string, database: string) => Promise<T>;
+
+interface Result<T> {
+  /** `sessionId/database` the reply belongs to. */
+  source: string;
+  data: T | null;
+  error: AppError | null;
+}
+
+/** Loads data for the active session and database; `key` lists every other input `load` reads. */
+export function useWpData<T>(key: readonly unknown[], load: Loader<T>) {
   const session = useStore(selectActiveSession);
   const version = useStore((s) => s.dataVersion);
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<AppError | null>(null);
+  const [result, setResult] = useState<Result<T> | null>(null);
   const [loading, setLoading] = useState(true);
   const [nonce, setNonce] = useState(0);
+  const latestLoad = useRef(load);
   const sessionId = session?.id;
   const database = session?.database;
+  const scope = sessionId && database ? `${sessionId}/${database}` : null;
+  const keyString = JSON.stringify(key);
+
+  useLayoutEffect(() => {
+    latestLoad.current = load;
+  });
 
   useEffect(() => {
-    if (!sessionId || !database) return;
+    if (!sessionId || !database) {
+      setLoading(false);
+      return;
+    }
+    const source = `${sessionId}/${database}`;
     let alive = true;
     setLoading(true);
-    load(sessionId, database).then(
-      (d) => {
+    latestLoad.current(sessionId, database).then(
+      (data) => {
         if (!alive) return;
-        setData(d);
-        setError(null);
+        setResult({ source, data, error: null });
         setLoading(false);
       },
       (e) => {
         if (!alive) return;
-        setError(toAppError(e));
+        setResult((prev) => ({ source, data: prev?.source === source ? prev.data : null, error: toAppError(e) }));
         setLoading(false);
       },
     );
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, database, version, nonce, ...deps]);
+  }, [sessionId, database, version, nonce, keyString]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
-  return { data, error, loading, reload };
+  // Another database's reply is never shown, not even while the new one loads.
+  const current = result && result.source === scope ? result : null;
+  return { data: current?.data ?? null, error: current?.error ?? null, loading, reload };
 }

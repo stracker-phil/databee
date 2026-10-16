@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
@@ -8,8 +8,11 @@ import App from "../../App";
 import { api, type Dashboard, type OrderSummary } from "../../api";
 import { installCommands } from "../../commands";
 import { selectWpRoute, useStore } from "../../state/store";
-import { orderView, wpStore } from "../../test/wpFixtures";
+import { session } from "../../test/fixtures";
+import { orderView, wpInfo, wpStore } from "../../test/wpFixtures";
 import { CommandPalette } from "../CommandPalette";
+import { Dialogs } from "../Dialogs";
+import { Toasts } from "../Toasts";
 import { PendingTray } from "../PendingTray";
 import { CompareScreen, SnapshotsScreen } from "./Debugging";
 import { WpWorkspace } from "./WpWorkspace";
@@ -298,6 +301,120 @@ describe("WordPress mode", () => {
   });
 });
 
+describe("List filters in the route", () => {
+  const originalWidth = window.innerWidth;
+  const gateways = [{ value: "ppcp-gateway", label: "PayPal", count: 2 }];
+  const page = (patch: object = {}) => ({
+    items: [order("3229"), order("3227", "wc-failed")],
+    hasMore: false,
+    facets: [
+      { value: "wc-processing", label: "Processing", count: 1 },
+      { value: "wc-failed", label: "Failed", count: 1 },
+    ],
+    kinds: gateways,
+    ...patch,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wpStore();
+    mocked.wpBrowser.mockResolvedValue([]);
+    mocked.wpOrders.mockResolvedValue(page());
+    mocked.wpView.mockResolvedValue(orderView);
+  });
+  afterEach(() => {
+    window.innerWidth = originalWidth;
+  });
+
+  it("keeps the status chip after opening an order and going back", async () => {
+    window.innerWidth = 1000;
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    await userEvent.click(await screen.findByRole("button", { name: /Failed 1/ }));
+    await userEvent.click(await screen.findByRole("row", { name: /#3229/ }));
+    expect(selectWpRoute(useStore.getState())).toMatchObject({ screen: "entity" });
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByRole("button", { name: /Failed 1/ })).toHaveClass("on");
+    expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ status: "wc-failed" }));
+  });
+
+  it("keeps the gateway selection after opening an order and going back", async () => {
+    window.innerWidth = 1000;
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    await userEvent.selectOptions(await screen.findByLabelText("Gateway"), "ppcp-gateway");
+    await userEvent.click(await screen.findByRole("row", { name: /#3229/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByLabelText("Gateway")).toHaveValue("ppcp-gateway");
+    expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ kind: "ppcp-gateway" }));
+  });
+
+  it("fetches once when a status chip is picked on page 2, starting at offset 0", async () => {
+    mocked.wpOrders.mockResolvedValue(page({ hasMore: true }));
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    await userEvent.click(await screen.findByRole("button", { name: "Next page" }));
+    await screen.findByText("51–52");
+    mocked.wpOrders.mockClear();
+    await userEvent.click(screen.getByRole("button", { name: /Failed 1/ }));
+    await vi.waitFor(() => expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ status: "wc-failed", offset: 0 })));
+    expect(mocked.wpOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not open or select a row with ArrowDown on a narrow window", async () => {
+    window.innerWidth = 1000;
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    (await screen.findByRole("grid", { name: "orders list" })).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "orders" });
+    expect(screen.queryAllByRole("row", { selected: true })).toHaveLength(0);
+  });
+
+  it("starts the content list on the all-types chip and filters by a picked type", async () => {
+    mocked.wpContent.mockResolvedValue({
+      items: [],
+      hasMore: false,
+      facets: [],
+      kinds: [
+        { value: "post", label: "Post", count: 5 },
+        { value: "page", label: "Page", count: 2 },
+      ],
+    });
+    useStore.getState().navigate({ screen: "list", list: "content" });
+    render(<WpWorkspace />);
+    expect(await screen.findByRole("button", { name: /All types/ })).toHaveClass("on");
+    expect(mocked.wpContent).toHaveBeenLastCalledWith("s1", "db", expect.objectContaining({ kind: null }));
+    await userEvent.click(screen.getByRole("button", { name: /^Page/ }));
+    await vi.waitFor(() => expect(mocked.wpContent).toHaveBeenLastCalledWith("s1", "db", expect.objectContaining({ kind: "page" })));
+    expect(screen.getByRole("button", { name: /^Page/ })).toHaveClass("on");
+    expect(screen.getByRole("button", { name: /All types/ })).not.toHaveClass("on");
+  });
+
+  it("labels the orders gateway select's first option 'All gateways'", async () => {
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    const select = await screen.findByLabelText("Gateway");
+    expect(within(select).getAllByRole("option")[0]).toHaveTextContent("All gateways");
+  });
+
+  it("drops the old rows while another database's list is loading", async () => {
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    await screen.findByRole("row", { name: /#3229/ });
+    mocked.wpOrders.mockReturnValue(new Promise(() => {}));
+    act(() => {
+      useStore.setState((s) => ({
+        sessions: s.sessions.map((x) => ({ ...x, database: "other" })),
+        wp: { ...s.wp, [`${session.id}/other`]: wpInfo },
+      }));
+    });
+    expect(await screen.findByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: /#3229/ })).not.toBeInTheDocument();
+    expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "other", "shop_order", expect.anything());
+  });
+});
+
 describe("Command palette", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -412,6 +529,56 @@ describe("Snapshots and compare", () => {
     const row = (await screen.findByText("order#4711/field/status")).closest("tr")!;
     expect(within(row).getByText("wc-pending")).toBeInTheDocument();
     expect(within(row).getByText("wc-processing")).toBeInTheDocument();
+  });
+
+  describe("deleting a snapshot", () => {
+    const snapshot = { id: "a", label: "order #4711", scope: { entity: "order", id: "4711", includeRelated: true, optionPattern: null, includeActions: true }, created: new Date().toISOString(), paths: 40 };
+    const renderSnapshots = () => {
+      useStore.getState().navigate({ screen: "snapshots" });
+      render(
+        <>
+          <WpWorkspace />
+          <Dialogs />
+          <Toasts />
+        </>,
+      );
+    };
+
+    beforeEach(() => {
+      mocked.wpSnapshotDelete.mockResolvedValue(undefined);
+      mocked.wpSnapshots.mockResolvedValue([snapshot]);
+    });
+
+    it("asks for confirmation and deletes only after Delete is clicked", async () => {
+      renderSnapshots();
+      await userEvent.click(await screen.findByRole("button", { name: "Delete snapshot order #4711" }));
+      expect(await screen.findByText(/Delete the snapshot "order #4711"\?/)).toBeInTheDocument();
+      expect(mocked.wpSnapshotDelete).not.toHaveBeenCalled();
+      mocked.wpSnapshots.mockResolvedValue([]);
+      await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+      expect(mocked.wpSnapshotDelete).toHaveBeenCalledWith("a");
+      expect(await screen.findByText("No snapshots yet.")).toBeInTheDocument();
+    });
+
+    it("shows an error toast when the delete is rejected", async () => {
+      mocked.wpSnapshotDelete.mockRejectedValueOnce({ kind: "io", message: "disk full", code: null });
+      renderSnapshots();
+      await userEvent.click(await screen.findByRole("button", { name: "Delete snapshot order #4711" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+      expect(await screen.findByText("Could not delete the snapshot: disk full")).toBeInTheDocument();
+      expect(screen.getByText("order #4711")).toBeInTheDocument();
+    });
+
+    it("removes the diff card of a snapshot once it is deleted", async () => {
+      mocked.wpSnapshotDiff.mockResolvedValue([{ path: "order#4711/field/status", before: "wc-pending", after: "wc-processing" }]);
+      renderSnapshots();
+      await userEvent.click(await screen.findByRole("button", { name: /Diff now/ }));
+      expect(await screen.findByText("Changes since snapshot")).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Delete snapshot order #4711" }));
+      mocked.wpSnapshots.mockResolvedValue([]);
+      await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+      await vi.waitFor(() => expect(screen.queryByText("Changes since snapshot")).not.toBeInTheDocument());
+    });
   });
 
   it("compares two entities showing only differences by default", async () => {

@@ -474,6 +474,54 @@ async fn lists_filter_and_search() {
 
 #[tokio::test]
 #[ignore]
+async fn content_without_a_kind_lists_every_visible_post_type() {
+    for (db, ctx, _) in env().await {
+        let q = |kind: Option<&str>| ListQuery {
+            kind: kind.map(String::from),
+            ..Default::default()
+        };
+        let all = lists::content(&db, &ctx, "wp_test", &q(None))
+            .await
+            .unwrap();
+        let mut kinds: Vec<_> = all.items.iter().map(|p| p.kind.as_str()).collect();
+        kinds.sort();
+        assert_eq!(kinds, ["attachment", "post"]);
+
+        let mut facet_kinds: Vec<_> = all
+            .kinds
+            .iter()
+            .map(|f| (f.value.as_str(), f.count))
+            .collect();
+        facet_kinds.sort();
+        assert_eq!(facet_kinds, [("attachment", 1), ("post", 1)]);
+
+        let mut statuses: Vec<_> = all
+            .facets
+            .iter()
+            .map(|f| (f.value.as_str(), f.count))
+            .collect();
+        statuses.sort();
+        assert_eq!(statuses, [("inherit", 1), ("publish", 1)]);
+
+        let posts = lists::content(&db, &ctx, "wp_test", &q(Some("post")))
+            .await
+            .unwrap();
+        assert_eq!(posts.items.len(), 1);
+        assert_eq!(posts.items[0].title.as_deref(), Some("Hello world"));
+        assert_eq!(posts.kinds, all.kinds);
+        assert_eq!(
+            posts
+                .facets
+                .iter()
+                .map(|f| f.value.as_str())
+                .collect::<Vec<_>>(),
+            ["publish"]
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
 async fn order_view_tells_the_story_of_a_checkout() {
     for (db, ctx, catalog) in env().await {
         let EntityView::Order(o) =
