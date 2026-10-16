@@ -29,16 +29,12 @@ Test, lint and format-check commands run through the `ci` agent, never in the ma
 - `bun run test`: Vitest and Rust unit tests
 - `bun run test:db`: Docker fixtures (`dev/`) and integration tests (MariaDB 11.4 and MySQL 8.4)
 - `bun run lint`: tsc and clippy (warnings are errors)
-- `bun run app`: debug build of the .app bundle and launch it
 - `scripts/install-cli.sh` / `scripts/install-app.sh`: symlink the `databee` command and the app launcher (README)
 - `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus
 - `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive and capture the running window in the background
 
 ## Workflow
-Finish every step with the `ship-step` skill. Rules in `.claude/rules/`. Run the `clean-up-code` skill
-before every commit, also outside `ship-step`.
-Agents in `.claude/agents/`: `write-ts-unit-test` and `write-rust-unit-test` write all test code, `ci` (Haiku)
-runs suites and reports pass/fail, `review-code-cleanliness` (Haiku) reviews changed files read-only.
-Delegation rules: `.claude/rules/testing.md`.
+Finish every step with the `ship-step` skill. Rules in `.claude/rules/`; `testing.md` says which agents in
+`.claude/agents/` write and run tests.
 Never write to the user's own databases (e.g. DDEV sites); they are read-only test material. Writes in tests
 and manual checks go to the Docker fixtures (`wp_write`, `databee_test`).

@@ -65,7 +65,8 @@ Flag speculative structure without a present payoff:
 - A builder, factory or wrapper for one simple construction.
 - A parameter, option or setting with one caller or one value.
 - A registry, strategy or `match` dispatch handling one case.
-- A private function that only forwards to another.
+- A private function that only forwards to another. A small helper that gives a condition or value a name
+  (`isEmptyResult`, `is_blank`) is fine.
 - `useMemo`/`useCallback` without a measurable reason.
 
 The fix is usually to inline, hardcode or call directly. When it's genuinely unclear, raise it under

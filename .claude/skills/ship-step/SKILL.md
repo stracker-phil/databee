@@ -16,5 +16,6 @@ description: Finish a development step in DataBee - clean up and review the code
    Drive the UI with `scripts/dev/js.sh '<js>'` (fire-and-forget; wrap code in an IIFE, the store is `window.databee`) and check it with
    `scripts/dev/screenshot.sh <png>`. Never use AppleScript clicks or keystrokes; they need focus.
 5. Update the affected `docs/` page if behavior, commands, files or extension points changed.
-6. `git add -A && git commit` following `.claude/rules/commits.md`.
+6. Stage the step's files by path (check `git status` for stray files), then commit following
+   `.claude/rules/commits.md`.
 7. Report to the user: what changed, the `ci` summary, open review questions, and that the app launched.

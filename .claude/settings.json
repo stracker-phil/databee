@@ -13,8 +13,7 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(pgrep:*)",
-      "Bash(pkill -x databee)",
-      "Bash(open src-tauri/target/:*)"
+      "Bash(pkill -x databee)"
     ]
   }
 }
