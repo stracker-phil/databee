@@ -12,19 +12,19 @@ never try to fix a failure.
 
 ## Command
 
-Run from the repository root. Only run the command for the requested suite:
+Run from the repository root. Only run the command for the requested suite, copied exactly as written (the
+`PATH` prefix finds Homebrew's keg-only rustup and is harmless elsewhere):
 
 - UI (Vitest): `bunx vitest run [<path-or-name-fragment>] [-t "<test name>"]`
-- Rust unit: `cargo test --manifest-path src-tauri/Cargo.toml --lib [<test-name-filter>]`
-- Integration (Docker, MariaDB + MySQL): `bun run test:db`
+- Rust unit: `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --lib [<test-name-filter>]`
+- Integration (Docker, MariaDB + MySQL): `PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run test:db`
   - one file or test: `docker compose -f dev/docker-compose.yml up -d --wait`, then
-    `cargo test --manifest-path src-tauri/Cargo.toml --test <mysql|wp> -- --ignored [<filter>]`
-- Lint (tsc + clippy, warnings are errors): `bun run lint`
-- Format check: `cargo fmt --manifest-path src-tauri/Cargo.toml --check`
-- All unit tests: `bun run test`
+    `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --test <mysql|wp> -- --ignored [<filter>]`
+- Lint (tsc + clippy, warnings are errors): `PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run lint`
+- Format check: `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo fmt --manifest-path src-tauri/Cargo.toml --check`
+- All unit tests: `PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run test`
 
-Always prefix the command with `PATH="/opt/homebrew/opt/rustup/bin:$PATH"` (Homebrew's rustup is keg-only;
-the prefix is harmless elsewhere). Allow up to 10 minutes; the first Rust build is slow.
+Allow up to 10 minutes; the first Rust build is slow.
 
 ## Output
 
@@ -33,6 +33,8 @@ All green: `✔︎ All checks pass` (add counts when available: `✔︎ 154/154 
 Test failures, one line each: `✘ <file>:<line> - <test name>: <assertion message or actual value>`
 Lint or compile failures, one line each: `✘ <file>:<line> - <rule or message>`
 Format differences: `✘ <file> - needs cargo fmt`
+
+Reply with the summary lines only: no notes on commands, retries or what you did.
 
 Paths are relative to the repository root (Rust panics print `src/…`; report them as `src-tauri/src/…`).
 
