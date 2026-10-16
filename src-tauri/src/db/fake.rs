@@ -1,8 +1,8 @@
 //! In-memory `Database` for unit tests; not compiled into the app.
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -165,6 +165,71 @@ impl Database for FakeDatabase {
     async fn apply(&self, statements: &[String], _timeout: Duration) -> AppResult<u64> {
         self.applied.lock_unpoisoned().push(statements.to_vec());
         Ok(statements.len() as u64)
+    }
+}
+
+/// Lets a test keep a handle on the fake after a session has taken ownership of it.
+#[async_trait]
+impl Database for Arc<FakeDatabase> {
+    fn dialect(&self) -> Dialect {
+        (**self).dialect()
+    }
+
+    fn server_version(&self) -> &str {
+        (**self).server_version()
+    }
+
+    fn current_database(&self) -> Option<String> {
+        (**self).current_database()
+    }
+
+    async fn close(&self) {
+        (**self).close().await
+    }
+
+    async fn execute(
+        &self,
+        sql: &str,
+        row_limit: usize,
+        timeout: Duration,
+    ) -> AppResult<ExecuteResponse> {
+        (**self).execute(sql, row_limit, timeout).await
+    }
+
+    async fn cancel(&self) -> AppResult<()> {
+        (**self).cancel().await
+    }
+
+    async fn use_database(&self, database: &str) -> AppResult<()> {
+        (**self).use_database(database).await
+    }
+
+    async fn databases(&self) -> AppResult<Vec<DatabaseInfo>> {
+        (**self).databases().await
+    }
+
+    async fn tables(&self, database: &str) -> AppResult<Vec<TableInfo>> {
+        (**self).tables(database).await
+    }
+
+    async fn structure(&self, database: &str, table: &str) -> AppResult<TableStructure> {
+        (**self).structure(database, table).await
+    }
+
+    async fn completion(&self, database: &str) -> AppResult<BTreeMap<String, Vec<String>>> {
+        (**self).completion(database).await
+    }
+
+    async fn browse(&self, req: &BrowseRequest, timeout: Duration) -> AppResult<BrowsePage> {
+        (**self).browse(req, timeout).await
+    }
+
+    async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet> {
+        (**self).fetch(sql, timeout).await
+    }
+
+    async fn apply(&self, statements: &[String], timeout: Duration) -> AppResult<u64> {
+        (**self).apply(statements, timeout).await
     }
 }
 

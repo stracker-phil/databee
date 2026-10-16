@@ -173,20 +173,32 @@ Introspection uses `information_schema`:
 
 ## Editing rows
 
-Grid edits use the change pipeline in `wp/changes.rs`, which serves Database mode too:
+Grid edits are core (`db/changes.rs`) and work without the WordPress module. Every write goes plan, review,
+apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/0012-plans-applied-by-id.md)):
 
-1. `TableTab` queues a `ChangeRequest`: `setCell`, `deleteRow`, `duplicateRow` or `insertRow`.
-2. `plan_change` reads the current row. A `setCell` or `deleteRow` requires the key to match **exactly one
-   row**. It returns `PlannedChange { description, statements, undo }`. For `setCell` the undo restores the
-   old value; for `deleteRow` it reinserts the row. A row with binary cells can't be reinserted, because only
-   a preview of its bytes is known, so it has no undo.
-3. The pending tray shows the SQL. Applying sends every pending statement of the session to `apply_changes`,
-   which runs them in **one transaction** on a pool connection (`Database::apply`, MySQL: `MySqlSession::apply`). This is atomic only
-   for transactional engines; MyISAM tables and implicit DDL commits are not covered.
-4. Undo replays the `undo` statements in reverse order. The last 20 applied batches are kept.
+1. `TableTab` asks for a `ChangeRequest`: `setCell`, `deleteRow`, `duplicateRow` or `insertRow`.
+2. `plan_row_change` plans it (`db::changes::plan`): each variant fetches what it needs (the current row, the
+   structure), then a pure `build_*` function turns that into a `Plan { database, description, statements,
+   undo }`. A `setCell`, `deleteRow` or `duplicateRow` requires the key to match **exactly one row**. For
+   `setCell` the undo restores the old value; for `deleteRow` it reinserts the row without its generated
+   columns (and the description warns when a zero date would be reinserted, which fails under `NO_ZERO_DATE`).
+   A row with binary cells can't be reinserted, because only a preview of its bytes is known, so it has no
+   undo. `duplicateRow` copies every column except auto-increment and generated ones.
+3. The plan is stored in the session (`Session.plans`, `db/plans.rs`) under an id; the page receives a
+   `PlannedChange { id, description, statements, canUndo }`, where `statements` are for display only.
+   `discard_change` drops one.
+4. `apply_planned(ids)` takes the plans (atomically: an unknown id fails and leaves every plan pending) and
+   runs their statements in **one transaction** on a pool connection (`Database::apply`). This is atomic only
+   for transactional engines; MyISAM tables and implicit DDL commits are not covered. On failure the plans
+   stay pending for a retry; on success it returns `{ batchId, affected, canUndo }` and bumps the session's
+   write counter of each written database (`Session::writes`), which caches compare to notice changed data.
+5. `undo_batch(batchId)` replays the batch's undo statements, last plan first. The last 20 applied batches
+   are kept; a batch with a change that has no undo can't be undone. Plans and undo history die with the
+   session.
 
-The UI offers editing only for tables with a single-column `PRIMARY` key. `apply_changes` doesn't run the
-destructive-statement check, because every statement it receives came out of a plan the user reviewed.
+The UI offers editing only for tables with a single-column `PRIMARY` key. Applying doesn't run the
+destructive-statement check, because every statement came out of a plan the backend built and the user
+reviewed.
 
 ## Adding another database engine
 

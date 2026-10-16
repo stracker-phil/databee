@@ -1,50 +1,20 @@
-//! Edits as reviewable SQL: every change request is planned into statements plus the
-//! statements that undo it (built from the current values), shown to the user, and only
-//! then applied in one transaction.
+//! WordPress edits as reviewable SQL, planned into the session's plans like row edits
+//! (`db::changes`): each planner fetches the current state, then a pure builder turns it into
+//! a `Plan` with the statements that undo it.
 
 use serde::{Deserialize, Serialize};
 
 use super::context::WpContext;
-use super::entity::{Catalog, cell_str};
+use super::entity::{Catalog, MetaDef, cell_str};
 use super::fetch;
 use super::lists::text;
-use crate::db::Database;
-use crate::db::{Cell, Dialect, ResultSet};
+use crate::db::changes::{Plan, reinsert_note, reinsert_sql, restore_undo, sql_value};
+use crate::db::{Database, Dialect, ResultSet};
 use crate::error::{AppError, AppResult};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum ChangeRequest {
-    /// Any table cell, addressed by a unique key column.
-    #[serde(rename_all = "camelCase")]
-    SetCell {
-        database: String,
-        table: String,
-        key_column: String,
-        key: String,
-        column: String,
-        value: Option<String>,
-    },
-    #[serde(rename_all = "camelCase")]
-    DeleteRow {
-        database: String,
-        table: String,
-        key_column: String,
-        key: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    DuplicateRow {
-        database: String,
-        table: String,
-        key_column: String,
-        key: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    InsertRow {
-        database: String,
-        table: String,
-        values: Vec<(String, Option<String>)>,
-    },
+pub enum WpChangeRequest {
     /// WordPress meta of an entity (insert or update).
     #[serde(rename_all = "camelCase")]
     SetMeta {
@@ -89,25 +59,23 @@ pub enum ChangeRequest {
     CancelAction { database: String, id: String },
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct PlannedChange {
-    pub description: String,
-    pub statements: Vec<String>,
-    /// Restores the previous state; empty when a change can't be undone automatically.
-    pub undo: Vec<String>,
-}
-
-pub fn sql_value(dialect: Dialect, v: Option<&str>) -> String {
-    v.map_or_else(|| "NULL".to_string(), |v| dialect.sql_string(v))
-}
-
-fn tref(dialect: Dialect, db: &str, table: &str) -> String {
-    format!("{}.{}", dialect.quote_ident(db), dialect.quote_ident(table))
+impl WpChangeRequest {
+    pub fn database(&self) -> &str {
+        match self {
+            WpChangeRequest::SetMeta { database, .. }
+            | WpChangeRequest::DeleteMeta { database, .. }
+            | WpChangeRequest::SetOrderStatus { database, .. }
+            | WpChangeRequest::SetAutoload { database, .. }
+            | WpChangeRequest::DeleteExpiredTransients { database }
+            | WpChangeRequest::DeleteLogsBefore { database, .. }
+            | WpChangeRequest::RetryAction { database, .. }
+            | WpChangeRequest::CancelAction { database, .. } => database,
+        }
+    }
 }
 
 fn wp_table(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
-    tref(dialect, db, &ctx.table(table))
+    dialect.table_ref(db, &ctx.table(table))
 }
 
 /// `cutoff` is a literal fixed at plan time, so the applied DELETE removes exactly the
@@ -120,69 +88,13 @@ pub fn logs_before_filter(dialect: Dialect, cutoff: &str, source: Option<&str>) 
     f
 }
 
-/// The SQL literal that restores `cell` exactly: `NULL` stays `NULL`, `''` stays `''`.
-/// `None` for binary cells, which only carry a preview.
-fn restore_literal(dialect: Dialect, cell: &Cell) -> Option<String> {
-    match cell {
-        Cell::Bytes { .. } => None,
-        _ => Some(sql_value(dialect, cell_str(cell))),
-    }
-}
-
-/// `INSERT` statements that recreate the given rows exactly; empty when a row holds
-/// binary data.
-pub fn reinsert_sql(dialect: Dialect, table: &str, rows: &ResultSet) -> Vec<String> {
-    let Some(values) = rows
-        .rows
-        .iter()
-        .map(|r| {
-            r.iter()
-                .map(|cell| restore_literal(dialect, cell))
-                .collect::<Option<Vec<_>>>()
-        })
-        .collect::<Option<Vec<_>>>()
-    else {
-        return Vec::new();
-    };
-    let cols = rows
-        .columns
-        .iter()
-        .map(|c| dialect.quote_ident(&c.name))
-        .collect::<Vec<_>>()
-        .join(", ");
-    values
-        .iter()
-        .map(|v| format!("INSERT INTO {table} ({cols}) VALUES ({})", v.join(", ")))
-        .collect()
-}
-
 fn first_text(rs: &ResultSet) -> Option<Option<String>> {
     rs.rows.first().map(|r| text(&r[0]))
 }
 
-/// The plan's `undo` restoring `column` from `old`, plus a description note when there is
-/// none.
-fn restore_undo(
-    dialect: Dialect,
-    table: &str,
-    column: &str,
-    old: &Cell,
-    filter: Option<&str>,
-) -> (Vec<String>, String) {
-    let before = restore_literal(dialect, old);
-    if let (Some(before), Some(filter)) = (&before, filter) {
-        let sql = format!(
-            "UPDATE {table} SET {} = {before} WHERE {filter}",
-            dialect.quote_ident(column)
-        );
-        return (vec![sql], String::new());
-    }
-    let reason = if before.is_none() {
-        "binary value"
-    } else {
-        "the key becomes NULL"
-    };
-    (Vec::new(), format!(" (no undo: {reason})"))
+fn parse_id(id: &str) -> AppResult<u64> {
+    id.parse()
+        .map_err(|_| AppError::InvalidInput(format!("'{id}' is not a valid ID")))
 }
 
 /// Fixed at plan time, so the review shows exactly the rows the DELETE removes.
@@ -198,453 +110,562 @@ async fn log_cutoff(session: &dyn Database, days: u32) -> AppResult<String> {
     })
 }
 
+/// Where an entity's meta is stored: the qualified table and its column names.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MetaTarget {
+    pub table: String,
+    pub fk: String,
+    pub key: String,
+    pub value: String,
+}
+
+/// One meta key of one entity, as named in the request.
+#[derive(Debug, Clone, Copy)]
+pub struct MetaKey<'a> {
+    pub entity: &'a str,
+    pub id: &'a str,
+    pub key: &'a str,
+}
+
+impl MetaTarget {
+    fn new(table: String, meta: &MetaDef) -> Self {
+        Self {
+            table,
+            fk: meta.fk.clone(),
+            key: meta.key.clone(),
+            value: meta.value.clone(),
+        }
+    }
+
+    fn filter(&self, dialect: Dialect, meta: MetaKey) -> String {
+        format!(
+            "{} = {} AND {} = {}",
+            dialect.quote_ident(&self.fk),
+            dialect.sql_string(meta.id),
+            dialect.quote_ident(&self.key),
+            dialect.sql_string(meta.key)
+        )
+    }
+}
+
+pub fn meta_target(
+    dialect: Dialect,
+    ctx: &WpContext,
+    catalog: &Catalog,
+    database: &str,
+    entity: &str,
+) -> AppResult<MetaTarget> {
+    let meta = catalog
+        .get(entity)?
+        .meta
+        .as_ref()
+        .ok_or_else(|| AppError::InvalidInput(format!("{entity} has no meta")))?;
+    let table = wp_table(dialect, database, ctx, &meta.table);
+    Ok(MetaTarget::new(table, meta))
+}
+
 pub async fn plan(
     session: &dyn Database,
-    ctx: Option<&WpContext>,
-    catalog: Option<&Catalog>,
-    req: &ChangeRequest,
-) -> AppResult<PlannedChange> {
+    ctx: &WpContext,
+    catalog: &Catalog,
+    req: &WpChangeRequest,
+) -> AppResult<Plan> {
     let dialect = session.dialect();
-    let need_wp = || ctx.ok_or_else(|| AppError::InvalidInput("Not a WordPress database".into()));
-    Ok(match req {
-        ChangeRequest::SetCell {
-            database,
-            table,
-            key_column,
-            key,
-            column,
-            value,
-        } => {
-            let t = tref(dialect, database, table);
-            let filter = format!(
-                "{} = {}",
-                dialect.quote_ident(key_column),
-                dialect.sql_string(key)
-            );
-            let old = fetch(
-                session,
-                &format!(
-                    "SELECT {} FROM {t} WHERE {filter}",
-                    dialect.quote_ident(column)
-                ),
-            )
-            .await?;
-            if old.rows.len() != 1 {
-                return Err(AppError::InvalidInput(format!(
-                    "{key_column} = {key} matches {} rows; edits need a unique key",
-                    old.rows.len()
-                )));
-            }
-            // After a key change the row is only found by its new key.
-            let undo_filter = if column == key_column {
-                value.as_deref().map(|v| {
-                    format!(
-                        "{} = {}",
-                        dialect.quote_ident(key_column),
-                        dialect.sql_string(v)
-                    )
-                })
-            } else {
-                Some(filter.clone())
-            };
-            let (undo, note) =
-                restore_undo(dialect, &t, column, &old.rows[0][0], undo_filter.as_deref());
-            PlannedChange {
-                description: format!("{table}.{column} of {key_column} {key}{note}"),
-                statements: vec![format!(
-                    "UPDATE {t} SET {} = {} WHERE {filter}",
-                    dialect.quote_ident(column),
-                    sql_value(dialect, value.as_deref())
-                )],
-                undo,
-            }
-        }
-        ChangeRequest::DeleteRow {
-            database,
-            table,
-            key_column,
-            key,
-        } => {
-            let t = tref(dialect, database, table);
-            let filter = format!(
-                "{} = {}",
-                dialect.quote_ident(key_column),
-                dialect.sql_string(key)
-            );
-            let rows = fetch(session, &format!("SELECT * FROM {t} WHERE {filter}")).await?;
-            if rows.rows.len() != 1 {
-                return Err(AppError::InvalidInput(format!(
-                    "{key_column} = {key} matches {} rows",
-                    rows.rows.len()
-                )));
-            }
-            PlannedChange {
-                description: format!("Delete {table} row {key_column} {key}"),
-                statements: vec![format!("DELETE FROM {t} WHERE {filter} LIMIT 1")],
-                undo: reinsert_sql(dialect, &t, &rows),
-            }
-        }
-        ChangeRequest::DuplicateRow {
-            database,
-            table,
-            key_column,
-            key,
-        } => {
-            let t = tref(dialect, database, table);
-            let structure = session.structure(database, table).await?;
-            let cols: Vec<String> = structure
-                .columns
-                .iter()
-                .filter(|c| !c.extra.contains("auto_increment"))
-                .map(|c| dialect.quote_ident(&c.name))
-                .collect();
-            PlannedChange {
-                description: format!("Duplicate {table} row {key_column} {key}"),
-                statements: vec![format!(
-                    "INSERT INTO {t} ({cols}) SELECT {cols} FROM {t} WHERE {} = {}",
-                    dialect.quote_ident(key_column),
-                    dialect.sql_string(key),
-                    cols = cols.join(", ")
-                )],
-                undo: Vec::new(),
-            }
-        }
-        ChangeRequest::InsertRow {
-            database,
-            table,
-            values,
-        } => {
-            let t = tref(dialect, database, table);
-            let cols = values
-                .iter()
-                .map(|(c, _)| dialect.quote_ident(c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let vals = values
-                .iter()
-                .map(|(_, v)| sql_value(dialect, v.as_deref()))
-                .collect::<Vec<_>>()
-                .join(", ");
-            PlannedChange {
-                description: format!("Insert into {table}"),
-                statements: vec![format!("INSERT INTO {t} ({cols}) VALUES ({vals})")],
-                undo: Vec::new(),
-            }
-        }
-        ChangeRequest::SetMeta {
+    match req {
+        WpChangeRequest::SetMeta {
             database,
             entity,
             id,
             key,
             value,
         } => {
-            let ctx = need_wp()?;
-            let def = catalog
-                .ok_or_else(|| AppError::InvalidInput("No entity catalog".into()))?
-                .get(entity)?;
-            let meta = def
-                .meta
-                .as_ref()
-                .ok_or_else(|| AppError::InvalidInput(format!("{entity} has no meta")))?;
-            let t = wp_table(dialect, database, ctx, &meta.table);
-            let filter = format!(
-                "{} = {} AND {} = {}",
-                dialect.quote_ident(&meta.fk),
-                dialect.sql_string(id),
-                dialect.quote_ident(&meta.key),
-                dialect.sql_string(key)
+            let target = meta_target(dialect, ctx, catalog, database, entity)?;
+            let meta = MetaKey { entity, id, key };
+            let sql = format!(
+                "SELECT {} FROM {} WHERE {}",
+                dialect.quote_ident(&target.value),
+                target.table,
+                target.filter(dialect, meta)
             );
-            let old = fetch(
-                session,
-                &format!(
-                    "SELECT {} FROM {t} WHERE {filter}",
-                    dialect.quote_ident(&meta.value)
-                ),
-            )
-            .await?;
-            match old.rows.len() {
-                0 => PlannedChange {
-                    description: format!("Add meta {key} to {entity} #{id}"),
-                    statements: vec![format!(
-                        "INSERT INTO {t} ({}, {}, {}) VALUES ({}, {}, {})",
-                        dialect.quote_ident(&meta.fk),
-                        dialect.quote_ident(&meta.key),
-                        dialect.quote_ident(&meta.value),
-                        dialect.sql_string(id),
-                        dialect.sql_string(key),
-                        dialect.sql_string(value)
-                    )],
-                    undo: vec![format!("DELETE FROM {t} WHERE {filter}")],
-                },
-                1 => {
-                    let (undo, note) =
-                        restore_undo(dialect, &t, &meta.value, &old.rows[0][0], Some(&filter));
-                    PlannedChange {
-                        description: format!("Meta {key} of {entity} #{id}{note}"),
-                        statements: vec![format!(
-                            "UPDATE {t} SET {} = {} WHERE {filter}",
-                            dialect.quote_ident(&meta.value),
-                            dialect.sql_string(value)
-                        )],
-                        undo,
-                    }
-                }
-                // One undo value can't restore rows that held different values.
-                n => {
-                    return Err(AppError::InvalidInput(format!(
-                        "{entity} #{id} has {n} rows of meta {key}; edit them in the Database view"
-                    )));
-                }
-            }
+            let old = fetch(session, &sql).await?;
+            build_set_meta(dialect, database, &target, meta, value, &old)
         }
-        ChangeRequest::DeleteMeta {
+        WpChangeRequest::DeleteMeta {
             database,
             entity,
             id,
             key,
         } => {
-            let ctx = need_wp()?;
-            let def = catalog
-                .ok_or_else(|| AppError::InvalidInput("No entity catalog".into()))?
-                .get(entity)?;
-            let meta = def
-                .meta
-                .as_ref()
-                .ok_or_else(|| AppError::InvalidInput(format!("{entity} has no meta")))?;
-            let t = wp_table(dialect, database, ctx, &meta.table);
-            let filter = format!(
-                "{} = {} AND {} = {}",
-                dialect.quote_ident(&meta.fk),
-                dialect.sql_string(id),
-                dialect.quote_ident(&meta.key),
-                dialect.sql_string(key)
+            let target = meta_target(dialect, ctx, catalog, database, entity)?;
+            let meta = MetaKey { entity, id, key };
+            let sql = format!(
+                "SELECT * FROM {} WHERE {}",
+                target.table,
+                target.filter(dialect, meta)
             );
-            let rows = fetch(session, &format!("SELECT * FROM {t} WHERE {filter}")).await?;
-            if rows.rows.is_empty() {
-                return Err(AppError::InvalidInput(format!(
-                    "{entity} #{id} has no meta {key}"
-                )));
-            }
-            PlannedChange {
-                description: format!("Delete meta {key} of {entity} #{id}"),
-                statements: vec![format!("DELETE FROM {t} WHERE {filter}")],
-                undo: reinsert_sql(dialect, &t, &rows),
-            }
+            let rows = fetch(session, &sql).await?;
+            build_delete_meta(dialect, database, &target, meta, &rows)
         }
-        ChangeRequest::SetOrderStatus {
+        WpChangeRequest::SetOrderStatus {
             database,
             id,
             status,
-        } => {
-            let ctx = need_wp()?;
-            let n: u64 = id
-                .parse()
-                .map_err(|_| AppError::InvalidInput(format!("'{id}' is not a valid ID")))?;
-            let status = if status.starts_with("wc-") || status == "trash" {
-                status.clone()
-            } else {
-                format!("wc-{status}")
-            };
-            let mut statements = Vec::new();
-            let mut undo = Vec::new();
-            let posts = wp_table(dialect, database, ctx, "posts");
-            let post_status = fetch(
-                session,
-                &format!(
-                    "SELECT post_status FROM {posts} WHERE ID = {n} AND post_type LIKE {}",
-                    dialect.like(r"shop\_%")
-                ),
-            )
-            .await?;
-            if ctx.hpos() {
-                let orders = wp_table(dialect, database, ctx, "wc_orders");
-                let old = fetch(
-                    session,
-                    &format!("SELECT status FROM {orders} WHERE id = {n}"),
-                )
-                .await?;
-                let before = first_text(&old)
-                    .flatten()
-                    .ok_or_else(|| AppError::InvalidInput(format!("Order #{id} was not found")))?;
-                statements.push(format!("UPDATE {orders} SET status = {}, date_updated_gmt = UTC_TIMESTAMP() WHERE id = {n}", dialect.sql_string(&status)));
-                undo.push(format!(
-                    "UPDATE {orders} SET status = {} WHERE id = {n}",
-                    dialect.sql_string(&before)
-                ));
-            }
-            // Legacy store, or the synced posts copy (placeholders keep their own status).
-            if let Some(before) = first_text(&post_status).flatten().filter(|s| s != "draft") {
-                statements.push(format!(
-                    "UPDATE {posts} SET post_status = {}, post_modified_gmt = UTC_TIMESTAMP(), post_modified = NOW() WHERE ID = {n}",
-                    dialect.sql_string(&status)
-                ));
-                undo.push(format!(
-                    "UPDATE {posts} SET post_status = {} WHERE ID = {n}",
-                    dialect.sql_string(&before)
-                ));
-            }
-            if statements.is_empty() {
-                return Err(AppError::InvalidInput(format!("Order #{id} was not found")));
-            }
-            PlannedChange {
-                description: format!("Order #{id} status → {}", status.trim_start_matches("wc-")),
-                statements,
-                undo,
-            }
-        }
-        ChangeRequest::SetAutoload {
+        } => plan_set_order_status(session, dialect, ctx, database, id, status).await,
+        WpChangeRequest::SetAutoload {
             database,
             option,
             on,
         } => {
-            let ctx = need_wp()?;
             let t = wp_table(dialect, database, ctx, "options");
-            let old = fetch(
-                session,
-                &format!(
-                    "SELECT autoload FROM {t} WHERE option_name = {}",
-                    dialect.sql_string(option)
-                ),
-            )
-            .await?;
-            let before = first_text(&old)
+            let sql = format!(
+                "SELECT autoload FROM {t} WHERE option_name = {}",
+                dialect.sql_string(option)
+            );
+            let before = first_text(&fetch(session, &sql).await?)
                 .flatten()
                 .ok_or_else(|| AppError::InvalidInput(format!("Option {option} not found")))?;
-            // WordPress 6.6 switched from yes/no to on/off (and auto variants).
-            let modern = !matches!(before.as_str(), "yes" | "no");
-            let value = match (modern, on) {
-                (true, true) => "on",
-                (true, false) => "off",
-                (false, true) => "yes",
-                (false, false) => "no",
-            };
-            PlannedChange {
-                description: format!("Autoload of {option} → {value}"),
-                statements: vec![format!(
-                    "UPDATE {t} SET autoload = '{value}' WHERE option_name = {}",
-                    dialect.sql_string(option)
-                )],
-                undo: vec![format!(
-                    "UPDATE {t} SET autoload = {} WHERE option_name = {}",
-                    dialect.sql_string(&before),
-                    dialect.sql_string(option)
-                )],
-            }
+            Ok(build_set_autoload(
+                dialect, database, &t, option, *on, &before,
+            ))
         }
-        ChangeRequest::DeleteExpiredTransients { database } => {
-            let ctx = need_wp()?;
+        WpChangeRequest::DeleteExpiredTransients { database } => {
             let t = wp_table(dialect, database, ctx, "options");
             let overview = super::options_overview(session, ctx, database).await?;
-            let names: Vec<String> = overview
-                .transients
-                .iter()
-                .filter(|tr| tr.expired)
-                .flat_map(|tr| {
-                    let (v, to) = if tr.site_wide {
-                        ("_site_transient_", "_site_transient_timeout_")
-                    } else {
-                        ("_transient_", "_transient_timeout_")
-                    };
-                    [
-                        dialect.sql_string(&format!("{v}{}", tr.name)),
-                        dialect.sql_string(&format!("{to}{}", tr.name)),
-                    ]
-                })
-                .collect();
+            let names = expired_transient_rows(&overview);
             if names.is_empty() {
                 return Err(AppError::InvalidInput(
                     "There are no expired transients".into(),
                 ));
             }
-            let filter = format!("option_name IN ({})", names.join(", "));
+            let filter = option_names_filter(dialect, &names);
             let rows = fetch(session, &format!("SELECT * FROM {t} WHERE {filter}")).await?;
-            PlannedChange {
-                description: format!("Delete {} expired transients", names.len() / 2),
-                statements: vec![format!("DELETE FROM {t} WHERE {filter}")],
-                undo: reinsert_sql(dialect, &t, &rows),
-            }
+            Ok(build_delete_expired_transients(
+                dialect, database, &t, &names, &rows,
+            ))
         }
-        ChangeRequest::DeleteLogsBefore {
+        WpChangeRequest::DeleteLogsBefore {
             database,
             days,
             source,
         } => {
-            let ctx = need_wp()?;
             if !ctx.has_table("woocommerce_log") {
                 return Err(AppError::InvalidInput(
                     "This site has no woocommerce_log table".into(),
                 ));
             }
             let t = wp_table(dialect, database, ctx, "woocommerce_log");
-            let filter = logs_before_filter(
-                dialect,
-                &log_cutoff(session, *days).await?,
-                source.as_deref(),
-            );
+            let cutoff = log_cutoff(session, *days).await?;
+            let filter = logs_before_filter(dialect, &cutoff, source.as_deref());
             let count = fetch(session, &format!("SELECT COUNT(*) FROM {t} WHERE {filter}")).await?;
             let n = count
                 .rows
                 .first()
                 .and_then(|r| super::lists::num(&r[0]))
                 .unwrap_or(0);
-            if n == 0 {
-                return Err(AppError::InvalidInput(format!(
-                    "No log entries are older than {days} days"
-                )));
-            }
-            PlannedChange {
-                description: format!(
-                    "Delete {n} log entries older than {days} days{} (no undo)",
-                    source
-                        .as_deref()
-                        .map(|s| format!(" from {s}"))
-                        .unwrap_or_default()
-                ),
-                statements: vec![format!("DELETE FROM {t} WHERE {filter}")],
-                undo: vec![],
-            }
+            build_delete_logs_before(database, &t, &filter, *days, source.as_deref(), n)
         }
-        ChangeRequest::RetryAction { database, id }
-        | ChangeRequest::CancelAction { database, id } => {
-            let ctx = need_wp()?;
-            let n: u64 = id
-                .parse()
-                .map_err(|_| AppError::InvalidInput(format!("'{id}' is not a valid ID")))?;
-            let t = wp_table(dialect, database, ctx, "actionscheduler_actions");
-            let rows = fetch(
-                session,
-                &format!("SELECT status, scheduled_date_gmt FROM {t} WHERE action_id = {n}"),
-            )
-            .await?;
-            let row = rows
-                .rows
-                .first()
-                .ok_or_else(|| AppError::InvalidInput(format!("Action #{id} was not found")))?;
-            let (before_status, before_date) = (cell_str(&row[0]), cell_str(&row[1]));
-            let retry = matches!(req, ChangeRequest::RetryAction { .. });
-            PlannedChange {
-                description: format!("{} action #{id}", if retry { "Retry" } else { "Cancel" }),
-                statements: vec![if retry {
-                    format!(
-                        "UPDATE {t} SET status = 'pending', scheduled_date_gmt = UTC_TIMESTAMP(), claim_id = 0 WHERE action_id = {n}"
-                    )
-                } else {
-                    format!("UPDATE {t} SET status = 'canceled' WHERE action_id = {n}")
-                }],
-                undo: vec![format!(
-                    "UPDATE {t} SET status = {}, scheduled_date_gmt = {} WHERE action_id = {n}",
-                    sql_value(dialect, before_status),
-                    sql_value(dialect, before_date)
+        WpChangeRequest::RetryAction { database, id } => {
+            plan_action(session, dialect, ctx, database, id, true).await
+        }
+        WpChangeRequest::CancelAction { database, id } => {
+            plan_action(session, dialect, ctx, database, id, false).await
+        }
+    }
+}
+
+async fn plan_action(
+    session: &dyn Database,
+    dialect: Dialect,
+    ctx: &WpContext,
+    database: &str,
+    id: &str,
+    retry: bool,
+) -> AppResult<Plan> {
+    let n = parse_id(id)?;
+    let t = wp_table(dialect, database, ctx, "actionscheduler_actions");
+    let sql = format!("SELECT status, scheduled_date_gmt FROM {t} WHERE action_id = {n}");
+    let rows = fetch(session, &sql).await?;
+    let row = rows
+        .rows
+        .first()
+        .ok_or_else(|| AppError::InvalidInput(format!("Action #{id} was not found")))?;
+    let before = (cell_str(&row[0]), cell_str(&row[1]));
+    Ok(build_action(dialect, database, &t, n, retry, before))
+}
+
+/// `old` holds the meta value of every row stored under the key for the entity.
+pub fn build_set_meta(
+    dialect: Dialect,
+    database: &str,
+    target: &MetaTarget,
+    meta: MetaKey,
+    value: &str,
+    old: &ResultSet,
+) -> AppResult<Plan> {
+    let MetaKey { entity, id, key } = meta;
+    let t = &target.table;
+    let filter = target.filter(dialect, meta);
+    let value_column = dialect.quote_ident(&target.value);
+    let (description, statements, undo) = match old.rows.len() {
+        0 => (
+            format!("Add meta {key} to {entity} #{id}"),
+            vec![format!(
+                "INSERT INTO {t} ({}, {}, {value_column}) VALUES ({}, {}, {})",
+                dialect.quote_ident(&target.fk),
+                dialect.quote_ident(&target.key),
+                dialect.sql_string(id),
+                dialect.sql_string(key),
+                dialect.sql_string(value)
+            )],
+            vec![format!("DELETE FROM {t} WHERE {filter}")],
+        ),
+        1 => {
+            let (undo, note) =
+                restore_undo(dialect, t, &target.value, &old.rows[0][0], Some(&filter));
+            (
+                format!("Meta {key} of {entity} #{id}{note}"),
+                vec![format!(
+                    "UPDATE {t} SET {value_column} = {} WHERE {filter}",
+                    dialect.sql_string(value)
                 )],
-            }
+                undo,
+            )
         }
+        // One undo value can't restore rows that held different values.
+        n => {
+            return Err(AppError::InvalidInput(format!(
+                "{entity} #{id} has {n} rows of meta {key}; edit them in the Database view"
+            )));
+        }
+    };
+    Ok(Plan {
+        database: database.to_string(),
+        description,
+        statements,
+        undo,
     })
+}
+
+/// `rows` holds every stored row of the meta key, all columns.
+pub fn build_delete_meta(
+    dialect: Dialect,
+    database: &str,
+    target: &MetaTarget,
+    meta: MetaKey,
+    rows: &ResultSet,
+) -> AppResult<Plan> {
+    let MetaKey { entity, id, key } = meta;
+    if rows.rows.is_empty() {
+        return Err(AppError::InvalidInput(format!(
+            "{entity} #{id} has no meta {key}"
+        )));
+    }
+    let t = &target.table;
+    Ok(Plan {
+        database: database.to_string(),
+        description: format!("Delete meta {key} of {entity} #{id}{}", reinsert_note(rows)),
+        statements: vec![format!(
+            "DELETE FROM {t} WHERE {}",
+            target.filter(dialect, meta)
+        )],
+        undo: reinsert_sql(dialect, t, rows, &[]),
+    })
+}
+
+async fn plan_set_order_status(
+    session: &dyn Database,
+    dialect: Dialect,
+    ctx: &WpContext,
+    database: &str,
+    id: &str,
+    status: &str,
+) -> AppResult<Plan> {
+    let n = parse_id(id)?;
+    let posts = wp_table(dialect, database, ctx, "posts");
+    let post_status = fetch(
+        session,
+        &format!(
+            "SELECT post_status FROM {posts} WHERE ID = {n} AND post_type LIKE {}",
+            dialect.like(r"shop\_%")
+        ),
+    )
+    .await?;
+    let hpos = if ctx.hpos() {
+        let orders = wp_table(dialect, database, ctx, "wc_orders");
+        let old = fetch(
+            session,
+            &format!("SELECT status FROM {orders} WHERE id = {n}"),
+        )
+        .await?;
+        let before = first_text(&old)
+            .flatten()
+            .ok_or_else(|| AppError::InvalidInput(format!("Order #{id} was not found")))?;
+        Some(OrderRow {
+            table: orders,
+            before,
+        })
+    } else {
+        None
+    };
+    // Legacy store, or the synced posts copy (placeholders keep their own status).
+    let post = first_text(&post_status)
+        .flatten()
+        .filter(|s| s != "draft")
+        .map(|before| OrderRow {
+            table: posts,
+            before,
+        });
+    build_set_order_status(dialect, database, n, status, hpos, post)
+}
+
+/// An order's table and its status before the change.
+pub struct OrderRow {
+    pub table: String,
+    pub before: String,
+}
+
+/// `hpos` is the `wc_orders` row, `post` the `posts` row; either may be missing.
+pub fn build_set_order_status(
+    dialect: Dialect,
+    database: &str,
+    id: u64,
+    status: &str,
+    hpos: Option<OrderRow>,
+    post: Option<OrderRow>,
+) -> AppResult<Plan> {
+    let status = if status.starts_with("wc-") || status == "trash" {
+        status.to_string()
+    } else {
+        format!("wc-{status}")
+    };
+    let mut statements = Vec::new();
+    let mut undo = Vec::new();
+    if let Some(OrderRow { table, before }) = hpos {
+        statements.push(format!(
+            "UPDATE {table} SET status = {}, date_updated_gmt = UTC_TIMESTAMP() WHERE id = {id}",
+            dialect.sql_string(&status)
+        ));
+        undo.push(format!(
+            "UPDATE {table} SET status = {} WHERE id = {id}",
+            dialect.sql_string(&before)
+        ));
+    }
+    if let Some(OrderRow { table, before }) = post {
+        statements.push(format!(
+            "UPDATE {table} SET post_status = {}, post_modified_gmt = UTC_TIMESTAMP(), post_modified = NOW() WHERE ID = {id}",
+            dialect.sql_string(&status)
+        ));
+        undo.push(format!(
+            "UPDATE {table} SET post_status = {} WHERE ID = {id}",
+            dialect.sql_string(&before)
+        ));
+    }
+    if statements.is_empty() {
+        return Err(AppError::InvalidInput(format!("Order #{id} was not found")));
+    }
+    Ok(Plan {
+        database: database.to_string(),
+        description: format!("Order #{id} status → {}", status.trim_start_matches("wc-")),
+        statements,
+        undo,
+    })
+}
+
+/// `before` is the stored autoload value; its style (`yes`/`no` or the WordPress 6.6
+/// `on`/`off` family) decides the new value's spelling.
+pub fn build_set_autoload(
+    dialect: Dialect,
+    database: &str,
+    table: &str,
+    option: &str,
+    on: bool,
+    before: &str,
+) -> Plan {
+    let modern = !matches!(before, "yes" | "no");
+    let value = match (modern, on) {
+        (true, true) => "on",
+        (true, false) => "off",
+        (false, true) => "yes",
+        (false, false) => "no",
+    };
+    let name = dialect.sql_string(option);
+    Plan {
+        database: database.to_string(),
+        description: format!("Autoload of {option} → {value}"),
+        statements: vec![format!(
+            "UPDATE {table} SET autoload = '{value}' WHERE option_name = {name}"
+        )],
+        undo: vec![format!(
+            "UPDATE {table} SET autoload = {} WHERE option_name = {name}",
+            dialect.sql_string(before)
+        )],
+    }
+}
+
+/// The option names of every expired transient: its value row and its timeout row.
+fn expired_transient_rows(overview: &super::options::OptionsOverview) -> Vec<String> {
+    overview
+        .transients
+        .iter()
+        .filter(|tr| tr.expired)
+        .flat_map(|tr| {
+            let (value, timeout) = if tr.site_wide {
+                ("_site_transient_", "_site_transient_timeout_")
+            } else {
+                ("_transient_", "_transient_timeout_")
+            };
+            [
+                format!("{value}{}", tr.name),
+                format!("{timeout}{}", tr.name),
+            ]
+        })
+        .collect()
+}
+
+fn option_names_filter(dialect: Dialect, names: &[String]) -> String {
+    let list = names
+        .iter()
+        .map(|n| dialect.sql_string(n))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("option_name IN ({list})")
+}
+
+/// `names` are the value and timeout rows of the expired transients; `rows` their stored rows.
+pub fn build_delete_expired_transients(
+    dialect: Dialect,
+    database: &str,
+    table: &str,
+    names: &[String],
+    rows: &ResultSet,
+) -> Plan {
+    Plan {
+        database: database.to_string(),
+        description: format!("Delete {} expired transients", names.len() / 2),
+        statements: vec![format!(
+            "DELETE FROM {table} WHERE {}",
+            option_names_filter(dialect, names)
+        )],
+        undo: reinsert_sql(dialect, table, rows, &[]),
+    }
+}
+
+/// `filter` comes from `logs_before_filter`; `count` is how many entries it matches.
+pub fn build_delete_logs_before(
+    database: &str,
+    table: &str,
+    filter: &str,
+    days: u32,
+    source: Option<&str>,
+    count: u64,
+) -> AppResult<Plan> {
+    if count == 0 {
+        return Err(AppError::InvalidInput(format!(
+            "No log entries are older than {days} days"
+        )));
+    }
+    let from = source.map(|s| format!(" from {s}")).unwrap_or_default();
+    Ok(Plan {
+        database: database.to_string(),
+        description: format!("Delete {count} log entries older than {days} days{from} (no undo)"),
+        statements: vec![format!("DELETE FROM {table} WHERE {filter}")],
+        undo: Vec::new(),
+    })
+}
+
+/// `before` is the action's `(status, scheduled_date_gmt)`.
+pub fn build_action(
+    dialect: Dialect,
+    database: &str,
+    table: &str,
+    id: u64,
+    retry: bool,
+    before: (Option<&str>, Option<&str>),
+) -> Plan {
+    let statement = if retry {
+        format!(
+            "UPDATE {table} SET status = 'pending', scheduled_date_gmt = UTC_TIMESTAMP(), claim_id = 0 WHERE action_id = {id}"
+        )
+    } else {
+        format!("UPDATE {table} SET status = 'canceled' WHERE action_id = {id}")
+    };
+    Plan {
+        database: database.to_string(),
+        description: format!("{} action #{id}", if retry { "Retry" } else { "Cancel" }),
+        statements: vec![statement],
+        undo: vec![format!(
+            "UPDATE {table} SET status = {}, scheduled_date_gmt = {} WHERE action_id = {id}",
+            sql_value(dialect, before.0),
+            sql_value(dialect, before.1)
+        )],
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::ColumnMeta;
+    use crate::db::{Cell, ColumnMeta, FakeDatabase};
+    use crate::wp::context::WcContext;
+    use crate::wp::entity::definitions;
+
+    const D: Dialect = Dialect::MYSQL;
+    const OPTIONS: &str = "`wp`.`wp_options`";
+    const POSTMETA: &str = "`wp`.`wp_postmeta`";
+
+    fn cell(s: &str) -> Cell {
+        Cell::Text(s.into())
+    }
+
+    fn rs(cols: &[&str], rows: Vec<Vec<Cell>>) -> ResultSet {
+        ResultSet {
+            columns: cols
+                .iter()
+                .map(|c| ColumnMeta {
+                    name: c.to_string(),
+                    type_name: "TEXT".into(),
+                })
+                .collect(),
+            rows,
+            returns_rows: true,
+            ..Default::default()
+        }
+    }
+
+    fn ctx(tables: &[&str]) -> WpContext {
+        WpContext {
+            prefix: "wp_".into(),
+            version: None,
+            sites: vec![],
+            wc: Some(WcContext {
+                version: None,
+                hpos: crate::wp::context::HposMode::On,
+                has_action_scheduler: true,
+            }),
+            site: Default::default(),
+            tables: tables.iter().map(|t| t.to_string()).collect(),
+        }
+    }
+
+    fn catalog(ctx: &WpContext) -> Catalog {
+        Catalog::new(&definitions(None).unwrap(), ctx)
+    }
+
+    fn postmeta() -> MetaTarget {
+        MetaTarget {
+            table: POSTMETA.into(),
+            fk: "post_id".into(),
+            key: "meta_key".into(),
+            value: "meta_value".into(),
+        }
+    }
+
+    const META: MetaKey<'static> = MetaKey {
+        entity: "post",
+        id: "5",
+        key: "k",
+    };
+
+    const META_FILTER: &str = "`post_id` = '5' AND `meta_key` = 'k'";
 
     #[test]
     fn log_retention_filter_targets_age_and_source() {
@@ -663,30 +684,502 @@ mod tests {
     }
 
     #[test]
-    fn reinsert_recreates_rows_with_nulls() {
-        let rs = ResultSet {
-            columns: vec![
-                ColumnMeta {
-                    name: "option_id".into(),
-                    type_name: "BIGINT".into(),
-                },
-                ColumnMeta {
-                    name: "option_value".into(),
-                    type_name: "TEXT".into(),
-                },
-            ],
-            rows: vec![
-                vec![Cell::Number("7".into()), Cell::Null],
-                vec![Cell::Number("8".into()), Cell::Text("it's".into())],
-            ],
-            ..Default::default()
+    fn every_request_names_its_database() {
+        let requests = [
+            WpChangeRequest::SetMeta {
+                database: "wp".into(),
+                entity: "post".into(),
+                id: "5".into(),
+                key: "k".into(),
+                value: "v".into(),
+            },
+            WpChangeRequest::DeleteMeta {
+                database: "wp".into(),
+                entity: "post".into(),
+                id: "5".into(),
+                key: "k".into(),
+            },
+            WpChangeRequest::SetOrderStatus {
+                database: "wp".into(),
+                id: "5".into(),
+                status: "completed".into(),
+            },
+            WpChangeRequest::SetAutoload {
+                database: "wp".into(),
+                option: "o".into(),
+                on: true,
+            },
+            WpChangeRequest::DeleteExpiredTransients {
+                database: "wp".into(),
+            },
+            WpChangeRequest::DeleteLogsBefore {
+                database: "wp".into(),
+                days: 30,
+                source: None,
+            },
+            WpChangeRequest::RetryAction {
+                database: "wp".into(),
+                id: "3".into(),
+            },
+            WpChangeRequest::CancelAction {
+                database: "wp".into(),
+                id: "3".into(),
+            },
+        ];
+
+        for request in requests {
+            assert_eq!(request.database(), "wp", "{request:?}");
+        }
+    }
+
+    #[test]
+    fn requests_use_camel_case_tags_and_fields_and_default_the_log_source() {
+        let logs: WpChangeRequest = serde_json::from_value(serde_json::json!({
+            "type": "deleteLogsBefore",
+            "database": "wp",
+            "days": 30,
+        }))
+        .unwrap();
+        let retry = WpChangeRequest::RetryAction {
+            database: "wp".into(),
+            id: "3".into(),
         };
+
         assert_eq!(
-            reinsert_sql(Dialect::MYSQL, "`db`.`wp_options`", &rs),
-            [
-                "INSERT INTO `db`.`wp_options` (`option_id`, `option_value`) VALUES ('7', NULL)",
-                "INSERT INTO `db`.`wp_options` (`option_id`, `option_value`) VALUES ('8', 'it''s')",
-            ]
+            logs,
+            WpChangeRequest::DeleteLogsBefore {
+                database: "wp".into(),
+                days: 30,
+                source: None,
+            }
         );
+        assert_eq!(
+            serde_json::to_value(&retry).unwrap(),
+            serde_json::json!({"type": "retryAction", "database": "wp", "id": "3"})
+        );
+    }
+
+    #[test]
+    fn set_meta_without_a_row_inserts_and_undo_deletes() {
+        let plan = build_set_meta(
+            D,
+            "wp",
+            &postmeta(),
+            META,
+            "v",
+            &rs(&["meta_value"], vec![]),
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan,
+            Plan {
+                database: "wp".into(),
+                description: "Add meta k to post #5".into(),
+                statements: vec![format!(
+                    "INSERT INTO {POSTMETA} (`post_id`, `meta_key`, `meta_value`) VALUES ('5', 'k', 'v')"
+                )],
+                undo: vec![format!("DELETE FROM {POSTMETA} WHERE {META_FILTER}")],
+            }
+        );
+    }
+
+    #[test]
+    fn set_meta_with_one_row_updates_and_undo_restores_the_old_value() {
+        for (old, literal) in [
+            (cell("old"), "'old'"),
+            (cell(""), "''"),
+            (Cell::Null, "NULL"),
+        ] {
+            let rows = rs(&["meta_value"], vec![vec![old.clone()]]);
+
+            let plan = build_set_meta(D, "wp", &postmeta(), META, "v", &rows).unwrap();
+
+            assert_eq!(plan.description, "Meta k of post #5", "{old:?}");
+            assert_eq!(
+                plan.statements,
+                [format!(
+                    "UPDATE {POSTMETA} SET `meta_value` = 'v' WHERE {META_FILTER}"
+                )]
+            );
+            assert_eq!(
+                plan.undo,
+                [format!(
+                    "UPDATE {POSTMETA} SET `meta_value` = {literal} WHERE {META_FILTER}"
+                )],
+                "{old:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn set_meta_with_several_rows_is_refused() {
+        let rows = rs(&["meta_value"], vec![vec![cell("a")], vec![cell("b")]]);
+
+        let err = build_set_meta(D, "wp", &postmeta(), META, "v", &rows).unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(
+            err.to_string(),
+            "post #5 has 2 rows of meta k; edit them in the Database view"
+        );
+    }
+
+    #[test]
+    fn delete_meta_removes_the_key_and_undo_reinserts_every_row() {
+        let rows = rs(
+            &["meta_id", "post_id", "meta_key", "meta_value"],
+            vec![vec![
+                Cell::Number("9".into()),
+                Cell::Number("5".into()),
+                cell("k"),
+                cell("v"),
+            ]],
+        );
+
+        let plan = build_delete_meta(D, "wp", &postmeta(), META, &rows).unwrap();
+
+        assert_eq!(
+            plan,
+            Plan {
+                database: "wp".into(),
+                description: "Delete meta k of post #5".into(),
+                statements: vec![format!("DELETE FROM {POSTMETA} WHERE {META_FILTER}")],
+                undo: vec![format!(
+                    "INSERT INTO {POSTMETA} (`meta_id`, `post_id`, `meta_key`, `meta_value`) VALUES ('9', '5', 'k', 'v')"
+                )],
+            }
+        );
+    }
+
+    #[test]
+    fn delete_meta_without_rows_is_refused() {
+        let err =
+            build_delete_meta(D, "wp", &postmeta(), META, &rs(&["meta_id"], vec![])).unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.to_string(), "post #5 has no meta k");
+    }
+
+    fn orders_row(before: &str) -> Option<OrderRow> {
+        Some(OrderRow {
+            table: "`wp`.`wp_wc_orders`".into(),
+            before: before.into(),
+        })
+    }
+
+    fn posts_row(before: &str) -> Option<OrderRow> {
+        Some(OrderRow {
+            table: "`wp`.`wp_posts`".into(),
+            before: before.into(),
+        })
+    }
+
+    #[test]
+    fn order_status_updates_the_hpos_row_and_the_posts_copy_with_matching_undo() {
+        let plan = build_set_order_status(
+            D,
+            "wp",
+            4711,
+            "completed",
+            orders_row("wc-processing"),
+            posts_row("wc-on-hold"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan,
+            Plan {
+                database: "wp".into(),
+                description: "Order #4711 status → completed".into(),
+                statements: vec![
+                    "UPDATE `wp`.`wp_wc_orders` SET status = 'wc-completed', date_updated_gmt = UTC_TIMESTAMP() WHERE id = 4711".into(),
+                    "UPDATE `wp`.`wp_posts` SET post_status = 'wc-completed', post_modified_gmt = UTC_TIMESTAMP(), post_modified = NOW() WHERE ID = 4711".into(),
+                ],
+                undo: vec![
+                    "UPDATE `wp`.`wp_wc_orders` SET status = 'wc-processing' WHERE id = 4711".into(),
+                    "UPDATE `wp`.`wp_posts` SET post_status = 'wc-on-hold' WHERE ID = 4711".into(),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn order_status_gets_the_wc_prefix_unless_it_has_one_or_is_trash() {
+        for (given, stored) in [
+            ("completed", "wc-completed"),
+            ("wc-completed", "wc-completed"),
+            ("trash", "trash"),
+        ] {
+            let plan =
+                build_set_order_status(D, "wp", 1, given, orders_row("wc-pending"), None).unwrap();
+
+            assert_eq!(
+                plan.statements,
+                [format!(
+                    "UPDATE `wp`.`wp_wc_orders` SET status = '{stored}', date_updated_gmt = UTC_TIMESTAMP() WHERE id = 1"
+                )],
+                "{given}"
+            );
+        }
+    }
+
+    #[test]
+    fn order_status_with_only_one_store_updates_only_that_store() {
+        let hpos_only = build_set_order_status(D, "wp", 1, "x", orders_row("wc-a"), None).unwrap();
+        let post_only = build_set_order_status(D, "wp", 1, "x", None, posts_row("wc-a")).unwrap();
+
+        assert_eq!(hpos_only.statements.len(), 1);
+        assert_eq!(
+            hpos_only.undo,
+            ["UPDATE `wp`.`wp_wc_orders` SET status = 'wc-a' WHERE id = 1"]
+        );
+        assert_eq!(post_only.statements.len(), 1);
+        assert_eq!(
+            post_only.undo,
+            ["UPDATE `wp`.`wp_posts` SET post_status = 'wc-a' WHERE ID = 1"]
+        );
+    }
+
+    #[test]
+    fn order_status_of_an_order_in_no_store_is_refused() {
+        let err = build_set_order_status(D, "wp", 4711, "completed", None, None).unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.to_string(), "Order #4711 was not found");
+    }
+
+    #[test]
+    fn autoload_keeps_the_spelling_style_of_the_stored_value() {
+        for (before, on, value) in [
+            ("yes", false, "no"),
+            ("no", true, "yes"),
+            ("on", false, "off"),
+            ("off", true, "on"),
+            ("auto-on", false, "off"),
+            ("auto-off", true, "on"),
+        ] {
+            let plan = build_set_autoload(D, "wp", OPTIONS, "foo", on, before);
+
+            assert_eq!(
+                plan,
+                Plan {
+                    database: "wp".into(),
+                    description: format!("Autoload of foo → {value}"),
+                    statements: vec![format!(
+                        "UPDATE {OPTIONS} SET autoload = '{value}' WHERE option_name = 'foo'"
+                    )],
+                    undo: vec![format!(
+                        "UPDATE {OPTIONS} SET autoload = '{before}' WHERE option_name = 'foo'"
+                    )],
+                },
+                "{before} -> on={on}"
+            );
+        }
+    }
+
+    #[test]
+    fn expired_transients_are_deleted_by_one_statement_naming_value_and_timeout_rows() {
+        let names = vec![
+            "_transient_a".to_string(),
+            "_transient_timeout_a".to_string(),
+        ];
+        let rows = rs(
+            &["option_id", "option_name", "option_value"],
+            vec![
+                vec![Cell::Number("1".into()), cell("_transient_a"), cell("x")],
+                vec![
+                    Cell::Number("2".into()),
+                    cell("_transient_timeout_a"),
+                    cell("100"),
+                ],
+            ],
+        );
+
+        let plan = build_delete_expired_transients(D, "wp", OPTIONS, &names, &rows);
+
+        assert_eq!(
+            plan,
+            Plan {
+                database: "wp".into(),
+                description: "Delete 1 expired transients".into(),
+                statements: vec![format!(
+                    "DELETE FROM {OPTIONS} WHERE option_name IN ('_transient_a', '_transient_timeout_a')"
+                )],
+                undo: vec![
+                    format!(
+                        "INSERT INTO {OPTIONS} (`option_id`, `option_name`, `option_value`) VALUES ('1', '_transient_a', 'x')"
+                    ),
+                    format!(
+                        "INSERT INTO {OPTIONS} (`option_id`, `option_name`, `option_value`) VALUES ('2', '_transient_timeout_a', '100')"
+                    ),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn log_retention_without_matching_entries_is_refused() {
+        let err = build_delete_logs_before("wp", "t", "f", 30, None, 0).unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.to_string(), "No log entries are older than 30 days");
+    }
+
+    #[test]
+    fn log_retention_deletes_by_the_given_filter_and_cannot_be_undone() {
+        let plan = build_delete_logs_before(
+            "wp",
+            "`wp`.`wp_woocommerce_log`",
+            "`timestamp` < 'c'",
+            30,
+            None,
+            5,
+        )
+        .unwrap();
+        let sourced = build_delete_logs_before("wp", "t", "f", 7, Some("paypal"), 2).unwrap();
+
+        assert_eq!(
+            plan,
+            Plan {
+                database: "wp".into(),
+                description: "Delete 5 log entries older than 30 days (no undo)".into(),
+                statements: vec![
+                    "DELETE FROM `wp`.`wp_woocommerce_log` WHERE `timestamp` < 'c'".into()
+                ],
+                undo: Vec::new(),
+            }
+        );
+        assert_eq!(
+            sourced.description,
+            "Delete 2 log entries older than 7 days from paypal (no undo)"
+        );
+    }
+
+    #[test]
+    fn retrying_an_action_makes_it_pending_and_undo_restores_status_and_date() {
+        let table = "`wp`.`wp_actionscheduler_actions`";
+
+        let plan = build_action(
+            D,
+            "wp",
+            table,
+            3,
+            true,
+            (Some("failed"), Some("2026-01-01 00:00:00")),
+        );
+
+        assert_eq!(
+            plan,
+            Plan {
+                database: "wp".into(),
+                description: "Retry action #3".into(),
+                statements: vec![format!(
+                    "UPDATE {table} SET status = 'pending', scheduled_date_gmt = UTC_TIMESTAMP(), claim_id = 0 WHERE action_id = 3"
+                )],
+                undo: vec![format!(
+                    "UPDATE {table} SET status = 'failed', scheduled_date_gmt = '2026-01-01 00:00:00' WHERE action_id = 3"
+                )],
+            }
+        );
+    }
+
+    #[test]
+    fn cancelling_an_action_sets_canceled_and_undo_restores_nulls() {
+        let plan = build_action(D, "wp", "t", 3, false, (None, None));
+
+        assert_eq!(plan.description, "Cancel action #3");
+        assert_eq!(
+            plan.statements,
+            ["UPDATE t SET status = 'canceled' WHERE action_id = 3"]
+        );
+        assert_eq!(
+            plan.undo,
+            ["UPDATE t SET status = NULL, scheduled_date_gmt = NULL WHERE action_id = 3"]
+        );
+    }
+
+    #[test]
+    fn meta_target_qualifies_the_entitys_meta_table() {
+        let ctx = ctx(&["wp_posts", "wp_postmeta"]);
+        let catalog = catalog(&ctx);
+
+        assert_eq!(
+            meta_target(D, &ctx, &catalog, "wp", "post").unwrap(),
+            postmeta()
+        );
+        assert!(meta_target(D, &ctx, &catalog, "wp", "no_such_entity").is_err());
+    }
+
+    #[tokio::test]
+    async fn planning_an_autoload_change_reads_the_stored_value_first() {
+        let ctx = ctx(&["wp_options"]);
+        let catalog = catalog(&ctx);
+        let db = FakeDatabase::new().on(
+            "SELECT autoload FROM `wp`.`wp_options` WHERE option_name = 'foo'",
+            rs(&["autoload"], vec![vec![cell("yes")]]),
+        );
+        let request = WpChangeRequest::SetAutoload {
+            database: "wp".into(),
+            option: "foo".into(),
+            on: false,
+        };
+
+        let plan = plan(&db, &ctx, &catalog, &request).await.unwrap();
+
+        assert_eq!(
+            plan,
+            build_set_autoload(D, "wp", OPTIONS, "foo", false, "yes")
+        );
+    }
+
+    #[tokio::test]
+    async fn planning_an_autoload_change_of_a_missing_option_is_refused() {
+        let ctx = ctx(&["wp_options"]);
+        let catalog = catalog(&ctx);
+        let db = FakeDatabase::new().on("SELECT autoload", rs(&["autoload"], vec![]));
+        let request = WpChangeRequest::SetAutoload {
+            database: "wp".into(),
+            option: "foo".into(),
+            on: true,
+        };
+
+        let err = plan(&db, &ctx, &catalog, &request).await.unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.to_string(), "Option foo not found");
+    }
+
+    #[tokio::test]
+    async fn planning_an_action_change_with_a_non_numeric_id_is_refused_without_reading() {
+        let ctx = ctx(&[]);
+        let catalog = catalog(&ctx);
+        let db = FakeDatabase::new();
+        let request = WpChangeRequest::RetryAction {
+            database: "wp".into(),
+            id: "abc".into(),
+        };
+
+        let err = plan(&db, &ctx, &catalog, &request).await.unwrap_err();
+
+        assert_eq!(err.to_string(), "'abc' is not a valid ID");
+        assert!(db.queries().is_empty());
+    }
+
+    #[tokio::test]
+    async fn planning_a_log_cleanup_needs_the_log_table() {
+        let ctx = ctx(&["wp_options"]);
+        let catalog = catalog(&ctx);
+        let db = FakeDatabase::new();
+        let request = WpChangeRequest::DeleteLogsBefore {
+            database: "wp".into(),
+            days: 30,
+            source: None,
+        };
+
+        let err = plan(&db, &ctx, &catalog, &request).await.unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.to_string(), "This site has no woocommerce_log table");
     }
 }

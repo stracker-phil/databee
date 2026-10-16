@@ -7,7 +7,7 @@ use databee_lib::connection::{ConnectionSpec, Secret};
 use databee_lib::db::Cell;
 use databee_lib::db::Database;
 use databee_lib::db::mysql::MySqlSession;
-use databee_lib::wp::changes::{ChangeRequest, plan};
+use databee_lib::wp::changes::{WpChangeRequest, plan};
 use databee_lib::wp::detect;
 use databee_lib::wp::entity::{Catalog, cell_str, definitions};
 
@@ -104,9 +104,9 @@ async fn no_backslash_escapes_writes_keep_a_single_backslash() {
         let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
         let change = plan(
             &db,
-            Some(&ctx),
-            Some(&catalog),
-            &ChangeRequest::SetMeta {
+            &ctx,
+            &catalog,
+            &WpChangeRequest::SetMeta {
                 database: "wp_write".into(),
                 entity: "order".into(),
                 id: "4711".into(),

@@ -6,6 +6,7 @@ the docs pages explain how. An accepted decision is never edited: a new record s
 | No. | Title | Status |
 |---|---|---|
 | [0011](0011-database-trait-object.md) | Driver seam is a `Database` trait object with a `Dialect` value | Accepted |
+| [0012](0012-plans-applied-by-id.md) | Planned changes are stored server-side and applied by id | Accepted |
 | [0013](0013-session-extensions.md) | Per-session module data lives in `Session.ext` | Accepted |
 | [0017](0017-panic-unwind.md) | Keep `panic = "unwind"` so a panic in one command does not take the app down | Accepted |
 | [0018](0018-escaping-follows-sql-mode.md) | Value escaping follows the server's `sql_mode` | Accepted |

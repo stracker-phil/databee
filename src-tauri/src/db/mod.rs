@@ -1,5 +1,6 @@
 pub mod browse;
 pub mod cell;
+pub mod changes;
 pub mod classify;
 pub mod dialect;
 #[cfg(any(test, feature = "test-util"))]
@@ -7,6 +8,7 @@ mod fake;
 pub mod id_filter;
 pub mod lexer;
 pub mod mysql;
+pub mod plans;
 pub mod safety;
 mod types;
 

@@ -1,13 +1,15 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
 use crate::connection::{ConnectionSpec, Secret};
+use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
 use crate::db::{self, Database};
 use crate::error::{AppError, AppResult};
-use crate::lock::RwLockExt;
+use crate::lock::{MutexExt, RwLockExt};
 use crate::secrets::{PasswordSource, SecretStore, resolve_password};
 use crate::state::AppState;
 
@@ -17,6 +19,10 @@ pub struct Session {
     pub db: Box<dyn Database>,
     /// Per-session data of modules, freed with the session (ADR 0013).
     pub ext: Extensions,
+    /// Writes planned for review, and the undo history (ADR 0012).
+    pub plans: Plans,
+    /// Applied writes per database; caches compare it to notice that their data changed.
+    writes: Mutex<HashMap<String, u64>>,
 }
 
 /// A map from type to one shared value of that type, so a module can attach its own data to a
@@ -79,6 +85,93 @@ impl SessionInfo {
 }
 
 impl Session {
+    pub fn new(id: String, spec: ConnectionSpec, db: Box<dyn Database>) -> Self {
+        Self {
+            id,
+            spec,
+            db,
+            ext: Extensions::default(),
+            plans: Plans::default(),
+            writes: Mutex::default(),
+        }
+    }
+
+    pub fn bump_writes(&self, database: &str) {
+        *self
+            .writes
+            .lock_unpoisoned()
+            .entry(database.to_string())
+            .or_default() += 1;
+    }
+
+    /// How many applied batches wrote to `database` in this session.
+    pub fn writes(&self, database: &str) -> u64 {
+        self.writes
+            .lock_unpoisoned()
+            .get(database)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Applies pending plans in one transaction. On failure the plans stay pending for a retry.
+    pub async fn apply_plans(
+        &self,
+        ids: &[PlanId],
+        timeout: Duration,
+    ) -> AppResult<AppliedBatchInfo> {
+        let plans = self.plans.take(ids)?;
+        let statements: Vec<String> = plans
+            .iter()
+            .flat_map(|(_, plan)| plan.statements.iter().cloned())
+            .collect();
+        log::info!(
+            "Applying {} statements on {}",
+            statements.len(),
+            self.spec.identity()
+        );
+        for sql in &statements {
+            log::trace!("SQL: {sql}");
+        }
+        let affected = match self.db.apply(&statements, timeout).await {
+            Ok(affected) => affected,
+            Err(e) => {
+                self.plans.restore(plans);
+                return Err(e);
+            }
+        };
+        let batch = self.plans.record_applied(&plans);
+        for database in &batch.databases {
+            self.bump_writes(database);
+        }
+        Ok(AppliedBatchInfo {
+            batch_id: batch.id,
+            affected,
+            can_undo: batch.can_undo,
+        })
+    }
+
+    /// Runs a batch's undo statements; on failure the batch stays undoable for a retry.
+    pub async fn undo_batch(&self, batch_id: BatchId, timeout: Duration) -> AppResult<u64> {
+        let batch = self.plans.take_undo(batch_id)?;
+        log::info!(
+            "Undoing batch #{batch_id} ({} statements) on {}",
+            batch.undo.len(),
+            self.spec.identity()
+        );
+        match self.db.apply(&batch.undo, timeout).await {
+            Ok(affected) => {
+                for database in &batch.databases {
+                    self.bump_writes(database);
+                }
+                Ok(affected)
+            }
+            Err(e) => {
+                self.plans.restore_undo(batch);
+                Err(e)
+            }
+        }
+    }
+
     pub fn info(&self) -> SessionInfo {
         SessionInfo::new(
             &self.id,
@@ -134,12 +227,8 @@ pub async fn open(state: &AppState, args: OpenArgs) -> AppResult<Arc<Session>> {
         log::warn!("Could not update recent connections: {e}");
     }
     log::info!("Connected to {identity} ({})", db.server_version());
-    Ok(state.sessions.insert(Session {
-        id: uuid::Uuid::new_v4().to_string(),
-        spec: args.spec,
-        db,
-        ext: Extensions::default(),
-    }))
+    let id = uuid::Uuid::new_v4().to_string();
+    Ok(state.sessions.insert(Session::new(id, args.spec, db)))
 }
 
 /// Resolves the password, connects, and settles the launch password: a timeout or network
@@ -237,21 +326,231 @@ impl Sessions {
 mod tests {
     use super::*;
     use crate::db::FakeDatabase;
+    use crate::db::changes::Plan;
 
     fn session(id: &str) -> Session {
-        Session {
-            id: id.into(),
-            spec: ConnectionSpec {
-                name: None,
-                host: "127.0.0.1".into(),
-                port: 3306,
-                socket: None,
-                user: "root".into(),
-                database: None,
-            },
-            db: Box::new(FakeDatabase::new().with_database("wp")),
-            ext: Default::default(),
+        Session::new(
+            id.into(),
+            local_spec(),
+            Box::new(FakeDatabase::new().with_database("wp")),
+        )
+    }
+
+    fn local_spec() -> ConnectionSpec {
+        ConnectionSpec {
+            name: None,
+            host: "127.0.0.1".into(),
+            port: 3306,
+            socket: None,
+            user: "root".into(),
+            database: None,
         }
+    }
+
+    const TIMEOUT: Duration = Duration::from_secs(1);
+
+    fn plan(name: &str, database: &str, undo: &[&str]) -> Plan {
+        Plan {
+            database: database.into(),
+            description: format!("change {name}"),
+            statements: vec![format!("DO {name}")],
+            undo: undo.iter().map(ToString::to_string).collect(),
+        }
+    }
+
+    fn session_over(db: &Arc<FakeDatabase>) -> Session {
+        Session::new("a".into(), local_spec(), Box::new(db.clone()))
+    }
+
+    #[tokio::test]
+    async fn applying_plans_sends_their_statements_in_the_given_order_in_one_batch() {
+        let db = Arc::new(FakeDatabase::new());
+        let session = session_over(&db);
+        let first = session.plans.add(plan("first", "wp", &["UNDO first"]));
+        let second = session.plans.add(plan("second", "wp", &["UNDO second"]));
+
+        let info = session
+            .apply_plans(&[second.id, first.id], TIMEOUT)
+            .await
+            .unwrap();
+
+        assert_eq!(db.applied(), [["DO second", "DO first"]]);
+        assert_eq!(info.affected, 2);
+        assert!(info.can_undo);
+    }
+
+    #[tokio::test]
+    async fn applying_plans_bumps_the_write_counter_of_each_written_database() {
+        let db = Arc::new(FakeDatabase::new());
+        let session = session_over(&db);
+        let a = session.plans.add(plan("a", "wp", &["UNDO a"]));
+        let b = session.plans.add(plan("b", "blog", &["UNDO b"]));
+        let c = session.plans.add(plan("c", "wp", &["UNDO c"]));
+
+        session
+            .apply_plans(&[a.id, b.id, c.id], TIMEOUT)
+            .await
+            .unwrap();
+
+        assert_eq!(session.writes("wp"), 1);
+        assert_eq!(session.writes("blog"), 1);
+        assert_eq!(session.writes("other"), 0);
+    }
+
+    #[tokio::test]
+    async fn applied_batch_is_undone_with_the_last_plans_undo_first_and_bumps_writes() {
+        let db = Arc::new(FakeDatabase::new());
+        let session = session_over(&db);
+        let first = session.plans.add(plan("first", "wp", &["UNDO first"]));
+        let second = session.plans.add(plan("second", "wp", &["UNDO second"]));
+        let info = session
+            .apply_plans(&[first.id, second.id], TIMEOUT)
+            .await
+            .unwrap();
+
+        let affected = session.undo_batch(info.batch_id, TIMEOUT).await.unwrap();
+
+        assert_eq!(affected, 2);
+        assert_eq!(db.applied()[1], ["UNDO second", "UNDO first"]);
+        assert_eq!(session.writes("wp"), 2);
+        assert_eq!(
+            session
+                .undo_batch(info.batch_id, TIMEOUT)
+                .await
+                .unwrap_err()
+                .kind(),
+            "invalid_input"
+        );
+    }
+
+    #[tokio::test]
+    async fn applying_an_unknown_plan_fails_and_leaves_the_known_plans_pending() {
+        let db = Arc::new(FakeDatabase::new());
+        let session = session_over(&db);
+        let known = session.plans.add(plan("a", "wp", &["UNDO a"]));
+
+        let err = session
+            .apply_plans(&[known.id, known.id + 100], TIMEOUT)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_input");
+        assert!(db.applied().is_empty());
+        assert_eq!(session.writes("wp"), 0);
+        assert!(session.apply_plans(&[known.id], TIMEOUT).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn applying_a_plan_without_undo_reports_that_it_cannot_be_undone() {
+        let db = Arc::new(FakeDatabase::new());
+        let session = session_over(&db);
+        let a = session.plans.add(plan("a", "wp", &[]));
+
+        let info = session.apply_plans(&[a.id], TIMEOUT).await.unwrap();
+
+        assert!(!info.can_undo);
+        assert_eq!(
+            session
+                .undo_batch(info.batch_id, TIMEOUT)
+                .await
+                .unwrap_err()
+                .kind(),
+            "invalid_input"
+        );
+        assert_eq!(db.applied().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn applied_batch_info_serializes_camel_case() {
+        let db = Arc::new(FakeDatabase::new());
+        let session = session_over(&db);
+        let a = session.plans.add(plan("a", "wp", &["UNDO a"]));
+
+        let info = session.apply_plans(&[a.id], TIMEOUT).await.unwrap();
+
+        assert_eq!(
+            serde_json::to_value(&info).unwrap(),
+            serde_json::json!({"batchId": info.batch_id, "affected": 1, "canUndo": true})
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn planned_row_edit_is_applied_by_id_and_undone_by_batch_on_the_fixture() {
+        use crate::db::changes::{ChangeRequest, plan};
+        use crate::db::mysql::MySqlSession;
+
+        for (host, port) in [("127.0.0.1", 33306), ("127.0.0.1", 33307)] {
+            let spec = ConnectionSpec {
+                port,
+                database: Some("wp_write".into()),
+                ..local_spec()
+            };
+            let db = MySqlSession::connect(&spec, Some(&Secret::new("root")), TIMEOUT, TIMEOUT)
+                .await
+                .unwrap();
+            let session = Session::new("it".into(), spec, Box::new(db));
+            let read = |sql: &'static str| {
+                let session = &session;
+                async move {
+                    session.db.fetch(sql, TIMEOUT).await.unwrap().rows[0][0]
+                        .as_text()
+                        .map(str::to_string)
+                }
+            };
+            let sql = "SELECT post_name FROM wp_write.wp_posts WHERE ID = 201";
+            let before = read(sql).await;
+            let request = ChangeRequest::SetCell {
+                database: "wp_write".into(),
+                table: "wp_posts".into(),
+                key_column: "ID".into(),
+                key: "201".into(),
+                column: "post_name".into(),
+                value: Some("applied-by-id".into()),
+            };
+            let planned = plan(session.db.as_ref(), &request, TIMEOUT).await.unwrap();
+            let change = session.plans.add(planned);
+            assert_eq!(
+                read(sql).await,
+                before,
+                "{host}:{port}: planning writes nothing"
+            );
+
+            let info = session.apply_plans(&[change.id], TIMEOUT).await.unwrap();
+            assert_eq!(
+                read(sql).await.as_deref(),
+                Some("applied-by-id"),
+                "{host}:{port}"
+            );
+
+            session.undo_batch(info.batch_id, TIMEOUT).await.unwrap();
+            assert_eq!(
+                read(sql).await,
+                before,
+                "{host}:{port}: undo restores the row"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn applying_an_unknown_plan_id_writes_nothing_on_the_fixture() {
+        use crate::db::mysql::MySqlSession;
+
+        let spec = ConnectionSpec {
+            port: 33306,
+            database: Some("wp_write".into()),
+            ..local_spec()
+        };
+        let db = MySqlSession::connect(&spec, Some(&Secret::new("root")), TIMEOUT, TIMEOUT)
+            .await
+            .unwrap();
+        let session = Session::new("it".into(), spec, Box::new(db));
+
+        let err = session.apply_plans(&[999], TIMEOUT).await.unwrap_err();
+
+        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(session.writes("wp_write"), 0);
     }
 
     #[test]
@@ -420,8 +719,9 @@ mod tests {
                 site: Default::default(),
                 tables: Default::default(),
             },
+            0,
         );
-        assert!(first.ext.get::<WpCache>().unwrap().get("wp").is_some());
+        assert!(first.ext.get::<WpCache>().unwrap().get("wp", 0).is_some());
 
         sessions.remove("a");
         let reopened = sessions.insert(session("b"));

@@ -17,6 +17,16 @@ pub enum Cell {
     },
 }
 
+impl Cell {
+    /// The stored text; `None` for NULL and binary cells, which only carry a preview.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Cell::Number(s) | Cell::Text(s) | Cell::Temporal(s) | Cell::Json(s) => Some(s),
+            Cell::Null | Cell::Bytes { .. } => None,
+        }
+    }
+}
+
 const HEX_PREVIEW_BYTES: usize = 16;
 
 /// Converts a raw text-protocol value into a `Cell` of its column's family.

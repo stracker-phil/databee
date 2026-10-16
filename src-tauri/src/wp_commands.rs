@@ -1,8 +1,12 @@
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::db::changes::{ChangeRequest, Plan};
+use crate::db::plans::PlannedChange;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use crate::wp::cache::WpCache;
+use crate::wp::changes::{self, WpChangeRequest};
 use crate::wp::context::WpContext;
 use crate::wp::dashboard::{self, BrowserSection, Dashboard, DayBucket};
 use crate::wp::detail::{self, EntityView, SearchHit};
@@ -31,7 +35,8 @@ async fn context(
 ) -> AppResult<Option<WpContext>> {
     let session = state.sessions.get(session_id)?;
     let cache = session.ext.get_or_insert_with(WpCache::default);
-    if !refresh && let Some(cached) = cache.get(database) {
+    let writes = session.writes(database);
+    if !refresh && let Some(cached) = cache.get(database, writes) {
         return Ok(Some(cached));
     }
     let ctx = lens::detect(session.db.as_ref(), database).await?;
@@ -45,7 +50,7 @@ async fn context(
         None => log::debug!("{database} is not a WordPress database"),
     }
     match &ctx {
-        Some(c) => cache.insert(database, c.clone()),
+        Some(c) => cache.insert(database, c.clone(), writes),
         None => cache.remove(database),
     }
     Ok(ctx)
@@ -423,33 +428,57 @@ pub async fn wp_compare(
 }
 
 #[tauri::command]
+pub async fn wp_plan_change(
+    state: State<'_, AppState>,
+    session_id: String,
+    change: WpChangeRequest,
+) -> AppResult<PlannedChange> {
+    let session = state.sessions.get(&session_id)?;
+    let plan = plan_wp(&state, &session_id, &change).await?;
+    Ok(session.plans.add(plan))
+}
+
+async fn plan_wp(state: &AppState, session_id: &str, change: &WpChangeRequest) -> AppResult<Plan> {
+    let (ctx, catalog, session) = wp_env(state, session_id, change.database()).await?;
+    changes::plan(session.db.as_ref(), &ctx, &catalog, change).await
+}
+
+/// Either kind of change, for the combined `plan_change` the page still calls.
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum AnyChange {
+    Row(ChangeRequest),
+    Wp(WpChangeRequest),
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyPlannedChange {
+    pub description: String,
+    pub statements: Vec<String>,
+    pub undo: Vec<String>,
+}
+
+/// Plans without storing; replaced by `plan_row_change` and `wp_plan_change`.
+#[tauri::command]
 pub async fn plan_change(
     state: State<'_, AppState>,
     session_id: String,
-    change: crate::wp::changes::ChangeRequest,
-) -> AppResult<crate::wp::changes::PlannedChange> {
-    use crate::wp::changes::ChangeRequest as C;
-    let database = match &change {
-        C::SetCell { database, .. }
-        | C::DeleteRow { database, .. }
-        | C::DuplicateRow { database, .. }
-        | C::InsertRow { database, .. }
-        | C::SetMeta { database, .. }
-        | C::DeleteMeta { database, .. }
-        | C::SetOrderStatus { database, .. }
-        | C::SetAutoload { database, .. }
-        | C::DeleteExpiredTransients { database }
-        | C::DeleteLogsBefore { database, .. }
-        | C::RetryAction { database, .. }
-        | C::CancelAction { database, .. } => database.clone(),
+    change: AnyChange,
+) -> AppResult<LegacyPlannedChange> {
+    let plan = match &change {
+        AnyChange::Row(change) => {
+            let session = state.sessions.get(&session_id)?;
+            let timeout = state.settings.get().query_timeout();
+            crate::db::changes::plan(session.db.as_ref(), change, timeout).await?
+        }
+        AnyChange::Wp(change) => plan_wp(&state, &session_id, change).await?,
     };
-    let session = state.sessions.get(&session_id)?;
-    let ctx = context(&state, &session_id, &database, false).await?;
-    let catalog = match &ctx {
-        Some(c) => Some(catalog(&state, c)?),
-        None => None,
-    };
-    crate::wp::changes::plan(session.db.as_ref(), ctx.as_ref(), catalog.as_ref(), &change).await
+    Ok(LegacyPlannedChange {
+        description: plan.description,
+        statements: plan.statements,
+        undo: plan.undo,
+    })
 }
 
 #[tauri::command]

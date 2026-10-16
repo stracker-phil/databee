@@ -817,11 +817,16 @@ async fn apply(db: &MySqlSession, statements: &[String]) {
 #[tokio::test]
 #[ignore]
 async fn edits_apply_and_undo_cleanly() {
-    use databee_lib::wp::changes::{ChangeRequest as C, plan};
+    use databee_lib::db::changes::{ChangeRequest as R, plan as plan_row};
+    use databee_lib::wp::changes::{WpChangeRequest as C, plan};
     for (db, ctx, catalog) in write_env().await {
         let p = |c: C| {
             let (db, ctx, catalog) = (&db, &ctx, &catalog);
-            async move { plan(db, Some(ctx), Some(catalog), &c).await.unwrap() }
+            async move { plan(db, ctx, catalog, &c).await.unwrap() }
+        };
+        let row = |c: R| {
+            let db = &db;
+            async move { plan_row(db, &c, TIMEOUT).await.unwrap() }
         };
         let d = || "wp_write".to_string();
 
@@ -893,7 +898,7 @@ async fn edits_apply_and_undo_cleanly() {
             &databee_lib::decode::edit::NewValue::String("PayPal ✓".into()),
         )
         .unwrap();
-        let change = p(C::SetCell {
+        let change = row(R::SetCell {
             database: d(),
             table: "wp_options".into(),
             key_column: "option_name".into(),
@@ -971,7 +976,7 @@ async fn edits_apply_and_undo_cleanly() {
         );
 
         // Deleting a row restores it exactly.
-        let change = p(C::DeleteRow {
+        let change = row(R::DeleteRow {
             database: d(),
             table: "wp_postmeta".into(),
             key_column: "meta_id".into(),
@@ -1071,8 +1076,8 @@ fn set_cell(
     key: &str,
     column: &str,
     value: Option<&str>,
-) -> databee_lib::wp::changes::ChangeRequest {
-    databee_lib::wp::changes::ChangeRequest::SetCell {
+) -> databee_lib::db::changes::ChangeRequest {
+    databee_lib::db::changes::ChangeRequest::SetCell {
         database: "wp_write".into(),
         table: table.into(),
         key_column: key_column.into(),
@@ -1085,15 +1090,14 @@ fn set_cell(
 #[tokio::test]
 #[ignore]
 async fn undo_restores_an_empty_string_instead_of_null() {
-    use databee_lib::wp::changes::plan;
+    use databee_lib::db::changes::plan;
     for db in sessions().await {
         let read = "SELECT post_name FROM wp_write.wp_posts WHERE ID = 201";
         assert_eq!(scalar(&db, read).await.as_deref(), Some(""));
         let change = plan(
             &db,
-            None,
-            None,
             &set_cell("wp_posts", "ID", "201", "post_name", Some("x")),
+            TIMEOUT,
         )
         .await
         .unwrap();
@@ -1111,7 +1115,7 @@ async fn undo_restores_an_empty_string_instead_of_null() {
 #[tokio::test]
 #[ignore]
 async fn undo_restores_a_null_cell_to_null() {
-    use databee_lib::wp::changes::plan;
+    use databee_lib::db::changes::plan;
     for db in sessions().await {
         let id = scalar(
             &db,
@@ -1123,8 +1127,6 @@ async fn undo_restores_a_null_cell_to_null() {
         assert_eq!(scalar(&db, &read).await, None);
         let change = plan(
             &db,
-            None,
-            None,
             &set_cell(
                 "wp_wc_order_addresses",
                 "id",
@@ -1132,6 +1134,7 @@ async fn undo_restores_a_null_cell_to_null() {
                 "email",
                 Some("ship@shop.test"),
             ),
+            TIMEOUT,
         )
         .await
         .unwrap();
@@ -1145,12 +1148,10 @@ async fn undo_restores_a_null_cell_to_null() {
 #[tokio::test]
 #[ignore]
 async fn editing_a_binary_cell_has_no_undo() {
-    use databee_lib::wp::changes::{ChangeRequest, plan};
+    use databee_lib::db::changes::{ChangeRequest, plan};
     for db in sessions().await {
         let change = plan(
             &db,
-            None,
-            None,
             &ChangeRequest::SetCell {
                 database: "databee_test".into(),
                 table: "types".into(),
@@ -1159,6 +1160,7 @@ async fn editing_a_binary_cell_has_no_undo() {
                 column: "blob_data".into(),
                 value: Some("x".into()),
             },
+            TIMEOUT,
         )
         .await
         .unwrap();
@@ -1174,7 +1176,7 @@ async fn editing_a_binary_cell_has_no_undo() {
 #[tokio::test]
 #[ignore]
 async fn undo_of_a_key_column_change_finds_the_row_by_its_new_key() {
-    use databee_lib::wp::changes::plan;
+    use databee_lib::db::changes::plan;
     for db in sessions().await {
         let count = |name: &'static str| {
             let db = &db;
@@ -1190,8 +1192,6 @@ async fn undo_of_a_key_column_change_finds_the_row_by_its_new_key() {
         };
         let change = plan(
             &db,
-            None,
-            None,
             &set_cell(
                 "wp_options",
                 "option_name",
@@ -1199,6 +1199,7 @@ async fn undo_of_a_key_column_change_finds_the_row_by_its_new_key() {
                 "option_name",
                 Some("zzz_renamed"),
             ),
+            TIMEOUT,
         )
         .await
         .unwrap();
@@ -1214,7 +1215,7 @@ async fn undo_of_a_key_column_change_finds_the_row_by_its_new_key() {
 #[tokio::test]
 #[ignore]
 async fn set_meta_refuses_duplicate_rows() {
-    use databee_lib::wp::changes::{ChangeRequest, plan};
+    use databee_lib::wp::changes::{WpChangeRequest, plan};
     for (db, ctx, catalog) in write_env().await {
         apply(
             &db,
@@ -1223,9 +1224,9 @@ async fn set_meta_refuses_duplicate_rows() {
         .await;
         let result = plan(
             &db,
-            Some(&ctx),
-            Some(&catalog),
-            &ChangeRequest::SetMeta {
+            &ctx,
+            &catalog,
+            &WpChangeRequest::SetMeta {
                 database: "wp_write".into(),
                 entity: "user".into(),
                 id: "12".into(),
@@ -1251,13 +1252,13 @@ async fn set_meta_refuses_duplicate_rows() {
 #[tokio::test]
 #[ignore]
 async fn delete_meta_of_a_missing_key_is_refused() {
-    use databee_lib::wp::changes::{ChangeRequest, plan};
+    use databee_lib::wp::changes::{WpChangeRequest, plan};
     for (db, ctx, catalog) in write_env().await {
         let result = plan(
             &db,
-            Some(&ctx),
-            Some(&catalog),
-            &ChangeRequest::DeleteMeta {
+            &ctx,
+            &catalog,
+            &WpChangeRequest::DeleteMeta {
                 database: "wp_write".into(),
                 entity: "user".into(),
                 id: "12".into(),
@@ -1272,13 +1273,13 @@ async fn delete_meta_of_a_missing_key_is_refused() {
 #[tokio::test]
 #[ignore]
 async fn log_retention_plans_a_fixed_cutoff_literal() {
-    use databee_lib::wp::changes::{ChangeRequest, plan};
+    use databee_lib::wp::changes::{WpChangeRequest, plan};
     for (db, ctx, catalog) in write_env().await {
         let change = plan(
             &db,
-            Some(&ctx),
-            Some(&catalog),
-            &ChangeRequest::DeleteLogsBefore {
+            &ctx,
+            &catalog,
+            &WpChangeRequest::DeleteLogsBefore {
                 database: "wp_write".into(),
                 days: 0,
                 source: None,

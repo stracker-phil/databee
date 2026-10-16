@@ -3,6 +3,8 @@ use std::time::Instant;
 
 use tauri::State;
 
+use crate::db::changes::{self, ChangeRequest};
+use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, PlannedChange};
 use crate::db::safety::destructive_reason;
 use crate::db::{
     BrowsePage, BrowseRequest, DatabaseInfo, ExecuteResponse, TableInfo, TableStructure,
@@ -166,6 +168,52 @@ pub async fn browse_table(
         .await
 }
 
+#[tauri::command]
+pub async fn plan_row_change(
+    state: State<'_, AppState>,
+    session_id: String,
+    change: ChangeRequest,
+) -> AppResult<PlannedChange> {
+    let session = state.sessions.get(&session_id)?;
+    let timeout = state.settings.get().query_timeout();
+    let plan = changes::plan(session.db.as_ref(), &change, timeout).await?;
+    Ok(session.plans.add(plan))
+}
+
+#[tauri::command]
+pub fn discard_change(state: State<'_, AppState>, session_id: String, id: PlanId) -> AppResult<()> {
+    state.sessions.get(&session_id)?.plans.discard(id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn apply_planned(
+    state: State<'_, AppState>,
+    session_id: String,
+    ids: Vec<PlanId>,
+) -> AppResult<AppliedBatchInfo> {
+    let timeout = state.settings.get().query_timeout();
+    state
+        .sessions
+        .get(&session_id)?
+        .apply_plans(&ids, timeout)
+        .await
+}
+
+#[tauri::command]
+pub async fn undo_batch(
+    state: State<'_, AppState>,
+    session_id: String,
+    batch_id: BatchId,
+) -> AppResult<u64> {
+    let timeout = state.settings.get().query_timeout();
+    state
+        .sessions
+        .get(&session_id)?
+        .undo_batch(batch_id, timeout)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -190,12 +238,9 @@ mod tests {
     fn state_with(db: FakeDatabase) -> (tempfile::TempDir, AppState) {
         let dir = tempfile::tempdir().unwrap();
         let state = AppState::open(dir.path(), Arc::new(MemoryStore::default()));
-        state.sessions.insert(Session {
-            id: "s1".into(),
-            spec: spec(),
-            db: Box::new(db),
-            ext: Default::default(),
-        });
+        state
+            .sessions
+            .insert(Session::new("s1".into(), spec(), Box::new(db)));
         (dir, state)
     }
 

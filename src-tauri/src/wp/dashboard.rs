@@ -3,7 +3,7 @@
 use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
 use serde::Serialize;
 
-use super::changes::ChangeRequest;
+use super::changes::WpChangeRequest;
 use super::context::{HposMode, SiteZone, WpContext};
 use super::fetch;
 use super::lists::{self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary, num, text};
@@ -65,7 +65,7 @@ pub struct InsightAction {
     pub kind: &'static str,
     pub list: Option<&'static str>,
     pub status: Option<&'static str>,
-    pub change: Option<ChangeRequest>,
+    pub change: Option<WpChangeRequest>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -87,7 +87,7 @@ fn go(label: &str, list: &'static str, status: Option<&'static str>) -> Option<I
     })
 }
 
-fn change(label: &str, change: ChangeRequest) -> Option<InsightAction> {
+fn change(label: &str, change: WpChangeRequest) -> Option<InsightAction> {
     Some(InsightAction {
         label: label.into(),
         kind: "change",
@@ -324,7 +324,7 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
                 action: if top.category == "logs" && top.name.ends_with("woocommerce_log") {
                     change(
                         "Set retention",
-                        ChangeRequest::DeleteLogsBefore {
+                        WpChangeRequest::DeleteLogsBefore {
                             database: db.into(),
                             days: 30,
                             source: None,
@@ -386,7 +386,7 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
             ),
             action: change(
                 "Clean up",
-                ChangeRequest::DeleteExpiredTransients {
+                WpChangeRequest::DeleteExpiredTransients {
                     database: db.into(),
                 },
             ),
@@ -909,7 +909,7 @@ mod tests {
         );
         assert!(matches!(
             retention.change,
-            Some(ChangeRequest::DeleteLogsBefore { days: 30, .. })
+            Some(WpChangeRequest::DeleteLogsBefore { days: 30, .. })
         ));
         let failed = d
             .insights
@@ -928,7 +928,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             cleanup.action.as_ref().unwrap().change,
-            Some(ChangeRequest::DeleteExpiredTransients { .. })
+            Some(WpChangeRequest::DeleteExpiredTransients { .. })
         ));
     }
 

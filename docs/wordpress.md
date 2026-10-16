@@ -181,13 +181,14 @@ PayPal fee breakdowns (`detail::paypal_fees`) use `hints::DEFAULT_PRICE_DECIMALS
 
 ## Writes
 
-Every WordPress write is a `ChangeRequest` variant planned by `changes::plan` and applied through the pipeline
-in [database.md](database.md#editing-rows):
+Every WordPress write is a `WpChangeRequest` variant, planned by `wp_plan_change` (`changes::plan`, one
+fetch-then-build function per variant; `meta_target` resolves where an entity's meta lives) into the same
+session plans as row edits, then applied and undone by id like them
+([database.md](database.md#editing-rows)). The WordPress context cache notices applied writes through the
+session's write counter, so the core never calls into the lens.
 
 | Variant | Effect | Undo |
 |---|---|---|
-| `SetCell`, `DeleteRow` | key must match one row | yes; none for binary values |
-| `DuplicateRow`, `InsertRow` | | none |
 | `SetMeta` | inserts, or updates the one row of that key; refuses when the key has several rows | yes |
 | `DeleteMeta` | meta rows of an entity; refuses when the key has no row | reinserts exact rows |
 | `SetOrderStatus` | `wc_orders.status` plus the posts copy when it exists | yes |
@@ -198,7 +199,7 @@ in [database.md](database.md#editing-rows):
 
 The tray warns that these are raw SQL writes, so no WordPress hooks run.
 
-Undo fidelity: old values are restored exactly (`changes::restore_literal`). `NULL` stays `NULL` and `''`
+Undo fidelity: old values are restored exactly (`db::changes::restore_literal`). `NULL` stays `NULL` and `''`
 stays `''`. Binary cells only carry a preview, so their edits get no undo and the description says why
 (`(no undo: …)`). When `SetCell` changes the key column itself, the undo finds the row by its new key.
 `DeleteLogsBefore` reads `UTC_TIMESTAMP()` once while planning and embeds the cutoff as a literal, so the
