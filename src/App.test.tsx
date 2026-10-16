@@ -51,4 +51,15 @@ describe("App", () => {
     expect(useStore.getState().settings?.uiFontSize).toBe(14);
     expect(useStore.getState().settings?.dataFontSize).toBe(13);
   });
+
+  it("applies rebound shortcuts without a restart", async () => {
+    connectedStore();
+    render(<App />);
+    await screen.findByText("wp_options");
+    await useStore.getState().saveKeybindings({ "palette.open": "Mod+J" });
+    await userEvent.keyboard("{Meta>}k{/Meta}");
+    expect(useStore.getState().paletteOpen).toBe(false);
+    await userEvent.keyboard("{Meta>}j{/Meta}");
+    expect(useStore.getState().paletteOpen).toBe(true);
+  });
 });

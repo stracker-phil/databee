@@ -90,11 +90,12 @@ export function CommandPalette() {
   const items: Item[] = useMemo(() => {
     const close = () => setPaletteOpen(false);
     const db = session?.database;
+    const inMode = (c: Command) => ((c.scope === "wp") === (mode === "wp") ? 1 : 0);
     const commandItems = (prefix === null || prefix === ">" ? allCommands() : [])
       .filter((c: Command) => c.when?.() !== false)
       .map((c) => ({ c, s: score(c.title, needle) }))
       .filter(({ s }) => s > 0)
-      .sort((a, b) => b.s - a.s || (a.c.scope === "wp") === (mode === "wp") ? -1 : 1)
+      .sort((a, b) => b.s - a.s || inMode(b.c) - inMode(a.c))
       .map(({ c }): Item => ({
         key: `cmd:${c.id}`,
         section: "Commands",

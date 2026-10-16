@@ -342,6 +342,18 @@ describe("Command palette", () => {
     expect(useStore.getState().tabs.some((t) => t.kind === "table" && t.table === "wp_options")).toBe(true);
   });
 
+  it("ranks commands by how well their title matches", async () => {
+    useStore.getState().setPaletteOpen(true);
+    render(<CommandPalette />);
+    const input = screen.getByLabelText("Search everything");
+    const titles = () => screen.getAllByRole("option").map((o) => o.getAttribute("data-stage-label"));
+    await userEvent.type(input, ">filter");
+    expect(titles()).toEqual(["Filter tables", "Value filter (WHERE)"]);
+    await userEvent.clear(input);
+    await userEvent.type(input, ">zoom");
+    expect(titles()).toEqual(["Zoom in", "Zoom out", "Reset zoom"]);
+  });
+
   it("lists every entity type that has a numeric ID", async () => {
     mocked.wpSearch.mockResolvedValue([
       { entity: "order", id: "3229", title: "Order #3229", subtitle: null, matched: "id" },

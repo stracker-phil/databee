@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { setOverrides } from "../commands/registry";
 import {
   accountOf,
   EMPTY_UI_STATE,
@@ -593,6 +594,7 @@ export const useStore = create<Store>()((set, get) => {
       try {
         const saved = await api.setKeybindings(bindings);
         set({ keybindings: saved });
+        setOverrides(saved);
       } catch (e) {
         fail(e, "Could not save shortcuts");
       }
