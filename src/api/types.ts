@@ -24,6 +24,79 @@ export interface Settings {
   gravatar: boolean;
   /** Value inspector and WordPress detail pane: beside or below the content. */
   inspectorDock: "right" | "bottom";
+  /** The local HTTP API through which Stage presents databee. */
+  stage: StageSettings;
+}
+
+export interface StageSettings {
+  enabled: boolean;
+  port: number;
+  token: string;
+}
+
+export interface StageStatus {
+  enabled: boolean;
+  running: boolean;
+  error: string | null;
+  url: string;
+  /** Set while the discovery file exists. */
+  discoveryFile: string | null;
+}
+
+/** CSS pixels from the page's top-left. */
+export interface StageRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** An element marked `data-stage="<id>"`, as the page measures it. */
+export interface PageAnchor {
+  id: string;
+  label: string;
+  rect: StageRect;
+  /** At least half of it shows (or, larger than its scroll area, it fills half of that). */
+  inView: boolean;
+}
+
+/** A key combination as the page dispatches it (`KeyboardEvent` names). */
+export interface StageKeys {
+  key: string;
+  code: string;
+  meta: boolean;
+  shift: boolean;
+  alt: boolean;
+  ctrl: boolean;
+}
+
+/** Rust → page (`stage:act`). */
+export interface StageActRequest {
+  request: string;
+  kind: "click" | "type" | "reveal" | "keys" | "command";
+  anchor?: string;
+  text?: string;
+  keys?: StageKeys;
+  command?: string;
+}
+
+/** Page → Rust (`stage_done`); `handled` is false when the anchor isn't on the page. */
+export interface StageActReply {
+  request: string;
+  page: string;
+  handled: boolean;
+  ok: boolean;
+  error?: string;
+  rect?: StageRect;
+}
+
+/** Page → Rust (`stage_info`): what the page shows and can do, for Stage's narration. */
+export interface StageInfoReply {
+  request: string;
+  page: string;
+  state: Record<string, string | number | boolean | null>;
+  view: string | null;
+  commands: { id: string; help: string; available: boolean }[];
 }
 
 export const ACCENTS = ["blue", "purple", "pink", "graphite"] as const;

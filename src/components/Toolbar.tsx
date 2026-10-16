@@ -14,9 +14,9 @@ export function Toolbar() {
   const databases = (schema?.databases ?? []).filter((d) => showSystem || !d.isSystem || d.name === session?.database);
 
   return (
-    <header className="toolbar" data-tauri-drag-region>
+    <header className="toolbar" data-tauri-drag-region data-stage="toolbar" data-stage-label="Toolbar">
       {session ? (
-        <div className="conn-pill">
+        <div className="conn-pill" data-stage="toolbar:connection" data-stage-label={`Connection ${session.identity}`}>
           <span className="dot" title={`Connected · ${session.serverVersion}`} />
           {sessions.length > 1 ? (
             <select aria-label="Connection" value={session.id} onChange={(e) => setActiveSession(e.target.value)}>
@@ -27,13 +27,13 @@ export function Toolbar() {
           ) : (
             <span className="name" title={session.identity}>{session.displayName}</span>
           )}
-          <select aria-label="Database" value={session.database ?? ""} onChange={(e) => void switchDatabase(session.id, e.target.value)}>
+          <select data-stage="toolbar:database" aria-label="Database" value={session.database ?? ""} onChange={(e) => void switchDatabase(session.id, e.target.value)}>
             {!session.database && <option value="">No database</option>}
             {databases.map((d) => (
               <option key={d.name} value={d.name}>{d.name}</option>
             ))}
           </select>
-          <button className="icon-btn" aria-label="Disconnect" title="Disconnect" onClick={() => void disconnect(session.id)}>
+          <button data-stage="toolbar:disconnect" className="icon-btn" aria-label="Disconnect" title="Disconnect" onClick={() => void disconnect(session.id)}>
             <Unplug size="1.077rem" />
           </button>
         </div>
@@ -41,23 +41,23 @@ export function Toolbar() {
         <span className="app-title">databee</span>
       )}
       {wp && (
-        <div className="segmented mode-switch" role="group" aria-label="Mode">
-          <button aria-pressed={mode === "wp"} onClick={() => setMode("wp")} title="WordPress dashboard">
+        <div className="segmented mode-switch" role="group" aria-label="Mode" data-stage="toolbar:mode">
+          <button data-stage="toolbar:mode:wp" aria-pressed={mode === "wp"} onClick={() => setMode("wp")} title="WordPress dashboard">
             <LayoutDashboard size="0.923rem" /> WordPress
           </button>
-          <button aria-pressed={mode === "db"} onClick={() => setMode("db")} title="Tables and SQL">
+          <button data-stage="toolbar:mode:db" aria-pressed={mode === "db"} onClick={() => setMode("db")} title="Tables and SQL">
             <Database size="0.923rem" /> Database
           </button>
         </div>
       )}
       <div className="spacer" data-tauri-drag-region />
-      <button className="icon-btn" aria-label="New connection" title="New connection (⌘N)" onClick={() => openDialog({ type: "connect" })}>
+      <button data-stage="toolbar:new-connection" className="icon-btn" aria-label="New connection" title="New connection (⌘N)" onClick={() => openDialog({ type: "connect" })}>
         <PlugZap size="1.231rem" />
       </button>
-      <button className="icon-btn" aria-label="New query" title="New query (⌘T)" disabled={!session} onClick={() => (setMode("db"), openQueryTab())}>
+      <button data-stage="toolbar:new-query" className="icon-btn" aria-label="New query" title="New query (⌘T)" disabled={!session} onClick={() => (setMode("db"), openQueryTab())}>
         <FilePlus2 size="1.231rem" />
       </button>
-      <button className="icon-btn" aria-label="Settings" title="Settings (⌘,)" onClick={() => openDialog({ type: "settings" })}>
+      <button data-stage="toolbar:settings" className="icon-btn" aria-label="Settings" title="Settings (⌘,)" onClick={() => openDialog({ type: "settings" })}>
         <SettingsIcon size="1.231rem" />
       </button>
     </header>

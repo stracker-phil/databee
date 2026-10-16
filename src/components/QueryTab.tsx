@@ -12,7 +12,7 @@ import { Splitter, usePaneSize, useWindowSize } from "./Splitter";
 
 export function ErrorPanel({ message, code }: { message: string; code: string | null }) {
   return (
-    <div className="error-panel" role="alert">
+    <div className="error-panel" role="alert" data-stage="query:error" data-stage-label="Query error">
       <AlertTriangle size="1.231rem" style={{ flex: "none", marginTop: 1 }} />
       <div>
         {code && <div className="code">Error {code}</div>}
@@ -74,19 +74,20 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
       <Splitter axis="y" paneAfter={false} label="Resize editor" {...editor} />
       <div className="action-bar">
         {tab.running ? (
-          <button className="btn" onClick={() => void cancelQuery(tab.id)}>
+          <button data-stage="query:cancel" className="btn" onClick={() => void cancelQuery(tab.id)}>
             <Square size="0.923rem" /> Cancel
           </button>
         ) : (
           <>
             <button
+              data-stage="query:run"
               className="btn btn-primary"
               disabled={!tab.sql.trim()}
               onClick={() => run(viewRef.current ? currentStatement(viewRef.current) : tab.sql)}
             >
               <Play size="0.923rem" /> Run
             </button>
-            <button className="btn" disabled={!tab.sql.trim()} onClick={() => run(tab.sql)}>
+            <button data-stage="query:run-all" className="btn" disabled={!tab.sql.trim()} onClick={() => run(tab.sql)}>
               <PlayCircle size="0.923rem" /> Run all
             </button>
           </>
@@ -94,7 +95,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
         <span className="kbd">⌘↵ statement · ⇧⌘↵ all</span>
         <div className="spacer" />
         {results.length > 1 && (
-          <div className="segmented" aria-label="Results">
+          <div className="segmented" aria-label="Results" data-stage="query:results-picker">
             {results.map((_, i) => (
               <button key={i} aria-pressed={i === tab.activeResult} onClick={() => updateTab(tab.id, { activeResult: i })}>
                 {i + 1}

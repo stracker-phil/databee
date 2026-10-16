@@ -13,8 +13,9 @@ function ConfirmDialog({ title, message, confirmLabel, onConfirm }: { title: str
       <h2 id="confirm-title">{title}</h2>
       <p className="muted" style={{ margin: 0 }}>{message}</p>
       <div className="actions">
-        <button className="btn" onClick={close}>Cancel</button>
+        <button data-stage="dialog:cancel" className="btn" onClick={close}>Cancel</button>
         <button
+          data-stage="dialog:confirm"
           className="btn btn-danger"
           autoFocus
           onClick={() => {
@@ -46,8 +47,8 @@ function PromptDialog({ title, value, onSubmit }: { title: string; value: string
         <h2 id="prompt-title">{title}</h2>
         <input className="input" autoFocus aria-label={title} value={text} onChange={(e) => setText(e.target.value)} />
         <div className="actions">
-          <button type="button" className="btn" onClick={close}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={!text.trim()}>Save</button>
+          <button data-stage="dialog:cancel" type="button" className="btn" onClick={close}>Cancel</button>
+          <button data-stage="dialog:confirm" type="submit" className="btn btn-primary" disabled={!text.trim()}>Save</button>
         </div>
       </form>
     </Modal>
@@ -88,8 +89,8 @@ export function PasswordDialog({ spec, error, savePassword }: { spec: Parameters
           Save in Keychain
         </label>
         <div className="actions">
-          <button type="button" className="btn" onClick={close}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={busy}>
+          <button data-stage="dialog:cancel" type="button" className="btn" onClick={close}>Cancel</button>
+          <button data-stage="dialog:confirm" type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? "Connecting…" : "Connect"}
           </button>
         </div>
@@ -126,8 +127,8 @@ function InsertRowDialog({ database, table, columns }: { database: string; table
           ))}
         </div>
         <div className="actions">
-          <button type="button" className="btn" onClick={close}>Cancel</button>
-          <button type="submit" className="btn btn-primary">Queue insert</button>
+          <button data-stage="dialog:cancel" type="button" className="btn" onClick={close}>Cancel</button>
+          <button data-stage="dialog:confirm" type="submit" className="btn btn-primary">Queue insert</button>
         </div>
       </form>
     </Modal>

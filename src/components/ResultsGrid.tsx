@@ -166,7 +166,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
   }
 
   return (
-    <div className="grid" ref={scrollRef} tabIndex={0} onKeyDown={onKeyDown} role="grid" aria-rowcount={rows.length} style={colVars}>
+    <div className="grid" data-stage="results" data-stage-label="Results" ref={scrollRef} tabIndex={0} onKeyDown={onKeyDown} role="grid" aria-rowcount={rows.length} style={colVars}>
       <div className="grid-head" style={{ width: totalWidth }} role="row">
         <div className="grid-hcell grid-rownum" style={{ width: ROW_NUMBER_WIDTH }} />
         {columns.map((c, i) => {

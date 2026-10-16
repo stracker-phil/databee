@@ -37,7 +37,7 @@ export function Inspector() {
   const raw = cellText(cell);
 
   return (
-    <aside className="inspector" aria-label="Value inspector">
+    <aside className="inspector" aria-label="Value inspector" data-stage="inspector">
       <div className="inspector-head">
         <span className="col" title={column.name}>{column.name}</span>
         <span className="badge">{column.typeName.toLowerCase()}</span>
@@ -55,7 +55,7 @@ export function Inspector() {
         >
           <Copy size="1rem" />
         </button>
-        <button className="icon-btn" aria-label="Close inspector" onClick={() => selectCell(null)}>
+        <button data-stage="inspector:close" className="icon-btn" aria-label="Close inspector" onClick={() => selectCell(null)}>
           <X size="1rem" />
         </button>
       </div>

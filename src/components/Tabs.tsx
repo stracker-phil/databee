@@ -11,11 +11,13 @@ export function TabBar() {
   const { activateTab, closeTab, openQueryTab, pinTab } = useStore.getState();
   if (!sessionId) return null;
   return (
-    <div className="tabbar" role="tablist">
+    <div className="tabbar" role="tablist" data-stage="tabs" data-stage-label="Tabs">
       {tabs.map((t) => (
         <div
           key={t.id}
           role="tab"
+          data-stage={t.kind === "table" ? `tab:table:${t.database}.${t.table}` : `tab:query:${t.id}`}
+          data-stage-label={t.title}
           aria-selected={t.id === activeTabId}
           className={`tab${t.id === activeTabId ? " active" : ""}${t.kind === "table" && t.preview ? " preview" : ""}`}
           onMouseDown={(e) => e.button === 0 && activateTab(t.id)}
@@ -41,7 +43,7 @@ export function TabBar() {
           </button>
         </div>
       ))}
-      <button className="icon-btn" style={{ alignSelf: "center", marginLeft: 4 }} aria-label="New query tab" onClick={() => openQueryTab()}>
+      <button className="icon-btn" style={{ alignSelf: "center", marginLeft: 4 }} aria-label="New query tab" data-stage="tabs:new" onClick={() => openQueryTab()}>
         <Plus size="1.077rem" />
       </button>
     </div>

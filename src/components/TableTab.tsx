@@ -113,6 +113,7 @@ function DataView({ tab }: { tab: TableTabState }) {
             className="input mono"
             style={{ paddingLeft: 24 }}
             aria-label="WHERE filter"
+            data-stage="table:filter"
             placeholder={primaryKey ? `WHERE … or IDs: 3229, 3220-3229   ⌘F · ↵ to apply` : "WHERE …   e.g. post_type = 'shop_order'   ⌘F · ↵ to apply"}
             value={filterInput}
             onChange={(e) => setFilterInput(e.target.value)}
@@ -126,13 +127,14 @@ function DataView({ tab }: { tab: TableTabState }) {
         <button
           className="icon-btn"
           aria-label="Insert row"
+          data-stage="table:insert"
           title={primaryKey ? "Insert row" : "Editing needs a single-column primary key"}
           disabled={!structure}
           onClick={() => structure && useStore.getState().openDialog({ type: "insertRow", database: tab.database, table: tab.table, columns: structure.columns })}
         >
           <Plus size="1rem" />
         </button>
-        <button className="icon-btn" aria-label="Reload" title="Reload" onClick={() => void load()}>
+        <button data-stage="table:reload" className="icon-btn" aria-label="Reload" title="Reload" onClick={() => void load()}>
           {loading ? <Loader2 size="1rem" className="spin" /> : <RefreshCw size="1rem" />}
         </button>
         {entity && (
@@ -147,6 +149,7 @@ function DataView({ tab }: { tab: TableTabState }) {
         <button
           className="icon-btn"
           aria-label="Previous page"
+          data-stage="table:previous-page"
           disabled={browse.offset === 0}
           onClick={() => setBrowse((b) => ({ ...b, offset: Math.max(0, b.offset - pageSize) }))}
         >
@@ -155,6 +158,7 @@ function DataView({ tab }: { tab: TableTabState }) {
         <button
           className="icon-btn"
           aria-label="Next page"
+          data-stage="table:next-page"
           disabled={!page?.hasMore}
           onClick={() => setBrowse((b) => ({ ...b, offset: b.offset + pageSize }))}
         >
@@ -231,7 +235,7 @@ function StructureView({ tab }: { tab: TableTabState }) {
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!structure) return <div className="empty-state">Loading…</div>;
   return (
-    <div className="structure">
+    <div className="structure" data-stage="table:structure-view" data-stage-label="Table structure">
       <div>
         <h3>Columns</h3>
         <table>
@@ -297,9 +301,9 @@ export function TableTab({ tab }: { tab: TableTabState }) {
         <strong>{tab.table}</strong>
         <span className="muted">{tab.database}</span>
         <div className="spacer" />
-        <div className="segmented">
-          <button aria-pressed={tab.view === "data"} onClick={() => updateTab(tab.id, { view: "data" })}>Data</button>
-          <button aria-pressed={tab.view === "structure"} onClick={() => updateTab(tab.id, { view: "structure" })}>Structure</button>
+        <div className="segmented" data-stage="table:view" data-stage-label="Data / Structure">
+          <button data-stage="table:data" aria-pressed={tab.view === "data"} onClick={() => updateTab(tab.id, { view: "data" })}>Data</button>
+          <button data-stage="table:structure" aria-pressed={tab.view === "structure"} onClick={() => updateTab(tab.id, { view: "structure" })}>Structure</button>
         </div>
       </div>
       {tab.view === "data" ? <DataView tab={tab} /> : <StructureView tab={tab} />}

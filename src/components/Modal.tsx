@@ -18,7 +18,7 @@ export function Modal({ onClose, className = "", labelledBy, children }: Props) 
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`dialog ${className}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+      <div className={`dialog ${className}`} data-stage="dialog" role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
         {children}
       </div>
     </div>

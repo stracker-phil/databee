@@ -74,10 +74,10 @@ function NavItem({ section, active }: { section: BrowserSection; active: boolean
   // Only the most severe badge fits the row; the rest are in the tooltip.
   const badges = attentionBadges(section);
   return (
-    <button className={`nav-item${active ? " active" : ""}`} onClick={() => navigate({ screen: "list", list: section.list as WpList })}>
+    <button data-stage={`wp:nav:${section.list}`} className={`nav-item${active ? " active" : ""}`} onClick={() => navigate({ screen: "list", list: section.list as WpList })}>
       <span className="nav-row">
         <Icon size="1.077rem" />
-        <span className="nav-label">{section.label}</span>
+        <span className="nav-label" data-stage-label={section.label}>{section.label}</span>
         {badges.length > 0 && (
           <span className={`nav-badge tone-${badges[0].tone}`} title={badges.map((b) => `${b.count.toLocaleString("en-US")} ${b.label}`).join(" · ")}>
             {badges[0].count.toLocaleString("en-US")} {badges[0].label}
@@ -95,8 +95,8 @@ function Nav({ route }: { route: WpRoute }) {
   const { data } = useWpData(api.wpBrowser, []);
   const activeList = route.screen === "list" ? route.list : null;
   return (
-    <nav className="wp-nav" aria-label="WordPress">
-      <button className={`nav-item${route.screen === "dashboard" ? " active" : ""}`} onClick={() => navigate({ screen: "dashboard" })}>
+    <nav className="wp-nav" aria-label="WordPress" data-stage="wp:nav" data-stage-label="WordPress navigation">
+      <button data-stage="wp:nav:dashboard" className={`nav-item${route.screen === "dashboard" ? " active" : ""}`} onClick={() => navigate({ screen: "dashboard" })}>
         <span className="nav-row">
           <LayoutDashboard size="1.077rem" />
           <span className="nav-label">Dashboard</span>
@@ -112,7 +112,7 @@ function Nav({ route }: { route: WpRoute }) {
               <NavItem key={s.list} section={s} active={activeList === s.list} />
             ))}
             {g.title === "Tools" && (
-              <button className={`nav-item${route.screen === "snapshots" ? " active" : ""}`} onClick={() => navigate({ screen: "snapshots" })}>
+              <button data-stage="wp:nav:snapshots" className={`nav-item${route.screen === "snapshots" ? " active" : ""}`} onClick={() => navigate({ screen: "snapshots" })}>
                 <span className="nav-row">
                   <Camera size="1.077rem" />
                   <span className="nav-label">Snapshots & diff</span>
@@ -134,14 +134,14 @@ function Header() {
   const metaKey = route.screen === "entity" ? `${route.entity}:${route.id}` : null;
   const crumbs = routeCrumbs(route, meta && meta.key === metaKey ? meta : null);
   return (
-    <div className="wp-header">
-      <button className="icon-btn" aria-label="Back" title="Back (⌘[)" disabled={index === 0} onClick={goBack}>
+    <div className="wp-header" data-stage="wp:header" data-stage-label="Header">
+      <button data-stage="wp:back" className="icon-btn" aria-label="Back" title="Back (⌘[)" disabled={index === 0} onClick={goBack}>
         <ArrowLeft size="1.077rem" />
       </button>
-      <button className="icon-btn" aria-label="Forward" title="Forward (⌘])" disabled={index >= stack.length - 1} onClick={goForward}>
+      <button data-stage="wp:forward" className="icon-btn" aria-label="Forward" title="Forward (⌘])" disabled={index >= stack.length - 1} onClick={goForward}>
         <ArrowRight size="1.077rem" />
       </button>
-      <nav className="crumbs" aria-label="Breadcrumbs">
+      <nav className="crumbs" aria-label="Breadcrumbs" data-stage="wp:crumbs">
         {crumbs.map((c, i) => {
           const current = i === crumbs.length - 1;
           return (
@@ -153,7 +153,7 @@ function Header() {
         })}
       </nav>
       <div className="spacer" />
-      <button className="search-trigger" onClick={() => setPaletteOpen(true)}>
+      <button data-stage="wp:search" data-stage-label="Search or run a command" className="search-trigger" onClick={() => setPaletteOpen(true)}>
         <Search size="1rem" /> Search or run a command… <kbd>⌘K</kbd>
       </button>
     </div>
@@ -169,7 +169,7 @@ export function WpWorkspace() {
       <Nav route={route} />
       <main className="wp-main">
         <Header />
-        <div className="wp-content">
+        <div className="wp-content" data-stage="wp:content" data-stage-label={`WordPress ${route.screen}`}>
           {route.screen === "dashboard" && <DashboardScreen />}
           {route.screen === "list" && (route.list === "settings" ? <SettingsScreen key={JSON.stringify(route.params ?? {})} params={route.params} /> : <ListScreen key={route.list} list={route.list} params={route.params} />)}
           {route.screen === "entity" && <EntityScreen key={`${route.entity}:${route.id}`} entity={route.entity} id={route.id} />}

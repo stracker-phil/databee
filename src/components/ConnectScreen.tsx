@@ -92,7 +92,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
 
   return (
     <div className="connect-card">
-      <form className="connect-form" onSubmit={onSubmit} noValidate>
+      <form className="connect-form" onSubmit={onSubmit} noValidate data-stage="connect:form" data-stage-label="New connection">
         <h1>New connection</h1>
         <p className="muted" style={{ margin: "-6px 0 2px" }}>MySQL or MariaDB, local or in Docker.</p>
         {shownError && (
@@ -102,52 +102,52 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
         )}
         <label className="field">
           <span>Name (optional)</span>
-          <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Shop (DDEV)" />
+          <input data-stage="connect:name" className="input" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Shop (DDEV)" />
         </label>
         <div className="segmented" style={{ alignSelf: "flex-start" }}>
-          <button type="button" aria-pressed={!form.useSocket} onClick={() => set("useSocket", false)}>TCP</button>
-          <button type="button" aria-pressed={form.useSocket} onClick={() => set("useSocket", true)}>Socket</button>
+          <button data-stage="connect:tcp" type="button" aria-pressed={!form.useSocket} onClick={() => set("useSocket", false)}>TCP</button>
+          <button data-stage="connect:socket" type="button" aria-pressed={form.useSocket} onClick={() => set("useSocket", true)}>Socket</button>
         </div>
         {form.useSocket ? (
           <label className="field">
             <span>Socket path</span>
-            <input className="input mono" value={form.socket} onChange={(e) => set("socket", e.target.value)} placeholder="/tmp/mysql.sock" />
+            <input data-stage="connect:socket-path" className="input mono" value={form.socket} onChange={(e) => set("socket", e.target.value)} placeholder="/tmp/mysql.sock" />
           </label>
         ) : (
           <div className="field-row">
             <label className="field" style={{ flex: 3 }}>
               <span>Host</span>
-              <input className="input" value={form.host} onChange={(e) => set("host", e.target.value)} />
+              <input data-stage="connect:host" className="input" value={form.host} onChange={(e) => set("host", e.target.value)} />
             </label>
             <label className="field" style={{ flex: 1 }}>
               <span>Port</span>
-              <input className="input" inputMode="numeric" value={form.port} onChange={(e) => set("port", e.target.value)} />
+              <input data-stage="connect:port" className="input" inputMode="numeric" value={form.port} onChange={(e) => set("port", e.target.value)} />
             </label>
           </div>
         )}
         <div className="field-row">
           <label className="field">
             <span>User</span>
-            <input className="input" value={form.user} onChange={(e) => set("user", e.target.value)} />
+            <input data-stage="connect:user" className="input" value={form.user} onChange={(e) => set("user", e.target.value)} />
           </label>
           <label className="field">
             <span>Password</span>
-            <input className="input" type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="Keychain" />
+            <input data-stage="connect:password" className="input" type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="Keychain" />
           </label>
         </div>
         <label className="field">
           <span>Database (optional)</span>
-          <input className="input" value={form.database} onChange={(e) => set("database", e.target.value)} />
+          <input data-stage="connect:database" className="input" value={form.database} onChange={(e) => set("database", e.target.value)} />
         </label>
         <label className="check">
           <input type="checkbox" checked={form.savePassword} onChange={(e) => set("savePassword", e.target.checked)} />
           Save password in Keychain
         </label>
-        <button type="submit" className="btn btn-primary" disabled={busy} style={{ alignSelf: "flex-end", height: "2.154rem", padding: "0 16px" }}>
+        <button data-stage="connect:connect" type="submit" className="btn btn-primary" disabled={busy} style={{ alignSelf: "flex-end", height: "2.154rem", padding: "0 16px" }}>
           {busy ? "Connecting…" : "Connect"}
         </button>
       </form>
-      <aside className="recents">
+      <aside className="recents" data-stage="connect:recents" data-stage-label="Recent connections">
         <h2>Recent</h2>
         {recents.length === 0 && <div className="sidebar-empty">Connections you open appear here.</div>}
         {recents.map((r) => (
@@ -155,6 +155,8 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
             key={r.identity}
             className="recent"
             role="button"
+            data-stage={`recent:${r.identity}`}
+            data-stage-label={r.spec.name ?? describe(r.spec)}
             aria-label={`Connect to ${r.spec.name ?? describe(r.spec)}`}
             onDoubleClick={() => void submit(r.spec)}
             onClick={() => setForm(toForm(r.spec, defaultPort))}

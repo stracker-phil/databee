@@ -43,6 +43,11 @@ import type {
   RecentConnection,
   SessionInfo,
   Settings,
+  PageAnchor,
+  StageActReply,
+  StageActRequest,
+  StageInfoReply,
+  StageStatus,
   TableInfo,
   TableStructure,
   UiState,
@@ -147,6 +152,20 @@ export const api = {
   wpSnapshotDelete: (id: string) => invoke<void>("wp_snapshot_delete", { id }),
   wpCompare: (sessionId: string, database: string, entity: string, a: string, b: string) =>
     invoke<CompareRow[]>("wp_compare", { sessionId, database, entity, a, b }),
+
+  stageStatus: () => invoke<StageStatus>("stage_status"),
+  stageNewToken: () => invoke<Settings>("stage_new_token"),
+  /** The Stage hook (src/stage/hooks.ts): Rust asks, the page answers. */
+  onStageCollect: (handler: (request: string) => void): Promise<UnlistenFn> =>
+    listen<{ request: string }>("stage:collect", (e) => handler(e.payload.request)),
+  onStageInfo: (handler: (request: string) => void): Promise<UnlistenFn> =>
+    listen<{ request: string }>("stage:info", (e) => handler(e.payload.request)),
+  onStageAct: (handler: (request: StageActRequest) => void): Promise<UnlistenFn> =>
+    listen<StageActRequest>("stage:act", (e) => handler(e.payload)),
+  stageAnchors: (request: string, anchors: PageAnchor[]) =>
+    invoke<void>("stage_anchors", { reply: { request, page: "main", anchors } }),
+  stageDone: (reply: StageActReply) => invoke<void>("stage_done", { reply }),
+  stageInfo: (reply: StageInfoReply) => invoke<void>("stage_info", { reply }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu items emit the id of the command they run. */

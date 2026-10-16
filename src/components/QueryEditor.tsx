@@ -37,6 +37,8 @@ export function QueryEditor({ value, onChange, schema, theme, onView }: Props) {
     <CodeMirror
       ref={ref}
       className="editor"
+      data-stage="editor"
+      data-stage-label="SQL editor"
       value={value}
       height="100%"
       theme={theme}

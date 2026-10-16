@@ -13,14 +13,15 @@ export function FavoritesBar() {
   const [overId, setOverId] = useState<string | null>(null);
 
   return (
-    <nav className="favorites" aria-label="Favorites">
-      <button className="icon-btn" aria-label="Add current tab to favorites" title="Add to favorites (⌘D)" disabled={!canAdd} onClick={addCurrentTabToFavorites}>
+    <nav className="favorites" aria-label="Favorites" data-stage="favorites">
+      <button data-stage="favorites:add" className="icon-btn" aria-label="Add current tab to favorites" title="Add to favorites (⌘D)" disabled={!canAdd} onClick={addCurrentTabToFavorites}>
         <Star size="1.077rem" />
       </button>
       {favorites.length === 0 && <span className="empty">⌘D pins the current table or query here</span>}
       {favorites.map((f) => (
         <button
           key={f.id}
+          data-stage={`favorite:${f.id}`}
           className={`fav${dragId === f.id ? " dragging" : ""}${overId === f.id && dragId !== f.id ? " drop-before" : ""}`}
           title={f.target.kind === "table" ? `${f.target.database}.${f.target.table}` : f.target.sql}
           draggable

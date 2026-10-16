@@ -13,20 +13,20 @@ export function PendingTray() {
   if (!session || (pending.length === 0 && !canUndo)) return null;
 
   return (
-    <section className="tray" aria-label="Pending changes">
+    <section className="tray" aria-label="Pending changes" data-stage="tray">
       <header className="tray-head">
         <strong>{pending.length ? `${pending.length} pending ${pending.length === 1 ? "change" : "changes"}` : "No pending changes"}</strong>
         <span className="muted small">Raw SQL writes: no WordPress hooks run.</span>
         <div className="spacer" />
         {canUndo && (
-          <button className="btn" onClick={() => void undoLast()}>
+          <button data-stage="tray:undo" className="btn" onClick={() => void undoLast()}>
             <RotateCcw size="0.923rem" /> Undo last apply
           </button>
         )}
         {pending.length > 0 && (
           <>
-            <button className="btn" onClick={discardAll}>Discard all</button>
-            <button className="btn btn-primary" onClick={() => void applyChanges()}>Apply (⌘S)</button>
+            <button data-stage="tray:discard" className="btn" onClick={discardAll}>Discard all</button>
+            <button data-stage="tray:apply" className="btn btn-primary" onClick={() => void applyChanges()}>Apply (⌘S)</button>
           </>
         )}
       </header>

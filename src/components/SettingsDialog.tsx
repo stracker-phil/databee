@@ -300,22 +300,22 @@ export function SettingsDialog() {
 
   return (
     <Modal onClose={close} className="settings-window" labelledBy="settings-title">
-      <nav className="settings-nav" aria-label="Settings pages">
+      <nav className="settings-nav" aria-label="Settings pages" data-stage="settings:nav">
         {NAV.map((g) => (
           <div key={g.group} className="settings-nav-group">
             <div className="settings-nav-heading">{g.group}</div>
             {g.pages.map(({ id, label, icon: Icon }) => (
-              <button key={id} type="button" aria-current={page === id ? "page" : undefined} onClick={() => setPage(id)}>
+              <button key={id} data-stage={`settings:nav:${id}`} type="button" aria-current={page === id ? "page" : undefined} onClick={() => setPage(id)}>
                 <Icon size="1.077rem" /> {label}
               </button>
             ))}
           </div>
         ))}
       </nav>
-      <div className="settings-pane">
+      <div className="settings-pane" data-stage={`settings:${page}`} data-stage-label={`Settings: ${PAGE_LABEL[page]}`}>
         <header>
           <h2 id="settings-title">{PAGE_LABEL[page]}</h2>
-          <button type="button" className="icon-btn" aria-label="Close settings" title="Close (Esc)" onClick={close}>
+          <button data-stage="settings:close" type="button" className="icon-btn" aria-label="Close settings" title="Close (Esc)" onClick={close}>
             <X size="1.077rem" />
           </button>
         </header>

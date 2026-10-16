@@ -70,12 +70,13 @@ function TablesPanel() {
             style={{ paddingLeft: 24 }}
             placeholder="Filter tables  ⌘⇧F"
             aria-label="Filter tables"
+            data-stage="sidebar:filter"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && setFilter("")}
           />
         </div>
-        <button className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => void loadDatabases(session.id)}>
+        <button data-stage="sidebar:refresh" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => void loadDatabases(session.id)}>
           <RefreshCw size="1rem" />
         </button>
       </div>
@@ -85,7 +86,7 @@ function TablesPanel() {
           const tables = visibleTables(d.name);
           return (
             <div key={d.name} role="treeitem" aria-expanded={open}>
-              <div className={`tree-row${d.isSystem ? " system" : ""}`} onClick={() => toggle(d.name)}>
+              <div className={`tree-row${d.isSystem ? " system" : ""}`} data-stage={`database:${d.name}`} data-stage-label={d.name} onClick={() => toggle(d.name)}>
                 {open ? <ChevronDown size="0.923rem" /> : <ChevronRight size="0.923rem" />}
                 <Database size="1rem" />
                 <span className="label" style={{ fontWeight: d.name === current ? 600 : 400 }}>{d.name}</span>
@@ -103,6 +104,8 @@ function TablesPanel() {
                       <div
                         key={t.name}
                         role="treeitem"
+                        data-stage={`table:${d.name}.${t.name}`}
+                        data-stage-label={t.name}
                         className={`tree-row${active ? " active" : ""}`}
                         title={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}
                         onClick={(e) => openTableTab(d.name, t.name, "data", undefined, { preview: !e.metaKey })}
@@ -162,7 +165,7 @@ function HistoryPanel() {
           <Trash2 size="1rem" />
         </button>
       </div>
-      <div className="sidebar-body">
+      <div className="sidebar-body" data-stage="sidebar:history-list" data-stage-label="Query history">
         {entries.length === 0 && <div className="sidebar-empty">Queries you run on this server appear here.</div>}
         {entries.map((e) => (
           <div
@@ -189,13 +192,13 @@ export function Sidebar() {
   const setPanel = useStore((s) => s.setSidebarPanel);
   const panel = storedPanel === "wordpress" ? "tables" : storedPanel;
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" data-stage="sidebar" data-stage-label="Sidebar">
       <div style={{ padding: "8px 8px 0" }}>
         <div className="segmented" style={{ width: "100%" }}>
-          <button style={{ flex: 1 }} aria-pressed={panel === "tables"} onClick={() => setPanel("tables")}>
+          <button data-stage="sidebar:tables" style={{ flex: 1 }} aria-pressed={panel === "tables"} onClick={() => setPanel("tables")}>
             <Table2 size="0.923rem" style={{ verticalAlign: -2 }} /> Tables
           </button>
-          <button style={{ flex: 1 }} aria-pressed={panel === "history"} onClick={() => setPanel("history")}>
+          <button data-stage="sidebar:history" style={{ flex: 1 }} aria-pressed={panel === "history"} onClick={() => setPanel("history")}>
             <History size="0.923rem" style={{ verticalAlign: -2 }} /> History
           </button>
         </div>

@@ -157,9 +157,9 @@ export function rowTarget(list: WpList, item: unknown): { entity: string; id: st
   }
 }
 
-function Row({ active, onOpen, children, title }: { active: boolean; onOpen: () => void; children: ReactNode; title?: string }) {
+function Row({ stage, active, onOpen, children, title }: { stage: string; active: boolean; onOpen: () => void; children: ReactNode; title?: string }) {
   return (
-    <button className={`row-link${active ? " selected" : ""}`} role="row" aria-selected={active} data-active={active || undefined} onClick={onOpen} title={title}>
+    <button data-stage={stage} className={`row-link${active ? " selected" : ""}`} role="row" aria-selected={active} data-active={active || undefined} onClick={onOpen} title={title}>
       {children}
     </button>
   );
@@ -379,7 +379,7 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
       <div className="list-tools">
         <div className="list-search">
           <Search size="1rem" />
-          <input aria-label="Search list" placeholder="Search…" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
+          <input data-stage="list:search" aria-label="Search list" placeholder="Search…" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
         </div>
         {kindFacets.length > 0 && list !== "content" && (
           <select className="input" style={{ width: "16.923rem" }} aria-label={KIND_LABEL[list] ?? "Kind"} value={kind ?? ""} onChange={(e) => setKind(e.target.value || null)}>
@@ -393,10 +393,10 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
         )}
         <div className="spacer" />
         <span className="muted">{data ? `${offset + 1}–${offset + data.items.length}` : ""}</span>
-        <button className="icon-btn" aria-label="Previous page" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>
+        <button data-stage="list:previous-page" className="icon-btn" aria-label="Previous page" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>
           <ChevronLeft size="1.077rem" />
         </button>
-        <button className="icon-btn" aria-label="Next page" disabled={!data?.hasMore} onClick={() => setOffset(offset + PAGE)}>
+        <button data-stage="list:next-page" className="icon-btn" aria-label="Next page" disabled={!data?.hasMore} onClick={() => setOffset(offset + PAGE)}>
           <ChevronRight size="1.077rem" />
         </button>
       </div>
@@ -429,7 +429,7 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
             const { key, node, title } = cellsFor(list, item);
             const target = rowTarget(list, item);
             return (
-              <Row key={key} active={selected?.id === target.id} onOpen={() => select(item)} title={title}>
+              <Row key={key} stage={`${target.entity}:${target.id}`} active={selected?.id === target.id} onOpen={() => select(item)} title={title}>
                 {node}
               </Row>
             );

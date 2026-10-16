@@ -13,6 +13,7 @@ import { Toolbar } from "./components/Toolbar";
 import { CommandPalette } from "./components/CommandPalette";
 import { handleKeydown, installCommands, runCommand } from "./commands";
 import { PendingTray } from "./components/PendingTray";
+import { installStageHooks } from "./stage/hooks";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
 import { applyAppearance } from "./lib/theme";
 import { selectWp, useStore } from "./state/store";
@@ -27,7 +28,7 @@ function useBackendEvents() {
 
     installCommands();
     void loadSettings().then(() => (installCommands(), drainLaunches()));
-    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runCommand)];
+    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runCommand), ...installStageHooks(runCommand)];
 
     const onKey = handleKeydown;
     const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);
