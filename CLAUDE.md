@@ -34,6 +34,7 @@ commands, files or extension points change. Document by file and symbol, never b
 - `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive and capture the running window in the background
 
 ## Workflow
-Finish every step with the `ship-step` skill. Rules in `.claude/rules/`.
+Finish every step with the `ship-step` skill. Rules in `.claude/rules/`. Run the `clean-up-code` skill
+before every commit, also outside `ship-step`.
 Never write to the user's own databases (e.g. DDEV sites); they are read-only test material. Writes in tests
 and manual checks go to the Docker fixtures (`wp_write`, `databee_test`).

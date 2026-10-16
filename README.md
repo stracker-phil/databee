@@ -138,7 +138,8 @@ The [technical documentation](docs/README.md) covers the architecture, each laye
 
 The repo is set up for coding agents:
 - `CLAUDE.md` and [`.claude/rules/`](.claude/rules/) hold the conventions.
-- A `ship-step` skill tests, builds and commits each step.
+- A `ship-step` skill tests, builds and commits each step. Before every commit, a `clean-up-code` skill
+  keeps the code self-explanatory.
 - [docs/adapting.md](docs/adapting.md) lists every place that is specific to macOS, the name or the
   WordPress layer.
 
