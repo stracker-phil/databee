@@ -73,7 +73,17 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 }
 
 /* ---------- layout ---------- */
-.app { display: grid; grid-template-rows: var(--toolbar-height) auto 1fr auto 2rem; height: 100%; }
+/* named areas: optional bars (favorites, tray) can be absent without shifting the rest */
+.app {
+  display: grid; height: 100%;
+  grid-template-rows: var(--toolbar-height) auto minmax(0, 1fr) auto 2rem;
+  grid-template-areas: "toolbar" "favorites" "work" "tray" "status";
+}
+.app > .toolbar { grid-area: toolbar; }
+.app > .favorites { grid-area: favorites; }
+.app > .workspace, .app > .wp-workspace { grid-area: work; }
+.app > .tray { grid-area: tray; }
+.app > .statusbar { grid-area: status; }
 .workspace { display: grid; grid-template-columns: 19.231rem 1fr; min-height: 0; padding-right: var(--panel-gap); }
 .main-stack { display: grid; min-width: 0; min-height: 0; }
 /* raised content panels on the glass chrome */
