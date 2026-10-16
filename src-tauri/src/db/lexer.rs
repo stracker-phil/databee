@@ -1,75 +1,189 @@
-//! A tiny MySQL-aware scanner: knows strings, quoted identifiers and comments, so `;`
-//! and keywords inside them are ignored. It doesn't try to parse SQL.
+//! A tiny MySQL-aware scanner: knows strings, quoted identifiers, variables and comments, so
+//! `;` and keywords inside them are ignored. It doesn't try to parse SQL.
+//!
+//! Known limits, inherited by `split_statements` and so by `run_script`'s result count:
+//! backslash is always an escape inside strings (`NO_BACKSLASH_ESCAPES` is ignored), `"` always
+//! quotes a string (`ANSI_QUOTES` is ignored), and `DELIMITER` is not supported.
 
-#[derive(Debug, PartialEq)]
-enum Piece<'a> {
-    Word(&'a str),
-    Semicolon(usize),
+/// `Word` is a keyword or unquoted identifier; `Variable` (`@name`, `@@name`, `@'quoted'`) never
+/// matches a keyword.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Word,
+    Number,
+    Variable,
+    Quoted,
+    Comment,
+    Semicolon,
+    Open,
+    Close,
     Other,
 }
 
-struct Scan<'a> {
-    pieces: Vec<Piece<'a>>,
+/// `start` is the byte offset of `text` in the scanned SQL. `depth` is the parenthesis nesting;
+/// `(` and `)` carry the depth outside them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Piece<'a> {
+    kind: Kind,
+    pub text: &'a str,
+    start: usize,
+    pub depth: usize,
+}
+
+impl Piece<'_> {
+    pub fn is_keyword(&self, keyword: &str) -> bool {
+        self.kind == Kind::Word && self.text.eq_ignore_ascii_case(keyword)
+    }
+}
+
+struct Scanner<'a> {
+    sql: &'a str,
+    pos: usize,
+    depth: usize,
+    in_executable_comment: bool,
     terminated: bool,
 }
 
-fn scan(sql: &str) -> Scan<'_> {
-    let bytes = sql.as_bytes();
-    let mut pieces = Vec::new();
-    let mut terminated = true;
-    let mut i = 0;
-    while i < bytes.len() {
-        let c = bytes[i];
-        match c {
-            b'\'' | b'"' | b'`' => {
-                i = match skip_quoted(bytes, i, c) {
-                    Some(end) => end,
-                    None => {
-                        terminated = false;
-                        bytes.len()
-                    }
-                };
-                pieces.push(Piece::Other);
+/// Pieces of `sql` in order, whitespace skipped.
+fn scan(sql: &str) -> Scanner<'_> {
+    Scanner {
+        sql,
+        pos: 0,
+        depth: 0,
+        in_executable_comment: false,
+        terminated: true,
+    }
+}
+
+impl<'a> Iterator for Scanner<'a> {
+    type Item = Piece<'a>;
+
+    fn next(&mut self) -> Option<Piece<'a>> {
+        let bytes = self.sql.as_bytes();
+        self.pos += bytes[self.pos..]
+            .iter()
+            .take_while(|b| b.is_ascii_whitespace())
+            .count();
+        if self.pos >= bytes.len() {
+            if self.in_executable_comment {
+                self.in_executable_comment = false;
+                self.terminated = false;
             }
-            b'#' => i = skip_line(bytes, i),
-            b'-' if bytes.get(i + 1) == Some(&b'-')
-                && bytes.get(i + 2).is_none_or(|b| b.is_ascii_whitespace()) =>
-            {
-                i = skip_line(bytes, i)
+            return None;
+        }
+        let start = self.pos;
+        let (kind, end) = self.lex(start);
+        self.pos = end;
+        let depth = match kind {
+            Kind::Open => {
+                self.depth += 1;
+                self.depth - 1
             }
-            b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                i = match sql[i + 2..].find("*/") {
-                    Some(end) => i + 2 + end + 2,
-                    None => {
-                        terminated = false;
-                        bytes.len()
-                    }
-                };
+            Kind::Close => {
+                self.depth = self.depth.saturating_sub(1);
+                self.depth
             }
-            b';' => {
-                pieces.push(Piece::Semicolon(i));
-                i += 1;
+            _ => self.depth,
+        };
+        Some(Piece {
+            kind,
+            text: &self.sql[start..end],
+            start,
+            depth,
+        })
+    }
+}
+
+impl Scanner<'_> {
+    /// The kind and end offset of the piece starting at `i`.
+    fn lex(&mut self, i: usize) -> (Kind, usize) {
+        let bytes = self.sql.as_bytes();
+        let next = bytes.get(i + 1).copied();
+        match bytes[i] {
+            b'\'' | b'"' | b'`' => (Kind::Quoted, self.quoted_end(i)),
+            b'@' => (Kind::Variable, self.variable_end(i)),
+            b'#' => (Kind::Comment, line_end(bytes, i)),
+            b'-' if next == Some(b'-') && bytes.get(i + 2).is_none_or(u8::is_ascii_whitespace) => {
+                (Kind::Comment, line_end(bytes, i))
             }
-            c if c.is_ascii_alphabetic() || c == b'_' => {
-                let start = i;
-                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
-                    i += 1;
-                }
-                pieces.push(Piece::Word(&sql[start..i]));
+            b'*' if self.in_executable_comment && next == Some(b'/') => {
+                self.in_executable_comment = false;
+                (Kind::Comment, i + 2)
             }
-            _ => {
-                if !c.is_ascii_whitespace() {
-                    pieces.push(Piece::Other);
-                }
-                i += 1;
+            b'/' if next == Some(b'*') => (Kind::Comment, self.block_comment_end(i)),
+            b';' => (Kind::Semicolon, i + 1),
+            b'(' => (Kind::Open, i + 1),
+            b')' => (Kind::Close, i + 1),
+            c if c.is_ascii_digit() => (Kind::Number, word_end(bytes, i)),
+            c if is_word_byte(c) => (Kind::Word, word_end(bytes, i)),
+            _ => (Kind::Other, i + 1),
+        }
+    }
+
+    fn quoted_end(&mut self, start: usize) -> usize {
+        skip_quoted(self.sql.as_bytes(), start).unwrap_or_else(|| {
+            self.terminated = false;
+            self.sql.len()
+        })
+    }
+
+    fn variable_end(&mut self, start: usize) -> usize {
+        let bytes = self.sql.as_bytes();
+        let mut i = start + 1;
+        if bytes.get(i) == Some(&b'@') {
+            i += 1;
+        }
+        if matches!(bytes.get(i), Some(b'\'' | b'"' | b'`')) {
+            return self.quoted_end(i);
+        }
+        i + bytes[i..]
+            .iter()
+            .take_while(|&&b| is_word_byte(b) || b == b'.')
+            .count()
+    }
+
+    /// For `/*!NNNNN` and `/*M!NNNNNN` only the prefix is a comment; the body is lexed as code
+    /// until its `*/`.
+    fn block_comment_end(&mut self, start: usize) -> usize {
+        let bytes = self.sql.as_bytes();
+        let body = match &bytes[start + 2..] {
+            [b'!', ..] => Some(start + 3),
+            [b'M', b'!', ..] => Some(start + 4),
+            _ => None,
+        };
+        if let Some(body) = body {
+            self.in_executable_comment = true;
+            return body
+                + bytes[body..]
+                    .iter()
+                    .take_while(|b| b.is_ascii_digit())
+                    .count();
+        }
+        match self.sql[start + 2..].find("*/") {
+            Some(len) => start + 2 + len + 2,
+            None => {
+                self.terminated = false;
+                bytes.len()
             }
         }
     }
-    Scan { pieces, terminated }
+}
+
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'$' || b >= 0x80
+}
+
+fn word_end(bytes: &[u8], start: usize) -> usize {
+    start
+        + bytes[start..]
+            .iter()
+            .take_while(|&&b| is_word_byte(b))
+            .count()
 }
 
 /// The index after the closing quote, or `None` when the quote is never closed.
-fn skip_quoted(bytes: &[u8], start: usize, quote: u8) -> Option<usize> {
+fn skip_quoted(bytes: &[u8], start: usize) -> Option<usize> {
+    let quote = bytes[start];
     let mut i = start + 1;
     while i < bytes.len() {
         if bytes[i] == b'\\' && quote != b'`' {
@@ -89,56 +203,64 @@ fn skip_quoted(bytes: &[u8], start: usize, quote: u8) -> Option<usize> {
     None
 }
 
-fn skip_line(bytes: &[u8], start: usize) -> usize {
+fn line_end(bytes: &[u8], start: usize) -> usize {
     bytes[start..]
         .iter()
         .position(|&b| b == b'\n')
         .map_or(bytes.len(), |p| start + p + 1)
 }
 
-/// Splits a script into statements, dropping empty ones and surrounding whitespace.
+/// Splits a script into statements, dropping comment-only ones and surrounding whitespace.
 pub fn split_statements(sql: &str) -> Vec<&str> {
     let mut statements = Vec::new();
     let mut start = 0;
-    for piece in scan(sql).pieces {
-        if let Piece::Semicolon(pos) = piece {
-            statements.push(&sql[start..pos]);
-            start = pos + 1;
+    let mut has_code = false;
+    for piece in scan(sql) {
+        match piece.kind {
+            Kind::Semicolon => {
+                if has_code {
+                    statements.push(sql[start..piece.start].trim());
+                }
+                start = piece.start + 1;
+                has_code = false;
+            }
+            Kind::Comment => {}
+            _ => has_code = true,
         }
     }
-    statements.push(&sql[start..]);
+    if has_code {
+        statements.push(sql[start..].trim());
+    }
     statements
-        .into_iter()
-        .map(str::trim)
-        .filter(|s| !is_blank(s))
-        .collect()
 }
 
-/// Bare words (keywords and unquoted identifiers) in upper case, in order.
-pub fn words(statement: &str) -> Vec<String> {
-    scan(statement)
-        .pieces
-        .into_iter()
-        .filter_map(|p| match p {
-            Piece::Word(w) => Some(w.to_ascii_uppercase()),
-            _ => None,
-        })
-        .collect()
+/// Bare words (keywords and unquoted identifiers), in order.
+pub fn words(statement: &str) -> Vec<Piece<'_>> {
+    scan(statement).filter(|p| p.kind == Kind::Word).collect()
 }
 
-/// False when the text ends inside a quote or a `/* */` comment.
+/// False when the text ends inside a quote or a comment.
 pub fn is_terminated(sql: &str) -> bool {
-    scan(sql).terminated
+    let mut scanner = scan(sql);
+    scanner.by_ref().for_each(drop);
+    scanner.terminated
 }
 
 /// True when the text holds nothing but whitespace and comments.
 pub fn is_blank(sql: &str) -> bool {
-    scan(sql).pieces.is_empty()
+    scan(sql).all(|p| p.kind == Kind::Comment)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn word_texts(sql: &str) -> Vec<String> {
+        words(sql)
+            .iter()
+            .map(|w| w.text.to_ascii_uppercase())
+            .collect()
+    }
 
     #[test]
     fn open_quotes_and_block_comments_are_unterminated() {
@@ -190,13 +312,99 @@ mod tests {
 
     #[test]
     fn double_dash_without_space_is_not_a_comment() {
-        assert_eq!(words("SELECT 1--1 FROM t"), ["SELECT", "FROM", "T"]);
+        assert_eq!(word_texts("SELECT 1--1 FROM t"), ["SELECT", "FROM", "T"]);
+    }
+
+    fn pieces(sql: &str) -> Vec<(Kind, &str)> {
+        scan(sql).map(|p| (p.kind, p.text)).collect()
+    }
+
+    #[test]
+    fn empty_script_has_no_statements() {
+        assert_eq!(split_statements(""), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn unclosed_executable_comment_is_unterminated() {
+        assert!(!is_terminated("/*!40101 SET"));
+    }
+
+    #[test]
+    fn unclosed_quote_is_one_piece_to_the_end() {
+        assert_eq!(
+            pieces("a 'bc; d"),
+            [(Kind::Word, "a"), (Kind::Quoted, "'bc; d")]
+        );
+    }
+
+    #[test]
+    fn executable_comment_body_is_code() {
+        assert_eq!(
+            split_statements("/*!40101 SET NAMES utf8 */;"),
+            ["/*!40101 SET NAMES utf8 */"]
+        );
+        assert_eq!(
+            word_texts("/*!40101 SET NAMES utf8 */;"),
+            ["SET", "NAMES", "UTF8"]
+        );
+        assert_eq!(word_texts("/*M!100100 SELECT 1 */"), ["SELECT"]);
+    }
+
+    #[test]
+    fn backslash_inside_backticks_is_literal() {
+        assert_eq!(split_statements("SELECT `a\\`; SELECT 2").len(), 2);
+    }
+
+    #[test]
+    fn trailing_double_dash_is_a_comment() {
+        assert!(is_blank("--"));
+        assert_eq!(split_statements("SELECT 1 --"), ["SELECT 1 --"]);
+    }
+
+    #[test]
+    fn crlf_line_endings_split_cleanly() {
+        assert_eq!(
+            split_statements("SELECT 1 -- x\r\n; SELECT 2\r\n"),
+            ["SELECT 1 -- x", "SELECT 2"]
+        );
+    }
+
+    #[test]
+    fn non_ascii_text_is_lexed_by_bytes_without_breaking_splits() {
+        assert_eq!(split_statements("SELECT 'é;ü'; SELECT 2").len(), 2);
+        assert_eq!(pieces("é'x'"), [(Kind::Word, "é"), (Kind::Quoted, "'x'")]);
+    }
+
+    #[test]
+    fn identifiers_and_numbers_are_single_pieces() {
+        for (sql, kind) in [
+            ("$col", Kind::Word),
+            ("größe", Kind::Word),
+            ("1abc", Kind::Number),
+        ] {
+            assert_eq!(pieces(sql), [(kind, sql)], "{sql}");
+        }
+    }
+
+    #[test]
+    fn variables_are_single_pieces_and_never_keywords() {
+        for sql in ["@where", "@@session.sql_mode", "@'q'", "@`q`"] {
+            assert_eq!(pieces(sql), [(Kind::Variable, sql)], "{sql}");
+        }
+        let piece = scan("@where").next().unwrap();
+        assert!(!piece.is_keyword("WHERE"));
+    }
+
+    #[test]
+    fn parentheses_carry_the_outer_depth() {
+        let depths: Vec<_> = scan("a (b) c").map(|p| (p.text, p.depth)).collect();
+        assert_eq!(depths, [("a", 0), ("(", 0), ("b", 1), (")", 0), ("c", 0)]);
     }
 
     #[test]
     fn words_skip_quoted_content() {
         assert_eq!(
-            words("delete from `where` where name = 'where'"),
+            word_texts("delete from `where` where name = 'where'"),
             ["DELETE", "FROM", "WHERE", "NAME"]
         );
     }

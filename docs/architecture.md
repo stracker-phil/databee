@@ -71,7 +71,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/db_commands.rs       connect, schema, execute, browse
   src/wp_commands.rs       WordPress lens + plan/apply of changes
   src/stage_commands.rs    Stage page replies and settings controls
-  src/db/                  MySQL driver, SQL lexer, safety, cell decoding
+  src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
   src/wp/                  WordPress detection, PHP serialize, entities, views
   src/store/               JSON stores in the config dir
   src/stage/               Stage HTTP API and request hub

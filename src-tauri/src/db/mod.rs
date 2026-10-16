@@ -1,5 +1,6 @@
 pub mod browse;
 pub mod cell;
+pub mod classify;
 pub mod dialect;
 pub mod id_filter;
 pub mod lexer;

@@ -1,4 +1,5 @@
-use super::lexer::{split_statements, words};
+use super::classify::verb_index;
+use super::lexer::{Piece, split_statements, words};
 
 /// Returns a human-readable reason when a script contains a statement that can destroy
 /// data without an obvious scope, or `None` when it looks safe to run unconfirmed.
@@ -7,30 +8,74 @@ pub fn destructive_reason(sql: &str) -> Option<String> {
 }
 
 fn check_statement(statement: &str) -> Option<String> {
-    let w = words(statement);
-    let first = w.first()?.as_str();
-    let has_where = w.iter().any(|x| x == "WHERE");
-    match first {
-        "DROP" => Some(format!(
-            "DROP {} permanently removes data",
-            w.get(1).map_or("", String::as_str)
-        )),
-        "TRUNCATE" => Some("TRUNCATE removes all rows of the table".into()),
-        "DELETE" if !has_where => Some("DELETE without WHERE removes all rows".into()),
-        "UPDATE" if !has_where => Some("UPDATE without WHERE changes all rows".into()),
-        "ALTER" if w.iter().any(|x| x == "DROP") => {
-            Some("ALTER … DROP removes columns or indexes".into())
-        }
-        _ => None,
+    let pieces = words(statement);
+    let verb_at = verb_index(&pieces)?;
+    let verb = &pieces[verb_at];
+    let rest = &pieces[verb_at + 1..];
+    // A WHERE inside a subquery doesn't scope the outer statement.
+    let has_where = rest
+        .iter()
+        .any(|w| w.depth == verb.depth && w.is_keyword("WHERE"));
+    let next_is = |keyword| rest.first().is_some_and(|w| w.is_keyword(keyword));
+
+    if verb.is_keyword("DROP") {
+        let object = rest
+            .first()
+            .map(|w| w.text.to_ascii_uppercase())
+            .unwrap_or_default();
+        return Some(format!("DROP {object} permanently removes data"));
     }
+    if verb.is_keyword("TRUNCATE") {
+        return Some("TRUNCATE removes all rows of the table".into());
+    }
+    if verb.is_keyword("DELETE") && !has_where {
+        return Some("DELETE without WHERE removes all rows".into());
+    }
+    if verb.is_keyword("UPDATE") && !has_where {
+        return Some("UPDATE without WHERE changes all rows".into());
+    }
+    if verb.is_keyword("ALTER") && rest.iter().any(|w| w.is_keyword("DROP")) {
+        return Some("ALTER … DROP removes columns or indexes".into());
+    }
+    if verb.is_keyword("RENAME") && next_is("TABLE") {
+        return Some("RENAME TABLE moves tables to new names".into());
+    }
+    if verb.is_keyword("CREATE") && next_is("OR") {
+        return replaced_object(rest);
+    }
+    None
 }
 
-/// Whether a statement produces a result set (so an empty result still has columns).
-pub fn returns_rows(statement: &str) -> bool {
-    matches!(
-        words(statement).first().map(String::as_str),
-        Some("SELECT" | "SHOW" | "DESC" | "DESCRIBE" | "EXPLAIN" | "WITH" | "VALUES" | "TABLE")
-    )
+/// Object kinds `CREATE OR REPLACE` can name; the first one names the replaced object.
+const REPLACEABLE: &[&str] = &[
+    "TABLE",
+    "VIEW",
+    "PROCEDURE",
+    "FUNCTION",
+    "TRIGGER",
+    "EVENT",
+    "SEQUENCE",
+    "INDEX",
+    "DATABASE",
+    "SCHEMA",
+    "USER",
+    "ROLE",
+    "SERVER",
+    "PACKAGE",
+];
+
+/// `CREATE OR REPLACE TABLE` and `VIEW` drop the existing object first.
+fn replaced_object(rest: &[Piece]) -> Option<String> {
+    let object = rest
+        .iter()
+        .find(|w| REPLACEABLE.iter().any(|kind| w.is_keyword(kind)))?;
+    if object.is_keyword("TABLE") {
+        return Some("CREATE OR REPLACE TABLE drops the existing table and its rows".into());
+    }
+    if object.is_keyword("VIEW") {
+        return Some("CREATE OR REPLACE VIEW replaces the existing view".into());
+    }
+    None
 }
 
 #[cfg(test)]
@@ -75,15 +120,47 @@ mod tests {
     }
 
     #[test]
-    fn leading_comments_are_ignored() {
-        assert!(destructive_reason("/* cleanup */ -- now\nDROP TABLE t").is_some());
+    fn where_that_does_not_scope_the_statement_is_still_flagged() {
+        for sql in [
+            "UPDATE t SET a = (SELECT x FROM y WHERE z)",
+            "UPDATE t SET a = @where",
+            "/*!50000 DROP TABLE t */",
+            "WITH c AS (SELECT 1) DELETE FROM t",
+            "DELETE FROM t LIMIT 1",
+        ] {
+            assert!(destructive_reason(sql).is_some(), "{sql}");
+        }
     }
 
     #[test]
-    fn detects_row_returning_statements() {
-        assert!(returns_rows("  select 1"));
-        assert!(returns_rows("SHOW TABLES"));
-        assert!(returns_rows("WITH x AS (SELECT 1) SELECT * FROM x"));
-        assert!(!returns_rows("UPDATE t SET a = 1 WHERE b"));
+    fn where_after_a_subquery_still_scopes_the_statement() {
+        let sql = "UPDATE t SET a = 1 WHERE id IN (SELECT 1)";
+        assert_eq!(destructive_reason(sql), None);
+    }
+
+    #[test]
+    fn reasons_name_the_destructive_action() {
+        for (sql, reason) in [
+            (
+                "CREATE OR REPLACE TABLE t (id int)",
+                "CREATE OR REPLACE TABLE drops the existing table and its rows",
+            ),
+            (
+                "CREATE OR REPLACE VIEW v AS SELECT 1",
+                "CREATE OR REPLACE VIEW replaces the existing view",
+            ),
+            (
+                "RENAME TABLE a TO b",
+                "RENAME TABLE moves tables to new names",
+            ),
+            ("DROP TABLE t", "DROP TABLE permanently removes data"),
+        ] {
+            assert_eq!(destructive_reason(sql).as_deref(), Some(reason), "{sql}");
+        }
+    }
+
+    #[test]
+    fn leading_comments_are_ignored() {
+        assert!(destructive_reason("/* cleanup */ -- now\nDROP TABLE t").is_some());
     }
 }

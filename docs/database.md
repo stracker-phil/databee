@@ -12,8 +12,9 @@ in `src-tauri/src/db_commands.rs`.
 | `db/dialect.rs` | `Dialect` (only `Dialect::MYSQL` so far): `quote_ident` (backticks), `sql_string`, `table_ref`, `system_schemas` |
 | `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
 | `db/mysql.rs` | `MySqlSession`, the only driver. It owns all I/O. |
-| `db/lexer.rs` | A small MySQL-aware scanner, not a parser. It knows the three quote styles, backslash escapes and the `#`, `-- ` and `/* */` comments. `split_statements`, `words`, `is_terminated`, `is_blank` |
-| `db/safety.rs` | `destructive_reason` (which statements need confirmation), `returns_rows` |
+| `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements`, `words`, `is_terminated`, `is_blank` |
+| `db/classify.rs` | What a statement is: `verb_index` (the deciding word, also after a `WITH` clause) and `returns_rows` |
+| `db/safety.rs` | `destructive_reason` (which statements need confirmation) |
 | `db/cell.rs` | `Cell`: decodes text-protocol bytes by column type |
 | `db/id_filter.rs` | Primary-key shorthand in the WHERE field: `3229`, `3229, 3227`, `3220-3229` |
 
@@ -57,21 +58,34 @@ Other details:
 1. **Confirmation.** `db_commands::execute` checks `destructive_reason`. It runs only when the
    `confirm_destructive` setting is on and the call isn't already confirmed. A flagged statement returns
    `ConfirmationRequired(reason)`.
-2. **Safety rules** (`safety.rs`) look at each statement's bare upper-cased words. Text inside quotes doesn't
-   count. Flagged:
+2. **Safety rules** (`safety.rs`) look at each statement's bare words, compared case-insensitively. Text
+   inside quotes, comments and `@variables` doesn't count, so `SET a = @where` has no `WHERE`. The body of an
+   executable comment (`/*!50000 … */`, `/*M! … */`) is code, as it is for the server. The rule is picked by
+   the statement's verb (`classify::verb_index`): its first word, or for `WITH …` the first statement keyword
+   at the top level after the CTEs. Flagged:
    - `DROP`
    - `TRUNCATE`
-   - `DELETE` or `UPDATE` without a `WHERE`
+   - `DELETE` or `UPDATE` without a `WHERE` at the verb's parenthesis depth; a `WHERE` inside a subquery
+     doesn't scope the statement, and `LIMIT` alone doesn't either
    - `ALTER … DROP`
+   - `RENAME TABLE`
+   - `CREATE OR REPLACE TABLE` and `CREATE OR REPLACE VIEW` (MariaDB)
 
-   Only the first word picks the rule, so `WITH … DELETE` and `REPLACE` are not flagged.
+   `REPLACE` is not flagged.
 3. **Execution.** `run_script` sends the **whole script as one multi-statement text-protocol call**
    (`sqlx::raw_sql(..).fetch_many`). Each statement result closes one `ResultSet`, with columns, rows,
    `affectedRows` and `lastInsertId`.
 4. **Row limit.** Rows beyond `row_limit` are counted but not decoded: `totalRows` stays exact and
    `truncated` is set. The query editor has no paging.
 5. **Empty results.** The text protocol sends no column metadata for an empty result. When the lexer's split
-   matches the result count, row-returning statements are `PREPARE`d to recover their column names.
+   matches the result count, statements that `classify::returns_rows` accepts are `PREPARE`d to recover their
+   column names. It accepts `SELECT` (also in parentheses), `SHOW`, `DESC`/`DESCRIBE`, `EXPLAIN`, `VALUES`,
+   `TABLE`, `CALL`, `CHECK`, `ANALYZE`, `OPTIMIZE`, `REPAIR`, `CHECKSUM`, `HANDLER`, and `WITH …` when the
+   statement after the CTEs is `SELECT`, `TABLE` or `VALUES`.
+
+   The split has known limits: backslash is always an escape (`NO_BACKSLASH_ESCAPES` is ignored), `"` always
+   quotes a string (`ANSI_QUOTES` is ignored), and there is no `DELIMITER` support. Where they apply, the
+   count can differ and the column recovery is skipped.
 6. **History.** A history entry is written for every run, including failed ones.
 7. **Current database.** `SELECT DATABASE()` refreshes the session's current database after every run. The
    UI follows a `USE` this way.

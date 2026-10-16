@@ -9,8 +9,8 @@ use sqlx::{
 };
 
 use super::browse::{browse_sql, page_limit};
+use super::classify::returns_rows;
 use super::lexer::split_statements;
-use super::safety::returns_rows;
 use super::{
     BrowsePage, BrowseRequest, Cell, ColumnInfo, ColumnMeta, DatabaseInfo, Dialect,
     ExecuteResponse, IndexInfo, ResultSet, TableInfo, TableStructure, cell, quote_ident,
