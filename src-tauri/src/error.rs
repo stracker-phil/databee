@@ -7,7 +7,7 @@ pub type AppResult<T> = Result<T, AppError>;
 
 /// Every error that crosses the Tauri boundary. Serialized as
 /// `{ kind, message, code: string | null }` so the UI can decide how to present it.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     #[error("{message}")]
     Database {

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use crate::db::{Dialect, quote_ident};
+use crate::db::Dialect;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptionRow {
@@ -206,8 +206,8 @@ pub fn cleanup_sql(
     format!(
         "-- {} expired transients\nDELETE FROM {}.{} WHERE option_name IN (\n  {}\n);",
         names.len() / 2,
-        quote_ident(database),
-        quote_ident(table),
+        dialect.quote_ident(database),
+        dialect.quote_ident(table),
         names.join(",\n  ")
     )
 }

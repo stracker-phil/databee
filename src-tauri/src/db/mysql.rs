@@ -1,7 +1,9 @@
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use async_trait::async_trait;
 use futures_util::TryStreamExt;
 use sqlx::mysql::{
     MySqlColumn, MySqlConnectOptions, MySqlConnection, MySqlPool, MySqlPoolOptions, MySqlRow,
@@ -14,8 +16,8 @@ use super::browse::{browse_sql, page_limit};
 use super::classify::returns_rows;
 use super::lexer::split_statements;
 use super::{
-    BrowsePage, BrowseRequest, Cell, ColumnInfo, ColumnMeta, DatabaseInfo, Dialect,
-    ExecuteResponse, IndexInfo, ResultSet, TableInfo, TableStructure, cell, quote_ident,
+    BrowsePage, BrowseRequest, Cell, ColumnInfo, ColumnMeta, Database, DatabaseInfo, Dialect,
+    ExecuteResponse, IndexInfo, ResultSet, TableInfo, TableStructure, cell,
 };
 use crate::connection::{ConnectionSpec, Secret};
 use crate::error::{AppError, AppResult, human_duration};
@@ -38,7 +40,7 @@ pub struct MySqlSession {
     database: Mutex<Option<String>>,
     /// From a fresh connection's `sql_mode`, the server default the metadata pool shares.
     backslash_escapes: AtomicBool,
-    pub server_version: String,
+    server_version: String,
 }
 
 fn connect_options(spec: &ConnectionSpec, password: Option<&Secret>) -> MySqlConnectOptions {
@@ -128,22 +130,107 @@ impl MySqlSession {
         })
     }
 
-    /// How string literals for this server are spelled.
-    pub fn dialect(&self) -> Dialect {
+    /// Runs `KILL` on a one-off connection, so it works even while every pool connection is busy.
+    async fn kill(&self, query_only: bool) -> AppResult<()> {
+        let id = self.editor_thread_id.load(Ordering::SeqCst);
+        let sql = if query_only {
+            format!("KILL QUERY {id}")
+        } else {
+            format!("KILL {id}")
+        };
+        connect_within(self.connect_timeout, async {
+            let mut conn = self.editor_options.connect().await?;
+            sqlx::raw_sql(AssertSqlSafe(sql)).execute(&mut conn).await?;
+            sqlx::Connection::close(conn).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    async fn reconnect_editor(&self, conn: &mut MySqlConnection) -> AppResult<()> {
+        let options = with_database(&self.editor_options, self.current_database().as_deref());
+        let reconnect = async {
+            let mut fresh = options.connect().await?;
+            let id = thread_id(&mut fresh).await?;
+            let dialect = read_dialect(&mut fresh).await?;
+            Ok((fresh, id, dialect))
+        };
+        let (fresh, id, dialect) = connect_within(self.connect_timeout, reconnect).await?;
+        self.editor_thread_id.store(id, Ordering::SeqCst);
+        self.backslash_escapes
+            .store(dialect.backslash_escapes, Ordering::SeqCst);
+        *conn = fresh;
+        Ok(())
+    }
+
+    /// Reconnects after a failed run. The run's own error is what the user sees; a failed
+    /// reconnect only leaves the broken connection for the next run to replace.
+    async fn reconnect_or_log(&self, conn: &mut MySqlConnection) {
+        if let Err(e) = self.reconnect_editor(conn).await {
+            log::warn!("Could not reconnect the editor connection: {e}");
+        }
+    }
+
+    /// The `SHOW CREATE TABLE` text, or `None` when the server returns no row.
+    async fn create_statement(&self, database: &str, table: &str) -> AppResult<Option<String>> {
+        let dialect = self.dialect();
+        let sql = format!(
+            "SHOW CREATE TABLE {}.{}",
+            dialect.quote_ident(database),
+            dialect.quote_ident(table)
+        );
+        query_within(self.query_timeout, async {
+            let row = sqlx::raw_sql(AssertSqlSafe(sql))
+                .fetch_optional(&self.meta)
+                .await?;
+            Ok(row.and_then(|row| raw_text(&row, 1)))
+        })
+        .await
+    }
+
+    /// Runs a metadata query with bound parameters under the session's query timeout; every
+    /// column must be text (CAST as needed).
+    async fn strings(
+        &self,
+        sql: &'static str,
+        binds: &[&str],
+    ) -> AppResult<Vec<Vec<Option<String>>>> {
+        let mut query = sqlx::query(sql);
+        for b in binds {
+            query = query.bind(b.to_string());
+        }
+        let rows = query_within(self.query_timeout, async {
+            Ok(query.fetch_all(&self.meta).await?)
+        })
+        .await?;
+        rows.iter()
+            .map(|row| {
+                (0..row.len())
+                    .map(|i| row.try_get_unchecked::<Option<String>, _>(i))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(AppError::from)
+            })
+            .collect()
+    }
+}
+
+#[async_trait]
+impl Database for MySqlSession {
+    fn dialect(&self) -> Dialect {
         Dialect {
             backslash_escapes: self.backslash_escapes.load(Ordering::SeqCst),
         }
     }
 
-    pub fn current_database(&self) -> Option<String> {
+    fn current_database(&self) -> Option<String> {
         self.database.lock_unpoisoned().clone()
     }
 
-    pub async fn close(&self) {
+    async fn close(&self) {
         self.meta.close().await;
     }
 
-    pub async fn execute(
+    async fn execute(
         &self,
         sql: &str,
         row_limit: usize,
@@ -193,54 +280,14 @@ impl MySqlSession {
     }
 
     /// Interrupts the statement running on the editor connection.
-    pub async fn cancel(&self) -> AppResult<()> {
+    async fn cancel(&self) -> AppResult<()> {
         self.kill(true).await
     }
 
-    /// Runs `KILL` on a one-off connection, so it works even while every pool connection is busy.
-    async fn kill(&self, query_only: bool) -> AppResult<()> {
-        let id = self.editor_thread_id.load(Ordering::SeqCst);
-        let sql = if query_only {
-            format!("KILL QUERY {id}")
-        } else {
-            format!("KILL {id}")
-        };
-        connect_within(self.connect_timeout, async {
-            let mut conn = self.editor_options.connect().await?;
-            sqlx::raw_sql(AssertSqlSafe(sql)).execute(&mut conn).await?;
-            sqlx::Connection::close(conn).await?;
-            Ok(())
-        })
-        .await
-    }
-
-    async fn reconnect_editor(&self, conn: &mut MySqlConnection) -> AppResult<()> {
-        let options = with_database(&self.editor_options, self.current_database().as_deref());
-        let reconnect = async {
-            let mut fresh = options.connect().await?;
-            let id = thread_id(&mut fresh).await?;
-            let dialect = read_dialect(&mut fresh).await?;
-            Ok((fresh, id, dialect))
-        };
-        let (fresh, id, dialect) = connect_within(self.connect_timeout, reconnect).await?;
-        self.editor_thread_id.store(id, Ordering::SeqCst);
-        self.backslash_escapes
-            .store(dialect.backslash_escapes, Ordering::SeqCst);
-        *conn = fresh;
-        Ok(())
-    }
-
-    /// Reconnects after a failed run. The run's own error is what the user sees; a failed
-    /// reconnect only leaves the broken connection for the next run to replace.
-    async fn reconnect_or_log(&self, conn: &mut MySqlConnection) {
-        if let Err(e) = self.reconnect_editor(conn).await {
-            log::warn!("Could not reconnect the editor connection: {e}");
-        }
-    }
-
-    pub async fn use_database(&self, database: &str) -> AppResult<()> {
+    async fn use_database(&self, database: &str) -> AppResult<()> {
+        let dialect = self.dialect();
         let mut conn = self.editor.lock().await;
-        let sql = format!("USE {}", quote_ident(database));
+        let sql = format!("USE {}", dialect.quote_ident(database));
         query_within(self.query_timeout, async {
             sqlx::raw_sql(AssertSqlSafe(sql))
                 .execute(&mut *conn)
@@ -252,7 +299,7 @@ impl MySqlSession {
         Ok(())
     }
 
-    pub async fn databases(&self) -> AppResult<Vec<DatabaseInfo>> {
+    async fn databases(&self) -> AppResult<Vec<DatabaseInfo>> {
         let rows = self
             .strings(
                 "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME",
@@ -272,7 +319,7 @@ impl MySqlSession {
             .collect())
     }
 
-    pub async fn tables(&self, database: &str) -> AppResult<Vec<TableInfo>> {
+    async fn tables(&self, database: &str) -> AppResult<Vec<TableInfo>> {
         let rows = self
             .strings(
                 "SELECT TABLE_NAME, TABLE_TYPE, CAST(TABLE_ROWS AS CHAR), \
@@ -293,7 +340,7 @@ impl MySqlSession {
             .collect())
     }
 
-    pub async fn structure(&self, database: &str, table: &str) -> AppResult<TableStructure> {
+    async fn structure(&self, database: &str, table: &str) -> AppResult<TableStructure> {
         let binds = [database, table];
         let (column_rows, index_rows, ddl) = tokio::try_join!(
             self.strings(
@@ -330,28 +377,8 @@ impl MySqlSession {
         })
     }
 
-    /// The `SHOW CREATE TABLE` text, or `None` when the server returns no row.
-    async fn create_statement(&self, database: &str, table: &str) -> AppResult<Option<String>> {
-        let sql = format!(
-            "SHOW CREATE TABLE {}.{}",
-            quote_ident(database),
-            quote_ident(table)
-        );
-        query_within(self.query_timeout, async {
-            let row = sqlx::raw_sql(AssertSqlSafe(sql))
-                .fetch_optional(&self.meta)
-                .await?;
-            Ok(row.and_then(|row| raw_text(&row, 1)))
-        })
-        .await
-    }
-
-    /// Table → column names, for editor autocompletion.
-    pub async fn completion(
-        &self,
-        database: &str,
-    ) -> AppResult<std::collections::BTreeMap<String, Vec<String>>> {
-        let mut map = std::collections::BTreeMap::<String, Vec<String>>::new();
+    async fn completion(&self, database: &str) -> AppResult<BTreeMap<String, Vec<String>>> {
+        let mut map = BTreeMap::<String, Vec<String>>::new();
         for r in self
             .strings(
                 "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS \
@@ -367,7 +394,7 @@ impl MySqlSession {
         Ok(map)
     }
 
-    pub async fn browse(&self, req: &BrowseRequest, timeout: Duration) -> AppResult<BrowsePage> {
+    async fn browse(&self, req: &BrowseRequest, timeout: Duration) -> AppResult<BrowsePage> {
         let (sql, filter) = browse_sql(req, self.dialect())?;
         let limit = page_limit(req);
         let mut conn = self.meta.acquire().await?;
@@ -392,7 +419,7 @@ impl MySqlSession {
     }
 
     /// Runs the statements in one transaction (all or nothing for transactional tables).
-    pub async fn apply(&self, statements: &[String], timeout: Duration) -> AppResult<u64> {
+    async fn apply(&self, statements: &[String], timeout: Duration) -> AppResult<u64> {
         use sqlx::Connection;
         let mut conn = self.meta.acquire().await?;
         let commit_sent = AtomicBool::new(false);
@@ -426,7 +453,7 @@ impl MySqlSession {
     }
 
     /// Runs a read query on the metadata pool and returns its (last) result set.
-    pub async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet> {
+    async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet> {
         const MAX_ROWS: usize = 50_000;
         let mut conn = self.meta.acquire().await?;
         match tokio::time::timeout(timeout, run_script(&mut conn, sql, MAX_ROWS)).await {
@@ -438,29 +465,8 @@ impl MySqlSession {
         }
     }
 
-    /// Runs a metadata query with bound parameters under the session's query timeout; every
-    /// column must be text (CAST as needed).
-    async fn strings(
-        &self,
-        sql: &'static str,
-        binds: &[&str],
-    ) -> AppResult<Vec<Vec<Option<String>>>> {
-        let mut query = sqlx::query(sql);
-        for b in binds {
-            query = query.bind(b.to_string());
-        }
-        let rows = query_within(self.query_timeout, async {
-            Ok(query.fetch_all(&self.meta).await?)
-        })
-        .await?;
-        rows.iter()
-            .map(|row| {
-                (0..row.len())
-                    .map(|i| row.try_get_unchecked::<Option<String>, _>(i))
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(AppError::from)
-            })
-            .collect()
+    fn server_version(&self) -> &str {
+        &self.server_version
     }
 }
 

@@ -39,7 +39,7 @@ These rules hold everywhere in the code. Keep them when you change things.
 │  │ commands/ (registry) │ ◀────────── │  wp_commands  stage_cmds  │  │
 │  │ api/index.ts ◀── only│   events    ├───────────────────────────┤  │
 │  └──────────────────────┘ launch,     │ AppState: stores, sessions│  │
-│                           command,    │ db/ (MySqlSession)        │  │
+│                           command,    │ db/ (dyn Database)       │  │
 │                           stage:*     │ wp/ (lens)  store/ (JSON) │  │
 │                                       │ secrets (Keychain)        │  │
 │                                       └──────┬───────┬────────┬───┘  │
@@ -105,7 +105,7 @@ Running `SELECT * FROM wp_options` in a query tab:
 3. `db_commands::execute` looks up the `Session`. If `confirm_destructive` is on, it checks the SQL with
    `db::safety::destructive_reason` and returns `ConfirmationRequired` for statements like `DROP` or an
    unscoped `DELETE`.
-4. `MySqlSession::execute` runs the whole script on the session's dedicated editor connection with the
+4. `Database::execute` (`MySqlSession`) runs the whole script on the session's dedicated editor connection with the
    configured timeout and row limit. It decodes each cell into a typed `Cell` and returns one `ResultSet`
    per statement.
 5. Rust records a history entry and returns `ExecuteResponse` to the store. If an error has kind

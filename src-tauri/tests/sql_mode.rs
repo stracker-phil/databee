@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use databee_lib::connection::{ConnectionSpec, Secret};
 use databee_lib::db::Cell;
+use databee_lib::db::Database;
 use databee_lib::db::mysql::MySqlSession;
 use databee_lib::wp::changes::{ChangeRequest, plan};
 use databee_lib::wp::detect;

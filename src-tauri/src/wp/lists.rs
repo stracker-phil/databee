@@ -9,8 +9,8 @@ use super::context::WpContext;
 use super::entity::cell_str;
 use super::hints::money;
 use super::{fetch, post_images};
-use crate::db::mysql::MySqlSession;
-use crate::db::{Cell, Dialect, ResultSet, quote_ident};
+use crate::db::Database;
+use crate::db::{Cell, Dialect, ResultSet};
 use crate::error::AppResult;
 
 pub const PAGE_MAX: u32 = 200;
@@ -184,9 +184,12 @@ fn facets(rs: &ResultSet, label: impl Fn(&str) -> String) -> Vec<Facet> {
     out
 }
 
-/// `wc-processing` → `Processing`.
-fn t(db: &str, ctx: &WpContext, table: &str) -> String {
-    format!("{}.{}", quote_ident(db), quote_ident(&ctx.table(table)))
+fn t(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
+    format!(
+        "{}.{}",
+        dialect.quote_ident(db),
+        dialect.quote_ident(&ctx.table(table))
+    )
 }
 
 // ---------- orders & subscriptions ----------
@@ -245,9 +248,9 @@ pub fn orders_sql(
              WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
             order = order_by("orders_hpos", q, "o.id"),
             created = epoch("o.date_created_gmt"),
-            items = t(db, ctx, "woocommerce_order_items"),
-            orders = t(db, ctx, "wc_orders"),
-            addr = t(db, ctx, "wc_order_addresses"),
+            items = t(dialect, db, ctx, "woocommerce_order_items"),
+            orders = t(dialect, db, ctx, "wc_orders"),
+            addr = t(dialect, db, ctx, "wc_order_addresses"),
             offset = q.offset,
         )
     } else {
@@ -303,9 +306,9 @@ pub fn orders_sql(
             last = meta("_billing_last_name"),
             customer = meta("_customer_user"),
             created = epoch("p.post_date_gmt"),
-            items = t(db, ctx, "woocommerce_order_items"),
-            posts = t(db, ctx, "posts"),
-            postmeta = t(db, ctx, "postmeta"),
+            items = t(dialect, db, ctx, "woocommerce_order_items"),
+            posts = t(dialect, db, ctx, "posts"),
+            postmeta = t(dialect, db, ctx, "postmeta"),
             offset = q.offset,
         )
     }
@@ -347,7 +350,7 @@ fn order_facets_sql(
     if ctx.hpos() {
         let from = format!(
             "{} WHERE type = {}",
-            t(db, ctx, "wc_orders"),
+            t(dialect, db, ctx, "wc_orders"),
             dialect.sql_string(order_type)
         );
         (
@@ -360,14 +363,14 @@ fn order_facets_sql(
         (
             format!(
                 "SELECT post_status, COUNT(*) FROM {} WHERE post_type = {} GROUP BY post_status",
-                t(db, ctx, "posts"),
+                t(dialect, db, ctx, "posts"),
                 dialect.sql_string(order_type)
             ),
             format!(
                 "SELECT m.meta_value, COUNT(*) FROM {posts} p JOIN {pm} m ON m.post_id = p.ID AND m.meta_key = '_payment_method' \
                  WHERE p.post_type = {ty} AND m.meta_value <> '' GROUP BY m.meta_value",
-                posts = t(db, ctx, "posts"),
-                pm = t(db, ctx, "postmeta"),
+                posts = t(dialect, db, ctx, "posts"),
+                pm = t(dialect, db, ctx, "postmeta"),
                 ty = dialect.sql_string(order_type)
             ),
         )
@@ -375,22 +378,19 @@ fn order_facets_sql(
 }
 
 pub async fn orders(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     order_type: &str,
     q: &ListQuery,
 ) -> AppResult<Page<OrderSummary>> {
-    let rs = fetch(
-        session,
-        &orders_sql(session.dialect(), db, ctx, order_type, q),
-    )
-    .await?;
+    let dialect = session.dialect();
+    let rs = fetch(session, &orders_sql(dialect, db, ctx, order_type, q)).await?;
     let (items, has_more) = page_split(
         order_rows(&rs, ctx.site.currency.as_deref(), ctx.site.price_decimals),
         q.limit(),
     );
-    let (status_sql, gateway_sql) = order_facets_sql(session.dialect(), db, ctx, order_type);
+    let (status_sql, gateway_sql) = order_facets_sql(dialect, db, ctx, order_type);
     let statuses = fetch(session, &status_sql).await?;
     let gateways = fetch(session, &gateway_sql).await?;
     Ok(Page {
@@ -443,8 +443,8 @@ pub fn users_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) -> 
          WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
         order = order_by("users", q, "u.ID"),
         registered = epoch("u.user_registered"),
-        users = t(db, ctx, "users"),
-        usermeta = t(db, ctx, "usermeta"),
+        users = t(dialect, db, ctx, "users"),
+        usermeta = t(dialect, db, ctx, "usermeta"),
         limit = q.limit() + 1,
         offset = q.offset,
     )
@@ -464,7 +464,7 @@ pub fn guests_sql(
     limit: u32,
     offset: u64,
 ) -> String {
-    let users = t(db, ctx, "users");
+    let users = t(dialect, db, ctx, "users");
     let mut extra = String::new();
     if let Some(s) = search {
         extra += &format!(" AND {{email}} LIKE {}", dialect.like_contains(s));
@@ -482,8 +482,8 @@ pub fn guests_sql(
              AND o.billing_email NOT IN (SELECT user_email FROM {users}){extra} \
              GROUP BY o.billing_email ORDER BY MAX(o.date_created_gmt) DESC LIMIT {limit} OFFSET {offset}",
             created = epoch("o.date_created_gmt"),
-            orders = t(db, ctx, "wc_orders"),
-            addr = t(db, ctx, "wc_order_addresses"),
+            orders = t(dialect, db, ctx, "wc_orders"),
+            addr = t(dialect, db, ctx, "wc_order_addresses"),
         )
     } else {
         let extra = extra.replace("{email}", "e.meta_value");
@@ -499,8 +499,8 @@ pub fn guests_sql(
              AND e.meta_value NOT IN (SELECT user_email FROM {users}){extra} \
              GROUP BY e.meta_value ORDER BY MAX(p.post_date_gmt) DESC LIMIT {limit} OFFSET {offset}",
             created = epoch("p.post_date_gmt"),
-            posts = t(db, ctx, "posts"),
-            pm = t(db, ctx, "postmeta"),
+            posts = t(dialect, db, ctx, "posts"),
+            pm = t(dialect, db, ctx, "postmeta"),
         )
     }
 }
@@ -527,7 +527,12 @@ pub fn guest_rows(rs: &ResultSet, currency: Option<&str>, decimals: u32) -> Vec<
 }
 
 /// (count, sum of totals, last order) per customer for paid-ish orders.
-pub fn customer_stats_sql(db: &str, ctx: &WpContext, ids: &[String]) -> Option<String> {
+pub fn customer_stats_sql(
+    dialect: Dialect,
+    db: &str,
+    ctx: &WpContext,
+    ids: &[String],
+) -> Option<String> {
     let list = ids
         .iter()
         .filter_map(|i| i.parse::<u64>().ok())
@@ -542,7 +547,7 @@ pub fn customer_stats_sql(db: &str, ctx: &WpContext, ids: &[String]) -> Option<S
             "SELECT customer_id, COUNT(*), SUM(CASE WHEN status IN ('wc-completed', 'wc-processing') THEN total_amount ELSE 0 END), \
              MAX({created}) FROM {orders} WHERE type = 'shop_order' AND customer_id IN ({list}) GROUP BY customer_id",
             created = epoch("date_created_gmt"),
-            orders = t(db, ctx, "wc_orders"),
+            orders = t(dialect, db, ctx, "wc_orders"),
         )
     } else {
         format!(
@@ -551,8 +556,8 @@ pub fn customer_stats_sql(db: &str, ctx: &WpContext, ids: &[String]) -> Option<S
              LEFT JOIN {pm} tot ON tot.post_id = p.ID AND tot.meta_key = '_order_total' \
              WHERE p.post_type = 'shop_order' AND c.meta_value IN ({list}) GROUP BY c.meta_value",
             created = epoch("p.post_date_gmt"),
-            posts = t(db, ctx, "posts"),
-            pm = t(db, ctx, "postmeta"),
+            posts = t(dialect, db, ctx, "posts"),
+            pm = t(dialect, db, ctx, "postmeta"),
         )
     })
 }
@@ -577,13 +582,14 @@ pub fn gravatar(email: &str) -> String {
 /// `wp_users` with roles and, on shops, order stats. Guest checkouts are not users; they
 /// open from their orders (`guest:<email>`).
 pub async fn users(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     q: &ListQuery,
     with_gravatar: bool,
 ) -> AppResult<Page<UserSummary>> {
-    let rs = fetch(session, &users_sql(session.dialect(), db, ctx, q)).await?;
+    let dialect = session.dialect();
+    let rs = fetch(session, &users_sql(dialect, db, ctx, q)).await?;
     let rows: Vec<UserSummary> = rs
         .rows
         .iter()
@@ -605,7 +611,7 @@ pub async fn users(
         .collect();
     let (mut items, has_more) = page_split(rows, q.limit());
     let ids: Vec<String> = items.iter().map(|c| c.id.clone()).collect();
-    if let Some(sql) = customer_stats_sql(db, ctx, &ids) {
+    if let Some(sql) = customer_stats_sql(dialect, db, ctx, &ids) {
         let stats = fetch(session, &sql).await?;
         let by_id: HashMap<String, &Vec<Cell>> = stats
             .rows
@@ -630,13 +636,13 @@ pub async fn users(
 }
 
 /// Role counts from `{prefix}capabilities` for the kind filter.
-async fn role_facets(session: &MySqlSession, ctx: &WpContext, db: &str) -> AppResult<Vec<Facet>> {
+async fn role_facets(session: &dyn Database, ctx: &WpContext, db: &str) -> AppResult<Vec<Facet>> {
     let dialect = session.dialect();
     let roles = fetch(
         session,
         &format!(
             "SELECT meta_value, COUNT(*) FROM {} WHERE meta_key = {} GROUP BY meta_value",
-            t(db, ctx, "usermeta"),
+            t(dialect, db, ctx, "usermeta"),
             dialect.sql_string(&format!("{}capabilities", ctx.prefix))
         ),
     )
@@ -707,7 +713,7 @@ pub fn products_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) 
             "l.sku, CASE WHEN l.min_price = l.max_price THEN l.min_price ELSE CONCAT(l.min_price, '–', l.max_price) END, l.stock_status, l.stock_quantity, l.total_sales",
             format!(
                 " LEFT JOIN {} l ON l.product_id = p.ID",
-                t(db, ctx, "wc_product_meta_lookup")
+                t(dialect, db, ctx, "wc_product_meta_lookup")
             ),
         )
     } else {
@@ -736,10 +742,10 @@ pub fn products_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) 
                 "p.ID",
             )
         },
-        posts = t(db, ctx, "posts"),
-        tr = t(db, ctx, "term_relationships"),
-        tt = t(db, ctx, "term_taxonomy"),
-        terms = t(db, ctx, "terms"),
+        posts = t(dialect, db, ctx, "posts"),
+        tr = t(dialect, db, ctx, "term_relationships"),
+        tt = t(dialect, db, ctx, "term_taxonomy"),
+        terms = t(dialect, db, ctx, "terms"),
         limit = q.limit() + 1,
         offset = q.offset,
     )
@@ -757,12 +763,13 @@ fn price_text(raw: &str, currency: Option<&str>, decimals: u32) -> String {
 }
 
 pub async fn products(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     q: &ListQuery,
 ) -> AppResult<Page<ProductSummary>> {
-    let rs = fetch(session, &products_sql(session.dialect(), db, ctx, q)).await?;
+    let dialect = session.dialect();
+    let rs = fetch(session, &products_sql(dialect, db, ctx, q)).await?;
     let currency = ctx.site.currency.as_deref();
     let rows: Vec<ProductSummary> = rs
         .rows
@@ -796,7 +803,7 @@ pub async fn products(
         session,
         &format!(
             "SELECT post_status, COUNT(*) FROM {} WHERE post_type = 'product' AND post_status NOT IN ('trash', 'auto-draft') GROUP BY post_status",
-            t(db, ctx, "posts")
+            t(dialect, db, ctx, "posts")
         ),
     )
     .await?;
@@ -805,9 +812,9 @@ pub async fn products(
         &format!(
             "SELECT te.slug, COUNT(*) FROM {tr} tr JOIN {tt} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_type' \
              JOIN {terms} te ON te.term_id = tt.term_id GROUP BY te.slug",
-            tr = t(db, ctx, "term_relationships"),
-            tt = t(db, ctx, "term_taxonomy"),
-            terms = t(db, ctx, "terms"),
+            tr = t(dialect, db, ctx, "term_relationships"),
+            tt = t(dialect, db, ctx, "term_taxonomy"),
+            terms = t(dialect, db, ctx, "terms"),
         ),
     )
     .await?;
@@ -862,9 +869,9 @@ pub fn actions_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) -
         order = order_by("actions", q, "a.action_id"),
         sched = epoch("a.scheduled_date_gmt"),
         last = epoch("IF(a.last_attempt_gmt < '1000-01-01', NULL, a.last_attempt_gmt)"),
-        logs = t(db, ctx, "actionscheduler_logs"),
-        actions = t(db, ctx, "actionscheduler_actions"),
-        groups = t(db, ctx, "actionscheduler_groups"),
+        logs = t(dialect, db, ctx, "actionscheduler_logs"),
+        actions = t(dialect, db, ctx, "actionscheduler_actions"),
+        groups = t(dialect, db, ctx, "actionscheduler_groups"),
         limit = q.limit() + 1,
         offset = q.offset,
     )
@@ -888,7 +895,7 @@ pub fn action_rows(rs: &ResultSet) -> Vec<ActionSummary> {
 }
 
 pub async fn actions(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     q: &ListQuery,
@@ -896,7 +903,7 @@ pub async fn actions(
     let dialect = session.dialect();
     let rs = fetch(session, &actions_sql(dialect, db, ctx, q)).await?;
     let (items, has_more) = page_split(action_rows(&rs), q.limit());
-    let table = t(db, ctx, "actionscheduler_actions");
+    let table = t(dialect, db, ctx, "actionscheduler_actions");
     let statuses = fetch(
         session,
         &format!("SELECT status, COUNT(*) FROM {table} GROUP BY status"),
@@ -931,12 +938,13 @@ pub struct HookFailures {
 }
 
 pub async fn failed_by_hook(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
 ) -> AppResult<Vec<HookFailures>> {
-    let actions = t(db, ctx, "actionscheduler_actions");
-    let logs = t(db, ctx, "actionscheduler_logs");
+    let dialect = session.dialect();
+    let actions = t(dialect, db, ctx, "actionscheduler_actions");
+    let logs = t(dialect, db, ctx, "actionscheduler_logs");
     let rs = fetch(
         session,
         &format!(
@@ -1046,16 +1054,17 @@ pub fn session_summary(
 }
 
 pub async fn sessions(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     q: &ListQuery,
 ) -> AppResult<Page<SessionSummary>> {
+    let dialect = session.dialect();
     let rs = fetch(
         session,
         &format!(
             "SELECT session_key, session_expiry, session_value FROM {} ORDER BY session_expiry DESC LIMIT {} OFFSET {}",
-            t(db, ctx, "woocommerce_sessions"),
+            t(dialect, db, ctx, "woocommerce_sessions"),
             q.limit() + 1,
             q.offset
         ),
@@ -1127,13 +1136,13 @@ pub const HIDDEN_POST_TYPES: &[&str] = &[
 ];
 
 pub async fn content(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     q: &ListQuery,
 ) -> AppResult<Page<PostSummary>> {
     let dialect = session.dialect();
-    let posts = t(db, ctx, "posts");
+    let posts = t(dialect, db, ctx, "posts");
     let hidden = HIDDEN_POST_TYPES
         .iter()
         .map(|h| dialect.sql_string(h))
@@ -1172,7 +1181,7 @@ pub async fn content(
             order = order_by("content", q, "p.ID"),
             date = epoch("IF(p.post_date_gmt < '1000-01-01', NULL, p.post_date_gmt)"),
             modified = epoch("IF(p.post_modified_gmt < '1000-01-01', NULL, p.post_modified_gmt)"),
-            users = t(db, ctx, "users"),
+            users = t(dialect, db, ctx, "users"),
             limit = q.limit() + 1,
             offset = q.offset,
         ),

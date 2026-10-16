@@ -9,8 +9,8 @@ use super::entity::{Catalog, cell_str};
 use super::fetch;
 use super::lists::text;
 use super::php::{self, PhpKey, PhpValue};
-use crate::db::mysql::MySqlSession;
-use crate::db::{Cell, Dialect, ResultSet, quote_ident};
+use crate::db::Database;
+use crate::db::{Cell, Dialect, ResultSet};
 use crate::error::{AppError, AppResult};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -103,12 +103,12 @@ pub fn sql_value(dialect: Dialect, v: Option<&str>) -> String {
     v.map_or_else(|| "NULL".to_string(), |v| dialect.sql_string(v))
 }
 
-fn tref(db: &str, table: &str) -> String {
-    format!("{}.{}", quote_ident(db), quote_ident(table))
+fn tref(dialect: Dialect, db: &str, table: &str) -> String {
+    format!("{}.{}", dialect.quote_ident(db), dialect.quote_ident(table))
 }
 
-fn wp_table(db: &str, ctx: &WpContext, table: &str) -> String {
-    tref(db, &ctx.table(table))
+fn wp_table(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
+    tref(dialect, db, &ctx.table(table))
 }
 
 /// `cutoff` is a literal fixed at plan time, so the applied DELETE removes exactly the
@@ -148,7 +148,7 @@ pub fn reinsert_sql(dialect: Dialect, table: &str, rows: &ResultSet) -> Vec<Stri
     let cols = rows
         .columns
         .iter()
-        .map(|c| quote_ident(&c.name))
+        .map(|c| dialect.quote_ident(&c.name))
         .collect::<Vec<_>>()
         .join(", ");
     values
@@ -174,7 +174,7 @@ fn restore_undo(
     if let (Some(before), Some(filter)) = (&before, filter) {
         let sql = format!(
             "UPDATE {table} SET {} = {before} WHERE {filter}",
-            quote_ident(column)
+            dialect.quote_ident(column)
         );
         return (vec![sql], String::new());
     }
@@ -187,7 +187,7 @@ fn restore_undo(
 }
 
 /// Fixed at plan time, so the review shows exactly the rows the DELETE removes.
-async fn log_cutoff(session: &MySqlSession, days: u32) -> AppResult<String> {
+async fn log_cutoff(session: &dyn Database, days: u32) -> AppResult<String> {
     let rs = fetch(
         session,
         &format!("SELECT UTC_TIMESTAMP() - INTERVAL {days} DAY"),
@@ -200,7 +200,7 @@ async fn log_cutoff(session: &MySqlSession, days: u32) -> AppResult<String> {
 }
 
 pub async fn plan(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: Option<&WpContext>,
     catalog: Option<&Catalog>,
     req: &ChangeRequest,
@@ -216,11 +216,18 @@ pub async fn plan(
             column,
             value,
         } => {
-            let t = tref(database, table);
-            let filter = format!("{} = {}", quote_ident(key_column), dialect.sql_string(key));
+            let t = tref(dialect, database, table);
+            let filter = format!(
+                "{} = {}",
+                dialect.quote_ident(key_column),
+                dialect.sql_string(key)
+            );
             let old = fetch(
                 session,
-                &format!("SELECT {} FROM {t} WHERE {filter}", quote_ident(column)),
+                &format!(
+                    "SELECT {} FROM {t} WHERE {filter}",
+                    dialect.quote_ident(column)
+                ),
             )
             .await?;
             if old.rows.len() != 1 {
@@ -231,9 +238,13 @@ pub async fn plan(
             }
             // After a key change the row is only found by its new key.
             let undo_filter = if column == key_column {
-                value
-                    .as_deref()
-                    .map(|v| format!("{} = {}", quote_ident(key_column), dialect.sql_string(v)))
+                value.as_deref().map(|v| {
+                    format!(
+                        "{} = {}",
+                        dialect.quote_ident(key_column),
+                        dialect.sql_string(v)
+                    )
+                })
             } else {
                 Some(filter.clone())
             };
@@ -243,7 +254,7 @@ pub async fn plan(
                 description: format!("{table}.{column} of {key_column} {key}{note}"),
                 statements: vec![format!(
                     "UPDATE {t} SET {} = {} WHERE {filter}",
-                    quote_ident(column),
+                    dialect.quote_ident(column),
                     sql_value(dialect, value.as_deref())
                 )],
                 undo,
@@ -255,8 +266,12 @@ pub async fn plan(
             key_column,
             key,
         } => {
-            let t = tref(database, table);
-            let filter = format!("{} = {}", quote_ident(key_column), dialect.sql_string(key));
+            let t = tref(dialect, database, table);
+            let filter = format!(
+                "{} = {}",
+                dialect.quote_ident(key_column),
+                dialect.sql_string(key)
+            );
             let rows = fetch(session, &format!("SELECT * FROM {t} WHERE {filter}")).await?;
             if rows.rows.len() != 1 {
                 return Err(AppError::InvalidInput(format!(
@@ -276,19 +291,19 @@ pub async fn plan(
             key_column,
             key,
         } => {
-            let t = tref(database, table);
+            let t = tref(dialect, database, table);
             let structure = session.structure(database, table).await?;
             let cols: Vec<String> = structure
                 .columns
                 .iter()
                 .filter(|c| !c.extra.contains("auto_increment"))
-                .map(|c| quote_ident(&c.name))
+                .map(|c| dialect.quote_ident(&c.name))
                 .collect();
             PlannedChange {
                 description: format!("Duplicate {table} row {key_column} {key}"),
                 statements: vec![format!(
                     "INSERT INTO {t} ({cols}) SELECT {cols} FROM {t} WHERE {} = {}",
-                    quote_ident(key_column),
+                    dialect.quote_ident(key_column),
                     dialect.sql_string(key),
                     cols = cols.join(", ")
                 )],
@@ -300,10 +315,10 @@ pub async fn plan(
             table,
             values,
         } => {
-            let t = tref(database, table);
+            let t = tref(dialect, database, table);
             let cols = values
                 .iter()
-                .map(|(c, _)| quote_ident(c))
+                .map(|(c, _)| dialect.quote_ident(c))
                 .collect::<Vec<_>>()
                 .join(", ");
             let vals = values
@@ -332,19 +347,19 @@ pub async fn plan(
                 .meta
                 .as_ref()
                 .ok_or_else(|| AppError::InvalidInput(format!("{entity} has no meta")))?;
-            let t = wp_table(database, ctx, &meta.table);
+            let t = wp_table(dialect, database, ctx, &meta.table);
             let filter = format!(
                 "{} = {} AND {} = {}",
-                quote_ident(&meta.fk),
+                dialect.quote_ident(&meta.fk),
                 dialect.sql_string(id),
-                quote_ident(&meta.key),
+                dialect.quote_ident(&meta.key),
                 dialect.sql_string(key)
             );
             let old = fetch(
                 session,
                 &format!(
                     "SELECT {} FROM {t} WHERE {filter}",
-                    quote_ident(&meta.value)
+                    dialect.quote_ident(&meta.value)
                 ),
             )
             .await?;
@@ -353,9 +368,9 @@ pub async fn plan(
                     description: format!("Add meta {key} to {entity} #{id}"),
                     statements: vec![format!(
                         "INSERT INTO {t} ({}, {}, {}) VALUES ({}, {}, {})",
-                        quote_ident(&meta.fk),
-                        quote_ident(&meta.key),
-                        quote_ident(&meta.value),
+                        dialect.quote_ident(&meta.fk),
+                        dialect.quote_ident(&meta.key),
+                        dialect.quote_ident(&meta.value),
                         dialect.sql_string(id),
                         dialect.sql_string(key),
                         dialect.sql_string(value)
@@ -369,7 +384,7 @@ pub async fn plan(
                         description: format!("Meta {key} of {entity} #{id}{note}"),
                         statements: vec![format!(
                             "UPDATE {t} SET {} = {} WHERE {filter}",
-                            quote_ident(&meta.value),
+                            dialect.quote_ident(&meta.value),
                             dialect.sql_string(value)
                         )],
                         undo,
@@ -397,12 +412,12 @@ pub async fn plan(
                 .meta
                 .as_ref()
                 .ok_or_else(|| AppError::InvalidInput(format!("{entity} has no meta")))?;
-            let t = wp_table(database, ctx, &meta.table);
+            let t = wp_table(dialect, database, ctx, &meta.table);
             let filter = format!(
                 "{} = {} AND {} = {}",
-                quote_ident(&meta.fk),
+                dialect.quote_ident(&meta.fk),
                 dialect.sql_string(id),
-                quote_ident(&meta.key),
+                dialect.quote_ident(&meta.key),
                 dialect.sql_string(key)
             );
             let rows = fetch(session, &format!("SELECT * FROM {t} WHERE {filter}")).await?;
@@ -433,7 +448,7 @@ pub async fn plan(
             };
             let mut statements = Vec::new();
             let mut undo = Vec::new();
-            let posts = wp_table(database, ctx, "posts");
+            let posts = wp_table(dialect, database, ctx, "posts");
             let post_status = fetch(
                 session,
                 &format!(
@@ -443,7 +458,7 @@ pub async fn plan(
             )
             .await?;
             if ctx.hpos() {
-                let orders = wp_table(database, ctx, "wc_orders");
+                let orders = wp_table(dialect, database, ctx, "wc_orders");
                 let old = fetch(
                     session,
                     &format!("SELECT status FROM {orders} WHERE id = {n}"),
@@ -484,7 +499,7 @@ pub async fn plan(
             on,
         } => {
             let ctx = need_wp()?;
-            let t = wp_table(database, ctx, "options");
+            let t = wp_table(dialect, database, ctx, "options");
             let old = fetch(
                 session,
                 &format!(
@@ -519,7 +534,7 @@ pub async fn plan(
         }
         ChangeRequest::DeleteExpiredTransients { database } => {
             let ctx = need_wp()?;
-            let t = wp_table(database, ctx, "options");
+            let t = wp_table(dialect, database, ctx, "options");
             let overview = super::options_overview(session, ctx, database).await?;
             let names: Vec<String> = overview
                 .transients
@@ -561,7 +576,7 @@ pub async fn plan(
                     "This site has no woocommerce_log table".into(),
                 ));
             }
-            let t = wp_table(database, ctx, "woocommerce_log");
+            let t = wp_table(dialect, database, ctx, "woocommerce_log");
             let filter = logs_before_filter(
                 dialect,
                 &log_cutoff(session, *days).await?,
@@ -596,7 +611,7 @@ pub async fn plan(
             let n: u64 = id
                 .parse()
                 .map_err(|_| AppError::InvalidInput(format!("'{id}' is not a valid ID")))?;
-            let t = wp_table(database, ctx, "actionscheduler_actions");
+            let t = wp_table(dialect, database, ctx, "actionscheduler_actions");
             let rows = fetch(
                 session,
                 &format!("SELECT status, scheduled_date_gmt FROM {t} WHERE action_id = {n}"),

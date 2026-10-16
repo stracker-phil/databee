@@ -10,8 +10,8 @@ use super::detail::args_reference;
 use super::entity::{Catalog, EntityDoc, cell_str};
 use super::lists::{epoch, text};
 use super::value::ValueNode;
-use super::{expand, fetch, load_docs, quote_ident};
-use crate::db::mysql::MySqlSession;
+use super::{expand, fetch, load_docs};
+use crate::db::Database;
 use crate::error::{AppError, AppResult};
 
 pub type Paths = BTreeMap<String, String>;
@@ -115,7 +115,7 @@ pub struct Scope {
 }
 
 pub async fn capture(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     catalog: &Catalog,
     db: &str,
@@ -146,8 +146,8 @@ pub async fn capture(
                 &format!(
                     "SELECT action_id, hook, status, {}, args FROM {}.{} WHERE args LIKE {}",
                     epoch("scheduled_date_gmt"),
-                    quote_ident(db),
-                    quote_ident(&ctx.table("actionscheduler_actions")),
+                    dialect.quote_ident(db),
+                    dialect.quote_ident(&ctx.table("actionscheduler_actions")),
                     dialect.like(&format!("%{id}%"))
                 ),
             )
@@ -182,8 +182,8 @@ pub async fn capture(
             session,
             &format!(
                 "SELECT option_name, option_value FROM {}.{} WHERE option_name LIKE {} ORDER BY option_name LIMIT 2000",
-                quote_ident(db),
-                quote_ident(&ctx.table("options")),
+                dialect.quote_ident(db),
+                dialect.quote_ident(&ctx.table("options")),
                 dialect.like(pattern.trim())
             ),
         )
@@ -213,7 +213,7 @@ pub struct CompareRow {
 
 /// Side-by-side comparison of two entities of the same kind (paths relative to each).
 pub async fn compare(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     catalog: &Catalog,
     db: &str,

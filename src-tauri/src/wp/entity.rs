@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::context::WpContext;
 use super::hints::{Hint, HintContext, Sensitive, annotate};
 use super::value::{self, DecodedValue};
-use crate::db::{Cell, ResultSet, quote_ident};
+use crate::db::{Cell, Dialect, ResultSet};
 use crate::error::{AppError, AppResult};
 
 const BUILTIN: &str = include_str!("entities.toml");
@@ -208,11 +208,11 @@ fn id_list(ids: &[u64]) -> String {
         .join(", ")
 }
 
-fn table_ref(database: &str, ctx: &WpContext, table: &str) -> String {
+fn table_ref(dialect: Dialect, database: &str, ctx: &WpContext, table: &str) -> String {
     format!(
         "{}.{}",
-        quote_ident(database),
-        quote_ident(&ctx.table(table))
+        dialect.quote_ident(database),
+        dialect.quote_ident(&ctx.table(table))
     )
 }
 
@@ -224,28 +224,41 @@ fn and_filters(filters: &[&Option<String>]) -> String {
         .collect()
 }
 
-pub fn rows_sql(database: &str, ctx: &WpContext, def: &EntityDef, ids: &[u64]) -> String {
+pub fn rows_sql(
+    dialect: Dialect,
+    database: &str,
+    ctx: &WpContext,
+    def: &EntityDef,
+    ids: &[u64],
+) -> String {
     format!(
         "SELECT * FROM {} WHERE {} IN ({}){}",
-        table_ref(database, ctx, &def.table),
-        quote_ident(&def.id),
+        table_ref(dialect, database, ctx, &def.table),
+        dialect.quote_ident(&def.id),
         id_list(ids),
         and_filters(&[&def.filter]),
     )
 }
 
-pub fn meta_sql(database: &str, ctx: &WpContext, meta: &MetaDef, ids: &[u64]) -> String {
+pub fn meta_sql(
+    dialect: Dialect,
+    database: &str,
+    ctx: &WpContext,
+    meta: &MetaDef,
+    ids: &[u64],
+) -> String {
     format!(
         "SELECT {fk}, {key}, {value} FROM {table} WHERE {fk} IN ({ids}) ORDER BY {fk}",
-        fk = quote_ident(&meta.fk),
-        key = quote_ident(&meta.key),
-        value = quote_ident(&meta.value),
-        table = table_ref(database, ctx, &meta.table),
+        fk = dialect.quote_ident(&meta.fk),
+        key = dialect.quote_ident(&meta.key),
+        value = dialect.quote_ident(&meta.value),
+        table = table_ref(dialect, database, ctx, &meta.table),
         ids = id_list(ids),
     )
 }
 
 pub fn relation_count_sql(
+    dialect: Dialect,
     database: &str,
     ctx: &WpContext,
     rel: &RelationDef,
@@ -254,14 +267,15 @@ pub fn relation_count_sql(
 ) -> String {
     format!(
         "SELECT {fk}, COUNT(*) FROM {table} WHERE {fk} IN ({ids}){filters} GROUP BY {fk}",
-        fk = quote_ident(&rel.fk),
-        table = table_ref(database, ctx, &target.table),
+        fk = dialect.quote_ident(&rel.fk),
+        table = table_ref(dialect, database, ctx, &target.table),
         ids = id_list(ids),
         filters = and_filters(&[&rel.filter, &target.filter]),
     )
 }
 
 pub fn relation_ids_sql(
+    dialect: Dialect,
     database: &str,
     ctx: &WpContext,
     rel: &RelationDef,
@@ -271,9 +285,9 @@ pub fn relation_ids_sql(
 ) -> String {
     format!(
         "SELECT {tid} FROM {table} WHERE {fk} = {id}{filters} ORDER BY {tid} LIMIT {limit}",
-        tid = quote_ident(&target.id),
-        table = table_ref(database, ctx, &target.table),
-        fk = quote_ident(&rel.fk),
+        tid = dialect.quote_ident(&target.id),
+        table = table_ref(dialect, database, ctx, &target.table),
+        fk = dialect.quote_ident(&rel.fk),
         filters = and_filters(&[&rel.filter, &target.filter]),
     )
 }
@@ -732,11 +746,12 @@ mod tests {
         let c = catalog(HposMode::Off);
         let order = c.get("order").unwrap();
         assert_eq!(
-            rows_sql("db", &ctx(HposMode::Off), order, &[1, 2]),
+            rows_sql(Dialect::MYSQL, "db", &ctx(HposMode::Off), order, &[1, 2]),
             "SELECT * FROM `db`.`wp_posts` WHERE `ID` IN (1, 2) AND (post_type IN ('shop_order', 'shop_order_refund'))"
         );
         assert_eq!(
             meta_sql(
+                Dialect::MYSQL,
                 "db",
                 &ctx(HposMode::Off),
                 order.meta.as_ref().unwrap(),
@@ -747,6 +762,7 @@ mod tests {
         let notes = order.relations.iter().find(|r| r.name == "notes").unwrap();
         assert_eq!(
             relation_count_sql(
+                Dialect::MYSQL,
                 "db",
                 &ctx(HposMode::Off),
                 notes,

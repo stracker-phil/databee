@@ -12,7 +12,7 @@ pub fn page_limit(req: &BrowseRequest) -> u32 {
 }
 
 /// Resolves the typed filter: ID shorthand against the primary key, or raw SQL.
-fn applied_filter(req: &BrowseRequest) -> AppResult<Option<AppliedFilter>> {
+fn applied_filter(req: &BrowseRequest, dialect: Dialect) -> AppResult<Option<AppliedFilter>> {
     let Some(filter) = req.filter.as_deref().map(str::trim) else {
         return Ok(None);
     };
@@ -27,7 +27,7 @@ fn applied_filter(req: &BrowseRequest) -> AppResult<Option<AppliedFilter>> {
     if let (Some(pk), Some(ids)) = (req.primary_key.as_deref(), id_filter::parse_ids(filter)) {
         return Ok(Some(AppliedFilter {
             kind: FilterKind::Ids,
-            sql: ids.to_sql(pk),
+            sql: ids.to_sql(pk, dialect),
             label: ids.label(pk),
         }));
     }
@@ -53,7 +53,7 @@ pub fn browse_sql(
         "SELECT * FROM {}",
         dialect.table_ref(&req.database, &req.table)
     );
-    let filter = applied_filter(req)?;
+    let filter = applied_filter(req, dialect)?;
     if let Some(filter) = &filter {
         // The newline ends a trailing `#` or `-- ` comment before the closing parenthesis.
         sql.push_str(&format!(" WHERE ({}\n)", filter.sql));
@@ -278,7 +278,10 @@ mod tests {
             ..req()
         };
         assert_eq!(
-            applied_filter(&request).unwrap().unwrap().kind,
+            applied_filter(&request, Dialect::MYSQL)
+                .unwrap()
+                .unwrap()
+                .kind,
             FilterKind::Sql
         );
     }

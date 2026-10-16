@@ -1,5 +1,6 @@
 //! SQL spelling that differs between servers.
 
+/// A user's own `SET sql_mode` on the editor connection is picked up only on reconnect.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dialect {
     pub backslash_escapes: bool,

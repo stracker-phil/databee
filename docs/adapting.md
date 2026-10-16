@@ -81,6 +81,12 @@ can do all of this:
 | Change colors, accents or density | [frontend.md: styling](frontend.md#styling) |
 | Remove the Stage hook | [stage.md](stage.md) |
 
+### Add a driver
+
+`src-tauri/src/db/<engine>/mod.rs` implementing `Database`; an `Engine` variant with its `Dialect`; a `kind`
+on `ConnectionSpec`; one arm in `db::open`. Nothing in `wp/` changes. Details:
+[database.md](database.md#adding-another-database-engine).
+
 ### Swap the secret store
 
 Add `src-tauri/src/secrets/<impl>.rs` implementing `SecretStore` (`get`, `set`, `delete`); `pub mod` it in

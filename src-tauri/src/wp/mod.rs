@@ -23,8 +23,8 @@ use serde::Serialize;
 
 use self::context::WpContext;
 use self::entity::{Catalog, EntityDoc, TableEntity};
-use crate::db::mysql::MySqlSession;
-use crate::db::{Cell, ResultSet, escape_like, quote_ident};
+use crate::db::Database;
+use crate::db::{Cell, ResultSet, escape_like};
 use crate::error::{AppError, AppResult};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -56,12 +56,12 @@ fn text(cell: &Cell) -> Option<String> {
     }
 }
 
-pub(crate) async fn fetch(db: &MySqlSession, sql: &str) -> AppResult<ResultSet> {
+pub(crate) async fn fetch(db: &dyn Database, sql: &str) -> AppResult<ResultSet> {
     db.fetch(sql, TIMEOUT).await
 }
 
 /// Probes a database; `None` when it isn't a WordPress install.
-pub async fn detect(db: &MySqlSession, database: &str) -> AppResult<Option<WpContext>> {
+pub async fn detect(db: &dyn Database, database: &str) -> AppResult<Option<WpContext>> {
     let tables: Vec<String> = db
         .tables(database)
         .await?
@@ -80,8 +80,8 @@ pub async fn detect(db: &MySqlSession, database: &str) -> AppResult<Option<WpCon
         db,
         &format!(
             "SELECT option_name, option_value FROM {}.{} WHERE option_name IN ({})",
-            quote_ident(database),
-            quote_ident(&format!("{prefix}options")),
+            dialect.quote_ident(database),
+            dialect.quote_ident(&format!("{prefix}options")),
             names.join(", ")
         ),
     )
@@ -98,8 +98,8 @@ pub async fn detect(db: &MySqlSession, database: &str) -> AppResult<Option<WpCon
             db,
             &format!(
                 "SELECT blog_id, domain, path FROM {}.{}",
-                quote_ident(database),
-                quote_ident(&format!("{prefix}blogs"))
+                dialect.quote_ident(database),
+                dialect.quote_ident(&format!("{prefix}blogs"))
             ),
         )
         .await?;
@@ -117,21 +117,24 @@ pub async fn detect(db: &MySqlSession, database: &str) -> AppResult<Option<WpCon
 /// Loads documents for the given IDs, in that order, with meta and relation counts
 /// fetched in one query each.
 pub async fn load_docs(
-    db: &MySqlSession,
+    db: &dyn Database,
     ctx: &WpContext,
     catalog: &Catalog,
     database: &str,
     entity: &str,
     ids: &[String],
 ) -> AppResult<Vec<EntityDoc>> {
+    let dialect = db.dialect();
     let def = catalog.get(entity)?;
     let ids = entity::parse_ids(ids)?;
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let rows = fetch(db, &entity::rows_sql(database, ctx, def, &ids)).await?;
+    let rows = fetch(db, &entity::rows_sql(dialect, database, ctx, def, &ids)).await?;
     let meta = match (&def.meta, rows.rows.is_empty()) {
-        (Some(meta), false) => Some(fetch(db, &entity::meta_sql(database, ctx, meta, &ids)).await?),
+        (Some(meta), false) => {
+            Some(fetch(db, &entity::meta_sql(dialect, database, ctx, meta, &ids)).await?)
+        }
         _ => None,
     };
     let mut counts = HashMap::new();
@@ -141,7 +144,7 @@ pub async fn load_docs(
         };
         let rs = fetch(
             db,
-            &entity::relation_count_sql(database, ctx, rel, target, &ids),
+            &entity::relation_count_sql(dialect, database, ctx, rel, target, &ids),
         )
         .await?;
         let by_id: HashMap<String, u64> = rs
@@ -166,13 +169,14 @@ pub async fn load_docs(
 
 /// `id → title` for entities of one kind, in one query.
 pub async fn titles(
-    db: &MySqlSession,
+    db: &dyn Database,
     ctx: &WpContext,
     catalog: &Catalog,
     database: &str,
     entity: &str,
     ids: &[String],
 ) -> AppResult<HashMap<String, String>> {
+    let dialect = db.dialect();
     let def = catalog.get(entity)?;
     let (Some(title), Ok(ids)) = (&def.title, entity::parse_ids(ids)) else {
         return Ok(HashMap::new());
@@ -184,11 +188,11 @@ pub async fn titles(
         db,
         &format!(
             "SELECT {}, {} FROM {}.{} WHERE {} IN ({})",
-            quote_ident(&def.id),
-            quote_ident(title),
-            quote_ident(database),
-            quote_ident(&ctx.table(&def.table)),
-            quote_ident(&def.id),
+            dialect.quote_ident(&def.id),
+            dialect.quote_ident(title),
+            dialect.quote_ident(database),
+            dialect.quote_ident(&ctx.table(&def.table)),
+            dialect.quote_ident(&def.id),
             ids.iter()
                 .map(u64::to_string)
                 .collect::<Vec<_>>()
@@ -205,11 +209,12 @@ pub async fn titles(
 
 /// Featured-image thumbnail URL per post ID (posts without one are left out).
 pub async fn post_images(
-    db: &MySqlSession,
+    db: &dyn Database,
     ctx: &WpContext,
     database: &str,
     post_ids: &[String],
 ) -> AppResult<HashMap<String, String>> {
+    let dialect = db.dialect();
     let (Some(uploads), Ok(ids)) = (&ctx.site.uploads_url, entity::parse_ids(post_ids)) else {
         return Ok(HashMap::new());
     };
@@ -218,8 +223,8 @@ pub async fn post_images(
     }
     let postmeta = format!(
         "{}.{}",
-        quote_ident(database),
-        quote_ident(&ctx.table("postmeta"))
+        dialect.quote_ident(database),
+        dialect.quote_ident(&ctx.table("postmeta"))
     );
     let list = |ids: &[u64]| {
         ids.iter()
@@ -280,7 +285,7 @@ pub async fn post_images(
 /// Fills `label` (and `image` for posts) of every link in the documents, one query per
 /// target entity.
 async fn resolve_links(
-    db: &MySqlSession,
+    db: &dyn Database,
     ctx: &WpContext,
     catalog: &Catalog,
     database: &str,
@@ -319,7 +324,7 @@ async fn resolve_links(
 }
 
 pub async fn expand(
-    db: &MySqlSession,
+    db: &dyn Database,
     ctx: &WpContext,
     catalog: &Catalog,
     database: &str,
@@ -327,6 +332,7 @@ pub async fn expand(
     id: &str,
     relation: &str,
 ) -> AppResult<Vec<EntityDoc>> {
+    let dialect = db.dialect();
     let def = catalog.get(entity)?;
     let rel = def
         .relations
@@ -337,7 +343,7 @@ pub async fn expand(
     let id = entity::parse_ids(&[id.to_string()])?[0];
     let rs = fetch(
         db,
-        &entity::relation_ids_sql(database, ctx, rel, target, id, MAX_RELATED),
+        &entity::relation_ids_sql(dialect, database, ctx, rel, target, id, MAX_RELATED),
     )
     .await?;
     let ids: Vec<String> = rs.rows.iter().filter_map(|r| text(&r[0])).collect();
@@ -345,12 +351,17 @@ pub async fn expand(
 }
 
 pub async fn options_overview(
-    db: &MySqlSession,
+    db: &dyn Database,
     ctx: &WpContext,
     database: &str,
 ) -> AppResult<options::OptionsOverview> {
+    let dialect = db.dialect();
     let table = ctx.table("options");
-    let from = format!("{}.{}", quote_ident(database), quote_ident(&table));
+    let from = format!(
+        "{}.{}",
+        dialect.quote_ident(database),
+        dialect.quote_ident(&table)
+    );
     let rows = fetch(
         db,
         &format!("SELECT option_name, LENGTH(option_value), autoload FROM {from}"),
@@ -367,7 +378,6 @@ pub async fn options_overview(
             })
         })
         .collect();
-    let dialect = db.dialect();
     let timeouts = fetch(
         db,
         &format!(
@@ -393,7 +403,7 @@ pub async fn options_overview(
 /// Options whose name starts with `prefix` (or all transients for `transients`), as
 /// annotated fields with decoded values.
 pub async fn options_group(
-    db: &MySqlSession,
+    db: &dyn Database,
     ctx: &WpContext,
     catalog: &Catalog,
     database: &str,
@@ -422,8 +432,8 @@ pub async fn options_group(
         db,
         &format!(
             "SELECT option_name, option_value, autoload FROM {}.{} WHERE {filter} ORDER BY option_name LIMIT 500",
-            quote_ident(database),
-            quote_ident(&ctx.table("options"))
+            dialect.quote_ident(database),
+            dialect.quote_ident(&ctx.table("options"))
         ),
     )
     .await?;

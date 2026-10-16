@@ -233,7 +233,7 @@ stays `''`. Binary cells only carry a preview, so their edits get no undo and th
 DELETE removes exactly the counted entries.
 
 Escaping follows the server's `sql_mode`: the session reads it when connecting (and when the editor
-reconnects) and exposes it as `MySqlSession::dialect`. Every literal in `wp/` goes through
+reconnects) and exposes it as `Database::dialect`. Every literal in `wp/` goes through
 `Dialect::sql_string`; under `NO_BACKSLASH_ESCAPES` only quotes are doubled, so a written `\` is stored as one
 backslash. LIKE patterns go through `Dialect::like` / `like_contains` (with `db::escape_like`), which adds
 `ESCAPE '\'` in that mode because the server then has no default LIKE escape character.

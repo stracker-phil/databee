@@ -1,7 +1,7 @@
 //! Primary-key shorthand for the WHERE field: `3229`, `3229, 3227`, `3220-3229` or a mix
 //! become `pk = …`, `pk IN (…)`, `pk BETWEEN … AND …`. Anything else is passed through as SQL.
 
-use super::quote_ident;
+use super::Dialect;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Part {
@@ -47,8 +47,8 @@ fn parse_id(text: &str) -> Option<u64> {
 }
 
 impl IdFilter {
-    pub fn to_sql(&self, pk: &str) -> String {
-        let col = quote_ident(pk);
+    pub fn to_sql(&self, pk: &str, dialect: Dialect) -> String {
+        let col = dialect.quote_ident(pk);
         let mut singles = Vec::new();
         let mut clauses = Vec::new();
         for part in &self.parts {
@@ -114,7 +114,7 @@ mod tests {
         ];
         for (input, sql, label) in cases {
             let f = parse_ids(input).unwrap_or_else(|| panic!("{input} should parse"));
-            assert_eq!(f.to_sql("ID"), sql, "{input}");
+            assert_eq!(f.to_sql("ID", Dialect::MYSQL), sql, "{input}");
             assert_eq!(f.label("ID"), label, "{input}");
         }
     }
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn u64_max_parses_and_one_more_overflows() {
         assert_eq!(
-            parse_ids("18446744073709551615").map(|f| f.to_sql("ID")),
+            parse_ids("18446744073709551615").map(|f| f.to_sql("ID", Dialect::MYSQL)),
             Some("`ID` = 18446744073709551615".to_string())
         );
         for input in [
@@ -144,14 +144,14 @@ mod tests {
     #[test]
     fn leading_zeros_are_normalized() {
         let f = parse_ids("007").unwrap();
-        assert_eq!(f.to_sql("ID"), "`ID` = 7");
+        assert_eq!(f.to_sql("ID", Dialect::MYSQL), "`ID` = 7");
         assert_eq!(f.label("ID"), "ID = 7");
     }
 
     #[test]
     fn duplicate_ids_are_kept() {
         let f = parse_ids("5,5").unwrap();
-        assert_eq!(f.to_sql("ID"), "`ID` IN (5, 5)");
+        assert_eq!(f.to_sql("ID", Dialect::MYSQL), "`ID` IN (5, 5)");
         assert_eq!(f.label("ID"), "ID in (5, 5)");
     }
 

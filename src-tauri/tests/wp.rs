@@ -5,6 +5,7 @@ use std::time::Duration;
 const TIMEOUT: Duration = Duration::from_secs(10);
 
 use databee_lib::connection::{ConnectionSpec, Secret};
+use databee_lib::db::Database;
 use databee_lib::db::mysql::MySqlSession;
 use databee_lib::wp::context::{HposMode, SiteZone};
 use databee_lib::wp::dashboard::{action_histogram, browser, dashboard};

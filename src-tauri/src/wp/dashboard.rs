@@ -7,8 +7,8 @@ use super::changes::ChangeRequest;
 use super::context::{HposMode, SiteZone, WpContext};
 use super::fetch;
 use super::lists::{self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary, num, text};
-use crate::db::mysql::MySqlSession;
-use crate::db::{TableInfo, quote_ident};
+use crate::db::Database;
+use crate::db::{Dialect, TableInfo};
 use crate::error::{AppError, AppResult};
 
 pub const AUTOLOAD_HEALTHY_BYTES: u64 = 800 * 1024;
@@ -174,7 +174,7 @@ fn span_sql(column: &str, spans: &[Span]) -> (String, String) {
 }
 
 /// The server's clock, so "today" doesn't depend on this machine's.
-async fn server_now(session: &MySqlSession) -> AppResult<DateTime<Utc>> {
+async fn server_now(session: &dyn Database) -> AppResult<DateTime<Utc>> {
     let rs = fetch(session, "SELECT UTC_TIMESTAMP()").await?;
     rs.rows
         .first()
@@ -395,13 +395,17 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
     out
 }
 
-fn t(db: &str, ctx: &WpContext, table: &str) -> String {
-    format!("{}.{}", quote_ident(db), quote_ident(&ctx.table(table)))
+fn t(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
+    format!(
+        "{}.{}",
+        dialect.quote_ident(db),
+        dialect.quote_ident(&ctx.table(table))
+    )
 }
 
-pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> AppResult<Dashboard> {
+pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> AppResult<Dashboard> {
     let dialect = session.dialect();
-    let options = t(db, ctx, "options");
+    let options = t(dialect, db, ctx, "options");
     let autoload = fetch(
         session,
         &format!("SELECT SUM(LENGTH(option_value)) FROM {options} WHERE autoload IN ('yes', 'on', 'auto', 'auto-on')"),
@@ -425,14 +429,14 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
             let today = ctx.site.zone.to_local(now).date();
             let (table, status_col, date_col, type_filter) = if ctx.hpos() {
                 (
-                    t(db, ctx, "wc_orders"),
+                    t(dialect, db, ctx, "wc_orders"),
                     "status",
                     "date_created_gmt",
                     "type = 'shop_order'",
                 )
             } else {
                 (
-                    t(db, ctx, "posts"),
+                    t(dialect, db, ctx, "posts"),
                     "post_status",
                     "post_date_gmt",
                     "post_type = 'shop_order'",
@@ -540,8 +544,8 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
                     &format!(
                         "SELECT COUNT(*) FROM {o} o LEFT JOIN {p} p ON p.ID = o.id WHERE o.type IN ('shop_order', 'shop_order_refund') \
                          AND (p.ID IS NULL OR p.post_type <> o.type OR p.post_modified_gmt <> o.date_updated_gmt)",
-                        o = t(db, ctx, "wc_orders"),
-                        p = t(db, ctx, "posts"),
+                        o = t(dialect, db, ctx, "wc_orders"),
+                        p = t(dialect, db, ctx, "posts"),
                     ),
                 )
                 .await?;
@@ -555,7 +559,7 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
     };
 
     let actions = if ctx.has_table("actionscheduler_actions") {
-        let table = t(db, ctx, "actionscheduler_actions");
+        let table = t(dialect, db, ctx, "actionscheduler_actions");
         let by_status = fetch(
             session,
             &format!("SELECT status, COUNT(*) FROM {table} GROUP BY status"),
@@ -636,7 +640,7 @@ pub struct BrowserSection {
 }
 
 pub async fn browser(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
 ) -> AppResult<Vec<BrowserSection>> {
@@ -666,9 +670,9 @@ pub async fn browser(
     let mut out = Vec::new();
     if ctx.wc.is_some() {
         let (table, status, ty) = if ctx.hpos() {
-            (t(db, ctx, "wc_orders"), "status", "type")
+            (t(dialect, db, ctx, "wc_orders"), "status", "type")
         } else {
-            (t(db, ctx, "posts"), "post_status", "post_type")
+            (t(dialect, db, ctx, "posts"), "post_status", "post_type")
         };
         for (order_type, list, label) in [
             ("shop_order", "orders", "Orders"),
@@ -690,7 +694,7 @@ pub async fn browser(
     }
     let users = fetch(
         session,
-        &format!("SELECT COUNT(*) FROM {}", t(db, ctx, "users")),
+        &format!("SELECT COUNT(*) FROM {}", t(dialect, db, ctx, "users")),
     )
     .await?;
     out.push(BrowserSection {
@@ -704,7 +708,7 @@ pub async fn browser(
             session,
             &format!(
                 "SELECT post_status, COUNT(*) FROM {} WHERE post_type = 'product' AND post_status NOT IN ('trash', 'auto-draft') GROUP BY post_status",
-                t(db, ctx, "posts")
+                t(dialect, db, ctx, "posts")
             ),
         )
         .await?;
@@ -715,7 +719,7 @@ pub async fn browser(
             session,
             &format!(
                 "SELECT status, COUNT(*) FROM {} GROUP BY status",
-                t(db, ctx, "actionscheduler_actions")
+                t(dialect, db, ctx, "actionscheduler_actions")
             ),
         )
         .await?;
@@ -726,7 +730,7 @@ pub async fn browser(
             session,
             &format!(
                 "SELECT IF(session_expiry < UNIX_TIMESTAMP(), 'expired', 'active'), COUNT(*) FROM {} GROUP BY 1",
-                t(db, ctx, "woocommerce_sessions")
+                t(dialect, db, ctx, "woocommerce_sessions")
             ),
         )
         .await?;
@@ -741,14 +745,14 @@ pub async fn browser(
         session,
         &format!(
             "SELECT post_type, COUNT(*) FROM {} WHERE post_type NOT IN ({hidden}) AND post_status <> 'auto-draft' GROUP BY post_type",
-            t(db, ctx, "posts")
+            t(dialect, db, ctx, "posts")
         ),
     )
     .await?;
     out.push(section("content", "Content", facet_rows(&rs)));
     let rs = fetch(
         session,
-        &format!("SELECT COUNT(*) FROM {}", t(db, ctx, "options")),
+        &format!("SELECT COUNT(*) FROM {}", t(dialect, db, ctx, "options")),
     )
     .await?;
     out.push(BrowserSection {
@@ -762,7 +766,7 @@ pub async fn browser(
 
 /// Pending/complete/failed per day for the Action Scheduler histogram.
 pub async fn action_histogram(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     hook: Option<&str>,
@@ -777,7 +781,7 @@ pub async fn action_histogram(
         session,
         &format!(
             "SELECT {day_case}, status, COUNT(*) FROM {} WHERE {day_range}{hook_filter} GROUP BY 1, 2",
-            t(db, ctx, "actionscheduler_actions"),
+            t(dialect, db, ctx, "actionscheduler_actions"),
         ),
     )
     .await?;

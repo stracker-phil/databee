@@ -35,7 +35,7 @@ async fn context(
         return Ok(Some(cached.clone()));
     }
     let session = state.sessions.get(session_id)?;
-    let ctx = lens::detect(&session.db, database).await?;
+    let ctx = lens::detect(session.db.as_ref(), database).await?;
     match &ctx {
         Some(c) => log::info!(
             "Detected WordPress in {database} (prefix {}, WooCommerce: {})",
@@ -88,7 +88,15 @@ pub async fn wp_load(
     let ctx = required_context(&state, &session_id, &database).await?;
     let catalog = catalog(&state, &ctx)?;
     let session = state.sessions.get(&session_id)?;
-    lens::load_docs(&session.db, &ctx, &catalog, &database, &entity, &ids).await
+    lens::load_docs(
+        session.db.as_ref(),
+        &ctx,
+        &catalog,
+        &database,
+        &entity,
+        &ids,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -104,7 +112,7 @@ pub async fn wp_expand(
     let catalog = catalog(&state, &ctx)?;
     let session = state.sessions.get(&session_id)?;
     lens::expand(
-        &session.db,
+        session.db.as_ref(),
         &ctx,
         &catalog,
         &database,
@@ -123,7 +131,7 @@ pub async fn wp_options(
 ) -> AppResult<OptionsOverview> {
     let ctx = required_context(&state, &session_id, &database).await?;
     let session = state.sessions.get(&session_id)?;
-    lens::options_overview(&session.db, &ctx, &database).await
+    lens::options_overview(session.db.as_ref(), &ctx, &database).await
 }
 
 #[tauri::command]
@@ -165,7 +173,7 @@ pub async fn wp_dashboard(
     database: String,
 ) -> AppResult<Dashboard> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    dashboard::dashboard(&s.db, &ctx, &database).await
+    dashboard::dashboard(s.db.as_ref(), &ctx, &database).await
 }
 
 #[tauri::command]
@@ -175,7 +183,7 @@ pub async fn wp_browser(
     database: String,
 ) -> AppResult<Vec<BrowserSection>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    dashboard::browser(&s.db, &ctx, &database).await
+    dashboard::browser(s.db.as_ref(), &ctx, &database).await
 }
 
 #[tauri::command]
@@ -192,7 +200,7 @@ pub async fn wp_orders(
     } else {
         "shop_order"
     };
-    lists::orders(&s.db, &ctx, &database, order_type, &query).await
+    lists::orders(s.db.as_ref(), &ctx, &database, order_type, &query).await
 }
 
 #[tauri::command]
@@ -204,7 +212,7 @@ pub async fn wp_users(
 ) -> AppResult<Page<UserSummary>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
     lists::users(
-        &s.db,
+        s.db.as_ref(),
         &ctx,
         &database,
         &query,
@@ -221,7 +229,7 @@ pub async fn wp_products(
     query: ListQuery,
 ) -> AppResult<Page<ProductSummary>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    lists::products(&s.db, &ctx, &database, &query).await
+    lists::products(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
@@ -232,7 +240,7 @@ pub async fn wp_actions(
     query: ListQuery,
 ) -> AppResult<Page<ActionSummary>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    lists::actions(&s.db, &ctx, &database, &query).await
+    lists::actions(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
@@ -242,7 +250,7 @@ pub async fn wp_failed_by_hook(
     database: String,
 ) -> AppResult<Vec<lists::HookFailures>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    lists::failed_by_hook(&s.db, &ctx, &database).await
+    lists::failed_by_hook(s.db.as_ref(), &ctx, &database).await
 }
 
 #[tauri::command]
@@ -253,7 +261,7 @@ pub async fn wp_action_histogram(
     hook: Option<String>,
 ) -> AppResult<Vec<DayBucket>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    dashboard::action_histogram(&s.db, &ctx, &database, hook.as_deref()).await
+    dashboard::action_histogram(s.db.as_ref(), &ctx, &database, hook.as_deref()).await
 }
 
 #[tauri::command]
@@ -264,7 +272,7 @@ pub async fn wp_sessions(
     query: ListQuery,
 ) -> AppResult<Page<SessionSummary>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    lists::sessions(&s.db, &ctx, &database, &query).await
+    lists::sessions(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
@@ -275,7 +283,7 @@ pub async fn wp_content(
     query: ListQuery,
 ) -> AppResult<Page<PostSummary>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    lists::content(&s.db, &ctx, &database, &query).await
+    lists::content(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
@@ -288,7 +296,7 @@ pub async fn wp_view(
 ) -> AppResult<EntityView> {
     let (ctx, catalog, s) = wp_env(&state, &session_id, &database).await?;
     detail::entity_view(
-        &s.db,
+        s.db.as_ref(),
         &ctx,
         &catalog,
         &database,
@@ -308,7 +316,7 @@ pub async fn wp_peek(
     id: String,
 ) -> AppResult<Vec<crate::wp::peek::PeekFact>> {
     let (ctx, catalog, s) = wp_env(&state, &session_id, &database).await?;
-    crate::wp::peek::peek(&s.db, &ctx, &catalog, &database, &entity, &id).await
+    crate::wp::peek::peek(s.db.as_ref(), &ctx, &catalog, &database, &entity, &id).await
 }
 
 #[tauri::command]
@@ -319,7 +327,7 @@ pub async fn wp_find_value(
     value: String,
 ) -> AppResult<Vec<crate::wp::peek::FindGroup>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    crate::wp::peek::find_value(&s.db, &ctx, &database, &value).await
+    crate::wp::peek::find_value(s.db.as_ref(), &ctx, &database, &value).await
 }
 
 #[tauri::command]
@@ -330,7 +338,7 @@ pub async fn wp_search(
     query: String,
 ) -> AppResult<Vec<SearchHit>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    detail::search(&s.db, &ctx, &database, &query).await
+    detail::search(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
@@ -341,7 +349,7 @@ pub async fn wp_options_group(
     prefix: String,
 ) -> AppResult<Vec<DocField>> {
     let (ctx, catalog, s) = wp_env(&state, &session_id, &database).await?;
-    lens::options_group(&s.db, &ctx, &catalog, &database, &prefix).await
+    lens::options_group(s.db.as_ref(), &ctx, &catalog, &database, &prefix).await
 }
 
 #[tauri::command]
@@ -352,7 +360,7 @@ pub async fn wp_order_logs(
     id: String,
 ) -> AppResult<Vec<detail::TimelineEvent>> {
     let (ctx, catalog, s) = wp_env(&state, &session_id, &database).await?;
-    detail::order_logs(&s.db, &ctx, &catalog, &database, &id).await
+    detail::order_logs(s.db.as_ref(), &ctx, &catalog, &database, &id).await
 }
 
 #[tauri::command]
@@ -364,7 +372,8 @@ pub async fn wp_snapshot_take(
     label: String,
 ) -> AppResult<crate::store::snapshots::SnapshotInfo> {
     let (ctx, catalog, s) = wp_env(&state, &session_id, &database).await?;
-    let values = crate::wp::snapshot::capture(&s.db, &ctx, &catalog, &database, &scope).await?;
+    let values =
+        crate::wp::snapshot::capture(s.db.as_ref(), &ctx, &catalog, &database, &scope).await?;
     log::info!("Snapshot '{label}' with {} paths", values.len());
     state.snapshots.add(crate::store::snapshots::Snapshot {
         id: String::new(),
@@ -397,7 +406,8 @@ pub async fn wp_snapshot_diff(
     let snapshot = state.snapshots.get(&id)?;
     let (ctx, catalog, s) = wp_env(&state, &session_id, &database).await?;
     let now =
-        crate::wp::snapshot::capture(&s.db, &ctx, &catalog, &database, &snapshot.scope).await?;
+        crate::wp::snapshot::capture(s.db.as_ref(), &ctx, &catalog, &database, &snapshot.scope)
+            .await?;
     Ok(crate::wp::snapshot::diff(&snapshot.values, &now))
 }
 
@@ -416,7 +426,7 @@ pub async fn wp_compare(
     b: String,
 ) -> AppResult<Vec<crate::wp::snapshot::CompareRow>> {
     let (ctx, catalog, s) = wp_env(&state, &session_id, &database).await?;
-    crate::wp::snapshot::compare(&s.db, &ctx, &catalog, &database, &entity, &a, &b).await
+    crate::wp::snapshot::compare(s.db.as_ref(), &ctx, &catalog, &database, &entity, &a, &b).await
 }
 
 #[tauri::command]
@@ -446,7 +456,7 @@ pub async fn plan_change(
         Some(c) => Some(catalog(&state, c)?),
         None => None,
     };
-    crate::wp::changes::plan(&session.db, ctx.as_ref(), catalog.as_ref(), &change).await
+    crate::wp::changes::plan(session.db.as_ref(), ctx.as_ref(), catalog.as_ref(), &change).await
 }
 
 #[tauri::command]

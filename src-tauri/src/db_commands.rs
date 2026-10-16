@@ -5,7 +5,7 @@ use serde::Deserialize;
 use tauri::State;
 
 use crate::connection::{ConnectionSpec, Secret};
-use crate::db::mysql::MySqlSession;
+use crate::db;
 use crate::db::safety::destructive_reason;
 use crate::db::{
     BrowsePage, BrowseRequest, DatabaseInfo, ExecuteResponse, TableInfo, TableStructure,
@@ -60,8 +60,7 @@ pub async fn connect(state: State<'_, AppState>, args: ConnectArgs) -> AppResult
     let identity = args.spec.identity();
     log::info!("Connecting to {identity}");
 
-    let connecting =
-        MySqlSession::connect(&args.spec, source.secret(), connect_timeout, query_timeout).await;
+    let connecting = db::open(&args.spec, source.secret(), connect_timeout, query_timeout).await;
     // A timeout or network error keeps the launch password for a retry; a rejected one is useless.
     let launch_password_spent = matches!(connecting, Ok(_) | Err(AppError::AuthFailed(_)));
     if launch_password_spent && let Some(id) = &args.request_id {
@@ -88,7 +87,7 @@ pub async fn connect(state: State<'_, AppState>, args: ConnectArgs) -> AppResult
     if let Err(e) = state.recents.touch(&args.spec) {
         log::warn!("Could not update recent connections: {e}");
     }
-    log::info!("Connected to {identity} ({})", db.server_version);
+    log::info!("Connected to {identity} ({})", db.server_version());
     let session = state.sessions.insert(Session {
         id: uuid::Uuid::new_v4().to_string(),
         spec: args.spec,

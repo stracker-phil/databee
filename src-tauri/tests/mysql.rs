@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use databee_lib::connection::{ConnectionSpec, Secret};
+use databee_lib::db::Database;
 use databee_lib::db::mysql::MySqlSession;
 use databee_lib::db::{BrowseRequest, Cell};
 
@@ -59,8 +60,16 @@ fn text(c: &Cell) -> &str {
 #[ignore]
 async fn connects_and_reports_server_version_and_database() {
     for s in sessions().await {
-        assert!(!s.server_version.is_empty());
+        assert!(!s.server_version().is_empty());
         assert_eq!(s.current_database().as_deref(), Some("databee_test"));
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn fresh_session_uses_backslash_escapes_under_the_default_sql_mode() {
+    for s in sessions().await {
+        assert!(s.dialect().backslash_escapes, "{}", s.server_version());
     }
 }
 
@@ -295,7 +304,7 @@ async fn with_delete_keeps_its_affected_rows() {
         s.execute("DROP TABLE IF EXISTS cte_delete", 10, TIMEOUT)
             .await
             .unwrap();
-        if s.server_version.contains("MariaDB") {
+        if s.server_version().contains("MariaDB") {
             continue;
         }
         let r = s

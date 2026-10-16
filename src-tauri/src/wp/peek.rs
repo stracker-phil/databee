@@ -8,8 +8,8 @@ use super::context::WpContext;
 use super::entity::{Catalog, EntityDoc, cell_str};
 use super::hints::{Hint, money};
 use super::lists::{num, text};
-use super::{fetch, load_docs, quote_ident};
-use crate::db::mysql::MySqlSession;
+use super::{fetch, load_docs};
+use crate::db::Database;
 use crate::error::AppResult;
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -101,7 +101,7 @@ fn fact_from(doc: &EntityDoc, label: &str, names: &[&str]) -> Option<PeekFact> {
 }
 
 pub async fn peek(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     catalog: &Catalog,
     db: &str,
@@ -145,17 +145,18 @@ pub async fn peek(
 const MAX_FACTS: usize = 7;
 
 async fn customer_order_facts(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     id: &str,
 ) -> AppResult<Vec<PeekFact>> {
+    let dialect = session.dialect();
     let rs = fetch(
         session,
         &format!(
             "SELECT COUNT(*), COALESCE(SUM(total_amount), 0) FROM {}.{} WHERE type = 'shop_order' AND customer_id = {} AND status IN ('wc-completed', 'wc-processing')",
-            quote_ident(db),
-            quote_ident(&ctx.table("wc_orders")),
+            dialect.quote_ident(db),
+            dialect.quote_ident(&ctx.table("wc_orders")),
             id.parse::<u64>().unwrap_or(0)
         ),
     )
@@ -314,7 +315,7 @@ const SOURCES: &[Source] = &[
 ];
 
 pub async fn find_value(
-    session: &MySqlSession,
+    session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     value: &str,
@@ -329,15 +330,23 @@ pub async fn find_value(
         if !ctx.has_table(src.table) {
             continue;
         }
-        let table = format!("{}.{}", quote_ident(db), quote_ident(&ctx.table(src.table)));
+        let table = format!(
+            "{}.{}",
+            dialect.quote_ident(db),
+            dialect.quote_ident(&ctx.table(src.table))
+        );
         let conds: Vec<String> = src
             .match_columns
             .iter()
             .map(|c| {
                 if src.like {
-                    format!("{} LIKE {}", quote_ident(c), dialect.like_contains(value))
+                    format!(
+                        "{} LIKE {}",
+                        dialect.quote_ident(c),
+                        dialect.like_contains(value)
+                    )
                 } else {
-                    format!("{} = {}", quote_ident(c), dialect.sql_string(value))
+                    format!("{} = {}", dialect.quote_ident(c), dialect.sql_string(value))
                 }
             })
             .collect();
@@ -356,9 +365,13 @@ pub async fn find_value(
             .iter()
             .map(|c| {
                 let cond = if src.like {
-                    format!("{} LIKE {}", quote_ident(c), dialect.like_contains(value))
+                    format!(
+                        "{} LIKE {}",
+                        dialect.quote_ident(c),
+                        dialect.like_contains(value)
+                    )
                 } else {
-                    format!("{} = {}", quote_ident(c), dialect.sql_string(value))
+                    format!("{} = {}", dialect.quote_ident(c), dialect.sql_string(value))
                 };
                 format!("WHEN {cond} THEN '{c}'")
             })
@@ -369,7 +382,7 @@ pub async fn find_value(
                 "SELECT {cols}, CASE {matched} END FROM {table} WHERE {filter} ORDER BY {id} DESC LIMIT {limit}",
                 cols = src.columns,
                 matched = matched.join(" "),
-                id = quote_ident(src.id_column),
+                id = dialect.quote_ident(src.id_column),
                 limit = HIT_LIMIT
             ),
         )
