@@ -14,23 +14,30 @@ their own local sites. It complements wp-admin and the code; it doesn't replace 
 - **Secrets masked, nothing else.** There is no PII masking. Secrets such as keys and tokens stay masked until
   clicked.
 
-The backend lives in `src-tauri/src/wp/` and the commands in `src-tauri/src/wp_commands.rs`. The frontend lives
-in `src/components/wp/`.
+The backend is an inline Tauri plugin in `src-tauri/src/wp/`, installed by one line in `lib.rs`
+(`.plugin(wp::init(&config_dir))`). It owns its commands (`wp/commands.rs`, listed in `wp::COMMANDS` and in
+`WP_COMMANDS` in `build.rs`, granted by `capabilities/wp.json`), its managed state `WpState` (the snapshot
+store and the `entities.toml` cache) and its integration tests. The page calls the commands as
+`plugin:wp|<command>` through `src/api/index.ts`. The frontend lives in `src/components/wp/`.
 
 ## Modules
 
 | File | Responsibility |
 |---|---|
-| `mod.rs` | Detection I/O, document loading, link resolution, options queries, `fetch` (30 s timeout) |
+| `mod.rs` | Plugin setup (`init`, `WpState`, `COMMANDS`), detection I/O, document loading, link resolution, options queries, `fetch` (30 s timeout) |
+| `commands.rs` | The Tauri commands, which only forward. `wp_env` builds a `WpEnv` (context, catalog, session) for each |
+| `cache.rs` | `WpCache`: detected contexts per session (`Session.ext`), stale once the session wrote to that database; `cache::detect` reads it or detects and fills it |
+| `catalog_cache.rs` | `CatalogCache`: built-in plus user entity definitions, reparsed only when `entities.toml`'s mtime changes |
 | `context.rs` | Detection logic with no I/O: prefix, versions, WooCommerce, HPOS mode, multisite, site facts |
 | `entity.rs` + `entities.toml` | Entity definitions as data, plus the resolver that turns them into SQL and documents |
 | `hints.rs` + `meta_keys.toml` | Render hints (money, time, flag, URL, user agent, email, roles, country, guest) and secret masking, keyed by glob rules |
-| `lists.rs` | List screens: orders, subscriptions, users (including guests), products, actions, sessions, content. One query per page, plus one batched query for extras and facets |
+| `lists.rs` | List screens: orders and subscriptions (`OrderType` is the order list's post type), users (including guests), products, actions, sessions, content. One query per page, plus one batched query for extras and facets |
 | `detail.rs` | Purpose-built views (order, customer, guest, product, action, session), the order timeline, and the ⌘K omnisearch |
 | `dashboard.rs` | Dashboard metrics, insights, sidebar counts, action histogram |
 | `options.rs` | Options inspector: autoload by prefix, transients, cleanup SQL |
 | `peek.rs` | Hover peek facts and "find everywhere" |
 | `snapshot.rs` | Snapshots, diffs and comparisons over flattened `path → value` maps |
+| `snapshots_store.rs` | `SnapshotStore`: `snapshots.json` and `snapshots/<id>.json` |
 | `changes.rs` | Every write: planned SQL plus undo SQL |
 | `logs.rs` | Short titles for WooCommerce log lines, such as `PayPal API · capture order → 201` |
 | `media.rs` | Thumbnail URLs from attachment meta |
@@ -62,7 +69,7 @@ in `src/components/wp/`.
      UTC ranges for a `CASE` over the `*_gmt` column, and "today" comes from the server's `UTC_TIMESTAMP()`.
 
 The result `WpContext` is cached per database in the session's `WpCache` (`wp/cache.rs`, attached to
-`Session.ext`), until `wp_detect(refresh)` or until an applied or undone batch writes to that database (each
+`Session.ext`; `cache::detect` is the entry point), until `wp_detect(refresh)` or until an applied or undone batch writes to that database (each
 entry remembers the session's write count, `Session::writes`). The cache dies with the session, so a
 reconnect detects again.
 Only WordPress databases are cached, so one that becomes WordPress is detected on the next call.
@@ -158,8 +165,9 @@ Live mode (polls every 3 s and highlights changes), Snapshot, Compare and Source
 ### Snapshots
 
 `snapshot::capture` flattens an entity (and optionally related rows, options matching a pattern, and
-actions) to a `path → value` map; `snapshot::diff` compares a stored map with a fresh capture. Storage
-(`store/snapshots.rs`, see [backend.md](backend.md#persistence)): `snapshots.json` in the config dir is the
+actions) to a `path → value` map; `SnapshotStore::take` stores one as a new snapshot, and
+`snapshot::diff_against_now` captures the stored snapshot's scope again and diffs it (`snapshot::diff`). Storage
+(`snapshots_store.rs`, see [backend.md](backend.md#persistence)): `snapshots.json` in the config dir is the
 index (metadata and the `paths` count, read by `wp_snapshots`), and `snapshots/<id>.json` holds one
 snapshot's values, read only by `wp_snapshot_diff`. A legacy `snapshots.json` that still carries the values
 is migrated once on startup.
@@ -235,8 +243,9 @@ backslash. LIKE patterns go through `Dialect::like` / `like_contains` (with `db:
 **A new list screen:**
 1. In `lists.rs`, add a summary struct and an `async fn` with a SQL builder that has no I/O and can be unit
    tested. Give it a `SORT_KEYS` entry. It returns `Page<T>`.
-2. Expose it: a command in `wp_commands.rs` (use `wp_env`), registration in `lib.rs`, a wrapper and types in
-   `src/api/`, and a mock in `src/test/apiMock.ts`.
+2. Expose it: a command in `wp/commands.rs` (use `wp_env`), registered in `wp::init`, named in `wp::COMMANDS`
+   and `WP_COMMANDS` in `build.rs`; a `plugin:wp|<command>` wrapper and types in `src/api/`, and a mock in
+   `src/test/apiMock.ts`.
 3. In the frontend:
    - add the list to the `WpList` union in `store.ts`;
    - add `LOADERS`, `COLUMNS`, `cellsFor` and `rowTarget` entries in `Lists.tsx`;
@@ -268,9 +277,15 @@ backslash. LIKE patterns go through `Dialect::like` / `like_contains` (with `db:
 
 - **Unit tests** in each module cover detection variants, PHP round trips and limits, exact SQL from the
   resolver, insights, SQL builders and log humanizers.
-- **`src-tauri/tests/wp.rs`** runs against the Docker fixture `wp_test`: WordPress plus WooCommerce with HPOS and
-  sync. Reads go against `wp_test`, and every write goes into its copy `wp_write`, so read and write tests
-  never race. `wp_legacy` covers a posts-based (HPOS off) store.
-- **`src-tauri/tests/php_roundtrip.rs`** checks round trips against a real database of your own. It only reads:
-  `DATABEE_WP_TEST=mysql://user:pass@host:port/db`.
+- **`src-tauri/src/wp/server_tests.rs`** holds the `#[ignore]` integration tests, so they leave with the
+  module. They run with `bun run test:db`, or alone with `cargo test --lib -- --ignored wp::`, and use the
+  fixture helpers in `src/test_support.rs`:
+  - against the Docker fixture `wp_test`: WordPress plus WooCommerce with HPOS and sync. Reads go against
+    `wp_test`, and every write goes into its copy `wp_write`, so read and write tests never race. `wp_legacy`
+    covers a posts-based (HPOS off) store;
+  - `every_serialized_value_round_trips` and `wordpress_mode_queries_work_on_real_data` read a real database
+    of your own, named by a connection URL (parsed with `cli::parse`):
+    `DATABEE_WP_TEST=mysql://user:pass@host:port/db`. Without it they skip.
+- **`src-tauri/tests/sql_mode.rs`** changes the servers' global `sql_mode`, so it stays its own test binary
+  (Cargo runs binaries one after another). It belongs to this layer and is deleted with it.
 - **Frontend:** `src/components/wp/WpMode.test.tsx` plus tests per component.

@@ -38,7 +38,7 @@ These rules hold everywhere in the code. Keep them when you change things.
 │  ┌──────────────────────┐   invoke    ┌───────────────────────────┐  │
 │  │ components/          │ ──────────▶ │ #[tauri::command]s        │  │
 │  │ state/store.ts       │             │  commands.rs  db_commands │  │
-│  │ commands/ (registry) │ ◀────────── │  wp_commands  stage_cmds  │  │
+│  │ commands/ (registry) │ ◀────────── │  wp/commands  stage/cmds  │  │
 │  │ api/index.ts, api.ts │   events    ├───────────────────────────┤  │
 │  └──────────────────────┘ launch,     │ AppState: stores, sessions│  │
 │                           command,    │ db/ (dyn Database)       │  │
@@ -71,19 +71,18 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/state.rs session.rs  AppState, open sessions
   src/commands.rs          settings, keybindings, favorites, history, misc
   src/db_commands.rs       connect, schema, execute, browse
-  src/wp_commands.rs       WordPress lens + plan/apply of changes
-  src/stage_commands.rs    Stage page replies and settings controls
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
   src/decode/              PHP serialize and JSON value trees, leaf edits
-  src/wp/                  WordPress detection, entities, views
+  src/wp/                  WordPress plugin: detection, entities, views, commands, snapshots
   src/store/               JSON stores in the config dir
-  src/stage/               Stage HTTP API and request hub
+  src/stage/               Stage plugin: HTTP API, request hub, commands
+  src/test_support.rs      fixture-server helpers for tests (`test-util`)
   src/secrets/             SecretStore trait; Keychain and test MemoryStore
   src/menu.rs              native menu (MENU_ITEMS)
   src/window.rs            window theme and bring-to-front
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
   src/lock.rs              poison-tolerant std lock access
-  tests/                   integration tests (Docker, #[ignore])
+  tests/                   core integration tests (Docker, #[ignore]); WordPress's are in src/wp/
   tauri.conf.json          window, bundle and identifier config
 src/                       React app
   main.tsx modules.ts       boot; the install list (core, then one line per module)
@@ -115,8 +114,7 @@ folder and its install line. The core never imports a module; modules import the
   - Settings pages: `registerSettingsPage(page)` in `src/registry/settingsPages.ts`;
   - command scopes: `registerScope(def)` in `src/commands/scopes.ts`.
 - **Backend.** A module is an inline Tauri plugin with one install line in `lib.rs`
-  ([ADR 0010](adr/0010-inline-tauri-plugins.md), [backend](backend.md)); Stage is one, the WordPress
-  commands are still registered by the core.
+  ([ADR 0010](adr/0010-inline-tauri-plugins.md), [backend](backend.md#plugins)): `stage` and `wp`.
 
 Not yet separated: the `wp` store slice and the WordPress commands live in the core (`src/state/slices/wp.ts`,
 `src/commands/index.ts`), and `App.tsx` renders `WpWorkspace`.

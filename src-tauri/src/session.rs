@@ -743,31 +743,18 @@ mod tests {
     }
 
     #[test]
-    fn wp_cache_is_gone_when_the_session_is_removed_and_reopened() {
-        use crate::wp::cache::WpCache;
-        use crate::wp::context::WpContext;
+    fn extensions_are_gone_when_the_session_is_removed_and_reopened() {
+        struct Marker(u32);
 
         let sessions = Sessions::default();
         let first = sessions.insert(session("a"));
-        let cache = first.ext.get_or_insert_with(WpCache::default);
-        cache.insert(
-            "wp",
-            WpContext {
-                version: None,
-                prefix: "wp_".into(),
-                sites: vec![],
-                wc: None,
-                site: Default::default(),
-                tables: Default::default(),
-            },
-            0,
-        );
-        assert!(first.ext.get::<WpCache>().unwrap().get("wp", 0).is_some());
+        first.ext.get_or_insert_with(|| Marker(7));
+        assert_eq!(first.ext.get::<Marker>().unwrap().0, 7);
 
         sessions.remove("a");
         let reopened = sessions.insert(session("b"));
 
-        assert!(reopened.ext.get::<WpCache>().is_none());
+        assert!(reopened.ext.get::<Marker>().is_none());
     }
 
     struct LockedKeychain;

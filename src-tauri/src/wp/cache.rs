@@ -2,7 +2,40 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use super::context::WpContext;
+use crate::error::AppResult;
 use crate::lock::MutexExt;
+use crate::session::Session;
+
+/// The session's WordPress context for `database`: cached unless `refresh` or the session wrote
+/// to it since, otherwise detected and cached (or dropped when it is not WordPress).
+pub async fn detect(
+    session: &Session,
+    database: &str,
+    refresh: bool,
+) -> AppResult<Option<WpContext>> {
+    let cache = session.ext.get_or_insert_with(WpCache::default);
+    let writes = session.writes(database);
+    if !refresh && let Some(cached) = cache.get(database, writes) {
+        return Ok(Some(cached));
+    }
+    let ctx = super::detect(session.db.as_ref(), database).await?;
+    match &ctx {
+        Some(c) => {
+            log::info!(
+                "Detected WordPress in {database} (prefix {}, WooCommerce: {})",
+                c.prefix,
+                c.wc.as_ref()
+                    .map_or("no".into(), |wc| format!("{:?}", wc.hpos))
+            );
+            cache.insert(database, c.clone(), writes);
+        }
+        None => {
+            log::debug!("{database} is not a WordPress database");
+            cache.remove(database);
+        }
+    }
+    Ok(ctx)
+}
 
 /// Detected WordPress contexts of one session, by database name; attached to `Session.ext`
 /// so it dies with the session. Databases that are not WordPress are never stored, so one

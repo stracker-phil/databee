@@ -99,23 +99,26 @@ Stage is a module on both sides ([stage.md](stage.md)). **Remove Stage**: `git r
 
 ### Removing the WordPress layer
 
-WordPress mode is mostly additive, with one catch: the edit pipeline (`ChangeRequest`, `plan`,
-`reinsert_sql`) lives in `wp/changes.rs`, and Database-mode grid edits use it too.
+WordPress mode is a module on both sides: the Rust half is the `wp` plugin ([wordpress.md](wordpress.md)).
+Grid edits don't depend on it (`ChangeRequest` and its planning are core, in `db/changes.rs`).
 
-1. Move the generic variants (`SetCell`, `DeleteRow`, `DuplicateRow`, `InsertRow`) and their planning into
-   `db/`, along with `plan_change` and `apply_changes`.
-2. Delete `src-tauri/src/wp/`, `wp_commands.rs`, the `wp_*` registrations and the
-   `wordpress` settings page.
+1. Remove the one core test that uses the plugin's types: `wp_cache_is_gone_when_the_session_is_removed_and_reopened`
+   in `session.rs`.
+2. `git rm -r src-tauri/src/wp src-tauri/capabilities/wp.json src-tauri/tests/sql_mode.rs`; delete `pub mod wp;`
+   and `.plugin(wp::init(&config_dir))` in `lib.rs`; delete the `.plugin("wp", …)` line and `WP_COMMANDS` in
+   `build.rs`; delete the `wordpress` settings page. The plugin takes its commands, snapshot store and
+   integration tests with it.
 3. In the frontend:
    - delete `src/components/wp/` (its `install.ts` registers the `wp` and `document` scopes) and
      `src/lib/wpFormat.ts`, and drop the `installWp()` line in `src/modules.ts`;
    - delete the `wp`, `wpNav`, `mode` and `entityMeta` store slices;
    - delete the `go.*`, `document.*` and `wp.*` commands and the WordPress palette search;
    - remove the mode toggle in `Toolbar`, and render `DbWorkspace` directly in `App.tsx`.
-4. Delete `tests/wp.rs`, `tests/php_roundtrip.rs` and the `wp_test`/`wp_write`/`wp_legacy` parts of the fixture.
+4. Delete the `wp_test`/`wp_write`/`wp_legacy` sections of `dev/fixture.sql`, then run
+   `bun run lint && bun run test`.
 
 The Inspector's decoding and editing of PHP-serialized and JSON values is core (`src-tauri/src/decode/`) and
-stays.
+stays, and so do grid edits (`db/changes.rs`).
 
 ## Conventions to keep
 

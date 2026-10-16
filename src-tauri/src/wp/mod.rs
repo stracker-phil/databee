@@ -2,7 +2,9 @@
 //! inspector. All WordPress knowledge lives here; the UI only renders the results.
 
 pub mod cache;
+pub mod catalog_cache;
 pub mod changes;
+pub mod commands;
 pub mod context;
 pub mod dashboard;
 pub mod detail;
@@ -13,14 +15,21 @@ pub mod logs;
 pub mod media;
 pub mod options;
 pub mod peek;
+#[cfg(test)]
+mod server_tests;
 pub mod snapshot;
+pub mod snapshots_store;
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 use std::time::Duration;
 
 use serde::Serialize;
+use tauri::plugin::TauriPlugin;
+use tauri::{Manager, Wry};
 use ts_rs::TS;
 
+use self::catalog_cache::CatalogCache;
 use self::context::WpContext;
 use self::entity::{Catalog, EntityDoc, TableEntity};
 use crate::db::Database;
@@ -29,6 +38,88 @@ use crate::error::{AppError, AppResult};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_RELATED: u32 = 100;
+
+/// Registered in `build.rs` too (`WP_COMMANDS`), which grants them to the main window through
+/// `capabilities/wp.json`.
+pub const COMMANDS: &[&str] = &[
+    "wp_detect",
+    "wp_options",
+    "wp_dashboard",
+    "wp_browser",
+    "wp_orders",
+    "wp_users",
+    "wp_products",
+    "wp_actions",
+    "wp_action_histogram",
+    "wp_failed_by_hook",
+    "wp_sessions",
+    "wp_content",
+    "wp_view",
+    "wp_order_logs",
+    "wp_search",
+    "wp_peek",
+    "wp_find_value",
+    "wp_options_group",
+    "wp_snapshot_take",
+    "wp_snapshots",
+    "wp_snapshot_diff",
+    "wp_snapshot_delete",
+    "wp_compare",
+    "wp_plan_change",
+];
+
+/// The plugin's managed state; per-session data (the detected contexts) lives in `Session.ext`.
+pub struct WpState {
+    pub snapshots: snapshots_store::SnapshotStore,
+    pub catalogs: CatalogCache,
+}
+
+impl WpState {
+    pub fn open(config_dir: &Path) -> Self {
+        Self {
+            snapshots: snapshots_store::SnapshotStore::open(config_dir),
+            catalogs: CatalogCache::new(config_dir.join("entities.toml")),
+        }
+    }
+}
+
+/// Installs WordPress mode: its commands, the snapshot store and the user's `entities.toml`,
+/// both in `config_dir`.
+pub fn init(config_dir: &Path) -> TauriPlugin<Wry> {
+    let config_dir = config_dir.to_path_buf();
+    tauri::plugin::Builder::new("wp")
+        .invoke_handler(tauri::generate_handler![
+            commands::wp_detect,
+            commands::wp_options,
+            commands::wp_dashboard,
+            commands::wp_browser,
+            commands::wp_orders,
+            commands::wp_users,
+            commands::wp_products,
+            commands::wp_actions,
+            commands::wp_action_histogram,
+            commands::wp_failed_by_hook,
+            commands::wp_sessions,
+            commands::wp_content,
+            commands::wp_view,
+            commands::wp_order_logs,
+            commands::wp_search,
+            commands::wp_peek,
+            commands::wp_find_value,
+            commands::wp_options_group,
+            commands::wp_snapshot_take,
+            commands::wp_snapshots,
+            commands::wp_snapshot_diff,
+            commands::wp_snapshot_delete,
+            commands::wp_compare,
+            commands::wp_plan_change,
+        ])
+        .setup(move |app, _| {
+            app.manage(WpState::open(&config_dir));
+            Ok(())
+        })
+        .build()
+}
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -494,6 +585,21 @@ mod tests {
             wc: None,
             site: Default::default(),
             tables: ["wp_options".to_string(), "wp_users".to_string()].into(),
+        }
+    }
+
+    #[test]
+    fn every_command_is_granted_in_build_rs() {
+        let granted = crate::test_support::build_rs_commands("wp_");
+        for name in COMMANDS {
+            assert!(granted.contains(name), "{name} missing from build.rs");
+        }
+    }
+
+    #[test]
+    fn every_wp_command_in_build_rs_is_registered() {
+        for name in crate::test_support::build_rs_commands("wp_") {
+            assert!(COMMANDS.contains(&name), "{name} missing from COMMANDS");
         }
     }
 

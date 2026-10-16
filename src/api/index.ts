@@ -23,6 +23,7 @@ import type {
   PeekFact,
   ListQuery,
   OrderSummary,
+  OrderType,
   Page,
   PostSummary,
   ProductSummary,
@@ -102,52 +103,52 @@ export const api = {
   clearHistory: (account: string) => invoke<void>("clear_history", { account }),
 
   wpDetect: (sessionId: string, database: string, refresh = false) =>
-    invoke<WpInfo | null>("wp_detect", { sessionId, database, refresh }),
-  wpOptions: (sessionId: string, database: string) => invoke<OptionsOverview>("wp_options", { sessionId, database }),
+    invoke<WpInfo | null>("plugin:wp|wp_detect", { sessionId, database, refresh }),
+  wpOptions: (sessionId: string, database: string) => invoke<OptionsOverview>("plugin:wp|wp_options", { sessionId, database }),
   decodeValue: (text: string) => invoke<DecodedValue | null>("decode_value", { text }),
-  wpDashboard: (sessionId: string, database: string) => invoke<Dashboard>("wp_dashboard", { sessionId, database }),
-  wpBrowser: (sessionId: string, database: string) => invoke<BrowserSection[]>("wp_browser", { sessionId, database }),
-  wpOrders: (sessionId: string, database: string, orderType: string, query: ListQuery) =>
-    invoke<Page<OrderSummary>>("wp_orders", { sessionId, database, orderType, query }),
+  wpDashboard: (sessionId: string, database: string) => invoke<Dashboard>("plugin:wp|wp_dashboard", { sessionId, database }),
+  wpBrowser: (sessionId: string, database: string) => invoke<BrowserSection[]>("plugin:wp|wp_browser", { sessionId, database }),
+  wpOrders: (sessionId: string, database: string, orderType: OrderType, query: ListQuery) =>
+    invoke<Page<OrderSummary>>("plugin:wp|wp_orders", { sessionId, database, orderType, query }),
   wpUsers: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<UserSummary>>("wp_users", { sessionId, database, query }),
+    invoke<Page<UserSummary>>("plugin:wp|wp_users", { sessionId, database, query }),
   wpProducts: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<ProductSummary>>("wp_products", { sessionId, database, query }),
+    invoke<Page<ProductSummary>>("plugin:wp|wp_products", { sessionId, database, query }),
   wpActions: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<ActionSummary>>("wp_actions", { sessionId, database, query }),
-  wpFailedByHook: (sessionId: string, database: string) => invoke<HookFailures[]>("wp_failed_by_hook", { sessionId, database }),
+    invoke<Page<ActionSummary>>("plugin:wp|wp_actions", { sessionId, database, query }),
+  wpFailedByHook: (sessionId: string, database: string) => invoke<HookFailures[]>("plugin:wp|wp_failed_by_hook", { sessionId, database }),
   wpActionHistogram: (sessionId: string, database: string, hook: string | null) =>
-    invoke<ActionHistogram>("wp_action_histogram", { sessionId, database, hook }),
+    invoke<ActionHistogram>("plugin:wp|wp_action_histogram", { sessionId, database, hook }),
   wpSessions: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<SessionSummary>>("wp_sessions", { sessionId, database, query }),
+    invoke<Page<SessionSummary>>("plugin:wp|wp_sessions", { sessionId, database, query }),
   wpContent: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<PostSummary>>("wp_content", { sessionId, database, query }),
+    invoke<Page<PostSummary>>("plugin:wp|wp_content", { sessionId, database, query }),
   wpView: (sessionId: string, database: string, entity: string, id: string) =>
-    invoke<EntityViewData>("wp_view", { sessionId, database, entity, id }),
+    invoke<EntityViewData>("plugin:wp|wp_view", { sessionId, database, entity, id }),
   wpOrderLogs: (sessionId: string, database: string, id: string) =>
-    invoke<TimelineEvent[]>("wp_order_logs", { sessionId, database, id }),
+    invoke<TimelineEvent[]>("plugin:wp|wp_order_logs", { sessionId, database, id }),
   wpPeek: (sessionId: string, database: string, entity: string, id: string) =>
-    invoke<PeekFact[]>("wp_peek", { sessionId, database, entity, id }),
+    invoke<PeekFact[]>("plugin:wp|wp_peek", { sessionId, database, entity, id }),
   wpFindValue: (sessionId: string, database: string, value: string) =>
-    invoke<FindGroup[]>("wp_find_value", { sessionId, database, value }),
+    invoke<FindGroup[]>("plugin:wp|wp_find_value", { sessionId, database, value }),
   wpSearch: (sessionId: string, database: string, query: string) =>
-    invoke<SearchHit[]>("wp_search", { sessionId, database, query }),
+    invoke<SearchHit[]>("plugin:wp|wp_search", { sessionId, database, query }),
   wpOptionsGroup: (sessionId: string, database: string, prefix: string) =>
-    invoke<DocField[]>("wp_options_group", { sessionId, database, prefix }),
+    invoke<DocField[]>("plugin:wp|wp_options_group", { sessionId, database, prefix }),
 
   planChange: (sessionId: string, change: ChangeRequest) => invoke<PlannedChange>("plan_change", { sessionId, change }),
-  wpPlanChange: (sessionId: string, change: WpChangeRequest) => invoke<PlannedChange>("wp_plan_change", { sessionId, change }),
+  wpPlanChange: (sessionId: string, change: WpChangeRequest) => invoke<PlannedChange>("plugin:wp|wp_plan_change", { sessionId, change }),
   discardChange: (sessionId: string, id: number) => invoke<void>("discard_change", { sessionId, id }),
   applyChanges: (sessionId: string, ids: number[]) => invoke<AppliedBatch>("apply_changes", { sessionId, ids }),
   undoBatch: (sessionId: string, batchId: number) => invoke<number>("undo_batch", { sessionId, batchId }),
   editSerialized: (raw: string, path: number[], value: NewValue) => invoke<string>("edit_serialized", { raw, path, value }),
   wpSnapshotTake: (sessionId: string, database: string, scope: SnapshotScope, label: string) =>
-    invoke<SnapshotInfo>("wp_snapshot_take", { sessionId, database, scope, label }),
-  wpSnapshots: (sessionId: string, database: string) => invoke<SnapshotInfo[]>("wp_snapshots", { sessionId, database }),
-  wpSnapshotDiff: (sessionId: string, database: string, id: string) => invoke<DiffEntry[]>("wp_snapshot_diff", { sessionId, database, id }),
-  wpSnapshotDelete: (id: string) => invoke<void>("wp_snapshot_delete", { id }),
+    invoke<SnapshotInfo>("plugin:wp|wp_snapshot_take", { sessionId, database, scope, label }),
+  wpSnapshots: (sessionId: string, database: string) => invoke<SnapshotInfo[]>("plugin:wp|wp_snapshots", { sessionId, database }),
+  wpSnapshotDiff: (sessionId: string, database: string, id: string) => invoke<DiffEntry[]>("plugin:wp|wp_snapshot_diff", { sessionId, database, id }),
+  wpSnapshotDelete: (id: string) => invoke<void>("plugin:wp|wp_snapshot_delete", { id }),
   wpCompare: (sessionId: string, database: string, entity: string, a: string, b: string) =>
-    invoke<CompareRow[]>("wp_compare", { sessionId, database, entity, a, b }),
+    invoke<CompareRow[]>("plugin:wp|wp_compare", { sessionId, database, entity, a, b }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu items emit the id of the command they run. */

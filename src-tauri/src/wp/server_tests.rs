@@ -1,62 +1,60 @@
-//! WordPress lens against the `wp_test` fixture (HPOS with sync) on both servers.
+//! Integration tests against real servers; every one is `#[ignore]`
+//! (`cargo test --lib -- --ignored wp::`).
+//!
+//! - The lens against the Docker fixtures (`bun run test:db`): reads go to `wp_test` (HPOS with
+//!   sync), edits to its copy `wp_write`, and `wp_legacy` is a posts-based store (HPOS off).
+//! - Read-only checks against a real WordPress database of your own, skipped unless
+//!   `DATABEE_WP_TEST=mysql://user:pass@host:port/db` is set:
+//!
+//!   DATABEE_WP_TEST=mysql://root:root@127.0.0.1:52958/db cargo test --lib -- --ignored --nocapture every_serialized_value_round_trips
 
 use std::time::Duration;
 
+use crate::cli::{self, CliOutcome, Launch};
+use crate::db::Cell;
+use crate::db::Database;
+use crate::db::mysql::MySqlSession;
+use crate::decode::php;
+use crate::test_support::sessions;
+use crate::wp::context::{HposMode, SiteZone};
+use crate::wp::dashboard::{Granularity, action_histogram, browser, dashboard};
+use crate::wp::detail::{EntityView, EventKind, EventLevel, entity_view, search};
+use crate::wp::entity::{Catalog, definitions};
+use crate::wp::lists::{self, ListQuery};
+use crate::wp::{WpList, detect, expand, load_docs, options_overview};
+
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-use databee_lib::connection::{ConnectionSpec, Secret};
-use databee_lib::db::Database;
-use databee_lib::db::mysql::MySqlSession;
-use databee_lib::wp::context::{HposMode, SiteZone};
-use databee_lib::wp::dashboard::{Granularity, action_histogram, browser, dashboard};
-use databee_lib::wp::detail::{EntityView, EventKind, EventLevel, entity_view, search};
-use databee_lib::wp::entity::{Catalog, definitions};
-use databee_lib::wp::lists::{self, ListQuery};
-use databee_lib::wp::{WpList, detect, expand, load_docs, options_overview};
-
-fn servers() -> Vec<(String, u16)> {
-    let servers = std::env::var("DATABEE_TEST_SERVERS")
-        .unwrap_or_else(|_| "127.0.0.1:33306,127.0.0.1:33307".into());
-    servers
-        .split(',')
-        .map(|s| {
-            let (host, port) = s.rsplit_once(':').unwrap();
-            (host.to_string(), port.parse().unwrap())
-        })
-        .collect()
-}
-
-async fn connect_to(host: &str, port: u16, database: &str) -> MySqlSession {
-    let spec = ConnectionSpec {
-        name: None,
-        host: host.into(),
-        port,
-        socket: None,
-        user: "root".into(),
-        database: Some(database.into()),
+/// The database named by `DATABEE_WP_TEST` (a `databee` connection URL), connected.
+async fn real_site() -> Option<(MySqlSession, String)> {
+    let url = std::env::var("DATABEE_WP_TEST").ok()?;
+    let outcome = cli::parse(
+        ["databee", url.as_str()],
+        3306,
+        &mut std::io::empty(),
+        &|_| None,
+    );
+    let Ok(CliOutcome::Run {
+        launch: Some(Launch { spec, password, .. }),
+        ..
+    }) = outcome
+    else {
+        panic!("DATABEE_WP_TEST is not a connection URL: {outcome:?}");
     };
-    MySqlSession::connect(
-        &spec,
-        Some(&Secret::new("root")),
-        Duration::from_secs(10),
-        Duration::from_secs(10),
-    )
-    .await
-    .unwrap()
-}
-
-async fn sessions() -> Vec<MySqlSession> {
-    let mut out = Vec::new();
-    for (host, port) in servers() {
-        out.push(connect_to(&host, port, "wp_test").await);
-    }
-    out
+    let database = spec
+        .database
+        .clone()
+        .expect("DATABEE_WP_TEST names a database");
+    let db = MySqlSession::connect(&spec, password.as_ref(), TIMEOUT, TIMEOUT)
+        .await
+        .unwrap();
+    Some((db, database))
 }
 
 #[tokio::test]
 #[ignore]
 async fn detects_woocommerce_with_hpos_sync() {
-    for db in sessions().await {
+    for db in sessions("wp_test").await {
         let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
         assert_eq!(ctx.prefix, "wp_");
         let wc = ctx.wc.unwrap();
@@ -70,7 +68,7 @@ async fn detects_woocommerce_with_hpos_sync() {
 #[tokio::test]
 #[ignore]
 async fn the_site_zone_comes_from_timezone_string() {
-    for db in sessions().await {
+    for db in sessions("wp_test").await {
         let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
         assert_eq!(ctx.site.zone, SiteZone::Named(chrono_tz::Europe::Berlin));
         assert_eq!(ctx.site.zone_source, "timezone_string");
@@ -80,7 +78,7 @@ async fn the_site_zone_comes_from_timezone_string() {
 #[tokio::test]
 #[ignore]
 async fn loads_an_order_document_with_meta_links_and_relation_counts() {
-    for db in sessions().await {
+    for db in sessions("wp_test").await {
         let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
         let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
         let docs = load_docs(&db, &ctx, &catalog, "wp_test", "order", &["4711".into()])
@@ -128,7 +126,7 @@ async fn loads_an_order_document_with_meta_links_and_relation_counts() {
 #[tokio::test]
 #[ignore]
 async fn expands_relations_lazily_and_follows_meta_links() {
-    for db in sessions().await {
+    for db in sessions("wp_test").await {
         let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
         let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
         let items = expand(&db, &ctx, &catalog, "wp_test", "order", "4711", "items")
@@ -157,7 +155,7 @@ async fn expands_relations_lazily_and_follows_meta_links() {
 #[tokio::test]
 #[ignore]
 async fn options_overview_reports_groups_and_expired_transients() {
-    for db in sessions().await {
+    for db in sessions("wp_test").await {
         let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
         let o = options_overview(&db, &ctx, "wp_test").await.unwrap();
         assert_eq!(o.total_count, 17);
@@ -177,9 +175,9 @@ async fn options_overview_reports_groups_and_expired_transients() {
     }
 }
 
-async fn env() -> Vec<(MySqlSession, databee_lib::wp::context::WpContext, Catalog)> {
+async fn env() -> Vec<(MySqlSession, crate::wp::context::WpContext, Catalog)> {
     let mut out = Vec::new();
-    for db in sessions().await {
+    for db in sessions("wp_test").await {
         let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
         let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
         out.push((db, ctx, catalog));
@@ -312,7 +310,7 @@ async fn guest_checkouts_are_not_users_but_open_from_orders_and_search() {
         assert_eq!(c.roles, ["Guest"]);
         assert!(c.tokens.is_empty());
 
-        let hits = databee_lib::wp::detail::search(&db, &ctx, "wp_test", "guest@")
+        let hits = crate::wp::detail::search(&db, &ctx, "wp_test", "guest@")
             .await
             .unwrap();
         assert!(
@@ -327,7 +325,7 @@ async fn guest_checkouts_are_not_users_but_open_from_orders_and_search() {
 #[ignore]
 async fn peek_summarizes_an_entity_in_a_few_facts() {
     for (db, ctx, catalog) in env().await {
-        let facts = databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "order", "4711")
+        let facts = crate::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "order", "4711")
             .await
             .unwrap();
         let labels: Vec<&str> = facts.iter().map(|f| f.label.as_str()).collect();
@@ -339,13 +337,13 @@ async fn peek_summarizes_an_entity_in_a_few_facts() {
         let total = facts.iter().find(|f| f.label == "Total").unwrap();
         assert_eq!(
             (total.kind, total.value.as_str()),
-            (databee_lib::wp::peek::FactKind::Money, "€49.90")
+            (crate::wp::peek::FactKind::Money, "€49.90")
         );
-        let user = databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "user", "1")
+        let user = crate::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "user", "1")
             .await
             .unwrap();
         assert!(user.iter().any(|f| f.label == "Email"));
-        let buyer = databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "user", "12")
+        let buyer = crate::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "user", "12")
             .await
             .unwrap();
         let labels: Vec<&str> = buyer.iter().map(|f| f.label.as_str()).collect();
@@ -359,7 +357,7 @@ async fn peek_summarizes_an_entity_in_a_few_facts() {
             "{labels:?}"
         );
         assert!(
-            databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "order", "999999")
+            crate::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "order", "999999")
                 .await
                 .unwrap()
                 .is_empty()
@@ -371,7 +369,7 @@ async fn peek_summarizes_an_entity_in_a_few_facts() {
 #[ignore]
 async fn find_value_scans_meta_options_actions_and_logs() {
     for (db, ctx, _) in env().await {
-        let groups = databee_lib::wp::peek::find_value(&db, &ctx, "wp_test", "66M12696JX411763D")
+        let groups = crate::wp::peek::find_value(&db, &ctx, "wp_test", "66M12696JX411763D")
             .await
             .unwrap();
         let sources: Vec<&str> = groups.iter().map(|g| g.source.as_str()).collect();
@@ -382,7 +380,7 @@ async fn find_value_scans_meta_options_actions_and_logs() {
         assert_eq!(meta.hits[0].column, "meta_value");
         assert!(meta.hits[0].entity.is_some());
         assert!(
-            databee_lib::wp::peek::find_value(&db, &ctx, "wp_test", "no-such-value-anywhere")
+            crate::wp::peek::find_value(&db, &ctx, "wp_test", "no-such-value-anywhere")
                 .await
                 .unwrap()
                 .is_empty()
@@ -394,7 +392,7 @@ async fn find_value_scans_meta_options_actions_and_logs() {
 #[ignore]
 async fn failed_actions_group_by_hook_with_last_message() {
     for (db, ctx, _) in env().await {
-        let groups = databee_lib::wp::lists::failed_by_hook(&db, &ctx, "wp_test")
+        let groups = crate::wp::lists::failed_by_hook(&db, &ctx, "wp_test")
             .await
             .unwrap();
         assert_eq!(groups.len(), 1);
@@ -637,7 +635,7 @@ async fn order_view_tells_the_story_of_a_checkout() {
         );
 
         let kinds: Vec<EventKind> = o.timeline.iter().map(|e| e.kind).collect();
-        let logs = databee_lib::wp::detail::order_logs(&db, &ctx, &catalog, "wp_test", "4711")
+        let logs = crate::wp::detail::order_logs(&db, &ctx, &catalog, "wp_test", "4711")
             .await
             .unwrap();
         assert_eq!(
@@ -767,7 +765,7 @@ async fn customer_and_product_views() {
 #[ignore]
 async fn omnisearch_finds_pasted_identifiers() {
     for (db, ctx, _) in env().await {
-        let first = |hits: Vec<databee_lib::wp::detail::SearchHit>| {
+        let first = |hits: Vec<crate::wp::detail::SearchHit>| {
             hits.into_iter().next().map(|h| (h.entity, h.id, h.matched))
         };
         assert_eq!(
@@ -802,9 +800,9 @@ async fn omnisearch_finds_pasted_identifiers() {
 
 // ---------- edits (on the writable wp_write copy) ----------
 
-async fn write_env() -> Vec<(MySqlSession, databee_lib::wp::context::WpContext, Catalog)> {
+async fn write_env() -> Vec<(MySqlSession, crate::wp::context::WpContext, Catalog)> {
     let mut out = Vec::new();
-    for db in sessions().await {
+    for db in sessions("wp_test").await {
         let ctx = detect(&db, "wp_write").await.unwrap().unwrap();
         let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
         out.push((db, ctx, catalog));
@@ -815,9 +813,9 @@ async fn write_env() -> Vec<(MySqlSession, databee_lib::wp::context::WpContext, 
 async fn scalar(db: &MySqlSession, sql: &str) -> Option<String> {
     let rs = db.fetch(sql, TIMEOUT).await.unwrap();
     rs.rows.first().and_then(|r| match &r[0] {
-        databee_lib::db::Cell::Null => None,
+        crate::db::Cell::Null => None,
         c => Some(
-            databee_lib::wp::entity::cell_str(c)
+            crate::wp::entity::cell_str(c)
                 .unwrap_or_default()
                 .to_string(),
         ),
@@ -831,8 +829,8 @@ async fn apply(db: &MySqlSession, statements: &[String]) {
 #[tokio::test]
 #[ignore]
 async fn edits_apply_and_undo_cleanly() {
-    use databee_lib::db::changes::{ChangeRequest as R, plan as plan_row};
-    use databee_lib::wp::changes::{WpChangeRequest as C, plan};
+    use crate::db::changes::{ChangeRequest as R, plan as plan_row};
+    use crate::wp::changes::{WpChangeRequest as C, plan};
     for (db, ctx, catalog) in write_env().await {
         let p = |c: C| {
             let (db, ctx, catalog) = (&db, &ctx, &catalog);
@@ -906,10 +904,10 @@ async fn edits_apply_and_undo_cleanly() {
 
         // Serialized option edited via a path keeps valid lengths.
         let raw = scalar(&db, "SELECT option_value FROM wp_write.wp_options WHERE option_name = 'woocommerce_ppcp-settings'").await.unwrap();
-        let edited = databee_lib::decode::edit::edit_serialized(
+        let edited = crate::decode::edit::edit_serialized(
             &raw,
             &[1],
-            &databee_lib::decode::edit::NewValue::String("PayPal ✓".into()),
+            &crate::decode::edit::NewValue::String("PayPal ✓".into()),
         )
         .unwrap();
         let change = row(R::SetCell {
@@ -924,7 +922,7 @@ async fn edits_apply_and_undo_cleanly() {
         apply(&db, &change.statements).await;
         let stored = scalar(&db, "SELECT option_value FROM wp_write.wp_options WHERE option_name = 'woocommerce_ppcp-settings'").await.unwrap();
         assert!(
-            databee_lib::decode::php::parse(stored.as_bytes()).is_ok(),
+            crate::decode::php::parse(stored.as_bytes()).is_ok(),
             "{stored}"
         );
         apply(&db, &change.undo).await;
@@ -1028,7 +1026,7 @@ async fn edits_apply_and_undo_cleanly() {
 #[tokio::test]
 #[ignore]
 async fn snapshots_diff_and_compare() {
-    use databee_lib::wp::snapshot::{Scope, capture, compare, diff};
+    use crate::wp::snapshot::{Scope, capture, compare, diff};
     for (db, ctx, catalog) in write_env().await {
         let scope = Scope {
             entity: Some("order".into()),
@@ -1090,8 +1088,8 @@ fn set_cell(
     key: &str,
     column: &str,
     value: Option<&str>,
-) -> databee_lib::db::changes::ChangeRequest {
-    databee_lib::db::changes::ChangeRequest::SetCell {
+) -> crate::db::changes::ChangeRequest {
+    crate::db::changes::ChangeRequest::SetCell {
         database: "wp_write".into(),
         table: table.into(),
         key_column: key_column.into(),
@@ -1104,8 +1102,8 @@ fn set_cell(
 #[tokio::test]
 #[ignore]
 async fn undo_restores_an_empty_string_instead_of_null() {
-    use databee_lib::db::changes::plan;
-    for db in sessions().await {
+    use crate::db::changes::plan;
+    for db in sessions("wp_test").await {
         let read = "SELECT post_name FROM wp_write.wp_posts WHERE ID = 201";
         assert_eq!(scalar(&db, read).await.as_deref(), Some(""));
         let change = plan(
@@ -1129,8 +1127,8 @@ async fn undo_restores_an_empty_string_instead_of_null() {
 #[tokio::test]
 #[ignore]
 async fn undo_restores_a_null_cell_to_null() {
-    use databee_lib::db::changes::plan;
-    for db in sessions().await {
+    use crate::db::changes::plan;
+    for db in sessions("wp_test").await {
         let id = scalar(
             &db,
             "SELECT id FROM wp_write.wp_wc_order_addresses WHERE order_id = 4711 AND address_type = 'shipping'",
@@ -1162,8 +1160,8 @@ async fn undo_restores_a_null_cell_to_null() {
 #[tokio::test]
 #[ignore]
 async fn editing_a_binary_cell_has_no_undo() {
-    use databee_lib::db::changes::{ChangeRequest, plan};
-    for db in sessions().await {
+    use crate::db::changes::{ChangeRequest, plan};
+    for db in sessions("wp_test").await {
         let change = plan(
             &db,
             &ChangeRequest::SetCell {
@@ -1190,8 +1188,8 @@ async fn editing_a_binary_cell_has_no_undo() {
 #[tokio::test]
 #[ignore]
 async fn undo_of_a_key_column_change_finds_the_row_by_its_new_key() {
-    use databee_lib::db::changes::plan;
-    for db in sessions().await {
+    use crate::db::changes::plan;
+    for db in sessions("wp_test").await {
         let count = |name: &'static str| {
             let db = &db;
             async move {
@@ -1229,7 +1227,7 @@ async fn undo_of_a_key_column_change_finds_the_row_by_its_new_key() {
 #[tokio::test]
 #[ignore]
 async fn set_meta_refuses_duplicate_rows() {
-    use databee_lib::wp::changes::{WpChangeRequest, plan};
+    use crate::wp::changes::{WpChangeRequest, plan};
     for (db, ctx, catalog) in write_env().await {
         apply(
             &db,
@@ -1266,7 +1264,7 @@ async fn set_meta_refuses_duplicate_rows() {
 #[tokio::test]
 #[ignore]
 async fn delete_meta_of_a_missing_key_is_refused() {
-    use databee_lib::wp::changes::{WpChangeRequest, plan};
+    use crate::wp::changes::{WpChangeRequest, plan};
     for (db, ctx, catalog) in write_env().await {
         let result = plan(
             &db,
@@ -1287,7 +1285,7 @@ async fn delete_meta_of_a_missing_key_is_refused() {
 #[tokio::test]
 #[ignore]
 async fn log_retention_plans_a_fixed_cutoff_literal() {
-    use databee_lib::wp::changes::{WpChangeRequest, plan};
+    use crate::wp::changes::{WpChangeRequest, plan};
     for (db, ctx, catalog) in write_env().await {
         let change = plan(
             &db,
@@ -1312,9 +1310,9 @@ async fn log_retention_plans_a_fixed_cutoff_literal() {
 
 // ---------- legacy store (wp_legacy: orders in wp_posts, HPOS off) ----------
 
-async fn legacy_env() -> Vec<(MySqlSession, databee_lib::wp::context::WpContext, Catalog)> {
+async fn legacy_env() -> Vec<(MySqlSession, crate::wp::context::WpContext, Catalog)> {
     let mut out = Vec::new();
-    for db in sessions().await {
+    for db in sessions("wp_test").await {
         let ctx = detect(&db, "wp_legacy").await.unwrap().unwrap();
         let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
         out.push((db, ctx, catalog));
@@ -1374,4 +1372,150 @@ async fn legacy_order_document_counts_its_notes() {
             .unwrap();
         assert_eq!(notes.count, 2);
     }
+}
+
+// ---------- real data (DATABEE_WP_TEST, read-only) ----------
+
+#[tokio::test]
+#[ignore]
+async fn every_serialized_value_round_trips() {
+    let Some((db, database)) = real_site().await else {
+        eprintln!("DATABEE_WP_TEST not set; skipping");
+        return;
+    };
+    let ctx = detect(&db, &database)
+        .await
+        .unwrap()
+        .expect("a WordPress database");
+
+    let mut sources = vec![
+        ("options", "option_value"),
+        ("postmeta", "meta_value"),
+        ("usermeta", "meta_value"),
+    ];
+    if ctx.hpos() {
+        sources.push(("wc_orders_meta", "meta_value"));
+    }
+    if ctx.wc.is_some() {
+        sources.push(("woocommerce_order_itemmeta", "meta_value"));
+    }
+
+    let (mut checked, mut lenient, mut broken) = (0, 0, 0);
+    for (table, column) in sources {
+        let sql = format!(
+            "SELECT `{column}` FROM `{database}`.`{}{table}` WHERE `{column}` REGEXP '^(a|O|s|i|b|d|C|E):' OR `{column}` = 'N;'",
+            ctx.prefix
+        );
+        let rs = db.fetch(&sql, Duration::from_secs(60)).await.unwrap();
+        for row in &rs.rows {
+            let Cell::Text(value) = &row[0] else { continue };
+            match php::parse(value.as_bytes()) {
+                Ok(parsed) => {
+                    checked += 1;
+                    assert_eq!(
+                        php::serialize(&parsed),
+                        value.as_bytes(),
+                        "round trip failed in {table}: {value}"
+                    );
+                }
+                Err(_) if php::parse_lenient(value.as_bytes()).is_ok() => lenient += 1,
+                Err(e) => {
+                    broken += 1;
+                    eprintln!(
+                        "unparseable in {table} ({e}): {}",
+                        value.chars().take(120).collect::<String>()
+                    );
+                }
+            }
+        }
+    }
+    eprintln!(
+        "round-tripped {checked} values; {lenient} needed lenient parsing; {broken} unparseable"
+    );
+    assert!(checked > 0);
+}
+
+/// Read-only smoke test of every WordPress-mode query against a real database.
+#[tokio::test]
+#[ignore]
+async fn wordpress_mode_queries_work_on_real_data() {
+    use crate::wp::detail::{entity_view, search};
+    use crate::wp::entity::{Catalog, definitions};
+    use crate::wp::lists::{self, ListQuery};
+    use crate::wp::{dashboard, options_group};
+
+    let Some((db, database)) = real_site().await else {
+        return;
+    };
+    let ctx = detect(&db, &database)
+        .await
+        .unwrap()
+        .expect("a WordPress database");
+    let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+    let started = std::time::Instant::now();
+    let lap = |what: &str| eprintln!("{what:<28} {:>6} ms", started.elapsed().as_millis());
+
+    let d = dashboard::dashboard(&db, &ctx, &database).await.unwrap();
+    lap("dashboard");
+    eprintln!(
+        "  insights: {:?}",
+        d.insights.iter().map(|i| &i.text).collect::<Vec<_>>()
+    );
+    dashboard::browser(&db, &ctx, &database).await.unwrap();
+    lap("browser");
+    let q = ListQuery::default();
+    let orders = lists::orders(&db, &ctx, &database, "shop_order", &q)
+        .await
+        .unwrap();
+    lists::orders(&db, &ctx, &database, "shop_subscription", &q)
+        .await
+        .unwrap();
+    let customers = lists::users(&db, &ctx, &database, &q, false).await.unwrap();
+    let products = lists::products(&db, &ctx, &database, &q).await.unwrap();
+    lists::content(&db, &ctx, &database, &q).await.unwrap();
+    if ctx.has_table("actionscheduler_actions") {
+        lists::actions(&db, &ctx, &database, &q).await.unwrap();
+    }
+    if ctx.has_table("woocommerce_sessions") {
+        lists::sessions(&db, &ctx, &database, &q).await.unwrap();
+    }
+    lap("lists");
+    if let Some(o) = orders.items.first() {
+        let v = entity_view(&db, &ctx, &catalog, &database, "order", &o.id, false)
+            .await
+            .unwrap();
+        lap("order view");
+        if let crate::wp::detail::EntityView::Order(o) = v {
+            eprintln!(
+                "  order #{}: {} items, {} timeline events",
+                o.doc.id,
+                o.items.len(),
+                o.timeline.len()
+            );
+            if let Some(tx) = o.payment.and_then(|p| p.transaction_id) {
+                let hits = search(&db, &ctx, &database, &tx).await.unwrap();
+                assert!(
+                    hits.iter().any(|h| h.entity == "order" && h.id == o.doc.id),
+                    "search by transaction id"
+                );
+                lap("search transaction id");
+            }
+        }
+    }
+    if let Some(c) = customers.items.first() {
+        entity_view(&db, &ctx, &catalog, &database, "user", &c.id, false)
+            .await
+            .unwrap();
+        lap("customer view");
+    }
+    if let Some(p) = products.items.first() {
+        entity_view(&db, &ctx, &catalog, &database, "post", &p.id, false)
+            .await
+            .unwrap();
+        lap("product view");
+    }
+    options_group(&db, &ctx, &catalog, &database, "woocommerce")
+        .await
+        .unwrap();
+    lap("options group");
 }

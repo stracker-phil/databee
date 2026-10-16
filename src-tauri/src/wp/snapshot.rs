@@ -10,6 +10,7 @@ use super::context::WpContext;
 use super::detail::args_reference;
 use super::entity::{Catalog, EntityDoc, cell_str};
 use super::lists::{epoch, text};
+use super::snapshots_store::Snapshot;
 use super::{expand, fetch, load_docs};
 use crate::db::Database;
 use crate::decode::value::ValueNode;
@@ -207,6 +208,18 @@ pub async fn capture(
         }
     }
     Ok(out)
+}
+
+/// What changed since `taken`: its scope captured again, diffed against its values.
+pub async fn diff_against_now(
+    session: &dyn Database,
+    ctx: &WpContext,
+    catalog: &Catalog,
+    db: &str,
+    taken: &Snapshot,
+) -> AppResult<Vec<DiffEntry>> {
+    let now = capture(session, ctx, catalog, db, &taken.scope).await?;
+    Ok(diff(&taken.values, &now))
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]

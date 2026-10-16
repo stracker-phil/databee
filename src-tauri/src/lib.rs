@@ -16,9 +16,10 @@ mod session;
 pub mod stage;
 mod state;
 pub mod store;
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_support;
 mod window;
 pub mod wp;
-mod wp_commands;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -204,6 +205,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
         .plugin(init_logging(log_level))
         .plugin(tauri_plugin_opener::init())
         .plugin(stage::init(&config_dir))
+        .plugin(wp::init(&config_dir))
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
         .setup(move |app| {
             log::info!("DataBee {} started", env!("CARGO_PKG_VERSION"));
@@ -249,30 +251,6 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::browse_table,
             db_commands::fetch_cell,
             db_commands::table_select_sql,
-            wp_commands::wp_detect,
-            wp_commands::wp_options,
-            wp_commands::wp_dashboard,
-            wp_commands::wp_browser,
-            wp_commands::wp_orders,
-            wp_commands::wp_users,
-            wp_commands::wp_products,
-            wp_commands::wp_actions,
-            wp_commands::wp_action_histogram,
-            wp_commands::wp_failed_by_hook,
-            wp_commands::wp_sessions,
-            wp_commands::wp_content,
-            wp_commands::wp_view,
-            wp_commands::wp_order_logs,
-            wp_commands::wp_search,
-            wp_commands::wp_peek,
-            wp_commands::wp_find_value,
-            wp_commands::wp_options_group,
-            wp_commands::wp_snapshot_take,
-            wp_commands::wp_snapshots,
-            wp_commands::wp_snapshot_diff,
-            wp_commands::wp_snapshot_delete,
-            wp_commands::wp_compare,
-            wp_commands::wp_plan_change,
             db_commands::plan_change,
             db_commands::discard_change,
             db_commands::apply_changes,

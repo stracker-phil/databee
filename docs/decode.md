@@ -13,7 +13,7 @@ and edits one leaf of it. It is core: the WordPress lens builds on it, never the
 ## PHP serialize
 
 `php.rs` round-trips exactly: `serialize(parse(x)) == x` for every value it accepts. The test suite checks
-this, and `tests/php_roundtrip.rs` checks it against every serialized value of a real database. The parser:
+this, and `every_serialized_value_round_trips` (`src-tauri/src/wp/server_tests.rs`) checks it against every serialized value of a real database. The parser:
 
 - keeps **strings as bytes**, because `s:N` counts bytes; invalid UTF-8 is preserved;
 - keeps **floats as their source text**, accepting only PHP's float syntax (digits with optional sign,

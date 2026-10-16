@@ -6,10 +6,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::json_file::JsonFile;
-use super::json_store::JsonStore;
+use super::snapshot::{Paths, Scope};
 use crate::error::{AppError, AppResult};
-use crate::wp::snapshot::{Paths, Scope};
+use crate::store::json_file::JsonFile;
+use crate::store::json_store::JsonStore;
 
 const MAX_PER_DATABASE: usize = 30;
 const INDEX_FILE: &str = "snapshots.json";
@@ -200,6 +200,28 @@ impl SnapshotStore {
         let path = self.values_path(id)?;
         let values = blocking(move || read_values(&path)).await?;
         Ok(meta.with_values(values))
+    }
+
+    /// Stores freshly captured values as a new snapshot, created now.
+    pub async fn take(
+        &self,
+        label: String,
+        account: String,
+        database: String,
+        scope: Scope,
+        values: Paths,
+    ) -> AppResult<SnapshotInfo> {
+        log::info!("Snapshot '{label}' with {} paths", values.len());
+        self.add(Snapshot {
+            id: String::new(),
+            label,
+            account,
+            database,
+            scope,
+            created: Utc::now(),
+            values,
+        })
+        .await
     }
 
     /// Saves the values before the index, so the index never names a snapshot without values.

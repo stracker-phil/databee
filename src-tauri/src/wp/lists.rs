@@ -387,6 +387,24 @@ fn order_facets_sql(
     }
 }
 
+/// The order list screens; each lists one post type.
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "snake_case")]
+pub enum OrderType {
+    ShopOrder,
+    ShopSubscription,
+}
+
+impl OrderType {
+    pub fn post_type(self) -> &'static str {
+        match self {
+            OrderType::ShopOrder => "shop_order",
+            OrderType::ShopSubscription => "shop_subscription",
+        }
+    }
+}
+
 pub async fn orders(
     session: &dyn Database,
     ctx: &WpContext,

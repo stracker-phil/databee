@@ -9,7 +9,7 @@ out of the main context ([`.claude/rules/testing.md`](../.claude/rules/testing.m
 | Command | Runs |
 |---|---|
 | `bun run test` | Vitest UI tests (`test:ui`), then the Rust unit tests (`test:rust`) |
-| `bun run test:db` | recreates the Docker fixtures, then `cargo test -- --ignored` (integration tests only) |
+| `bun run test:db` | recreates the Docker fixtures, then `cargo test -- --ignored` (integration tests only, in `tests/` and in modules) |
 | `bun run lint` | `tsc --noEmit` and `cargo clippy --all-targets -- -D warnings` |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | Rust formatting (run before lint) |
 
@@ -23,14 +23,16 @@ The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules
 - **Unit tests** sit next to the code in `#[cfg(test)] mod tests`. Stores use `tempfile` directories, and
   secrets use `MemoryStore`. Nothing touches the real config dir or the Keychain. Pure SQL builders are
   tested by exact string.
-- **Integration tests** in `src-tauri/tests/` use the public `databee_lib` API. Every one is `#[ignore]`,
-  because they need a server:
+- **Integration tests** need a server, so every one is `#[ignore]`. The core's live in `src-tauri/tests/` and use
+  the public `databee_lib` API; a module's live inside the module, so they are deleted with it. The fixture
+  helpers (`servers`, `spec`, `connect_to`, `sessions`) are in `src/test_support.rs`, compiled with `cfg(test)`
+  or the `test-util` feature; `tests/common/mod.rs` re-exports them for the test binaries.
 
-  | File | Needs |
-  |---|---|
-  | `mysql.rs` | the Docker fixtures; checks the driver on MariaDB and MySQL |
-  | `wp.rs` | the Docker fixtures (`wp_test` and `wp_legacy` read-only, `wp_write` for edits) |
-  | `php_roundtrip.rs` | `DATABEE_WP_TEST=mysql://user:pass@host:port/db`: a real WordPress database of your own, read-only; it skips when the variable is unset |
+  | File | Needs | Run alone |
+  |---|---|---|
+  | `tests/mysql.rs` | the Docker fixtures; checks the driver on MariaDB and MySQL | `cargo test --test mysql -- --ignored` |
+  | `tests/sql_mode.rs` | the Docker fixtures (`wp_write`); changes the global `sql_mode`, so it is its own binary | `cargo test --test sql_mode -- --ignored` |
+  | `src/wp/server_tests.rs` | the Docker fixtures (`wp_test` and `wp_legacy` read-only, `wp_write` for edits); two tests read `DATABEE_WP_TEST=mysql://user:pass@host:port/db`, a real WordPress database of your own, read-only, and skip when it is unset | `cargo test --lib -- --ignored wp::` |
 
 ## Docker fixtures
 

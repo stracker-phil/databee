@@ -9,7 +9,6 @@ use crate::store::history::HistoryStore;
 use crate::store::keybindings::KeybindingsStore;
 use crate::store::recents::RecentsStore;
 use crate::store::settings::{LogLevel, SettingsStore};
-use crate::store::snapshots::SnapshotStore;
 use crate::store::ui_state::UiStateStore;
 
 pub struct AppState {
@@ -18,7 +17,6 @@ pub struct AppState {
     pub recents: RecentsStore,
     pub favorites: FavoritesStore,
     pub history: HistoryStore,
-    pub snapshots: SnapshotStore,
     pub ui_state: UiStateStore,
     pub launches: LaunchQueue,
     /// Shared so Keychain calls can run in blocking tasks.
@@ -37,7 +35,6 @@ impl AppState {
             recents: RecentsStore::open(config_dir),
             favorites: FavoritesStore::open(config_dir),
             history: HistoryStore::open(config_dir),
-            snapshots: SnapshotStore::open(config_dir),
             ui_state: UiStateStore::open(config_dir),
             launches: LaunchQueue::default(),
             secrets,

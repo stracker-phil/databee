@@ -5,5 +5,4 @@ pub mod json_store;
 pub mod keybindings;
 pub mod recents;
 pub mod settings;
-pub mod snapshots;
 pub mod ui_state;

@@ -60,21 +60,11 @@ pub fn stage_new_token(stage: State<'_, Stage>) -> AppResult<StageSettings> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const BUILD_RS: &str = include_str!("../../build.rs");
-
-    fn quoted_stage_names(source: &str) -> Vec<&str> {
-        source
-            .split('"')
-            .skip(1)
-            .step_by(2)
-            .filter(|s| s.starts_with("stage_"))
-            .collect()
-    }
+    use crate::test_support::build_rs_commands;
 
     #[test]
     fn every_command_is_granted_in_build_rs() {
-        let granted = quoted_stage_names(BUILD_RS);
+        let granted = build_rs_commands("stage_");
         for name in COMMANDS {
             assert!(granted.contains(name), "{name} missing from build.rs");
         }
@@ -82,7 +72,7 @@ mod tests {
 
     #[test]
     fn every_stage_command_in_build_rs_is_registered() {
-        for name in quoted_stage_names(BUILD_RS) {
+        for name in build_rs_commands("stage_") {
             assert!(COMMANDS.contains(&name), "{name} missing from COMMANDS");
         }
     }

@@ -4,53 +4,20 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use databee_lib::connection::{ConnectionSpec, Secret};
+use databee_lib::connection::Secret;
 use databee_lib::db::Database;
 use databee_lib::db::cell_cache::CellCache;
 use databee_lib::db::mysql::MySqlSession;
 use databee_lib::db::{BrowseRequest, Cell, CellLimit};
 use databee_lib::error::ErrorKind;
 
+mod common;
+
+use common::{connect_to, servers, sessions, spec};
+
+const DATABASE: &str = "databee_test";
 const TIMEOUT: Duration = Duration::from_secs(10);
 const CELLS: CellLimit = CellLimit::NONE;
-
-fn servers() -> Vec<(String, u16)> {
-    std::env::var("DATABEE_TEST_SERVERS")
-        .unwrap_or_else(|_| "127.0.0.1:33306,127.0.0.1:33307".into())
-        .split(',')
-        .map(|s| {
-            let (h, p) = s.rsplit_once(':').unwrap();
-            (h.to_string(), p.parse().unwrap())
-        })
-        .collect()
-}
-
-fn spec(host: &str, port: u16) -> ConnectionSpec {
-    ConnectionSpec {
-        name: None,
-        host: host.into(),
-        port,
-        socket: None,
-        user: "root".into(),
-        database: Some("databee_test".into()),
-    }
-}
-
-async fn sessions() -> Vec<MySqlSession> {
-    let mut out = Vec::new();
-    for (host, port) in servers() {
-        let s = MySqlSession::connect(
-            &spec(&host, port),
-            Some(&Secret::new("root")),
-            TIMEOUT,
-            TIMEOUT,
-        )
-        .await
-        .unwrap_or_else(|e| panic!("{host}:{port}: {e}"));
-        out.push(s);
-    }
-    out
-}
 
 fn text(c: &Cell) -> &str {
     match c {
@@ -62,7 +29,7 @@ fn text(c: &Cell) -> &str {
 #[tokio::test]
 #[ignore]
 async fn connects_and_reports_server_version_and_database() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         assert!(!s.server_version().is_empty());
         assert_eq!(s.current_database().as_deref(), Some("databee_test"));
     }
@@ -71,7 +38,7 @@ async fn connects_and_reports_server_version_and_database() {
 #[tokio::test]
 #[ignore]
 async fn fresh_session_uses_backslash_escapes_under_the_default_sql_mode() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         assert!(s.dialect().backslash_escapes, "{}", s.server_version());
     }
 }
@@ -81,7 +48,7 @@ async fn fresh_session_uses_backslash_escapes_under_the_default_sql_mode() {
 async fn wrong_password_is_an_auth_error() {
     for (host, port) in servers() {
         let err = MySqlSession::connect(
-            &spec(&host, port),
+            &spec(&host, port, DATABASE),
             Some(&Secret::new("nope")),
             TIMEOUT,
             TIMEOUT,
@@ -96,7 +63,7 @@ async fn wrong_password_is_an_auth_error() {
 #[tokio::test]
 #[ignore]
 async fn unreachable_server_is_a_connection_error() {
-    let err = MySqlSession::connect(&spec("127.0.0.1", 1), None, TIMEOUT, TIMEOUT)
+    let err = MySqlSession::connect(&spec("127.0.0.1", 1, DATABASE), None, TIMEOUT, TIMEOUT)
         .await
         .err()
         .unwrap();
@@ -106,7 +73,7 @@ async fn unreachable_server_is_a_connection_error() {
 #[tokio::test]
 #[ignore]
 async fn lists_databases_tables_and_views() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let dbs = s.databases().await.unwrap();
         assert!(dbs.iter().any(|d| d.name == "databee_test" && !d.is_system));
         assert!(dbs.iter().any(|d| d.name == "mysql" && d.is_system));
@@ -122,7 +89,7 @@ async fn lists_databases_tables_and_views() {
 #[tokio::test]
 #[ignore]
 async fn describes_columns_indexes_and_ddl() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let st = s.structure("databee_test", "wp_posts").await.unwrap();
         assert_eq!(st.columns[0].name, "ID");
         assert_eq!(st.columns[0].key, "PRI");
@@ -145,7 +112,7 @@ async fn describes_columns_indexes_and_ddl() {
 #[tokio::test]
 #[ignore]
 async fn decodes_each_type_family() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let r = s
             .execute("SELECT * FROM types ORDER BY id", 100, CELLS, TIMEOUT)
             .await
@@ -175,7 +142,7 @@ async fn decodes_each_type_family() {
 #[ignore]
 async fn row_limit_truncates_but_counts_all_rows() {
     let sql = "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 50) SELECT i FROM n";
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let set = &s.execute(sql, 10, CELLS, TIMEOUT).await.unwrap().results[0];
         assert_eq!(set.rows.len(), 10);
         assert_eq!(set.total_rows, 50);
@@ -186,7 +153,7 @@ async fn row_limit_truncates_but_counts_all_rows() {
 #[tokio::test]
 #[ignore]
 async fn empty_result_still_has_columns() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let set = &s
             .execute(
                 "SELECT ID, post_title FROM wp_posts WHERE 1 = 0",
@@ -207,7 +174,7 @@ async fn empty_result_still_has_columns() {
 #[tokio::test]
 #[ignore]
 async fn scripts_return_one_result_per_statement_with_affected_rows() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let r = s
             .execute(
                 "CREATE TEMPORARY TABLE tmp (id int AUTO_INCREMENT PRIMARY KEY, v int); \
@@ -232,7 +199,7 @@ async fn scripts_return_one_result_per_statement_with_affected_rows() {
 #[tokio::test]
 #[ignore]
 async fn sql_errors_carry_the_server_code() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let err = s
             .execute("SELECT * FROM missing_table", 10, CELLS, TIMEOUT)
             .await
@@ -246,7 +213,7 @@ async fn sql_errors_carry_the_server_code() {
 #[tokio::test]
 #[ignore]
 async fn use_changes_the_current_database_and_session_state_persists() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let r = s.execute("USE mysql", 10, CELLS, TIMEOUT).await.unwrap();
         assert_eq!(r.database.as_deref(), Some("mysql"));
         s.execute("SET @x = 42", 10, CELLS, TIMEOUT).await.unwrap();
@@ -260,7 +227,7 @@ async fn use_changes_the_current_database_and_session_state_persists() {
 #[tokio::test]
 #[ignore]
 async fn timeout_aborts_and_session_recovers() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let err = s
             .execute("SELECT SLEEP(5)", 10, CELLS, Duration::from_secs(1))
             .await
@@ -277,7 +244,7 @@ async fn timeout_aborts_and_session_recovers() {
 #[tokio::test]
 #[ignore]
 async fn cancel_interrupts_a_running_query() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let s = Arc::new(s);
         let runner = {
             let s = s.clone();
@@ -294,21 +261,10 @@ async fn cancel_interrupts_a_running_query() {
     }
 }
 
-async fn connect(host: &str, port: u16) -> MySqlSession {
-    MySqlSession::connect(
-        &spec(host, port),
-        Some(&Secret::new("root")),
-        TIMEOUT,
-        TIMEOUT,
-    )
-    .await
-    .unwrap_or_else(|e| panic!("{host}:{port}: {e}"))
-}
-
 #[tokio::test]
 #[ignore]
 async fn with_delete_keeps_its_affected_rows() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         s.execute("DROP TABLE IF EXISTS cte_delete", 10, CELLS, TIMEOUT)
             .await
             .unwrap();
@@ -338,7 +294,7 @@ async fn with_delete_keeps_its_affected_rows() {
 #[tokio::test]
 #[ignore]
 async fn structure_of_a_created_table_includes_its_ddl() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         s.execute(
             "DROP TABLE IF EXISTS ddl_probe; CREATE TABLE ddl_probe (id int PRIMARY KEY)",
             10,
@@ -364,7 +320,7 @@ async fn structure_of_a_created_table_includes_its_ddl() {
 #[ignore]
 async fn cancel_reaches_the_editor_while_every_pool_connection_is_busy() {
     for (host, port) in servers() {
-        let s = Arc::new(connect(&host, port).await);
+        let s = Arc::new(connect_to(&host, port, DATABASE).await);
         let busy: Vec<_> = (0..3)
             .map(|_| {
                 let s = s.clone();
@@ -400,8 +356,8 @@ async fn cancel_reaches_the_editor_while_every_pool_connection_is_busy() {
 #[ignore]
 async fn close_ends_a_running_query_and_later_executes_fail_with_a_connection_error() {
     for (host, port) in servers() {
-        let s = Arc::new(connect(&host, port).await);
-        let observer = connect(&host, port).await;
+        let s = Arc::new(connect_to(&host, port, DATABASE).await);
+        let observer = connect_to(&host, port, DATABASE).await;
         let runner = {
             let s = s.clone();
             tokio::spawn(async move {
@@ -446,8 +402,8 @@ async fn close_ends_a_running_query_and_later_executes_fail_with_a_connection_er
 #[ignore]
 async fn killed_editor_connection_fails_once_then_reconnects() {
     for (host, port) in servers() {
-        let s = connect(&host, port).await;
-        let other = connect(&host, port).await;
+        let s = connect_to(&host, port, DATABASE).await;
+        let other = connect_to(&host, port, DATABASE).await;
         let id = s
             .execute("SELECT CONNECTION_ID()", 10, CELLS, TIMEOUT)
             .await
@@ -472,7 +428,7 @@ async fn killed_editor_connection_fails_once_then_reconnects() {
 #[tokio::test]
 #[ignore]
 async fn browse_pages_with_order_and_filter() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let req = BrowseRequest {
             database: "databee_test".into(),
             table: "wp_posts".into(),
@@ -519,7 +475,7 @@ async fn browse_pages_with_order_and_filter() {
 async fn long_text_arrives_as_a_preview_and_the_cell_cache_returns_the_full_value() {
     let full = "ä".repeat(5000);
     for (host, port) in servers() {
-        let s = connect(&host, port).await;
+        let s = connect_to(&host, port, DATABASE).await;
         let mut response = s
             .execute(
                 "SELECT 'short', REPEAT('ä', 5000)",
@@ -556,7 +512,7 @@ async fn long_text_arrives_as_a_preview_and_the_cell_cache_returns_the_full_valu
 #[tokio::test]
 #[ignore]
 async fn failing_statement_keeps_earlier_results_and_reports_its_index() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let response = s
             .execute(
                 "SELECT 1; SELECT * FROM missing_table; SELECT 3",
@@ -580,7 +536,7 @@ async fn failing_statement_keeps_earlier_results_and_reports_its_index() {
 #[ignore]
 async fn timeout_reconnect_reports_the_session_reset_and_drops_session_state() {
     for (host, port) in servers() {
-        let s = connect(&host, port).await;
+        let s = connect_to(&host, port, DATABASE).await;
         s.execute("SET @x = 42", 10, CELLS, TIMEOUT).await.unwrap();
 
         let err = s
@@ -623,8 +579,8 @@ async fn wait_for_marker_gone(observer: &MySqlSession, prefix: &str, suffix: &st
 #[ignore]
 async fn browse_that_times_out_is_killed_on_the_server() {
     for (host, port) in servers() {
-        let s = connect(&host, port).await;
-        let observer = connect(&host, port).await;
+        let s = connect_to(&host, port, DATABASE).await;
+        let observer = connect_to(&host, port, DATABASE).await;
         let req = BrowseRequest {
             database: "databee_test".into(),
             table: "wp_posts".into(),
@@ -650,8 +606,8 @@ async fn browse_that_times_out_is_killed_on_the_server() {
 #[ignore]
 async fn fetch_that_times_out_is_killed_on_the_server() {
     for (host, port) in servers() {
-        let s = connect(&host, port).await;
-        let observer = connect(&host, port).await;
+        let s = connect_to(&host, port, DATABASE).await;
+        let observer = connect_to(&host, port, DATABASE).await;
 
         let err = s
             .fetch(
@@ -672,7 +628,7 @@ async fn fetch_that_times_out_is_killed_on_the_server() {
 #[tokio::test]
 #[ignore]
 async fn completion_maps_tables_to_columns() {
-    for s in sessions().await {
+    for s in sessions(DATABASE).await {
         let map = s.completion("databee_test").await.unwrap();
         assert_eq!(map["published"], ["ID", "post_title"]);
     }

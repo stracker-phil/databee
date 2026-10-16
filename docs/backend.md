@@ -62,15 +62,15 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `recents` | `RecentsStore` | `connections.json` (last 20 connections) |
 | `favorites` | `FavoritesStore` | `favorites.json` |
 | `history` | `HistoryStore` | `history.json` (last 500 queries, written behind) |
-| `snapshots` | `SnapshotStore` | `snapshots.json` index and `snapshots/<id>.json` values (WordPress snapshots) |
 | `ui_state` | `UiStateStore` | `ui_state.json` (column widths, pane sizes per connection) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
-| `config_dir` | `PathBuf` | used to read the optional `entities.toml` |
+| `config_dir` | `PathBuf` | handed to the plugins in `start_app` |
 | `log_override` | `Option<LogLevel>` | the CLI `--log-level`; wins over the stored level (`settings_effects`) |
 
-Plugins manage their own state (`stage::Stage`, see [stage.md](stage.md)).
+Plugins manage their own state (`stage::Stage`, see [stage.md](stage.md); `wp::WpState`, see
+[wordpress.md](wordpress.md)).
 
 ### Plugins
 
@@ -80,18 +80,24 @@ Optional features are inline Tauri plugins ([ADR 0010](adr/0010-inline-tauri-plu
 invoke_handler`; the page calls `invoke("plugin:<name>|<command>")`), managed state, settings file
 (`<config>/<name>.json`, [ADR 0016](adr/0016-module-settings-files.md)) and
 `capabilities/<name>.json`. `build.rs` declares each plugin with `tauri_build::InlinedPlugin` and its command
-list (`DefaultPermissionRule::AllowAllCommands` gives it a `<name>:default` permission). Stage is the first.
+list (`DefaultPermissionRule::AllowAllCommands` gives it a `<name>:default` permission), and a unit test in
+the plugin checks that list against its handler (`crate::test_support::build_rs_commands`).
+
+| Plugin | Installed by | State | Commands |
+|---|---|---|---|
+| `stage` | `stage::init` | `Stage` | `stage::commands::COMMANDS` ([stage.md](stage.md)) |
+| `wp` | `wp::init` | `WpState` (snapshot store, `entities.toml` cache) | `wp::COMMANDS` ([wordpress.md](wordpress.md)) |
 
 ## Tauri commands
 
-All commands are registered in one `generate_handler!` in `lib.rs`. Arguments are camelCase on the JS side.
-The TypeScript wrappers in `src/api/index.ts` use the same names in camelCase.
+The core's commands are registered in one `generate_handler!` in `lib.rs`; a plugin registers its own (see
+[Plugins](#plugins)). Arguments are camelCase on the JS side. The TypeScript wrappers in `src/api/index.ts`
+use the same names in camelCase.
 
 | Module | Commands |
 |---|---|
 | `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
 | `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
-| `wp_commands.rs` | `wp_detect`, `wp_dashboard`, `wp_browser`, the list commands (`wp_orders`, `wp_users`, `wp_products`, `wp_actions`, `wp_sessions`, `wp_content`), `wp_view`, `wp_search`, `wp_peek`, `wp_find_value`, options and snapshots, `wp_plan_change` (see [wordpress.md](wordpress.md)) |
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
 
 `session::open` is the connect service: it peeks the launch password, resolves the password
@@ -204,10 +210,10 @@ snapshot migration). Store methods that write are `async` and the commands calli
 | `favorites.json` | tables and saved queries, global or scoped to one server account. `FavoritesStore::create(NewFavorite)` assigns the id; `update(Favorite)` replaces by id and refuses an unknown id. Both refuse a blank name and a second favorite with the same `(scope, target)` (`invalid_input`) |
 | `history.json` | executed queries per account, with time, duration and error. At most 500 entries across all accounts. SQL over 64 KiB is stored cut on a char boundary with `truncated: true`. Each entry stores a `hash` of the full SQL (first 8 bytes of SHA-256, computed on load for older files); rerunning the same SQL on the same account replaces its entry. Written behind, see below |
 | `stage.json` | Stage's own settings (`stage::settings::StageStore`, see [stage.md](stage.md)); not part of `settings.json` |
-| `snapshots.json` | index of WordPress snapshots (id, label, account, database, scope, created, `paths` count), 30 per account and database (`MAX_PER_DATABASE`); adding one evicts the oldest of that database only and deletes its values file |
+| `snapshots.json` | WordPress plugin: index of snapshots (id, label, account, database, scope, created, `paths` count), 30 per account and database (`MAX_PER_DATABASE`); adding one evicts the oldest of that database only and deletes its values file |
 | `snapshots/<id>.json` | one snapshot's `path → value` map (0600, dir 0700) |
 | `ui_state.json` | per connection: column widths, `detailPaneWidth`, `inspectorWidth`, `bottomPaneHeight`, `sqlEditorHeight` (older names load via serde aliases). `UiStateStore::forget` drops a connection's entry |
-| `entities.toml` | optional user entity definitions ([wordpress.md](wordpress.md#entities)) |
+| `entities.toml` | WordPress plugin: optional user entity definitions ([wordpress.md](wordpress.md#entities)) |
 | `databee.sock` | the IPC socket |
 | `databee.lock` | the instance lock |
 
@@ -217,7 +223,7 @@ on a blocking thread. A failed write is logged and retried after the next change
 it runs on `RunEvent::Exit` and from `clear`. History is best-effort: a crash can lose the last half second of
 queries.
 
-**Snapshots** (`store/snapshots.rs`): `list` reads only the index; `get` reads one values file on a blocking
+**Snapshots** (`wp/snapshots_store.rs`, the WordPress plugin's store): `list` reads only the index; `get` reads one values file on a blocking
 thread. `add` writes the values file before the index, `delete` removes the index entry before the file, so
 the index never names a snapshot without values (a stray file is harmless). Ids name files, so only uuid
 characters are accepted. Older versions kept every snapshot with its values in `snapshots.json`; `open`

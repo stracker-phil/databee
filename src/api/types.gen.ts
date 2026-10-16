@@ -340,6 +340,11 @@ granularity: Granularity, };
 
 export type OrderSummary = { id: string, kind: string, status: string, total: string | null, gateway: string | null, gatewayTitle: string | null, email: string | null, name: string | null, customerId: string | null, created: number | null, itemCount: number, };
 
+/**
+ * The order list screens; each lists one post type.
+ */
+export type OrderType = "shop_order" | "shop_subscription";
+
 export type OrderView = { doc: EntityDoc, kind: string, status: string, total: string | null, currency: string | null, created: number | null, paid: number | null, completed: number | null, customer: EntityLink | null, customerEmail: string | null, parent: EntityLink | null, billing: Address | null, shipping: Address | null, addressNotes: Array<string>, items: Array<LineItem>, totals: Array<[string, string]>, payment: PaymentPanel | null, attribution: Attribution | null, timeline: Array<TimelineEvent>, related: Array<RelatedChip>, };
 
 export type Page<T> = { items: Array<T>, hasMore: boolean, 
