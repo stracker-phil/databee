@@ -22,6 +22,7 @@ export function FavoritesBar() {
         <button
           key={f.id}
           data-stage={`favorite:${f.id}`}
+          data-stage-list="favorites"
           className={`fav${dragId === f.id ? " dragging" : ""}${overId === f.id && dragId !== f.id ? " drop-before" : ""}`}
           title={f.target.kind === "table" ? `${f.target.database}.${f.target.table}` : f.target.sql}
           draggable

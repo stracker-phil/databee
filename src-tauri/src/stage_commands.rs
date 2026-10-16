@@ -1,8 +1,9 @@
 //! The page's side of the Stage hook (src/stage/hooks.ts) and the Settings page's controls.
 
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::stage::protocol::{ActReply, AnchorsReply, InfoReply};
 use crate::stage::{Stage, StageStatus, new_token};
 use crate::state::AppState;
@@ -21,6 +22,14 @@ pub fn stage_done(stage: State<'_, Stage>, reply: ActReply) {
 #[tauri::command]
 pub fn stage_info(stage: State<'_, Stage>, reply: InfoReply) {
     stage.hub.receive_info(reply);
+}
+
+/// Selects the discovery file in Finder.
+#[tauri::command]
+pub fn stage_show_discovery_file(app: AppHandle, stage: State<'_, Stage>) -> AppResult<()> {
+    app.opener()
+        .reveal_item_in_dir(stage.discovery_path())
+        .map_err(|e| AppError::Io(e.to_string()))
 }
 
 #[tauri::command]

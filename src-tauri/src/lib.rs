@@ -222,6 +222,7 @@ fn start_app(
             stage_commands::stage_done,
             stage_commands::stage_info,
             stage_commands::stage_status,
+            stage_commands::stage_show_discovery_file,
             stage_commands::stage_new_token,
         ])
         .build(tauri::generate_context!())

@@ -28,7 +28,7 @@ function useBackendEvents() {
 
     installCommands();
     void loadSettings().then(() => (installCommands(), drainLaunches()));
-    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runCommand), ...installStageHooks(runCommand)];
+    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runCommand), ...installStageHooks()];
 
     const onKey = handleKeydown;
     const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);

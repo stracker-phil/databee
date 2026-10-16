@@ -39,6 +39,7 @@ export function QueryEditor({ value, onChange, schema, theme, onView }: Props) {
       className="editor"
       data-stage="editor"
       data-stage-label="SQL editor"
+      data-stage-role="field"
       value={value}
       height="100%"
       theme={theme}

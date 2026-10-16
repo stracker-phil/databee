@@ -17,7 +17,8 @@ pub fn path_in(folder: &Path, id: &str) -> PathBuf {
     folder.join(format!("{id}.json"))
 }
 
-/// Writes the record; readable by this user only, since the token is in it.
+/// Writes the record atomically (a presenter never reads half a file); readable by this user
+/// only, since the token is in it.
 pub fn publish(file: &Path, name: &str, id: &str, port: u16, token: &str) -> std::io::Result<()> {
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir)?;
@@ -31,14 +32,17 @@ pub fn publish(file: &Path, name: &str, id: &str, port: u16, token: &str) -> std
         chrono::Utc::now(),
     );
     let json = serde_json::to_string_pretty(&record).map_err(std::io::Error::other)?;
+    let partial = file.with_extension("json.partial");
     let mut out = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .mode(0o600)
-        .open(file)?;
+        .open(&partial)?;
     out.write_all(format!("{json}\n").as_bytes())?;
-    std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o600))?;
+    out.sync_all()?;
+    std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o600))?;
+    std::fs::rename(&partial, file)?;
     log::info!("Discoverable by Stage: {}", file.display());
     Ok(())
 }
@@ -67,6 +71,9 @@ mod tests {
         assert_eq!(record["pid"], std::process::id());
         let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+        assert!(!file.with_extension("json.partial").exists());
+        publish(&file, "databee", "com.example", 27185, "new").unwrap();
+        assert!(std::fs::read_to_string(&file).unwrap().contains("27185"));
         remove(&file);
         assert!(!file.exists());
         remove(&file);

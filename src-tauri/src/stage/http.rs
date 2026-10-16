@@ -119,16 +119,30 @@ pub fn check(head: &Head, token: &str) -> StageResult<String> {
         })?;
     let bearer = head.header("authorization").and_then(|v| {
         let (scheme, value) = v.split_once(' ')?;
-        scheme.eq_ignore_ascii_case("bearer").then(|| value.trim())
+        scheme
+            .eq_ignore_ascii_case("bearer")
+            .then(|| value.trim().to_string())
     });
-    if !token_matches(bearer, token) {
+    let given = bearer.or_else(|| {
+        url::form_urlencoded::parse(head.query.as_bytes())
+            .find(|(k, _)| k == "token")
+            .map(|(_, v)| v.into_owned())
+    });
+    if !token_matches(given.as_deref(), token) {
         return Err(StageError::new(401, "Wrong or missing token."));
     }
     Ok(verb.to_string())
 }
 
-/// Query string, then a JSON object of primitives (nested values are ignored) or a form body.
+/// Query string, then a JSON object of primitives (nested values are ignored) or a form body;
+/// without the token, which may come as `?token=`.
 pub fn params(head: &Head, body: &[u8]) -> StageResult<Params> {
+    let mut params = read_params(head, body)?;
+    params.remove("token");
+    Ok(params)
+}
+
+fn read_params(head: &Head, body: &[u8]) -> StageResult<Params> {
     let mut params: Params = url::form_urlencoded::parse(head.query.as_bytes())
         .into_owned()
         .collect();
@@ -319,6 +333,9 @@ mod tests {
             check(&head(&OK.replace("127.0.0.1:27184", "localhost")), "secret").unwrap(),
             "describe"
         );
+        let query = "GET /v1/stage/state?token=secret HTTP/1.1\r\nHost: localhost:27184\r\n\r\n";
+        assert_eq!(check(&head(query), "secret").unwrap(), "state");
+        assert!(!params(&head(query), b"").unwrap().contains_key("token"));
         assert_eq!(
             check(&head(&OK.replace("Bearer", "bearer")), "secret").unwrap(),
             "describe"
@@ -399,14 +416,14 @@ mod tests {
             stream.read_to_string(&mut reply).await.unwrap();
             reply
         };
-        let body = r#"{"kind":"command","command":"settings.open"}"#;
+        let body = r#"{"kind":"command","command":"app:settings"}"#;
         let reply = send(format!(
             "POST /v1/stage/act HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer secret\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
             body.len()
         ))
         .await;
         assert!(
-            reply.ends_with("{\"ok\":true,\"command\":\"settings.open\"}\n"),
+            reply.ends_with("{\"ok\":true,\"command\":\"app:settings\"}\n"),
             "{reply}"
         );
 

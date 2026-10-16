@@ -148,13 +148,13 @@ export function CommandPalette() {
   let lastSection: Item["section"] | null = null;
   return (
     <div className="overlay palette-overlay" onMouseDown={(e) => e.target === e.currentTarget && setPaletteOpen(false)}>
-      <div className="palette" role="dialog" aria-label="Command palette" data-stage="palette">
+      <div className="palette" role="dialog" aria-label="Command palette" data-stage="palette" data-stage-window="palette">
         <div className="palette-input">
           <Search size="1.154rem" />
           <input
             ref={inputRef}
             aria-label="Search everything"
-            data-stage="palette:input"
+            data-stage="palette:search"
             placeholder={wp ? "Order ID, email, PayPal ID, table, command…   > commands · t: tables · # IDs · @ emails" : "Table or command…   > commands · t: tables"}
             value={query}
             onChange={(e) => {
@@ -175,7 +175,7 @@ export function CommandPalette() {
             const header = it.section !== lastSection ? it.section : null;
             lastSection = it.section;
             return (
-              <li key={it.key} data-stage={`palette:item:${it.key}`} role="option" aria-selected={i === index} className={i === index ? "active" : ""} onMouseEnter={() => setIndex(i)} onClick={() => choose(i)}>
+              <li key={it.key} data-stage={`palette:item:${it.key}`} data-stage-list="palette:results" data-stage-label={it.title} role="option" aria-selected={i === index} className={i === index ? "active" : ""} onMouseEnter={() => setIndex(i)} onClick={() => choose(i)}>
                 {header && <span className="palette-section">{header}</span>}
                 {it.badge && <span className="badge">{it.badge}</span>}
                 <span className="grow-text">

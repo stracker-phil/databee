@@ -157,9 +157,9 @@ export function rowTarget(list: WpList, item: unknown): { entity: string; id: st
   }
 }
 
-function Row({ stage, active, onOpen, children, title }: { stage: string; active: boolean; onOpen: () => void; children: ReactNode; title?: string }) {
+function Row({ stage, list, active, onOpen, children, title }: { stage: string; list: string; active: boolean; onOpen: () => void; children: ReactNode; title?: string }) {
   return (
-    <button data-stage={stage} className={`row-link${active ? " selected" : ""}`} role="row" aria-selected={active} data-active={active || undefined} onClick={onOpen} title={title}>
+    <button data-stage={stage} data-stage-list={list} className={`row-link${active ? " selected" : ""}`} role="row" aria-selected={active} data-active={active || undefined} onClick={onOpen} title={title}>
       {children}
     </button>
   );
@@ -429,7 +429,7 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
             const { key, node, title } = cellsFor(list, item);
             const target = rowTarget(list, item);
             return (
-              <Row key={key} stage={`${target.entity}:${target.id}`} active={selected?.id === target.id} onOpen={() => select(item)} title={title}>
+              <Row key={key} stage={`${target.entity}:${target.id}`} list={`wp:${list}`} active={selected?.id === target.id} onOpen={() => select(item)} title={title}>
                 {node}
               </Row>
             );

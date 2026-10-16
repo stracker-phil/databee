@@ -155,6 +155,7 @@ export const api = {
 
   stageStatus: () => invoke<StageStatus>("stage_status"),
   stageNewToken: () => invoke<Settings>("stage_new_token"),
+  stageShowDiscoveryFile: () => invoke<void>("stage_show_discovery_file"),
   /** The Stage hook (src/stage/hooks.ts): Rust asks, the page answers. */
   onStageCollect: (handler: (request: string) => void): Promise<UnlistenFn> =>
     listen<{ request: string }>("stage:collect", (e) => handler(e.payload.request)),

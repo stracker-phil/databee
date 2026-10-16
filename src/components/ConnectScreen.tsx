@@ -156,6 +156,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
             className="recent"
             role="button"
             data-stage={`recent:${r.identity}`}
+            data-stage-list="recents"
             data-stage-label={r.spec.name ?? describe(r.spec)}
             aria-label={`Connect to ${r.spec.name ?? describe(r.spec)}`}
             onDoubleClick={() => void submit(r.spec)}

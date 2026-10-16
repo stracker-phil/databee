@@ -18,6 +18,7 @@ export function TabBar() {
           role="tab"
           data-stage={t.kind === "table" ? `tab:table:${t.database}.${t.table}` : `tab:query:${t.id}`}
           data-stage-label={t.title}
+          data-stage-list="tabs"
           aria-selected={t.id === activeTabId}
           className={`tab${t.id === activeTabId ? " active" : ""}${t.kind === "table" && t.preview ? " preview" : ""}`}
           onMouseDown={(e) => e.button === 0 && activateTab(t.id)}

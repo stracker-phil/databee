@@ -109,6 +109,8 @@ pub struct StageStatus {
     pub url: String,
     /// Set while the discovery file exists.
     pub discovery_file: Option<String>,
+    /// When a presenter last used the hook (ISO 8601).
+    pub last_request: Option<String>,
 }
 
 #[derive(Default)]
@@ -213,6 +215,14 @@ impl Stage {
             error: server.error.clone(),
             url: stage_url(server.port),
             discovery_file: self.file.exists().then(|| self.file.display().to_string()),
+            last_request: self
+                .hub
+                .last_request()
+                .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
         }
+    }
+
+    pub fn discovery_path(&self) -> &std::path::Path {
+        &self.file
     }
 }

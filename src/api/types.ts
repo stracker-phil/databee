@@ -41,6 +41,8 @@ export interface StageStatus {
   url: string;
   /** Set while the discovery file exists. */
   discoveryFile: string | null;
+  /** When a presenter last used the hook (ISO 8601). */
+  lastRequest: string | null;
 }
 
 /** CSS pixels from the page's top-left. */
@@ -51,13 +53,25 @@ export interface StageRect {
   height: number;
 }
 
+/** The windows the Stage hook exposes; settings and the palette are sheets in the main one. */
+export type StageWindow = "main" | "settings" | "palette";
+
 /** An element marked `data-stage="<id>"`, as the page measures it. */
 export interface PageAnchor {
   id: string;
   label: string;
+  window: StageWindow;
   rect: StageRect;
   /** At least half of it shows (or, larger than its scroll area, it fills half of that). */
   inView: boolean;
+  /** The part its scroll areas and the window let through; null when nothing shows. */
+  visible: StageRect | null;
+  role?: string;
+  list?: string;
+  selected?: boolean;
+  checked?: boolean;
+  expanded?: boolean;
+  disabled?: boolean;
 }
 
 /** A key combination as the page dispatches it (`KeyboardEvent` names). */
@@ -70,14 +84,22 @@ export interface StageKeys {
   ctrl: boolean;
 }
 
-/** Rust → page (`stage:act`). */
+/** Rust → page (`stage:act`). `window` is Rust's own: open or close a sheet. */
 export interface StageActRequest {
   request: string;
-  kind: "click" | "type" | "reveal" | "keys" | "command";
+  kind: "click" | "type" | "reveal" | "scroll" | "keys" | "command" | "window";
   anchor?: string;
   text?: string;
+  mode?: "replace" | "append";
+  by?: number;
+  to?: "top" | "bottom";
   keys?: StageKeys;
+  /** Rust focused the window for these keys. */
+  focused?: boolean;
   command?: string;
+  window?: StageWindow;
+  action?: "show" | "hide";
+  section?: string;
 }
 
 /** Page → Rust (`stage_done`); `handled` is false when the anchor isn't on the page. */
@@ -87,7 +109,32 @@ export interface StageActReply {
   handled: boolean;
   ok: boolean;
   error?: string;
+  /** For failures that aren't 500, e.g. 409 (not scrollable). */
+  status?: number;
+  window?: StageWindow;
   rect?: StageRect;
+  visible?: StageRect | null;
+  /** The command a key press ran (its shortcut). */
+  command?: string;
+}
+
+export interface StageCommand {
+  id: string;
+  help: string;
+  shortcut?: string;
+  enabled: boolean;
+  /** Families: the argument after the id prefix, and current values. */
+  arg?: string;
+  choices?: { id: string; title: string }[];
+}
+
+/** A sheet the page draws inside the main window; `rect` null while closed. */
+export interface StageSurface {
+  id: Exclude<StageWindow, "main">;
+  title: string;
+  rect: StageRect | null;
+  sections?: { id: string; title: string }[];
+  section?: string | null;
 }
 
 /** Page → Rust (`stage_info`): what the page shows and can do, for Stage's narration. */
@@ -95,8 +142,12 @@ export interface StageInfoReply {
   request: string;
   page: string;
   state: Record<string, string | number | boolean | null>;
+  /** What the main window shows. */
   view: string | null;
-  commands: { id: string; help: string; available: boolean }[];
+  /** The main window's toggleable panels. */
+  ui: Record<string, "open" | "closed">;
+  surfaces: StageSurface[];
+  commands: StageCommand[];
 }
 
 export const ACCENTS = ["blue", "purple", "pink", "graphite"] as const;

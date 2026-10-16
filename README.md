@@ -83,43 +83,44 @@ Both scripts take an optional path to another `databee.app` (e.g. a release buil
 
 ## Presentations (Stage)
 
-Stage, a separate app, presents databee: it spotlights parts of
-the window, shows captions, and clicks, types and runs commands. databee serves the Stage hook
-(protocol 1) on `http://127.0.0.1:27184/v1/stage/{describe,window,act,state}`. You can turn it off and
-change the port and token in Settings → Presentations. Port 27184 is databee's fixed default,
-since 27180–27183 belong to other apps and Stage uses 27190.
+Stage, a separate app, presents databee: it spotlights parts of the window, shows captions, and
+clicks, types and runs commands. databee implements the Stage hook (protocol 1, revision 2026-10-16;
+the spec is served by a running Stage at `http://127.0.0.1:27190/v1/protocol`) on
+`http://127.0.0.1:27184/v1/stage/{describe,window,act,state}`, with every optional feature:
+`reveal visible sections ui type.append keys.window scroll wait`. Settings → Presentations turns it
+off and shows the port, token, discovery file and the last presenter request. 27184 is databee's
+fixed default (27180–27183 belong to other apps, 27190 to Stage).
 
-While the API listens, `~/Library/Application Support/stage/apps/com.philippstracker.databee.json`
-(mode 0600) holds the URL and token. It is removed when the API stops or the app quits.
+While the hook listens, `~/Library/Application Support/stage/apps/com.philippstracker.databee.json`
+(mode 0600, written atomically) holds the URL and token; it is removed when the hook stops or the app quits.
 
 ```sh
 F="$HOME/Library/Application Support/stage/apps/com.philippstracker.databee.json"
-URL=$(plutil -extract url raw "$F") TOKEN=$(plutil -extract token raw "$F")
+URL=$(plutil -extract url raw "$F"); TOKEN=$(plutil -extract token raw "$F")
 api() { curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$URL/$1" ${2:+-d "$2"}; echo; }
 api describe
-api act '{"kind":"click","anchor":"toolbar:settings"}'
-api act '{"kind":"type","anchor":"editor","text":"SELECT 1"}'
-api act '{"kind":"command","command":"view.wp"}'
+api window '{"window":"settings","action":"show","section":"presentations"}'
+api act '{"kind":"command","command":"view:palette"}'
+api act '{"kind":"type","anchor":"palette:search","text":"wp_opt","mode":"append"}'
+api act '{"kind":"keys","keys":"Enter","window":"palette"}'
 ```
 
-- **One window.** `window` only knows `main`. Settings, the palette and other dialogs are modals inside
-  it: open them with commands (`settings.open`, `palette.open`) or by clicking anchors. `view` and
-  `state.view` name what shows (`connect`, `db`, `wp:orders`, `settings:shortcuts`, `palette`).
-- **Commands** come from the in-app registry. Each one has `available: false` when it can't run in the
-  current view, and running it then returns 409.
-- **`hotkeys` is empty.** databee has no global shortcuts. `keys` reaches the in-app ones (⌘K, ⌘↵, Esc) when the
-  window has focus, and Enter in a field submits its form. Native-only actions (⌘Q, Edit-menu copy and
-  paste) don't happen.
-- **Native `<select>` menus** (toolbar connection and database pickers, order status) can't be opened by
-  synthetic clicks; use the palette or commands instead.
-- **Coordinates** are exact on one display or several with the same scale; with mixed scaling the
-  window's own factor is used.
-- **Anchors** are `data-stage` attributes. Some ids follow data:
-  - `table:<db>.<table>` and `database:<db>`
-  - `tab:table:<db>.<table>`
-  - `<entity>:<id>` for WordPress list rows (`order:4711`)
-  - `wp:nav:<list>`
-  - `settings:nav:<page>`
+- **Windows.** `main` is the native window; `settings` and `palette` are sheets inside it that the
+  hook exposes as windows (`movable: false`, measured by the page). `settings` has `sections` (the
+  Settings pages). `main.view` is `connect`, `db` or `wp:<screen>`; `main.ui.inspector` is open or closed.
+- **Commands** come from the in-app registry, with `shortcut` and `enabled`. Conventional ids:
+  `app:settings` and `view:palette`. Families: `settings:open:<page>`, `table:open:<table>` (current
+  database) and `wp:open:<entity>:<id>` (e.g. `wp:open:order:4711`).
+- **Keys.** A command's shortcut runs that command, in the current view and without focus, so ⌘, ⌘K
+  and ⌘T work like their menu items. Other keys go to the focused element; `window=` focuses databee
+  first. Enter in a field submits its form. `hotkeys` is empty because databee has no global shortcuts.
+- **Anchors** are `data-stage` attributes (`data-stage-label`, `-role`, `-list`). Ids follow data where rows have stable ids:
+  `table:<db>.<table>` (list `tables`), `tab:table:<db>.<table>`, `<entity>:<id>` for WordPress list rows
+  (list `wp:<list>`), `wp:nav:<list>`, `palette:search` and `palette:item:*` (list `palette:results`),
+  `settings:<page>` and `settings-nav:<page>`.
+- **Limits.** Native `<select>` menus (connection and database pickers, order status) can't be opened by
+  synthetic clicks; use the palette or commands. Coordinates are exact on one display or several
+  with the same scale.
 
 ## Development
 

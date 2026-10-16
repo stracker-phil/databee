@@ -86,7 +86,7 @@ function TablesPanel() {
           const tables = visibleTables(d.name);
           return (
             <div key={d.name} role="treeitem" aria-expanded={open}>
-              <div className={`tree-row${d.isSystem ? " system" : ""}`} data-stage={`database:${d.name}`} data-stage-label={d.name} onClick={() => toggle(d.name)}>
+              <div className={`tree-row${d.isSystem ? " system" : ""}`} data-stage={`database:${d.name}`} data-stage-list="databases" data-stage-label={d.name} onClick={() => toggle(d.name)}>
                 {open ? <ChevronDown size="0.923rem" /> : <ChevronRight size="0.923rem" />}
                 <Database size="1rem" />
                 <span className="label" style={{ fontWeight: d.name === current ? 600 : 400 }}>{d.name}</span>
@@ -105,6 +105,8 @@ function TablesPanel() {
                         key={t.name}
                         role="treeitem"
                         data-stage={`table:${d.name}.${t.name}`}
+                        data-stage-list="tables"
+                        aria-selected={active}
                         data-stage-label={t.name}
                         className={`tree-row${active ? " active" : ""}`}
                         title={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}

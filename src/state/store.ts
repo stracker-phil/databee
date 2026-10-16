@@ -82,7 +82,8 @@ export interface Toast {
 }
 
 export type Dialog =
-  | { type: "settings" }
+  /** `page`: the Settings page shown (SETTINGS_PAGES ids); the first one when absent. */
+  | { type: "settings"; page?: string }
   | { type: "connect"; spec?: ConnectionSpec; error?: AppError }
   | { type: "password"; spec: ConnectionSpec; error?: string; savePassword: boolean }
   | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }

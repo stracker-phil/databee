@@ -74,7 +74,7 @@ function NavItem({ section, active }: { section: BrowserSection; active: boolean
   // Only the most severe badge fits the row; the rest are in the tooltip.
   const badges = attentionBadges(section);
   return (
-    <button data-stage={`wp:nav:${section.list}`} className={`nav-item${active ? " active" : ""}`} onClick={() => navigate({ screen: "list", list: section.list as WpList })}>
+    <button data-stage={`wp:nav:${section.list}`} data-stage-list="wp-nav" aria-current={active ? "page" : undefined} className={`nav-item${active ? " active" : ""}`} onClick={() => navigate({ screen: "list", list: section.list as WpList })}>
       <span className="nav-row">
         <Icon size="1.077rem" />
         <span className="nav-label" data-stage-label={section.label}>{section.label}</span>
@@ -96,7 +96,7 @@ function Nav({ route }: { route: WpRoute }) {
   const activeList = route.screen === "list" ? route.list : null;
   return (
     <nav className="wp-nav" aria-label="WordPress" data-stage="wp:nav" data-stage-label="WordPress navigation">
-      <button data-stage="wp:nav:dashboard" className={`nav-item${route.screen === "dashboard" ? " active" : ""}`} onClick={() => navigate({ screen: "dashboard" })}>
+      <button data-stage="wp:nav:dashboard" data-stage-list="wp-nav" aria-current={route.screen === "dashboard" ? "page" : undefined} className={`nav-item${route.screen === "dashboard" ? " active" : ""}`} onClick={() => navigate({ screen: "dashboard" })}>
         <span className="nav-row">
           <LayoutDashboard size="1.077rem" />
           <span className="nav-label">Dashboard</span>
@@ -112,7 +112,7 @@ function Nav({ route }: { route: WpRoute }) {
               <NavItem key={s.list} section={s} active={activeList === s.list} />
             ))}
             {g.title === "Tools" && (
-              <button data-stage="wp:nav:snapshots" className={`nav-item${route.screen === "snapshots" ? " active" : ""}`} onClick={() => navigate({ screen: "snapshots" })}>
+              <button data-stage="wp:nav:snapshots" data-stage-list="wp-nav" aria-current={route.screen === "snapshots" ? "page" : undefined} className={`nav-item${route.screen === "snapshots" ? " active" : ""}`} onClick={() => navigate({ screen: "snapshots" })}>
                 <span className="nav-row">
                   <Camera size="1.077rem" />
                   <span className="nav-label">Snapshots & diff</span>

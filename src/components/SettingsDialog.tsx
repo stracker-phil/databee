@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import { Blocks, Copy, FolderOpen, Keyboard, Palette, Plug, Presentation, RefreshCw, RotateCcw, ScrollText, SquareTerminal, Table2, X, type LucideIcon } from "lucide-react";
 import { ACCENTS, api, type Settings, type StageStatus } from "../api";
 import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, type Command } from "../commands";
+import { relativeTime } from "../lib/format";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
 
@@ -28,6 +29,11 @@ const NAV: { group: string; pages: { id: Page; label: string; icon: LucideIcon }
     ],
   },
 ];
+
+/** Settings pages in display order; the Stage hook lists them as the settings window's sections. */
+export const SETTINGS_PAGES = NAV.flatMap((g) => g.pages.map(({ id, label }) => ({ id, title: label })));
+
+const isPage = (id: string | undefined): id is Page => SETTINGS_PAGES.some((p) => p.id === id);
 
 const PAGE_LABEL = Object.fromEntries(NAV.flatMap((g) => g.pages.map((p) => [p.id, p.label]))) as Record<Page, string>;
 
@@ -217,57 +223,62 @@ const INTRO: Record<Page, string> = {
   display: "How values and schemas show up in grids, documents and the sidebar.",
   connections: "Defaults for new connections.",
   wordpress: "The WordPress lens for WooCommerce and WordPress databases.",
-  presentations: "Stage, a separate app, can present databee: spotlight parts of the window, show captions and click through it for you. It finds databee through a file that exists while the local API runs.",
+  presentations: "Lets a presenter app such as Stage highlight parts of databee and click through it for a demo. Only apps on this Mac can connect.",
   logging: "What databee writes to its log file.",
 };
 
-/** The local API Stage drives databee through, and whether Stage can find it. */
+/** §10 of the Stage protocol: the hook's switch, status, port, token and discovery file. */
 function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Settings>) => void }) {
   const [status, setStatus] = useState<StageStatus | null>(null);
   const [revealed, setRevealed] = useState(false);
   const { toast, newStageToken } = useStore.getState();
   useEffect(() => {
     let alive = true;
-    api.stageStatus().then((next) => alive && setStatus(next), () => alive && setStatus(null));
+    const load = () => api.stageStatus().then((next) => alive && setStatus(next), () => alive && setStatus(null));
+    void load();
+    // Keeps "Last presenter request" current while the page is open.
+    const timer = setInterval(load, 5000);
     return () => {
       alive = false;
+      clearInterval(timer);
     };
   }, [s.stage.enabled, s.stage.port, s.stage.token]);
   const stage = (patch: Partial<Settings["stage"]>) => set({ stage: { ...s.stage, ...patch } });
   return (
-    <>
-      <Group title="Local API">
-        <Switch label="Enable the API" description="Listens on 127.0.0.1 only; requests from web pages are refused." checked={s.stage.enabled} onChange={(enabled) => stage({ enabled })} />
-        <NumberField label="Port" description="27184 unless another app needs it." value={s.stage.port} min={1024} max={65535} onCommit={(port) => stage({ port })} />
-        <Row label="Token" description="Stage reads it from the discovery file. A new token disconnects running presentations.">
-          <button type="button" className="btn mono" title={revealed ? "Hide" : "Show the token"} onClick={() => setRevealed((r) => !r)}>
-            {revealed ? s.stage.token : "••••••••••••"}
-          </button>
-          <button type="button" className="icon-btn" aria-label="Copy token" title="Copy token" onClick={() => void navigator.clipboard.writeText(s.stage.token).then(() => toast("success", "Copied token"))}>
-            <Copy size="1rem" />
-          </button>
-          <button type="button" className="btn" onClick={() => void newStageToken()}>
-            <RefreshCw size="1rem" /> New
-          </button>
-        </Row>
-      </Group>
-      <Group title="Presentations">
-        <Row label="Stage" description={status?.error ?? (status?.running ? status.url : undefined)}>
-          {status?.discoveryFile ? (
-            <span className="pill tone-green">Discoverable</span>
-          ) : status?.error ? (
-            <span className="pill tone-orange">Not running</span>
-          ) : (
-            <span className="badge">Off (needs the local API)</span>
-          )}
-        </Row>
-        {status?.discoveryFile && (
-          <Row label="Discovery file" stacked>
-            <code className="mono small">{status.discoveryFile}</code>
-          </Row>
+    <Group>
+      <Switch label="Allow presentations" description="Runs a local API on 127.0.0.1; requests from web pages are refused." checked={s.stage.enabled} onChange={(enabled) => stage({ enabled })} />
+      <Row label="Status" description={status?.running ? status.url : undefined}>
+        {status?.error ? (
+          <span className="pill tone-orange">{status.error}</span>
+        ) : status?.discoveryFile ? (
+          <span className="pill tone-green">Discoverable</span>
+        ) : (
+          <span className="badge">Off</span>
         )}
-      </Group>
-    </>
+      </Row>
+      <NumberField label="Port" description="27184 unless another app needs it." value={s.stage.port} min={1024} max={65535} onCommit={(port) => stage({ port })} />
+      <Row label="Token" description="Presenters read it from the discovery file; a new token disconnects them until they read it again.">
+        <button type="button" className="btn mono" title={revealed ? "Hide" : "Show the token"} onClick={() => setRevealed((r) => !r)}>
+          {revealed ? s.stage.token : "••••••••••••"}
+        </button>
+        <button type="button" className="icon-btn" aria-label="Copy token" title="Copy token" onClick={() => void navigator.clipboard.writeText(s.stage.token).then(() => toast("success", "Copied token"))}>
+          <Copy size="1rem" />
+        </button>
+        <button type="button" className="btn" onClick={() => void newStageToken()}>
+          <RefreshCw size="1rem" /> New Token
+        </button>
+      </Row>
+      {status?.discoveryFile && (
+        <Row label="Discovery file" description={<code className="mono small">{status.discoveryFile}</code>}>
+          <button type="button" className="btn" onClick={() => void api.stageShowDiscoveryFile()}>
+            <FolderOpen size="1.077rem" /> Show in Finder
+          </button>
+        </Row>
+      )}
+      <Row label="Last presenter request">
+        <span className="muted">{status?.lastRequest ? relativeTime(status.lastRequest) : "None yet"}</span>
+      </Row>
+    </Group>
   );
 }
 
@@ -352,19 +363,21 @@ export function SettingsDialog() {
   const settings = useStore((s) => s.settings);
   const save = useStore((s) => s.saveSettings);
   const close = useStore((s) => s.closeDialog);
-  const [page, setPage] = useState<Page>("appearance");
+  const shown = useStore((s) => (s.dialog?.type === "settings" ? s.dialog.page : undefined));
+  const page: Page = isPage(shown) ? shown : "appearance";
+  const setPage = (id: Page) => useStore.getState().openDialog({ type: "settings", page: id });
   if (!settings) return null;
 
   const set = (patch: Partial<Settings>) => void save({ ...useStore.getState().settings!, ...patch }, { quiet: true });
 
   return (
-    <Modal onClose={close} className="settings-window" labelledBy="settings-title">
-      <nav className="settings-nav" aria-label="Settings pages" data-stage="settings:nav">
+    <Modal onClose={close} className="settings-window" labelledBy="settings-title" stageWindow="settings">
+      <nav className="settings-nav" aria-label="Settings pages" data-stage="settings-nav" data-stage-label="Settings pages">
         {NAV.map((g) => (
           <div key={g.group} className="settings-nav-group">
             <div className="settings-nav-heading">{g.group}</div>
             {g.pages.map(({ id, label, icon: Icon }) => (
-              <button key={id} data-stage={`settings:nav:${id}`} type="button" aria-current={page === id ? "page" : undefined} onClick={() => setPage(id)}>
+              <button key={id} data-stage={`settings-nav:${id}`} data-stage-list="settings-nav" type="button" aria-current={page === id ? "page" : undefined} onClick={() => setPage(id)}>
                 <Icon size="1.077rem" /> {label}
               </button>
             ))}

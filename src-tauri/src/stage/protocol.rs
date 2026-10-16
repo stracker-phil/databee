@@ -176,7 +176,7 @@ fn modifier_word(word: &str) -> Option<Modifier> {
 
 fn named_key(name: &str) -> Option<(&'static str, &'static str)> {
     Some(match name {
-        "enter" | "return" | "↵" | "⏎" => ("Enter", "Enter"),
+        "enter" | "return" | "↵" | "↩" | "⏎" => ("Enter", "Enter"),
         "esc" | "escape" | "⎋" => ("Escape", "Escape"),
         "space" => (" ", "Space"),
         "tab" | "⇥" => ("Tab", "Tab"),
@@ -330,6 +330,30 @@ fn short(text: String) -> String {
     }
 }
 
+/// The windows databee exposes, in `describe` order. Settings and the palette are sheets inside
+/// the main window; the page measures them.
+pub const WINDOWS: [&str; 3] = [MAIN, "settings", "palette"];
+
+/// Optional protocol capabilities (Stage protocol 1, revision 2026-10-16, §5.1).
+pub const FEATURES: [&str; 8] = [
+    "reveal",
+    "visible",
+    "sections",
+    "ui",
+    "type.append",
+    "keys.window",
+    "scroll",
+    "wait",
+];
+
+fn main_window() -> String {
+    MAIN.into()
+}
+
+fn enabled() -> bool {
+    true
+}
+
 /// An element marked `data-stage="<id>"`, as the page measures it.
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -338,6 +362,23 @@ pub struct PageAnchor {
     pub label: String,
     pub rect: PageRect,
     pub in_view: bool,
+    /// The part that shows through its scroll areas and the window; None when nothing does.
+    #[serde(default)]
+    pub visible: Option<PageRect>,
+    #[serde(default = "main_window")]
+    pub window: String,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub list: Option<String>,
+    #[serde(default)]
+    pub selected: Option<bool>,
+    #[serde(default)]
+    pub checked: Option<bool>,
+    #[serde(default)]
+    pub expanded: Option<bool>,
+    #[serde(default)]
+    pub disabled: Option<bool>,
 }
 
 /// The page's answer to `stage:collect`.
@@ -349,7 +390,8 @@ pub struct AnchorsReply {
 }
 
 impl AnchorsReply {
-    /// Ids and labels cut to a sane length; anchors without an id or a size dropped.
+    /// Ids and labels cut to a sane length; anchors without an id or a size dropped; unknown
+    /// windows count as the main one.
     pub fn cleaned(mut self) -> Self {
         self.anchors = self
             .anchors
@@ -358,6 +400,11 @@ impl AnchorsReply {
             .map(|a| PageAnchor {
                 id: short(a.id),
                 label: short(a.label),
+                window: if WINDOWS.contains(&a.window.as_str()) {
+                    a.window
+                } else {
+                    MAIN.into()
+                },
                 ..a
             })
             .collect();
@@ -366,7 +413,7 @@ impl AnchorsReply {
 }
 
 /// The page's answer to `stage:act`; `handled` is false when the anchor isn't on that page.
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct ActReply {
     pub request: String,
     pub page: String,
@@ -374,31 +421,90 @@ pub struct ActReply {
     pub ok: bool,
     #[serde(default)]
     pub error: Option<String>,
+    /// The HTTP status for a failure when it isn't 500 (e.g. 409: not scrollable).
+    #[serde(default)]
+    pub status: Option<u16>,
+    /// The window the anchor is in, or the one that got the keys.
+    #[serde(default)]
+    pub window: Option<String>,
     /// The anchor's rectangle once in view, before acting.
     #[serde(default)]
     pub rect: Option<PageRect>,
+    #[serde(default)]
+    pub visible: Option<PageRect>,
+    /// `keys` that ran a command (its shortcut) instead of reaching an element.
+    #[serde(default)]
+    pub command: Option<String>,
 }
 
-/// One command of the page's registry.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Choice {
+    pub id: String,
+    pub title: String,
+}
+
+/// One command: the registry's, or a family (`arg` + `choices`) whose members append an argument.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct PageCommand {
     pub id: String,
     pub help: String,
-    /// Runs now (the command's `when` holds).
-    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shortcut: Option<String>,
+    #[serde(default = "enabled")]
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arg: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choices: Option<Vec<Choice>>,
+}
+
+impl PageCommand {
+    /// The command id is this command, or a member of this family.
+    pub fn runs(&self, id: &str) -> bool {
+        if self.arg.is_some() {
+            id.len() > self.id.len() && id.starts_with(&self.id)
+        } else {
+            id == self.id
+        }
+    }
+}
+
+/// A window the page draws inside the main one (settings, palette); `rect` None while closed.
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub struct Surface {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub rect: Option<PageRect>,
+    #[serde(default)]
+    pub sections: Option<Vec<Choice>>,
+    #[serde(default)]
+    pub section: Option<String>,
 }
 
 /// The page's answer to `stage:info`: what it shows and can do.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Default)]
 pub struct InfoReply {
     pub request: String,
     pub page: String,
     #[serde(default)]
     pub state: serde_json::Map<String, Value>,
+    /// What the main window shows.
     #[serde(default)]
     pub view: Option<String>,
+    /// The main window's toggleable panels: `{ "inspector": "open" }`.
+    #[serde(default)]
+    pub ui: serde_json::Map<String, Value>,
+    #[serde(default)]
+    pub surfaces: Vec<Surface>,
     #[serde(default)]
     pub commands: Vec<PageCommand>,
+}
+
+impl InfoReply {
+    pub fn surface(&self, id: &str) -> Option<&Surface> {
+        self.surfaces.iter().find(|s| s.id == id)
+    }
 }
 
 #[cfg(test)]
