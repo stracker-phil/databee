@@ -22,7 +22,7 @@ describe("Peek cards", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("shows key facts after hovering a link chip and caches them", async () => {
+  it("shows key facts after hovering a link chip, and a second hover shows cached facts although wpPeek now resolves wc-completed", async () => {
     mocked.wpPeek.mockResolvedValue([
       { label: "Status", value: "wc-processing", kind: "status" },
       { label: "Total", value: "€49.90", kind: "money" },
@@ -41,10 +41,10 @@ describe("Peek cards", () => {
 
     fireEvent.mouseLeave(chip.parentElement!);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    mocked.wpPeek.mockResolvedValue([{ label: "Status", value: "wc-completed", kind: "status" }]);
     fireEvent.mouseEnter(chip.parentElement!);
     await act(() => vi.advanceTimersByTimeAsync(PEEK_DELAY_MS + 10));
-    await screen.findByRole("tooltip");
-    expect(mocked.wpPeek).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("wc-processing");
   });
 
   describe("cache scope", () => {
@@ -64,7 +64,6 @@ describe("Peek cards", () => {
       expect(await hover()).toHaveTextContent("wc-pending");
       act(() => useStore.getState().bumpData());
       expect(await hover()).toHaveTextContent("wc-completed");
-      expect(mocked.wpPeek).toHaveBeenCalledTimes(2);
     });
 
     it("peeks the same entity again under another active database", async () => {

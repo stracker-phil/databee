@@ -141,7 +141,7 @@ describe("CommandPalette", () => {
       await userEvent.keyboard("3{ArrowDown}{ArrowDown}");
       expect(selectedOptions()[0]).toHaveTextContent("Order #122");
 
-      await vi.waitFor(() => expect(mocked.wpSearch).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(mocked.wpSearch).toHaveBeenLastCalledWith("s1", "db", "123"));
       await act(async () => second.resolve([hit("123")]));
       expect(screen.getAllByRole("option")).toHaveLength(1);
       expect(selectedOptions()).toHaveLength(1);

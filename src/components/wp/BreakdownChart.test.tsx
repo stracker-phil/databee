@@ -29,12 +29,18 @@ describe("BreakdownChart", () => {
   it("links hover between slice and row, and opens a row with Enter", async () => {
     render(<BreakdownChart items={items.slice(0, 3)} format={kb} totalLabel="autoloaded" />);
     const row = screen.getByRole("button", { name: "Plugin 1: 1.1 KB" });
+    const donut = screen.getByRole("img", { name: "3.3 KB autoloaded" });
+    expect(within(donut).getByText("3.3 KB")).toBeInTheDocument();
+    expect(within(donut).getByText("autoloaded")).toBeInTheDocument();
+
     fireEvent.mouseEnter(row);
-    const slice = document.querySelector('path[data-id="p1"]')!;
-    expect(slice.classList.contains("hot")).toBe(true);
-    expect(document.querySelector('path[data-id="p0"]')!.classList.contains("dim")).toBe(true);
-    expect(screen.getByRole("img").textContent).toContain("1.1 KB");
+    expect(within(donut).getByText("1.1 KB")).toBeInTheDocument();
+    expect(within(donut).getByText("Plugin 1")).toBeInTheDocument();
+    expect(within(donut).queryByText("autoloaded")).not.toBeInTheDocument();
+
     fireEvent.mouseLeave(row);
+    expect(within(donut).getByText("3.3 KB")).toBeInTheDocument();
+    expect(within(donut).getByText("autoloaded")).toBeInTheDocument();
     row.focus();
     await userEvent.keyboard("{Enter}");
     expect(items[1].onOpen).toHaveBeenCalled();

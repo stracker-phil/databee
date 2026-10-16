@@ -51,7 +51,7 @@ export function Avatar({ name, src, size = "2.154rem" }: { name: string; src?: s
 
 export function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: string }) {
   return (
-    <div className="stat-tile">
+    <div className="stat-tile" role="group" aria-label={label}>
       <div className="stat-label">{label}</div>
       <div className={`stat-value${tone ? ` tone-text-${tone}` : ""}`}>{value}</div>
       {sub && <div className={`stat-sub${tone ? ` tone-text-${tone}` : ""}`}>{sub}</div>}

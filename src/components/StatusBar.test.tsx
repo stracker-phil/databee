@@ -7,7 +7,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { api } from "../api";
 import { installCommands } from "../commands";
 import { useStore } from "../state/store";
-import { connectedStore } from "../test/fixtures";
+import { connectedStore, pendingChange } from "../test/fixtures";
 import { StatusBar } from "./StatusBar";
 
 const mocked = vi.mocked(api, true);
@@ -30,30 +30,23 @@ describe("StatusBar", () => {
   it("moves the inspector from its chip", async () => {
     render(<StatusBar />);
     await userEvent.click(screen.getByRole("button", { name: "Inspector: right" }));
-    await vi.waitFor(() => expect(useStore.getState().settings?.inspectorDock).toBe("bottom"));
-    expect(screen.getByRole("button", { name: "Inspector: bottom" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Inspector: bottom" })).toBeInTheDocument();
   });
 
   it("flags pending changes", () => {
-    useStore.setState({ pending: [{ id: 1, sessionId: "s1" } as never] });
+    useStore.setState({ pending: [pendingChange()] });
     render(<StatusBar />);
     expect(screen.getByRole("button", { name: "1 pending change" })).toBeInTheDocument();
   });
 
   it("counts only the active session's pending changes", () => {
-    useStore.setState({
-      pending: [
-        { id: 1, sessionId: "s1" },
-        { id: 2, sessionId: "s2" },
-        { id: 3, sessionId: "s2" },
-      ] as never,
-    });
+    useStore.setState({ pending: [pendingChange({ id: 1 }), pendingChange({ id: 2, sessionId: "s2" }), pendingChange({ id: 3, sessionId: "s2" })] });
     render(<StatusBar />);
     expect(screen.getByRole("button", { name: "1 pending change" })).toBeInTheDocument();
   });
 
   it("shows no pending chip when only another session has changes", () => {
-    useStore.setState({ pending: [{ id: 1, sessionId: "s2" }] as never });
+    useStore.setState({ pending: [pendingChange({ sessionId: "s2" })] });
     render(<StatusBar />);
     expect(screen.queryByRole("button", { name: /pending/ })).not.toBeInTheDocument();
   });

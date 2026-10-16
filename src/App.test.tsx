@@ -6,7 +6,7 @@ vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await impor
 
 import App from "./App";
 import { api, type SessionInfo } from "./api";
-import { installCommands, runCommand } from "./commands";
+import { runCommand } from "./commands";
 import { resetStore, useStore } from "./state/store";
 import { connectedStore, queryTab, resultSet, session, settings } from "./test/fixtures";
 
@@ -29,27 +29,28 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /root@127.0.0.1:52958\/db/ })).toHaveAttribute("title", expect.stringContaining("10.3.39-MariaDB"));
   });
 
-  it("runs menu commands by id", () => {
+  it("runs menu commands by id", async () => {
     connectedStore();
-    installCommands();
-    runCommand("tabs.new");
-    expect(useStore.getState().tabs).toHaveLength(2);
-    runCommand("tabs.close");
-    expect(useStore.getState().tabs).toHaveLength(1);
-    runCommand("settings.open");
-    expect(useStore.getState().dialog).toEqual({ type: "settings" });
+    render(<App />);
+    await screen.findByText("wp_options");
+    act(() => runCommand("tabs.new"));
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    act(() => runCommand("tabs.close"));
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    act(() => runCommand("settings.open"));
+    expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
   });
 
   it("resolves shortcuts through the registry in both views", async () => {
     connectedStore();
     render(<App />);
     await userEvent.keyboard("{Meta>}k{/Meta}");
-    expect(useStore.getState().paletteOpen).toBe(true);
+    expect(await screen.findByLabelText("Search everything")).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await userEvent.keyboard("{Meta>}t{/Meta}");
-    expect(useStore.getState().tabs).toHaveLength(2);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-selected"))).toEqual(["false", "true"]);
     await userEvent.keyboard("{Control>}{Tab}{/Control}");
-    expect(useStore.getState().activeTabId).toBe(useStore.getState().tabs[0].id);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false"]);
     await userEvent.keyboard("{Meta>}={/Meta}");
     expect(useStore.getState().settings?.uiFontSize).toBe(14);
     expect(useStore.getState().settings?.dataFontSize).toBe(13);
@@ -61,9 +62,9 @@ describe("App", () => {
     await screen.findByText("wp_options");
     await useStore.getState().saveKeybindings({ "palette.open": "Mod+J" });
     await userEvent.keyboard("{Meta>}k{/Meta}");
-    expect(useStore.getState().paletteOpen).toBe(false);
+    expect(screen.queryByLabelText("Search everything")).not.toBeInTheDocument();
     await userEvent.keyboard("{Meta>}j{/Meta}");
-    expect(useStore.getState().paletteOpen).toBe(true);
+    expect(await screen.findByLabelText("Search everything")).toBeInTheDocument();
   });
 
   it("keeps the same editor, with its text, when selecting a cell opens the bottom inspector", async () => {

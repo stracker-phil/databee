@@ -1,17 +1,9 @@
-import type { Cell, ResultSet, SessionInfo, Settings, TableInfo } from "../api";
+import type { Cell, PlannedChange, ResultSet, Settings, TableInfo } from "../api";
+import { session } from "./session";
 import { settings } from "./settings";
 
-export { settings };
+export { session, settings };
 import { resetStore, type QueryTab } from "../state/store";
-
-export const session: SessionInfo = {
-  id: "s1",
-  spec: { name: "Shop", host: "127.0.0.1", port: 52958, user: "root", database: "db" },
-  identity: "root@127.0.0.1:52958/db",
-  displayName: "Shop",
-  serverVersion: "10.3.39-MariaDB",
-  database: "db",
-};
 
 export function table(name: string, patch: Partial<TableInfo> = {}): TableInfo {
   return { name, isView: false, rowsEstimate: 10, sizeBytes: 16384, comment: "", ...patch };
@@ -43,6 +35,12 @@ export function queryTab(patch: Partial<QueryTab> = {}): QueryTab {
   return { id: "q1", kind: "query", sessionId: "s1", title: "Query 1", sql: "", running: false, activeResult: 0, ...patch };
 }
 
+type PendingChange = PlannedChange & { id: number; sessionId: string };
+
+export function pendingChange(patch: Partial<PendingChange> = {}): PendingChange {
+  return { description: "Set x", statements: ["UPDATE `wp_options` SET `option_value` = 'x'"], undo: ["UPDATE `wp_options` SET `option_value` = 'y'"], id: 1, sessionId: "s1", ...patch };
+}
+
 /** A store with one connected session showing the given tabs. */
 export function connectedStore(opts: { tabs?: QueryTab[]; tables?: TableInfo[]; settings?: Partial<Settings> } = {}) {
   const tabs = opts.tabs ?? [queryTab()];
@@ -51,6 +49,7 @@ export function connectedStore(opts: { tabs?: QueryTab[]; tables?: TableInfo[]; 
     sessions: [session],
     activeSessionId: session.id,
     tabs,
+    queryCounter: { [session.id]: 1 },
     activeTabId: tabs[0]?.id ?? null,
     schema: {
       [session.id]: {

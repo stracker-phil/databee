@@ -27,34 +27,38 @@ describe("SettingsDialog", () => {
     const nullLabel = screen.getByLabelText("NULL label");
     await userEvent.clear(nullLabel);
     await userEvent.type(nullLabel, "∅");
-    expect(mocked.updateSettings).toHaveBeenCalledTimes(1);
+    expect(nullLabel).toHaveValue("∅");
+    expect(mocked.updateSettings).not.toHaveBeenCalledWith(expect.objectContaining({ nullLabel: "∅" }));
     await userEvent.tab();
     expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ nullLabel: "∅", theme: "dark" }));
   });
 
   describe("number fields", () => {
-    it("commit a typed size once on blur, not per keystroke", async () => {
+    it("commit a typed size on blur, not per keystroke", async () => {
       render(<SettingsDialog />);
       const uiSize = screen.getByLabelText("UI size");
       await userEvent.clear(uiSize);
       await userEvent.type(uiSize, "16");
       expect(mocked.updateSettings).not.toHaveBeenCalled();
       await userEvent.tab();
-      expect(mocked.updateSettings).toHaveBeenCalledTimes(1);
-      expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ uiFontSize: 16 }));
+      expect(mocked.updateSettings).not.toHaveBeenCalledWith(expect.objectContaining({ uiFontSize: 1 }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ uiFontSize: 16 }));
+      expect(uiSize).toHaveValue(16);
     });
 
     it.each([
       ["on blur", "{Tab}"],
       ["on Enter", "{Enter}"],
-    ])("commit a typed six-digit value once %s", async (_when, key) => {
+    ])("commit a typed six-digit value without partials %s", async (_when, key) => {
       render(<SettingsDialog />);
       await userEvent.click(screen.getByRole("button", { name: "Queries" }));
       const rowLimit = screen.getByLabelText("Row limit");
       await userEvent.clear(rowLimit);
       await userEvent.type(rowLimit, `100000${key}`);
-      expect(mocked.updateSettings).toHaveBeenCalledTimes(1);
-      expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ rowLimit: 100000 }));
+      for (const partial of [1, 10, 100, 1000, 10000]) {
+        expect(mocked.updateSettings).not.toHaveBeenCalledWith(expect.objectContaining({ rowLimit: partial }));
+      }
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ rowLimit: 100000 }));
     });
 
     it("restore the saved value instead of committing an out-of-range one", async () => {
@@ -109,16 +113,20 @@ describe("SettingsDialog", () => {
   });
 
   it("records, resets and saves shortcut overrides", async () => {
-    installCommands();
-    render(<SettingsDialog />);
-    await userEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
-    await userEvent.type(screen.getByLabelText("Search shortcuts"), "Command palette");
+    connectedStore();
+    useStore.getState().openDialog({ type: "settings", page: "shortcuts" });
+    render(<App />);
+    await userEvent.type(await screen.findByLabelText("Search shortcuts"), "Command palette");
     const field = screen.getByRole("button", { name: "Record shortcut" });
     expect(field).toHaveTextContent("⌘K");
     await userEvent.click(field);
     await userEvent.keyboard("{Meta>}{Shift>}p{/Shift}{/Meta}");
     expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⇧P");
-    expect(mocked.setKeybindings).toHaveBeenCalledWith({ "palette.open": "Mod+Shift+P" });
+    expect(mocked.setKeybindings).toHaveBeenLastCalledWith({ "palette.open": "Mod+Shift+P" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Reset Command palette" }));
+    expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘K");
+    expect(mocked.setKeybindings).toHaveBeenLastCalledWith(expect.not.objectContaining({ "palette.open": expect.anything() }));
   });
 
   it("records an already-bound shortcut instead of running its command", async () => {

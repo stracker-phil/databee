@@ -1,6 +1,10 @@
 import type { DocField, EntityDoc, OrderView, WpInfo } from "../api";
 import { useStore } from "../state/store";
 import { connectedStore, num, session, text } from "./fixtures";
+import { NOW } from "./now";
+
+export { NOW };
+const NOW_SECS = Math.round(NOW / 1000);
 
 export const wpInfo: WpInfo = {
   context: {
@@ -61,8 +65,8 @@ export const orderView: OrderView = {
   status: "wc-processing",
   total: "€49.90",
   currency: "EUR",
-  created: Math.round(Date.now() / 1000) - 3600,
-  paid: Math.round(Date.now() / 1000) - 3500,
+  created: NOW_SECS - 3600,
+  paid: NOW_SECS - 3500,
   completed: null,
   customer: { entity: "user", id: "12", label: "Jane Doe", image: null },
   customerEmail: "jane@shop.test",
@@ -87,6 +91,6 @@ export const orderView: OrderView = {
     fees: { gross: "€49.90", fee: "€2.04", net: "€47.86", feeRatio: 0.04 },
   },
   attribution: null,
-  timeline: [{ at: Math.round(Date.now() / 1000) - 3600, kind: "created", title: "Order created", detail: null, level: "info", link: null }],
+  timeline: [{ at: NOW_SECS - 3600, kind: "created", title: "Order created", detail: null, level: "info", link: null }],
   related: [{ label: "Notes", link: null, count: 1, target: "timeline" }],
 };

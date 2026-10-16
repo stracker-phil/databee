@@ -203,7 +203,7 @@ describe("store behavior", () => {
     });
 
     it("opens a query favorite as a new tab named after it and leaves the active tab's title alone", async () => {
-      useStore.setState({ favorites, queryCounter: { s1: 1 } });
+      useStore.setState({ favorites });
       render(
         <>
           <FavoritesBar />
@@ -221,8 +221,6 @@ describe("store behavior", () => {
   });
 
   describe("query tab titles", () => {
-    beforeEach(() => useStore.setState({ queryCounter: { s1: 1 } }));
-
     it("never reuses a number of a closed query tab", async () => {
       render(<TabBar />);
       const newTab = screen.getByRole("button", { name: "New query tab" });

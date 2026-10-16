@@ -9,7 +9,7 @@ import { api, type Dashboard, type OrderSummary } from "../../api";
 import { installCommands } from "../../commands";
 import { selectWpRoute, useStore } from "../../state/store";
 import { session } from "../../test/fixtures";
-import { orderView, wpInfo, wpStore } from "../../test/wpFixtures";
+import { NOW, orderView, wpInfo, wpStore } from "../../test/wpFixtures";
 import { CommandPalette } from "../CommandPalette";
 import { Dialogs } from "../Dialogs";
 import { Toasts } from "../Toasts";
@@ -18,7 +18,13 @@ import { CompareScreen, SnapshotsScreen } from "./Debugging";
 import { WpWorkspace } from "./WpWorkspace";
 
 const mocked = vi.mocked(api, true);
-const now = Math.round(Date.now() / 1000);
+const now = NOW / 1000;
+const originalWidth = window.innerWidth;
+
+afterEach(() => {
+  window.innerWidth = originalWidth;
+  vi.useRealTimers();
+});
 
 const order = (id: string, status = "wc-processing"): OrderSummary => ({
   id,
@@ -108,8 +114,9 @@ describe("WordPress mode", () => {
 
   it("opens WordPress databases on the dashboard", async () => {
     render(<App />);
-    const ordersTile = (await screen.findByText("+12 today")).closest(".stat-tile")!;
-    expect(within(ordersTile as HTMLElement).getByText("974")).toBeInTheDocument();
+    const ordersTile = within(await screen.findByRole("group", { name: "Orders" }));
+    expect(ordersTile.getByText("974")).toBeInTheDocument();
+    expect(ordersTile.getByText("+12 today")).toBeInTheDocument();
     expect(screen.getByText("80.7 KB")).toBeInTheDocument();
     expect(screen.getByText(/holds 54% of all rows/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Table rows" }));
@@ -297,12 +304,10 @@ describe("WordPress mode", () => {
     await userEvent.click(screen.getByRole("button", { name: /Live mode/ }));
     await vi.advanceTimersByTimeAsync(3100);
     await vi.waitFor(() => expect(screen.getByText(/1 changed/)).toBeInTheDocument());
-    vi.useRealTimers();
   });
 });
 
 describe("List filters in the route", () => {
-  const originalWidth = window.innerWidth;
   const gateways = [{ value: "ppcp-gateway", label: "PayPal", count: 2 }];
   const page = (patch: object = {}) => ({
     items: [order("3229"), order("3227", "wc-failed")],
@@ -321,9 +326,6 @@ describe("List filters in the route", () => {
     mocked.wpBrowser.mockResolvedValue([]);
     mocked.wpOrders.mockResolvedValue(page());
     mocked.wpView.mockResolvedValue(orderView);
-  });
-  afterEach(() => {
-    window.innerWidth = originalWidth;
   });
 
   it("keeps the status chip after opening an order and going back", async () => {
@@ -522,17 +524,17 @@ describe("Snapshots and compare", () => {
   });
 
   it("diffs a snapshot against now", async () => {
-    mocked.wpSnapshots.mockResolvedValue([{ id: "a", label: "order #4711", scope: { entity: "order", id: "4711", includeRelated: true, optionPattern: null, includeActions: true }, created: new Date().toISOString(), paths: 40 }]);
+    mocked.wpSnapshots.mockResolvedValue([{ id: "a", label: "order #4711", scope: { entity: "order", id: "4711", includeRelated: true, optionPattern: null, includeActions: true }, created: new Date(NOW).toISOString(), paths: 40 }]);
     mocked.wpSnapshotDiff.mockResolvedValue([{ path: "order#4711/field/status", before: "wc-pending", after: "wc-processing" }]);
     render(<SnapshotsScreen />);
     await userEvent.click(await screen.findByRole("button", { name: /Diff now/ }));
-    const row = (await screen.findByText("order#4711/field/status")).closest("tr")!;
+    const row = await screen.findByRole("row", { name: /order#4711\/field\/status/ });
     expect(within(row).getByText("wc-pending")).toBeInTheDocument();
     expect(within(row).getByText("wc-processing")).toBeInTheDocument();
   });
 
   describe("deleting a snapshot", () => {
-    const snapshot = { id: "a", label: "order #4711", scope: { entity: "order", id: "4711", includeRelated: true, optionPattern: null, includeActions: true }, created: new Date().toISOString(), paths: 40 };
+    const snapshot = { id: "a", label: "order #4711", scope: { entity: "order", id: "4711", includeRelated: true, optionPattern: null, includeActions: true }, created: new Date(NOW).toISOString(), paths: 40 };
     const renderSnapshots = () => {
       useStore.getState().navigate({ screen: "snapshots" });
       render(

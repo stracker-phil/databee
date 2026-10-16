@@ -1,12 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type DecodedValue } from "../../api";
 import { useStore } from "../../state/store";
-import { field, wpStore } from "../../test/wpFixtures";
+import { NOW, field, wpStore } from "../../test/wpFixtures";
 import { FieldList, FieldValue } from "./FieldValue";
 
 const mocked = vi.mocked(api, true);
@@ -16,9 +16,13 @@ describe("FieldValue rendering", () => {
     vi.clearAllMocks();
     wpStore();
   });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("shows stored values with readable notes next to them", () => {
-    const unix = Math.round(Date.now() / 1000) - 2 * 86400;
+    vi.useFakeTimers({ now: NOW });
+    const unix = NOW / 1000 - 2 * 86400;
     render(
       <FieldList
         fields={[
@@ -55,7 +59,7 @@ describe("FieldValue rendering", () => {
   it("shows the user agent string with a short summary", () => {
     render(<FieldValue field={field("ua", "Mozilla/5.0 …", { hint: { type: "userAgent", text: "Chrome 154 · macOS" } })} />);
     expect(screen.getByText("Mozilla/5.0 …")).toBeInTheDocument();
-    expect(screen.getByText(/Chrome 154 · macOS/)).toBeInTheDocument();
+    expect(screen.getByText("Chrome 154 · macOS")).toBeInTheDocument();
   });
 
   it("masks secrets until revealed", async () => {
@@ -68,8 +72,8 @@ describe("FieldValue rendering", () => {
   it("collapses long values with size, expand and copy", async () => {
     const token = "0cAFcWeA6zUQyhl2k98qbng9BHiGwe5" + "x".repeat(2000) + "Afg";
     render(<FieldValue field={field("token", token)} />);
-    expect(screen.getByText(/0cAFcWeA6zUQyhl2k98qbng9BHiGwe5x…xxxAfg|0cAFcW.*…/)).toBeInTheDocument();
-    expect(screen.getByText(/2\.0 KB/)).toBeInTheDocument();
+    expect(screen.getByText("0cAFcWeA6zUQyhl2k98qbng9BHiGwe5x…xxxAfg")).toBeInTheDocument();
+    expect(screen.getByText("(2.0 KB)")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Expand value" }));
     expect(screen.getByText(token)).toBeInTheDocument();
   });

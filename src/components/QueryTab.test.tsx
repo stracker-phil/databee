@@ -1,3 +1,4 @@
+import { EditorView } from "@codemirror/view";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -53,8 +54,9 @@ describe("QueryTab", () => {
       mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 1, database: "db" });
       const { container } = renderTab("SELECT 1;\nSELECT 2;");
       const content = container.querySelector(".cm-content") as HTMLElement;
+      EditorView.findFromDOM(content)!.dispatch({ selection: { anchor: "SELECT 1;\nSELECT 2;".length } });
       fireEvent.keyDown(content, { key: "Enter", metaKey: true });
-      expect(mocked.execute).toHaveBeenCalledWith("s1", expect.stringMatching(/^SELECT \d$/), false);
+      expect(mocked.execute).toHaveBeenCalledWith("s1", "SELECT 2", false);
     } finally {
       window.removeEventListener("keydown", handleKeydown, true);
     }
@@ -101,11 +103,14 @@ describe("QueryTab", () => {
 
   it("does not run destructive statements when the confirmation is cancelled", async () => {
     mocked.execute.mockRejectedValueOnce({ kind: "confirmation_required", message: "DROP TABLE permanently removes data", code: null });
-    renderTab("DROP TABLE x");
+    const { container } = renderTab("DROP TABLE x");
     await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel" }));
-    expect(mocked.execute).toHaveBeenCalledTimes(1);
+    expect(mocked.execute).not.toHaveBeenCalledWith("s1", "DROP TABLE x", true);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+    expect(screen.queryByText(/rows affected/)).not.toBeInTheDocument();
+    expect(container.querySelector(".cm-content")).toHaveTextContent("DROP TABLE x");
   });
 
   it("offers cancel while a query runs", async () => {
@@ -148,12 +153,12 @@ describe("QueryTab", () => {
       mocked.execute.mockResolvedValue({ results: [resultSet({ returnsRows: false, columns: [], rows: [] })], elapsedMs: 1, database: "db" });
       mocked.listTables.mockResolvedValue([table("wp_new")]);
       renderTab("CREATE TABLE wp_new (id INT)");
-      await waitFor(() => expect(mocked.completionSchema).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mocked.completionSchema).toHaveBeenCalled());
+      mocked.completionSchema.mockClear();
 
       await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
 
-      await waitFor(() => expect(mocked.completionSchema).toHaveBeenCalledTimes(2));
-      expect(mocked.completionSchema).toHaveBeenLastCalledWith("s1", "db");
+      await waitFor(() => expect(mocked.completionSchema).toHaveBeenCalledWith("s1", "db"));
     });
   });
 });
