@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import type { Cell, ColumnMeta } from "../api";
+import { toAppError, type Cell, type ColumnMeta } from "../api";
+import { fullCellText, type CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import { cellDisplay, cellText, rowsToJson, rowsToTsv } from "../lib/format";
 import { rowHeightFor } from "../lib/theme";
@@ -11,6 +12,8 @@ import { ContextMenu, type MenuEntry } from "./ContextMenu";
 interface Props {
   columns: ColumnMeta[];
   rows: Cell[][];
+  /** The result set the rows belong to; without it `longText` cells can't be fetched in full. */
+  source: CellSource;
   /** Row number of the first row (for paged table views). */
   rowOffset?: number;
   sort?: { column: string | null; descending: boolean };
@@ -70,12 +73,13 @@ function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLabel: str
   return Math.round(Math.min(cap, Math.max(64, Math.max(header, longest) * charWidth + 20)));
 }
 
-export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange }: Props) {
+export function ResultsGrid({ columns, rows, source, rowOffset = 0, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange }: Props) {
   const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
   const maxChars = useStore((s) => s.settings?.maxCellChars ?? 500);
   const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
   const density = useStore((s) => s.settings?.density ?? "comfortable");
   const selectCell = useStore((s) => s.selectCell);
+  const toast = useStore((s) => s.toast);
   const rowHeight = rowHeightFor({ dataFontSize, density });
   const scrollRef = useRef<HTMLDivElement>(null);
   const stopDrag = useRef<(() => void) | null>(null);
@@ -85,6 +89,11 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
   // Widths changed in this grid (drag / auto-fit); win over saved and measured widths.
   const [manual, setManual] = useState<Record<string, number>>({});
   const [selectionRows, setSelectionRows] = useState(rows);
+  // An edit pre-filled from `fetchCell` must not open on rows that replaced the ones it was for.
+  const currentRows = useRef(rows);
+  useEffect(() => {
+    currentRows.current = rows;
+  }, [rows]);
   // New rows invalidate cell positions; resetting during render keeps stale indices out of every frame.
   if (selectionRows !== rows) {
     setSelectionRows(rows);
@@ -151,18 +160,27 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
 
   const select = (row: number, col: number) => {
     setSelected({ row, col });
-    selectCell({ row, col, column: columns[col], cell: rows[row][col] });
+    selectCell({ row, col, column: columns[col], cell: rows[row][col], source });
   };
 
-  // A bytes cell shows a `0x…` preview, not its value; editing it would write the preview back.
+  // Bytes cells carry a preview, not their value; editing it would write the preview back. Long text is fetched first.
   const canEdit = (cell: Cell) => !!onEditCell && cell.t !== "bytes";
+
+  /** Calls `use` with the cell's full text: right away, or after fetching a `longText` cell. */
+  const withFullText = ({ row, col }: CellPos, use: (text: string) => void) => {
+    const cell = rows[row][col];
+    if (cell.t !== "longText") return use(cellText(cell));
+    fullCellText(cell, source, row, col).then(use, (e) => toast("error", `Could not load the value: ${toAppError(e).message}`));
+  };
 
   const startEdit = ({ row, col }: CellPos) => {
     const cell = rows[row]?.[col];
-    if (cell && canEdit(cell)) setEditing({ row, col, text: cellText(cell) });
+    if (!cell || !canEdit(cell)) return;
+    const shown = rows;
+    withFullText({ row, col }, (text) => currentRows.current === shown && setEditing({ row, col, text }));
   };
 
-  const copyCell = ({ row, col }: CellPos) => void copyText(cellText(rows[row][col]), "value");
+  const copyCell = (at: CellPos) => withFullText(at, (text) => void copyText(text, "value"));
 
   const openMenu = (e: React.MouseEvent, row: number, col: number) => {
     e.preventDefault();

@@ -78,7 +78,7 @@ and the state types, so components import everything from `state/store`.
 | `wp`, `wpNav` | detection results per `session/db`; navigation stack (max 100) |
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
-| `selectedCell` | `{ tabId, row, col, column, cell }`; opens the Inspector |
+| `selectedCell` | `{ tabId, row, col, column, cell, source? }`; opens the Inspector. `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets it fetch a `longText` cell in full |
 | `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
 | `dataVersion` | bumped by ⌘R and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
@@ -265,6 +265,16 @@ stay mounted; inactive panels are `hidden`. Tabs use a roving `tabIndex` with Le
 before use. Keys live in `KEY_ACTIONS` (arrows, Home/End, PageUp/PageDown, Enter to edit, ⌘C). `bytes`
 cells are never editable: they show a `0x…` preview, which an edit would write back.
 
+Rust cuts text longer than the `maxCellChars` setting to a `longText { len, preview }` cell
+([database.md](database.md#cell-decoding)); the grid shows the preview with its length in characters. The
+grid's `source` prop (`{ sessionId, resultId }`) names the result set: editing or copying a `longText` cell
+fetches its full value with `fullCellText` (`api.fetchCell`) first, never the preview, and without a
+`source` the cell is not editable. The Inspector fetches it the same way before showing or decoding it.
+
+`QueryTab`'s results pane shows a partial script result (`ExecuteResponse.failure`) as an `ErrorPanel`
+titled "Statement N failed" above the results of the statements before it. A `timeout` error with
+`sessionReset` adds an info toast that temporary tables, variables and open transactions are gone.
+
 ### Table tabs
 
 `TableTab.tsx`: `useTableStructure` reads the store's `structures` cache (`loadStructure`, keyed by
@@ -302,6 +312,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | File | Contents |
 |---|---|
 | `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text, TSV/JSON export, `relativeTime` |
+| `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText` |
 | `clipboard.ts` | `copyText` with a success or error toast |
 | `sql.ts` | statement ranges and the statement at the cursor |
 | `theme.ts` | appearance, row height, `useResolvedTheme` (one shared `prefers-color-scheme` query) |

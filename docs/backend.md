@@ -90,7 +90,7 @@ The TypeScript wrappers in `src/api/index.ts` use the same names in camelCase.
 | Module | Commands |
 |---|---|
 | `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
-| `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
+| `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
 | `wp_commands.rs` | `wp_detect`, `wp_dashboard`, `wp_browser`, the list commands (`wp_orders`, `wp_users`, `wp_products`, `wp_actions`, `wp_sessions`, `wp_content`), `wp_view`, `wp_search`, `wp_peek`, `wp_find_value`, options and snapshots, `wp_plan_change` (see [wordpress.md](wordpress.md)) |
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
 
@@ -101,7 +101,9 @@ recents and registers the session. `SessionInfo::new` is pure and carries `ident
 account that also scopes favorites) and `displayName`, so the page never derives them. `session::close`
 removes the session and calls `Database::close`, which interrupts a running query and closes the editor
 connection and the pool. `db_commands::run_query` holds `execute`'s logic (confirmation gate before the
-session lookup, history entry for failed queries too).
+session lookup, history entry for failed queries too). `execute` and `browse_table` run through `Session::execute`
+and `Session::browse`, which hand every result set to the session's `CellCache` (`Session.cells`); it numbers
+the set and keeps the full text of its `longText` cells.
 
 **Adding a command:**
 1. Write a `#[tauri::command]` function that returns `AppResult<T>`. `T` must be `Serialize` with
@@ -274,7 +276,7 @@ gives up its value only through `expose()`.
 | `connection` | IO/TLS/protocol failures, a crashed connection worker, pool timeouts or a closed pool, connect timeouts, and MySQL errors 1053, 1927, 2006, 2013, 4031 (the connection is gone, so `execute` reconnects) |
 | `auth_failed` | MySQL error 1045 (the message is the server's); on connect `LoginFailed`, explained by the password source |
 | `password_required` | no password was available |
-| `timeout` | the query exceeded the timeout; the message shows `500 ms` below one second, else whole seconds |
+| `timeout` | the query exceeded the timeout; the message shows `500 ms` below one second, else whole seconds. `AppError::Timeout { limit, session_reset }`: `sessionReset: true` (serialized only when set) means `execute` replaced the editor connection, so its session state is gone |
 | `cancelled` | MySQL error 1317, or the user cancelled |
 | `confirmation_required` | a destructive statement without `confirmed` |
 | `session_not_found` | a stale session id |

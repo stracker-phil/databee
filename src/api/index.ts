@@ -83,6 +83,9 @@ export const api = {
   execute: (sessionId: string, sql: string, confirmed = false) =>
     invoke<ExecuteResponse>("execute", { sessionId, sql, confirmed }),
   cancelQuery: (sessionId: string) => invoke<void>("cancel_query", { sessionId }),
+  /** The full text of a `longText` cell of the result set `resultId`. */
+  fetchCell: (sessionId: string, resultId: number, row: number, col: number) =>
+    invoke<string>("fetch_cell", { sessionId, resultId, row, col }),
   browseTable: (sessionId: string, request: BrowseRequest) =>
     invoke<BrowsePage>("browse_table", { sessionId, request }),
   /** The "New query" SQL for a table, quoted by Rust. */

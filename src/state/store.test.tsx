@@ -45,7 +45,7 @@ function twoSessions(tabs: QueryTab[], active: { session: string; tab: string })
 }
 
 const inspect = (tabId: string) =>
-  useStore.setState({ selectedCell: { tabId, row: 0, col: 0, column: { name: "option_value", typeName: "LONGTEXT" }, cell: text("hello") } });
+  useStore.setState({ selectedCell: { tabId, row: 0, col: 0, column: { name: "option_value", typeName: "LONGTEXT" }, cell: text("hello"), source: { sessionId: "s1", resultId: 1 } } });
 
 const inspector = () => screen.queryByRole("complementary", { name: "Value inspector" });
 const tabTitles = () => screen.getAllByRole("tab").map((t) => t.querySelector(".title")?.textContent);
@@ -206,7 +206,7 @@ describe("store behavior", () => {
 
       await act(async () => {
         const runs = [useStore.getState().runQuery("q1", "SELECT 1"), useStore.getState().runQuery("q1", "SELECT 2")];
-        call.resolve({ results: [resultSet()], elapsedMs: 3, database: "db" });
+        call.resolve({ results: [resultSet()], elapsedMs: 3, database: "db", failure: null });
         await Promise.all(runs);
       });
 

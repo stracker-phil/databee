@@ -20,7 +20,7 @@ const jsonOf = (key: string): DecodedValue => ({
   error: null,
 });
 
-const select = (row: number, cell: Cell) => act(() => useStore.getState().selectCell({ row, col: 0, column, cell }));
+const select = (row: number, cell: Cell) => act(() => useStore.getState().selectCell({ row, col: 0, column, cell, source: { sessionId: "s1", resultId: 1 } }));
 
 describe("Inspector", () => {
   beforeEach(() => {
@@ -40,6 +40,35 @@ describe("Inspector", () => {
     expect(await screen.findByText("hello")).toBeInTheDocument();
     expect(screen.getByText("5 characters")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Raw" })).not.toBeInTheDocument();
+  });
+
+  describe("with a long text cell", () => {
+    const cell: Cell = { t: "longText", v: { len: 20000, preview: "preview only" } };
+    const selectLong = (source = { sessionId: "s1", resultId: 9 }) =>
+      act(() => useStore.getState().selectCell({ row: 2, col: 0, column, cell, source }));
+
+    it("shows the full value fetched for the cell", async () => {
+      mocked.fetchCell.mockResolvedValue("the complete value");
+      render(<Inspector />);
+      selectLong();
+      expect(await screen.findByText("the complete value")).toBeInTheDocument();
+      expect(mocked.fetchCell).toHaveBeenCalledWith("s1", 9, 2, 0);
+      expect(screen.queryByText(/preview only/)).not.toBeInTheDocument();
+    });
+
+    it("decodes the fetched value", async () => {
+      mocked.fetchCell.mockResolvedValue('{"first":1}');
+      render(<Inspector />);
+      selectLong();
+      expect(await screen.findByRole("tree", { name: "JSON value" })).toBeInTheDocument();
+    });
+
+    it("shows why the value is missing when the fetch fails", async () => {
+      mocked.fetchCell.mockRejectedValue({ kind: "invalid_input", message: "Result expired; run the query again", code: null });
+      render(<Inspector />);
+      selectLong();
+      expect(await screen.findByText("Result expired; run the query again")).toBeInTheDocument();
+    });
   });
 
   it("shows the decoded tree and switches to the raw text on Raw", async () => {

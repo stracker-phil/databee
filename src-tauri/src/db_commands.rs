@@ -120,8 +120,12 @@ pub async fn run_query(
     let database = session.db.current_database();
     let started = Instant::now();
     let response = session
-        .db
-        .execute(&sql, settings.row_limit as usize, settings.query_timeout())
+        .execute(
+            &sql,
+            settings.row_limit as usize,
+            settings.cell_limit(),
+            settings.query_timeout(),
+        )
         .await;
     let elapsed_ms = match &response {
         Ok(r) => {
@@ -142,10 +146,18 @@ pub async fn run_query(
         truncated: false,
         executed_at: chrono::Utc::now(),
         elapsed_ms,
-        error: response.as_ref().err().map(ToString::to_string),
+        error: history_error(&response),
     };
     state.history.record(entry);
     response
+}
+
+/// The error of the run, or of the statement that stopped a partly run script.
+fn history_error(response: &AppResult<ExecuteResponse>) -> Option<String> {
+    match response {
+        Ok(r) => r.failure.as_ref().map(|f| f.error.to_string()),
+        Err(e) => Some(e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -173,13 +185,27 @@ pub async fn browse_table(
     session_id: String,
     request: BrowseRequest,
 ) -> AppResult<BrowsePage> {
-    let timeout = state.settings.get().query_timeout();
+    let settings = state.settings.get();
+    let session = state.sessions.get(&session_id)?;
+    session
+        .browse(&request, settings.cell_limit(), settings.query_timeout())
+        .await
+}
+
+/// The full text of a cell that a result set sent as a `LongText` preview.
+#[tauri::command]
+pub fn fetch_cell(
+    state: State<'_, AppState>,
+    session_id: String,
+    result_id: u64,
+    row: usize,
+    col: usize,
+) -> AppResult<String> {
     state
         .sessions
         .get(&session_id)?
-        .db
-        .browse(&request, timeout)
-        .await
+        .cells
+        .get(result_id, row, col)
 }
 
 #[tauri::command]
@@ -234,7 +260,7 @@ mod tests {
 
     use super::*;
     use crate::connection::ConnectionSpec;
-    use crate::db::{FakeDatabase, ResultSet};
+    use crate::db::{Cell, FakeDatabase, FullText, ResultSet, StatementFailure};
     use crate::error::ErrorKind;
     use crate::secrets::MemoryStore;
     use crate::session::Session;
@@ -326,5 +352,60 @@ mod tests {
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].sql, "SELECT 1");
         assert_eq!(history[0].error.as_deref(), Some(err.to_string().as_str()));
+    }
+
+    fn response(failure: Option<StatementFailure>) -> ExecuteResponse {
+        ExecuteResponse {
+            results: Vec::new(),
+            elapsed_ms: 0,
+            database: None,
+            failure,
+        }
+    }
+
+    #[test]
+    fn history_records_the_error_of_the_statement_that_stopped_a_script() {
+        let failed = response(Some(StatementFailure {
+            index: 1,
+            error: AppError::InvalidInput("bad statement".into()),
+        }));
+
+        assert_eq!(history_error(&Ok(failed)).as_deref(), Some("bad statement"));
+        assert_eq!(history_error(&Ok(response(None))), None);
+        assert_eq!(
+            history_error(&Err(AppError::Cancelled)).as_deref(),
+            Some("Query was cancelled")
+        );
+    }
+
+    #[tokio::test]
+    async fn full_text_of_a_long_cell_is_kept_in_the_session_cache_under_the_result_id() {
+        let long = ResultSet {
+            rows: vec![vec![Cell::LongText {
+                len: 9,
+                preview: "abc".into(),
+            }]],
+            full_texts: vec![FullText {
+                row: 0,
+                col: 0,
+                text: "abcdefghi".into(),
+            }],
+            ..ResultSet::default()
+        };
+        let (_dir, state) = state_with(FakeDatabase::new().on("SELECT long", long));
+
+        let response = run_query(&state, "s1", "SELECT long".into(), false)
+            .await
+            .unwrap();
+
+        let result = &response.results[0];
+        assert_ne!(result.id, 0);
+        assert!(result.full_texts.is_empty());
+        let session = state.sessions.get("s1").unwrap();
+        assert_eq!(session.cells.get(result.id, 0, 0).unwrap(), "abcdefghi");
+        assert_eq!(
+            session.cells.get(result.id + 1, 0, 0).unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
     }
 }

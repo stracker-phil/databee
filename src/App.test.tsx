@@ -71,7 +71,7 @@ describe("App", () => {
     vi.clearAllMocks();
     const bottom = settings({ inspectorDock: "bottom" });
     mocked.getSettings.mockResolvedValueOnce(bottom);
-    mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 3, database: "db" });
+    mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 3, database: "db", failure: null });
     connectedStore({ tabs: [queryTab({ sql: "SELECT ID, post_title FROM wp_posts" })], settings: bottom });
     const { container } = render(<App />);
     await screen.findByText("wp_options");
@@ -100,7 +100,7 @@ describe("App", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 3, database: "db" });
+      mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 3, database: "db", failure: null });
     });
 
     describe("with Settings open", () => {

@@ -275,6 +275,7 @@ function DataView({ tab }: { tab: TableTabState }) {
         <ResultsGrid
           columns={page.result.columns}
           rows={page.result.rows}
+          source={{ sessionId: tab.sessionId, resultId: page.result.id }}
           rowOffset={browse.offset}
           sort={{ column: browse.orderBy, descending: browse.descending }}
           onSort={sortBy}

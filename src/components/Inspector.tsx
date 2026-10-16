@@ -1,19 +1,18 @@
 import { useEffect, useState } from "react";
 import { Copy, X } from "lucide-react";
-import { api, type DecodedValue } from "../api";
+import { api, toAppError, type Cell, type DecodedValue } from "../api";
+import { fullCellText } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import { cellText, formatCount } from "../lib/format";
 import { useStore, type SelectedCell } from "../state/store";
 import { ValueTree } from "./ValueTree";
-
-const MAX_DECODE_CHARS = 2_000_000;
 
 /** PHP-serialized or JSON text decoded by the backend; null for plain values. */
 function useDecoded(text: string | null): DecodedValue | null {
   const [decoded, setDecoded] = useState<DecodedValue | null>(null);
   useEffect(() => {
     setDecoded(null);
-    if (!text || text.length > MAX_DECODE_CHARS) return;
+    if (!text) return;
     let alive = true;
     api.decodeValue(text).then(
       (d) => alive && setDecoded(d),
@@ -33,13 +32,35 @@ export function Inspector() {
   return <CellInspector key={`${selected.tabId}:${selected.row}:${selected.col}`} selected={selected} />;
 }
 
+type FullText = { text: string } | { error: string };
+
+/** The cell's text; a `longText` cell is fetched in full first (null while loading). */
+function useFullText({ cell, source, row, col }: SelectedCell): FullText | null {
+  const [fetched, setFetched] = useState<{ cell: Cell; full: FullText } | null>(null);
+  useEffect(() => {
+    if (cell.t !== "longText") return;
+    let alive = true;
+    fullCellText(cell, source, row, col).then(
+      (text) => alive && setFetched({ cell, full: { text } }),
+      (e) => alive && setFetched({ cell, full: { error: toAppError(e).message } }),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [cell, source, row, col]);
+  if (cell.t !== "longText") return { text: cellText(cell) };
+  return fetched?.cell === cell ? fetched.full : null;
+}
+
 function CellInspector({ selected }: { selected: SelectedCell }) {
   const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
   const { selectCell } = useStore.getState();
   const [showRaw, setShowRaw] = useState(false);
   const { cell, column } = selected;
-  const raw = cellText(cell);
-  const decoded = useDecoded(cell.t === "text" || cell.t === "json" ? raw : null);
+  const full = useFullText(selected);
+  const raw = full && "text" in full ? full.text : null;
+  const decodable = cell.t === "text" || cell.t === "json" || cell.t === "longText";
+  const decoded = useDecoded(decodable ? raw : null);
 
   return (
     <aside className="inspector" aria-label="Value inspector" data-stage="inspector">
@@ -56,7 +77,8 @@ function CellInspector({ selected }: { selected: SelectedCell }) {
         <button
           className="icon-btn"
           aria-label="Copy value"
-          onClick={() => void copyText(raw, "value")}
+          disabled={raw === null}
+          onClick={() => raw !== null && void copyText(raw, "value")}
         >
           <Copy size="1rem" />
         </button>
@@ -69,12 +91,16 @@ function CellInspector({ selected }: { selected: SelectedCell }) {
           <span className="muted" style={{ fontStyle: "italic" }}>{nullLabel}</span>
         ) : cell.t === "bytes" ? (
           <pre>{`${cell.v.len} bytes\n${raw}`}</pre>
+        ) : full === null ? (
+          <span className="muted">Loading the full value…</span>
+        ) : "error" in full ? (
+          <span className="muted">{full.error}</span>
         ) : decoded && !showRaw ? (
           <ValueTree value={decoded} />
         ) : (
           <>
-            <pre>{raw}</pre>
-            <div className="hint" style={{ marginTop: 8 }}>{formatCount(raw.length)} characters</div>
+            <pre>{full.text}</pre>
+            <div className="hint" style={{ marginTop: 8 }}>{formatCount(full.text.length)} characters</div>
           </>
         )}
       </div>

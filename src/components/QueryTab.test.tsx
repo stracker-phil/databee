@@ -12,6 +12,7 @@ import { Dialogs } from "./Dialogs";
 import { handleKeydown, installCommands } from "../commands";
 import { QueryTab } from "./QueryTab";
 import { StatusBar } from "./StatusBar";
+import { Toasts } from "./Toasts";
 
 const mocked = vi.mocked(api, true);
 
@@ -34,7 +35,7 @@ describe("QueryTab", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("runs the query and shows rows with the NULL label", async () => {
-    mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 12, database: "db" });
+    mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 12, database: "db", failure: null });
     renderTab("SELECT ID, post_title FROM wp_posts");
     await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
 
@@ -51,7 +52,7 @@ describe("QueryTab", () => {
     installCommands();
     window.addEventListener("keydown", handleKeydown, true);
     try {
-      mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 1, database: "db" });
+      mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 1, database: "db", failure: null });
       const { container } = renderTab("SELECT 1;\nSELECT 2;");
       const content = container.querySelector(".cm-content") as HTMLElement;
       EditorView.findFromDOM(content)!.dispatch({ selection: { anchor: "SELECT 1;\nSELECT 2;".length } });
@@ -64,7 +65,7 @@ describe("QueryTab", () => {
 
   it("explains when the row limit cut the result", async () => {
     const rs = resultSet({ totalRows: 5000, truncated: true });
-    mocked.execute.mockResolvedValue({ results: [rs], elapsedMs: 3, database: "db" });
+    mocked.execute.mockResolvedValue({ results: [rs], elapsedMs: 3, database: "db", failure: null });
     renderTab("SELECT * FROM wp_postmeta");
     await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
     expect(await screen.findByText("Showing 2 of 5,000 rows (row limit 1,000)")).toBeInTheDocument();
@@ -79,9 +80,55 @@ describe("QueryTab", () => {
     expect(alert).toHaveTextContent("Table 'db.nope' doesn't exist");
   });
 
+  describe("when a statement of a script fails", () => {
+    const failure = { index: 1, error: { kind: "database" as const, message: "Table 'db.missing' doesn't exist", code: "1146", account: null } };
+    const partial = { results: [resultSet()], elapsedMs: 3, database: "db", failure };
+
+    it("shows the earlier result and names the failed statement", async () => {
+      mocked.execute.mockResolvedValue(partial);
+      renderTab("SELECT 1; SELECT * FROM missing; SELECT 3");
+      await userEvent.click(screen.getByRole("button", { name: /^Run all$/ }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Statement 2 failed");
+      expect(alert).toHaveTextContent("Error 1146");
+      expect(alert).toHaveTextContent("Table 'db.missing' doesn't exist");
+      expect(within(screen.getByRole("grid")).getByText("Hello world")).toBeInTheDocument();
+    });
+
+    it("hides the failure while the next run is in progress", async () => {
+      mocked.execute.mockResolvedValueOnce(partial).mockReturnValueOnce(new Promise(() => {}));
+      renderTab("SELECT 1; SELECT * FROM missing");
+      await userEvent.click(screen.getByRole("button", { name: /^Run all$/ }));
+      await screen.findByText("Statement 2 failed");
+
+      await userEvent.click(screen.getByRole("button", { name: /^Run all$/ }));
+      expect(await screen.findByText("Running…")).toBeInTheDocument();
+      expect(screen.queryByText("Statement 2 failed")).not.toBeInTheDocument();
+    });
+  });
+
+  it("toasts that the session was reset when a timeout reconnected it", async () => {
+    mocked.execute.mockRejectedValue({ kind: "timeout", message: "Query timed out", code: null, sessionReset: true });
+    renderTab("SELECT SLEEP(100)");
+    render(<Toasts />);
+    await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
+    expect(await screen.findByText("Session reset after timeout: temporary tables, variables and open transactions are gone")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Query timed out");
+  });
+
+  it("does not toast a session reset for a plain timeout", async () => {
+    mocked.execute.mockRejectedValue({ kind: "timeout", message: "Query timed out", code: null });
+    renderTab("SELECT SLEEP(100)");
+    render(<Toasts />);
+    await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Query timed out");
+    expect(screen.queryByText(/Session reset/)).not.toBeInTheDocument();
+  });
+
   it("reports affected rows for writes", async () => {
     const rs = resultSet({ returnsRows: false, columns: [], rows: [], affectedRows: 3, lastInsertId: 42 });
-    mocked.execute.mockResolvedValue({ results: [rs], elapsedMs: 1, database: "db" });
+    mocked.execute.mockResolvedValue({ results: [rs], elapsedMs: 1, database: "db", failure: null });
     renderTab("INSERT INTO t VALUES (1),(2),(3)");
     await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
     expect(await screen.findByText("3 rows affected")).toBeInTheDocument();
@@ -91,7 +138,7 @@ describe("QueryTab", () => {
   it("asks for confirmation before destructive statements and reruns when confirmed", async () => {
     mocked.execute
       .mockRejectedValueOnce({ kind: "confirmation_required", message: "This statement needs confirmation: TRUNCATE removes all rows of the table", code: null })
-      .mockResolvedValueOnce({ results: [resultSet({ returnsRows: false, columns: [], rows: [] })], elapsedMs: 1, database: "db" });
+      .mockResolvedValueOnce({ results: [resultSet({ returnsRows: false, columns: [], rows: [] })], elapsedMs: 1, database: "db", failure: null });
     renderTab("TRUNCATE wp_actionscheduler_logs");
     await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
 
@@ -159,7 +206,7 @@ describe("QueryTab", () => {
 
   describe("completion schema", () => {
     it("is requested again after a DDL statement reloads the table list", async () => {
-      mocked.execute.mockResolvedValue({ results: [resultSet({ returnsRows: false, columns: [], rows: [] })], elapsedMs: 1, database: "db" });
+      mocked.execute.mockResolvedValue({ results: [resultSet({ returnsRows: false, columns: [], rows: [] })], elapsedMs: 1, database: "db", failure: null });
       mocked.listTables.mockResolvedValue([table("wp_new")]);
       renderTab("CREATE TABLE wp_new (id INT)");
       await waitFor(() => expect(mocked.completionSchema).toHaveBeenCalled());

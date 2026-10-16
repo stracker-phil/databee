@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::connection::{ConnectionSpec, Secret};
+use crate::db::cell_cache::CellCache;
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
-use crate::db::{self, Database};
+use crate::db::{self, BrowsePage, BrowseRequest, CellLimit, Database, ExecuteResponse};
 use crate::error::{AppError, AppResult};
 use crate::lock::{MutexExt, RwLockExt};
 use crate::secrets::{PasswordSource, SecretStore, resolve_password};
@@ -22,6 +23,8 @@ pub struct Session {
     pub ext: Extensions,
     /// Writes planned for review, and the undo history (ADR 0012).
     pub plans: Plans,
+    /// Full values of the long text cells sent as previews, for `fetch_cell`.
+    pub cells: CellCache,
     /// Applied writes per database; caches compare it to notice that their data changed.
     writes: Mutex<HashMap<String, u64>>,
 }
@@ -94,6 +97,7 @@ impl Session {
             db,
             ext: Extensions::default(),
             plans: Plans::default(),
+            cells: CellCache::default(),
             writes: Mutex::default(),
         }
     }
@@ -113,6 +117,33 @@ impl Session {
             .get(database)
             .copied()
             .unwrap_or(0)
+    }
+
+    /// Runs a user query; long text cells in the results are kept for `fetch_cell`.
+    pub async fn execute(
+        &self,
+        sql: &str,
+        row_limit: usize,
+        cell_limit: CellLimit,
+        timeout: Duration,
+    ) -> AppResult<ExecuteResponse> {
+        let mut response = self.db.execute(sql, row_limit, cell_limit, timeout).await?;
+        for result in &mut response.results {
+            self.cells.keep(result);
+        }
+        Ok(response)
+    }
+
+    /// Reads a page of a table; its long text cells are kept for `fetch_cell`.
+    pub async fn browse(
+        &self,
+        request: &BrowseRequest,
+        cell_limit: CellLimit,
+        timeout: Duration,
+    ) -> AppResult<BrowsePage> {
+        let mut page = self.db.browse(request, cell_limit, timeout).await?;
+        self.cells.keep(&mut page.result);
+        Ok(page)
     }
 
     /// Applies pending plans in one transaction. On failure the plans stay pending for a retry.

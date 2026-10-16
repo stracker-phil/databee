@@ -8,24 +8,26 @@ in `src-tauri/src/db_commands.rs`.
 | File | Responsibility |
 |---|---|
 | `db/mod.rs` | The `Database` trait every caller uses (`&dyn Database`, [ADR 0011](adr/0011-database-trait-object.md)), the `open` factory (one arm per engine) and re-exports |
-| `db/types.rs` | Shared DTOs (`ResultSet`, `ExecuteResponse`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage`, `AppliedFilter`, `FilterKind`) |
+| `db/types.rs` | Shared DTOs (`ResultSet` with its `id` and the IPC-skipped `full_texts`, `ExecuteResponse` with its `failure: StatementFailure`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage`, `AppliedFilter`, `FilterKind`) |
 | `db/dialect.rs` | `Dialect { backslash_escapes }` (`Dialect::MYSQL`, or `from_sql_mode`): `quote_ident` (backticks), `sql_string`, `like` / `like_contains`, `table_ref`, `system_schemas`; `escape_like` |
 | `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
 | `db/mysql/mod.rs` | `MySqlSession`, the only driver, implementing `Database`: the metadata pool, the editor connection, `connect_options`. It owns all I/O. |
-| `db/mysql/editor.rs` | `EditorConnection`: the editor connection's lock, thread id, current database, `reconnect` and `kill` |
+| `db/mysql/editor.rs` | `EditorConnection`: the editor connection's lock, thread id, current database, `reconnect`, `kill_query` and `kill_connection` |
+| `db/mysql/kill.rs` | `Killer`: `KILL QUERY <id>` or `KILL <id>` on a one-off connection, for any server thread id; `spawn_kill_query` fires one in the background |
 | `db/mysql/introspect.rs` | `databases`, `tables`, `structure`, `completion` over the pool; rows are read by column alias |
-| `db/mysql/script.rs` | `run_script` (text protocol, one `ResultSet` per statement, column recovery), `scalar`, `thread_id`, `read_dialect` |
-| `db/mysql/timeouts.rs` | `connect_within`, `query_within`, and `pooled_within`, which closes a timed-out pool connection |
+| `db/mysql/script.rs` | `run_script` (text protocol, one `ResultSet` per statement, column recovery; returns a `ScriptOutcome` of the finished results and the failing statement, `into_results` for callers that need all of it), `scalar`, `thread_id`, `read_dialect` |
+| `db/mysql/timeouts.rs` | `connect_within`, `query_within`, and `pooled_within`, which reads the pool connection's thread id, kills its query on timeout and closes the connection |
 | `db/fake.rs` | `FakeDatabase`, an in-memory `Database` for unit tests (canned results matched by SQL fragment, recorded `apply` batches); behind `cfg(any(test, feature = "test-util"))` |
 | `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements`, `words`, `is_terminated`, `is_blank` |
 | `db/classify.rs` | What a statement is: `verb_index` (the deciding word, also after a `WITH` clause) and `returns_rows` |
 | `db/safety.rs` | `destructive_reason` (which statements need confirmation) |
-| `db/cell.rs` | `Cell`: decodes text-protocol bytes by column `Family`, computed once per result set from the type name |
+| `db/cell.rs` | `Cell`: decodes text-protocol bytes by column `Family`, computed once per result set from the type name; `CellLimit` cuts long text to a preview |
+| `db/cell_cache.rs` | `CellCache`: numbers result sets per session and keeps the full text of their `LongText` cells for `fetch_cell` |
 | `db/id_filter.rs` | Primary-key shorthand in the WHERE field: `3229`, `3229, 3227`, `3220-3229` |
 
 Outside `db/`:
 - `connection.rs` has `ConnectionSpec` and `Secret`.
-- `session.rs` has `Session { id, spec, db: Box<dyn Database>, ext }` and the `Sessions` map. `ext` is a
+- `session.rs` has `Session { id, spec, db: Box<dyn Database>, ext, plans, cells }` and the `Sessions` map. `ext` is a
   type-keyed `Extensions` map where a module keeps per-session data that dies with the session
   ([ADR 0013](adr/0013-session-extensions.md)); the WordPress lens keeps its `WpCache` there.
 - `error.rs` maps `sqlx::Error` to `AppError`.
@@ -61,10 +63,14 @@ Other details:
     stored on `MySqlSession` at connect time; `browse`, `fetch` and `apply` use `pooled_within`). A timeout is a
     `timeout` error.
   - When an `execute` times out, DataBee kills the whole editor connection, reconnects it, and returns
-    `timeout`. A timed-out `browse`, `fetch` or `apply` closes its pool connection instead of returning it.
+    `timeout` with `sessionReset: true` when the reconnect succeeded: temporary tables, `@vars` and open
+    transactions are gone, and the UI says so in a toast. A timed-out `browse`, `fetch` or `apply` spawns
+    `KILL QUERY <thread id>` for its pool connection (`pooled_within` reads `CONNECTION_ID()` after acquiring
+    it; closing the socket alone leaves the query running on the server) and closes the connection instead
+    of returning it. The kill runs in the background and is not awaited; a failure is logged.
     If `apply` times out after `COMMIT` was sent, it returns a `database` error saying the outcome is
     unknown.
-- **Cancel** runs `KILL QUERY <editor thread id>` on a one-off connection, so it works while the running query
+- **Cancel** runs `KILL QUERY <editor thread id>` on a one-off connection (`Killer`), so it works while the running query
   holds the editor lock and every pool connection is busy. `cancel_query` returns the `KILL` error, if any. A
   cancelled query on MariaDB returns error 1317, which maps to `cancelled`. MySQL instead reports an
   interrupted `SLEEP` as a result row.
@@ -103,8 +109,19 @@ Other details:
    (`sqlx::raw_sql(..).fetch_many`). Each statement result closes one `ResultSet`, with columns, rows,
    `affectedRows` and `lastInsertId`.
 4. **Row limit.** Rows beyond `row_limit` are counted but not decoded: `totalRows` stays exact and
-   `truncated` is set. The query editor has no paging.
-5. **Empty results.** `run_script` collects the stream into one `ResultSet` per statement (`ScriptResults`).
+   `truncated` is set. The query editor has no paging. Text longer than `maxCellChars` arrives as a
+   preview (see [Cell decoding](#cell-decoding)).
+5. **Partial results.** The server stops a script at its first failing statement. `run_script` keeps the
+   result sets of the statements before it and reports the failure as `StatementFailure { index, error }`
+   (`index` is 0-based; rows the failing statement had already streamed are dropped). The convention:
+   - the first statement failed (nothing finished): `execute` returns the error as `Err`, as for a single
+     statement;
+   - a later statement failed: `execute` returns `Ok` with the earlier `results` and `failure` set. The UI
+     shows those results under an `ErrorPanel` titled "Statement N failed" (N = `index + 1`).
+
+   A connection error in either case still rebuilds the editor connection. `browse` and `fetch` need the
+   whole result and turn any failure into an `Err` (`ScriptOutcome::into_results`).
+6. **Empty results.** `run_script` collects the stream into one `ResultSet` per statement (`ScriptResults`).
    The text protocol sends no column metadata for an empty result. When the lexer's split matches the result
    count, a result without columns and with 0 affected rows whose statement `classify::returns_rows` accepts
    is `PREPARE`d to recover its column names (`needs_column_recovery`). A failed `PREPARE` is logged at debug
@@ -114,10 +131,12 @@ Other details:
 
    The split has known limits: backslash is always an escape (`NO_BACKSLASH_ESCAPES` is ignored), `"` always
    quotes a string (`ANSI_QUOTES` is ignored), and there is no `DELIMITER` support. Where they apply, the
-   count can differ and the column recovery is skipped.
-6. **History.** A history entry is written for every run, including failed ones.
-7. **Current database.** `SELECT DATABASE()` refreshes the session's current database after every run,
-   inside the same timeout. The UI follows a `USE` this way. If this probe fails, the results are still
+   count can differ and the column recovery is skipped. After a failing statement the counts never match,
+   so a partial result keeps the columns the server sent.
+7. **History.** A history entry is written for every run, including failed ones. It stores the whole script;
+   its `error` is the run's error or, for a partial result, the failing statement's error.
+8. **Current database.** `SELECT DATABASE()` refreshes the session's current database after every run,
+   also after a failed statement (a `USE` before it still counts), inside the same timeout. The UI follows a `USE` this way. If this probe fails, the results are still
    returned and the current database stays as it was.
 
 ### Cell decoding
@@ -136,9 +155,22 @@ Other details:
 
 Full binary values never cross IPC. Only the first 16 bytes are sent, as hex.
 
+**Long text.** `decode(family, raw, limit)` takes a `CellLimit` (the `maxCellChars` setting,
+`Settings::cell_limit`, passed into `Database::execute` and `Database::browse`). A `text` value longer than
+the limit becomes `longText { len, preview }`: `len` counts characters, `preview` is the first `limit`
+characters (cut at a character boundary). `number`, `temporal` and `json` cells are never cut. `fetch` uses
+`CellLimit::NONE`, because its callers (WordPress reads, change planning) need every value in full.
+
+The full text does not cross IPC with the result. `run_script` records it in `ResultSet.full_texts` (skipped by
+serde and ts-rs), and `Session::execute` / `Session::browse` (behind the `execute` and `browse_table` commands)
+pass each result set to the session's `CellCache::keep`, which gives it an `id` (a per-session counter) and moves the full texts into the cache.
+`fetch_cell(sessionId, resultId, row, col)` returns one of them. The cache holds at most 64 MiB of text; above
+that it drops whole result sets, oldest first (never the one being filled). A dropped or unknown cell returns
+`invalid_input` "Result expired; run the query again". The cache dies with the session.
+
 ## Browsing tables
 
-`browse_table` → `Database::browse` → `browse_sql`:
+`browse_table` → `Session::browse` → `Database::browse` → `browse_sql`:
 
 ```sql
 SELECT * FROM `db`.`t` [WHERE (<columns>) AND (<filter>\n)] [ORDER BY `col` ASC|DESC] LIMIT <limit + 1> OFFSET <offset>

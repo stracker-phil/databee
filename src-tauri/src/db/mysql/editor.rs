@@ -5,10 +5,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use sqlx::ConnectOptions;
 use sqlx::mysql::{MySqlConnectOptions, MySqlConnection};
-use sqlx::{AssertSqlSafe, ConnectOptions};
 use tokio::sync::{MappedMutexGuard, MutexGuard};
 
+use super::kill::{KillTarget, Killer};
 use super::script::{read_dialect, scalar, thread_id};
 use super::timeouts::connect_within;
 use super::with_database;
@@ -21,10 +22,11 @@ pub struct EditorConnection {
     conn: tokio::sync::Mutex<Option<MySqlConnection>>,
     /// Server thread of `conn`, the target of `KILL`.
     thread_id: AtomicU64,
-    /// Without a database, so `KILL` still connects after the current one was dropped.
+    /// Without a database; reconnects add the current one.
     options: MySqlConnectOptions,
     database: Mutex<Option<String>>,
     connect_timeout: Duration,
+    killer: Killer,
 }
 
 /// What a fresh editor connection reports about its server.
@@ -38,6 +40,7 @@ impl EditorConnection {
         options: MySqlConnectOptions,
         database: Option<String>,
         connect_timeout: Duration,
+        killer: Killer,
     ) -> AppResult<(Self, ServerInfo)> {
         let mut conn = with_database(&options, database.as_deref())
             .connect()
@@ -48,6 +51,7 @@ impl EditorConnection {
         let editor = Self {
             conn: tokio::sync::Mutex::new(Some(conn)),
             thread_id: AtomicU64::new(thread_id),
+            killer,
             options,
             database: Mutex::new(database),
             connect_timeout,
@@ -87,23 +91,13 @@ impl EditorConnection {
 
     /// Interrupts the running statement; the connection stays usable.
     pub async fn kill_query(&self) -> AppResult<()> {
-        self.kill("KILL QUERY").await
+        let thread_id = self.thread_id.load(Ordering::SeqCst);
+        self.killer.kill(KillTarget::Query, thread_id).await
     }
 
     pub async fn kill_connection(&self) -> AppResult<()> {
-        self.kill("KILL").await
-    }
-
-    /// Runs on a one-off connection, so it works even while every pool connection is busy.
-    async fn kill(&self, command: &str) -> AppResult<()> {
-        let sql = format!("{command} {}", self.thread_id.load(Ordering::SeqCst));
-        connect_within(self.connect_timeout, async {
-            let mut conn = self.options.connect().await?;
-            sqlx::raw_sql(AssertSqlSafe(sql)).execute(&mut conn).await?;
-            sqlx::Connection::close(conn).await?;
-            Ok(())
-        })
-        .await
+        let thread_id = self.thread_id.load(Ordering::SeqCst);
+        self.killer.kill(KillTarget::Connection, thread_id).await
     }
 
     /// Replaces the connection with a fresh one in the current database and returns its

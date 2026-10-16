@@ -247,6 +247,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::execute,
             db_commands::cancel_query,
             db_commands::browse_table,
+            db_commands::fetch_cell,
             db_commands::table_select_sql,
             wp_commands::wp_detect,
             wp_commands::wp_options,

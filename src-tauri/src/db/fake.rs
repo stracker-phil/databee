@@ -9,8 +9,8 @@ use async_trait::async_trait;
 
 use super::browse::browse_sql;
 use super::{
-    BrowsePage, BrowseRequest, Database, DatabaseInfo, Dialect, ExecuteResponse, ResultSet,
-    TableInfo, TableStructure,
+    BrowsePage, BrowseRequest, CellLimit, Database, DatabaseInfo, Dialect, ExecuteResponse,
+    ResultSet, TableInfo, TableStructure,
 };
 use crate::error::{AppError, AppResult};
 use crate::lock::MutexExt;
@@ -103,12 +103,14 @@ impl Database for FakeDatabase {
         &self,
         sql: &str,
         _row_limit: usize,
+        _cell_limit: CellLimit,
         _timeout: Duration,
     ) -> AppResult<ExecuteResponse> {
         Ok(ExecuteResponse {
             results: vec![self.respond(sql)?],
             elapsed_ms: 0,
             database: self.current_database(),
+            failure: None,
         })
     }
 
@@ -149,7 +151,12 @@ impl Database for FakeDatabase {
         Ok(BTreeMap::new())
     }
 
-    async fn browse(&self, req: &BrowseRequest, _timeout: Duration) -> AppResult<BrowsePage> {
+    async fn browse(
+        &self,
+        req: &BrowseRequest,
+        _cell_limit: CellLimit,
+        _timeout: Duration,
+    ) -> AppResult<BrowsePage> {
         let (sql, filter) = browse_sql(req, Dialect::MYSQL)?;
         Ok(BrowsePage {
             result: self.respond(&sql)?,
@@ -193,9 +200,10 @@ impl Database for Arc<FakeDatabase> {
         &self,
         sql: &str,
         row_limit: usize,
+        cell_limit: CellLimit,
         timeout: Duration,
     ) -> AppResult<ExecuteResponse> {
-        (**self).execute(sql, row_limit, timeout).await
+        (**self).execute(sql, row_limit, cell_limit, timeout).await
     }
 
     async fn cancel(&self) -> AppResult<()> {
@@ -222,8 +230,13 @@ impl Database for Arc<FakeDatabase> {
         (**self).completion(database).await
     }
 
-    async fn browse(&self, req: &BrowseRequest, timeout: Duration) -> AppResult<BrowsePage> {
-        (**self).browse(req, timeout).await
+    async fn browse(
+        &self,
+        req: &BrowseRequest,
+        cell_limit: CellLimit,
+        timeout: Duration,
+    ) -> AppResult<BrowsePage> {
+        (**self).browse(req, cell_limit, timeout).await
     }
 
     async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet> {
@@ -307,7 +320,9 @@ mod tests {
         let db = FakeDatabase::new().on("t", rows_affected(0));
 
         db.fetch("SELECT 1 FROM t", TIMEOUT).await.unwrap();
-        db.execute("SELECT 2 FROM t", 10, TIMEOUT).await.unwrap();
+        db.execute("SELECT 2 FROM t", 10, CellLimit::NONE, TIMEOUT)
+            .await
+            .unwrap();
 
         assert_eq!(db.queries(), vec!["SELECT 1 FROM t", "SELECT 2 FROM t"]);
     }

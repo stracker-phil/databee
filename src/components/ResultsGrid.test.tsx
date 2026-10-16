@@ -1,11 +1,16 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
+import { api, type Cell } from "../api";
+import { useStore } from "../state/store";
 import { connectedStore, num, resultSet, settings, text } from "../test/fixtures";
 import { ResultsGrid } from "./ResultsGrid";
+
+const mocked = vi.mocked(api, true);
+const source = { sessionId: "s1", resultId: 1 };
 
 describe("ResultsGrid editing", () => {
   beforeEach(() => connectedStore());
@@ -13,7 +18,7 @@ describe("ResultsGrid editing", () => {
   it("edits a cell on double-click and reports the new value on Enter", async () => {
     const rs = resultSet();
     const onEditCell = vi.fn();
-    render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={onEditCell} />);
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} onEditCell={onEditCell} />);
     await userEvent.dblClick(screen.getByText("Hello world"));
     const input = screen.getByLabelText("Edit cell");
     await userEvent.clear(input);
@@ -25,7 +30,7 @@ describe("ResultsGrid editing", () => {
     const rs = resultSet();
     const onEditCell = vi.fn();
     const remove = vi.fn();
-    render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={onEditCell} rowActions={(row) => [{ label: `Delete row ${row}`, action: remove }]} />);
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} onEditCell={onEditCell} rowActions={(row) => [{ label: `Delete row ${row}`, action: remove }]} />);
     fireEvent.contextMenu(screen.getByText("Hello world"));
     await userEvent.click(screen.getByRole("menuitem", { name: "Set to NULL" }));
     expect(onEditCell).toHaveBeenCalledWith(0, 1, null);
@@ -36,14 +41,14 @@ describe("ResultsGrid editing", () => {
 
   it("is read-only without an edit handler", async () => {
     const rs = resultSet();
-    render(<ResultsGrid columns={rs.columns} rows={rs.rows} />);
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} />);
     await userEvent.dblClick(screen.getByText("Hello world"));
     expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
   });
 
   it("opens the editor for a text cell on Enter", async () => {
     const rs = resultSet();
-    render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={vi.fn()} />);
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} onEditCell={vi.fn()} />);
     await userEvent.click(screen.getByText("Hello world"));
     await userEvent.keyboard("{Enter}");
     expect(screen.getByLabelText("Edit cell")).toHaveValue("Hello world");
@@ -54,24 +59,66 @@ describe("ResultsGrid editing", () => {
     const bytes = () => screen.getByText(/0xcafe/);
 
     it("opens no editor on double-click", async () => {
-      render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={vi.fn()} />);
+      render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} onEditCell={vi.fn()} />);
       await userEvent.dblClick(bytes());
       expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
     });
 
     it("opens no editor on Enter", async () => {
-      render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={vi.fn()} />);
+      render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} onEditCell={vi.fn()} />);
       await userEvent.click(bytes());
       await userEvent.keyboard("{Enter}");
       expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
     });
 
     it("disables Edit value in the context menu", () => {
-      render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={vi.fn()} />);
+      render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} onEditCell={vi.fn()} />);
       fireEvent.contextMenu(bytes());
       expect(screen.getByRole("menuitem", { name: "Edit value" })).toBeDisabled();
     });
   });
+});
+
+describe("ResultsGrid long text cells", () => {
+  const columns = resultSet().columns;
+  const rows = [[num("1"), { t: "longText", v: { len: 12000, preview: "start of it" } } as Cell]];
+  const source = { sessionId: "s1", resultId: 4 };
+  const full = "full value ".repeat(1000);
+  const preview = () => screen.getByText(/start of it/);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore();
+    mocked.fetchCell.mockResolvedValue(full);
+  });
+
+  it("shows the preview with the character count", () => {
+    render(<ResultsGrid columns={columns} rows={rows} source={source} />);
+    expect(preview()).toHaveTextContent("start of it… (12,000 chars)");
+  });
+
+  it("copies the full value fetched for the cell", async () => {
+    render(<ResultsGrid columns={columns} rows={rows} source={source} />);
+    await userEvent.click(preview());
+    await userEvent.keyboard("{Meta>}c{/Meta}");
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(full));
+    expect(mocked.fetchCell).toHaveBeenCalledWith("s1", 4, 0, 1);
+  });
+
+  it("pre-fills the editor with the full value, not the preview", async () => {
+    render(<ResultsGrid columns={columns} rows={rows} source={source} onEditCell={vi.fn()} />);
+    await userEvent.dblClick(preview());
+    expect(await screen.findByLabelText("Edit cell")).toHaveValue(full);
+  });
+
+  it("opens no editor and toasts when the full value cannot be fetched", async () => {
+    mocked.fetchCell.mockRejectedValue({ kind: "invalid_input", message: "Result expired; run the query again", code: null });
+    render(<ResultsGrid columns={columns} rows={rows} source={source} onEditCell={vi.fn()} />);
+    await userEvent.dblClick(preview());
+    await waitFor(() => expect(useStore.getState().toasts.at(-1)?.message).toContain("Result expired; run the query again"));
+    expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
+  });
+
 });
 
 describe("ResultsGrid keyboard selection", () => {
@@ -91,7 +138,7 @@ describe("ResultsGrid keyboard selection", () => {
     { key: "Home", from: "b1", to: "a1" },
     { key: "End", from: "a1", to: "b1" },
   ])("$key moves the selection from $from to $to", async ({ key, from, to }) => {
-    render(<ResultsGrid columns={columns} rows={rows} />);
+    render(<ResultsGrid columns={columns} rows={rows} source={source} />);
     await userEvent.click(screen.getByText(from));
     await userEvent.keyboard(`{${key}}`);
     expect(screen.getByText(to)).toHaveClass("selected");
@@ -100,11 +147,11 @@ describe("ResultsGrid keyboard selection", () => {
 
   it("drops the selection when the rows are replaced by fewer rows", async () => {
     const many = Array.from({ length: 8 }, (_, i) => [text(`a${i}`), text(`b${i}`)]);
-    const { rerender } = render(<ResultsGrid columns={columns} rows={many} />);
+    const { rerender } = render(<ResultsGrid columns={columns} rows={many} source={source} />);
     await userEvent.click(screen.getByText("b5"));
     expect(screen.getByText("b5")).toHaveClass("selected");
 
-    rerender(<ResultsGrid columns={columns} rows={many.slice(0, 2)} />);
+    rerender(<ResultsGrid columns={columns} rows={many.slice(0, 2)} source={source} />);
     await userEvent.keyboard("{Meta>}c{/Meta}");
     await userEvent.keyboard("{ArrowDown}{ArrowRight}");
 
@@ -124,13 +171,13 @@ describe("ResultsGrid sizing", () => {
     const rows = Array.from({ length: 5 }, (_, i) => [num(String(i)), text(`row ${i}`)]);
     const rs = resultSet({ rows });
     connectedStore({ settings: settings({ dataFontSize: 12 }) });
-    const { unmount } = render(<ResultsGrid columns={rs.columns} rows={rs.rows} />);
+    const { unmount } = render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} />);
     const small = rowTops();
     expect(small.slice(1).map((top, i) => top - small[i])).toEqual([26, 26, 26, 26]);
     unmount();
 
     connectedStore({ settings: settings({ dataFontSize: 18 }) });
-    render(<ResultsGrid columns={rs.columns} rows={rs.rows} />);
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} />);
     const large = rowTops();
     const step = large[1] - large[0];
     expect(step).toBe(39);

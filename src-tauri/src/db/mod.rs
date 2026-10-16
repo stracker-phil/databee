@@ -1,5 +1,6 @@
 pub mod browse;
 pub mod cell;
+pub mod cell_cache;
 pub mod changes;
 pub mod classify;
 pub mod dialect;
@@ -17,7 +18,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-pub use cell::Cell;
+pub use cell::{Cell, CellLimit};
 pub use dialect::{Dialect, escape_like};
 #[cfg(any(test, feature = "test-util"))]
 pub use fake::FakeDatabase;
@@ -35,11 +36,14 @@ pub trait Database: Send + Sync {
     fn current_database(&self) -> Option<String>;
     /// Ends a running query and closes every connection; later calls fail.
     async fn close(&self);
-    /// Runs a user script on the editor connection, which keeps session state.
+    /// Runs a user script on the editor connection, which keeps session state. A failure
+    /// after the first statement comes back as `ExecuteResponse::failure` with the earlier
+    /// results; a failure of the first statement is an `Err`.
     async fn execute(
         &self,
         sql: &str,
         row_limit: usize,
+        cell_limit: CellLimit,
         timeout: Duration,
     ) -> AppResult<ExecuteResponse>;
     async fn cancel(&self) -> AppResult<()>;
@@ -49,8 +53,13 @@ pub trait Database: Send + Sync {
     async fn structure(&self, database: &str, table: &str) -> AppResult<TableStructure>;
     /// Table → column names, for editor autocompletion.
     async fn completion(&self, database: &str) -> AppResult<BTreeMap<String, Vec<String>>>;
-    async fn browse(&self, req: &BrowseRequest, timeout: Duration) -> AppResult<BrowsePage>;
-    /// One read-only query off the editor connection.
+    async fn browse(
+        &self,
+        req: &BrowseRequest,
+        cell_limit: CellLimit,
+        timeout: Duration,
+    ) -> AppResult<BrowsePage>;
+    /// One read-only query off the editor connection; text cells come back in full.
     async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet>;
     /// Runs the statements in one transaction; returns the affected row count.
     async fn apply(&self, statements: &[String], timeout: Duration) -> AppResult<u64>;

@@ -42,11 +42,12 @@ export function createApiMock(): typeof realApi {
     describeTable: vi.fn().mockResolvedValue({ columns: [], indexes: [], primaryKey: [], ddl: null } satisfies TableStructure),
     completionSchema: vi.fn().mockResolvedValue({}),
     useDatabase: vi.fn().mockResolvedValue(undefined),
-    execute: vi.fn().mockResolvedValue({ results: [], elapsedMs: 0, database: "db" }),
+    execute: vi.fn().mockResolvedValue({ results: [], elapsedMs: 0, database: "db", failure: null }),
     cancelQuery: vi.fn().mockResolvedValue(undefined),
+    fetchCell: vi.fn().mockResolvedValue(""),
     browseTable: vi.fn(
       async (_s, req): Promise<BrowsePage> => ({
-        result: { columns: [], rows: [], totalRows: 0, truncated: false, affectedRows: 0, lastInsertId: null, returnsRows: true },
+        result: { id: 1, columns: [], rows: [], totalRows: 0, truncated: false, affectedRows: 0, lastInsertId: null, returnsRows: true },
         hasMore: false,
         limit: req.limit,
         filter: null,

@@ -1,5 +1,6 @@
 mod editor;
 mod introspect;
+mod kill;
 mod script;
 mod timeouts;
 
@@ -12,12 +13,13 @@ use sqlx::AssertSqlSafe;
 use sqlx::mysql::{MySqlConnectOptions, MySqlConnection, MySqlPool, MySqlPoolOptions};
 
 use self::editor::EditorConnection;
-use self::script::{run_script, scalar};
+use self::kill::Killer;
+use self::script::{ScriptOutcome, run_script, scalar};
 use self::timeouts::{connect_within, pooled_within, query_within};
 use super::browse::{browse_sql, columns_filter, page_limit};
 use super::{
-    BrowsePage, BrowseRequest, Database, DatabaseInfo, Dialect, ExecuteResponse, ResultSet,
-    TableInfo, TableStructure,
+    BrowsePage, BrowseRequest, CellLimit, Database, DatabaseInfo, Dialect, ExecuteResponse,
+    ResultSet, TableInfo, TableStructure,
 };
 use crate::connection::{ConnectionSpec, Secret};
 use crate::error::{AppError, AppResult};
@@ -34,6 +36,8 @@ pub struct MySqlSession {
     query_timeout: Duration,
     meta: MySqlPool,
     editor: EditorConnection,
+    /// Kills timed-out queries on pool connections.
+    killer: Killer,
     /// From a fresh connection's `sql_mode`, the server default the metadata pool shares.
     backslash_escapes: AtomicBool,
     server_version: String,
@@ -85,32 +89,47 @@ impl MySqlSession {
                     .await?,
             )
         };
-        let editor =
-            EditorConnection::connect(editor_options, spec.database.clone(), connect_timeout);
+        let killer = Killer::new(options.clone(), connect_timeout);
+        let editor = EditorConnection::connect(
+            editor_options,
+            spec.database.clone(),
+            connect_timeout,
+            killer.clone(),
+        );
         let (meta, (editor, server)) =
             connect_within(connect_timeout, async { tokio::try_join!(pool, editor) }).await?;
         Ok(Self {
             query_timeout,
             meta,
             editor,
+            killer,
             backslash_escapes: AtomicBool::new(server.dialect.backslash_escapes),
             server_version: server.version,
         })
     }
 
     /// After a timeout the abandoned connection is mid-result: kill it server-side and start
-    /// fresh. A lost connection is rebuilt; other errors leave it as is.
-    async fn recover_editor(&self, error: &AppError, conn: &mut MySqlConnection) {
+    /// fresh. A lost connection is rebuilt; other errors leave it as is. A timeout comes back
+    /// telling the UI whether the editor session (temporary tables, variables, open
+    /// transactions) went with the replaced connection.
+    async fn recover_editor(&self, error: AppError, conn: &mut MySqlConnection) -> AppError {
         match error {
-            AppError::Timeout(_) => {
+            AppError::Timeout { limit, .. } => {
                 if let Err(e) = self.editor.kill_connection().await {
                     log::warn!("Could not kill the timed-out editor thread: {e}");
                 }
+                AppError::Timeout {
+                    limit,
+                    session_reset: self.reconnect_or_log(conn).await,
+                }
             }
-            AppError::Connection(_) => log::warn!("Editor connection lost, reconnecting"),
-            _ => return,
+            AppError::Connection(_) => {
+                log::warn!("Editor connection lost, reconnecting");
+                self.reconnect_or_log(conn).await;
+                error
+            }
+            other => other,
         }
-        self.reconnect_or_log(conn).await;
     }
 
     /// The script already ran (and may have committed), so a failed probe must not lose it.
@@ -129,12 +148,17 @@ impl MySqlSession {
 
     /// Reconnects after a failed run. The run's own error is what the user sees; a failed
     /// reconnect only leaves the broken connection for the next run to replace.
-    async fn reconnect_or_log(&self, conn: &mut MySqlConnection) {
+    async fn reconnect_or_log(&self, conn: &mut MySqlConnection) -> bool {
         match self.editor.reconnect(conn).await {
-            Ok(dialect) => self
-                .backslash_escapes
-                .store(dialect.backslash_escapes, Ordering::SeqCst),
-            Err(e) => log::warn!("Could not reconnect the editor connection: {e}"),
+            Ok(dialect) => {
+                self.backslash_escapes
+                    .store(dialect.backslash_escapes, Ordering::SeqCst);
+                true
+            }
+            Err(e) => {
+                log::warn!("Could not reconnect the editor connection: {e}");
+                false
+            }
         }
     }
 }
@@ -164,27 +188,37 @@ impl Database for MySqlSession {
         &self,
         sql: &str,
         row_limit: usize,
+        cell_limit: CellLimit,
         timeout: Duration,
     ) -> AppResult<ExecuteResponse> {
         let started = Instant::now();
         let mut conn = self.editor.lock().await?;
         let run = async {
-            let results = run_script(&mut conn, sql, row_limit).await?;
+            let outcome = run_script(&mut conn, sql, row_limit, cell_limit).await;
+            // Also after a failure: a `USE` before the failing statement still counts.
             let database = scalar(&mut conn, "SELECT DATABASE()").await;
-            Ok((results, database))
+            Ok((outcome, database))
         };
-        let (results, probe) = match query_within(timeout, run).await {
+        let (ScriptOutcome { results, failure }, probe) = match query_within(timeout, run).await {
             Ok(outcome) => outcome,
-            Err(e) => {
-                self.recover_editor(&e, &mut conn).await;
-                return Err(e);
-            }
+            Err(e) => return Err(self.recover_editor(e, &mut conn).await),
         };
         let database = self.remember_database(probe);
+        let failure = match failure {
+            Some(mut failure) => {
+                failure.error = self.recover_editor(failure.error, &mut conn).await;
+                Some(failure)
+            }
+            None => None,
+        };
+        if let Some(failure) = failure.as_ref().filter(|f| f.index == 0) {
+            return Err(failure.error.clone());
+        }
         Ok(ExecuteResponse {
             results,
             elapsed_ms: started.elapsed().as_millis() as u64,
             database,
+            failure,
         })
     }
 
@@ -230,11 +264,18 @@ impl Database for MySqlSession {
         introspect::completion(&self.meta, self.query_timeout, database).await
     }
 
-    async fn browse(&self, req: &BrowseRequest, timeout: Duration) -> AppResult<BrowsePage> {
+    async fn browse(
+        &self,
+        req: &BrowseRequest,
+        cell_limit: CellLimit,
+        timeout: Duration,
+    ) -> AppResult<BrowsePage> {
         let (sql, filter) = browse_sql(req, self.dialect())?;
         let limit = page_limit(req);
-        let results = pooled_within(timeout, &self.meta, async |conn| {
-            run_script(conn, &sql, limit as usize).await
+        let results = pooled_within(timeout, &self.meta, &self.killer, async |conn| {
+            run_script(conn, &sql, limit as usize, cell_limit)
+                .await
+                .into_results()
         })
         .await?;
         let mut result = results.into_iter().last().unwrap_or_default();
@@ -254,7 +295,7 @@ impl Database for MySqlSession {
     async fn apply(&self, statements: &[String], timeout: Duration) -> AppResult<u64> {
         use sqlx::Connection;
         let commit_sent = AtomicBool::new(false);
-        let applied = pooled_within(timeout, &self.meta, async |conn| {
+        let applied = pooled_within(timeout, &self.meta, &self.killer, async |conn| {
             let mut tx = conn.begin().await?;
             let mut affected = 0;
             for sql in statements {
@@ -269,7 +310,7 @@ impl Database for MySqlSession {
         })
         .await;
         match applied {
-            Err(AppError::Timeout(_)) if commit_sent.load(Ordering::SeqCst) => {
+            Err(AppError::Timeout { .. }) if commit_sent.load(Ordering::SeqCst) => {
                 Err(AppError::Database {
                     message:
                         "Timed out after COMMIT was sent; whether the changes were saved is unknown"
@@ -283,8 +324,10 @@ impl Database for MySqlSession {
 
     /// Runs a read query on the metadata pool and returns its (last) result set.
     async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet> {
-        let results = pooled_within(timeout, &self.meta, async |conn| {
-            run_script(conn, sql, MAX_FETCH_ROWS).await
+        let results = pooled_within(timeout, &self.meta, &self.killer, async |conn| {
+            run_script(conn, sql, MAX_FETCH_ROWS, CellLimit::NONE)
+                .await
+                .into_results()
         })
         .await?;
         Ok(results.into_iter().last().unwrap_or_default())

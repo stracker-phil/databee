@@ -24,13 +24,15 @@ export function compactCount(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
-/** Full text of a cell, as copied to the clipboard. NULL copies as an empty string. */
+/** Text of a cell for the clipboard. NULL is empty; bytes and long text give only their preview. */
 export function cellText(cell: Cell): string {
   switch (cell.t) {
     case "null":
       return "";
     case "bytes":
       return `0x${cell.v.hexPreview}${cell.v.len > cell.v.hexPreview.length / 2 ? "…" : ""}`;
+    case "longText":
+      return `${cell.v.preview}…`;
     default:
       return cell.v;
   }
@@ -40,8 +42,13 @@ export function cellText(cell: Cell): string {
 export function cellDisplay(cell: Cell, nullLabel: string, maxChars: number): string {
   if (cell.t === "null") return nullLabel;
   if (cell.t === "bytes") return `${cellText(cell)} (${formatBytes(cell.v.len)})`;
-  const oneLine = cell.v.replace(/\s*\n\s*/g, " ⏎ ");
-  return oneLine.length > maxChars ? `${oneLine.slice(0, maxChars)}…` : oneLine;
+  if (cell.t === "longText") return `${oneLine(cellText(cell))} (${formatCount(cell.v.len)} chars)`;
+  const line = oneLine(cell.v);
+  return line.length > maxChars ? `${line.slice(0, maxChars)}…` : line;
+}
+
+function oneLine(text: string): string {
+  return text.replace(/\s*\n\s*/g, " ⏎ ");
 }
 
 export function rowsToTsv(columns: string[], rows: Cell[][]): string {

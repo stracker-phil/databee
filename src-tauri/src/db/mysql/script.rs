@@ -4,10 +4,10 @@ use futures_util::TryStreamExt;
 use sqlx::mysql::{MySqlColumn, MySqlConnection, MySqlRow};
 use sqlx::{AssertSqlSafe, Column, Either, Executor, Row, SqlSafeStr, Statement, TypeInfo};
 
-use crate::db::cell::{self, Family};
+use crate::db::cell::{self, CellLimit, Family};
 use crate::db::classify::returns_rows;
 use crate::db::lexer::split_statements;
-use crate::db::{Cell, ColumnMeta, Dialect, ResultSet};
+use crate::db::{Cell, ColumnMeta, Dialect, FullText, ResultSet, StatementFailure};
 use crate::error::{AppError, AppResult};
 
 pub async fn thread_id(conn: &mut MySqlConnection) -> AppResult<u64> {
@@ -44,15 +44,52 @@ fn columns_of(row: &MySqlRow) -> Vec<ColumnMeta> {
     row.columns().iter().map(column_meta).collect()
 }
 
-fn decode_row(row: &MySqlRow, families: &[Family]) -> AppResult<Vec<Cell>> {
-    families
-        .iter()
-        .enumerate()
-        .map(|(i, family)| {
-            let raw: Option<&[u8]> = row.try_get_unchecked(i)?;
-            Ok(cell::decode(*family, raw))
-        })
-        .collect()
+/// A decoded row plus the full text of each of its `LongText` cells, by column.
+struct DecodedRow {
+    cells: Vec<Cell>,
+    full_texts: Vec<(usize, String)>,
+}
+
+impl From<Vec<Cell>> for DecodedRow {
+    fn from(cells: Vec<Cell>) -> Self {
+        Self {
+            cells,
+            full_texts: Vec::new(),
+        }
+    }
+}
+
+fn decode_row(row: &MySqlRow, families: &[Family], limit: CellLimit) -> AppResult<DecodedRow> {
+    let mut decoded = DecodedRow::from(Vec::with_capacity(families.len()));
+    for (i, family) in families.iter().enumerate() {
+        let raw: Option<&[u8]> = row.try_get_unchecked(i)?;
+        let cell = cell::decode(*family, raw, limit);
+        // Only text that decoded as UTF-8 becomes `LongText`, so the raw bytes are that text.
+        if let (Cell::LongText { .. }, Some(raw)) = (&cell, raw) {
+            decoded
+                .full_texts
+                .push((i, String::from_utf8_lossy(raw).into_owned()));
+        }
+        decoded.cells.push(cell);
+    }
+    Ok(decoded)
+}
+
+/// What a script produced: every finished result set, and the statement that stopped it.
+#[derive(Debug)]
+pub struct ScriptOutcome {
+    pub results: Vec<ResultSet>,
+    pub failure: Option<StatementFailure>,
+}
+
+impl ScriptOutcome {
+    /// For callers that need the whole script to succeed.
+    pub fn into_results(self) -> AppResult<Vec<ResultSet>> {
+        match self.failure {
+            Some(failure) => Err(failure.error),
+            None => Ok(self.results),
+        }
+    }
 }
 
 /// Builds one `ResultSet` per statement from the script's stream of rows and completions.
@@ -79,7 +116,7 @@ impl ScriptResults {
     fn row(
         &mut self,
         columns: impl FnOnce() -> Vec<ColumnMeta>,
-        decode: impl FnOnce(&[Family]) -> AppResult<Vec<Cell>>,
+        decode: impl FnOnce(&[Family]) -> AppResult<DecodedRow>,
     ) -> AppResult<()> {
         let current = &mut self.current;
         if current.columns.is_empty() {
@@ -93,7 +130,16 @@ impl ScriptResults {
         current.returns_rows = true;
         current.total_rows += 1;
         if current.rows.len() < self.row_limit {
-            current.rows.push(decode(&self.families)?);
+            let decoded = decode(&self.families)?;
+            let row = current.rows.len();
+            current
+                .full_texts
+                .extend(decoded.full_texts.into_iter().map(|(col, text)| FullText {
+                    row,
+                    col,
+                    text,
+                }));
+            current.rows.push(decoded.cells);
         } else {
             current.truncated = true;
         }
@@ -114,6 +160,15 @@ impl ScriptResults {
         }
         self.finished
     }
+
+    /// The statement after the finished ones failed; its partial rows are dropped.
+    fn fail(self, error: AppError) -> ScriptOutcome {
+        let index = self.finished.len();
+        ScriptOutcome {
+            results: self.finished,
+            failure: Some(StatementFailure { index, error }),
+        }
+    }
 }
 
 /// An empty result carries no column info over the text protocol, so a row statement that
@@ -123,27 +178,43 @@ fn needs_column_recovery(statement: &str, affected_rows: u64, has_columns: bool)
 }
 
 /// Runs a (possibly multi-statement) script over the text protocol. Each statement yields
-/// one `ResultSet`; rows beyond `row_limit` are counted but not kept.
+/// one `ResultSet`; rows beyond `row_limit` are counted but not kept, text beyond
+/// `cell_limit` arrives as a preview. The server stops at the first failing statement.
 pub async fn run_script(
     conn: &mut MySqlConnection,
     sql: &str,
     row_limit: usize,
-) -> AppResult<Vec<ResultSet>> {
+    cell_limit: CellLimit,
+) -> ScriptOutcome {
     let mut assembled = ScriptResults::new(row_limit);
-    {
-        let mut stream = sqlx::raw_sql(AssertSqlSafe(sql.to_owned())).fetch_many(&mut *conn);
-        while let Some(item) = stream.try_next().await? {
-            match item {
-                Either::Right(row) => {
-                    assembled.row(|| columns_of(&row), |families| decode_row(&row, families))?
-                }
-                Either::Left(done) => assembled.done(done.rows_affected(), done.last_insert_id()),
-            }
-        }
+    if let Err(error) = stream_results(conn, sql, cell_limit, &mut assembled).await {
+        return assembled.fail(error);
     }
     let mut results = assembled.finish();
     recover_empty_columns(conn, sql, &mut results).await;
-    Ok(results)
+    ScriptOutcome {
+        results,
+        failure: None,
+    }
+}
+
+async fn stream_results(
+    conn: &mut MySqlConnection,
+    sql: &str,
+    cell_limit: CellLimit,
+    assembled: &mut ScriptResults,
+) -> AppResult<()> {
+    let mut stream = sqlx::raw_sql(AssertSqlSafe(sql.to_owned())).fetch_many(&mut *conn);
+    while let Some(item) = stream.try_next().await? {
+        match item {
+            Either::Right(row) => assembled.row(
+                || columns_of(&row),
+                |families| decode_row(&row, families, cell_limit),
+            )?,
+            Either::Left(done) => assembled.done(done.rows_affected(), done.last_insert_id()),
+        }
+    }
+    Ok(())
 }
 
 async fn recover_empty_columns(conn: &mut MySqlConnection, sql: &str, results: &mut [ResultSet]) {
@@ -178,7 +249,7 @@ mod tests {
 
     fn push_row(results: &mut ScriptResults, value: &str) {
         results
-            .row(column, |_| Ok(vec![Cell::Number(value.into())]))
+            .row(column, |_| Ok(vec![Cell::Number(value.into())].into()))
             .unwrap();
     }
 
@@ -255,6 +326,110 @@ mod tests {
             .row(column, |_| Err(AppError::InvalidInput("bad cell".into())))
             .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn failure_after_two_result_sets_keeps_both_and_reports_the_failing_index() {
+        let mut results = ScriptResults::new(10);
+        push_row(&mut results, "1");
+        results.done(0, 0);
+        results.done(3, 0);
+
+        let outcome = results.fail(AppError::InvalidInput("boom".into()));
+
+        assert_eq!(outcome.results.len(), 2);
+        assert_eq!(outcome.results[0].rows, [vec![Cell::Number("1".into())]]);
+        assert_eq!(outcome.results[1].affected_rows, 3);
+        assert_eq!(
+            outcome.failure,
+            Some(StatementFailure {
+                index: 2,
+                error: AppError::InvalidInput("boom".into())
+            })
+        );
+    }
+
+    #[test]
+    fn failing_statement_drops_its_partial_rows() {
+        let mut results = ScriptResults::new(10);
+        push_row(&mut results, "1");
+        results.done(0, 0);
+        push_row(&mut results, "2");
+
+        let outcome = results.fail(AppError::InvalidInput("boom".into()));
+
+        assert_eq!(outcome.results.len(), 1);
+        assert_eq!(outcome.results[0].rows, [vec![Cell::Number("1".into())]]);
+        assert_eq!(outcome.failure.map(|f| f.index), Some(1));
+    }
+
+    #[test]
+    fn failure_of_the_first_statement_has_index_zero_and_no_results() {
+        let outcome = ScriptResults::new(10).fail(AppError::InvalidInput("boom".into()));
+
+        assert!(outcome.results.is_empty());
+        assert_eq!(outcome.failure.map(|f| f.index), Some(0));
+    }
+
+    #[test]
+    fn into_results_turns_a_failure_into_its_error() {
+        let mut results = ScriptResults::new(10);
+        results.done(1, 0);
+        let err = results
+            .fail(AppError::InvalidInput("boom".into()))
+            .into_results()
+            .unwrap_err();
+
+        assert_eq!(err, AppError::InvalidInput("boom".into()));
+    }
+
+    #[test]
+    fn into_results_returns_the_sets_of_a_script_without_failure() {
+        let mut results = ScriptResults::new(10);
+        results.done(1, 0);
+        let outcome = ScriptOutcome {
+            results: results.finish(),
+            failure: None,
+        };
+
+        assert_eq!(outcome.into_results().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn long_text_cells_hand_their_full_text_to_the_result_set() {
+        let mut results = ScriptResults::new(10);
+        for text in ["a", "b"] {
+            results
+                .row(column, |_| {
+                    Ok(DecodedRow {
+                        cells: vec![Cell::LongText {
+                            len: 9,
+                            preview: text.into(),
+                        }],
+                        full_texts: vec![(0, format!("{text}-full"))],
+                    })
+                })
+                .unwrap();
+        }
+        results.done(0, 0);
+
+        let sets = results.finish();
+
+        assert_eq!(
+            sets[0].full_texts,
+            [
+                FullText {
+                    row: 0,
+                    col: 0,
+                    text: "a-full".into()
+                },
+                FullText {
+                    row: 1,
+                    col: 0,
+                    text: "b-full".into()
+                }
+            ]
+        );
     }
 
     #[test]

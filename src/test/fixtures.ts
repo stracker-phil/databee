@@ -14,6 +14,7 @@ export const num = (v: string): Cell => ({ t: "number", v });
 
 export function resultSet(patch: Partial<ResultSet> = {}): ResultSet {
   return {
+    id: 1,
     columns: [
       { name: "ID", typeName: "BIGINT UNSIGNED" },
       { name: "post_title", typeName: "TEXT" },

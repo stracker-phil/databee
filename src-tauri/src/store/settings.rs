@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use ts_rs::TS;
 
 use super::json_store::JsonStore;
+use crate::db::CellLimit;
 use crate::error::AppResult;
 
 /// Falls back to the default for a value the field doesn't know (a typo, a retired variant),
@@ -98,6 +99,7 @@ pub struct Settings {
     pub query_timeout_secs: u32,
     pub confirm_destructive: bool,
     pub null_label: String,
+    /// Longer text cells cross IPC as a preview; `fetch_cell` returns the full value.
     pub max_cell_chars: u32,
     pub connect_timeout_secs: u32,
     pub default_port: u16,
@@ -136,6 +138,10 @@ impl Default for Settings {
 impl Settings {
     pub fn query_timeout(&self) -> Duration {
         Duration::from_secs(self.query_timeout_secs.into())
+    }
+
+    pub fn cell_limit(&self) -> CellLimit {
+        CellLimit(self.max_cell_chars as usize)
     }
 
     pub fn connect_timeout(&self) -> Duration {

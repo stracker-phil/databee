@@ -7,7 +7,7 @@ pub type AppResult<T> = Result<T, AppError>;
 
 /// Every error that crosses the Tauri boundary. Serialized as
 /// `{ kind, message, code: string | null, account: string | null }` so the UI can decide how to present it.
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum AppError {
     #[error("{message}")]
     Database {
@@ -23,8 +23,12 @@ pub enum AppError {
     /// The server rejected a connect; `account` lets the UI prompt for that Keychain entry.
     #[error("{message}")]
     LoginFailed { account: String, message: String },
-    #[error("Query timed out after {}", human_duration(*.0))]
-    Timeout(Duration),
+    #[error("Query timed out after {}", human_duration(*limit))]
+    Timeout {
+        limit: Duration,
+        /// The editor connection was replaced, so its session state is gone.
+        session_reset: bool,
+    },
     #[error("Query was cancelled")]
     Cancelled,
     #[error("This statement needs confirmation: {0}")]
@@ -40,6 +44,13 @@ pub enum AppError {
 }
 
 impl AppError {
+    pub fn timeout(limit: Duration) -> Self {
+        AppError::Timeout {
+            limit,
+            session_reset: false,
+        }
+    }
+
     pub fn kind(&self) -> ErrorKind {
         match self {
             AppError::Database { .. } => ErrorKind::Database,
@@ -47,7 +58,7 @@ impl AppError {
             AppError::AuthFailed(_) => ErrorKind::AuthFailed,
             AppError::PasswordRequired(_) => ErrorKind::PasswordRequired,
             AppError::LoginFailed { .. } => ErrorKind::AuthFailed,
-            AppError::Timeout(_) => ErrorKind::Timeout,
+            AppError::Timeout { .. } => ErrorKind::Timeout,
             AppError::Cancelled => ErrorKind::Cancelled,
             AppError::ConfirmationRequired(_) => ErrorKind::ConfirmationRequired,
             AppError::SessionNotFound(_) => ErrorKind::SessionNotFound,
@@ -71,6 +82,17 @@ impl AppError {
         }
     }
 
+    /// Session state (temporary tables, variables, transactions) was lost on the way.
+    pub fn session_reset(&self) -> bool {
+        matches!(
+            self,
+            AppError::Timeout {
+                session_reset: true,
+                ..
+            }
+        )
+    }
+
     /// The Keychain account a login error is about.
     pub fn account(&self) -> Option<&str> {
         match self {
@@ -90,6 +112,7 @@ impl Serialize for AppError {
             code: self.code(),
             account: self.account(),
             reason: self.reason(),
+            session_reset: self.session_reset(),
         }
         .serialize(serializer)
     }
@@ -107,6 +130,10 @@ struct ErrorJson<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     reason: Option<&'a str>,
+    /// The editor connection was replaced after a timeout (`timeout` only).
+    #[serde(rename = "sessionReset", skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    session_reset: bool,
 }
 
 #[derive(Serialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,7 +263,7 @@ mod tests {
 
     #[test]
     fn non_database_errors_have_null_code() {
-        let value = serde_json::to_value(AppError::Timeout(Duration::from_secs(30))).unwrap();
+        let value = serde_json::to_value(AppError::timeout(Duration::from_secs(30))).unwrap();
         assert_eq!(value["kind"], "timeout");
         assert_eq!(value["message"], "Query timed out after 30 s");
         assert!(value["code"].is_null());
@@ -266,13 +293,50 @@ mod tests {
             AppError::Cancelled,
             AppError::InvalidInput("bad".into()),
             AppError::Connection("down".into()),
-            AppError::Timeout(Duration::from_secs(1)),
+            AppError::timeout(Duration::from_secs(1)),
         ] {
             let value = serde_json::to_value(&err).unwrap();
 
             assert_eq!(err.reason(), None, "{err:?}");
             assert!(
                 !value.as_object().unwrap().contains_key("reason"),
+                "{err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn timeout_after_a_session_reset_serializes_session_reset() {
+        let err = AppError::Timeout {
+            limit: Duration::from_secs(30),
+            session_reset: true,
+        };
+
+        assert!(err.session_reset());
+        assert_eq!(
+            serde_json::to_value(&err).unwrap(),
+            json!({
+                "kind": "timeout",
+                "message": "Query timed out after 30 s",
+                "code": null,
+                "account": null,
+                "sessionReset": true
+            })
+        );
+    }
+
+    #[test]
+    fn errors_without_a_session_reset_have_no_session_reset_key() {
+        for err in [
+            AppError::timeout(Duration::from_secs(30)),
+            AppError::Cancelled,
+            AppError::Connection("down".into()),
+        ] {
+            let value = serde_json::to_value(&err).unwrap();
+
+            assert!(!err.session_reset(), "{err:?}");
+            assert!(
+                !value.as_object().unwrap().contains_key("sessionReset"),
                 "{err:?}"
             );
         }
@@ -383,7 +447,7 @@ mod tests {
             (Duration::from_millis(500), "Query timed out after 500 ms"),
             (Duration::from_secs(30), "Query timed out after 30 s"),
         ] {
-            assert_eq!(AppError::Timeout(duration).to_string(), message);
+            assert_eq!(AppError::timeout(duration).to_string(), message);
         }
     }
 }

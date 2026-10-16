@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::Cell;
+use crate::error::AppError;
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -15,6 +16,8 @@ pub struct ColumnMeta {
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ResultSet {
+    /// Names the result for `fetch_cell`; unique per session once the session keeps it, 0 before.
+    pub id: u64,
     pub columns: Vec<ColumnMeta>,
     pub rows: Vec<Vec<Cell>>,
     /// Rows the server sent; larger than `rows.len()` when the row limit cut the result.
@@ -23,6 +26,28 @@ pub struct ResultSet {
     pub affected_rows: u64,
     pub last_insert_id: Option<u64>,
     pub returns_rows: bool,
+    /// Full values of the `LongText` cells, which the session moves into its cell cache.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub full_texts: Vec<FullText>,
+}
+
+/// The full value of a `LongText` cell at `row`, `col` of its result set.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FullText {
+    pub row: usize,
+    pub col: usize,
+    pub text: String,
+}
+
+/// The statement of a script that failed, after the earlier ones succeeded.
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct StatementFailure {
+    /// 0-based position of the statement in the script.
+    pub index: usize,
+    #[ts(type = "AppError")]
+    pub error: AppError,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
@@ -33,6 +58,8 @@ pub struct ExecuteResponse {
     pub elapsed_ms: u64,
     /// Current database after execution (`USE` may have changed it).
     pub database: Option<String>,
+    /// Set when a statement after the first failed; `results` holds the ones before it.
+    pub failure: Option<StatementFailure>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]

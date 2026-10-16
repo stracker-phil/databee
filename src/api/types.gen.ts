@@ -34,7 +34,11 @@ export type AppError = { kind: ErrorKind, message: string, code: string | null, 
 /**
  * Why a statement needs confirmation (`confirmation_required` only).
  */
-reason?: string, };
+reason?: string, 
+/**
+ * The editor connection was replaced after a timeout (`timeout` only).
+ */
+sessionReset?: boolean, };
 
 /**
  * What the page learns about an applied batch.
@@ -85,7 +89,11 @@ export type BrowserSection = { list: WpList, label: string, count: number, break
  * A value as the UI displays it. Numbers stay strings so 64-bit IDs and decimals
  * survive the trip to JavaScript unchanged.
  */
-export type Cell = { "t": "null" } | { "t": "number", "v": string } | { "t": "text", "v": string } | { "t": "temporal", "v": string } | { "t": "json", "v": string } | { "t": "bytes", "v": { len: number, hexPreview: string, } };
+export type Cell = { "t": "null" } | { "t": "number", "v": string } | { "t": "text", "v": string } | { "t": "temporal", "v": string } | { "t": "json", "v": string } | { "t": "bytes", "v": { len: number, hexPreview: string, } } | { "t": "longText", "v": { 
+/**
+ * In characters.
+ */
+len: number, preview: string, } };
 
 export type ChangeRequest = { "type": "setCell", database: string, table: string, keyColumn: string, key: string, column: string, value: string | null, } | { "type": "deleteRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "duplicateRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "insertRow", database: string, table: string, values: Array<[string, string | null]>, };
 
@@ -174,7 +182,11 @@ export type ExecuteResponse = { results: Array<ResultSet>, elapsedMs: number,
 /**
  * Current database after execution (`USE` may have changed it).
  */
-database: string | null, };
+database: string | null, 
+/**
+ * Set when a statement after the first failed; `results` holds the ones before it.
+ */
+failure: StatementFailure | null, };
 
 export type Facet = { value: string, label: string, count: number, };
 
@@ -375,7 +387,11 @@ target: ChipTarget | null, };
 
 export type RelationInfo = { name: string, label: string, entity: string, count: number, };
 
-export type ResultSet = { columns: Array<ColumnMeta>, rows: Array<Array<Cell>>, 
+export type ResultSet = { 
+/**
+ * Names the result for `fetch_cell`; unique per session once the session keeps it, 0 before.
+ */
+id: number, columns: Array<ColumnMeta>, rows: Array<Array<Cell>>, 
 /**
  * Rows the server sent; larger than `rows.len()` when the row limit cut the result.
  */
@@ -411,7 +427,11 @@ uiFontSize: number,
 /**
  * Data: grid cells, document values, trees, SQL editor. Reads the old `editorFontSize` key.
  */
-dataFontSize: number, density: Density, rowLimit: number, queryTimeoutSecs: number, confirmDestructive: boolean, nullLabel: string, maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSystemSchemas: boolean, logLevel: LogLevel, 
+dataFontSize: number, density: Density, rowLimit: number, queryTimeoutSecs: number, confirmDestructive: boolean, nullLabel: string, 
+/**
+ * Longer text cells cross IPC as a preview; `fetch_cell` returns the full value.
+ */
+maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSystemSchemas: boolean, logLevel: LogLevel, 
 /**
  * Loads avatars from Gravatar (sends hashed emails to gravatar.com).
  */
@@ -461,6 +481,15 @@ optionPattern: string | null,
  * Scheduled actions referencing the entity ID.
  */
 includeActions: boolean, };
+
+/**
+ * The statement of a script that failed, after the earlier ones succeeded.
+ */
+export type StatementFailure = { 
+/**
+ * 0-based position of the statement in the script.
+ */
+index: number, error: AppError, };
 
 export type TableEntity = { entity: string, idColumn: string, };
 

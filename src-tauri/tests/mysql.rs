@@ -6,11 +6,13 @@ use std::time::Duration;
 
 use databee_lib::connection::{ConnectionSpec, Secret};
 use databee_lib::db::Database;
+use databee_lib::db::cell_cache::CellCache;
 use databee_lib::db::mysql::MySqlSession;
-use databee_lib::db::{BrowseRequest, Cell};
+use databee_lib::db::{BrowseRequest, Cell, CellLimit};
 use databee_lib::error::ErrorKind;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
+const CELLS: CellLimit = CellLimit::NONE;
 
 fn servers() -> Vec<(String, u16)> {
     std::env::var("DATABEE_TEST_SERVERS")
@@ -145,7 +147,7 @@ async fn describes_columns_indexes_and_ddl() {
 async fn decodes_each_type_family() {
     for s in sessions().await {
         let r = s
-            .execute("SELECT * FROM types ORDER BY id", 100, TIMEOUT)
+            .execute("SELECT * FROM types ORDER BY id", 100, CELLS, TIMEOUT)
             .await
             .unwrap();
         let row = &r.results[0].rows[0];
@@ -174,7 +176,7 @@ async fn decodes_each_type_family() {
 async fn row_limit_truncates_but_counts_all_rows() {
     let sql = "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 50) SELECT i FROM n";
     for s in sessions().await {
-        let set = &s.execute(sql, 10, TIMEOUT).await.unwrap().results[0];
+        let set = &s.execute(sql, 10, CELLS, TIMEOUT).await.unwrap().results[0];
         assert_eq!(set.rows.len(), 10);
         assert_eq!(set.total_rows, 50);
         assert!(set.truncated);
@@ -189,6 +191,7 @@ async fn empty_result_still_has_columns() {
             .execute(
                 "SELECT ID, post_title FROM wp_posts WHERE 1 = 0",
                 10,
+                CELLS,
                 TIMEOUT,
             )
             .await
@@ -212,6 +215,7 @@ async fn scripts_return_one_result_per_statement_with_affected_rows() {
                  UPDATE tmp SET v = 0 WHERE v > 1; \
                  SELECT COUNT(*) FROM tmp",
                 10,
+                CELLS,
                 TIMEOUT,
             )
             .await
@@ -230,7 +234,7 @@ async fn scripts_return_one_result_per_statement_with_affected_rows() {
 async fn sql_errors_carry_the_server_code() {
     for s in sessions().await {
         let err = s
-            .execute("SELECT * FROM missing_table", 10, TIMEOUT)
+            .execute("SELECT * FROM missing_table", 10, CELLS, TIMEOUT)
             .await
             .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::Database);
@@ -243,10 +247,10 @@ async fn sql_errors_carry_the_server_code() {
 #[ignore]
 async fn use_changes_the_current_database_and_session_state_persists() {
     for s in sessions().await {
-        let r = s.execute("USE mysql", 10, TIMEOUT).await.unwrap();
+        let r = s.execute("USE mysql", 10, CELLS, TIMEOUT).await.unwrap();
         assert_eq!(r.database.as_deref(), Some("mysql"));
-        s.execute("SET @x = 42", 10, TIMEOUT).await.unwrap();
-        let r = s.execute("SELECT @x", 10, TIMEOUT).await.unwrap();
+        s.execute("SET @x = 42", 10, CELLS, TIMEOUT).await.unwrap();
+        let r = s.execute("SELECT @x", 10, CELLS, TIMEOUT).await.unwrap();
         assert_eq!(text(&r.results[0].rows[0][0]), "42");
         s.use_database("databee_test").await.unwrap();
         assert_eq!(s.current_database().as_deref(), Some("databee_test"));
@@ -258,11 +262,14 @@ async fn use_changes_the_current_database_and_session_state_persists() {
 async fn timeout_aborts_and_session_recovers() {
     for s in sessions().await {
         let err = s
-            .execute("SELECT SLEEP(5)", 10, Duration::from_secs(1))
+            .execute("SELECT SLEEP(5)", 10, CELLS, Duration::from_secs(1))
             .await
             .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::Timeout);
-        let r = s.execute("SELECT DATABASE()", 10, TIMEOUT).await.unwrap();
+        let r = s
+            .execute("SELECT DATABASE()", 10, CELLS, TIMEOUT)
+            .await
+            .unwrap();
         assert_eq!(text(&r.results[0].rows[0][0]), "databee_test");
     }
 }
@@ -274,7 +281,7 @@ async fn cancel_interrupts_a_running_query() {
         let s = Arc::new(s);
         let runner = {
             let s = s.clone();
-            tokio::spawn(async move { s.execute("SELECT SLEEP(10)", 10, TIMEOUT).await })
+            tokio::spawn(async move { s.execute("SELECT SLEEP(10)", 10, CELLS, TIMEOUT).await })
         };
         tokio::time::sleep(Duration::from_millis(500)).await;
         s.cancel().await.unwrap();
@@ -283,7 +290,7 @@ async fn cancel_interrupts_a_running_query() {
             Err(e) => assert_eq!(e.kind(), ErrorKind::Cancelled),
             Ok(r) => assert_eq!(text(&r.results[0].rows[0][0]), "1"),
         }
-        assert!(s.execute("SELECT 1", 10, TIMEOUT).await.is_ok());
+        assert!(s.execute("SELECT 1", 10, CELLS, TIMEOUT).await.is_ok());
     }
 }
 
@@ -302,7 +309,7 @@ async fn connect(host: &str, port: u16) -> MySqlSession {
 #[ignore]
 async fn with_delete_keeps_its_affected_rows() {
     for s in sessions().await {
-        s.execute("DROP TABLE IF EXISTS cte_delete", 10, TIMEOUT)
+        s.execute("DROP TABLE IF EXISTS cte_delete", 10, CELLS, TIMEOUT)
             .await
             .unwrap();
         if s.server_version().contains("MariaDB") {
@@ -316,6 +323,7 @@ async fn with_delete_keeps_its_affected_rows() {
                  WITH c AS (SELECT 1) DELETE FROM cte_delete; \
                  DROP TABLE cte_delete",
                 10,
+                CELLS,
                 TIMEOUT,
             )
             .await
@@ -334,12 +342,13 @@ async fn structure_of_a_created_table_includes_its_ddl() {
         s.execute(
             "DROP TABLE IF EXISTS ddl_probe; CREATE TABLE ddl_probe (id int PRIMARY KEY)",
             10,
+            CELLS,
             TIMEOUT,
         )
         .await
         .unwrap();
         let st = s.structure("databee_test", "ddl_probe").await;
-        s.execute("DROP TABLE ddl_probe", 10, TIMEOUT)
+        s.execute("DROP TABLE ddl_probe", 10, CELLS, TIMEOUT)
             .await
             .unwrap();
         let ddl = st.unwrap().ddl;
@@ -364,7 +373,7 @@ async fn cancel_reaches_the_editor_while_every_pool_connection_is_busy() {
             .collect();
         let runner = {
             let s = s.clone();
-            tokio::spawn(async move { s.execute("SELECT SLEEP(10)", 10, TIMEOUT).await })
+            tokio::spawn(async move { s.execute("SELECT SLEEP(10)", 10, CELLS, TIMEOUT).await })
         };
         tokio::time::sleep(Duration::from_millis(1000)).await;
 
@@ -399,6 +408,7 @@ async fn close_ends_a_running_query_and_later_executes_fail_with_a_connection_er
                 s.execute(
                     "SELECT SLEEP(30) /* close_probe */",
                     10,
+                    CELLS,
                     Duration::from_secs(60),
                 )
                 .await
@@ -420,13 +430,14 @@ async fn close_ends_a_running_query_and_later_executes_fail_with_a_connection_er
                 "SELECT COUNT(*) FROM information_schema.PROCESSLIST \
                  WHERE INFO LIKE 'SELECT SLEEP(30) /* close_probe */%'",
                 10,
+                CELLS,
                 TIMEOUT,
             )
             .await
             .unwrap();
         assert_eq!(text(&running.results[0].rows[0][0]), "0", "{host}:{port}");
 
-        let err = s.execute("SELECT 1", 10, TIMEOUT).await.unwrap_err();
+        let err = s.execute("SELECT 1", 10, CELLS, TIMEOUT).await.unwrap_err();
         assert_eq!(err.kind(), ErrorKind::Connection, "{host}:{port}: {err:?}");
     }
 }
@@ -438,20 +449,20 @@ async fn killed_editor_connection_fails_once_then_reconnects() {
         let s = connect(&host, port).await;
         let other = connect(&host, port).await;
         let id = s
-            .execute("SELECT CONNECTION_ID()", 10, TIMEOUT)
+            .execute("SELECT CONNECTION_ID()", 10, CELLS, TIMEOUT)
             .await
             .unwrap();
         let id = text(&id.results[0].rows[0][0]).to_string();
         other
-            .execute(&format!("KILL {id}"), 10, TIMEOUT)
+            .execute(&format!("KILL {id}"), 10, CELLS, TIMEOUT)
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let err = s.execute("SELECT 1", 10, TIMEOUT).await.unwrap_err();
+        let err = s.execute("SELECT 1", 10, CELLS, TIMEOUT).await.unwrap_err();
         assert_eq!(err.kind(), ErrorKind::Connection, "{host}:{port}: {err:?}");
         let r = s
-            .execute("SELECT 1", 10, TIMEOUT)
+            .execute("SELECT 1", 10, CELLS, TIMEOUT)
             .await
             .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
         assert_eq!(text(&r.results[0].rows[0][0]), "1", "{host}:{port}");
@@ -470,7 +481,7 @@ async fn browse_pages_with_order_and_filter() {
             descending: true,
             ..Default::default()
         };
-        let first = s.browse(&req, TIMEOUT).await.unwrap();
+        let first = s.browse(&req, CELLS, TIMEOUT).await.unwrap();
         assert!(first.has_more);
         assert_eq!(text(&first.result.rows[0][0]), "3");
 
@@ -480,6 +491,7 @@ async fn browse_pages_with_order_and_filter() {
                     offset: 2,
                     ..req.clone()
                 },
+                CELLS,
                 TIMEOUT,
             )
             .await
@@ -493,11 +505,167 @@ async fn browse_pages_with_order_and_filter() {
                     filter: Some("post_type = 'page'".into()),
                     ..req
                 },
+                CELLS,
                 TIMEOUT,
             )
             .await
             .unwrap();
         assert_eq!(filtered.result.rows.len(), 1);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn long_text_arrives_as_a_preview_and_the_cell_cache_returns_the_full_value() {
+    let full = "ä".repeat(5000);
+    for (host, port) in servers() {
+        let s = connect(&host, port).await;
+        let mut response = s
+            .execute(
+                "SELECT 'short', REPEAT('ä', 5000)",
+                10,
+                CellLimit(100),
+                TIMEOUT,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
+
+        let set = &mut response.results[0];
+        assert_eq!(
+            set.rows[0],
+            [
+                Cell::Text("short".into()),
+                Cell::LongText {
+                    len: 5000,
+                    preview: "ä".repeat(100)
+                }
+            ],
+            "{host}:{port}"
+        );
+        let cache = CellCache::default();
+        cache.keep(set);
+        assert_eq!(cache.get(set.id, 0, 1).unwrap(), full, "{host}:{port}");
+        assert_eq!(
+            cache.get(set.id, 0, 0).unwrap_err().kind(),
+            ErrorKind::InvalidInput,
+            "{host}:{port}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn failing_statement_keeps_earlier_results_and_reports_its_index() {
+    for s in sessions().await {
+        let response = s
+            .execute(
+                "SELECT 1; SELECT * FROM missing_table; SELECT 3",
+                10,
+                CELLS,
+                TIMEOUT,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.results.len(), 1);
+        assert_eq!(text(&response.results[0].rows[0][0]), "1");
+        let failure = response.failure.expect("a failure");
+        assert_eq!(failure.index, 1);
+        assert_eq!(failure.error.kind(), ErrorKind::Database);
+        assert_eq!(failure.error.code(), Some("1146"));
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn timeout_reconnect_reports_the_session_reset_and_drops_session_state() {
+    for (host, port) in servers() {
+        let s = connect(&host, port).await;
+        s.execute("SET @x = 42", 10, CELLS, TIMEOUT).await.unwrap();
+
+        let err = s
+            .execute("SELECT SLEEP(5)", 10, CELLS, Duration::from_secs(1))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Timeout, "{host}:{port}: {err:?}");
+        assert!(err.session_reset(), "{host}:{port}: {err:?}");
+        let r = s.execute("SELECT @x", 10, CELLS, TIMEOUT).await.unwrap();
+        assert_eq!(r.results[0].rows[0][0], Cell::Null, "{host}:{port}");
+    }
+}
+
+/// Whether no thread on the server still runs a statement containing `prefix` + `suffix`. The
+/// probe splits the marker so its own text does not match.
+async fn marker_gone(observer: &MySqlSession, prefix: &str, suffix: &str) -> bool {
+    let sql = format!(
+        "SELECT COUNT(*) FROM information_schema.PROCESSLIST \
+         WHERE INFO LIKE CONCAT('%', '{prefix}', '{suffix}', '%')"
+    );
+    let r = observer.execute(&sql, 10, CELLS, TIMEOUT).await.unwrap();
+    text(&r.results[0].rows[0][0]) == "0"
+}
+
+async fn wait_for_marker_gone(observer: &MySqlSession, prefix: &str, suffix: &str) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if marker_gone(observer, prefix, suffix).await {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn browse_that_times_out_is_killed_on_the_server() {
+    for (host, port) in servers() {
+        let s = connect(&host, port).await;
+        let observer = connect(&host, port).await;
+        let req = BrowseRequest {
+            database: "databee_test".into(),
+            table: "wp_posts".into(),
+            limit: 10,
+            filter: Some("SLEEP(30) = 0 AND 'kill_probe_browse' <> ''".into()),
+            ..Default::default()
+        };
+
+        let err = s
+            .browse(&req, CELLS, Duration::from_secs(1))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Timeout, "{host}:{port}: {err:?}");
+        assert!(
+            wait_for_marker_gone(&observer, "kill_probe_", "browse").await,
+            "{host}:{port}: the browse query still runs"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn fetch_that_times_out_is_killed_on_the_server() {
+    for (host, port) in servers() {
+        let s = connect(&host, port).await;
+        let observer = connect(&host, port).await;
+
+        let err = s
+            .fetch(
+                "SELECT SLEEP(30) /* kill_probe_fetch */",
+                Duration::from_secs(1),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::Timeout, "{host}:{port}: {err:?}");
+        assert!(
+            wait_for_marker_gone(&observer, "kill_probe_", "fetch").await,
+            "{host}:{port}: the fetch query still runs"
+        );
     }
 }
 

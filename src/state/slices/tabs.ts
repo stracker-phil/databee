@@ -1,4 +1,5 @@
 import { api, toAppError, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse } from "../../api";
+import type { CellSource } from "../../lib/cells";
 import { fail } from "../requests";
 import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
@@ -42,6 +43,8 @@ export interface SelectedCell {
   col: number;
   column: ColumnMeta;
   cell: Cell;
+  /** Lets the Inspector fetch a `longText` cell in full. */
+  source: CellSource;
 }
 
 export interface TabsSlice {
@@ -251,6 +254,9 @@ export const tabsSlice: Slice<TabsSlice> = {
           });
         } else {
           get().updateQueryTab(tabId, { running: false, error });
+          if (error.sessionReset) {
+            get().toast("info", "Session reset after timeout: temporary tables, variables and open transactions are gone");
+          }
         }
       } finally {
         set((s) => ({ historyVersion: s.historyVersion + 1 }));
