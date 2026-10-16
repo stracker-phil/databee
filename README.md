@@ -1,150 +1,116 @@
 # DataBee
 
-A minimalistic SQL client for macOS (Apple Silicon), built for senior WordPress & WooCommerce
-developers inspecting their local MySQL/MariaDB databases (DDEV, Docker). It shows what is stored,
-not a friendlier version of it: it is not a tool for site admins or shop owners. Tauri 2 + Rust + React.
+A minimalistic SQL client for MySQL and MariaDB, built for WordPress and WooCommerce developers who inspect
+their **local** databases (DDEV, Docker, Local). It shows what is stored, not a friendlier version of it. It
+is not a tool for site admins or shop owners.
+
+Built with Tauri 2, Rust and React 19. Runs on macOS (Apple Silicon). The code is documented so you can
+point a coding agent at it and adapt it to your platform or needs. See [Adapt it](#adapt-it).
+
+![WordPress mode: dashboard of a local WooCommerce store](docs/images/wordpress-dashboard.png)
+
+![Database mode: wp_options in the table view](docs/images/database-table.png)
 
 ## Features
 
-- **CLI-first launching:** another app or script opens DataBee with connection details. A second launch hands its request to the running window.
-- **Keychain:** passwords are stored in the macOS Keychain and never written to files or logs.
-- **Browsing:**
-  - schema tree with filter (⌘⇧F); a single click opens a table as a preview tab, double-click or ⌘-click keeps it
-  - paged table view with sorting, resizable columns (widths are remembered per connection and table) and a `WHERE` filter (⌘F) that also takes IDs: `3229`, `3229, 3227`, `3220-3229`
-  - structure view (columns, indexes, DDL)
+**SQL client**
+- **CLI-first:** scripts and other apps open DataBee with connection details. A second launch hands its
+  request to the running window.
+- **Schema tree** with a filter. Paged table view with sorting, resizable columns and a `WHERE` filter that
+  also takes IDs (`3229`, `3229, 3227`, `3220-3229`). Structure view with columns, indexes and DDL.
 - **SQL editor** (CodeMirror):
-  - MySQL autocomplete
-  - ⌘↵ runs the statement at the cursor, ⇧⌘↵ runs everything
-  - cancel, timeout, row limit
-  - asks before `DROP`/`TRUNCATE`/unscoped `DELETE`/`UPDATE`
-- **Results grid:** virtualized, typed rendering, inline cell editing. Copy cells or rows as TSV/JSON.
-- **Value inspector:** decodes **PHP-serialized** and **JSON** values into a tree, including serialized data nested inside strings. Values with broken string lengths are decoded leniently, with a warning.
-- **Favorites bar** (⌘D) for tables and saved queries, and **query history** per server.
-- **WordPress mode** (the default for WordPress databases; switch to **Database** mode for tables and SQL any time):
-  - **Dashboard:** orders, autoload weight, failed actions and expired transients at a glance; a donut of autoload by option name prefix or table rows; order bars (hourly when only a few days have orders); failed actions grouped by hook; recent orders; alerts with one action each (set a log retention, clean up transients, review failures).
-  - **Browse:** the sidebar follows wp-admin: WordPress (content, users, options), WooCommerce (orders, subscriptions, products, sessions), Tools (scheduled actions, snapshots). Guest checkouts open from their orders, grouped by billing email. Lists have sortable headers, status chips, filters and search; on wide windows a row opens in a side pane (↑/↓ moves, ↵ opens the page). The sidebar shows counts and only flags what needs attention (failed, on hold, expired).
-  - **Purpose-built pages:**
-    - Orders: addresses side by side with mismatch hints, line items with thumbnails, totals, a PayPal panel with a fee waterfall, attribution, and a timeline rail merging notes, actions, logs, refunds and the shopping session. PayPal log lines are summarized ("PayPal API · capture order → 201") with the raw entry and its source row one click away.
-    - Customers: roles, addresses, orders, subscriptions and saved cards.
-    - Products: variation matrix.
-    - Actions: arguments and log.
-    - Sessions: decoded cart.
-  - **Readable values:** money, relative times, flags, links, user agents, countries, roles and guest badges; secrets stay masked; long values collapse; meta is grouped by a key registry (Profile, Billing, PayPal, Attribution, Admin UI, …).
-  - **⌘K command palette** (both modes): commands with their shortcuts, tables, entities (paste an order ID, email, PayPal order or transaction ID, or SKU) and recent items. Prefixes: `>` commands, `t:` tables, `#` IDs, `@` emails. Breadcrumbs show where you are; ⌘[ / ⌘] move through history.
-  - **Exploration:** hover a customer, product, order or action chip for a peek card; every value has a menu to copy it, filter the matching list by it, or find it everywhere (options, all meta tables, action args, the WooCommerce log).
-  - **Editing without silent writes:** inline field edits, serialized values edited as a tree (re-serialized with correct byte lengths), order status, autoload toggles, retrying or cancelling actions, transient cleanup, and grid editing in Database mode. Every change goes into a pending tray with its SQL, applies in one transaction (⌘S) and can be undone.
-  - **Debugging:** live mode highlights fields as they change; snapshot an order (with related records and actions) or an options pattern, then diff it; compare two entities side by side.
-- **Settings:** theme, accent, UI and data text sizes (⌘= / ⌘- / ⌘0 zoom both), density, row limit, timeouts, NULL label, log level, and every shortcut (rebind or unbind; conflicts are flagged).
+  - MySQL autocomplete;
+  - run the statement at the cursor or the whole script;
+  - cancel, timeout and row limit;
+  - asks before `DROP`, `TRUNCATE` and unscoped `DELETE`/`UPDATE`.
+- **Results grid:** virtualized and typed, with inline editing. Copy cells or rows as TSV or JSON.
+- **Value inspector:** decodes PHP-serialized and JSON values into a tree, including serialized data nested
+  in strings. Values with broken string lengths are decoded leniently, with a warning.
+- **Favorites**, per-server **query history**, and a **⌘K command palette** for commands, tables, records and
+  recent items.
+- **Passwords** live in the macOS Keychain and never in files or logs.
 
-## Shortcuts
+**WordPress mode** (on by default for WordPress databases)
+- **Dashboard:** orders, autoload weight, failed scheduled actions and expired transients, with one-click
+  fixes that you review first.
+- **Lists** that follow wp-admin: content, users (including guest customers), options, orders,
+  subscriptions, products, sessions and scheduled actions. Each has facets, search and a side pane.
+- **Purpose-built pages.**
+  - **Orders:** addresses, line items, totals, a PayPal fee waterfall, attribution, and a timeline that merges
+    notes, actions, logs and refunds.
+  - **Customers, products, actions and sessions:** each has a page of its own.
+- **Raw first:** real column names, meta keys and status slugs, with readable values (money, times, flags,
+  countries) next to them. Secrets stay masked until clicked.
+- **Exploration:** hover peeks on linked records, "find this value everywhere", snapshots with diffs,
+  side-by-side comparison, and a live mode that highlights changing fields.
+- **No silent writes:** every edit lands in a pending tray with its SQL. Edits include fields, serialized
+  values edited as a tree (re-serialized with correct byte lengths), order status and autoload. The tray
+  applies everything in one transaction (⌘S), and you can undo it.
+- **Custom entities:** describe your plugin's tables in a TOML file, and they get pages, links and search.
 
-| Shortcut | Command | Where |
-|---|---|---|
-| ⌘K | Command palette | everywhere |
-| ⌘P | Open table or entity | everywhere |
-| ⌘1 / ⌘2 | WordPress / Database view | everywhere |
-| ⌘[ / ⌘] | Back / forward | WordPress |
-| ⌘= / ⌘- / ⌘0 | Zoom in / out / reset | everywhere |
-| ⌘R | Refresh current view | everywhere |
-| ⌘F | WHERE filter | table tab |
-| ⌘⇧F | Filter tables | Database |
-| ⌘T / ⌘W | New query tab / close tab | Database |
-| ⌃Tab / ⌃⇧Tab | Next / previous tab | Database |
-| ⌘↵ / ⇧⌘↵ | Run statement / run all | editor |
-| ⌘E | Open source row | document |
-| ⌘⇧S | Take snapshot | document |
-| ⌘S | Apply pending changes | everywhere |
-| ⌘D | Add to favorites | Database |
+**Presentations:** an optional local API lets the [Stage](docs/stage.md) presenter app drive the UI in a
+demo.
 
-Overrides live in `keybindings.json` (`{ "commandId": "Mod+Shift+X" | null }`); menu-bound shortcuts apply after a restart.
+## Install
+
+Requirements: macOS on Apple Silicon (developed and tested on macOS 27), [rustup](https://rustup.rs) (stable), [bun](https://bun.sh)
+and Xcode Command Line Tools. Docker is needed only for the integration tests.
+
+```sh
+git clone https://github.com/stracker-phil/databee.git && cd databee
+bun install
+bun run app                 # debug build of DataBee.app, then open it
+scripts/install-cli.sh      # optional: link the `databee` command into ~/.local/bin
+scripts/install-app.sh      # optional: link DataBee.app into ~/Applications (Spotlight, Dock)
+```
+
+For a release bundle, run `bun run tauri build`. It writes `src-tauri/target/release/bundle/macos/DataBee.app`.
 
 ## CLI
 
 ```sh
 databee mysql://user:pass@127.0.0.1:3306/wordpress
 databee -H 127.0.0.1 -P 52958 -u db -d db --name "Shop (DDEV)" --password-env DB_PASS
-echo "$PASS" | databee -u root -d local --socket ~/Library/.../mysqld.sock --password-stdin --save-password
+echo "$PASS" | databee -u root -d local --socket /path/to/mysqld.sock --password-stdin --save-password
 databee --help
 ```
 
-Password sources, in order: `--password` / `--password-stdin` / `--password-env`, then the
-URL, then the Keychain (account `user@host:port`), then a prompt in the app.
+DataBee takes the password from the first source that has one:
+1. `--password`, `--password-stdin` or `--password-env`;
+2. the URL;
+3. the Keychain (account `user@host:port`);
+4. a prompt in the app.
 
-### Install
+## Shortcuts
 
-Two symlinks point at the debug build, so every `bun run build:app` is picked up without reinstalling:
+| Shortcut | Command | Where |
+|---|---|---|
+| ⌘K / ⌘P | Command palette / open table or record | everywhere |
+| ⌘1 / ⌘2 | WordPress / Database mode | everywhere |
+| ⌘[ / ⌘] | Back / forward | WordPress |
+| ⌘= / ⌘- / ⌘0 | Zoom in / out / reset | everywhere |
+| ⌘R | Refresh the current view | everywhere |
+| ⌘S | Apply pending changes | everywhere |
+| ⌘F / ⌘⇧F | WHERE filter / filter tables | Database |
+| ⌘T / ⌘W | New query tab / close tab | Database |
+| ⌃Tab / ⌃⇧Tab | Next / previous tab | Database |
+| ⌘↵ / ⇧⌘↵ | Run statement / run all | editor |
+| ⌘D | Add to favorites | Database |
+| ⌘E / ⌘⇧S | Open source row / take snapshot | WordPress record |
 
-| Link | Created by | Use |
-| --- | --- | --- |
-| `~/.local/bin/databee` → `DataBee.app/Contents/MacOS/databee` | `scripts/install-cli.sh` | the `databee` CLI command, from any shell (`~/.local/bin` must be on `PATH`) |
-| `~/Applications/DataBee.app` → `DataBee.app` | `scripts/install-app.sh` | the GUI launcher in Spotlight, Launchpad and the Dock |
+Every shortcut can be rebound or unbound in Settings → Shortcuts. Overrides are stored in `keybindings.json`.
 
-Both scripts take an optional path to another `DataBee.app` (e.g. a release build).
+## Files
 
-## Presentations (Stage)
-
-Stage, a separate app, presents DataBee: it spotlights parts of the window, shows captions, and
-clicks, types and runs commands. DataBee implements the Stage hook (protocol 1, revision 2026-10-16;
-the spec is served by a running Stage at `http://127.0.0.1:27190/v1/protocol`) on
-`http://127.0.0.1:27184/v1/stage/{describe,window,act,state}`, with every optional feature:
-`reveal visible sections ui type.append keys.window scroll wait`. Settings → Presentations turns it
-off and shows the port, token, discovery file and the last presenter request. 27184 is DataBee's
-fixed default (27180–27183 belong to other apps, 27190 to Stage).
-
-While the hook listens, `~/Library/Application Support/stage/apps/com.philippstracker.databee.json`
-(mode 0600, written atomically) holds the URL and token; it is removed when the hook stops or the app quits.
-
-```sh
-F="$HOME/Library/Application Support/stage/apps/com.philippstracker.databee.json"
-URL=$(plutil -extract url raw "$F"); TOKEN=$(plutil -extract token raw "$F")
-api() { curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$URL/$1" ${2:+-d "$2"}; echo; }
-api describe
-api window '{"window":"settings","action":"show","section":"presentations"}'
-api act '{"kind":"command","command":"view:palette"}'
-api act '{"kind":"type","anchor":"palette:search","text":"wp_opt","mode":"append"}'
-api act '{"kind":"keys","keys":"Enter","window":"palette"}'
-```
-
-- **Windows.** `main` is the native window; `settings` and `palette` are sheets inside it that the
-  hook exposes as windows (`movable: false`, measured by the page). `settings` has `sections` (the
-  Settings pages). `main.view` is `connect`, `db` or `wp:<screen>`; `main.ui.inspector` is open or closed.
-- **Commands** come from the in-app registry, with `shortcut` and `enabled`. Conventional ids:
-  `app:settings` and `view:palette`. Families: `settings:open:<page>`, `table:open:<table>` (current
-  database) and `wp:open:<entity>:<id>` (e.g. `wp:open:order:4711`).
-- **Keys.** A command's shortcut runs that command, in the current view and without focus, so ⌘, ⌘K
-  and ⌘T work like their menu items. Other keys go to the focused element; `window=` focuses DataBee
-  first. Enter in a field submits its form. `hotkeys` is empty because DataBee has no global shortcuts.
-- **Anchors** are `data-stage` attributes (`data-stage-label`, `-role`, `-list`). Ids follow data where rows have stable ids:
-  `table:<db>.<table>` (list `tables`), `tab:table:<db>.<table>`, `<entity>:<id>` for WordPress list rows
-  (list `wp:<list>`), `wp:nav:<list>`, `palette:search` and `palette:item:*` (list `palette:results`),
-  `settings:<page>` and `settings-nav:<page>`.
-- **Limits.** Native `<select>` menus (connection and database pickers, order status) can't be opened by
-  synthetic clicks; use the palette or commands. Coordinates are exact on one display or several
-  with the same scale.
-
-## Development
-
-Requires rustup (stable), bun and Xcode. Docker is needed for the database tests.
-
-| Command | What it does |
-|---|---|
-| `bun install` | install JS dependencies |
-| `bun run app` | debug build of the `.app` bundle and launch it |
-| `bun run test` | Vitest UI tests and Rust unit tests |
-| `bun run test:db` | start the MariaDB 11.4 + MySQL 8.4 fixtures (`dev/`) and run the integration tests |
-| `bun run lint` | `tsc` and `clippy -D warnings` |
-
-The round-trip check against a real WordPress DB (read-only) runs with:
-`DATABEE_WP_TEST=mysql://root:root@127.0.0.1:52958/db cargo test --manifest-path src-tauri/Cargo.toml --test php_roundtrip -- --ignored --nocapture`
-
-**Files:** config and data live in `~/Library/Application Support/com.philippstracker.databee/`
-(`settings.json`, `keybindings.json`, `ui_state.json`, `favorites.json`, `connections.json`, `history.json`,
-and the optional `entities.toml`). Logs are in `~/Library/Logs/com.philippstracker.databee/`.
+Config and data live in `~/Library/Application Support/com.philippstracker.databee/`: settings, keybindings,
+recent connections, favorites, history, snapshots, UI state, and the optional `entities.toml`. Logs are in
+`~/Library/Logs/com.philippstracker.databee/`. Details are in [docs/backend.md](docs/backend.md#persistence).
 
 ### Custom entities
 
-Add `entities.toml` to the config directory, using the format of
-`src-tauri/src/wp/entities.toml`. A definition with the same `name` and `when` replaces a built-in one.
+Add an `entities.toml` to the config directory, in the format of
+[`src-tauri/src/wp/entities.toml`](src-tauri/src/wp/entities.toml):
+
 ```toml
 [[entity]]
 name = "vault_token"
@@ -154,3 +120,36 @@ id = "id"
 title = "customer_id"
 links = { user_id = "user" }
 ```
+
+See [docs/wordpress.md](docs/wordpress.md#entities) for every key.
+
+## Development
+
+| Command | What it does |
+|---|---|
+| `bun run test` | Vitest UI tests and Rust unit tests |
+| `bun run test:db` | starts the MariaDB 11.4 and MySQL 8.4 fixtures (`dev/`) and runs the integration tests |
+| `bun run lint` | `tsc` and `clippy -D warnings` |
+| `bun run build:app` + `scripts/dev/launch.sh` | debug build, started next to the terminal without taking focus |
+
+The [technical documentation](docs/README.md) covers the architecture, each layer, testing and tooling.
+
+## Adapt it
+
+The repo is set up for coding agents:
+- `CLAUDE.md` and [`.claude/rules/`](.claude/rules/) hold the conventions.
+- A `ship-step` skill tests, builds and commits each step.
+- [docs/adapting.md](docs/adapting.md) lists every place that is specific to macOS, the name or the
+  WordPress layer.
+
+Open the repo in [Claude Code](https://claude.com/claude-code) and ask for what you need:
+
+```text
+Port DataBee to Linux. Use libsecret instead of the Keychain and keep all tests green.
+Add SQLite support, including opening a .sqlite file from the CLI.
+Rename the app to "ShopLens" and remove the Stage integration.
+```
+
+## License
+
+[MIT](LICENSE)

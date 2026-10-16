@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Minimalistic SQL client"
 authors = ["Philipp Stracker <info@philippstracker.com>"]
 edition = "2024"
+license = "MIT"
 
 
 [lib]
