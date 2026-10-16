@@ -53,7 +53,7 @@ impl AppError {
         }
     }
 
-    fn code(&self) -> Option<&str> {
+    pub fn code(&self) -> Option<&str> {
         match self {
             AppError::Database { code, .. } => code.as_deref(),
             _ => None,

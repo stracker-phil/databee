@@ -40,8 +40,8 @@ struct Args {
     #[arg(short, long)]
     name: Option<String>,
     /// Password (visible in the process list; prefer --password-stdin or --password-env)
-    #[arg(short, long, group = "pw")]
-    password: Option<String>,
+    #[arg(short, long, group = "pw", value_parser = parse_secret)]
+    password: Option<Secret>,
     /// Read the password from the first line of stdin
     #[arg(long, group = "pw")]
     password_stdin: bool,
@@ -57,14 +57,16 @@ struct Args {
 }
 
 /// A connection request from the command line, including its password if one was given.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Launch {
     pub spec: ConnectionSpec,
     pub password: Option<Secret>,
     pub save_password: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum CliOutcome {
     Run {
         launch: Option<Launch>,
@@ -144,8 +146,8 @@ fn build_launch(
         database: args.database.or(url_spec.database),
     };
 
-    let password = if let Some(p) = args.password {
-        Some(Secret::new(p))
+    let password = if args.password.is_some() {
+        args.password
     } else if args.password_stdin {
         Some(read_password_line(stdin)?)
     } else if let Some(var) = args.password_env {
@@ -223,6 +225,10 @@ fn percent_decode(s: &str) -> Result<String, std::str::Utf8Error> {
     percent_encoding::percent_decode_str(s)
         .decode_utf8()
         .map(|c| c.into_owned())
+}
+
+fn parse_secret(raw: &str) -> Result<Secret, std::convert::Infallible> {
+    Ok(Secret::new(raw))
 }
 
 fn read_password_line(stdin: &mut dyn BufRead) -> Result<Secret, String> {

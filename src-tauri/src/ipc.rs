@@ -13,15 +13,17 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 
 use crate::cli::Launch;
-use crate::connection::{ConnectionSpec, Secret};
+use crate::connection::{ConnectionSpec, Secret, serialize_exposed};
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum IpcMessage {
     #[serde(rename_all = "camelCase")]
     Launch {
         spec: ConnectionSpec,
-        password: Option<String>,
+        #[serde(serialize_with = "serialize_exposed")]
+        password: Option<Secret>,
         save_password: bool,
     },
     Error {
@@ -35,52 +37,12 @@ pub enum IpcMessage {
     },
 }
 
-impl std::fmt::Debug for IpcMessage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            IpcMessage::Launch {
-                spec,
-                password,
-                save_password,
-            } => f
-                .debug_struct("Launch")
-                .field("spec", spec)
-                .field("password", &password.as_ref().map(|_| "<redacted>"))
-                .field("save_password", save_password)
-                .finish(),
-            IpcMessage::Error { message } => {
-                f.debug_struct("Error").field("message", message).finish()
-            }
-            IpcMessage::Activate => f.write_str("Activate"),
-            #[cfg(debug_assertions)]
-            IpcMessage::Eval { js } => f.debug_struct("Eval").field("js", js).finish(),
-        }
-    }
-}
-
 impl From<Launch> for IpcMessage {
     fn from(l: Launch) -> Self {
         IpcMessage::Launch {
             spec: l.spec,
-            password: l.password.map(|p| p.expose().to_string()),
+            password: l.password,
             save_password: l.save_password,
-        }
-    }
-}
-
-impl IpcMessage {
-    pub fn into_launch(self) -> Option<Launch> {
-        match self {
-            IpcMessage::Launch {
-                spec,
-                password,
-                save_password,
-            } => Some(Launch {
-                spec,
-                password: password.map(Secret::new),
-                save_password,
-            }),
-            _ => None,
         }
     }
 }
@@ -382,7 +344,7 @@ mod tests {
     fn debug_output_redacts_the_launch_password() {
         let message = IpcMessage::Launch {
             spec: spec(),
-            password: Some("pw-secret".into()),
+            password: Some(Secret::new("pw-secret")),
             save_password: false,
         };
         assert!(!format!("{message:?}").contains("pw-secret"));
@@ -403,7 +365,7 @@ mod tests {
         let forwarded = forward(&socket, message).await;
 
         assert_eq!(forwarded, Forward::Delivered);
-        assert_eq!(rx.recv().await.unwrap().into_launch(), Some(launch));
+        assert_eq!(rx.recv().await.unwrap(), IpcMessage::from(launch));
     }
 
     #[test]

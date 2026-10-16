@@ -3,6 +3,7 @@ mod commands;
 pub mod connection;
 pub mod db;
 mod db_commands;
+#[cfg(debug_assertions)]
 mod dev;
 pub mod error;
 pub mod ipc;
@@ -33,7 +34,6 @@ use crate::store::settings::{LogLevel, Settings};
 
 const IDENTIFIER: &str = "com.philippstracker.databee";
 const MAX_LOG_BYTES: u128 = 5 * 1024 * 1024;
-pub const LAUNCH_EVENT: &str = "launch";
 const LOCK_POLL: Duration = Duration::from_millis(200);
 const LOCK_POLLS: u32 = 25;
 
@@ -180,6 +180,7 @@ fn start_app(
             app.manage(presenter);
             app.manage(state);
 
+            #[cfg(debug_assertions)]
             if let (Some((x, y, w, h)), Some(window)) =
                 (dev::window_frame(), app.get_webview_window("main"))
             {
@@ -200,11 +201,13 @@ fn start_app(
                 }
                 log::info!("Received launch request from another process");
                 if handle.state::<AppState>().launches.push(message) {
-                    let _ = handle.emit(LAUNCH_EVENT, ());
+                    let _ = handle.emit(launch::LAUNCH_EVENT, ());
                 }
-                if let Some(window) = window
-                    && !dev::background()
-                {
+                #[cfg(debug_assertions)]
+                if dev::background() {
+                    return;
+                }
+                if let Some(window) = window {
                     let _ = window.unminimize();
                     let _ = window.set_focus();
                 }

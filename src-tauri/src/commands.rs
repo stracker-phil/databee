@@ -85,8 +85,11 @@ pub fn open_log_folder(app: AppHandle) -> AppResult<()> {
 }
 
 /// Only web links may be opened from data; anything else (file:, custom schemes) is refused.
+/// http(s) only, and without credentials, which the browser would send on.
 fn is_web_url(url: &str) -> bool {
-    url::Url::parse(url).is_ok_and(|u| matches!(u.scheme(), "http" | "https"))
+    url::Url::parse(url).is_ok_and(|u| {
+        matches!(u.scheme(), "http" | "https") && u.username().is_empty() && u.password().is_none()
+    })
 }
 
 #[tauri::command]
@@ -159,7 +162,17 @@ pub fn clear_history(state: State<'_, AppState>, account: String) -> AppResult<(
 
 #[tauri::command]
 pub fn log_frontend_error(message: String) {
-    log::error!(target: "frontend", "{message}");
+    log::error!(target: "frontend", "{}", sanitize_log_text(&message));
+}
+
+const MAX_LOGGED_BYTES: usize = 4096;
+
+/// Bounds page-supplied text and escapes line breaks, so it cannot flood the log or
+/// forge log lines.
+fn sanitize_log_text(text: &str) -> String {
+    text[..text.floor_char_boundary(MAX_LOGGED_BYTES)]
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
 }
 
 #[cfg(test)]
@@ -173,5 +186,30 @@ mod tests {
         assert!(!is_web_url("file:///etc/passwd"));
         assert!(!is_web_url("javascript:alert(1)"));
         assert!(!is_web_url("not a url"));
+    }
+
+    #[test]
+    fn web_url_rules_cover_scheme_case_and_credentials() {
+        for (url, allowed) in [
+            ("mailto:a@b.c", false),
+            ("HTTPS://example.com", true),
+            ("https://user:pw@example.com", false),
+            ("https://user@example.com", false),
+        ] {
+            assert_eq!(is_web_url(url), allowed, "{url}");
+        }
+    }
+
+    #[test]
+    fn logged_text_is_cut_on_a_char_boundary() {
+        let text = format!("{}é", "a".repeat(MAX_LOGGED_BYTES - 1));
+        let cut = sanitize_log_text(&text);
+        assert_eq!(cut, "a".repeat(MAX_LOGGED_BYTES - 1));
+        assert!(sanitize_log_text(&"x".repeat(10_000)).len() <= MAX_LOGGED_BYTES);
+    }
+
+    #[test]
+    fn logged_text_escapes_line_breaks() {
+        assert_eq!(sanitize_log_text("a\nb\rc"), "a\\nb\\rc");
     }
 }

@@ -1,9 +1,8 @@
-use std::collections::HashMap;
-use std::sync::Mutex;
-
 use crate::connection::{ConnectionSpec, Secret};
 use crate::error::{AppError, AppResult};
-use crate::lock::MutexExt;
+
+#[cfg(any(test, feature = "test-util"))]
+pub use memory::MemoryStore;
 
 pub trait SecretStore: Send + Sync {
     fn get(&self, account: &str) -> AppResult<Option<Secret>>;
@@ -46,46 +45,28 @@ impl SecretStore for Keychain {
     }
 }
 
-#[derive(Default)]
-pub struct MemoryStore(Mutex<HashMap<String, Secret>>);
-
-impl SecretStore for MemoryStore {
-    fn get(&self, account: &str) -> AppResult<Option<Secret>> {
-        Ok(self.0.lock_unpoisoned().get(account).cloned())
-    }
-
-    fn set(&self, account: &str, secret: &Secret) -> AppResult<()> {
-        self.0
-            .lock_unpoisoned()
-            .insert(account.to_string(), secret.clone());
-        Ok(())
-    }
-
-    fn delete(&self, account: &str) -> AppResult<()> {
-        self.0.lock_unpoisoned().remove(account);
-        Ok(())
-    }
-}
-
-/// Where a password came from; a stored password that fails auth should be re-prompted.
-#[derive(Debug, Clone, PartialEq)]
+/// Where a password came from.
+#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum PasswordSource {
     Provided(Secret),
     Stored(Secret),
     None,
+    /// The Keychain lookup failed, with its reason.
+    Unavailable(String),
 }
 
 impl PasswordSource {
     pub fn secret(&self) -> Option<&Secret> {
         match self {
             PasswordSource::Provided(s) | PasswordSource::Stored(s) => Some(s),
-            PasswordSource::None => None,
+            PasswordSource::None | PasswordSource::Unavailable(_) => None,
         }
     }
 }
 
-/// Explicit password first, then the Keychain. A Keychain failure is logged and treated
-/// as "no stored password" so the user can still type one in.
+/// Explicit password first, then the Keychain. A Keychain failure still lets the
+/// connection be tried without a password, so the user can type one in.
 pub fn resolve_password(
     explicit: Option<Secret>,
     store: &dyn SecretStore,
@@ -99,7 +80,40 @@ pub fn resolve_password(
         Ok(None) => PasswordSource::None,
         Err(e) => {
             log::warn!("Keychain lookup for {} failed: {e}", spec.account());
-            PasswordSource::None
+            PasswordSource::Unavailable(e.to_string())
+        }
+    }
+}
+
+/// In-memory store for tests; not compiled into the app.
+#[cfg(any(test, feature = "test-util"))]
+mod memory {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    use super::SecretStore;
+    use crate::connection::Secret;
+    use crate::error::AppResult;
+    use crate::lock::MutexExt;
+
+    #[derive(Default)]
+    pub struct MemoryStore(Mutex<HashMap<String, Secret>>);
+
+    impl SecretStore for MemoryStore {
+        fn get(&self, account: &str) -> AppResult<Option<Secret>> {
+            Ok(self.0.lock_unpoisoned().get(account).cloned())
+        }
+
+        fn set(&self, account: &str, secret: &Secret) -> AppResult<()> {
+            self.0
+                .lock_unpoisoned()
+                .insert(account.to_string(), secret.clone());
+            Ok(())
+        }
+
+        fn delete(&self, account: &str) -> AppResult<()> {
+            self.0.lock_unpoisoned().remove(account);
+            Ok(())
         }
     }
 }
@@ -149,6 +163,46 @@ mod tests {
             resolve_password(None, &MemoryStore::default(), &spec()),
             PasswordSource::None
         );
+    }
+
+    struct FailingStore;
+
+    impl SecretStore for FailingStore {
+        fn get(&self, _: &str) -> AppResult<Option<Secret>> {
+            Err(AppError::Keychain("locked".into()))
+        }
+        fn set(&self, _: &str, _: &Secret) -> AppResult<()> {
+            Err(AppError::Keychain("locked".into()))
+        }
+        fn delete(&self, _: &str) -> AppResult<()> {
+            Err(AppError::Keychain("locked".into()))
+        }
+    }
+
+    #[test]
+    fn keychain_failure_is_unavailable_without_a_secret() {
+        let source = resolve_password(None, &FailingStore, &spec());
+        assert!(matches!(source, PasswordSource::Unavailable(_)));
+        assert_eq!(source.secret(), None);
+    }
+
+    #[test]
+    fn deleting_a_missing_entry_succeeds() {
+        assert!(MemoryStore::default().delete("missing").is_ok());
+    }
+
+    #[test]
+    fn only_provided_and_stored_sources_carry_a_secret() {
+        assert_eq!(
+            PasswordSource::Provided(Secret::new("a")).secret(),
+            Some(&Secret::new("a"))
+        );
+        assert_eq!(
+            PasswordSource::Stored(Secret::new("b")).secret(),
+            Some(&Secret::new("b"))
+        );
+        assert_eq!(PasswordSource::None.secret(), None);
+        assert_eq!(PasswordSource::Unavailable("x".into()).secret(), None);
     }
 
     #[test]

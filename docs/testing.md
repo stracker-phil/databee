@@ -83,5 +83,5 @@ scripts/dev/js.sh 'databee.getState().openDialog({type:"settings", page:"shortcu
 scripts/dev/js.sh '(() => { const s = databee.getState(); s.setMode("db"); s.openTableTab("wp_test", "wp_options"); })()'
 ```
 
-`launch.sh` sets `DATABEE_WINDOW_FRAME` and `DATABEE_BACKGROUND=1`. Rust reads both in `dev.rs`, and only in
-debug builds. JavaScript eval over the socket is compiled out of release builds as well.
+`launch.sh` sets `DATABEE_WINDOW_FRAME` and `DATABEE_BACKGROUND=1`. Rust reads both in `dev.rs`, a module
+compiled into debug builds only. JavaScript eval over the socket is compiled out of release builds as well.

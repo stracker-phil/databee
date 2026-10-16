@@ -1,12 +1,18 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-use crate::cli::Launch;
 use crate::connection::{ConnectionSpec, Secret};
 use crate::ipc::IpcMessage;
 use crate::lock::MutexExt;
+
+/// Emitted without payload when a launch arrives; the page then calls `take_launch_events`.
+pub const LAUNCH_EVENT: &str = "launch";
+
+/// A one-shot password the UI never picked up should not stay in memory for the session.
+const PASSWORD_TTL: Duration = Duration::from_secs(5 * 60);
 
 /// Something the UI should act on after a (CLI) launch. Passwords stay in Rust;
 /// the UI only learns whether one is available for the request.
@@ -25,42 +31,61 @@ pub enum LaunchEvent {
     },
 }
 
-#[derive(Default)]
 pub struct LaunchQueue {
     events: Mutex<Vec<LaunchEvent>>,
-    passwords: Mutex<HashMap<String, Secret>>,
+    passwords: Mutex<HashMap<String, (Secret, Instant)>>,
+    password_ttl: Duration,
+}
+
+impl Default for LaunchQueue {
+    fn default() -> Self {
+        Self::with_password_ttl(PASSWORD_TTL)
+    }
 }
 
 impl LaunchQueue {
+    pub(crate) fn with_password_ttl(password_ttl: Duration) -> Self {
+        Self {
+            events: Mutex::default(),
+            passwords: Mutex::default(),
+            password_ttl,
+        }
+    }
+
     /// Returns true when the message produced an event for the UI.
     pub fn push(&self, message: IpcMessage) -> bool {
+        self.prune();
         let event = match message {
             IpcMessage::Error { message } => LaunchEvent::Error { message },
-            launch @ IpcMessage::Launch { .. } => {
-                let Some(launch) = launch.into_launch() else {
-                    return false;
-                };
-                self.connect_event(launch)
-            }
+            IpcMessage::Launch {
+                spec,
+                password,
+                save_password,
+            } => self.connect_event(spec, password, save_password),
             _ => return false,
         };
         self.events.lock_unpoisoned().push(event);
         true
     }
 
-    fn connect_event(&self, launch: Launch) -> LaunchEvent {
+    fn connect_event(
+        &self,
+        spec: ConnectionSpec,
+        password: Option<Secret>,
+        save_password: bool,
+    ) -> LaunchEvent {
         let request_id = uuid::Uuid::new_v4().to_string();
-        let has_password = launch.password.is_some();
-        if let Some(password) = launch.password {
+        let has_password = password.is_some();
+        if let Some(password) = password {
             self.passwords
                 .lock_unpoisoned()
-                .insert(request_id.clone(), password);
+                .insert(request_id.clone(), (password, Instant::now()));
         }
         LaunchEvent::Connect {
             request_id,
-            spec: launch.spec,
+            spec,
             has_password,
-            save_password: launch.save_password,
+            save_password,
         }
     }
 
@@ -68,9 +93,29 @@ impl LaunchQueue {
         std::mem::take(&mut *self.events.lock_unpoisoned())
     }
 
+    /// The request's password, kept for another attempt until `take_password`.
+    pub fn peek_password(&self, request_id: &str) -> Option<Secret> {
+        self.prune();
+        self.passwords
+            .lock_unpoisoned()
+            .get(request_id)
+            .map(|(secret, _)| secret.clone())
+    }
+
     /// Hands out a request's password once.
     pub fn take_password(&self, request_id: &str) -> Option<Secret> {
-        self.passwords.lock_unpoisoned().remove(request_id)
+        self.prune();
+        self.passwords
+            .lock_unpoisoned()
+            .remove(request_id)
+            .map(|(secret, _)| secret)
+    }
+
+    fn prune(&self) {
+        let ttl = self.password_ttl;
+        self.passwords
+            .lock_unpoisoned()
+            .retain(|_, (_, added)| added.elapsed() < ttl);
     }
 }
 
@@ -88,7 +133,7 @@ mod tests {
                 user: "u".into(),
                 database: None,
             },
-            password: password.map(String::from),
+            password: password.map(Secret::new),
             save_password: false,
         }
     }
@@ -127,6 +172,78 @@ mod tests {
         let queue = LaunchQueue::default();
         assert!(!queue.push(IpcMessage::Activate));
         assert!(queue.take_events().is_empty());
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn eval_messages_create_no_event() {
+        let queue = LaunchQueue::default();
+        assert!(!queue.push(IpcMessage::Eval { js: "1".into() }));
+        assert!(queue.take_events().is_empty());
+    }
+
+    #[test]
+    fn launch_without_password_reports_none_available() {
+        let queue = LaunchQueue::default();
+        assert!(queue.push(launch_message(None)));
+        let events = queue.take_events();
+        assert!(
+            serde_json::to_string(&events)
+                .unwrap()
+                .contains("\"hasPassword\":false")
+        );
+        let id = request_id(&events[0]);
+        assert_eq!(queue.peek_password(&id), None);
+        assert_eq!(queue.take_password(&id), None);
+    }
+
+    #[test]
+    fn each_launch_gets_its_own_request_id() {
+        let queue = LaunchQueue::default();
+        queue.push(launch_message(None));
+        queue.push(launch_message(None));
+        let events = queue.take_events();
+        assert_ne!(request_id(&events[0]), request_id(&events[1]));
+    }
+
+    #[test]
+    fn save_password_flag_is_carried_into_the_event() {
+        let queue = LaunchQueue::default();
+        let IpcMessage::Launch { spec, .. } = launch_message(None) else {
+            unreachable!()
+        };
+        queue.push(IpcMessage::Launch {
+            spec,
+            password: None,
+            save_password: true,
+        });
+        assert!(matches!(
+            queue.take_events()[0],
+            LaunchEvent::Connect {
+                save_password: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn peeked_password_stays_until_taken() {
+        let queue = LaunchQueue::default();
+        queue.push(launch_message(Some("pw")));
+        let id = request_id(&queue.take_events()[0]);
+        assert_eq!(queue.peek_password(&id), Some(Secret::new("pw")));
+        assert_eq!(queue.peek_password(&id), Some(Secret::new("pw")));
+        assert_eq!(queue.take_password(&id), Some(Secret::new("pw")));
+        assert_eq!(queue.peek_password(&id), None);
+    }
+
+    #[test]
+    fn expired_password_is_gone() {
+        let queue = LaunchQueue::with_password_ttl(Duration::ZERO);
+        queue.push(launch_message(Some("pw")));
+        let id = request_id(&queue.take_events()[0]);
+        assert_eq!(queue.peek_password(&id), None);
+        assert_eq!(queue.take_password(&id), None);
     }
 
     #[test]

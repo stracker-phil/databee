@@ -21,7 +21,7 @@ use crate::store::history::HistoryEntry;
 pub struct ConnectArgs {
     pub spec: ConnectionSpec,
     #[serde(default)]
-    pub password: Option<String>,
+    pub password: Option<Secret>,
     /// A CLI launch request whose password should be used.
     #[serde(default)]
     pub request_id: Option<String>,
@@ -29,13 +29,30 @@ pub struct ConnectArgs {
     pub save_password: bool,
 }
 
+/// The error the UI sees when the server rejects the login. `password_required` and
+/// `auth_failed` both make the UI prompt; `auth_failed` also shows the message, so a
+/// rejected Keychain password or a failed Keychain lookup is explained in the prompt.
+fn auth_error(source: &PasswordSource, account: String, message: String) -> AppError {
+    match source {
+        PasswordSource::None => AppError::PasswordRequired(account),
+        PasswordSource::Unavailable(reason) => {
+            AppError::AuthFailed(format!("No password was sent ({reason})"))
+        }
+        PasswordSource::Stored(_) => AppError::AuthFailed(format!(
+            "The password stored in the Keychain was rejected ({message})"
+        )),
+        PasswordSource::Provided(_) => AppError::AuthFailed(message),
+    }
+}
+
 #[tauri::command]
 pub async fn connect(state: State<'_, AppState>, args: ConnectArgs) -> AppResult<SessionInfo> {
-    let explicit = args.password.map(Secret::new).or_else(|| {
-        args.request_id
-            .as_deref()
-            .and_then(|id| state.launches.take_password(id))
-    });
+    // Always looked up, so a launch password is not left behind when the page also sends one.
+    let launch_password = args
+        .request_id
+        .as_deref()
+        .and_then(|id| state.launches.peek_password(id));
+    let explicit = args.password.or(launch_password);
     let source = resolve_password(explicit, state.secrets.as_ref(), &args.spec);
     let settings = state.settings.get();
     let connect_timeout = Duration::from_secs(settings.connect_timeout_secs.into());
@@ -45,17 +62,16 @@ pub async fn connect(state: State<'_, AppState>, args: ConnectArgs) -> AppResult
 
     let connecting =
         MySqlSession::connect(&args.spec, source.secret(), connect_timeout, query_timeout).await;
+    // A timeout or network error keeps the launch password for a retry; a rejected one is useless.
+    let launch_password_spent = matches!(connecting, Ok(_) | Err(AppError::AuthFailed(_)));
+    if launch_password_spent && let Some(id) = &args.request_id {
+        state.launches.take_password(id);
+    }
     let db = match connecting {
         Ok(db) => db,
         Err(AppError::AuthFailed(message)) => {
             log::warn!("Authentication failed for {identity}");
-            return Err(match source {
-                PasswordSource::None => AppError::PasswordRequired(args.spec.account()),
-                PasswordSource::Stored(_) => AppError::AuthFailed(format!(
-                    "The password stored in the Keychain was rejected ({message})"
-                )),
-                PasswordSource::Provided(_) => AppError::AuthFailed(message),
-            });
+            return Err(auth_error(&source, args.spec.account(), message));
         }
         Err(e) => {
             log::warn!("Connection to {identity} failed: {e}");
@@ -176,7 +192,11 @@ pub async fn execute(
         .await;
     match &response {
         Ok(r) => log::debug!("Query finished in {} ms", r.elapsed_ms),
-        Err(e) => log::info!("Query failed: {e}"),
+        Err(e) => {
+            // The message may quote the SQL, which stays out of the log by default.
+            log::info!("Query failed: kind={} code={:?}", e.kind(), e.code());
+            log::debug!("Query error: {e}");
+        }
     }
     let entry = HistoryEntry {
         account: session.spec.account(),
@@ -213,4 +233,43 @@ pub async fn browse_table(
         .db
         .browse(&request, timeout)
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_password_asks_for_one() {
+        let err = auth_error(&PasswordSource::None, "wp@h:1".into(), "denied".into());
+        assert_eq!(err.kind(), "password_required");
+        assert_eq!(err.to_string(), "A password is required for wp@h:1");
+    }
+
+    #[test]
+    fn keychain_failure_is_explained_in_the_message() {
+        let source = PasswordSource::Unavailable("Keychain locked".into());
+        let err = auth_error(&source, "a".into(), "denied".into());
+        assert_eq!(err.kind(), "auth_failed");
+        assert_eq!(err.to_string(), "No password was sent (Keychain locked)");
+    }
+
+    #[test]
+    fn rejected_stored_password_mentions_the_keychain() {
+        let source = PasswordSource::Stored(Secret::new("old"));
+        let err = auth_error(&source, "a".into(), "Access denied".into());
+        assert_eq!(err.kind(), "auth_failed");
+        assert_eq!(
+            err.to_string(),
+            "The password stored in the Keychain was rejected (Access denied)"
+        );
+    }
+
+    #[test]
+    fn rejected_provided_password_passes_the_server_message_through() {
+        let source = PasswordSource::Provided(Secret::new("typed"));
+        let err = auth_error(&source, "a".into(), "Access denied".into());
+        assert_eq!(err.kind(), "auth_failed");
+        assert_eq!(err.to_string(), "Access denied");
+    }
 }

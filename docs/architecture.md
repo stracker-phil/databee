@@ -18,7 +18,7 @@ These rules hold everywhere in the code. Keep them when you change things.
 3. **Errors are data.** Every command returns `Result<T, AppError>`, which serializes as `{ kind, message, code }`.
    The UI branches on `kind` (e.g. `password_required`, `confirmation_required`).
 4. **Passwords never touch files, logs or the webview.** They live in the `Secret` type. It redacts in
-   `Debug` and has no `Serialize` impl. Passwords are stored in the OS keychain and handed to a connect call by
+   `Debug`, is zeroed on drop and has no `Serialize` impl. Passwords are stored in the OS keychain and handed to a connect call by
    request id.
 5. **Show what is stored.** Values travel losslessly: numbers and dates as strings, binary values as a hex
    preview, PHP-serialized data byte for byte. Labels may be shown next to a raw value, never instead of it.

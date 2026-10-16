@@ -54,7 +54,7 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `snapshots` | `SnapshotStore` | `snapshots.json` (WordPress snapshots) |
 | `ui_state` | `UiStateStore` | `ui_state.json` (column widths, pane sizes per connection) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
-| `secrets` | `Box<dyn SecretStore>` | `Keychain` in the app, `MemoryStore` in tests |
+| `secrets` | `Box<dyn SecretStore>` | `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
 | `wp_cache` | `Mutex<HashMap<"session/db", Option<WpContext>>>` | WordPress detection results |
 | `config_dir` | `PathBuf` | used to read the optional `entities.toml` |
@@ -68,7 +68,7 @@ The TypeScript wrappers in `src/api/index.ts` use the same names in camelCase.
 
 | Module | Commands |
 |---|---|
-| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only), `take_launch_events`, `log_frontend_error`, `list_recents`, `remove_recent` (also forgets that connection's UI state), `forget_password`, `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
+| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `forget_password`, `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
 | `db_commands.rs` | `connect`, `disconnect`, `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table` (see [database.md](database.md)) |
 | `wp_commands.rs` | `wp_detect`, `wp_dashboard`, `wp_browser`, the list commands (`wp_orders`, `wp_users`, `wp_products`, `wp_actions`, `wp_sessions`, `wp_content`), `wp_view`, `wp_search`, `wp_peek`, `wp_find_value`, options and snapshots, `plan_change`, `apply_changes`, `edit_serialized`, `decode_value` (see [wordpress.md](wordpress.md)) |
 | `stage_commands.rs` | `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_new_token` |
@@ -89,8 +89,8 @@ The TypeScript wrappers in `src/api/index.ts` use the same names in camelCase.
 | `stage:collect`, `stage:act`, `stage:info` | `{ request, … }` | a Stage request needs the page ([stage.md](stage.md)) |
 
 A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}` or `{type:"error", message}`.
-A password from the CLI stays in Rust. The page calls `connect` with the `requestId`, and Rust looks the
-password up.
+`launch.rs` defines the event name (`LAUNCH_EVENT`). A password from the CLI stays in Rust. The page calls
+`connect` with the `requestId`, and Rust looks the password up.
 
 ## CLI and single-instance handoff
 
@@ -130,7 +130,8 @@ password up.
   - `error {message}`
   - `activate`
   - `eval {js}`: compiled into debug builds only, used by `scripts/dev/js.sh`.
-- `IpcMessage`'s `Debug` redacts the password.
+- The launch `password` is a `Secret`: plain string on the wire (`connection::serialize_exposed`), redacted in
+  `IpcMessage`'s derived `Debug`.
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
   bind while a listener is alive.
 
@@ -177,15 +178,25 @@ Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.d
 `secrets.rs` defines the `SecretStore` trait (`get`, `set`, `delete`) and implements it twice:
 
 - `Keychain`: generic passwords with service `"databee"` and account `ConnectionSpec::account()`
-  (`user@host:port`), so one password covers every database on a server.
-- `MemoryStore`: for tests.
+  (`user@host:port`, or `user@socket`), so one password covers every database on a server. `%`, `@` and `:` in
+  the user are percent-encoded, so `a@b` on `c` and `a` on `b@c` get different entries; other users keep
+  their plain name.
+- `MemoryStore`: for tests, behind `#[cfg(any(test, feature = "test-util"))]`.
 
-`resolve_password` picks the first available source: an explicit password, then the CLI password for the
-launch request, then the stored one.
+`resolve_password` returns a `PasswordSource`: `Provided` (the page's password, else the CLI password for the
+launch request), `Stored` (Keychain), `None`, or `Unavailable(reason)` when the Keychain lookup failed.
+`connect` then tries without a password; on an auth failure `db_commands::auth_error` maps the source to the
+error the UI prompts with (`Unavailable` and a rejected `Stored` password name the cause).
+
+One-shot CLI passwords live in `LaunchQueue` by request id and expire after 5 minutes (pruned on every
+`push`, `peek_password` and `take_password`). `connect` always peeks the launch password when a `requestId` is
+given, and consumes it only on success or an auth failure, so a timeout or network error leaves it for a
+retry.
 
 `connection.rs` holds `ConnectionSpec` (`name`, `host`, `port`, `socket`, `user`, `database`; never a password)
-and `Secret`. `Secret` prints as `Secret(***)`, cannot be serialized, and gives up its value only through
-`expose()`.
+and `Secret`. `Secret` wraps `Zeroizing<String>` (zeroed on drop), prints as `Secret(***)`, deserializes from a
+string, has no `Serialize` impl (only `serialize_exposed` for the IPC wire format), compares only in tests, and
+gives up its value only through `expose()`.
 
 ## Errors
 
@@ -206,6 +217,10 @@ and `Secret`. `Secret` prints as `Secret(***)`, cannot be serialized, and gives 
 | `io` | file errors |
 
 The frontend mirrors this type as `AppError` in `src/api/types.ts`.
+
+Logging of failures: a failed query logs `kind` and `code` at Info and the message (which may quote SQL) at
+Debug; the SQL itself only at Trace. Text from `log_frontend_error` is cut to 4 KiB and its `\n`/`\r` are
+escaped, so the page cannot forge log lines.
 
 ## Native menu
 
@@ -238,6 +253,7 @@ The menu isn't rebuilt when a binding changes, so a new menu accelerator takes e
 | `serde`, `serde_json` (`preserve_order`) | IPC, stores, JSON values in their stored key order |
 | `clap` | CLI |
 | `security-framework` | macOS Keychain |
+| `zeroize` | `Secret` is zeroed on drop |
 | `thiserror` | `AppError` |
 | `chrono`, `uuid`, `url`, `percent-encoding`, `futures-util` | time stamps, ids, URL parsing, result streaming |
 | `toml` | `entities.toml`, `meta_keys.toml` |
