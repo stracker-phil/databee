@@ -17,26 +17,84 @@ pub mod store;
 pub mod wp;
 mod wp_commands;
 
-use std::path::PathBuf;
+use std::fs::File;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use tauri::{Emitter, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
 use crate::cli::CliOutcome;
-use crate::ipc::IpcMessage;
+use crate::ipc::{Forward, IpcMessage};
 use crate::state::AppState;
-use crate::store::settings::{LogLevel, SettingsStore};
+use crate::store::settings::{LogLevel, Settings};
 
 const IDENTIFIER: &str = "com.philippstracker.databee";
 const MAX_LOG_BYTES: u128 = 5 * 1024 * 1024;
 pub const LAUNCH_EVENT: &str = "launch";
+const LOCK_POLL: Duration = Duration::from_millis(200);
+const LOCK_POLLS: u32 = 25;
 
 /// Same directory Tauri resolves as `app_config_dir`, but available before the app starts.
 fn config_dir() -> PathBuf {
-    std::env::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("Library/Application Support")
-        .join(IDENTIFIER)
+    let Some(home) = std::env::home_dir() else {
+        fail("Cannot locate the home directory for DataBee's settings");
+    };
+    home.join("Library/Application Support").join(IDENTIFIER)
+}
+
+/// Holds the IPC socket and the Stage token, so only the user may enter it.
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)?;
+    if std::fs::metadata(dir)?.permissions().mode() & 0o077 != 0 {
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+/// Held for the app's lifetime, so two launches that both find no listener can't both start.
+/// `None` when another process holds it.
+fn lock_instance(dir: &Path) -> std::io::Result<Option<File>> {
+    let file = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join("databee.lock"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(e)) => Err(e),
+    }
+}
+
+fn fail(message: &str) -> ! {
+    eprintln!("{message}");
+    std::process::exit(2);
+}
+
+/// Exits when a running instance answers or refuses the message; returns when none is listening.
+fn forward(socket: &Path, message: &IpcMessage, exit_code: i32) {
+    match ipc::try_forward(socket, message) {
+        Ok(Forward::Delivered) => std::process::exit(exit_code),
+        Ok(Forward::NoInstance) => {}
+        Ok(Forward::Rejected) => fail("The running DataBee instance did not accept the request"),
+        Err(e) => fail(&format!(
+            "Could not reach the running DataBee instance: {e}"
+        )),
+    }
+}
+
+/// The lock holder may still be starting up and not listen yet.
+fn forward_to_starting_instance(socket: &Path, message: &IpcMessage, exit_code: i32) -> ! {
+    for _ in 0..LOCK_POLLS {
+        std::thread::sleep(LOCK_POLL);
+        forward(socket, message, exit_code);
+    }
+    fail("Another DataBee instance is starting but does not answer")
 }
 
 fn log_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
@@ -61,8 +119,11 @@ fn log_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let config_dir = config_dir();
+    if let Err(e) = create_private_dir(&config_dir) {
+        eprintln!("Cannot create {}: {e}", config_dir.display());
+    }
     let socket = config_dir.join("databee.sock");
-    let default_port = SettingsStore::open(&config_dir).get().default_port;
+    let default_port = Settings::peek(&config_dir).default_port;
 
     let (message, log_override) = match cli::parse(
         std::env::args_os(),
@@ -89,11 +150,15 @@ pub fn run() {
         0
     };
 
-    match ipc::try_forward(&socket, &message) {
-        Ok(true) => std::process::exit(exit_code),
-        Ok(false) => {}
-        Err(e) => eprintln!("Could not reach running DataBee instance: {e}"),
-    }
+    forward(&socket, &message, exit_code);
+    let _instance_lock = match lock_instance(&config_dir) {
+        Ok(Some(lock)) => Some(lock),
+        Ok(None) => forward_to_starting_instance(&socket, &message, exit_code),
+        Err(e) => {
+            eprintln!("Cannot lock the DataBee instance: {e}");
+            None
+        }
+    };
 
     start_app(config_dir, socket, message, log_override);
 }
@@ -137,10 +202,9 @@ fn start_app(
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(ipc::serve(listener, move |message| {
                 let window = handle.get_webview_window("main");
+                #[cfg(debug_assertions)]
                 if let IpcMessage::Eval { js } = &message {
-                    if cfg!(debug_assertions)
-                        && let Some(w) = &window
-                    {
+                    if let Some(w) = &window {
                         let _ = w.eval(js);
                     }
                     return;

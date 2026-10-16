@@ -1,7 +1,7 @@
 use std::io::BufRead;
 
 use clap::Parser;
-use url::Url;
+use url::{Host, Url};
 
 use crate::connection::{ConnectionSpec, Secret};
 use crate::store::settings::LogLevel;
@@ -17,7 +17,9 @@ const DEFAULT_USER: &str = "root";
     after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/wordpress --password-env DB_PASS\n  echo secret | databee -u wp -d wordpress --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local"
 )]
 struct Args {
-    /// Connection URL: mysql://user[:password]@host[:port][/database][?socket=path]
+    /// Connection URL: mysql://user[:password]@host[:port][/database][?socket=path].
+    /// A password in the URL stays visible in the process list while this process runs the
+    /// app; prefer --password-stdin or --password-env
     url: Option<String>,
     /// Server host (default 127.0.0.1)
     #[arg(short = 'H', long)]
@@ -51,28 +53,7 @@ struct Args {
     save_password: bool,
     /// Log level for this run
     #[arg(long, value_enum)]
-    log_level: Option<CliLogLevel>,
-}
-
-#[derive(clap::ValueEnum, Clone, Copy, Debug)]
-enum CliLogLevel {
-    Error,
-    Warn,
-    Info,
-    Debug,
-    Trace,
-}
-
-impl From<CliLogLevel> for LogLevel {
-    fn from(l: CliLogLevel) -> Self {
-        match l {
-            CliLogLevel::Error => LogLevel::Error,
-            CliLogLevel::Warn => LogLevel::Warn,
-            CliLogLevel::Info => LogLevel::Info,
-            CliLogLevel::Debug => LogLevel::Debug,
-            CliLogLevel::Trace => LogLevel::Trace,
-        }
-    }
+    log_level: Option<LogLevel>,
 }
 
 /// A connection request from the command line, including its password if one was given.
@@ -118,7 +99,7 @@ where
             };
         }
     };
-    let log_level = args.log_level.map(Into::into);
+    let log_level = args.log_level;
     let launch = build_launch(args, default_port, stdin, env)?;
     Ok(CliOutcome::Run { launch, log_level })
 }
@@ -135,9 +116,14 @@ fn build_launch(
     };
     let wants_connection = from_url.is_some()
         || args.host.is_some()
+        || args.port.is_some()
         || args.socket.is_some()
         || args.user.is_some()
-        || args.database.is_some();
+        || args.database.is_some()
+        || args.name.is_some()
+        || args.password.is_some()
+        || args.password_stdin
+        || args.password_env.is_some();
     if !wants_connection {
         return Ok(None);
     }
@@ -202,15 +188,28 @@ fn parse_url(raw: &str) -> Result<(UrlParts, Option<Secret>), String> {
 
     let user = non_empty(decode(url.username())?);
     let password = url.password().map(decode).transpose()?.map(Secret::new);
-    let database = non_empty(decode(url.path().trim_start_matches('/'))?);
+    let segments: Vec<&str> = url
+        .path_segments()
+        .map(|s| s.filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+    let database = match segments.as_slice() {
+        [] => None,
+        [db] => non_empty(decode(db)?),
+        _ => return Err("Connection URL path must name a single database".into()),
+    };
     let socket = url
         .query_pairs()
         .find(|(k, _)| k == "socket")
-        .map(|(_, v)| v.into_owned());
+        .and_then(|(_, v)| non_empty(v.into_owned()));
+    let host = url.host().and_then(|h| match h {
+        // `Host::to_string` keeps the brackets, which sqlx can't resolve.
+        Host::Ipv6(addr) => Some(addr.to_string()),
+        other => non_empty(other.to_string()),
+    });
 
     Ok((
         UrlParts {
-            host: url.host_str().and_then(|h| non_empty(h.to_string())),
+            host,
             port: url.port(),
             socket,
             user,
@@ -228,10 +227,14 @@ fn percent_decode(s: &str) -> Result<String, std::str::Utf8Error> {
 
 fn read_password_line(stdin: &mut dyn BufRead) -> Result<Secret, String> {
     let mut line = String::new();
-    stdin
+    let read = stdin
         .read_line(&mut line)
         .map_err(|e| format!("Cannot read password from stdin: {e}"))?;
-    Ok(Secret::new(line.trim_end_matches(['\n', '\r'])))
+    if read == 0 {
+        return Err("--password-stdin was given but stdin is empty".into());
+    }
+    let line = line.strip_suffix('\n').unwrap_or(&line);
+    Ok(Secret::new(line.strip_suffix('\r').unwrap_or(line)))
 }
 
 #[cfg(test)]
@@ -355,7 +358,107 @@ mod tests {
 
     #[test]
     fn password_sources_are_mutually_exclusive() {
-        assert!(run(&["-u", "wp", "-p", "x", "--password-stdin"]).is_err());
+        let pairs: [&[&str]; 3] = [
+            &["-p", "x", "--password-stdin"],
+            &["-p", "x", "--password-env", "V"],
+            &["--password-stdin", "--password-env", "V"],
+        ];
+        for args in pairs {
+            assert!(run(args).is_err(), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn ipv6_url_host_is_kept_without_brackets() {
+        let l = launch(&["mysql://u@[::1]:3307/db"]);
+        assert_eq!(l.spec.host, "::1");
+        assert_eq!(l.spec.port, 3307);
+    }
+
+    #[test]
+    fn mariadb_scheme_is_accepted() {
+        let l = launch(&["mariadb://u@h/db"]);
+        assert_eq!(l.spec.host, "h");
+        assert_eq!(l.spec.database.as_deref(), Some("db"));
+    }
+
+    #[test]
+    fn invalid_percent_encoding_in_url_is_an_error() {
+        let err = run(&["mysql://u:%ff@h/db"]).unwrap_err();
+        assert!(err.contains("percent-encoding"), "{err}");
+    }
+
+    #[test]
+    fn empty_url_user_falls_back_to_root() {
+        assert_eq!(launch(&["mysql://@h/db"]).spec.user, "root");
+    }
+
+    #[test]
+    fn password_stdin_with_empty_stdin_is_an_error() {
+        let err = run_with(&["--password-stdin"], "", &|_| None).unwrap_err();
+        assert!(err.contains("stdin"), "{err}");
+    }
+
+    #[test]
+    fn crlf_is_stripped_from_the_stdin_password() {
+        let CliOutcome::Run {
+            launch: Some(l), ..
+        } = run_with(&["--password-stdin"], "pw\r\n", &|_| None).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(l.password, Some(Secret::new("pw")));
+    }
+
+    #[test]
+    fn name_flag_is_carried_into_the_spec() {
+        assert_eq!(
+            launch(&["-n", "Shop", "-d", "db"]).spec.name.as_deref(),
+            Some("Shop")
+        );
+    }
+
+    #[test]
+    fn save_password_flag_is_carried() {
+        assert!(launch(&["-d", "db", "--save-password"]).save_password);
+        assert!(!launch(&["-d", "db"]).save_password);
+    }
+
+    #[test]
+    fn port_flag_alone_requests_a_connection() {
+        let l = launch(&["-P", "3307"]);
+        assert_eq!(l.spec.port, 3307);
+        assert_eq!(l.spec.host, "127.0.0.1");
+    }
+
+    #[test]
+    fn empty_socket_query_is_no_socket() {
+        assert_eq!(launch(&["mysql://u@h/db?socket="]).spec.socket, None);
+    }
+
+    #[test]
+    fn host_flag_overrides_url_host() {
+        assert_eq!(
+            launch(&["mysql://u@h/db", "-H", "other"]).spec.host,
+            "other"
+        );
+    }
+
+    #[test]
+    fn password_env_beats_url_password() {
+        let env = |k: &str| (k == "V").then(|| "envpw".to_string());
+        let CliOutcome::Run {
+            launch: Some(l), ..
+        } = run_with(&["mysql://u:urlpw@h/db", "--password-env", "V"], "", &env).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(l.password, Some(Secret::new("envpw")));
+    }
+
+    #[test]
+    fn url_path_with_several_segments_is_rejected() {
+        assert!(run(&["mysql://h/db/extra"]).is_err());
     }
 
     #[test]

@@ -23,7 +23,7 @@ pub enum Density {
     Compact,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     Error,
@@ -163,7 +163,19 @@ impl Settings {
         self.stage.token = self.stage.token.trim().to_string();
         self
     }
+
+    /// Reads the settings without the store's quarantine, so a short-lived second process
+    /// never moves the running app's file aside.
+    pub fn peek(dir: &Path) -> Settings {
+        std::fs::read_to_string(dir.join(FILE_NAME))
+            .ok()
+            .and_then(|raw| serde_json::from_str::<Settings>(&raw).ok())
+            .unwrap_or_default()
+            .sanitized()
+    }
 }
+
+const FILE_NAME: &str = "settings.json";
 
 pub struct SettingsStore {
     file: JsonFile,
@@ -172,7 +184,7 @@ pub struct SettingsStore {
 
 impl SettingsStore {
     pub fn open(dir: &Path) -> Self {
-        let file = JsonFile::new(dir.join("settings.json"));
+        let file = JsonFile::new(dir.join(FILE_NAME));
         let current = file.load::<Settings>().sanitized();
         Self {
             file,
@@ -223,6 +235,35 @@ mod tests {
         let settings = SettingsStore::open(dir.path()).get();
         assert_eq!(settings.row_limit, 42);
         assert_eq!(settings.null_label, "NULL");
+    }
+
+    #[test]
+    fn peek_reads_valid_values_and_sanitizes_them() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("settings.json"),
+            r#"{"defaultPort": 3307, "rowLimit": 0}"#,
+        )
+        .unwrap();
+        let settings = Settings::peek(dir.path());
+        assert_eq!(settings.default_port, 3307);
+        assert_eq!(settings.row_limit, 10);
+    }
+
+    #[test]
+    fn peek_on_corrupt_file_returns_defaults_and_leaves_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        std::fs::write(&file, "{ not json").unwrap();
+
+        assert_eq!(Settings::peek(dir.path()), Settings::default());
+
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{ not json");
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("settings.json")]);
     }
 
     #[test]

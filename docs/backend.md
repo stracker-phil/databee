@@ -7,15 +7,17 @@ Stage hook each have their own page.
 
 `main.rs` calls `databee_lib::run()` (`lib.rs`):
 
-1. **Config dir.** `config_dir()` resolves `~/Library/Application Support/<identifier>`. This happens before
-   Tauri starts, because the CLI and the socket need the path first.
+1. **Config dir.** `config_dir()` resolves `~/Library/Application Support/<identifier>` (no home dir: exit 2)
+   and `create_private_dir` makes it mode 0700. This happens before Tauri starts, because the CLI and the
+   socket need the path first. The CLI reads `default_port` with `Settings::peek`, which never quarantines a
+   corrupt file.
 2. **CLI.** `cli::parse` returns one of three outcomes:
    - `Exit`: `--help` or `--version`.
    - `Run { launch, log_level }`: an `IpcMessage::Launch` with a connection, or `Activate` without one.
    - An error: it becomes `IpcMessage::Error`, and the app shows it.
-3. **Single-instance handoff.** `ipc::try_forward` sends the message to a running instance. If one accepted
-   it, this process exits with status 0, or 2 for a CLI error. Otherwise startup continues. The handoff is
-   custom: `tauri-plugin-single-instance` is a dependency but unused.
+3. **Single-instance handoff.** `ipc::try_forward` sends the message to a running instance (see
+   [below](#cli-and-single-instance-handoff)). Only when no instance listens does startup continue, after
+   taking the instance lock. The handoff is custom: `tauri-plugin-single-instance` is a dependency but unused.
 4. **`start_app`** builds Tauri:
    - plugins: log (stdout plus a rotating file, 3 × 5 MiB; `sqlx` is capped at Warn so SQL text stays out of
      the log) and opener;
@@ -100,18 +102,35 @@ password up.
   connect.
 - **Logging:** `--log-level` overrides the setting.
 - **Defaults:** host `127.0.0.1`, user `root`, port from `settings.defaultPort`.
-- **Activate only:** without a connection argument, the process only activates the running window.
+- **Activate only:** without any connection argument (URL, host, port, socket, user, database, name or a
+  password flag), the process only activates the running window.
+- **URL details:** IPv6 hosts lose their brackets; the path names at most one database; an empty `?socket=`
+  counts as none. `--password-stdin` on empty stdin is an error.
+- **Argv caveat:** a forwarded launch keeps its password out of the running app's argv, but the process that
+  becomes the app keeps its own argv, so a password in its URL shows in `ps` for the whole session.
 
 `ipc.rs`:
 
-- **Socket:** a Unix domain socket at `<config dir>/databee.sock`, with mode 0600.
-- **Protocol:** one line of JSON per connection, answered with `ok\n`.
+- **Socket:** a Unix domain socket at `<config dir>/databee.sock`, with mode 0600 in a 0700 dir. `serve` drops
+  peers with another uid.
+- **Protocol:** one line of JSON per connection (at most 64 KiB, within 5 s), answered with `ok\n`. Malformed,
+  oversized or incomplete lines get no answer.
+- **`Forward` outcomes** of `try_forward`, and what `run` does with them:
+  - `Delivered`: exit 0 (2 for a CLI error);
+  - `NoInstance` (socket missing or refused): start the app;
+  - `Rejected` (no `ok`) or an error such as a timeout: print it and exit 2, so a hung instance never
+    leads to a second one.
+- **Instance lock:** before starting, `run` takes an exclusive `flock` on `<config dir>/databee.lock` and
+  holds it for the process lifetime. A launch that finds it held polls `try_forward` for up to 5 s while
+  the holder starts up.
 - **Messages** (`IpcMessage`, tagged by `type`):
   - `launch {spec, password, savePassword}`
   - `error {message}`
   - `activate`
-  - `eval {js}`: debug builds only, used by `scripts/dev/js.sh`.
-- **Stale sockets:** `bind` removes a leftover socket before it binds.
+  - `eval {js}`: compiled into debug builds only, used by `scripts/dev/js.sh`.
+- `IpcMessage`'s `Debug` redacts the password.
+- **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
+  bind while a listener is alive.
 
 ## Persistence
 
@@ -133,6 +152,7 @@ stores go through `store/json_file.rs`, which:
 | `ui_state.json` | per connection: column widths, split and pane sizes |
 | `entities.toml` | optional user entity definitions ([wordpress.md](wordpress.md#entities)) |
 | `databee.sock` | the IPC socket |
+| `databee.lock` | the instance lock |
 
 Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.databee/`.
 
@@ -210,6 +230,7 @@ The menu isn't rebuilt when a binding changes, so a new menu accelerator takes e
 | `chrono`, `uuid`, `url`, `percent-encoding`, `futures-util` | time stamps, ids, URL parsing, result streaming |
 | `toml` | `entities.toml`, `meta_keys.toml` |
 | `sha2` | Gravatar hashes |
+| `libc` | `getuid` for the IPC peer check |
 | `tempfile` (dev) | store and socket tests |
 
 The release profile uses LTO, `codegen-units = 1`, `panic = "abort"` and strip. The toolchain is pinned to
