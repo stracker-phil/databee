@@ -363,7 +363,9 @@ export interface WpContext {
     name: string | null;
     url: string | null;
     currency: string | null;
-    gmtOffsetSecs: number;
+    /** Zone name from `timezone_string`, or the `gmt_offset` as `+05:30`. */
+    zone: string;
+    zoneSource: "timezone_string" | "gmt_offset";
     theme: string | null;
     activePlugins: string[];
     uploadsUrl: string | null;

@@ -99,6 +99,7 @@ pub async fn connect(state: State<'_, AppState>, args: ConnectArgs) -> AppResult
 
 #[tauri::command]
 pub async fn disconnect(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+    state.invalidate_wp(&session_id);
     if let Some(session) = state.sessions.remove(&session_id) {
         session.db.close().await;
         log::info!("Disconnected from {}", session.spec.identity());

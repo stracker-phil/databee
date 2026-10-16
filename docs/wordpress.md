@@ -21,7 +21,7 @@ in `src/components/wp/`.
 
 | File | Responsibility |
 |---|---|
-| `mod.rs` | Detection I/O, document loading, link resolution, options queries, `fetch` (30 s timeout), `sql_string` (wraps `Dialect::MYSQL`) |
+| `mod.rs` | Detection I/O, document loading, link resolution, options queries, `fetch` (30 s timeout) |
 | `context.rs` | Detection logic with no I/O: prefix, versions, WooCommerce, HPOS mode, multisite, site facts |
 | `php.rs` | Lossless parser and serializer for PHP `serialize()` data |
 | `value.rs` | Turns stored text (PHP or JSON) into a generic `ValueNode` tree. Serialized strings inside other values are decoded up to 3 levels deep |
@@ -44,7 +44,7 @@ in `src/components/wp/`.
 1. **Prefix.** A prefix qualifies when `{p}options`, `{p}posts` and `{p}users` all exist; the shortest one wins.
    Multisite sub-sites have no users table, so they never win. Custom prefixes work.
 2. **Options.** One query reads the `PROBED_OPTIONS`: versions, HPOS flags, `siteurl`, `blogname`, currency,
-   price decimals (`woocommerce_price_num_decimals`, default 2), GMT offset, theme, `active_plugins`, uploads path.
+   price decimals (`woocommerce_price_num_decimals`, default 2), time zone, theme, `active_plugins`, uploads path.
 3. **Facts:**
    - **WooCommerce:** a `woocommerce_version` option, or the WooCommerce order tables.
    - **HPOS:** `On` only when `woocommerce_custom_orders_table_enabled = yes` *and* `wc_orders` exists.
@@ -56,8 +56,16 @@ in `src/components/wp/`.
      `_customer_user` instead.
    - **Action Scheduler:** whether its tables exist.
    - **Multisite:** sites come from `{main}{N}_options` plus `wp_blogs`.
+   - **Time zone:** `SiteMeta.zone` is a `context::SiteZone`: `Named` from `timezone_string` (with DST, via
+     `chrono-tz`), or `Fixed` from `gmt_offset` (hours, may be fractional) when `timezone_string` is empty or
+     not a zone name. `SiteMeta.zone_source` names the option it came from. Local `DATETIME` values without
+     `gmt` in the key become instants through `SiteZone::to_utc` (`hints::time`). The dashboard and the action
+     histogram bucket by local day (and hour): `dashboard::day_spans` / `hour_spans` turn the site's days into
+     UTC ranges for a `CASE` over the `*_gmt` column, and "today" comes from the server's `UTC_TIMESTAMP()`.
 
-The result `WpContext` is cached per `session/database` in `AppState.wp_cache` until `wp_detect(refresh)`.
+The result `WpContext` is cached per `session/database` in `AppState.wp_cache` until `wp_detect(refresh)`,
+a successful `apply_changes` or `disconnect` (`AppState::invalidate_wp` drops every entry of the session).
+Only WordPress databases are cached, so one that becomes WordPress is detected on the next call.
 The UI receives `WpInfo`, which holds the context, the entity names for the palette, and a map from table to
 entity. That map lets the Database view offer "Open as WordPress document".
 
@@ -223,6 +231,12 @@ stays `''`. Binary cells only carry a preview, so their edits get no undo and th
 (`(no undo: …)`). When `SetCell` changes the key column itself, the undo finds the row by its new key.
 `DeleteLogsBefore` reads `UTC_TIMESTAMP()` once while planning and embeds the cutoff as a literal, so the
 DELETE removes exactly the counted entries.
+
+Escaping follows the server's `sql_mode`: the session reads it when connecting (and when the editor
+reconnects) and exposes it as `MySqlSession::dialect`. Every literal in `wp/` goes through
+`Dialect::sql_string`; under `NO_BACKSLASH_ESCAPES` only quotes are doubled, so a written `\` is stored as one
+backslash. LIKE patterns go through `Dialect::like` / `like_contains` (with `db::escape_like`), which adds
+`ESCAPE '\'` in that mode because the server then has no default LIKE escape character.
 
 ## Extending
 

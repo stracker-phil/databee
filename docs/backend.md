@@ -56,7 +56,7 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Box<dyn SecretStore>` | `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
-| `wp_cache` | `Mutex<HashMap<"session/db", Option<WpContext>>>` | WordPress detection results |
+| `wp_cache` | `Mutex<HashMap<"session/db", WpContext>>` | WordPress detection results; cleared per session by `invalidate_wp` |
 | `config_dir` | `PathBuf` | used to read the optional `entities.toml` |
 
 `stage::Stage` is managed separately (see [stage.md](stage.md)).

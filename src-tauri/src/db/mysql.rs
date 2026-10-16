@@ -36,6 +36,8 @@ pub struct MySqlSession {
     editor: tokio::sync::Mutex<MySqlConnection>,
     editor_thread_id: AtomicU64,
     database: Mutex<Option<String>>,
+    /// From a fresh connection's `sql_mode`, the server default the metadata pool shares.
+    backslash_escapes: AtomicBool,
     pub server_version: String,
 }
 
@@ -108,9 +110,10 @@ impl MySqlSession {
                 .await?;
             let thread_id = thread_id(&mut conn).await?;
             let version = scalar(&mut conn, "SELECT VERSION()").await?;
-            Ok::<_, AppError>((conn, thread_id, version.unwrap_or_default()))
+            let dialect = read_dialect(&mut conn).await?;
+            Ok::<_, AppError>((conn, thread_id, version.unwrap_or_default(), dialect))
         };
-        let (meta, (editor, thread_id, server_version)) =
+        let (meta, (editor, thread_id, server_version, dialect)) =
             connect_within(connect_timeout, async { tokio::try_join!(pool, editor) }).await?;
         Ok(Self {
             editor_options,
@@ -120,8 +123,16 @@ impl MySqlSession {
             editor: tokio::sync::Mutex::new(editor),
             editor_thread_id: AtomicU64::new(thread_id),
             database: Mutex::new(spec.database.clone()),
+            backslash_escapes: AtomicBool::new(dialect.backslash_escapes),
             server_version,
         })
+    }
+
+    /// How string literals for this server are spelled.
+    pub fn dialect(&self) -> Dialect {
+        Dialect {
+            backslash_escapes: self.backslash_escapes.load(Ordering::SeqCst),
+        }
     }
 
     pub fn current_database(&self) -> Option<String> {
@@ -208,10 +219,13 @@ impl MySqlSession {
         let reconnect = async {
             let mut fresh = options.connect().await?;
             let id = thread_id(&mut fresh).await?;
-            Ok((fresh, id))
+            let dialect = read_dialect(&mut fresh).await?;
+            Ok((fresh, id, dialect))
         };
-        let (fresh, id) = connect_within(self.connect_timeout, reconnect).await?;
+        let (fresh, id, dialect) = connect_within(self.connect_timeout, reconnect).await?;
         self.editor_thread_id.store(id, Ordering::SeqCst);
+        self.backslash_escapes
+            .store(dialect.backslash_escapes, Ordering::SeqCst);
         *conn = fresh;
         Ok(())
     }
@@ -249,7 +263,8 @@ impl MySqlSession {
             .into_iter()
             .filter_map(|mut r| r.remove(0))
             .map(|name| DatabaseInfo {
-                is_system: Dialect::MYSQL
+                is_system: self
+                    .dialect()
                     .system_schemas()
                     .contains(&name.to_ascii_lowercase().as_str()),
                 name,
@@ -353,7 +368,7 @@ impl MySqlSession {
     }
 
     pub async fn browse(&self, req: &BrowseRequest, timeout: Duration) -> AppResult<BrowsePage> {
-        let (sql, filter) = browse_sql(req, Dialect::MYSQL)?;
+        let (sql, filter) = browse_sql(req, self.dialect())?;
         let limit = page_limit(req);
         let mut conn = self.meta.acquire().await?;
         let outcome =
@@ -472,6 +487,11 @@ async fn thread_id(conn: &mut MySqlConnection) -> AppResult<u64> {
         .await?
         .and_then(|v| v.parse().ok())
         .ok_or_else(|| AppError::Connection("server did not report a connection id".into()))
+}
+
+async fn read_dialect(conn: &mut MySqlConnection) -> AppResult<Dialect> {
+    let sql_mode = scalar(conn, "SELECT @@SESSION.sql_mode").await?;
+    Ok(Dialect::from_sql_mode(&sql_mode.unwrap_or_default()))
 }
 
 async fn scalar(conn: &mut MySqlConnection, sql: &'static str) -> AppResult<Option<String>> {

@@ -1,15 +1,15 @@
 //! The WordPress dashboard and the counts shown in the entity browser.
 
-use chrono::{Duration, NaiveDate, Utc};
+use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
 use serde::Serialize;
 
 use super::changes::ChangeRequest;
-use super::context::{HposMode, WpContext};
+use super::context::{HposMode, SiteZone, WpContext};
+use super::fetch;
 use super::lists::{self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary, num, text};
-use super::{fetch, sql_string};
 use crate::db::mysql::MySqlSession;
 use crate::db::{TableInfo, quote_ident};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 pub const AUTOLOAD_HEALTHY_BYTES: u64 = 800 * 1024;
 const DAYS: i64 = 14;
@@ -97,21 +97,113 @@ fn change(label: &str, change: ChangeRequest) -> Option<InsightAction> {
     })
 }
 
-/// 24 hourly buckets ending with the current hour, labelled `HH:00`.
-pub fn hour_buckets(rows: &[(String, String, u64)], now: chrono::DateTime<Utc>) -> Vec<DayBucket> {
+/// Rows dated in `[start, end)` count towards the bucket `key`.
+struct Span {
+    key: String,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+}
+
+const SQL_DATETIME: &str = "%Y-%m-%d %H:%M:%S";
+
+/// The `DAYS` local days of the site ending with `today`, keyed `YYYY-MM-DD`.
+fn day_spans(today: NaiveDate, zone: &SiteZone) -> Vec<Span> {
+    let midnight = |date: NaiveDate| zone.to_utc(date.and_time(NaiveTime::MIN));
+    (0..DAYS)
+        .rev()
+        .map(|back| {
+            let date = today - Duration::days(back);
+            Span {
+                key: date.format("%Y-%m-%d").to_string(),
+                start: midnight(date),
+                end: midnight(date + Duration::days(1)),
+            }
+        })
+        .collect()
+}
+
+/// The 24 local hours ending with the current one, keyed by their UTC start, which stays
+/// unique when DST repeats an hour.
+fn hour_spans(now: DateTime<Utc>, zone: &SiteZone) -> Vec<Span> {
+    let offset = zone.offset_at(now);
+    let local = now.naive_utc() + offset;
+    let local_hour = local
+        .date()
+        .and_hms_opt(local.hour(), 0, 0)
+        .expect("the hour of a valid time is a valid time");
+    let current = (local_hour - offset).and_utc();
     (0..24)
         .rev()
         .map(|back| {
-            let at = now - Duration::hours(back);
-            let key = at.format("%Y-%m-%d %H:00").to_string();
+            let start = current - Duration::hours(back);
+            Span {
+                key: start.format("%Y-%m-%d %H:%M").to_string(),
+                start,
+                end: start + Duration::hours(1),
+            }
+        })
+        .collect()
+}
+
+/// A `CASE` naming the span a UTC `DATETIME` column falls into, plus the `WHERE` condition
+/// that covers all spans.
+fn span_sql(column: &str, spans: &[Span]) -> (String, String) {
+    let at = |t: &DateTime<Utc>| format!("'{}'", t.format(SQL_DATETIME));
+    let cases: String = spans
+        .iter()
+        .map(|s| {
+            format!(
+                " WHEN {column} >= {} AND {column} < {} THEN '{}'",
+                at(&s.start),
+                at(&s.end),
+                s.key
+            )
+        })
+        .collect();
+    let range = match (spans.first(), spans.last()) {
+        (Some(first), Some(last)) => {
+            format!(
+                "{column} >= {} AND {column} < {}",
+                at(&first.start),
+                at(&last.end)
+            )
+        }
+        _ => "FALSE".to_string(),
+    };
+    (format!("CASE{cases} END"), range)
+}
+
+/// The server's clock, so "today" doesn't depend on this machine's.
+async fn server_now(session: &MySqlSession) -> AppResult<DateTime<Utc>> {
+    let rs = fetch(session, "SELECT UTC_TIMESTAMP()").await?;
+    rs.rows
+        .first()
+        .and_then(|r| text(&r[0]))
+        .and_then(|t| NaiveDateTime::parse_from_str(&t, SQL_DATETIME).ok())
+        .map(|t| t.and_utc())
+        .ok_or_else(|| AppError::Database {
+            message: "The server returned no time for UTC_TIMESTAMP()".into(),
+            code: None,
+        })
+}
+
+/// 24 hourly buckets ending with the current local hour, labelled `HH:00` in the site zone.
+pub fn hour_buckets(
+    rows: &[(String, String, u64)],
+    now: DateTime<Utc>,
+    zone: &SiteZone,
+) -> Vec<DayBucket> {
+    hour_spans(now, zone)
+        .into_iter()
+        .map(|span| {
             let mut bucket = DayBucket {
-                date: at.format("%H:00").to_string(),
+                date: zone.to_local(span.start).format("%H:00").to_string(),
                 completed: 0,
                 processing: 0,
                 failed: 0,
                 other: 0,
             };
-            for (_, status, count) in rows.iter().filter(|(d, _, _)| *d == key) {
+            for (_, status, count) in rows.iter().filter(|(d, _, _)| *d == span.key) {
                 match status.trim_start_matches("wc-") {
                     "completed" => bucket.completed += count,
                     "processing" => bucket.processing += count,
@@ -187,7 +279,7 @@ pub fn tiles(ctx: &WpContext, tables: &[TableInfo]) -> Vec<TableTile> {
     tiles
 }
 
-/// Fills all `DAYS` days ending today (UTC) from (date, status, count) rows.
+/// Fills all `DAYS` days ending today (site zone) from (date, status, count) rows.
 pub fn day_buckets(rows: &[(String, String, u64)], today: NaiveDate) -> Vec<DayBucket> {
     (0..DAYS)
         .rev()
@@ -308,6 +400,7 @@ fn t(db: &str, ctx: &WpContext, table: &str) -> String {
 }
 
 pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> AppResult<Dashboard> {
+    let dialect = session.dialect();
     let options = t(db, ctx, "options");
     let autoload = fetch(
         session,
@@ -318,14 +411,18 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
     let expired = fetch(
         session,
         &format!(
-            "SELECT COUNT(*) FROM {options} WHERE (option_name LIKE '\\_transient\\_timeout\\_%' \
-             OR option_name LIKE '\\_site\\_transient\\_timeout\\_%') AND CAST(option_value AS UNSIGNED) < UNIX_TIMESTAMP()"
+            "SELECT COUNT(*) FROM {options} WHERE (option_name LIKE {} OR option_name LIKE {}) \
+             AND CAST(option_value AS UNSIGNED) < UNIX_TIMESTAMP()",
+            dialect.like(r"\_transient\_timeout\_%"),
+            dialect.like(r"\_site\_transient\_timeout\_%"),
         ),
     )
     .await?;
 
     let (orders, recent_orders, hpos_drift) = match &ctx.wc {
         Some(wc) => {
+            let now = server_now(session).await?;
+            let today = ctx.site.zone.to_local(now).date();
             let (table, status_col, date_col, type_filter) = if ctx.hpos() {
                 (
                     t(db, ctx, "wc_orders"),
@@ -346,12 +443,12 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
                 &format!("SELECT {status_col}, COUNT(*) FROM {table} WHERE {type_filter} GROUP BY {status_col}"),
             )
             .await?;
+            let (day_case, day_range) = span_sql(date_col, &day_spans(today, &ctx.site.zone));
             let days = fetch(
                 session,
                 &format!(
-                    "SELECT DATE({date_col}), {status_col}, COUNT(*) FROM {table} WHERE {type_filter} \
-                     AND {date_col} >= UTC_DATE() - INTERVAL {} DAY GROUP BY DATE({date_col}), {status_col}",
-                    DAYS - 1
+                    "SELECT {day_case}, {status_col}, COUNT(*) FROM {table} WHERE {type_filter} \
+                     AND {day_range} GROUP BY 1, 2"
                 ),
             )
             .await?;
@@ -360,7 +457,6 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
                 .iter()
                 .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, num(&r[2])?)))
                 .collect();
-            let today = Utc::now().date_naive();
             let mut buckets = day_buckets(&day_rows, today);
             let mut granularity = "day";
             let active_days = buckets
@@ -368,11 +464,12 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
                 .filter(|b| b.completed + b.processing + b.failed + b.other > 0)
                 .count();
             if active_days < 3 {
+                let (hour_case, hour_range) = span_sql(date_col, &hour_spans(now, &ctx.site.zone));
                 let hours = fetch(
                     session,
                     &format!(
-                        "SELECT DATE_FORMAT({date_col}, '%Y-%m-%d %H:00'), {status_col}, COUNT(*) FROM {table} WHERE {type_filter} \
-                         AND {date_col} >= UTC_TIMESTAMP() - INTERVAL 24 HOUR GROUP BY 1, 2"
+                        "SELECT {hour_case}, {status_col}, COUNT(*) FROM {table} WHERE {type_filter} \
+                         AND {hour_range} GROUP BY 1, 2"
                     ),
                 )
                 .await?;
@@ -384,7 +481,7 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
                 let today_total = buckets
                     .last()
                     .map_or(0, |b| b.completed + b.processing + b.failed + b.other);
-                buckets = hour_buckets(&hour_rows, Utc::now());
+                buckets = hour_buckets(&hour_rows, now, &ctx.site.zone);
                 // keep "today" from the day view
                 buckets.push(DayBucket {
                     date: "__today".into(),
@@ -543,6 +640,7 @@ pub async fn browser(
     ctx: &WpContext,
     db: &str,
 ) -> AppResult<Vec<BrowserSection>> {
+    let dialect = session.dialect();
     let facet_rows = |rs: &crate::db::ResultSet| -> Vec<Facet> {
         let mut f: Vec<Facet> = rs
             .rows
@@ -580,7 +678,7 @@ pub async fn browser(
                 session,
                 &format!(
                     "SELECT {status}, COUNT(*) FROM {table} WHERE {ty} = {} GROUP BY {status}",
-                    sql_string(order_type)
+                    dialect.sql_string(order_type)
                 ),
             )
             .await?;
@@ -636,7 +734,7 @@ pub async fn browser(
     }
     let hidden = lists::HIDDEN_POST_TYPES
         .iter()
-        .map(|h| sql_string(h))
+        .map(|h| dialect.sql_string(h))
         .collect::<Vec<_>>()
         .join(", ");
     let rs = fetch(
@@ -669,16 +767,17 @@ pub async fn action_histogram(
     db: &str,
     hook: Option<&str>,
 ) -> AppResult<Vec<DayBucket>> {
+    let dialect = session.dialect();
     let hook_filter = hook
-        .map(|h| format!(" AND hook = {}", sql_string(h)))
+        .map(|h| format!(" AND hook = {}", dialect.sql_string(h)))
         .unwrap_or_default();
+    let today = ctx.site.zone.to_local(server_now(session).await?).date();
+    let (day_case, day_range) = span_sql("scheduled_date_gmt", &day_spans(today, &ctx.site.zone));
     let rs = fetch(
         session,
         &format!(
-            "SELECT DATE(scheduled_date_gmt), status, COUNT(*) FROM {} WHERE scheduled_date_gmt >= UTC_DATE() - INTERVAL {} DAY \
-             AND scheduled_date_gmt < UTC_DATE() + INTERVAL 1 DAY{hook_filter} GROUP BY 1, 2",
+            "SELECT {day_case}, status, COUNT(*) FROM {} WHERE {day_range}{hook_filter} GROUP BY 1, 2",
             t(db, ctx, "actionscheduler_actions"),
-            DAYS - 1
         ),
     )
     .await?;
@@ -695,7 +794,7 @@ pub async fn action_histogram(
             Some((text(&r[0])?, status, num(&r[2])?))
         })
         .collect();
-    Ok(day_buckets(&rows, Utc::now().date_naive()))
+    Ok(day_buckets(&rows, today))
 }
 
 #[cfg(test)]
@@ -851,7 +950,7 @@ mod tests {
                 7,
             ),
         ];
-        let b = hour_buckets(&rows, now);
+        let b = hour_buckets(&rows, now, &SiteZone::default());
         assert_eq!(b.len(), 24);
         assert_eq!(b[0].date, "10:00");
         assert_eq!(b[0].completed, 1);
@@ -862,5 +961,51 @@ mod tests {
             1,
             "09:00 yesterday is outside the window"
         );
+    }
+
+    fn at(rfc3339: &str) -> DateTime<Utc> {
+        chrono::DateTime::parse_from_rfc3339(rfc3339)
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn hour_buckets_are_labelled_in_the_named_site_zone() {
+        let zone = SiteZone::Named(chrono_tz::Europe::Berlin);
+        let rows = vec![
+            (
+                "2026-10-16 09:00".to_string(),
+                "wc-completed".to_string(),
+                4,
+            ),
+            (
+                "2026-10-16 10:00".to_string(),
+                "wc-completed".to_string(),
+                9,
+            ),
+        ];
+        let b = hour_buckets(&rows, at("2026-10-16T09:30:00Z"), &zone);
+        assert_eq!(b.len(), 24);
+        assert_eq!(b[23].date, "11:00");
+        assert_eq!(b[23].completed, 4);
+        assert_eq!(b[0].date, "12:00");
+        assert_eq!(
+            b.iter().map(|x| x.completed).sum::<u64>(),
+            4,
+            "10:00 UTC is in the future"
+        );
+    }
+
+    #[test]
+    fn hour_buckets_follow_a_half_hour_offset() {
+        let zone = SiteZone::Fixed(chrono::FixedOffset::east_opt(19800).unwrap());
+        let rows = vec![("2026-10-16 09:30".to_string(), "wc-failed".to_string(), 2)];
+        let b = hour_buckets(&rows, at("2026-10-16T09:45:00Z"), &zone);
+        assert_eq!(b[23].date, "15:00");
+        assert_eq!(b[23].failed, 2);
+
+        let unmatched = vec![("2026-10-16 09:00".to_string(), "wc-failed".to_string(), 2)];
+        let b = hour_buckets(&unmatched, at("2026-10-16T09:45:00Z"), &zone);
+        assert_eq!(b.iter().map(|x| x.failed).sum::<u64>(), 0);
     }
 }

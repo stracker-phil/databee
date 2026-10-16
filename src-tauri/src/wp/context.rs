@@ -3,9 +3,75 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use serde::Serialize;
+use chrono::{DateTime, Duration, FixedOffset, NaiveDateTime, Offset, TimeZone, Utc};
+use chrono_tz::Tz;
+use serde::{Serialize, Serializer};
 
 use super::hints::DEFAULT_PRICE_DECIMALS;
+
+/// The site's time zone: a named zone with DST from `timezone_string`, or the fixed
+/// `gmt_offset` WordPress uses when no zone is chosen.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SiteZone {
+    Named(Tz),
+    Fixed(FixedOffset),
+}
+
+/// What WordPress assumes with neither option set: `gmt_offset` 0.
+impl Default for SiteZone {
+    fn default() -> Self {
+        SiteZone::Fixed(Utc.fix())
+    }
+}
+
+impl SiteZone {
+    pub fn offset_at(&self, utc: DateTime<Utc>) -> FixedOffset {
+        match self {
+            SiteZone::Named(tz) => tz.offset_from_utc_datetime(&utc.naive_utc()).fix(),
+            SiteZone::Fixed(offset) => *offset,
+        }
+    }
+
+    pub fn to_local(&self, utc: DateTime<Utc>) -> NaiveDateTime {
+        utc.naive_utc() + self.offset_at(utc)
+    }
+
+    /// The instant of a local wall-clock time. An ambiguous time (DST ends) takes the
+    /// earlier instant; a skipped one (DST starts) uses the offset from before the gap.
+    pub fn to_utc(&self, local: NaiveDateTime) -> DateTime<Utc> {
+        let tz = match self {
+            SiteZone::Fixed(offset) => return (local - *offset).and_utc(),
+            SiteZone::Named(tz) => tz,
+        };
+        if let Some(instant) = tz.from_local_datetime(&local).earliest() {
+            return instant.to_utc();
+        }
+        let before_gap = self.offset_at(local.and_utc() - Duration::days(1));
+        (local - before_gap).and_utc()
+    }
+}
+
+/// The stored value: the zone name, or the offset as `+05:30`.
+impl Serialize for SiteZone {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            SiteZone::Named(tz) => serializer.serialize_str(tz.name()),
+            SiteZone::Fixed(offset) => serializer.collect_str(offset),
+        }
+    }
+}
+
+/// `timezone_string` when it names a zone, else `gmt_offset` (hours, may be fractional).
+fn site_zone(timezone_string: Option<&str>, gmt_offset: Option<&str>) -> (SiteZone, &'static str) {
+    if let Some(tz) = timezone_string.and_then(|name| name.trim().parse::<Tz>().ok()) {
+        return (SiteZone::Named(tz), "timezone_string");
+    }
+    let zone = gmt_offset
+        .and_then(|hours| hours.trim().parse::<f64>().ok())
+        .and_then(|hours| FixedOffset::east_opt((hours * 3600.0).round() as i32))
+        .map_or_else(SiteZone::default, SiteZone::Fixed);
+    (zone, "gmt_offset")
+}
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -23,8 +89,9 @@ pub struct SiteMeta {
     pub name: Option<String>,
     pub url: Option<String>,
     pub currency: Option<String>,
-    /// From `gmt_offset` (hours); 0 when the site uses a named timezone.
-    pub gmt_offset_secs: i64,
+    pub zone: SiteZone,
+    /// The option `zone` was read from: `timezone_string` or `gmt_offset`.
+    pub zone_source: &'static str,
     pub theme: Option<String>,
     /// Plugin slugs from `active_plugins`, e.g. `woocommerce`.
     pub active_plugins: Vec<String>,
@@ -40,7 +107,8 @@ impl Default for SiteMeta {
             name: None,
             url: None,
             currency: None,
-            gmt_offset_secs: 0,
+            zone: SiteZone::default(),
+            zone_source: "gmt_offset",
             theme: None,
             active_plugins: Vec::new(),
             uploads_url: None,
@@ -130,6 +198,7 @@ pub const PROBED_OPTIONS: &[&str] = &[
     "woocommerce_currency",
     "woocommerce_price_num_decimals",
     "gmt_offset",
+    "timezone_string",
     "template",
     "stylesheet",
     "active_plugins",
@@ -159,6 +228,10 @@ fn site_meta(options: &HashMap<String, String>) -> SiteMeta {
             _ => Vec::new(),
         })
         .unwrap_or_default();
+    let (zone, zone_source) = site_zone(
+        opt("timezone_string").as_deref(),
+        opt("gmt_offset").as_deref(),
+    );
     SiteMeta {
         name: opt("blogname"),
         uploads_url: opt("upload_url_path")
@@ -166,9 +239,8 @@ fn site_meta(options: &HashMap<String, String>) -> SiteMeta {
             .or_else(|| url.as_ref().map(|u| format!("{u}/wp-content/uploads"))),
         url,
         currency: opt("woocommerce_currency"),
-        gmt_offset_secs: opt("gmt_offset")
-            .and_then(|o| o.parse::<f64>().ok())
-            .map_or(0, |h| (h * 3600.0) as i64),
+        zone,
+        zone_source,
         theme: opt("stylesheet").or_else(|| opt("template")),
         active_plugins,
         price_decimals: opt("woocommerce_price_num_decimals")
@@ -351,12 +423,108 @@ mod tests {
             ctx.site.uploads_url.as_deref(),
             Some("https://wc-pp.ddev.site/wp-content/uploads")
         );
-        assert_eq!(ctx.site.gmt_offset_secs, -19800);
+        assert_eq!(
+            ctx.site.zone,
+            SiteZone::Fixed(FixedOffset::west_opt(19800).unwrap())
+        );
         assert_eq!(
             ctx.site.active_plugins,
             ["woocommerce", "woocommerce-paypal-payments"]
         );
         assert_eq!(ctx.site.theme.as_deref(), Some("storefront"));
+    }
+
+    fn site_of(pairs: &[(&str, &str)]) -> SiteMeta {
+        build(&tables(CORE), &opts(pairs), &HashMap::new())
+            .unwrap()
+            .site
+    }
+
+    fn utc(rfc3339: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(rfc3339)
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    fn local(text: &str) -> NaiveDateTime {
+        NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S").unwrap()
+    }
+
+    #[test]
+    fn timezone_string_gives_a_named_zone_with_dst() {
+        let site = site_of(&[("timezone_string", "Europe/Berlin"), ("gmt_offset", "9")]);
+        assert_eq!(site.zone_source, "timezone_string");
+        assert_eq!(
+            site.zone.offset_at(utc("2026-01-15T12:00:00Z")),
+            FixedOffset::east_opt(3600).unwrap()
+        );
+        assert_eq!(
+            site.zone.offset_at(utc("2026-07-15T12:00:00Z")),
+            FixedOffset::east_opt(7200).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(site.zone).unwrap(),
+            serde_json::json!("Europe/Berlin")
+        );
+    }
+
+    #[test]
+    fn gmt_offset_is_the_fallback_zone() {
+        let fractional = site_of(&[("timezone_string", ""), ("gmt_offset", "5.5")]);
+        assert_eq!(
+            fractional.zone,
+            SiteZone::Fixed(FixedOffset::east_opt(19800).unwrap())
+        );
+        assert_eq!(fractional.zone_source, "gmt_offset");
+        assert_eq!(
+            serde_json::to_value(fractional.zone).unwrap(),
+            serde_json::json!("+05:30")
+        );
+
+        let invalid_name = site_of(&[("timezone_string", "Mars/Olympus"), ("gmt_offset", "-2")]);
+        assert_eq!(
+            invalid_name.zone,
+            SiteZone::Fixed(FixedOffset::west_opt(7200).unwrap())
+        );
+        assert_eq!(invalid_name.zone_source, "gmt_offset");
+    }
+
+    #[test]
+    fn without_zone_options_the_site_is_on_utc() {
+        let site = site_of(&[]);
+        assert_eq!(
+            site.zone.offset_at(utc("2026-07-15T12:00:00Z")),
+            FixedOffset::east_opt(0).unwrap()
+        );
+        assert_eq!(site.zone_source, "gmt_offset");
+    }
+
+    #[test]
+    fn named_zone_converts_local_times_to_utc_and_back() {
+        let berlin = SiteZone::Named(chrono_tz::Europe::Berlin);
+        for (local_time, instant) in [
+            ("2026-07-01 12:00:00", "2026-07-01T10:00:00Z"),
+            ("2026-01-15 12:00:00", "2026-01-15T11:00:00Z"),
+            ("2026-03-29 02:30:00", "2026-03-29T01:30:00Z"),
+            ("2026-10-25 02:30:00", "2026-10-25T00:30:00Z"),
+        ] {
+            assert_eq!(
+                berlin.to_utc(local(local_time)),
+                utc(instant),
+                "{local_time}"
+            );
+        }
+        for (instant, local_time) in [
+            ("2026-07-01T10:00:00Z", "2026-07-01 12:00:00"),
+            ("2026-01-15T11:00:00Z", "2026-01-15 12:00:00"),
+            ("2026-10-25T01:30:00Z", "2026-10-25 02:30:00"),
+        ] {
+            assert_eq!(
+                berlin.to_local(utc(instant)),
+                local(local_time),
+                "{instant}"
+            );
+        }
     }
 
     #[test]

@@ -9,7 +9,7 @@ pub mod safety;
 mod types;
 
 pub use cell::Cell;
-pub use dialect::Dialect;
+pub use dialect::{Dialect, escape_like};
 pub use types::*;
 
 /// Quotes a MySQL identifier with backticks.

@@ -9,11 +9,11 @@ use serde::Serialize;
 use super::context::WpContext;
 use super::entity::{Catalog, EntityDoc, EntityLink, cell_str};
 use super::hints::{DEFAULT_PRICE_DECIMALS, Hint, money};
-use super::lists::{self, ListQuery, OrderSummary, epoch, int, like, num, roles_of, text};
+use super::lists::{self, ListQuery, OrderSummary, epoch, int, num, roles_of, text};
 use super::php::{self, PhpKey, PhpValue};
-use super::{fetch, load_docs, post_images, sql_string, titles, value};
+use super::{fetch, load_docs, post_images, titles, value};
 use crate::db::mysql::MySqlSession;
-use crate::db::{ResultSet, quote_ident};
+use crate::db::{Dialect, ResultSet, quote_ident};
 use crate::error::{AppError, AppResult};
 
 fn t(db: &str, ctx: &WpContext, table: &str) -> String {
@@ -480,6 +480,7 @@ pub async fn order_view(
     entity: &str,
     id: &str,
 ) -> AppResult<OrderView> {
+    let dialect = session.dialect();
     let doc = load_docs(session, ctx, catalog, db, entity, &[id.to_string()])
         .await?
         .pop()
@@ -816,7 +817,7 @@ pub async fn order_view(
                 epoch("scheduled_date_gmt"),
                 epoch("IF(last_attempt_gmt < '1000-01-01', NULL, last_attempt_gmt)"),
                 t(db, ctx, "actionscheduler_actions"),
-                sql_string(&format!("%{order_id}%"))
+                dialect.like(&format!("%{order_id}%"))
             ),
         )
         .await?;
@@ -936,7 +937,7 @@ pub async fn order_view(
 /// WHERE alternatives that find an order's log lines: `#<id>` in the message as a whole number,
 /// the `order` key of the context (serialized PHP from `WC_Log_Handler_DB`, or JSON), and the
 /// payment IDs anywhere in the message.
-fn order_log_patterns(order_id: u64, payment_ids: &[String]) -> Vec<String> {
+fn order_log_patterns(dialect: Dialect, order_id: u64, payment_ids: &[String]) -> Vec<String> {
     let id = order_id.to_string();
     let serialized = [
         format!("s:5:\"order\";i:{id};"),
@@ -944,21 +945,24 @@ fn order_log_patterns(order_id: u64, payment_ids: &[String]) -> Vec<String> {
     ];
     // The REGEXPs end the number so `#4711` and `"order":4711` don't match 47110.
     let mut patterns = vec![
-        format!("message REGEXP {}", sql_string(&format!("#{id}([^0-9]|$)"))),
+        format!(
+            "message REGEXP {}",
+            dialect.sql_string(&format!("#{id}([^0-9]|$)"))
+        ),
         format!(
             "context REGEXP {}",
-            sql_string(&format!("\"order\": ?{id}[^0-9]"))
+            dialect.sql_string(&format!("\"order\": ?{id}[^0-9]"))
         ),
     ];
     patterns.extend(
         serialized
             .iter()
-            .map(|c| format!("context LIKE {}", like(c))),
+            .map(|c| format!("context LIKE {}", dialect.like_contains(c))),
     );
     patterns.extend(
         payment_ids
             .iter()
-            .map(|p| format!("message LIKE {}", like(p))),
+            .map(|p| format!("message LIKE {}", dialect.like_contains(p))),
     );
     patterns
 }
@@ -992,7 +996,7 @@ pub async fn order_logs(
     .into_iter()
     .flatten()
     .collect();
-    let patterns = order_log_patterns(order_id, &payment_ids);
+    let patterns = order_log_patterns(session.dialect(), order_id, &payment_ids);
     let window = match time_of(&doc, &["date_created_gmt", "post_date_gmt"]) {
         Some(created) => format!(
             " AND {} BETWEEN {} AND {}",
@@ -1100,9 +1104,10 @@ pub async fn guest_view(
     email: &str,
     with_gravatar: bool,
 ) -> AppResult<CustomerView> {
+    let dialect = session.dialect();
     let stats = fetch(
         session,
-        &lists::guests_sql(db, ctx, None, Some(email), 1, 0),
+        &lists::guests_sql(dialect, db, ctx, None, Some(email), 1, 0),
     )
     .await?;
     let summary = lists::guest_rows(
@@ -1129,7 +1134,7 @@ pub async fn guest_view(
             &format!(
                 "SELECT session_id FROM {} WHERE session_value LIKE {} ORDER BY session_expiry DESC LIMIT 1",
                 t(db, ctx, "woocommerce_sessions"),
-                sql_string(&format!("%{email}%"))
+                dialect.like_contains(email)
             ),
         )
         .await?;
@@ -1230,6 +1235,7 @@ pub async fn customer_view(
     id: &str,
     with_gravatar: bool,
 ) -> AppResult<CustomerView> {
+    let dialect = session.dialect();
     let doc = load_docs(session, ctx, catalog, db, "user", &[id.to_string()])
         .await?
         .pop()
@@ -1319,7 +1325,7 @@ pub async fn customer_view(
             &format!(
                 "SELECT session_id FROM {} WHERE session_key = {}",
                 t(db, ctx, "woocommerce_sessions"),
-                sql_string(id)
+                dialect.sql_string(id)
             ),
         )
         .await?;
@@ -1412,7 +1418,7 @@ async fn customer_orders(
     user_id: u64,
     q: &ListQuery,
 ) -> AppResult<Vec<OrderSummary>> {
-    let sql = lists::orders_sql(db, ctx, order_type, q);
+    let sql = lists::orders_sql(session.dialect(), db, ctx, order_type, q);
     // Narrow the generic list query to one customer.
     let sql = if ctx.hpos() {
         sql.replacen(
@@ -1578,10 +1584,11 @@ pub async fn product_view(
         let meta = fetch(
             session,
             &format!(
-                "SELECT post_id, meta_key, meta_value FROM {} WHERE post_id IN ({}) AND (meta_key LIKE 'attribute\\_%' \
+                "SELECT post_id, meta_key, meta_value FROM {} WHERE post_id IN ({}) AND (meta_key LIKE {} \
                  OR meta_key IN ('_sku', '_price', '_stock_status', '_stock'))",
                 t(db, ctx, "postmeta"),
-                var_ids.join(", ")
+                var_ids.join(", "),
+                session.dialect().like(r"attribute\_%")
             ),
         )
         .await?;
@@ -1707,6 +1714,7 @@ pub async fn action_view(
     db: &str,
     id: &str,
 ) -> AppResult<ActionView> {
+    let dialect = session.dialect();
     let doc = load_docs(session, ctx, catalog, db, "action", &[id.to_string()])
         .await?
         .pop()
@@ -1730,7 +1738,7 @@ pub async fn action_view(
                 &format!(
                     "SELECT slug FROM {} WHERE group_id = {}",
                     t(db, ctx, "actionscheduler_groups"),
-                    sql_string(&g)
+                    dialect.sql_string(&g)
                 ),
             )
             .await?;
@@ -1930,17 +1938,13 @@ pub async fn search(
     db: &str,
     query: &str,
 ) -> AppResult<Vec<SearchHit>> {
+    let dialect = session.dialect();
     let q = query.trim().trim_start_matches('#');
     if q.len() < 2 {
         return Ok(Vec::new());
     }
-    let exact = sql_string(q);
-    let like = sql_string(&format!(
-        "%{}%",
-        q.replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
-    ));
+    let exact = dialect.sql_string(q);
+    let like = dialect.like_contains(q);
     let mut out = Vec::new();
     let posts = t(db, ctx, "posts");
     let users = t(db, ctx, "users");
@@ -2122,7 +2126,7 @@ mod tests {
     #[test]
     fn order_log_patterns_match_whole_ids_and_escape_payment_ids() {
         assert_eq!(
-            order_log_patterns(4711, &["a%b_c".into()]),
+            order_log_patterns(Dialect::MYSQL, 4711, &["a%b_c".into()]),
             [
                 "message REGEXP '#4711([^0-9]|$)'",
                 "context REGEXP '\"order\": ?4711[^0-9]'",

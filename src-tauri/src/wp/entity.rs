@@ -524,7 +524,7 @@ pub fn assemble(
                 .or_else(|| ctx.site.currency.clone());
             let hints = HintContext {
                 currency,
-                gmt_offset_secs: ctx.site.gmt_offset_secs,
+                zone: ctx.site.zone,
                 price_decimals: ctx.site.price_decimals,
             };
 

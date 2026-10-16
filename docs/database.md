@@ -9,7 +9,7 @@ in `src-tauri/src/db_commands.rs`.
 |---|---|
 | `db/mod.rs` | Module declarations, re-exports, and `quote_ident`, a wrapper around `Dialect::MYSQL` |
 | `db/types.rs` | Shared DTOs (`ResultSet`, `ExecuteResponse`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage`, `AppliedFilter`, `FilterKind`) |
-| `db/dialect.rs` | `Dialect` (only `Dialect::MYSQL` so far): `quote_ident` (backticks), `sql_string`, `table_ref`, `system_schemas` |
+| `db/dialect.rs` | `Dialect { backslash_escapes }` (`Dialect::MYSQL`, or `from_sql_mode`): `quote_ident` (backticks), `sql_string`, `like` / `like_contains`, `table_ref`, `system_schemas`; `escape_like` |
 | `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
 | `db/mysql.rs` | `MySqlSession`, the only driver. It owns all I/O. |
 | `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements`, `words`, `is_terminated`, `is_blank` |
@@ -42,7 +42,9 @@ Other details:
 - **Connect options** are built from `ConnectionSpec`: socket or host and port, user and optional password
   (`connect_options`). The database is added per connection (`with_database`): the spec's database for the
   pool and the first editor connection, the current database on reconnect, none for `KILL`. Server defaults are left alone on purpose: sqlx is told not to change `sql_mode`, `time_zone` or
-  `PIPES_AS_CONCAT`.
+  `PIPES_AS_CONCAT`. Instead the editor connection reads `@@SESSION.sql_mode` on connect and reconnect, and
+  `MySqlSession::dialect` reports whether backslashes escape (`NO_BACKSLASH_ESCAPES`); browse and every
+  WordPress literal use it.
 - **Timeouts:** every server call is bounded, so a half-dead connection can't hang a command.
   - `connect_timeout_secs` covers connecting, reconnecting the editor and the one-off `KILL` connection
     (`connect_within`; a timeout is a `connection` error).
@@ -184,11 +186,11 @@ There is no driver trait yet. `Session.db` is a concrete `MySqlSession`, and eve
    current public API: `connect`, `close`, `execute`, `cancel`, `use_database`, `databases`, `tables`,
    `structure`, `completion`, `browse`, `apply`, `fetch`, `current_database`, `server_version`. An enum is
    easier with async. Switch `Session.db`, `db_commands.rs` and `wp/*` to it.
-2. **Dialect.** `db/dialect.rs` holds the start of a per-engine `Dialect`; only `Dialect::MYSQL` exists, and
-   `db::quote_ident` and `wp::sql_string` still call it directly. These are MySQL-specific today and need a
-   per-engine version:
+2. **Dialect.** `db/dialect.rs` holds the start of a per-engine `Dialect`; the session builds one from
+   `sql_mode`, and `db::quote_ident` still calls `Dialect::MYSQL` directly. These are MySQL-specific today and
+   need a per-engine version:
    - `Dialect::quote_ident` and `Dialect::table_ref` (backticks);
-   - `Dialect::sql_string` (backslash escaping);
+   - `Dialect::sql_string` and `Dialect::like` (backslash escaping unless `NO_BACKSLASH_ESCAPES`);
    - the lexer options (`#` comments, backslash escapes);
    - `Dialect::system_schemas`;
    - the cancel SQL (`KILL QUERY` → `pg_cancel_backend`; SQLite uses an interrupt);

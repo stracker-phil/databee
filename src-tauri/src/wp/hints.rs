@@ -9,6 +9,7 @@ use chrono::{DateTime, NaiveDateTime};
 use rust_decimal::{Decimal, RoundingStrategy};
 use serde::{Deserialize, Serialize};
 
+use super::context::SiteZone;
 use super::php::{self, PhpValue};
 
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,7 +131,7 @@ pub struct Annotation {
 #[derive(Debug, Clone)]
 pub struct HintContext {
     pub currency: Option<String>,
-    pub gmt_offset_secs: i64,
+    pub zone: SiteZone,
     pub price_decimals: u32,
 }
 
@@ -138,7 +139,7 @@ impl Default for HintContext {
     fn default() -> Self {
         Self {
             currency: None,
-            gmt_offset_secs: 0,
+            zone: SiteZone::default(),
             price_decimals: DEFAULT_PRICE_DECIMALS,
         }
     }
@@ -246,7 +247,11 @@ fn time(key: &str, raw: &str, ctx: &HintContext) -> Option<Hint> {
     }
     let naive = NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S").ok()?;
     let gmt = key.to_ascii_lowercase().contains("gmt");
-    let unix = naive.and_utc().timestamp() - if gmt { 0 } else { ctx.gmt_offset_secs };
+    let unix = if gmt {
+        naive.and_utc().timestamp()
+    } else {
+        ctx.zone.to_utc(naive).timestamp()
+    };
     Some(Hint::Time { unix, utc: gmt })
 }
 
@@ -424,13 +429,38 @@ mod tests {
     fn ctx() -> HintContext {
         HintContext {
             currency: Some("USD".into()),
-            gmt_offset_secs: 3600,
+            zone: SiteZone::Fixed(chrono::FixedOffset::east_opt(3600).unwrap()),
             price_decimals: 2,
         }
     }
 
     fn hint(key: &str, raw: &str) -> Option<Hint> {
         annotate(key, Some(raw), &ctx()).hint
+    }
+
+    #[test]
+    fn local_datetimes_follow_dst_of_a_named_zone() {
+        let berlin = HintContext {
+            zone: SiteZone::Named(chrono_tz::Europe::Berlin),
+            ..HintContext::default()
+        };
+        for (raw, unix) in [
+            ("2026-07-01 12:00:00", 1782900000),
+            ("2026-01-15 12:00:00", 1768474800),
+        ] {
+            assert_eq!(
+                annotate("_order_date", Some(raw), &berlin).hint,
+                Some(Hint::Time { unix, utc: false }),
+                "{raw}"
+            );
+        }
+        assert_eq!(
+            annotate("date_created_gmt", Some("2026-07-01 12:00:00"), &berlin).hint,
+            Some(Hint::Time {
+                unix: 1782907200,
+                utc: true
+            })
+        );
     }
 
     #[test]

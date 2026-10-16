@@ -6,37 +6,48 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 use databee_lib::connection::{ConnectionSpec, Secret};
 use databee_lib::db::mysql::MySqlSession;
-use databee_lib::wp::context::HposMode;
-use databee_lib::wp::dashboard::{browser, dashboard};
+use databee_lib::wp::context::{HposMode, SiteZone};
+use databee_lib::wp::dashboard::{action_histogram, browser, dashboard};
 use databee_lib::wp::detail::{EntityView, entity_view, search};
 use databee_lib::wp::entity::{Catalog, definitions};
 use databee_lib::wp::lists::{self, ListQuery};
 use databee_lib::wp::{detect, expand, load_docs, options_overview};
 
-async fn sessions() -> Vec<MySqlSession> {
+fn servers() -> Vec<(String, u16)> {
     let servers = std::env::var("DATABEE_TEST_SERVERS")
         .unwrap_or_else(|_| "127.0.0.1:33306,127.0.0.1:33307".into());
+    servers
+        .split(',')
+        .map(|s| {
+            let (host, port) = s.rsplit_once(':').unwrap();
+            (host.to_string(), port.parse().unwrap())
+        })
+        .collect()
+}
+
+async fn connect_to(host: &str, port: u16, database: &str) -> MySqlSession {
+    let spec = ConnectionSpec {
+        name: None,
+        host: host.into(),
+        port,
+        socket: None,
+        user: "root".into(),
+        database: Some(database.into()),
+    };
+    MySqlSession::connect(
+        &spec,
+        Some(&Secret::new("root")),
+        Duration::from_secs(10),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap()
+}
+
+async fn sessions() -> Vec<MySqlSession> {
     let mut out = Vec::new();
-    for s in servers.split(',') {
-        let (host, port) = s.rsplit_once(':').unwrap();
-        let spec = ConnectionSpec {
-            name: None,
-            host: host.into(),
-            port: port.parse().unwrap(),
-            socket: None,
-            user: "root".into(),
-            database: Some("wp_test".into()),
-        };
-        out.push(
-            MySqlSession::connect(
-                &spec,
-                Some(&Secret::new("root")),
-                Duration::from_secs(10),
-                Duration::from_secs(10),
-            )
-            .await
-            .unwrap(),
-        );
+    for (host, port) in servers() {
+        out.push(connect_to(&host, port, "wp_test").await);
     }
     out
 }
@@ -52,6 +63,16 @@ async fn detects_woocommerce_with_hpos_sync() {
         assert_eq!(wc.hpos, HposMode::OnWithSync);
         assert!(wc.has_action_scheduler);
         assert!(detect(&db, "databee_test").await.unwrap().is_none());
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn the_site_zone_comes_from_timezone_string() {
+    for db in sessions().await {
+        let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
+        assert_eq!(ctx.site.zone, SiteZone::Named(chrono_tz::Europe::Berlin));
+        assert_eq!(ctx.site.zone_source, "timezone_string");
     }
 }
 
@@ -138,7 +159,7 @@ async fn options_overview_reports_groups_and_expired_transients() {
     for db in sessions().await {
         let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
         let o = options_overview(&db, &ctx, "wp_test").await.unwrap();
-        assert_eq!(o.total_count, 16);
+        assert_eq!(o.total_count, 17);
         assert!(
             o.groups
                 .iter()
@@ -198,6 +219,26 @@ async fn dashboard_summarizes_orders_actions_and_health() {
                 .iter()
                 .any(|i| i.text.contains("scheduled actions failed"))
         );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn action_histogram_covers_fourteen_days_ending_today_in_the_site_zone() {
+    for (db, ctx, _) in env().await {
+        let now = scalar(&db, "SELECT UTC_TIMESTAMP()").await.unwrap();
+        let now = chrono::NaiveDateTime::parse_from_str(&now, "%Y-%m-%d %H:%M:%S")
+            .unwrap()
+            .and_utc();
+        let today = SiteZone::Named(chrono_tz::Europe::Berlin)
+            .to_local(now)
+            .date()
+            .format("%Y-%m-%d")
+            .to_string();
+
+        let buckets = action_histogram(&db, &ctx, "wp_test", None).await.unwrap();
+        assert_eq!(buckets.len(), 14);
+        assert_eq!(buckets.last().unwrap().date, today);
     }
 }
 

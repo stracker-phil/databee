@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::error::{AppError, AppResult};
 use crate::lock::MutexExt;
-use crate::state::AppState;
+use crate::state::{AppState, wp_cache_key};
 use crate::wp::context::WpContext;
 use crate::wp::dashboard::{self, BrowserSection, Dashboard, DayBucket};
 use crate::wp::detail::{self, EntityView, SearchHit};
@@ -30,9 +30,9 @@ async fn context(
     database: &str,
     refresh: bool,
 ) -> AppResult<Option<WpContext>> {
-    let key = format!("{session_id}/{database}");
+    let key = wp_cache_key(session_id, database);
     if !refresh && let Some(cached) = state.wp_cache.lock_unpoisoned().get(&key) {
-        return Ok(cached.clone());
+        return Ok(Some(cached.clone()));
     }
     let session = state.sessions.get(session_id)?;
     let ctx = lens::detect(&session.db, database).await?;
@@ -45,7 +45,11 @@ async fn context(
         ),
         None => log::debug!("{database} is not a WordPress database"),
     }
-    state.wp_cache.lock_unpoisoned().insert(key, ctx.clone());
+    let mut cache = state.wp_cache.lock_unpoisoned();
+    match &ctx {
+        Some(c) => cache.insert(key, c.clone()),
+        None => cache.remove(&key),
+    };
     Ok(ctx)
 }
 
@@ -128,8 +132,10 @@ pub async fn wp_transient_cleanup_sql(
     session_id: String,
     database: String,
 ) -> AppResult<String> {
+    let dialect = state.sessions.get(&session_id)?.db.dialect();
     let overview = wp_options(state, session_id, database.clone()).await?;
     Ok(options::cleanup_sql(
+        dialect,
         &database,
         &overview.table,
         &overview.transients,
@@ -459,7 +465,10 @@ pub async fn apply_changes(
     for sql in &statements {
         log::trace!("SQL: {sql}");
     }
-    session.db.apply(&statements, timeout).await
+    let affected = session.db.apply(&statements, timeout).await?;
+    // Statements carry no database of their own, so every context of the session may be stale.
+    state.invalidate_wp(&session_id);
+    Ok(affected)
 }
 
 #[tauri::command]

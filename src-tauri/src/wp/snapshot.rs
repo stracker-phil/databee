@@ -10,7 +10,7 @@ use super::detail::args_reference;
 use super::entity::{Catalog, EntityDoc, cell_str};
 use super::lists::{epoch, text};
 use super::value::ValueNode;
-use super::{expand, fetch, load_docs, quote_ident, sql_string};
+use super::{expand, fetch, load_docs, quote_ident};
 use crate::db::mysql::MySqlSession;
 use crate::error::{AppError, AppResult};
 
@@ -121,6 +121,7 @@ pub async fn capture(
     db: &str,
     scope: &Scope,
 ) -> AppResult<Paths> {
+    let dialect = session.dialect();
     let mut out = Paths::new();
     if let (Some(entity), Some(id)) = (&scope.entity, &scope.id) {
         let doc = load_docs(session, ctx, catalog, db, entity, std::slice::from_ref(id))
@@ -147,7 +148,7 @@ pub async fn capture(
                     epoch("scheduled_date_gmt"),
                     quote_ident(db),
                     quote_ident(&ctx.table("actionscheduler_actions")),
-                    sql_string(&format!("%{id}%"))
+                    dialect.like(&format!("%{id}%"))
                 ),
             )
             .await?;
@@ -183,7 +184,7 @@ pub async fn capture(
                 "SELECT option_name, option_value FROM {}.{} WHERE option_name LIKE {} ORDER BY option_name LIMIT 2000",
                 quote_ident(db),
                 quote_ident(&ctx.table("options")),
-                sql_string(pattern.trim())
+                dialect.like(pattern.trim())
             ),
         )
         .await?;

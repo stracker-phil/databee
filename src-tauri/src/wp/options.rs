@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use crate::db::quote_ident;
+use crate::db::{Dialect, quote_ident};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptionRow {
@@ -173,8 +173,13 @@ pub fn overview(
 
 /// SQL that deletes the given expired transients and their timeout rows. Returned to the
 /// user for review instead of being executed.
-pub fn cleanup_sql(database: &str, table: &str, transients: &[TransientInfo]) -> String {
-    let quote = |s: &str| format!("'{}'", s.replace('\\', "\\\\").replace('\'', "''"));
+pub fn cleanup_sql(
+    dialect: Dialect,
+    database: &str,
+    table: &str,
+    transients: &[TransientInfo],
+) -> String {
+    let quote = |s: &str| dialect.sql_string(s);
     let names: Vec<String> = transients
         .iter()
         .filter(|t| t.expired)
@@ -316,7 +321,7 @@ mod tests {
                 expired: false,
             },
         ];
-        let sql = cleanup_sql("db", "wp_options", &ts);
+        let sql = cleanup_sql(Dialect::MYSQL, "db", "wp_options", &ts);
         assert!(sql.contains("'_transient_old'"));
         assert!(sql.contains("'_transient_timeout_old'"));
         assert!(!sql.contains("keep"));

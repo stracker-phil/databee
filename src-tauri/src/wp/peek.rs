@@ -7,8 +7,8 @@ use serde::Serialize;
 use super::context::WpContext;
 use super::entity::{Catalog, EntityDoc, cell_str};
 use super::hints::{Hint, money};
-use super::lists::{like, num, text};
-use super::{fetch, load_docs, quote_ident, sql_string};
+use super::lists::{num, text};
+use super::{fetch, load_docs, quote_ident};
 use crate::db::mysql::MySqlSession;
 use crate::error::AppResult;
 
@@ -319,6 +319,7 @@ pub async fn find_value(
     db: &str,
     value: &str,
 ) -> AppResult<Vec<FindGroup>> {
+    let dialect = session.dialect();
     let value = value.trim();
     if value.len() < 2 {
         return Ok(Vec::new());
@@ -334,9 +335,9 @@ pub async fn find_value(
             .iter()
             .map(|c| {
                 if src.like {
-                    format!("{} LIKE {}", quote_ident(c), like(value))
+                    format!("{} LIKE {}", quote_ident(c), dialect.like_contains(value))
                 } else {
-                    format!("{} = {}", quote_ident(c), sql_string(value))
+                    format!("{} = {}", quote_ident(c), dialect.sql_string(value))
                 }
             })
             .collect();
@@ -355,9 +356,9 @@ pub async fn find_value(
             .iter()
             .map(|c| {
                 let cond = if src.like {
-                    format!("{} LIKE {}", quote_ident(c), like(value))
+                    format!("{} LIKE {}", quote_ident(c), dialect.like_contains(value))
                 } else {
-                    format!("{} = {}", quote_ident(c), sql_string(value))
+                    format!("{} = {}", quote_ident(c), dialect.sql_string(value))
                 };
                 format!("WHEN {cond} THEN '{c}'")
             })

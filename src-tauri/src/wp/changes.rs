@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use super::context::WpContext;
 use super::entity::{Catalog, cell_str};
+use super::fetch;
 use super::lists::text;
 use super::php::{self, PhpKey, PhpValue};
-use super::{fetch, sql_string};
 use crate::db::mysql::MySqlSession;
-use crate::db::{Cell, ResultSet, quote_ident};
+use crate::db::{Cell, Dialect, ResultSet, quote_ident};
 use crate::error::{AppError, AppResult};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -99,8 +99,8 @@ pub struct PlannedChange {
     pub undo: Vec<String>,
 }
 
-pub fn sql_value(v: Option<&str>) -> String {
-    v.map_or_else(|| "NULL".to_string(), sql_string)
+pub fn sql_value(dialect: Dialect, v: Option<&str>) -> String {
+    v.map_or_else(|| "NULL".to_string(), |v| dialect.sql_string(v))
 }
 
 fn tref(db: &str, table: &str) -> String {
@@ -113,30 +113,34 @@ fn wp_table(db: &str, ctx: &WpContext, table: &str) -> String {
 
 /// `cutoff` is a literal fixed at plan time, so the applied DELETE removes exactly the
 /// entries that were counted.
-pub fn logs_before_filter(cutoff: &str, source: Option<&str>) -> String {
-    let mut f = format!("`timestamp` < {}", sql_string(cutoff));
+pub fn logs_before_filter(dialect: Dialect, cutoff: &str, source: Option<&str>) -> String {
+    let mut f = format!("`timestamp` < {}", dialect.sql_string(cutoff));
     if let Some(s) = source {
-        f.push_str(&format!(" AND `source` = {}", sql_string(s)));
+        f.push_str(&format!(" AND `source` = {}", dialect.sql_string(s)));
     }
     f
 }
 
 /// The SQL literal that restores `cell` exactly: `NULL` stays `NULL`, `''` stays `''`.
 /// `None` for binary cells, which only carry a preview.
-fn restore_literal(cell: &Cell) -> Option<String> {
+fn restore_literal(dialect: Dialect, cell: &Cell) -> Option<String> {
     match cell {
         Cell::Bytes { .. } => None,
-        _ => Some(sql_value(cell_str(cell))),
+        _ => Some(sql_value(dialect, cell_str(cell))),
     }
 }
 
 /// `INSERT` statements that recreate the given rows exactly; empty when a row holds
 /// binary data.
-pub fn reinsert_sql(table: &str, rows: &ResultSet) -> Vec<String> {
+pub fn reinsert_sql(dialect: Dialect, table: &str, rows: &ResultSet) -> Vec<String> {
     let Some(values) = rows
         .rows
         .iter()
-        .map(|r| r.iter().map(restore_literal).collect::<Option<Vec<_>>>())
+        .map(|r| {
+            r.iter()
+                .map(|cell| restore_literal(dialect, cell))
+                .collect::<Option<Vec<_>>>()
+        })
         .collect::<Option<Vec<_>>>()
     else {
         return Vec::new();
@@ -160,12 +164,13 @@ fn first_text(rs: &ResultSet) -> Option<Option<String>> {
 /// The plan's `undo` restoring `column` from `old`, plus a description note when there is
 /// none.
 fn restore_undo(
+    dialect: Dialect,
     table: &str,
     column: &str,
     old: &Cell,
     filter: Option<&str>,
 ) -> (Vec<String>, String) {
-    let before = restore_literal(old);
+    let before = restore_literal(dialect, old);
     if let (Some(before), Some(filter)) = (&before, filter) {
         let sql = format!(
             "UPDATE {table} SET {} = {before} WHERE {filter}",
@@ -188,9 +193,10 @@ async fn log_cutoff(session: &MySqlSession, days: u32) -> AppResult<String> {
         &format!("SELECT UTC_TIMESTAMP() - INTERVAL {days} DAY"),
     )
     .await?;
-    first_text(&rs)
-        .flatten()
-        .ok_or_else(|| AppError::InvalidInput("The server returned no time".into()))
+    first_text(&rs).flatten().ok_or_else(|| AppError::Database {
+        message: "The server returned no time for UTC_TIMESTAMP()".into(),
+        code: None,
+    })
 }
 
 pub async fn plan(
@@ -199,6 +205,7 @@ pub async fn plan(
     catalog: Option<&Catalog>,
     req: &ChangeRequest,
 ) -> AppResult<PlannedChange> {
+    let dialect = session.dialect();
     let need_wp = || ctx.ok_or_else(|| AppError::InvalidInput("Not a WordPress database".into()));
     Ok(match req {
         ChangeRequest::SetCell {
@@ -210,7 +217,7 @@ pub async fn plan(
             value,
         } => {
             let t = tref(database, table);
-            let filter = format!("{} = {}", quote_ident(key_column), sql_string(key));
+            let filter = format!("{} = {}", quote_ident(key_column), dialect.sql_string(key));
             let old = fetch(
                 session,
                 &format!("SELECT {} FROM {t} WHERE {filter}", quote_ident(column)),
@@ -226,17 +233,18 @@ pub async fn plan(
             let undo_filter = if column == key_column {
                 value
                     .as_deref()
-                    .map(|v| format!("{} = {}", quote_ident(key_column), sql_string(v)))
+                    .map(|v| format!("{} = {}", quote_ident(key_column), dialect.sql_string(v)))
             } else {
                 Some(filter.clone())
             };
-            let (undo, note) = restore_undo(&t, column, &old.rows[0][0], undo_filter.as_deref());
+            let (undo, note) =
+                restore_undo(dialect, &t, column, &old.rows[0][0], undo_filter.as_deref());
             PlannedChange {
                 description: format!("{table}.{column} of {key_column} {key}{note}"),
                 statements: vec![format!(
                     "UPDATE {t} SET {} = {} WHERE {filter}",
                     quote_ident(column),
-                    sql_value(value.as_deref())
+                    sql_value(dialect, value.as_deref())
                 )],
                 undo,
             }
@@ -248,7 +256,7 @@ pub async fn plan(
             key,
         } => {
             let t = tref(database, table);
-            let filter = format!("{} = {}", quote_ident(key_column), sql_string(key));
+            let filter = format!("{} = {}", quote_ident(key_column), dialect.sql_string(key));
             let rows = fetch(session, &format!("SELECT * FROM {t} WHERE {filter}")).await?;
             if rows.rows.len() != 1 {
                 return Err(AppError::InvalidInput(format!(
@@ -259,7 +267,7 @@ pub async fn plan(
             PlannedChange {
                 description: format!("Delete {table} row {key_column} {key}"),
                 statements: vec![format!("DELETE FROM {t} WHERE {filter} LIMIT 1")],
-                undo: reinsert_sql(&t, &rows),
+                undo: reinsert_sql(dialect, &t, &rows),
             }
         }
         ChangeRequest::DuplicateRow {
@@ -281,7 +289,7 @@ pub async fn plan(
                 statements: vec![format!(
                     "INSERT INTO {t} ({cols}) SELECT {cols} FROM {t} WHERE {} = {}",
                     quote_ident(key_column),
-                    sql_string(key),
+                    dialect.sql_string(key),
                     cols = cols.join(", ")
                 )],
                 undo: Vec::new(),
@@ -300,7 +308,7 @@ pub async fn plan(
                 .join(", ");
             let vals = values
                 .iter()
-                .map(|(_, v)| sql_value(v.as_deref()))
+                .map(|(_, v)| sql_value(dialect, v.as_deref()))
                 .collect::<Vec<_>>()
                 .join(", ");
             PlannedChange {
@@ -328,9 +336,9 @@ pub async fn plan(
             let filter = format!(
                 "{} = {} AND {} = {}",
                 quote_ident(&meta.fk),
-                sql_string(id),
+                dialect.sql_string(id),
                 quote_ident(&meta.key),
-                sql_string(key)
+                dialect.sql_string(key)
             );
             let old = fetch(
                 session,
@@ -348,21 +356,21 @@ pub async fn plan(
                         quote_ident(&meta.fk),
                         quote_ident(&meta.key),
                         quote_ident(&meta.value),
-                        sql_string(id),
-                        sql_string(key),
-                        sql_string(value)
+                        dialect.sql_string(id),
+                        dialect.sql_string(key),
+                        dialect.sql_string(value)
                     )],
                     undo: vec![format!("DELETE FROM {t} WHERE {filter}")],
                 },
                 1 => {
                     let (undo, note) =
-                        restore_undo(&t, &meta.value, &old.rows[0][0], Some(&filter));
+                        restore_undo(dialect, &t, &meta.value, &old.rows[0][0], Some(&filter));
                     PlannedChange {
                         description: format!("Meta {key} of {entity} #{id}{note}"),
                         statements: vec![format!(
                             "UPDATE {t} SET {} = {} WHERE {filter}",
                             quote_ident(&meta.value),
-                            sql_string(value)
+                            dialect.sql_string(value)
                         )],
                         undo,
                     }
@@ -393,9 +401,9 @@ pub async fn plan(
             let filter = format!(
                 "{} = {} AND {} = {}",
                 quote_ident(&meta.fk),
-                sql_string(id),
+                dialect.sql_string(id),
                 quote_ident(&meta.key),
-                sql_string(key)
+                dialect.sql_string(key)
             );
             let rows = fetch(session, &format!("SELECT * FROM {t} WHERE {filter}")).await?;
             if rows.rows.is_empty() {
@@ -406,7 +414,7 @@ pub async fn plan(
             PlannedChange {
                 description: format!("Delete meta {key} of {entity} #{id}"),
                 statements: vec![format!("DELETE FROM {t} WHERE {filter}")],
-                undo: reinsert_sql(&t, &rows),
+                undo: reinsert_sql(dialect, &t, &rows),
             }
         }
         ChangeRequest::SetOrderStatus {
@@ -429,7 +437,8 @@ pub async fn plan(
             let post_status = fetch(
                 session,
                 &format!(
-                    "SELECT post_status FROM {posts} WHERE ID = {n} AND post_type LIKE 'shop\\_%'"
+                    "SELECT post_status FROM {posts} WHERE ID = {n} AND post_type LIKE {}",
+                    dialect.like(r"shop\_%")
                 ),
             )
             .await?;
@@ -443,21 +452,21 @@ pub async fn plan(
                 let before = first_text(&old)
                     .flatten()
                     .ok_or_else(|| AppError::InvalidInput(format!("Order #{id} was not found")))?;
-                statements.push(format!("UPDATE {orders} SET status = {}, date_updated_gmt = UTC_TIMESTAMP() WHERE id = {n}", sql_string(&status)));
+                statements.push(format!("UPDATE {orders} SET status = {}, date_updated_gmt = UTC_TIMESTAMP() WHERE id = {n}", dialect.sql_string(&status)));
                 undo.push(format!(
                     "UPDATE {orders} SET status = {} WHERE id = {n}",
-                    sql_string(&before)
+                    dialect.sql_string(&before)
                 ));
             }
             // Legacy store, or the synced posts copy (placeholders keep their own status).
             if let Some(before) = first_text(&post_status).flatten().filter(|s| s != "draft") {
                 statements.push(format!(
                     "UPDATE {posts} SET post_status = {}, post_modified_gmt = UTC_TIMESTAMP(), post_modified = NOW() WHERE ID = {n}",
-                    sql_string(&status)
+                    dialect.sql_string(&status)
                 ));
                 undo.push(format!(
                     "UPDATE {posts} SET post_status = {} WHERE ID = {n}",
-                    sql_string(&before)
+                    dialect.sql_string(&before)
                 ));
             }
             if statements.is_empty() {
@@ -480,7 +489,7 @@ pub async fn plan(
                 session,
                 &format!(
                     "SELECT autoload FROM {t} WHERE option_name = {}",
-                    sql_string(option)
+                    dialect.sql_string(option)
                 ),
             )
             .await?;
@@ -499,12 +508,12 @@ pub async fn plan(
                 description: format!("Autoload of {option} → {value}"),
                 statements: vec![format!(
                     "UPDATE {t} SET autoload = '{value}' WHERE option_name = {}",
-                    sql_string(option)
+                    dialect.sql_string(option)
                 )],
                 undo: vec![format!(
                     "UPDATE {t} SET autoload = {} WHERE option_name = {}",
-                    sql_string(&before),
-                    sql_string(option)
+                    dialect.sql_string(&before),
+                    dialect.sql_string(option)
                 )],
             }
         }
@@ -523,8 +532,8 @@ pub async fn plan(
                         ("_transient_", "_transient_timeout_")
                     };
                     [
-                        sql_string(&format!("{v}{}", tr.name)),
-                        sql_string(&format!("{to}{}", tr.name)),
+                        dialect.sql_string(&format!("{v}{}", tr.name)),
+                        dialect.sql_string(&format!("{to}{}", tr.name)),
                     ]
                 })
                 .collect();
@@ -538,7 +547,7 @@ pub async fn plan(
             PlannedChange {
                 description: format!("Delete {} expired transients", names.len() / 2),
                 statements: vec![format!("DELETE FROM {t} WHERE {filter}")],
-                undo: reinsert_sql(&t, &rows),
+                undo: reinsert_sql(dialect, &t, &rows),
             }
         }
         ChangeRequest::DeleteLogsBefore {
@@ -553,7 +562,11 @@ pub async fn plan(
                 ));
             }
             let t = wp_table(database, ctx, "woocommerce_log");
-            let filter = logs_before_filter(&log_cutoff(session, *days).await?, source.as_deref());
+            let filter = logs_before_filter(
+                dialect,
+                &log_cutoff(session, *days).await?,
+                source.as_deref(),
+            );
             let count = fetch(session, &format!("SELECT COUNT(*) FROM {t} WHERE {filter}")).await?;
             let n = count
                 .rows
@@ -606,8 +619,8 @@ pub async fn plan(
                 }],
                 undo: vec![format!(
                     "UPDATE {t} SET status = {}, scheduled_date_gmt = {} WHERE action_id = {n}",
-                    sql_value(before_status),
-                    sql_value(before_date)
+                    sql_value(dialect, before_status),
+                    sql_value(dialect, before_date)
                 )],
             }
         }
@@ -927,11 +940,15 @@ mod tests {
     #[test]
     fn log_retention_filter_targets_age_and_source() {
         assert_eq!(
-            logs_before_filter("2026-09-16 12:00:00", None),
+            logs_before_filter(Dialect::MYSQL, "2026-09-16 12:00:00", None),
             "`timestamp` < '2026-09-16 12:00:00'"
         );
         assert_eq!(
-            logs_before_filter("2026-10-09 12:00:00", Some("woocommerce-paypal-payments")),
+            logs_before_filter(
+                Dialect::MYSQL,
+                "2026-10-09 12:00:00",
+                Some("woocommerce-paypal-payments")
+            ),
             "`timestamp` < '2026-10-09 12:00:00' AND `source` = 'woocommerce-paypal-payments'"
         );
     }
@@ -956,7 +973,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            reinsert_sql("`db`.`wp_options`", &rs),
+            reinsert_sql(Dialect::MYSQL, "`db`.`wp_options`", &rs),
             [
                 "INSERT INTO `db`.`wp_options` (`option_id`, `option_value`) VALUES ('7', NULL)",
                 "INSERT INTO `db`.`wp_options` (`option_id`, `option_value`) VALUES ('8', 'it''s')",

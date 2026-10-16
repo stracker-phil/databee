@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use super::context::WpContext;
 use super::entity::cell_str;
 use super::hints::money;
-use super::{fetch, post_images, sql_string};
+use super::{fetch, post_images};
 use crate::db::mysql::MySqlSession;
-use crate::db::{Cell, ResultSet, quote_ident};
+use crate::db::{Cell, Dialect, ResultSet, quote_ident};
 use crate::error::AppResult;
 
 pub const PAGE_MAX: u32 = 200;
@@ -156,14 +156,6 @@ pub(crate) fn int(cell: &Cell) -> Option<i64> {
     cell_str(cell)?.trim().parse::<f64>().ok().map(|f| f as i64)
 }
 
-pub(crate) fn like(s: &str) -> String {
-    let escaped = s
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_");
-    sql_string(&format!("%{escaped}%"))
-}
-
 /// Seconds since epoch of a UTC DATETIME column, independent of the session time zone.
 pub(crate) fn epoch(col: &str) -> String {
     format!("TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', {col})")
@@ -217,15 +209,21 @@ pub struct OrderSummary {
 
 const ORDER_COLS: usize = 11;
 
-pub fn orders_sql(db: &str, ctx: &WpContext, order_type: &str, q: &ListQuery) -> String {
+pub fn orders_sql(
+    dialect: Dialect,
+    db: &str,
+    ctx: &WpContext,
+    order_type: &str,
+    q: &ListQuery,
+) -> String {
     let limit = q.limit() + 1;
     if ctx.hpos() {
-        let mut filter = format!("o.type = {}", sql_string(order_type));
+        let mut filter = format!("o.type = {}", dialect.sql_string(order_type));
         if let Some(s) = &q.status {
-            filter += &format!(" AND o.status = {}", sql_string(s));
+            filter += &format!(" AND o.status = {}", dialect.sql_string(s));
         }
         if let Some(g) = &q.kind {
-            filter += &format!(" AND o.payment_method = {}", sql_string(g));
+            filter += &format!(" AND o.payment_method = {}", dialect.sql_string(g));
         }
         if let Some(s) = q.search() {
             let id = s.trim_start_matches('#');
@@ -235,8 +233,8 @@ pub fn orders_sql(db: &str, ctx: &WpContext, order_type: &str, q: &ListQuery) ->
                 .unwrap_or_default();
             filter += &format!(
                 " AND ({id_match}o.billing_email LIKE {l} OR o.transaction_id = {e} OR a.first_name LIKE {l} OR a.last_name LIKE {l})",
-                l = like(s),
-                e = sql_string(s)
+                l = dialect.like_contains(s),
+                e = dialect.sql_string(s)
             );
         }
         format!(
@@ -254,13 +252,17 @@ pub fn orders_sql(db: &str, ctx: &WpContext, order_type: &str, q: &ListQuery) ->
         )
     } else {
         let meta = |key: &str| format!("MAX(CASE WHEN m.meta_key = '{key}' THEN m.meta_value END)");
-        let mut filter = format!("p.post_type = {}", sql_string(order_type));
+        let mut filter = format!("p.post_type = {}", dialect.sql_string(order_type));
         if let Some(s) = &q.status {
-            filter += &format!(" AND p.post_status = {}", sql_string(s));
+            filter += &format!(" AND p.post_status = {}", dialect.sql_string(s));
         }
         let mut having = Vec::new();
         if let Some(g) = &q.kind {
-            having.push(format!("{} = {}", meta("_payment_method"), sql_string(g)));
+            having.push(format!(
+                "{} = {}",
+                meta("_payment_method"),
+                dialect.sql_string(g)
+            ));
         }
         if let Some(s) = q.search() {
             let id = s.trim_start_matches('#');
@@ -274,8 +276,8 @@ pub fn orders_sql(db: &str, ctx: &WpContext, order_type: &str, q: &ListQuery) ->
                 tx = meta("_transaction_id"),
                 first = meta("_billing_first_name"),
                 last = meta("_billing_last_name"),
-                l = like(s),
-                e = sql_string(s)
+                l = dialect.like_contains(s),
+                e = dialect.sql_string(s)
             ));
         }
         let having = if having.is_empty() {
@@ -336,12 +338,17 @@ pub fn order_rows(
         .collect()
 }
 
-fn order_facets_sql(db: &str, ctx: &WpContext, order_type: &str) -> (String, String) {
+fn order_facets_sql(
+    dialect: Dialect,
+    db: &str,
+    ctx: &WpContext,
+    order_type: &str,
+) -> (String, String) {
     if ctx.hpos() {
         let from = format!(
             "{} WHERE type = {}",
             t(db, ctx, "wc_orders"),
-            sql_string(order_type)
+            dialect.sql_string(order_type)
         );
         (
             format!("SELECT status, COUNT(*) FROM {from} GROUP BY status"),
@@ -354,14 +361,14 @@ fn order_facets_sql(db: &str, ctx: &WpContext, order_type: &str) -> (String, Str
             format!(
                 "SELECT post_status, COUNT(*) FROM {} WHERE post_type = {} GROUP BY post_status",
                 t(db, ctx, "posts"),
-                sql_string(order_type)
+                dialect.sql_string(order_type)
             ),
             format!(
                 "SELECT m.meta_value, COUNT(*) FROM {posts} p JOIN {pm} m ON m.post_id = p.ID AND m.meta_key = '_payment_method' \
                  WHERE p.post_type = {ty} AND m.meta_value <> '' GROUP BY m.meta_value",
                 posts = t(db, ctx, "posts"),
                 pm = t(db, ctx, "postmeta"),
-                ty = sql_string(order_type)
+                ty = dialect.sql_string(order_type)
             ),
         )
     }
@@ -374,12 +381,16 @@ pub async fn orders(
     order_type: &str,
     q: &ListQuery,
 ) -> AppResult<Page<OrderSummary>> {
-    let rs = fetch(session, &orders_sql(db, ctx, order_type, q)).await?;
+    let rs = fetch(
+        session,
+        &orders_sql(session.dialect(), db, ctx, order_type, q),
+    )
+    .await?;
     let (items, has_more) = page_split(
         order_rows(&rs, ctx.site.currency.as_deref(), ctx.site.price_decimals),
         q.limit(),
     );
-    let (status_sql, gateway_sql) = order_facets_sql(db, ctx, order_type);
+    let (status_sql, gateway_sql) = order_facets_sql(session.dialect(), db, ctx, order_type);
     let statuses = fetch(session, &status_sql).await?;
     let gateways = fetch(session, &gateway_sql).await?;
     Ok(Page {
@@ -407,11 +418,14 @@ pub struct UserSummary {
     pub avatar: Option<String>,
 }
 
-pub fn users_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
-    let caps = sql_string(&format!("{}capabilities", ctx.prefix));
+pub fn users_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) -> String {
+    let caps = dialect.sql_string(&format!("{}capabilities", ctx.prefix));
     let mut filter = "1 = 1".to_string();
     if let Some(role) = &q.kind {
-        filter += &format!(" AND c.meta_value LIKE {}", like(&format!("\"{role}\"")));
+        filter += &format!(
+            " AND c.meta_value LIKE {}",
+            dialect.like_contains(&format!("\"{role}\""))
+        );
     }
     if let Some(s) = q.search() {
         let id_match = s
@@ -420,7 +434,7 @@ pub fn users_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
             .unwrap_or_default();
         filter += &format!(
             " AND ({id_match}u.user_login LIKE {l} OR u.user_email LIKE {l} OR u.display_name LIKE {l})",
-            l = like(s)
+            l = dialect.like_contains(s)
         );
     }
     format!(
@@ -442,6 +456,7 @@ pub const GUEST_PREFIX: &str = "guest:";
 /// Guest customers: orders without a user, grouped by billing email (emails that belong to a
 /// registered user are excluded). Columns: email, orders, spent, last order, first order, name.
 pub fn guests_sql(
+    dialect: Dialect,
     db: &str,
     ctx: &WpContext,
     search: Option<&str>,
@@ -452,10 +467,10 @@ pub fn guests_sql(
     let users = t(db, ctx, "users");
     let mut extra = String::new();
     if let Some(s) = search {
-        extra += &format!(" AND {{email}} LIKE {}", like(s));
+        extra += &format!(" AND {{email}} LIKE {}", dialect.like_contains(s));
     }
     if let Some(e) = email {
-        extra += &format!(" AND {{email}} = {}", sql_string(e));
+        extra += &format!(" AND {{email}} = {}", dialect.sql_string(e));
     }
     if ctx.hpos() {
         let extra = extra.replace("{email}", "o.billing_email");
@@ -568,7 +583,7 @@ pub async fn users(
     q: &ListQuery,
     with_gravatar: bool,
 ) -> AppResult<Page<UserSummary>> {
-    let rs = fetch(session, &users_sql(db, ctx, q)).await?;
+    let rs = fetch(session, &users_sql(session.dialect(), db, ctx, q)).await?;
     let rows: Vec<UserSummary> = rs
         .rows
         .iter()
@@ -616,12 +631,13 @@ pub async fn users(
 
 /// Role counts from `{prefix}capabilities` for the kind filter.
 async fn role_facets(session: &MySqlSession, ctx: &WpContext, db: &str) -> AppResult<Vec<Facet>> {
+    let dialect = session.dialect();
     let roles = fetch(
         session,
         &format!(
             "SELECT meta_value, COUNT(*) FROM {} WHERE meta_key = {} GROUP BY meta_value",
             t(db, ctx, "usermeta"),
-            sql_string(&format!("{}capabilities", ctx.prefix))
+            dialect.sql_string(&format!("{}capabilities", ctx.prefix))
         ),
     )
     .await?;
@@ -661,15 +677,15 @@ pub struct ProductSummary {
     pub image: Option<String>,
 }
 
-pub fn products_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
+pub fn products_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) -> String {
     let lookup = ctx.has_table("wc_product_meta_lookup");
     let mut filter =
         "p.post_type = 'product' AND p.post_status NOT IN ('trash', 'auto-draft')".to_string();
     if let Some(s) = &q.status {
-        filter += &format!(" AND p.post_status = {}", sql_string(s));
+        filter += &format!(" AND p.post_status = {}", dialect.sql_string(s));
     }
     if let Some(k) = &q.kind {
-        filter += &format!(" AND pt.slug = {}", sql_string(k));
+        filter += &format!(" AND pt.slug = {}", dialect.sql_string(k));
     }
     if let Some(s) = q.search() {
         let id_match = s
@@ -677,11 +693,14 @@ pub fn products_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
             .map(|n| format!("p.ID = {n} OR "))
             .unwrap_or_default();
         let sku = if lookup {
-            format!(" OR l.sku LIKE {}", like(s))
+            format!(" OR l.sku LIKE {}", dialect.like_contains(s))
         } else {
             String::new()
         };
-        filter += &format!(" AND ({id_match}p.post_title LIKE {l}{sku})", l = like(s));
+        filter += &format!(
+            " AND ({id_match}p.post_title LIKE {l}{sku})",
+            l = dialect.like_contains(s)
+        );
     }
     let (cols, join) = if lookup {
         (
@@ -743,7 +762,7 @@ pub async fn products(
     db: &str,
     q: &ListQuery,
 ) -> AppResult<Page<ProductSummary>> {
-    let rs = fetch(session, &products_sql(db, ctx, q)).await?;
+    let rs = fetch(session, &products_sql(session.dialect(), db, ctx, q)).await?;
     let currency = ctx.site.currency.as_deref();
     let rows: Vec<ProductSummary> = rs
         .rows
@@ -817,13 +836,13 @@ pub struct ActionSummary {
     pub message: Option<String>,
 }
 
-pub fn actions_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
+pub fn actions_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) -> String {
     let mut filter = "1 = 1".to_string();
     if let Some(s) = &q.status {
-        filter += &format!(" AND a.status = {}", sql_string(s));
+        filter += &format!(" AND a.status = {}", dialect.sql_string(s));
     }
     if let Some(h) = &q.kind {
-        filter += &format!(" AND a.hook = {}", sql_string(h));
+        filter += &format!(" AND a.hook = {}", dialect.sql_string(h));
     }
     if let Some(s) = q.search() {
         let id_match = s
@@ -832,7 +851,7 @@ pub fn actions_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
             .unwrap_or_default();
         filter += &format!(
             " AND ({id_match}a.hook LIKE {l} OR a.args LIKE {l})",
-            l = like(s)
+            l = dialect.like_contains(s)
         );
     }
     format!(
@@ -874,7 +893,8 @@ pub async fn actions(
     db: &str,
     q: &ListQuery,
 ) -> AppResult<Page<ActionSummary>> {
-    let rs = fetch(session, &actions_sql(db, ctx, q)).await?;
+    let dialect = session.dialect();
+    let rs = fetch(session, &actions_sql(dialect, db, ctx, q)).await?;
     let (items, has_more) = page_split(action_rows(&rs), q.limit());
     let table = t(db, ctx, "actionscheduler_actions");
     let statuses = fetch(
@@ -885,7 +905,7 @@ pub async fn actions(
     let status_filter = q
         .status
         .as_ref()
-        .map(|s| format!(" WHERE status = {}", sql_string(s)))
+        .map(|s| format!(" WHERE status = {}", dialect.sql_string(s)))
         .unwrap_or_default();
     let hooks = fetch(
         session,
@@ -1112,10 +1132,11 @@ pub async fn content(
     db: &str,
     q: &ListQuery,
 ) -> AppResult<Page<PostSummary>> {
+    let dialect = session.dialect();
     let posts = t(db, ctx, "posts");
     let hidden = HIDDEN_POST_TYPES
         .iter()
-        .map(|h| sql_string(h))
+        .map(|h| dialect.sql_string(h))
         .collect::<Vec<_>>()
         .join(", ");
     let kinds = fetch(
@@ -1126,12 +1147,12 @@ pub async fn content(
     let kinds = facets(&kinds, str::to_string);
     // No kind lists every visible type, so the "All" chip shows what was fetched.
     let type_filter = match &q.kind {
-        Some(kind) => format!("p.post_type = {}", sql_string(kind)),
+        Some(kind) => format!("p.post_type = {}", dialect.sql_string(kind)),
         None => format!("p.post_type NOT IN ({hidden})"),
     };
     let mut filter = format!("{type_filter} AND p.post_status <> 'auto-draft'");
     if let Some(s) = &q.status {
-        filter += &format!(" AND p.post_status = {}", sql_string(s));
+        filter += &format!(" AND p.post_status = {}", dialect.sql_string(s));
     }
     if let Some(s) = q.search() {
         let id_match = s
@@ -1140,7 +1161,7 @@ pub async fn content(
             .unwrap_or_default();
         filter += &format!(
             " AND ({id_match}p.post_title LIKE {l} OR p.post_name LIKE {l})",
-            l = like(s)
+            l = dialect.like_contains(s)
         );
     }
     let rs = fetch(
@@ -1242,7 +1263,7 @@ mod tests {
             status: Some("wc-processing".into()),
             ..Default::default()
         };
-        let sql = orders_sql("db", &ctx(HposMode::On), "shop_order", &q);
+        let sql = orders_sql(Dialect::MYSQL, "db", &ctx(HposMode::On), "shop_order", &q);
         assert!(sql.contains("FROM `db`.`wp_wc_orders` o"));
         assert!(sql.contains("o.id = 3088 OR o.billing_email LIKE '%#3088%'"));
         assert!(sql.contains("o.status = 'wc-processing'"));
@@ -1255,7 +1276,7 @@ mod tests {
             kind: Some("ppcp-gateway".into()),
             ..Default::default()
         };
-        let sql = orders_sql("db", &ctx(HposMode::Off), "shop_order", &q);
+        let sql = orders_sql(Dialect::MYSQL, "db", &ctx(HposMode::Off), "shop_order", &q);
         assert!(sql.contains("FROM `db`.`wp_posts` p LEFT JOIN `db`.`wp_postmeta` m"));
         assert!(sql.contains("HAVING MAX(CASE WHEN m.meta_key = '_payment_method' THEN m.meta_value END) = 'ppcp-gateway'"));
     }
@@ -1266,7 +1287,7 @@ mod tests {
             search: Some("o'neil 100%".into()),
             ..Default::default()
         };
-        let sql = orders_sql("db", &ctx(HposMode::On), "shop_order", &q);
+        let sql = orders_sql(Dialect::MYSQL, "db", &ctx(HposMode::On), "shop_order", &q);
         assert!(sql.contains("'%o''neil 100\\\\%%'"), "{sql}");
     }
 

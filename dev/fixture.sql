@@ -78,6 +78,7 @@ INSERT INTO wp_options (option_name, option_value, autoload) VALUES
   ('woocommerce_version', '9.3.0', 'yes'),
   ('woocommerce_currency', 'EUR', 'yes'),
   ('gmt_offset', '2', 'yes'),
+  ('timezone_string', 'Europe/Berlin', 'yes'),
   ('stylesheet', 'storefront', 'yes'),
   ('active_plugins', 'a:1:{i:0;s:27:"woocommerce/woocommerce.php";}', 'yes'),
   ('woocommerce_custom_orders_table_enabled', 'yes', 'yes'),

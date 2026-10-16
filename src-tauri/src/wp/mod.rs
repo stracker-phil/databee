@@ -24,7 +24,7 @@ use serde::Serialize;
 use self::context::WpContext;
 use self::entity::{Catalog, EntityDoc, TableEntity};
 use crate::db::mysql::MySqlSession;
-use crate::db::{Cell, Dialect, ResultSet, quote_ident};
+use crate::db::{Cell, ResultSet, escape_like, quote_ident};
 use crate::error::{AppError, AppResult};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -56,10 +56,6 @@ fn text(cell: &Cell) -> Option<String> {
     }
 }
 
-pub(crate) fn sql_string(s: &str) -> String {
-    Dialect::MYSQL.sql_string(s)
-}
-
 pub(crate) async fn fetch(db: &MySqlSession, sql: &str) -> AppResult<ResultSet> {
     db.fetch(sql, TIMEOUT).await
 }
@@ -75,9 +71,10 @@ pub async fn detect(db: &MySqlSession, database: &str) -> AppResult<Option<WpCon
     let Some(prefix) = context::main_prefix(&tables) else {
         return Ok(None);
     };
+    let dialect = db.dialect();
     let names: Vec<String> = context::PROBED_OPTIONS
         .iter()
-        .map(|n| sql_string(n))
+        .map(|n| dialect.sql_string(n))
         .collect();
     let rs = fetch(
         db,
@@ -370,11 +367,13 @@ pub async fn options_overview(
             })
         })
         .collect();
+    let dialect = db.dialect();
     let timeouts = fetch(
         db,
         &format!(
-            "SELECT option_name, option_value FROM {from} \
-             WHERE option_name LIKE '\\_transient\\_timeout\\_%' OR option_name LIKE '\\_site\\_transient\\_timeout\\_%'"
+            "SELECT option_name, option_value FROM {from} WHERE option_name LIKE {} OR option_name LIKE {}",
+            dialect.like(r"\_transient\_timeout\_%"),
+            dialect.like(r"\_site\_transient\_timeout\_%"),
         ),
     )
     .await?;
@@ -400,22 +399,24 @@ pub async fn options_group(
     database: &str,
     prefix: &str,
 ) -> AppResult<Vec<entity::DocField>> {
-    let esc = |s: &str| {
-        s.replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
+    let dialect = db.dialect();
+    let either = |a: &str, b: &str| {
+        format!(
+            "option_name LIKE {} OR option_name LIKE {}",
+            dialect.like(a),
+            dialect.like(b)
+        )
     };
     let filter = match prefix {
-        "transients" => {
-            "option_name LIKE '\\_transient\\_%' OR option_name LIKE '\\_site\\_transient\\_%'"
-                .to_string()
-        }
-        "(single)" => "option_name NOT LIKE '%\\_%' AND option_name NOT LIKE '%-%'".to_string(),
-        p => format!(
-            "option_name LIKE {} OR option_name LIKE {}",
-            sql_string(&format!("{}%", esc(p))),
-            sql_string(&format!("\\_{}%", esc(p)))
+        "transients" => either(r"\_transient\_%", r"\_site\_transient\_%"),
+        "(single)" => format!(
+            "option_name NOT LIKE {} AND option_name NOT LIKE '%-%'",
+            dialect.like(r"%\_%")
         ),
+        p => {
+            let p = escape_like(p);
+            either(&format!("{p}%"), &format!(r"\_{p}%"))
+        }
     };
     let rs = fetch(
         db,
@@ -428,7 +429,7 @@ pub async fn options_group(
     .await?;
     let hints = hints::HintContext {
         currency: ctx.site.currency.clone(),
-        gmt_offset_secs: ctx.site.gmt_offset_secs,
+        zone: ctx.site.zone,
         price_decimals: ctx.site.price_decimals,
     };
     Ok(rs
