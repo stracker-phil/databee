@@ -34,7 +34,6 @@ WordPress & WooCommerce development. Tauri 2 + Rust + React.
   - **Plugins lens:** which plugin owns which options, transients, meta keys, hooks, log sources and tables (registry → prefix clustering → gateway values → your manual assignments); storage per plugin; leftover data of inactive plugins with a reviewed cleanup.
   - **Editing without silent writes:** inline field edits, serialized values edited as a tree (re-serialized with correct byte lengths), order status, autoload toggles, retrying or cancelling actions, transient cleanup, and grid editing in Database mode. Every change goes into a pending tray with its SQL, applies in one transaction (⌘S) and can be undone.
   - **Debugging:** live mode highlights fields as they change; snapshot an order (with related records and actions) or an options pattern, then diff it; compare two entities side by side.
-  - **Screen-share mode** blurs names, emails and addresses.
 - **Settings:** theme, accent, UI and data text sizes (⌘= / ⌘- / ⌘0 zoom both), density, row limit, timeouts, NULL label, log level, and every shortcut (rebind or unbind; conflicts are flagged).
 
 ## Shortcuts

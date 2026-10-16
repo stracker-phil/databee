@@ -77,15 +77,6 @@ export const APP_COMMANDS: Command[] = [
   { id: "view.zoomReset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", run: () => zoom(null) },
   { id: "view.refresh", title: "Refresh current view", scope: "global", defaultBinding: "Mod+R", run: () => useStore.getState().bumpData() },
   {
-    id: "view.screenShare",
-    title: "Toggle screen-share mode",
-    scope: "global",
-    run: () => {
-      const s = useStore.getState();
-      if (s.settings) void s.saveSettings({ ...s.settings, screenShareMode: !s.settings.screenShareMode });
-    },
-  },
-  {
     id: "view.inspectorDock",
     title: "Toggle inspector position (right / bottom)",
     scope: "global",

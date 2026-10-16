@@ -129,7 +129,7 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
               <Row label="Intent">{p.intent}</Row>
               <Row label="Mode">{p.mode && <span className={`pill tone-${p.mode === "live" ? "green" : "orange"}`}>{p.mode}</span>}</Row>
               <Row label="Source">{p.source}</Row>
-              <Row label="Payer">{p.payerEmail && <span className="pii">{p.payerEmail}</span>}</Row>
+              <Row label="Payer">{p.payerEmail && <span>{p.payerEmail}</span>}</Row>
               <Row label="Paid">{o.paid && <Ago unix={o.paid} />}</Row>
             </div>
             {p.fees && (

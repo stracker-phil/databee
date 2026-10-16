@@ -30,4 +30,4 @@ Ideas collected during the MVP. Not ordered by priority.
 Dashboard with actionable alerts, list screens with split view and sorting, purpose-built pages, humanized order
 timeline, global ⌘K palette with a command registry and rebindable shortcuts, peek cards, value pivots and
 find-everywhere, guest customers, plugins lens with leftover cleanup, edits with a pending tray and undo,
-serialized-value tree editing, live mode, snapshots and diffs, side-by-side comparison, screen-share mode.
+serialized-value tree editing, live mode, snapshots and diffs, side-by-side comparison.

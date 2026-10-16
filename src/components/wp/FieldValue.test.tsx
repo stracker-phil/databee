@@ -60,11 +60,6 @@ describe("FieldValue rendering", () => {
     expect(screen.getByText("$P$hash")).toBeInTheDocument();
   });
 
-  it("marks personal data for screen-share blurring", () => {
-    const { container } = render(<FieldValue field={field("billing_email", "jane@shop.test", { sensitive: "pii", hint: { type: "email" } })} />);
-    expect(container.querySelector(".pii")).toHaveTextContent("jane@shop.test");
-  });
-
   it("collapses long values with size, expand and copy", async () => {
     const token = "0cAFcWeA6zUQyhl2k98qbng9BHiGwe5" + "x".repeat(2000) + "Afg";
     render(<FieldValue field={field("token", token)} />);

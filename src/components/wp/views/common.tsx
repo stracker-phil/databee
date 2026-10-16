@@ -39,7 +39,7 @@ export function AddressCard({ title, address, warn }: { title: string; address: 
     <div className={`address-card${warn ? " warn" : ""}`}>
       <div className="address-title">{title}</div>
       {address ? (
-        <div className="pii">
+        <div>
           {address.name && <div className="address-name">{address.name}</div>}
           {address.company && <div>{address.company}</div>}
           {address.lines.map((l) => (

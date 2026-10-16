@@ -96,7 +96,6 @@ export default function App() {
   useEffect(() => {
     if (settings) {
       applyAppearance(settings);
-      document.documentElement.dataset.screenShare = settings.screenShareMode ? "on" : "off";
     }
   }, [settings]);
 

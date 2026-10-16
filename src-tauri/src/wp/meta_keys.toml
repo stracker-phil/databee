@@ -3,7 +3,7 @@
 # group:     display group; unknown keys fall back to prefix grouping
 # label:     human label (optional)
 # render:    money | time | flag | url | user_agent | email | roles | country | guest_or_user | text
-# sensitive: secret (masked until clicked) | pii (blurred in screen-share mode)
+# sensitive: secret (masked until clicked)
 
 # ---------- columns ----------
 [[key]]
@@ -17,18 +17,15 @@ match = "customer_id"
 render = "guest_or_user"
 [[key]]
 match = "ip_address"
-sensitive = "pii"
 [[key]]
 match = "user_agent"
 render = "user_agent"
 [[key]]
 match = "billing_email"
 render = "email"
-sensitive = "pii"
 [[key]]
 match = "user_email"
 render = "email"
-sensitive = "pii"
 [[key]]
 match = "user_pass"
 sensitive = "secret"
@@ -53,12 +50,10 @@ sensitive = "secret"
 match = "first_name"
 group = "Profile"
 label = "First name"
-sensitive = "pii"
 [[key]]
 match = "last_name"
 group = "Profile"
 label = "Last name"
-sensitive = "pii"
 [[key]]
 match = "nickname"
 group = "Profile"
@@ -196,7 +191,6 @@ match = "*billing_email"
 group = "Billing address"
 label = "Email"
 render = "email"
-sensitive = "pii"
 [[key]]
 match = "*billing_country"
 group = "Billing address"
@@ -205,7 +199,6 @@ render = "country"
 [[key]]
 match = "*billing_*"
 group = "Billing address"
-sensitive = "pii"
 [[key]]
 match = "*shipping_country"
 group = "Shipping address"
@@ -214,17 +207,14 @@ render = "country"
 [[key]]
 match = "*shipping_*"
 group = "Shipping address"
-sensitive = "pii"
 [[key]]
 match = "_billing_address_index"
 group = "Billing address"
 label = "Search index"
-sensitive = "pii"
 [[key]]
 match = "_shipping_address_index"
 group = "Shipping address"
 label = "Search index"
-sensitive = "pii"
 
 # ---------- PayPal Payments ----------
 [[key]]
@@ -256,11 +246,9 @@ render = "money"
 match = "_ppcp_*email"
 group = "PayPal"
 render = "email"
-sensitive = "pii"
 [[key]]
 match = "_ppcp_*phone"
 group = "PayPal"
-sensitive = "pii"
 [[key]]
 match = "_ppcp_*"
 group = "PayPal"
@@ -339,7 +327,6 @@ render = "time"
 match = "_customer_ip_address"
 group = "Order"
 label = "Customer IP"
-sensitive = "pii"
 [[key]]
 match = "_customer_user_agent"
 group = "Order"

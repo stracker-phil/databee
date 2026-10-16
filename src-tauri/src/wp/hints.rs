@@ -29,8 +29,6 @@ pub enum Render {
 pub enum Sensitive {
     /// Masked until clicked.
     Secret,
-    /// Personal data, blurred in screen-share mode.
-    Pii,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -184,9 +182,6 @@ pub fn annotate(key: &str, raw: Option<&str>, ctx: &HintContext) -> Annotation {
         Some(render) => hint_for(render, key, raw, ctx),
         None => sniff(key, raw, ctx),
     };
-    if a.hint == Some(Hint::Email) && a.sensitive.is_none() {
-        a.sensitive = Some(Sensitive::Pii);
-    }
     a
 }
 
@@ -519,10 +514,6 @@ mod tests {
             })
         );
         assert_eq!(hint("contact", "jane@shop.test"), Some(Hint::Email));
-        assert_eq!(
-            annotate("contact", Some("jane@shop.test"), &ctx()).sensitive,
-            Some(Sensitive::Pii)
-        );
         let ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36";
         assert_eq!(
             hint("_wc_order_attribution_user_agent", ua),

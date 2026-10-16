@@ -34,8 +34,8 @@ export function CustomerView({ c, changed }: { c: CustomerData; changed: Set<str
       <div className="entity-head">
         <Avatar name={c.name} src={c.avatar} size="3.385rem" />
         <div>
-          <h2 className="pii">{c.name}</h2>
-          <div className="muted pii">{[c.login, c.email].filter(Boolean).join(" · ")}</div>
+          <h2>{c.name}</h2>
+          <div className="muted">{[c.login, c.email].filter(Boolean).join(" · ")}</div>
         </div>
         {c.roles.map((r) => (
           <span key={r} className="badge">{r}</span>
@@ -219,7 +219,7 @@ export function SessionView({ s, changed }: { s: SessionData; changed: Set<strin
       <div className="stat-grid">
         <Stat label="Items in cart" value={s.items} />
         <Stat label="Cart total" value={s.total ?? "—"} />
-        <Stat label="Customer email" value={<span className="pii">{s.email ?? "—"}</span>} />
+        <Stat label="Customer email" value={<span>{s.email ?? "—"}</span>} />
       </div>
       {s.value && (
         <Card title="Session data">

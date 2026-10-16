@@ -236,7 +236,7 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
   const openMenu = (x: number, y: number) => value.t !== "null" && setMenu({ x, y });
   return (
     <span
-      className={`field-value${sensitive === "pii" ? " pii" : ""}`}
+      className="field-value"
       onContextMenu={(e) => {
         if (value.t === "null") return;
         e.preventDefault();

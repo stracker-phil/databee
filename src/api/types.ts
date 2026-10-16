@@ -21,7 +21,6 @@ export interface Settings {
   defaultPort: number;
   showSystemSchemas: boolean;
   logLevel: LogLevel;
-  screenShareMode: boolean;
   gravatar: boolean;
   /** Value inspector and WordPress detail pane: beside or below the content. */
   inspectorDock: "right" | "bottom";
@@ -259,7 +258,7 @@ export type Hint =
   | { type: "country"; code: string }
   | { type: "guest" };
 
-export type Sensitive = "secret" | "pii";
+export type Sensitive = "secret";
 
 export interface DocField {
   name: string;

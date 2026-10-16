@@ -197,7 +197,7 @@ export function DashboardScreen() {
             {data.recentOrders.map((o) => (
               <button key={o.id} className="row-link" onClick={() => openEntity("order", o.id)}>
                 <span className="row-id">#{o.id}</span>
-                <span className="grow-text pii">{o.name || o.email || "guest"}</span>
+                <span className="grow-text">{o.name || o.email || "guest"}</span>
                 <StatusPill status={o.status} />
                 <span className="row-gateway">{o.gatewayTitle ?? o.gateway ?? ""}</span>
                 <span className="money row-total">{o.total}</span>

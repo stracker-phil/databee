@@ -235,9 +235,6 @@ function PageBody({ page, s, set }: { page: Page; s: Settings; set: (patch: Part
             <NumberField label="UI size" description="Sidebar, tabs and labels." suffix="px" value={s.uiFontSize} min={10} max={24} onCommit={(uiFontSize) => set({ uiFontSize })} />
             <NumberField label="Data size" description="Table cells, document values and the SQL editor. ⌘= / ⌘- zoom both." suffix="px" value={s.dataFontSize} min={9} max={28} onCommit={(dataFontSize) => set({ dataFontSize })} />
           </Group>
-          <Group title="Privacy">
-            <Switch label="Screen share mode" description="Blurs emails, names and other personal data while presenting." checked={s.screenShareMode} onChange={(screenShareMode) => set({ screenShareMode })} />
-          </Group>
         </>
       );
     case "shortcuts":

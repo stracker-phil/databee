@@ -170,8 +170,8 @@ function OrderCells({ o }: { o: OrderSummary }) {
     <>
       <span className="row-id">#{o.id}</span>
       <span className="grow-text">
-        <span className="pii">{o.name || o.email || <span className="badge">Guest</span>}</span>
-        {o.name && o.email && <span className="muted pii"> · {o.email}</span>}
+        <span>{o.name || o.email || <span className="badge">Guest</span>}</span>
+        {o.name && o.email && <span className="muted"> · {o.email}</span>}
       </span>
       <span className="col-status"><StatusPill status={o.status} /></span>
       <span className="row-gateway">{o.gatewayTitle ?? o.gateway ?? ""}</span>
@@ -187,8 +187,8 @@ function CustomerCells({ c }: { c: CustomerSummary }) {
     <>
       <span className="col-avatar"><Avatar name={c.name || c.login} src={c.avatar} /></span>
       <span className="grow-text">
-        <span className="pii">{c.name || c.login}</span>
-        <span className="muted pii"> · {c.email}</span>
+        <span>{c.name || c.login}</span>
+        <span className="muted"> · {c.email}</span>
       </span>
       <span className="row-roles">{c.roles.map((r) => <span key={r} className="badge">{r}</span>)}</span>
       <span className="muted row-items">{c.orderCount} {c.orderCount === 1 ? "order" : "orders"}</span>
@@ -239,7 +239,7 @@ function SessionCells({ s }: { s: SessionSummary }) {
   return (
     <>
       <span className="mono grow-text">{shorten(s.key, 20, 4)}</span>
-      <span className="row-gateway pii">{s.customerId ? (s.email ?? `User #${s.customerId}`) : <span className="badge">Guest</span>}</span>
+      <span className="row-gateway">{s.customerId ? (s.email ?? `User #${s.customerId}`) : <span className="badge">Guest</span>}</span>
       <span className="muted row-items">{s.items} in cart</span>
       <span className="money row-total">{s.total}</span>
       <span className={`row-when ${expired ? "tone-text-red" : "muted"}`}>

@@ -449,8 +449,6 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .chip:not(:has(img)) { padding-left: 0.692rem; }
 .chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip-id { color: var(--text-tertiary); font-size: 0.846rem; font-variant-numeric: tabular-nums; }
-:root[data-screen-share="on"] .pii { filter: blur(0.385rem); transition: filter .15s; }
-:root[data-screen-share="on"] .pii:hover { filter: blur(0.385rem); }
 
 /* ---------- WordPress mode ---------- */
 .mode-switch button { gap: 0.385rem; }
