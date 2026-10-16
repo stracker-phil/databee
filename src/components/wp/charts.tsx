@@ -27,7 +27,7 @@ export function StackedBars({ days, labels }: { days: DayBucket[]; labels?: Part
                 const h = (d[s.key] / max) * 46;
                 y -= h;
                 return h > 0 ? (
-                  <rect key={s.key} x={i * width + width * 0.15} y={y} width={width * 0.7} height={h} fill={s.color} rx={0.6} opacity={hover == null || hover === i ? 1 : 0.55} />
+                  <rect key={s.key} x={i * width + width * 0.15} y={y} width={width * 0.7} height={h} fill={s.color} opacity={hover == null || hover === i ? 1 : 0.55} />
                 ) : null;
               })}
             </g>
