@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type SnapshotInfo, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type SnapshotInfo, type StageSettings, type TableStructure, type UiState } from "../api/types";
 import { NOW } from "./now";
 import { session } from "./session";
 import { settings } from "./settings";
@@ -106,7 +106,9 @@ export function createApiMock(): typeof realApi {
     wpSnapshotDelete: vi.fn().mockResolvedValue(undefined),
     wpCompare: vi.fn().mockResolvedValue([]),
     stageStatus: vi.fn().mockResolvedValue({ enabled: true, running: true, error: null, url: "http://127.0.0.1:27184/v1/stage", registerCommand: "stage register http://127.0.0.1:27184/v1/stage --token token-123", lastRequest: null }),
-    stageNewToken: vi.fn(async () => settings({ stage: { enabled: true, port: 27184, token: "token-new" } })),
+    stageSettings: vi.fn().mockResolvedValue({ enabled: true, port: 27184, token: "token-123" } satisfies StageSettings),
+    stageUpdateSettings: vi.fn(async (s) => s),
+    stageNewToken: vi.fn().mockResolvedValue({ enabled: true, port: 27184, token: "token-new" } satisfies StageSettings),
     onStageCollect: vi.fn().mockResolvedValue(() => {}),
     onStageInfo: vi.fn().mockResolvedValue(() => {}),
     onStageAct: vi.fn().mockResolvedValue(() => {}),

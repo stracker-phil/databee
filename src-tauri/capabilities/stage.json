@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "stage",
+  "description": "The Stage hook's commands for the main window",
+  "windows": ["main"],
+  "permissions": ["stage:default"]
+}

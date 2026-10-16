@@ -6,12 +6,15 @@ protocol 1, revision 2026-10-16, with every optional feature: `reveal visible se
 keys.window scroll wait`.
 
 The hook does nothing without a presenter. If you don't use Stage, you can ignore this page, or turn the hook
-off under Settings → Presentations. To remove it from the code:
-1. Delete `src-tauri/src/stage/`, `src-tauri/src/stage_commands.rs`, `src/stage/` and `src/lib/stage.ts`.
-2. Remove their registrations in `lib.rs`, `App.tsx` and `src/api/`.
-3. Remove `Settings.stage`.
+off under Settings → Presentations.
 
-The `data-stage*` attributes in the components are inert without the hook.
+**Removing Stage.** The Rust half is a plugin with one install line:
+1. `git rm -r src-tauri/src/stage src-tauri/capabilities/stage.json`.
+2. Delete `pub mod stage;` and `.plugin(stage::init(&config_dir))` in `lib.rs`, and the `.plugin("stage", …)`
+   attribute and `STAGE_COMMANDS` in `build.rs`.
+3. Frontend (until 2.C2 makes it a module): delete `src/stage/`, `src/lib/stage.ts`, its registration in
+   `App.tsx`, the `stage*` wrappers in `src/api/index.ts` and the Presentations settings page.
+4. Optionally strip the `data-stage*` attributes (they are inert without the hook); run `bun run lint && bun run test`.
 
 ## Transport
 
@@ -43,7 +46,9 @@ api act '{"kind":"keys","keys":"Enter","window":"palette"}'
 | `protocol.rs` | Pure protocol types and helpers: key parsing and canonical form, bounds, screen rects, the register command, page reply types (`PageAnchor`, `ActReply`, `InfoReply`, `PageCommand`, `Surface`) |
 | `http.rs` | The HTTP server: `parse_request` and `respond`, testable without sockets; size limits; Origin, Host and token checks |
 | `hooks.rs` | The hub. It answers each verb, keeping the protocol's status codes (400, 404, 409, 500) and messages. It forwards page work as Tauri events and waits for the reply under a timeout. `StageHost` abstracts the native window, so tests use a fake host. |
-| `mod.rs` | `Stage`: start, stop and restart from settings, status for the settings page (including the register command), last request time |
+| `mod.rs` | `init(config_dir)`, the inline Tauri plugin ([ADR 0010](adr/0010-inline-tauri-plugins.md)): commands, managed `Stage`, start on setup, stop on exit. `Stage`: start, stop and restart from its settings, `update_settings`, `rotate_token`, status for the settings page (including the register command), last request time |
+| `settings.rs` | `StageSettings` (enabled, port, token; `Debug` redacts the token) in `<config>/stage.json` through `StageStore` ([ADR 0016](adr/0016-module-settings-files.md)). `sanitized()` clamps the port and generates a token when it is empty (`new_token`: 32 random bytes as hex). `StageStore::open` takes the `stage` object of a legacy `settings.json` once, so a registered token survives the upgrade; it never writes `settings.json`. |
+| `commands.rs` | The plugin's commands (`plugin:stage|…`): `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_settings`, `stage_update_settings`, `stage_new_token`. `COMMANDS` must match `STAGE_COMMANDS` in `build.rs` (a test checks it); `capabilities/stage.json` grants them to the main window. |
 
 The page side lives in `src/stage/`:
 

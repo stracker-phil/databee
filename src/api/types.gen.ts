@@ -416,7 +416,7 @@ dataFontSize: number, density: Density, rowLimit: number, queryTimeoutSecs: numb
 /**
  * Loads avatars from Gravatar (sends hashed emails to gravatar.com).
  */
-gravatar: boolean, inspectorDock: Dock, stage: StageSettings, };
+gravatar: boolean, inspectorDock: Dock, };
 
 export type SiteInfo = { blogId: number, prefix: string, domain: string | null, path: string | null, };
 
@@ -523,7 +523,7 @@ export type StageRect = { x: number, y: number, width: number, height: number, }
  */
 export type StageSettings = { enabled: boolean, port: number, 
 /**
- * Generated on first start; registered with Stage by the user, never in the log.
+ * Registered with Stage by the user, never in the log.
  */
 token: string, };
 

@@ -193,14 +193,30 @@ describe("SettingsDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "••••••••••••" }));
     expect(screen.getByText("token-123")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "New Token" }));
-    expect(mocked.stageNewToken).toHaveBeenCalled();
     expect(await screen.findByText("token-new")).toBeInTheDocument();
 
     mocked.stageStatus.mockResolvedValue({ enabled: false, running: false, error: null, url: "http://127.0.0.1:27184/v1/stage", registerCommand: command, lastRequest: null });
     await userEvent.click(screen.getByLabelText("Allow presentations"));
-    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ stage: { enabled: false, port: 27184, token: "token-new" } }));
+    expect(mocked.stageUpdateSettings).toHaveBeenLastCalledWith({ enabled: false, port: 27184, token: "token-new" });
     expect(await screen.findByText("Off")).toBeInTheDocument();
     expect(screen.getByText("None yet")).toBeInTheDocument();
+  });
+
+  it("copies the token", async () => {
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Copy token" }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith("token-123");
+  });
+
+  it("saves a changed port through the Stage settings", async () => {
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
+    const port = await screen.findByLabelText("Port");
+    await userEvent.clear(port);
+    await userEvent.type(port, "30000");
+    await userEvent.tab();
+    expect(mocked.stageUpdateSettings).toHaveBeenLastCalledWith({ enabled: true, port: 30000, token: "token-123" });
   });
 
   it("names the port conflict when the API can't start", async () => {

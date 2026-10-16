@@ -4,7 +4,6 @@ use tauri_plugin_opener::OpenerExt;
 use crate::error::{AppError, AppResult};
 use crate::launch::LaunchEvent;
 use crate::menu;
-use crate::stage::Stage;
 use crate::state::AppState;
 use crate::store::favorites::{Favorite, NewFavorite};
 use crate::store::history::HistoryEntry;
@@ -24,7 +23,6 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 struct SettingsEffects {
     theme: Option<Theme>,
     log_level: Option<log::LevelFilter>,
-    restart_stage: bool,
 }
 
 /// Without `previous` (at startup) everything applies. A `--log-level` from the CLI wins over
@@ -46,7 +44,6 @@ fn settings_effects(
             .is_none_or(|p| p.theme != saved.theme)
             .then_some(saved.theme),
         log_level: log_level.map(Into::into),
-        restart_stage: previous.is_none_or(|p| p.stage != saved.stage),
     }
 }
 
@@ -57,9 +54,6 @@ pub fn apply_settings(app: &AppHandle, previous: Option<&Settings>, saved: &Sett
     }
     if let Some(level) = effects.log_level {
         log::set_max_level(level);
-    }
-    if effects.restart_stage {
-        app.state::<Stage>().start(&saved.stage);
     }
 }
 
@@ -255,7 +249,6 @@ mod tests {
             SettingsEffects {
                 theme: Some(Theme::Dark),
                 log_level: None,
-                restart_stage: false,
             }
         );
     }
@@ -269,7 +262,6 @@ mod tests {
             SettingsEffects {
                 theme: None,
                 log_level: None,
-                restart_stage: false,
             }
         );
     }
@@ -318,17 +310,7 @@ mod tests {
             SettingsEffects {
                 theme: Some(Theme::Dark),
                 log_level: Some(log::LevelFilter::Warn),
-                restart_stage: true,
             }
         );
-    }
-
-    #[test]
-    fn changed_stage_setting_restarts_stage() {
-        let previous = Settings::default();
-        let mut saved = Settings::default();
-        saved.stage.port = previous.stage.port + 1;
-        assert!(settings_effects(Some(&previous), &saved, None).restart_stage);
-        assert!(!settings_effects(Some(&previous), &previous, None).restart_stage);
     }
 }

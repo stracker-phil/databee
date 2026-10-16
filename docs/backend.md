@@ -30,10 +30,8 @@ Stage hook each have their own page.
    Then `setup` runs:
    - It builds the native menu from the keybindings store.
    - It queues the initial launch request. The page pulls it later.
-   - `ensure_stage_token` generates a Stage token if there is none. A token that can't be saved is logged
-     and kept in memory.
-   - It manages `Stage` and calls `commands::apply_settings(app, None, &settings)`: window theme
-     (`window::apply_window_theme`), log level and the Stage server.
+   - It calls `commands::apply_settings(app, None, &settings)`: window theme
+     (`window::apply_window_theme`) and log level.
    - In debug builds `apply_dev_frame` applies `DATABEE_WINDOW_FRAME` (see [testing](testing.md#driving-the-app)).
    - `start_ipc` binds the IPC socket and serves it in a task; every message goes to
      `launch::on_ipc_message`. A bind error is logged and the app runs without single-instance handoff.
@@ -72,7 +70,17 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `config_dir` | `PathBuf` | used to read the optional `entities.toml` |
 | `log_override` | `Option<LogLevel>` | the CLI `--log-level`; wins over the stored level (`settings_effects`) |
 
-`stage::Stage` is managed separately (see [stage.md](stage.md)).
+Plugins manage their own state (`stage::Stage`, see [stage.md](stage.md)).
+
+### Plugins
+
+Optional features are inline Tauri plugins ([ADR 0010](adr/0010-inline-tauri-plugins.md)), installed with one
+`.plugin(<module>::init(&config_dir))` line in `start_app`, after `.manage(state)` so their setup may read
+`AppState` (the core never reads theirs). A plugin brings its own commands (`tauri::plugin::Builder::
+invoke_handler`; the page calls `invoke("plugin:<name>|<command>")`), managed state, settings file
+(`<config>/<name>.json`, [ADR 0016](adr/0016-module-settings-files.md)) and
+`capabilities/<name>.json`. `build.rs` declares each plugin with `tauri_build::InlinedPlugin` and its command
+list (`DefaultPermissionRule::AllowAllCommands` gives it a `<name>:default` permission). Stage is the first.
 
 ## Tauri commands
 
@@ -85,7 +93,6 @@ The TypeScript wrappers in `src/api/index.ts` use the same names in camelCase.
 | `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
 | `wp_commands.rs` | `wp_detect`, `wp_dashboard`, `wp_browser`, the list commands (`wp_orders`, `wp_users`, `wp_products`, `wp_actions`, `wp_sessions`, `wp_content`), `wp_view`, `wp_search`, `wp_peek`, `wp_find_value`, options and snapshots, `wp_plan_change` (see [wordpress.md](wordpress.md)) |
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
-| `stage_commands.rs` | `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_new_token` |
 
 `session::open` is the connect service: it peeks the launch password, resolves the password
 (`resolve_password`, in `spawn_blocking` because the Keychain may block on a dialog), calls `db::open`, maps a
@@ -188,6 +195,7 @@ use it for `Settings::sanitized`). The file itself is `JsonFile` (`store/json_fi
 | `connections.json` | recent connections by identity (`user@host:port/db`) |
 | `favorites.json` | tables and saved queries, global or scoped to one server account. `FavoritesStore::create(NewFavorite)` assigns the id; `update(Favorite)` replaces by id and refuses an unknown id. Both refuse a blank name and a second favorite with the same `(scope, target)` (`invalid_input`) |
 | `history.json` | executed queries per account, with time, duration and error. At most 500 entries across all accounts. SQL over 64 KiB is stored cut on a char boundary with `truncated: true`. Each entry stores an FNV-1a `hash` of the full SQL (computed on load for older files); rerunning the same SQL on the same account replaces its entry |
+| `stage.json` | Stage's own settings (`stage::settings::StageStore`, see [stage.md](stage.md)); not part of `settings.json` |
 | `snapshots.json` | WordPress snapshots, 30 per account and database (`MAX_PER_DATABASE`); adding one evicts the oldest of that database only |
 | `ui_state.json` | per connection: column widths, `detailPaneWidth`, `inspectorWidth`, `bottomPaneHeight`, `sqlEditorHeight` (older names load via serde aliases). `UiStateStore::forget` drops a connection's entry |
 | `entities.toml` | optional user entity definitions ([wordpress.md](wordpress.md#entities)) |

@@ -14,7 +14,6 @@ mod menu;
 pub mod secrets;
 mod session;
 pub mod stage;
-mod stage_commands;
 mod state;
 pub mod store;
 mod window;
@@ -143,22 +142,6 @@ fn start_ipc(handle: AppHandle, socket: &Path) {
     }));
 }
 
-/// A token that can't be saved still works until the app quits.
-fn ensure_stage_token(state: &AppState) -> Settings {
-    let mut settings = state.settings.get();
-    if !settings.stage.token.is_empty() {
-        return settings;
-    }
-    settings.stage.token = stage::new_token();
-    match state.settings.update(settings.clone()) {
-        Ok((_, saved)) => saved,
-        Err(e) => {
-            log::warn!("Cannot save the Stage token: {e}");
-            settings
-        }
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let config_dir = config_dir();
@@ -214,20 +197,20 @@ pub fn run() {
 }
 
 fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: LogLevel) {
+    let config_dir = state.config_dir.clone();
     tauri::Builder::default()
         .manage(state)
         .plugin(log_plugin())
         .plugin(init_logging(log_level))
         .plugin(tauri_plugin_opener::init())
+        .plugin(stage::init(&config_dir))
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
         .setup(move |app| {
             log::info!("DataBee {} started", env!("CARGO_PKG_VERSION"));
             let state = app.state::<AppState>();
             app.set_menu(menu::build(app, &state.keybindings)?)?;
             state.launches.push(initial);
-            let settings = ensure_stage_token(&state);
-            app.manage(stage::Stage::new(app.handle(), IDENTIFIER));
-            commands::apply_settings(app.handle(), None, &settings);
+            commands::apply_settings(app.handle(), None, &state.settings.get());
             #[cfg(debug_assertions)]
             apply_dev_frame(app);
             start_ipc(app.handle().clone(), &socket);
@@ -293,11 +276,6 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::undo_batch,
             decode::commands::decode_value,
             decode::commands::edit_serialized,
-            stage_commands::stage_anchors,
-            stage_commands::stage_done,
-            stage_commands::stage_info,
-            stage_commands::stage_status,
-            stage_commands::stage_new_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

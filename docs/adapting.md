@@ -79,7 +79,7 @@ can do all of this:
 | Add a setting | [backend.md: persistence](backend.md#persistence) |
 | Add a Tauri command | [backend.md: Tauri commands](backend.md#tauri-commands) |
 | Change colors, accents or density | [frontend.md: styling](frontend.md#styling) |
-| Remove the Stage hook | [stage.md](stage.md) |
+| Remove the Stage hook | [stage.md: removing Stage](stage.md) |
 
 ### Add a driver
 

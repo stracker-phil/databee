@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Blocks, Copy, FolderOpen, Keyboard, Palette, Plug, Presentation, RefreshCw, RotateCcw, ScrollText, SquareTerminal, Table2, X, type LucideIcon } from "lucide-react";
-import { ACCENTS, api, TEXT_SIZES, type Settings, type StageStatus } from "../api";
+import { ACCENTS, api, TEXT_SIZES, type Settings, type StageSettings, type StageStatus } from "../api";
 import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, type Command } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { relativeTime } from "../lib/format";
-import { useStore } from "../state/store";
+import { fail, useStore } from "../state/store";
 import { Modal } from "./Modal";
 
 const SCOPE_LABEL: Record<Command["scope"], string> = { global: "Everywhere", wp: "WordPress", db: "Database", table: "Table", editor: "Editor", document: "Document" };
@@ -247,11 +247,16 @@ const INTRO: Record<Page, string> = {
 };
 
 /** §10 of the Stage protocol: the hook's switch, status, port, token and register command. */
-function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Settings>) => void }) {
+function PresentationsPage() {
+  const [s, setStage] = useState<StageSettings | null>(null);
   const [status, setStatus] = useState<StageStatus | null>(null);
   const [revealed, setRevealed] = useState(false);
-  const { newStageToken } = useStore.getState();
+  const toast = useStore((st) => st.toast);
   useEffect(() => {
+    api.stageSettings().then(setStage, (e) => fail(e, "Could not load the presentation settings"));
+  }, []);
+  useEffect(() => {
+    if (!s) return;
     let alive = true;
     const load = () => api.stageStatus().then((next) => alive && setStatus(next), () => alive && setStatus(null));
     void load();
@@ -261,11 +266,21 @@ function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Setti
       alive = false;
       clearInterval(timer);
     };
-  }, [s.stage.enabled, s.stage.port, s.stage.token]);
-  const stage = (patch: Partial<Settings["stage"]>) => set({ stage: { ...s.stage, ...patch } });
+  }, [s?.enabled, s?.port, s?.token]);
+  if (!s) return null;
+  const patchStage = (patch: Partial<StageSettings>) =>
+    api.stageUpdateSettings({ ...s, ...patch }).then(setStage, (e) => fail(e, "Could not save the presentation settings"));
+  const newToken = () =>
+    api.stageNewToken().then(
+      (next) => {
+        setStage(next);
+        toast("success", "New token; register DataBee with Stage again");
+      },
+      (e) => fail(e, "Could not replace the token"),
+    );
   return (
     <Group>
-      <Switch label="Allow presentations" description="Runs a local API on 127.0.0.1; requests from web pages are refused." checked={s.stage.enabled} onChange={(enabled) => stage({ enabled })} />
+      <Switch label="Allow presentations" description="Runs a local API on 127.0.0.1; requests from web pages are refused." checked={s.enabled} onChange={(enabled) => void patchStage({ enabled })} />
       <Row label="Status" description={status?.running ? status.url : undefined}>
         {status?.error ? (
           <span className="pill tone-orange">{status.error}</span>
@@ -275,15 +290,15 @@ function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Setti
           <span className="badge">Off</span>
         )}
       </Row>
-      <NumberField label="Port" description="27184 unless another app needs it. Register again after a change." value={s.stage.port} min={1024} max={65535} onCommit={(port) => stage({ port })} />
+      <NumberField label="Port" description="27184 unless another app needs it. Register again after a change." value={s.port} min={1024} max={65535} onCommit={(port) => void patchStage({ port })} />
       <Row label="Token" description="A new token disconnects presenters until DataBee is registered again.">
         <button type="button" className="btn mono" title={revealed ? "Hide" : "Show the token"} onClick={() => setRevealed((r) => !r)}>
-          {revealed ? s.stage.token : "••••••••••••"}
+          {revealed ? s.token : "••••••••••••"}
         </button>
-        <button type="button" className="icon-btn" aria-label="Copy token" title="Copy token" onClick={() => void copyText(s.stage.token, "token")}>
+        <button type="button" className="icon-btn" aria-label="Copy token" title="Copy token" onClick={() => void copyText(s.token, "token")}>
           <Copy size="1rem" />
         </button>
-        <button type="button" className="btn" onClick={() => void newStageToken()}>
+        <button type="button" className="btn" onClick={() => void newToken()}>
           <RefreshCw size="1rem" /> New Token
         </button>
       </Row>
@@ -356,7 +371,7 @@ function PageBody({ page, s, set }: { page: Page; s: Settings; set: (patch: Part
         </Group>
       );
     case "presentations":
-      return <PresentationsPage s={s} set={set} />;
+      return <PresentationsPage />;
     case "logging":
       return (
         <Group>

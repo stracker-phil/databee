@@ -18,7 +18,6 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     logLevel: "info",
     gravatar: false,
     inspectorDock: "right",
-    stage: { enabled: true, port: 27184, token: "token-123" },
     ...patch,
   };
 }

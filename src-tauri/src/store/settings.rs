@@ -77,40 +77,6 @@ pub enum Dock {
     Bottom,
 }
 
-/// The local HTTP API through which Stage presents DataBee (docs/stage.md).
-#[derive(Serialize, Deserialize, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(default, rename_all = "camelCase")]
-pub struct StageSettings {
-    pub enabled: bool,
-    pub port: u16,
-    /// Generated on first start; registered with Stage by the user, never in the log.
-    pub token: String,
-}
-
-/// One fixed port per presentable app: 27180–27183 are taken by others, Stage uses 27190.
-pub const STAGE_PORT: u16 = 27184;
-
-impl Default for StageSettings {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            port: STAGE_PORT,
-            token: String::new(),
-        }
-    }
-}
-
-impl std::fmt::Debug for StageSettings {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StageSettings")
-            .field("enabled", &self.enabled)
-            .field("port", &self.port)
-            .field("token", &"<redacted>")
-            .finish()
-    }
-}
-
 /// Green and orange are status colors in the UI, so they are not offered as accents.
 pub const ACCENTS: &[&str] = &["blue", "purple", "pink", "graphite"];
 
@@ -142,7 +108,6 @@ pub struct Settings {
     pub gravatar: bool,
     #[serde(deserialize_with = "lenient")]
     pub inspector_dock: Dock,
-    pub stage: StageSettings,
 }
 
 impl Default for Settings {
@@ -164,7 +129,6 @@ impl Default for Settings {
             log_level: LogLevel::Info,
             gravatar: false,
             inspector_dock: Dock::Right,
-            stage: StageSettings::default(),
         }
     }
 }
@@ -193,10 +157,6 @@ impl Settings {
         if self.default_port == 0 {
             self.default_port = d.default_port;
         }
-        if self.stage.port < 1024 {
-            self.stage.port = STAGE_PORT;
-        }
-        self.stage.token = self.stage.token.trim().to_string();
         self
     }
 
@@ -438,20 +398,5 @@ mod tests {
             }
         );
         assert_eq!(store.get(), saved);
-    }
-
-    #[test]
-    fn stage_api_defaults_on_with_a_valid_port_and_hides_the_token() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("settings.json"),
-            r#"{"stage": {"port": 80, "token": " abc "}}"#,
-        )
-        .unwrap();
-        let stage = SettingsStore::open(dir.path()).get().stage;
-        assert!(stage.enabled);
-        assert_eq!(stage.port, STAGE_PORT);
-        assert_eq!(stage.token, "abc");
-        assert!(!format!("{stage:?}").contains("abc"));
     }
 }
