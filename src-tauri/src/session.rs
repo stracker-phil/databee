@@ -229,7 +229,7 @@ pub async fn open(state: &AppState, args: OpenArgs) -> AppResult<Arc<Session>> {
     if let (true, PasswordSource::Provided(secret)) = (args.save_password, &source) {
         save_password(state.secrets.clone(), args.spec.account(), secret.clone()).await;
     }
-    if let Err(e) = state.recents.touch(&args.spec) {
+    if let Err(e) = state.recents.touch(&args.spec).await {
         log::warn!("Could not update recent connections: {e}");
     }
     log::info!("Connected to {identity} ({})", db.server_version());
@@ -737,6 +737,39 @@ mod tests {
         let reopened = sessions.insert(session("b"));
 
         assert!(reopened.ext.get::<WpCache>().is_none());
+    }
+
+    struct LockedKeychain;
+
+    impl SecretStore for LockedKeychain {
+        fn get(&self, _: &str) -> AppResult<Option<Secret>> {
+            Err(AppError::Keychain("locked".into()))
+        }
+        fn set(&self, _: &str, _: &Secret) -> AppResult<()> {
+            Err(AppError::Keychain("locked".into()))
+        }
+        fn delete(&self, _: &str) -> AppResult<()> {
+            Err(AppError::Keychain("locked".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn failing_secret_store_makes_the_password_source_unavailable() {
+        let spec = ConnectionSpec {
+            name: None,
+            host: "127.0.0.1".into(),
+            port: 3306,
+            socket: None,
+            user: "wp".into(),
+            database: None,
+        };
+
+        let source = password_source(Arc::new(LockedKeychain), None, &spec).await;
+
+        assert!(
+            matches!(source, PasswordSource::Unavailable(_)),
+            "{source:?}"
+        );
     }
 
     #[test]

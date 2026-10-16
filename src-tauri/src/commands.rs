@@ -58,12 +58,12 @@ pub fn apply_settings(app: &AppHandle, previous: Option<&Settings>, saved: &Sett
 }
 
 #[tauri::command]
-pub fn update_settings(
+pub async fn update_settings(
     app: AppHandle,
     state: State<'_, AppState>,
     settings: Settings,
 ) -> AppResult<Settings> {
-    let (previous, saved) = state.settings.update(settings)?;
+    let (previous, saved) = state.settings.update(settings).await?;
     apply_settings(&app, Some(&previous), &saved);
     log::info!("Settings updated");
     Ok(saved)
@@ -75,12 +75,12 @@ pub fn get_keybindings(state: State<'_, AppState>) -> Keybindings {
 }
 
 #[tauri::command]
-pub fn set_keybindings(
+pub async fn set_keybindings(
     app: AppHandle,
     state: State<'_, AppState>,
     bindings: Keybindings,
 ) -> AppResult<Keybindings> {
-    let saved = state.keybindings.update(bindings)?;
+    let saved = state.keybindings.update(bindings).await?;
     menu::rebuild(&app);
     Ok(saved)
 }
@@ -91,12 +91,12 @@ pub fn get_ui_state(state: State<'_, AppState>, identity: String) -> UiState {
 }
 
 #[tauri::command]
-pub fn set_ui_state(
+pub async fn set_ui_state(
     state: State<'_, AppState>,
     identity: String,
     ui: UiState,
 ) -> AppResult<UiState> {
-    state.ui_state.set(&identity, ui)
+    state.ui_state.set(&identity, ui).await
 }
 
 #[tauri::command]
@@ -139,9 +139,9 @@ pub fn list_recents(state: State<'_, AppState>) -> Vec<RecentConnection> {
 }
 
 #[tauri::command]
-pub fn remove_recent(state: State<'_, AppState>, identity: String) -> AppResult<()> {
-    state.recents.remove(&identity)?;
-    state.ui_state.forget(&identity)
+pub async fn remove_recent(state: State<'_, AppState>, identity: String) -> AppResult<()> {
+    state.recents.remove(&identity).await?;
+    state.ui_state.forget(&identity).await
 }
 
 #[tauri::command]
@@ -150,23 +150,29 @@ pub fn list_favorites(state: State<'_, AppState>, account: String) -> Vec<Favori
 }
 
 #[tauri::command]
-pub fn create_favorite(state: State<'_, AppState>, favorite: NewFavorite) -> AppResult<Favorite> {
-    state.favorites.create(favorite)
+pub async fn create_favorite(
+    state: State<'_, AppState>,
+    favorite: NewFavorite,
+) -> AppResult<Favorite> {
+    state.favorites.create(favorite).await
 }
 
 #[tauri::command]
-pub fn update_favorite(state: State<'_, AppState>, favorite: Favorite) -> AppResult<Favorite> {
-    state.favorites.update(favorite)
+pub async fn update_favorite(
+    state: State<'_, AppState>,
+    favorite: Favorite,
+) -> AppResult<Favorite> {
+    state.favorites.update(favorite).await
 }
 
 #[tauri::command]
-pub fn remove_favorite(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    state.favorites.remove(&id)
+pub async fn remove_favorite(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    state.favorites.remove(&id).await
 }
 
 #[tauri::command]
-pub fn reorder_favorites(state: State<'_, AppState>, ids: Vec<String>) -> AppResult<()> {
-    state.favorites.reorder(&ids)
+pub async fn reorder_favorites(state: State<'_, AppState>, ids: Vec<String>) -> AppResult<()> {
+    state.favorites.reorder(ids).await
 }
 
 #[tauri::command]
@@ -175,8 +181,8 @@ pub fn list_history(state: State<'_, AppState>, account: String) -> Vec<HistoryE
 }
 
 #[tauri::command]
-pub fn clear_history(state: State<'_, AppState>, account: String) -> AppResult<()> {
-    state.history.clear(&account)
+pub async fn clear_history(state: State<'_, AppState>, account: String) -> AppResult<()> {
+    state.history.clear(&account).await
 }
 
 #[tauri::command]

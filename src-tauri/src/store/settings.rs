@@ -189,11 +189,13 @@ impl SettingsStore {
     }
 
     /// Returns `(previous, saved)`, both read under the same lock.
-    pub fn update(&self, settings: Settings) -> AppResult<(Settings, Settings)> {
-        self.store.update(|current| {
-            let previous = std::mem::replace(current, settings.sanitized());
-            (previous, current.clone())
-        })
+    pub async fn update(&self, settings: Settings) -> AppResult<(Settings, Settings)> {
+        self.store
+            .update_async(move |current| {
+                let previous = std::mem::replace(current, settings.sanitized());
+                (previous, current.clone())
+            })
+            .await
     }
 }
 
@@ -207,8 +209,8 @@ mod tests {
         assert_eq!(SettingsStore::open(dir.path()).get(), Settings::default());
     }
 
-    #[test]
-    fn updates_persist_across_reopen() {
+    #[tokio::test]
+    async fn updates_persist_across_reopen() {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::open(dir.path());
         let changed = Settings {
@@ -217,7 +219,7 @@ mod tests {
             inspector_dock: Dock::Bottom,
             ..Settings::default()
         };
-        store.update(changed.clone()).unwrap();
+        store.update(changed.clone()).await.unwrap();
         assert_eq!(SettingsStore::open(dir.path()).get(), changed);
     }
 
@@ -273,8 +275,8 @@ mod tests {
         assert_eq!(settings.accent, "blue");
     }
 
-    #[test]
-    fn out_of_range_values_are_clamped_on_update() {
+    #[tokio::test]
+    async fn out_of_range_values_are_clamped_on_update() {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::open(dir.path());
         let saved = store
@@ -285,6 +287,7 @@ mod tests {
                 accent: "neon".into(),
                 ..Settings::default()
             })
+            .await
             .unwrap()
             .1;
         assert_eq!(saved.row_limit, 10);
@@ -374,8 +377,8 @@ mod tests {
         assert_eq!(names, vec![std::ffi::OsString::from("settings.json")]);
     }
 
-    #[test]
-    fn update_returns_previous_and_sanitized_saved_settings() {
+    #[tokio::test]
+    async fn update_returns_previous_and_sanitized_saved_settings() {
         let dir = tempfile::tempdir().unwrap();
         let store = SettingsStore::open(dir.path());
         let before = store.get();
@@ -386,6 +389,7 @@ mod tests {
                 row_limit: 0,
                 ..Settings::default()
             })
+            .await
             .unwrap();
 
         assert_eq!(previous, before);

@@ -61,8 +61,8 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `keybindings` | `KeybindingsStore` | `keybindings.json`; also feeds the menu |
 | `recents` | `RecentsStore` | `connections.json` (last 20 connections) |
 | `favorites` | `FavoritesStore` | `favorites.json` |
-| `history` | `HistoryStore` | `history.json` (last 500 queries) |
-| `snapshots` | `SnapshotStore` | `snapshots.json` (WordPress snapshots) |
+| `history` | `HistoryStore` | `history.json` (last 500 queries, written behind) |
+| `snapshots` | `SnapshotStore` | `snapshots.json` index and `snapshots/<id>.json` values (WordPress snapshots) |
 | `ui_state` | `UiStateStore` | `ui_state.json` (column widths, pane sizes per connection) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
@@ -110,7 +110,8 @@ session lookup, history entry for failed queries too).
 3. Derive `ts_rs::TS` with `#[ts(export, export_to = "src/api/types.gen.ts")]` on every argument and result
    type (and the types they contain), run `bun run types` and commit the regenerated file. 64-bit integers
    map to `number` (`TS_RS_LARGE_INT` in `.cargo/config.toml`). Then add a wrapper to `api` in
-   `src/api/index.ts`.
+   `src/api/index.ts`. A module's types export to its own folder (Stage: `src/stage/types.gen.ts`, wrapped in
+   `src/stage/api.ts`); add a new generated file to the `git diff` in the `lint` script.
 4. Add a mock to `src/test/apiMock.ts`. TypeScript requires it, because the mock is typed as `typeof api`.
 
 ## Events to the page
@@ -173,12 +174,17 @@ A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}
 
 ## Persistence
 
-Everything lives in the config dir, `~/Library/Application Support/com.philippstracker.databee/`. Every JSON
-store wraps a `JsonStore<T>` (`store/json_store.rs`): the parsed value behind one lock, with `read(|t| ..)`
-and `update(|t| ..) -> AppResult<R>`. `update` applies the closure to a clone, saves the clone and only then
-replaces the value, holding the lock throughout, so a failed save leaves memory unchanged instead of
-showing a change that vanishes on restart. `JsonStore::open_with` normalizes the loaded value (settings
-use it for `Settings::sanitized`). The file itself is `JsonFile` (`store/json_file.rs`), which:
+Everything lives in the config dir, `~/Library/Application Support/com.philippstracker.databee/`. Most JSON
+stores wrap a `JsonStore<T>` (`store/json_store.rs`): the parsed value behind an `RwLock`, with `read(|t| ..)`
+and `update_async(|t| ..) -> AppResult<R>`. `update_async` runs on a blocking thread (`spawn_blocking`), so
+async commands never wait on the disk: under a write gate it applies the closure to a clone, saves the clone
+and only then swaps it in, so a failed save leaves memory unchanged instead of showing a change that vanishes
+on restart. Readers take the lock only for the clone and the swap, never during the save. The synchronous
+`update` does the same on the calling thread, for startup code and sync commands (Stage settings, the
+snapshot migration). Store methods that write are `async` and the commands calling them are async commands.
+`JsonStore::open_with` normalizes the loaded value (settings use it for `Settings::sanitized`);
+`JsonStore::from_loaded` takes a value the caller parsed itself (the snapshot index). The file itself is
+`JsonFile` (`store/json_file.rs`), which:
 
 - writes pretty-printed JSON to `<name>.tmp` (mode 0600), `sync_all`s it and renames it over the target;
   on error the temp file is removed. The parent dir is created 0700 with `create_private_dir`;
@@ -194,13 +200,28 @@ use it for `Settings::sanitized`). The file itself is `JsonFile` (`store/json_fi
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` runs on load and in `KeybindingsStore::update`: it drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed (unknown modifier, missing or multi-part key). A trailing `++` is the `+` key (`Mod+Shift++`) |
 | `connections.json` | recent connections by identity (`user@host:port/db`) |
 | `favorites.json` | tables and saved queries, global or scoped to one server account. `FavoritesStore::create(NewFavorite)` assigns the id; `update(Favorite)` replaces by id and refuses an unknown id. Both refuse a blank name and a second favorite with the same `(scope, target)` (`invalid_input`) |
-| `history.json` | executed queries per account, with time, duration and error. At most 500 entries across all accounts. SQL over 64 KiB is stored cut on a char boundary with `truncated: true`. Each entry stores an FNV-1a `hash` of the full SQL (computed on load for older files); rerunning the same SQL on the same account replaces its entry |
+| `history.json` | executed queries per account, with time, duration and error. At most 500 entries across all accounts. SQL over 64 KiB is stored cut on a char boundary with `truncated: true`. Each entry stores a `hash` of the full SQL (first 8 bytes of SHA-256, computed on load for older files); rerunning the same SQL on the same account replaces its entry. Written behind, see below |
 | `stage.json` | Stage's own settings (`stage::settings::StageStore`, see [stage.md](stage.md)); not part of `settings.json` |
-| `snapshots.json` | WordPress snapshots, 30 per account and database (`MAX_PER_DATABASE`); adding one evicts the oldest of that database only |
+| `snapshots.json` | index of WordPress snapshots (id, label, account, database, scope, created, `paths` count), 30 per account and database (`MAX_PER_DATABASE`); adding one evicts the oldest of that database only and deletes its values file |
+| `snapshots/<id>.json` | one snapshot's `path → value` map (0600, dir 0700) |
 | `ui_state.json` | per connection: column widths, `detailPaneWidth`, `inspectorWidth`, `bottomPaneHeight`, `sqlEditorHeight` (older names load via serde aliases). `UiStateStore::forget` drops a connection's entry |
 | `entities.toml` | optional user entity definitions ([wordpress.md](wordpress.md#entities)) |
 | `databee.sock` | the IPC socket |
 | `databee.lock` | the instance lock |
+
+**History** (`store/history.rs`) does not use `JsonStore`: `record` changes memory and marks the store dirty,
+and a writer task (`HistoryStore::start_writer`, started in `setup`) saves at most once per 500 ms while dirty,
+on a blocking thread. A failed write is logged and retried after the next change. `flush` saves right away;
+it runs on `RunEvent::Exit` and from `clear`. History is best-effort: a crash can lose the last half second of
+queries.
+
+**Snapshots** (`store/snapshots.rs`): `list` reads only the index; `get` reads one values file on a blocking
+thread. `add` writes the values file before the index, `delete` removes the index entry before the file, so
+the index never names a snapshot without values (a stray file is harmless). Ids name files, so only uuid
+characters are accepted. Older versions kept every snapshot with its values in `snapshots.json`; `open`
+recognizes that format (entries without `paths`), copies it to `snapshots.json.legacy`, writes every snapshot
+to its file, rewrites `snapshots.json` as the index and then deletes the copy. If any step fails, the legacy
+file stays, snapshots are served from memory and `add`/`delete` refuse until a restart migrates again.
 
 Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.databee/`.
 

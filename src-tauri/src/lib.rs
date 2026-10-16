@@ -210,6 +210,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             let state = app.state::<AppState>();
             app.set_menu(menu::build(app, &state.keybindings)?)?;
             state.launches.push(initial);
+            state.history.start_writer();
             commands::apply_settings(app.handle(), None, &state.settings.get());
             #[cfg(debug_assertions)]
             apply_dev_frame(app);
@@ -278,8 +279,15 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             decode::commands::decode_value,
             decode::commands::edit_serialized,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event
+                && let Err(e) = app.state::<AppState>().history.flush()
+            {
+                log::warn!("Could not save the query history: {e}");
+            }
+        });
 }
 
 #[cfg(test)]

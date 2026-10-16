@@ -1,16 +1,22 @@
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::sync::Notify;
 use ts_rs::TS;
 
-use super::json_store::JsonStore;
-use crate::error::AppResult;
+use super::json_file::JsonFile;
+use crate::error::{AppError, AppResult};
+use crate::lock::MutexExt;
 
 /// Across all accounts, not per account.
 const MAX_ENTRIES: usize = 500;
 const MAX_SQL_BYTES: usize = 64 * 1024;
+const WRITE_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -37,42 +43,112 @@ struct StoredEntry {
     hash: Option<u64>,
 }
 
+/// Kept in memory and written behind: `record` never waits for the disk.
 pub struct HistoryStore {
-    store: JsonStore<Vec<StoredEntry>>,
+    shared: Arc<Shared>,
+}
+
+struct Shared {
+    file: JsonFile,
+    items: Mutex<Vec<StoredEntry>>,
+    /// Set after every change, cleared by the write that covers it.
+    dirty: AtomicBool,
+    /// One file write at a time, so an older copy never lands after a newer one.
+    writing: Mutex<()>,
+    changed: Notify,
 }
 
 impl HistoryStore {
     pub fn open(dir: &Path) -> Self {
+        let file = JsonFile::new(dir.join("history.json"));
+        let items = hash_old_entries(file.load());
         Self {
-            store: JsonStore::open_with(dir.join("history.json"), hash_old_entries),
+            shared: Arc::new(Shared {
+                file,
+                items: Mutex::new(items),
+                dirty: AtomicBool::new(false),
+                writing: Mutex::new(()),
+                changed: Notify::new(),
+            }),
         }
+    }
+
+    /// Writes the file at most once per `WRITE_DELAY` while there are unsaved entries. A failed
+    /// write is logged and retried after the next change.
+    pub fn start_writer(&self) {
+        let shared = Arc::clone(&self.shared);
+        tauri::async_runtime::spawn(async move {
+            loop {
+                shared.changed.notified().await;
+                tokio::time::sleep(WRITE_DELAY).await;
+                let writer = Arc::clone(&shared);
+                let written = tokio::task::spawn_blocking(move || writer.flush())
+                    .await
+                    .unwrap_or_else(|e| Err(AppError::Io(e.to_string())));
+                if let Err(e) = written {
+                    log::warn!("Could not save the query history: {e}");
+                }
+            }
+        });
     }
 
     /// Newest first, at most `MAX_ENTRIES` in total. Re-running the same SQL on the same
     /// account replaces its previous entry.
-    pub fn record(&self, mut entry: HistoryEntry) -> AppResult<()> {
+    pub fn record(&self, mut entry: HistoryEntry) {
         let hash = Some(sql_hash(&entry.sql));
         entry.truncated = truncate_sql(&mut entry.sql);
-        self.store.update(|items| {
+        self.shared.change(|items| {
             items.retain(|e| !(e.hash == hash && e.entry.account == entry.account));
             items.insert(0, StoredEntry { entry, hash });
             items.truncate(MAX_ENTRIES);
-        })
+        });
     }
 
     pub fn list(&self, account: &str) -> Vec<HistoryEntry> {
-        self.store.read(|items| {
-            items
-                .iter()
-                .filter(|e| e.entry.account == account)
-                .map(|e| e.entry.clone())
-                .collect()
-        })
+        self.shared
+            .items
+            .lock_unpoisoned()
+            .iter()
+            .filter(|e| e.entry.account == account)
+            .map(|e| e.entry.clone())
+            .collect()
     }
 
-    pub fn clear(&self, account: &str) -> AppResult<()> {
-        self.store
-            .update(|items| items.retain(|e| e.entry.account != account))
+    /// Saved right away, so cleared queries do not come back after a crash.
+    pub async fn clear(&self, account: &str) -> AppResult<()> {
+        self.shared
+            .change(|items| items.retain(|e| e.entry.account != account));
+        let shared = Arc::clone(&self.shared);
+        tokio::task::spawn_blocking(move || shared.flush())
+            .await
+            .map_err(|e| AppError::Io(format!("Could not save the query history: {e}")))?
+    }
+
+    /// Writes the file now if there are unsaved changes; blocks on the disk.
+    pub fn flush(&self) -> AppResult<()> {
+        self.shared.flush()
+    }
+}
+
+impl Shared {
+    fn change(&self, f: impl FnOnce(&mut Vec<StoredEntry>)) {
+        f(&mut self.items.lock_unpoisoned());
+        self.dirty.store(true, Ordering::SeqCst);
+        self.changed.notify_one();
+    }
+
+    /// Clears `dirty` before copying, so a change made during the write marks it again.
+    fn flush(&self) -> AppResult<()> {
+        let _writing = self.writing.lock_unpoisoned();
+        if !self.dirty.swap(false, Ordering::SeqCst) {
+            return Ok(());
+        }
+        let items = self.items.lock_unpoisoned().clone();
+        let saved = self.file.save(&items);
+        if saved.is_err() {
+            self.dirty.store(true, Ordering::SeqCst);
+        }
+        saved
     }
 }
 
@@ -126,21 +202,56 @@ mod tests {
     fn newest_first_and_rerun_moves_to_top() {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::open(dir.path());
-        store.record(entry("a", "SELECT 1")).unwrap();
-        store.record(entry("a", "SELECT 2")).unwrap();
-        store.record(entry("a", "SELECT 1")).unwrap();
+        store.record(entry("a", "SELECT 1"));
+        store.record(entry("a", "SELECT 2"));
+        store.record(entry("a", "SELECT 1"));
         assert_eq!(sqls(store.list("a")), ["SELECT 1", "SELECT 2"]);
     }
 
-    #[test]
-    fn history_is_per_server_and_clearable() {
+    #[tokio::test]
+    async fn history_is_per_server_and_clearable() {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::open(dir.path());
-        store.record(entry("a", "SELECT 1")).unwrap();
-        store.record(entry("b", "SELECT 2")).unwrap();
-        store.clear("a").unwrap();
+        store.record(entry("a", "SELECT 1"));
+        store.record(entry("b", "SELECT 2"));
+        store.clear("a").await.unwrap();
         assert!(store.list("a").is_empty());
         assert_eq!(sqls(HistoryStore::open(dir.path()).list("b")), ["SELECT 2"]);
+    }
+
+    #[test]
+    fn recorded_entry_is_written_by_flush_and_seen_after_reopening() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = HistoryStore::open(dir.path());
+        store.record(entry("a", "SELECT 1"));
+        assert!(!dir.path().join("history.json").exists());
+
+        store.flush().unwrap();
+
+        assert_eq!(sqls(HistoryStore::open(dir.path()).list("a")), ["SELECT 1"]);
+    }
+
+    #[test]
+    fn flush_without_changes_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = HistoryStore::open(dir.path());
+
+        store.flush().unwrap();
+
+        assert!(!dir.path().join("history.json").exists());
+    }
+
+    #[tokio::test]
+    async fn clear_persists_an_empty_history_for_that_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = HistoryStore::open(dir.path());
+        store.record(entry("a", "SELECT 1"));
+        store.flush().unwrap();
+
+        store.clear("a").await.unwrap();
+
+        assert!(store.list("a").is_empty());
+        assert!(HistoryStore::open(dir.path()).list("a").is_empty());
     }
 
     #[test]
@@ -148,7 +259,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::open(dir.path());
         for i in 0..510 {
-            store.record(entry("a", &format!("SELECT {i}"))).unwrap();
+            store.record(entry("a", &format!("SELECT {i}")));
         }
         assert_eq!(store.list("a").len(), 500);
     }
@@ -157,8 +268,8 @@ mod tests {
     fn same_sql_on_different_accounts_is_kept_twice() {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::open(dir.path());
-        store.record(entry("a", "SELECT 1")).unwrap();
-        store.record(entry("b", "SELECT 1")).unwrap();
+        store.record(entry("a", "SELECT 1"));
+        store.record(entry("b", "SELECT 1"));
         assert_eq!(sqls(store.list("a")), ["SELECT 1"]);
         assert_eq!(sqls(store.list("b")), ["SELECT 1"]);
     }
@@ -171,7 +282,8 @@ mod tests {
             error: Some("Unknown column".into()),
             ..entry("a", "SELECT nope")
         };
-        store.record(failed.clone()).unwrap();
+        store.record(failed.clone());
+        store.flush().unwrap();
         assert_eq!(HistoryStore::open(dir.path()).list("a"), vec![failed]);
     }
 
@@ -180,10 +292,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::open(dir.path());
         for i in 0..300 {
-            store.record(entry("a", &format!("SELECT {i}"))).unwrap();
+            store.record(entry("a", &format!("SELECT {i}")));
         }
         for i in 0..300 {
-            store.record(entry("b", &format!("SELECT {i}"))).unwrap();
+            store.record(entry("b", &format!("SELECT {i}")));
         }
         let (a, b) = (store.list("a"), store.list("b"));
         assert_eq!(a.len() + b.len(), 500);
@@ -206,7 +318,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::open(dir.path());
         let sql = long_sql();
-        store.record(entry("a", &sql)).unwrap();
+        store.record(entry("a", &sql));
         let stored = &store.list("a")[0];
         assert!(stored.sql.len() <= MAX_SQL_BYTES);
         assert!(stored.truncated);
@@ -218,8 +330,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::open(dir.path());
         let sql = long_sql();
-        store.record(entry("a", &sql)).unwrap();
-        store.record(entry("a", &sql)).unwrap();
+        store.record(entry("a", &sql));
+        store.record(entry("a", &sql));
         assert_eq!(store.list("a").len(), 1);
     }
 
@@ -236,7 +348,7 @@ mod tests {
         assert_eq!(sqls(loaded.clone()), ["SELECT 1"]);
         assert!(!loaded[0].truncated);
 
-        store.record(entry("a", "SELECT 1")).unwrap();
+        store.record(entry("a", "SELECT 1"));
         let after = store.list("a");
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].elapsed_ms, 1);

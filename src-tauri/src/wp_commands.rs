@@ -310,15 +310,18 @@ pub async fn wp_snapshot_take(
     let values =
         crate::wp::snapshot::capture(s.db.as_ref(), &ctx, &catalog, &database, &scope).await?;
     log::info!("Snapshot '{label}' with {} paths", values.len());
-    state.snapshots.add(crate::store::snapshots::Snapshot {
-        id: String::new(),
-        label,
-        account: s.spec.account(),
-        database,
-        scope,
-        created: chrono::Utc::now(),
-        values,
-    })
+    state
+        .snapshots
+        .add(crate::store::snapshots::Snapshot {
+            id: String::new(),
+            label,
+            account: s.spec.account(),
+            database,
+            scope,
+            created: chrono::Utc::now(),
+            values,
+        })
+        .await
 }
 
 #[tauri::command]
@@ -338,7 +341,7 @@ pub async fn wp_snapshot_diff(
     database: String,
     id: String,
 ) -> AppResult<Vec<crate::wp::snapshot::DiffEntry>> {
-    let snapshot = state.snapshots.get(&id)?;
+    let snapshot = state.snapshots.get(&id).await?;
     let (ctx, catalog, s) = wp_env(&state, &session_id, &database).await?;
     let now =
         crate::wp::snapshot::capture(s.db.as_ref(), &ctx, &catalog, &database, &snapshot.scope)
@@ -347,8 +350,8 @@ pub async fn wp_snapshot_diff(
 }
 
 #[tauri::command]
-pub fn wp_snapshot_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    state.snapshots.delete(&id)
+pub async fn wp_snapshot_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    state.snapshots.delete(&id).await
 }
 
 #[tauri::command]

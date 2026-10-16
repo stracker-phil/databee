@@ -39,6 +39,10 @@ impl JsonFile {
         }
     }
 
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub fn load<T: DeserializeOwned + Default>(&self) -> T {
         let reason = match fs::read(&self.path) {
             Ok(raw) => match serde_json::from_slice(&raw) {

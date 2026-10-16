@@ -60,7 +60,7 @@ impl FavoritesStore {
     }
 
     /// Appends a favorite with a fresh id.
-    pub fn create(&self, new: NewFavorite) -> AppResult<Favorite> {
+    pub async fn create(&self, new: NewFavorite) -> AppResult<Favorite> {
         require_name(&new.name)?;
         let favorite = Favorite {
             id: uuid::Uuid::new_v4().to_string(),
@@ -68,38 +68,47 @@ impl FavoritesStore {
             scope: new.scope,
             target: new.target,
         };
-        self.store.update(|items| {
-            reject_duplicate(items, &favorite)?;
-            items.push(favorite.clone());
-            Ok(favorite)
-        })?
+        self.store
+            .update_async(move |items| {
+                reject_duplicate(items, &favorite)?;
+                items.push(favorite.clone());
+                Ok(favorite)
+            })
+            .await?
     }
 
     /// Replaces the favorite with the same id, in place.
-    pub fn update(&self, favorite: Favorite) -> AppResult<Favorite> {
+    pub async fn update(&self, favorite: Favorite) -> AppResult<Favorite> {
         require_name(&favorite.name)?;
-        self.store.update(|items| {
-            reject_duplicate(items, &favorite)?;
-            let existing = items
-                .iter_mut()
-                .find(|f| f.id == favorite.id)
-                .ok_or_else(|| {
-                    AppError::InvalidInput(format!("Favorite {} not found", favorite.id))
-                })?;
-            *existing = favorite.clone();
-            Ok(favorite)
-        })?
+        self.store
+            .update_async(move |items| {
+                reject_duplicate(items, &favorite)?;
+                let existing = items
+                    .iter_mut()
+                    .find(|f| f.id == favorite.id)
+                    .ok_or_else(|| {
+                        AppError::InvalidInput(format!("Favorite {} not found", favorite.id))
+                    })?;
+                *existing = favorite.clone();
+                Ok(favorite)
+            })
+            .await?
     }
 
-    pub fn remove(&self, id: &str) -> AppResult<()> {
-        self.store.update(|items| items.retain(|f| f.id != id))
+    pub async fn remove(&self, id: &str) -> AppResult<()> {
+        let id = id.to_string();
+        self.store
+            .update_async(move |items| items.retain(|f| f.id != id))
+            .await
     }
 
     /// Puts the given ids first, in that order; everything else keeps its relative order.
     /// Unknown ids are ignored.
-    pub fn reorder(&self, ids: &[String]) -> AppResult<()> {
-        let rank = |f: &Favorite| ids.iter().position(|id| *id == f.id).unwrap_or(usize::MAX);
-        self.store.update(|items| items.sort_by_key(rank))
+    pub async fn reorder(&self, ids: Vec<String>) -> AppResult<()> {
+        let rank = move |f: &Favorite| ids.iter().position(|id| *id == f.id).unwrap_or(usize::MAX);
+        self.store
+            .update_async(move |items| items.sort_by_key(rank))
+            .await
     }
 }
 
@@ -143,13 +152,14 @@ mod tests {
         list.into_iter().map(|f| f.name).collect()
     }
 
-    #[test]
-    fn scoped_favorites_only_show_for_their_server() {
+    #[tokio::test]
+    async fn scoped_favorites_only_show_for_their_server() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
-        store.create(query("global", None)).unwrap();
+        store.create(query("global", None)).await.unwrap();
         store
             .create(query("shop", Some("root@127.0.0.1:52958")))
+            .await
             .unwrap();
         assert_eq!(
             names(store.list("root@127.0.0.1:52958")),
@@ -158,48 +168,55 @@ mod tests {
         assert_eq!(names(store.list("root@127.0.0.1:3306")), ["global"]);
     }
 
-    #[test]
-    fn saving_with_id_updates_in_place() {
+    #[tokio::test]
+    async fn saving_with_id_updates_in_place() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
-        let a = store.create(query("a", None)).unwrap();
-        store.create(query("b", None)).unwrap();
+        let a = store.create(query("a", None)).await.unwrap();
+        store.create(query("b", None)).await.unwrap();
         store
             .update(Favorite {
                 name: "renamed".into(),
                 ..a
             })
+            .await
             .unwrap();
         assert_eq!(names(store.list("x")), ["renamed", "b"]);
     }
 
-    #[test]
-    fn reorder_and_remove_persist() {
+    #[tokio::test]
+    async fn reorder_and_remove_persist() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
-        let a = store.create(query("a", None)).unwrap();
-        let b = store.create(query("b", None)).unwrap();
-        let c = store.create(query("c", None)).unwrap();
-        store.reorder(&[c.id.clone(), a.id.clone()]).unwrap();
-        store.remove(&b.id).unwrap();
+        let a = store.create(query("a", None)).await.unwrap();
+        let b = store.create(query("b", None)).await.unwrap();
+        let c = store.create(query("c", None)).await.unwrap();
+        store
+            .reorder(vec![c.id.clone(), a.id.clone()])
+            .await
+            .unwrap();
+        store.remove(&b.id).await.unwrap();
         assert_eq!(
             names(FavoritesStore::open(dir.path()).list("x")),
             ["c", "a"]
         );
     }
 
-    #[test]
-    fn creating_the_same_target_twice_is_refused() {
+    #[tokio::test]
+    async fn creating_the_same_target_twice_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
-        store.create(query("posts", Some("a@h:1"))).unwrap();
-        let err = store.create(query("posts", Some("a@h:1"))).unwrap_err();
+        store.create(query("posts", Some("a@h:1"))).await.unwrap();
+        let err = store
+            .create(query("posts", Some("a@h:1")))
+            .await
+            .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(store.list("a@h:1").len(), 1);
     }
 
-    #[test]
-    fn updating_an_unknown_id_is_refused() {
+    #[tokio::test]
+    async fn updating_an_unknown_id_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
         let ghost = Favorite {
@@ -211,13 +228,13 @@ mod tests {
             },
         };
         assert_eq!(
-            store.update(ghost).unwrap_err().kind(),
+            store.update(ghost).await.unwrap_err().kind(),
             ErrorKind::InvalidInput
         );
     }
 
-    #[test]
-    fn table_favorite_round_trips_through_reopen() {
+    #[tokio::test]
+    async fn table_favorite_round_trips_through_reopen() {
         let dir = tempfile::tempdir().unwrap();
         let created = FavoritesStore::open(dir.path())
             .create(NewFavorite {
@@ -228,6 +245,7 @@ mod tests {
                     table: "wp_posts".into(),
                 },
             })
+            .await
             .unwrap();
         assert_eq!(
             FavoritesStore::open(dir.path()).list("a@h:1"),
@@ -235,58 +253,60 @@ mod tests {
         );
     }
 
-    #[test]
-    fn reorder_ignores_unknown_ids() {
+    #[tokio::test]
+    async fn reorder_ignores_unknown_ids() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
-        let a = store.create(query("a", None)).unwrap();
-        store.create(query("b", None)).unwrap();
-        store.reorder(&["nope".into(), a.id]).unwrap();
+        let a = store.create(query("a", None)).await.unwrap();
+        store.create(query("b", None)).await.unwrap();
+        store.reorder(vec!["nope".into(), a.id]).await.unwrap();
         assert_eq!(names(store.list("x")), ["a", "b"]);
     }
 
-    #[test]
-    fn same_target_with_different_scopes_stays_two_favorites() {
+    #[tokio::test]
+    async fn same_target_with_different_scopes_stays_two_favorites() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
-        store.create(query("posts", Some("a@h:1"))).unwrap();
-        store.create(query("posts", None)).unwrap();
+        store.create(query("posts", Some("a@h:1"))).await.unwrap();
+        store.create(query("posts", None)).await.unwrap();
         assert_eq!(store.list("a@h:1").len(), 2);
     }
 
-    #[test]
-    fn update_to_another_favorites_target_is_refused() {
+    #[tokio::test]
+    async fn update_to_another_favorites_target_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
-        let a = store.create(query("a", Some("a@h:1"))).unwrap();
-        let b = store.create(query("b", Some("a@h:1"))).unwrap();
+        let a = store.create(query("a", Some("a@h:1"))).await.unwrap();
+        let b = store.create(query("b", Some("a@h:1"))).await.unwrap();
         let err = store
             .update(Favorite {
                 target: a.target.clone(),
                 ..b
             })
+            .await
             .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
-    #[test]
-    fn update_keeping_its_own_target_succeeds() {
+    #[tokio::test]
+    async fn update_keeping_its_own_target_succeeds() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
-        let a = store.create(query("a", Some("a@h:1"))).unwrap();
+        let a = store.create(query("a", Some("a@h:1"))).await.unwrap();
         store
             .update(Favorite {
                 name: "renamed".into(),
                 ..a
             })
+            .await
             .unwrap();
         assert_eq!(names(store.list("a@h:1")), ["renamed"]);
     }
 
-    #[test]
-    fn blank_names_are_rejected() {
+    #[tokio::test]
+    async fn blank_names_are_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let store = FavoritesStore::open(dir.path());
-        assert!(store.create(query("  ", None)).is_err());
+        assert!(store.create(query("  ", None)).await.is_err());
     }
 }

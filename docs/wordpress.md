@@ -155,6 +155,15 @@ split detail pane is shown. The content list without a kind lists every visible 
 Every purpose-built view also embeds the generic document, so no stored field is hidden. Entity pages have
 Live mode (polls every 3 s and highlights changes), Snapshot, Compare and Source row.
 
+### Snapshots
+
+`snapshot::capture` flattens an entity (and optionally related rows, options matching a pattern, and
+actions) to a `path → value` map; `snapshot::diff` compares a stored map with a fresh capture. Storage
+(`store/snapshots.rs`, see [backend.md](backend.md#persistence)): `snapshots.json` in the config dir is the
+index (metadata and the `paths` count, read by `wp_snapshots`), and `snapshots/<id>.json` holds one
+snapshot's values, read only by `wp_snapshot_diff`. A legacy `snapshots.json` that still carries the values
+is migrated once on startup.
+
 ### Order logs
 
 `detail::order_logs` (`wp_order_logs`) lists `woocommerce_log` rows from a day before the order's creation to

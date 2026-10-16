@@ -42,26 +42,27 @@ impl RecentsStore {
         recents
     }
 
-    pub fn touch(&self, spec: &ConnectionSpec) -> AppResult<()> {
-        let identity = spec.identity();
-        self.store.update(|items| {
-            items.retain(|r| r.identity != identity);
-            items.insert(
-                0,
-                RecentConnection {
-                    identity,
-                    account: spec.account(),
-                    spec: spec.clone(),
-                    last_used: Utc::now(),
-                },
-            );
-            items.truncate(MAX_RECENTS);
-        })
+    pub async fn touch(&self, spec: &ConnectionSpec) -> AppResult<()> {
+        let recent = RecentConnection {
+            identity: spec.identity(),
+            account: spec.account(),
+            spec: spec.clone(),
+            last_used: Utc::now(),
+        };
+        self.store
+            .update_async(move |items| {
+                items.retain(|r| r.identity != recent.identity);
+                items.insert(0, recent);
+                items.truncate(MAX_RECENTS);
+            })
+            .await
     }
 
-    pub fn remove(&self, identity: &str) -> AppResult<()> {
+    pub async fn remove(&self, identity: &str) -> AppResult<()> {
+        let identity = identity.to_string();
         self.store
-            .update(|items| items.retain(|r| r.identity != identity))
+            .update_async(move |items| items.retain(|r| r.identity != identity))
+            .await
     }
 }
 
@@ -88,32 +89,32 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn most_recent_comes_first_without_duplicates() {
+    #[tokio::test]
+    async fn most_recent_comes_first_without_duplicates() {
         let dir = tempfile::tempdir().unwrap();
         let store = RecentsStore::open(dir.path());
-        store.touch(&spec("a")).unwrap();
-        store.touch(&spec("b")).unwrap();
-        store.touch(&spec("a")).unwrap();
+        store.touch(&spec("a")).await.unwrap();
+        store.touch(&spec("b")).await.unwrap();
+        store.touch(&spec("a")).await.unwrap();
         assert_eq!(dbs(&store), ["a", "b"]);
     }
 
-    #[test]
-    fn keeps_at_most_twenty_entries() {
+    #[tokio::test]
+    async fn keeps_at_most_twenty_entries() {
         let dir = tempfile::tempdir().unwrap();
         let store = RecentsStore::open(dir.path());
         for i in 0..25 {
-            store.touch(&spec(&format!("db{i}"))).unwrap();
+            store.touch(&spec(&format!("db{i}"))).await.unwrap();
         }
         assert_eq!(store.list().len(), 20);
         assert_eq!(dbs(&store)[0], "db24");
     }
 
-    #[test]
-    fn list_fills_the_account_from_the_spec() {
+    #[tokio::test]
+    async fn list_fills_the_account_from_the_spec() {
         let dir = tempfile::tempdir().unwrap();
         let store = RecentsStore::open(dir.path());
-        store.touch(&spec("a")).unwrap();
+        store.touch(&spec("a")).await.unwrap();
 
         assert_eq!(store.list()[0].account, "root@127.0.0.1:3306");
     }
@@ -137,13 +138,13 @@ mod tests {
         assert_eq!(recents[0].account, "root@127.0.0.1:3306");
     }
 
-    #[test]
-    fn removal_persists() {
+    #[tokio::test]
+    async fn removal_persists() {
         let dir = tempfile::tempdir().unwrap();
         let store = RecentsStore::open(dir.path());
-        store.touch(&spec("a")).unwrap();
-        store.touch(&spec("b")).unwrap();
-        store.remove(&spec("a").identity()).unwrap();
+        store.touch(&spec("a")).await.unwrap();
+        store.touch(&spec("b")).await.unwrap();
+        store.remove(&spec("a").identity()).await.unwrap();
         assert_eq!(dbs(&RecentsStore::open(dir.path())), ["b"]);
     }
 }

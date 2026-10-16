@@ -144,9 +144,7 @@ pub async fn run_query(
         elapsed_ms,
         error: response.as_ref().err().map(ToString::to_string),
     };
-    if let Err(e) = state.history.record(entry) {
-        log::warn!("Could not record history: {e}");
-    }
+    state.history.record(entry);
     response
 }
 

@@ -48,17 +48,23 @@ impl UiStateStore {
             .unwrap_or_default()
     }
 
-    pub fn set(&self, identity: &str, state: UiState) -> AppResult<UiState> {
-        self.store.update(|items| {
-            items.insert(identity.to_string(), state.clone());
-            state
-        })
+    pub async fn set(&self, identity: &str, state: UiState) -> AppResult<UiState> {
+        let identity = identity.to_string();
+        self.store
+            .update_async(move |items| {
+                items.insert(identity, state.clone());
+                state
+            })
+            .await
     }
 
-    pub fn forget(&self, identity: &str) -> AppResult<()> {
-        self.store.update(|items| {
-            items.remove(identity);
-        })
+    pub async fn forget(&self, identity: &str) -> AppResult<()> {
+        let identity = identity.to_string();
+        self.store
+            .update_async(move |items| {
+                items.remove(&identity);
+            })
+            .await
     }
 }
 
@@ -66,8 +72,8 @@ impl UiStateStore {
 mod tests {
     use super::*;
 
-    #[test]
-    fn widths_persist_per_connection_and_table() {
+    #[tokio::test]
+    async fn widths_persist_per_connection_and_table() {
         let dir = tempfile::tempdir().unwrap();
         let store = UiStateStore::open(dir.path());
         let mut state = UiState::default();
@@ -83,7 +89,10 @@ mod tests {
         state.inspector_width = Some(400);
         state.bottom_pane_height = Some(280);
         state.sql_editor_height = Some(90);
-        store.set("root@127.0.0.1:52958/db", state.clone()).unwrap();
+        store
+            .set("root@127.0.0.1:52958/db", state.clone())
+            .await
+            .unwrap();
 
         let reopened = UiStateStore::open(dir.path());
         assert_eq!(reopened.get("root@127.0.0.1:52958/db"), state);
@@ -117,8 +126,8 @@ mod tests {
         assert_eq!(state.sql_editor_height, Some(120));
     }
 
-    #[test]
-    fn forget_removes_one_entry_and_persists() {
+    #[tokio::test]
+    async fn forget_removes_one_entry_and_persists() {
         let dir = tempfile::tempdir().unwrap();
         let store = UiStateStore::open(dir.path());
         let kept = UiState {
@@ -129,9 +138,9 @@ mod tests {
             inspector_width: Some(400),
             ..UiState::default()
         };
-        store.set("keep", kept.clone()).unwrap();
-        store.set("drop", gone).unwrap();
-        store.forget("drop").unwrap();
+        store.set("keep", kept.clone()).await.unwrap();
+        store.set("drop", gone).await.unwrap();
+        store.forget("drop").await.unwrap();
 
         let reopened = UiStateStore::open(dir.path());
         assert_eq!(reopened.get("drop"), UiState::default());

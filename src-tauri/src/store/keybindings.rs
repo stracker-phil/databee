@@ -27,12 +27,14 @@ impl KeybindingsStore {
     }
 
     /// Replaces all overrides; malformed entries are dropped (see `sanitize`).
-    pub fn update(&self, bindings: Keybindings) -> AppResult<Keybindings> {
+    pub async fn update(&self, bindings: Keybindings) -> AppResult<Keybindings> {
         let bindings = sanitize(bindings);
-        self.store.update(|current| {
-            *current = bindings.clone();
-            bindings
-        })
+        self.store
+            .update_async(move |current| {
+                *current = bindings.clone();
+                bindings
+            })
+            .await
     }
 
     /// The binding a menu item should show: the user's override, else the default.
@@ -134,11 +136,12 @@ mod tests {
         assert_eq!(store.menu_binding("tabs.new").as_deref(), Some("Mod+T"));
     }
 
-    #[test]
-    fn override_persists_across_reopen() {
+    #[tokio::test]
+    async fn override_persists_across_reopen() {
         let dir = tempfile::tempdir().unwrap();
         KeybindingsStore::open(dir.path())
             .update(overrides(&[("tabs.new", Some("Mod+Shift+T"))]))
+            .await
             .unwrap();
         let reopened = KeybindingsStore::open(dir.path());
         assert_eq!(
@@ -151,11 +154,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn null_override_unbinds_a_default() {
+    #[tokio::test]
+    async fn null_override_unbinds_a_default() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeybindingsStore::open(dir.path());
-        store.update(overrides(&[("favorites.add", None)])).unwrap();
+        store
+            .update(overrides(&[("favorites.add", None)]))
+            .await
+            .unwrap();
         assert_eq!(store.menu_binding("favorites.add"), None);
         assert_eq!(
             KeybindingsStore::open(dir.path()).menu_binding("favorites.add"),
@@ -221,8 +227,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn update_returns_the_sanitized_map_and_persists_it() {
+    #[tokio::test]
+    async fn update_returns_the_sanitized_map_and_persists_it() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeybindingsStore::open(dir.path());
         let saved = store
@@ -230,6 +236,7 @@ mod tests {
                 ("tabs.new", Some("Mod+Shift+T")),
                 ("tabs.close", Some("Hyper+K")),
             ]))
+            .await
             .unwrap();
         let expected = overrides(&[("tabs.new", Some("Mod+Shift+T"))]);
         assert_eq!(saved, expected);
