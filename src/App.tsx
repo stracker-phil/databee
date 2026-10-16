@@ -11,7 +11,7 @@ import { TabBar, TabPanels } from "./components/Tabs";
 import { Toasts } from "./components/Toasts";
 import { Toolbar } from "./components/Toolbar";
 import { CommandPalette } from "./components/CommandPalette";
-import { handleKeydown, installCommands, runCommand } from "./commands";
+import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { PendingTray } from "./components/PendingTray";
 import { installStageHooks } from "./stage/hooks";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
@@ -28,7 +28,7 @@ function useBackendEvents() {
 
     installCommands();
     void loadSettings().then(() => (installCommands(), drainLaunches()));
-    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runCommand), ...installStageHooks()];
+    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), ...installStageHooks()];
 
     const onKey = handleKeydown;
     const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);

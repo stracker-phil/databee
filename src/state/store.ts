@@ -1006,6 +1006,10 @@ export function resetStore(patch: Partial<State> = {}) {
 export const selectActiveSession = (s: Store) => s.sessions.find((x) => x.id === s.activeSessionId) ?? null;
 export const selectWpRoute = (s: Store): WpRoute => s.wpNav.stack[s.wpNav.index] ?? { screen: "dashboard" };
 
+/** Pending edits of the active session; apply and undo work per session. */
+export const selectActivePending = (s: Store) => s.pending.filter((p) => p.sessionId === s.activeSessionId);
+export const selectCanUndo = (s: Store) => s.applied.some((a) => a.sessionId === s.activeSessionId);
+
 export const selectActiveTab = (s: Store) => s.tabs.find((t) => t.id === s.activeTabId) ?? null;
 
 /** WordPress info for the active session's current database (undefined = not probed yet). */

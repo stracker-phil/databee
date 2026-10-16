@@ -105,7 +105,14 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   `activeScopes()` derives the current ones from the store. When several commands match a key, the most
   specific active scope wins.
 - **Keys.** `handleKeydown` runs in the capture phase, so app shortcuts beat CodeMirror and inputs. Inside text
-  inputs, only `Mod`/`Ctrl` combinations and Escape fire.
+  inputs, only `Mod`/`Ctrl` combinations and Escape fire. While a dialog or the palette is open, only the
+  commands in `MODAL_ALLOWED` (Settings toggle, zoom) run; other keys reach the overlay. Native menu items
+  go through `runMenuCommand`, which applies the same rule. Auto-repeated keydowns are swallowed unless the
+  command is in `REPEATABLE` (zoom, back/forward, next/previous tab). Keys inside a `[data-recording]`
+  element (the Settings → Shortcuts recorder) are left alone, so already-bound combos can be recorded.
+- **Key names.** `bindingFromEvent` uses `e.key`, so punctuation follows the user's layout. With ⌥ held,
+  for dead keys and for non-Latin characters it uses the physical key from `e.code` instead (`KeyK` → `K`,
+  `Digit1` → `1`, `Minus` → `-`), so ⌥⌘K records as `Mod+Alt+K`.
 - **Overrides** come from `keybindings.json` (`null` unbinds). Settings → Shortcuts records new bindings and
   flags conflicts in overlapping scopes.
 - **Palette** (`CommandPalette.tsx`) lists the commands whose `when()` passes, plus tables, entities and

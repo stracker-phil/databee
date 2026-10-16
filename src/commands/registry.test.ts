@@ -5,12 +5,15 @@ import {
   bindingLabel,
   clearCommands,
   conflicts,
+  getCommand,
   normalizeBinding,
   registerCommands,
   resolveKeydown,
   setOverrides,
   type Command,
+  type KeyLike,
 } from "./registry";
+import { installCommands } from "./index";
 
 const key = (key: string, mods: Partial<{ meta: boolean; ctrl: boolean; alt: boolean; shift: boolean }> = {}, target: EventTarget | null = null) => ({
   key,
@@ -31,6 +34,7 @@ describe("bindings", () => {
     expect(normalizeBinding("Cmd+[")).toBe("Mod+[");
     expect(normalizeBinding("Ctrl+Tab")).toBe("Ctrl+Tab");
     expect(normalizeBinding("Mod+")).toBeNull();
+    expect(normalizeBinding("mod+-")).toBe("Mod+-");
   });
 
   it("treats a trailing ++ as the plus key", () => {
@@ -53,6 +57,32 @@ describe("bindings", () => {
     expect(bindingLabel("Mod+Shift+K")).toBe("⌘⇧K");
     expect(bindingLabel("Ctrl+Tab")).toBe("⌃⇥");
     expect(bindingLabel("Mod+Enter")).toBe("⌘↵");
+  });
+});
+
+describe("bindingFromEvent physical keys", () => {
+  const event = (patch: Partial<KeyLike>): KeyLike => ({ key: "", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...patch });
+
+  it.each([
+    ["a composed ⌥ character", { key: "˚", code: "KeyK", metaKey: true, altKey: true }, "Mod+Alt+K"],
+    ["a dead key", { key: "Dead", code: "KeyN", altKey: true }, "Alt+N"],
+    ["a non-Latin layout character", { key: "е", code: "KeyT", metaKey: true }, "Mod+T"],
+    ["punctuation, which follows the layout", { key: "-", code: "Slash", metaKey: true }, "Mod+-"],
+    ["a named key with ⌥", { key: "Enter", code: "Enter", altKey: true, metaKey: true }, "Mod+Alt+Enter"],
+  ])("reads %s", (_name, patch, expected) => {
+    expect(bindingFromEvent(event(patch))).toBe(expected);
+  });
+});
+
+describe("installCommands", () => {
+  afterEach(clearCommands);
+
+  it("registers the app commands again after they were cleared", () => {
+    installCommands();
+    clearCommands();
+    expect(getCommand("tabs.new")).toBeUndefined();
+    installCommands();
+    expect(getCommand("tabs.new")).toBeDefined();
   });
 });
 

@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Blocks, Copy, FolderOpen, Keyboard, Palette, Plug, Presentation, RefreshCw, RotateCcw, ScrollText, SquareTerminal, Table2, X, type LucideIcon } from "lucide-react";
-import { ACCENTS, api, type Settings, type StageStatus } from "../api";
+import { ACCENTS, api, TEXT_SIZES, type Settings, type StageStatus } from "../api";
 import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, type Command } from "../commands";
 import { relativeTime } from "../lib/format";
 import { useStore } from "../state/store";
@@ -146,6 +146,7 @@ function ShortcutField({ value, onChange }: { value: string | null; onChange: (b
   return (
     <button
       type="button"
+      data-recording={recording || undefined}
       className={`shortcut-field${recording ? " recording" : ""}${value === null && !recording ? " unbound" : ""}`}
       aria-label={recording ? "Press the new shortcut" : "Record shortcut"}
       onClick={() => setRecording(true)}
@@ -300,8 +301,8 @@ function PageBody({ page, s, set }: { page: Page; s: Settings; set: (patch: Part
             <Segmented label="Density" description="Row height in grids and lists." options={["comfortable", "compact"] as const} value={s.density} onChange={(density) => set({ density })} />
           </Group>
           <Group title="Text size">
-            <NumberField label="UI size" description="Sidebar, tabs and labels." suffix="px" value={s.uiFontSize} min={10} max={24} onCommit={(uiFontSize) => set({ uiFontSize })} />
-            <NumberField label="Data size" description="Table cells, document values and the SQL editor. ⌘= / ⌘- zoom both." suffix="px" value={s.dataFontSize} min={9} max={28} onCommit={(dataFontSize) => set({ dataFontSize })} />
+            <NumberField label="UI size" description="Sidebar, tabs and labels." suffix="px" value={s.uiFontSize} min={TEXT_SIZES.ui.min} max={TEXT_SIZES.ui.max} onCommit={(uiFontSize) => set({ uiFontSize })} />
+            <NumberField label="Data size" description="Table cells, document values and the SQL editor. ⌘= / ⌘- zoom both." suffix="px" value={s.dataFontSize} min={TEXT_SIZES.data.min} max={TEXT_SIZES.data.max} onCommit={(dataFontSize) => set({ dataFontSize })} />
           </Group>
         </>
       );

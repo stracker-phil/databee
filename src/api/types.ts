@@ -28,6 +28,12 @@ export interface Settings {
   stage: StageSettings;
 }
 
+/** Text size bounds and defaults in px; Rust's `Settings::sanitized` clamps to the same range. */
+export const TEXT_SIZES = {
+  ui: { min: 10, max: 24, default: 13 },
+  data: { min: 9, max: 28, default: 12 },
+} as const;
+
 export interface StageSettings {
   enabled: boolean;
   port: number;

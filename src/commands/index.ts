@@ -1,5 +1,6 @@
-import { selectActiveTab, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
-import { getCommand, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
+import { TEXT_SIZES } from "../api";
+import { selectActivePending, selectActiveTab, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
+import { allCommands, getCommand, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 
 export * from "./registry";
 
@@ -24,22 +25,22 @@ export function activeScopes(s: Store): Scope[] {
   return scopes;
 }
 
-const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
-
+/** Rust's `Settings::sanitized` clamps the sizes, so zooming past a bound is a no-op. */
 function zoom(step: number | null) {
   const s = useStore.getState();
   if (!s.settings) return;
   const next =
     step === null
-      ? { uiFontSize: 13, dataFontSize: 12 }
-      : { uiFontSize: clamp(s.settings.uiFontSize + step, 10, 24), dataFontSize: clamp(s.settings.dataFontSize + step, 9, 28) };
+      ? { uiFontSize: TEXT_SIZES.ui.default, dataFontSize: TEXT_SIZES.data.default }
+      : { uiFontSize: s.settings.uiFontSize + step, dataFontSize: s.settings.dataFontSize + step };
   void s.saveSettings({ ...s.settings, ...next });
 }
 
-const inDb = () => useStore.getState().mode === "db" || !selectWp(useStore.getState());
-const inWp = () => useStore.getState().mode === "wp" && !!selectWp(useStore.getState());
+const inScope = (scope: Scope) => () => activeScopes(useStore.getState()).includes(scope);
+const inDb = inScope("db");
+const inWp = inScope("wp");
+const onEntity = inScope("document");
 const hasWp = () => !!selectWp(useStore.getState());
-const onEntity = () => inWp() && selectWpRoute(useStore.getState()).screen === "entity";
 
 const go = (id: string, title: string, route: WpRoute): Command => ({
   id,
@@ -140,10 +141,21 @@ export const APP_COMMANDS: Command[] = [
     },
   },
   { id: "connection.new", title: "New connection…", scope: "global", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "connect" }) },
-  { id: "settings.open", title: "Settings…", scope: "global", defaultBinding: "Mod+,", menu: true, run: () => useStore.getState().openDialog({ type: "settings" }) },
+  {
+    id: "settings.open",
+    title: "Settings…",
+    scope: "global",
+    defaultBinding: "Mod+,",
+    menu: true,
+    run: () => {
+      const s = useStore.getState();
+      if (s.dialog?.type === "settings") s.closeDialog();
+      else s.openDialog({ type: "settings" });
+    },
+  },
   { id: "favorites.add", title: "Add to favorites", scope: "global", defaultBinding: "Mod+D", menu: true, when: () => inDb() && !!selectActiveTab(useStore.getState()), run: () => useStore.getState().addCurrentTabToFavorites() },
-  { id: "changes.apply", title: "Apply pending changes", scope: "global", defaultBinding: "Mod+S", menu: true, when: () => useStore.getState().pending.length > 0, run: () => void useStore.getState().applyChanges() },
-  { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => useStore.getState().applied.length > 0, run: () => void useStore.getState().undoLast() },
+  { id: "changes.apply", title: "Apply pending changes", scope: "global", defaultBinding: "Mod+S", menu: true, when: () => selectActivePending(useStore.getState()).length > 0, run: () => void useStore.getState().applyChanges() },
+  { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => selectCanUndo(useStore.getState()), run: () => void useStore.getState().undoLast() },
   ...SCREENS,
 ];
 
@@ -158,14 +170,9 @@ export const LIST_LABELS: Record<WpList, string> = {
   settings: "Options",
 };
 
-let installed = false;
-
-/** Registers the app's commands and syncs user overrides from the store. */
+/** Registers the app's commands (again after `clearCommands`) and syncs user overrides from the store. */
 export function installCommands() {
-  if (!installed) {
-    registerCommands(APP_COMMANDS);
-    installed = true;
-  }
+  if (allCommands().length === 0) registerCommands(APP_COMMANDS);
   setOverrides(useStore.getState().keybindings);
 }
 
@@ -177,11 +184,30 @@ export function runCommand(id: string): boolean {
   return true;
 }
 
+/** While a dialog or the palette is open, only these run; other keys belong to the overlay. */
+const MODAL_ALLOWED = new Set(["settings.open", "view.zoomIn", "view.zoomOut", "view.zoomReset"]);
+
+/** Commands that keep firing while their key is held. */
+const REPEATABLE = new Set(["view.zoomIn", "view.zoomOut", "nav.back", "nav.forward", "tabs.next", "tabs.previous"]);
+
+function blockedByOverlay(id: string): boolean {
+  const s = useStore.getState();
+  return (s.dialog !== null || s.paletteOpen) && !MODAL_ALLOWED.has(id);
+}
+
+/** Native menu items yield to an open dialog or palette, like shortcuts. */
+export function runMenuCommand(id: string): boolean {
+  return !blockedByOverlay(id) && runCommand(id);
+}
+
 /** Capture-phase keydown handler for the window. */
 export function handleKeydown(e: KeyboardEvent) {
+  if (e.target instanceof Element && e.target.closest("[data-recording]")) return;
   const c = resolveKeydown(e, activeScopes(useStore.getState()));
-  if (!c) return;
+  if (!c || blockedByOverlay(c.id)) return;
   e.preventDefault();
   e.stopPropagation();
+  // A held key is swallowed rather than passed on, so the native menu accelerator does not repeat it either.
+  if (e.repeat && !REPEATABLE.has(c.id)) return;
   void c.run();
 }

@@ -7,7 +7,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import App from "../App";
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
-import { settings } from "../test/fixtures";
+import { connectedStore, settings } from "../test/fixtures";
 import { installCommands } from "../commands";
 import { SettingsDialog } from "./SettingsDialog";
 
@@ -77,6 +77,19 @@ describe("SettingsDialog", () => {
     await userEvent.keyboard("{Meta>}{Shift>}p{/Shift}{/Meta}");
     expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⇧P");
     expect(mocked.setKeybindings).toHaveBeenCalledWith({ "palette.open": "Mod+Shift+P" });
+  });
+
+  it("records an already-bound shortcut instead of running its command", async () => {
+    connectedStore();
+    useStore.getState().openDialog({ type: "settings", page: "shortcuts" });
+    render(<App />);
+    await userEvent.type(await screen.findByLabelText("Search shortcuts"), "Command palette");
+    await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await userEvent.keyboard("{Meta>}t{/Meta}");
+    expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘T");
+    expect(mocked.setKeybindings).toHaveBeenCalledWith({ "palette.open": "Mod+T" });
+    expect(screen.queryByRole("tab", { name: /Query 2/ })).not.toBeInTheDocument();
+    expect(useStore.getState().tabs).toHaveLength(1);
   });
 
   it("warns when two commands in overlapping scopes share a binding", async () => {

@@ -1,8 +1,4 @@
-/**
- * Central command registry: every action with a shortcut or a palette entry is a command.
- * Bindings are written as `Mod+Shift+K` (Mod = ⌘ on macOS); users override them in
- * `keybindings.json` (`null` = unbound). Resolution picks the most specific active scope.
- */
+/** Command registry, bindings and key resolution; see docs/frontend.md "Commands, shortcuts, palette, menu". */
 
 export type Scope = "global" | "wp" | "db" | "table" | "editor" | "document";
 
@@ -70,10 +66,6 @@ export function setOverrides(next: Overrides) {
   overrides = { ...next };
 }
 
-export function getOverrides(): Overrides {
-  return { ...overrides };
-}
-
 /** The effective binding: user override, else the default, else none. */
 export function bindingFor(id: string, custom: Overrides = overrides): string | null {
   if (Object.prototype.hasOwnProperty.call(custom, id)) return custom[id] === null ? null : normalizeBinding(custom[id] as string);
@@ -114,15 +106,53 @@ export function normalizeBinding(binding: string): string | null {
 
 export interface KeyLike {
   key: string;
+  /** Physical key (`KeyK`, `Digit1`, `Minus`); used when `key` is a composed or non-Latin character. */
+  code?: string;
   metaKey: boolean;
   ctrlKey: boolean;
   altKey: boolean;
   shiftKey: boolean;
 }
 
+const PUNCTUATION_CODES: Record<string, string> = {
+  Minus: "-",
+  Equal: "=",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Backslash: "\\",
+  Semicolon: ";",
+  Quote: "'",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Backquote: "`",
+};
+
+function keyFromCode(code: string): string | null {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  return PUNCTUATION_CODES[code] ?? null;
+}
+
+/** A single character outside printable ASCII (digits and punctuation are not Latin script) and Latin letters. */
+function isNonLatinChar(key: string) {
+  return key.length === 1 && !/^[\x20-\x7e]$|^\p{Script=Latin}$/u.test(key);
+}
+
+/**
+ * ⌥ composes characters (⌥K is `˚`) and non-Latin layouts type other scripts, so those fall back to the
+ * physical key. Plain Latin characters keep `e.key`, so punctuation follows the user's layout (⌘- on a
+ * German keyboard stays `-`).
+ */
+function eventKey(e: KeyLike): string | null {
+  const physical = e.code ? keyFromCode(e.code) : null;
+  if (physical && (e.altKey || e.key === "Dead" || e.key === "Unidentified" || isNonLatinChar(e.key))) return physical;
+  return canonicalKey(e.key);
+}
+
 /** The binding a keyboard event represents, or null for a bare modifier press. */
 export function bindingFromEvent(e: KeyLike, mac = true): string | null {
-  const key = canonicalKey(e.key);
+  const key = eventKey(e);
   if (!key) return null;
   const mods: string[] = [];
   if (mac ? e.metaKey : e.ctrlKey) mods.push("Mod");

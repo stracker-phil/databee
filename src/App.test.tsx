@@ -1,13 +1,16 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await import("./test/apiMock")).createApiMock() }));
 
 import App from "./App";
+import { api, type SessionInfo } from "./api";
 import { installCommands, runCommand } from "./commands";
 import { resetStore, useStore } from "./state/store";
-import { connectedStore } from "./test/fixtures";
+import { connectedStore, queryTab, resultSet, session } from "./test/fixtures";
+
+const mocked = vi.mocked(api, true);
 
 describe("App", () => {
   beforeEach(() => resetStore());
@@ -61,5 +64,133 @@ describe("App", () => {
     expect(useStore.getState().paletteOpen).toBe(false);
     await userEvent.keyboard("{Meta>}j{/Meta}");
     expect(useStore.getState().paletteOpen).toBe(true);
+  });
+
+  describe("shortcuts behind overlays", () => {
+    const cmdW = { key: "w", code: "KeyW", metaKey: true };
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 3, database: "db" });
+    });
+
+    describe("with Settings open", () => {
+      beforeEach(() => {
+        connectedStore();
+        useStore.getState().openDialog({ type: "settings" });
+      });
+
+      it("keeps the tab when ⌘W is pressed", async () => {
+        render(<App />);
+        await screen.findByRole("heading", { name: "Appearance" });
+        fireEvent.keyDown(window, cmdW);
+        expect(screen.getByRole("tab", { name: /Query 1/ })).toBeInTheDocument();
+        expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+      });
+
+      it("closes Settings on Escape", async () => {
+        render(<App />);
+        await screen.findByRole("heading", { name: "Appearance" });
+        await userEvent.keyboard("{Escape}");
+        expect(screen.queryByRole("heading", { name: "Appearance" })).not.toBeInTheDocument();
+      });
+
+      it("closes Settings on ⌘, and reopens it on the next press", async () => {
+        render(<App />);
+        await screen.findByRole("heading", { name: "Appearance" });
+        fireEvent.keyDown(window, { key: ",", code: "Comma", metaKey: true });
+        expect(screen.queryByRole("heading", { name: "Appearance" })).not.toBeInTheDocument();
+        fireEvent.keyDown(window, { key: ",", code: "Comma", metaKey: true });
+        expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+      });
+    });
+
+    describe("with the palette open", () => {
+      const openPalette = async () => {
+        render(<App />);
+        await screen.findByText("wp_options");
+        act(() => useStore.getState().setPaletteOpen(true));
+        await screen.findByRole("dialog", { name: "Command palette" });
+      };
+      const cmdEnter = { key: "Enter", code: "Enter", metaKey: true };
+
+      beforeEach(() => connectedStore({ tabs: [queryTab({ sql: "SELECT 1" })] }));
+
+      it("runs the statement on ⌘↵ when no overlay is open", async () => {
+        render(<App />);
+        await screen.findByText("wp_options");
+        fireEvent.keyDown(window, cmdEnter);
+        expect(await screen.findByText("Hello world")).toBeInTheDocument();
+      });
+
+      it("does not run the statement on ⌘↵", async () => {
+        await openPalette();
+        fireEvent.keyDown(window, cmdEnter);
+        expect(mocked.execute).not.toHaveBeenCalled();
+        expect(screen.queryByText("Hello world")).not.toBeInTheDocument();
+      });
+    });
+
+    describe("auto-repeat", () => {
+      beforeEach(() => connectedStore({ tabs: [queryTab({ id: "q1" }), queryTab({ id: "q2", title: "Query 2" })] }));
+
+      it("closes no tab for a repeated ⌘W", async () => {
+        render(<App />);
+        await screen.findByText("wp_options");
+        fireEvent.keyDown(window, { ...cmdW, repeat: true });
+        expect(screen.getAllByRole("tab")).toHaveLength(2);
+      });
+
+      it("closes exactly one tab when a ⌘W is followed by repeated ones", async () => {
+        render(<App />);
+        await screen.findByText("wp_options");
+        fireEvent.keyDown(window, cmdW);
+        fireEvent.keyDown(window, { ...cmdW, repeat: true });
+        fireEvent.keyDown(window, { ...cmdW, repeat: true });
+        expect(screen.getAllByRole("tab")).toHaveLength(1);
+      });
+    });
+  });
+
+  describe("palette commands across sessions", () => {
+    const planned = { description: "Set post_title", statements: ["UPDATE wp_posts SET post_title = 'x'"], undo: ["UPDATE wp_posts SET post_title = 'y'"] };
+    const other: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:52958/blog", displayName: "Blog", database: "db" };
+
+    const search = async (text: string) => {
+      act(() => useStore.getState().setPaletteOpen(true));
+      await userEvent.type(await screen.findByLabelText("Search everything"), text);
+    };
+    const switchTo = async (id: string) => {
+      await userEvent.keyboard("{Escape}");
+      act(() => useStore.getState().setActiveSession(id));
+    };
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      connectedStore();
+      useStore.setState({ sessions: [session, other] });
+    });
+
+    it("lists Apply pending changes only for the session that has pending changes", async () => {
+      useStore.setState({ pending: [{ ...planned, id: 1, sessionId: "s2" }] });
+      render(<App />);
+      await search("Apply pending");
+      expect(screen.queryByRole("option", { name: /Apply pending changes/ })).not.toBeInTheDocument();
+
+      await switchTo("s2");
+      await search("Apply pending");
+      expect(await screen.findByRole("option", { name: /Apply pending changes/ })).toBeInTheDocument();
+    });
+
+    it("lists Undo last apply only for the session that has an applied batch", async () => {
+      useStore.setState({ applied: [{ sessionId: "s2", changes: [planned] }] });
+      render(<App />);
+      await search("Undo last");
+      expect(screen.queryByRole("option", { name: /Undo last apply/ })).not.toBeInTheDocument();
+
+      await switchTo("s2");
+      await search("Undo last");
+      expect(await screen.findByRole("option", { name: /Undo last apply/ })).toBeInTheDocument();
+    });
   });
 });
