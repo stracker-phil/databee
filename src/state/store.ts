@@ -729,14 +729,18 @@ export const useStore = create<Store>()((set, get) => {
     addCurrentTabToFavorites() {
       const tab = get().tabs.find((t) => t.id === get().activeTabId);
       if (!tab) return;
+      const saved = (target: FavoriteTarget) => get().favorites.some((f) => JSON.stringify(f.target) === JSON.stringify(target));
       if (tab.kind === "table") {
-        void get().addFavorite(tab.table, { kind: "table", database: tab.database, table: tab.table });
+        const target: FavoriteTarget = { kind: "table", database: tab.database, table: tab.table };
+        if (saved(target)) return get().toast("info", `${tab.table} is already in favorites`);
+        void get().addFavorite(tab.table, target);
         return;
       }
       if (!tab.sql.trim()) {
         get().toast("info", "Write a query first, then add it to favorites");
         return;
       }
+      if (saved({ kind: "query", sql: tab.sql })) return get().toast("info", "This query is already in favorites");
       set({
         dialog: {
           type: "prompt",

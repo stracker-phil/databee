@@ -120,10 +120,13 @@ describe("WordPress mode", () => {
 
   it("switches to the database view and back", async () => {
     render(<App />);
+    expect(screen.queryByRole("navigation", { name: "Favorites" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Database/ }));
     expect(screen.getByRole("tree", { name: "Databases" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Favorites" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /WordPress/ }));
     expect(await screen.findByText("Recent orders")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Favorites" })).not.toBeInTheDocument();
   });
 
   it("navigates from the dashboard to an order and back", async () => {

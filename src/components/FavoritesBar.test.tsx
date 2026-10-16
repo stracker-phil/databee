@@ -76,4 +76,11 @@ describe("FavoritesBar", () => {
     expect(mocked.reorderFavorites).toHaveBeenCalledWith(["f2", "f1"]);
     expect(useStore.getState().favorites.map((f) => f.id)).toEqual(["f2", "f1"]);
   });
+
+  it("does not add the same table twice", async () => {
+    useStore.getState().openTableTab("db", "wp_options");
+    useStore.getState().addCurrentTabToFavorites();
+    expect(mocked.saveFavorite).not.toHaveBeenCalled();
+    expect(useStore.getState().toasts.at(-1)?.message).toMatch(/already in favorites/);
+  });
 });

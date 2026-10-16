@@ -49,7 +49,8 @@ impl FavoritesStore {
             .collect()
     }
 
-    /// Inserts a new favorite (appended) or updates an existing one in place.
+    /// Inserts a new favorite (appended) or updates an existing one in place. A new favorite
+    /// whose target is already saved for the same scope returns the existing one instead.
     pub fn save(&self, mut favorite: Favorite) -> AppResult<Favorite> {
         if favorite.name.trim().is_empty() {
             return Err(AppError::InvalidInput("A favorite needs a name".into()));
@@ -61,6 +62,12 @@ impl FavoritesStore {
         {
             Some(existing) => *existing = favorite.clone(),
             None => {
+                if let Some(existing) = items
+                    .iter()
+                    .find(|f| f.target == favorite.target && f.scope == favorite.scope)
+                {
+                    return Ok(existing.clone());
+                }
                 favorite.id = uuid::Uuid::new_v4().to_string();
                 items.push(favorite.clone());
             }
@@ -94,7 +101,7 @@ mod tests {
             name: name.into(),
             scope: scope.map(String::from),
             target: FavoriteTarget::Query {
-                sql: "SELECT 1".into(),
+                sql: format!("SELECT '{name}'"),
             },
         }
     }
@@ -146,6 +153,16 @@ mod tests {
             names(FavoritesStore::open(dir.path()).list("x")),
             ["c", "a"]
         );
+    }
+
+    #[test]
+    fn saving_the_same_target_twice_keeps_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FavoritesStore::open(dir.path());
+        let first = store.save(query("posts", Some("a@h:1"))).unwrap();
+        let again = store.save(query("posts", Some("a@h:1"))).unwrap();
+        assert_eq!(again.id, first.id);
+        assert_eq!(store.list("a@h:1").len(), 1);
     }
 
     #[test]
