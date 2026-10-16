@@ -9,7 +9,7 @@ use crate::store::favorites::Favorite;
 use crate::store::history::HistoryEntry;
 use crate::store::keybindings::Keybindings;
 use crate::store::recents::RecentConnection;
-use crate::store::settings::Settings;
+use crate::store::settings::{Settings, Theme};
 use crate::store::ui_state::UiState;
 
 #[tauri::command]
@@ -17,9 +17,26 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
     state.settings.get()
 }
 
+/// Gives the window the app's theme, so the vibrancy behind the chrome matches the colors
+/// drawn on top of it; `System` follows macOS.
+pub fn apply_window_theme(app: &AppHandle, theme: Theme) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_theme(match theme {
+            Theme::System => None,
+            Theme::Light => Some(tauri::Theme::Light),
+            Theme::Dark => Some(tauri::Theme::Dark),
+        });
+    }
+}
+
 #[tauri::command]
-pub fn update_settings(state: State<'_, AppState>, settings: Settings) -> AppResult<Settings> {
+pub fn update_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    settings: Settings,
+) -> AppResult<Settings> {
     let saved = state.settings.update(settings)?;
+    apply_window_theme(&app, saved.theme);
     log::set_max_level(saved.log_level.into());
     log::info!("Settings updated");
     Ok(saved)

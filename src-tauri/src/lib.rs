@@ -113,6 +113,7 @@ fn start_app(
             log::set_max_level(level.into());
             log::info!("databee {} started", env!("CARGO_PKG_VERSION"));
             state.launches.push(initial);
+            commands::apply_window_theme(app.handle(), state.settings.get().theme);
             app.manage(state);
 
             if let (Some((x, y, w, h)), Some(window)) =

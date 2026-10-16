@@ -71,7 +71,7 @@ function DbWorkspace() {
         <Sidebar />
         <div className="main-stack dock-bottom" style={{ gridTemplateRows: `minmax(0, 1fr) auto ${below.size}px` }}>
           {main}
-          <Splitter axis="y" paneAfter label="Resize inspector" {...below} />
+          <Splitter axis="y" paneAfter gap label="Resize inspector" {...below} />
           <Inspector />
         </div>
       </div>
@@ -81,7 +81,7 @@ function DbWorkspace() {
     <div className="workspace" style={{ gridTemplateColumns: `19.231rem minmax(0, 1fr) auto ${side.size}px` }}>
       <Sidebar />
       {main}
-      <Splitter axis="x" paneAfter label="Resize inspector" {...side} />
+      <Splitter axis="x" paneAfter gap label="Resize inspector" {...side} />
       <Inspector />
     </div>
   );

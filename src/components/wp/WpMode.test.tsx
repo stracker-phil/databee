@@ -118,7 +118,7 @@ describe("WordPress mode", () => {
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: "Set retention" }));
     expect(mocked.planChange).toHaveBeenCalledWith("s1", { type: "deleteLogsBefore", database: "db", days: 30, source: null });
-    expect(await screen.findByText("1 pending change")).toBeInTheDocument();
+    expect(within(await screen.findByRole("region", { name: "Pending changes" })).getByText("1 pending change")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Review" }));
     expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "actions", params: { status: "failed" } });
   });

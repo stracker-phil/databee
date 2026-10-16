@@ -23,7 +23,7 @@ describe("App", () => {
     expect(screen.getByText("Shop")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Query 1/ })).toBeInTheDocument();
     expect(await screen.findByText("wp_options")).toBeInTheDocument();
-    expect(screen.getByText("10.3.39-MariaDB")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /root@127.0.0.1:52958\/db/ })).toHaveAttribute("title", expect.stringContaining("10.3.39-MariaDB"));
   });
 
   it("runs menu commands by id", () => {
