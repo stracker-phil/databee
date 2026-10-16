@@ -3,6 +3,9 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 export const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
 
+/** Optional Stage anchor id (`data-stage`) for controls a presentation can point at. */
+type Staged = { stage?: string };
+
 export function Group({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <section className="settings-group">
@@ -34,23 +37,37 @@ export function Switch({ label, description, checked, onChange }: { label: strin
   );
 }
 
-export function Segmented<T extends string>({ label, description, options, value, onChange }: { label: string; description?: ReactNode; options: readonly T[]; value: T; onChange: (v: T) => void }) {
+/** The bare segmented buttons, for rows that show more than the control (a preview). */
+type SegmentedButtonsProps<T extends string> = Staged & {
+  label: string;
+  options: readonly T[];
+  value: T;
+  onChange: (v: T) => void;
+};
+
+export function SegmentedButtons<T extends string>({ label, options, value, onChange, stage }: SegmentedButtonsProps<T>) {
+  return (
+    <div className="segmented" role="group" aria-label={label} data-stage={stage} data-stage-label={stage && label}>
+      {options.map((o) => (
+        <button key={o} type="button" aria-pressed={value === o} data-stage={stage && `${stage}:${o}`} data-stage-list={stage} onClick={() => onChange(o)}>
+          {capitalize(o)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Segmented<T extends string>({ label, description, ...buttons }: SegmentedButtonsProps<T> & { description?: ReactNode }) {
   return (
     <Row label={label} description={description}>
-      <div className="segmented" role="group" aria-label={label}>
-        {options.map((o) => (
-          <button key={o} type="button" aria-pressed={value === o} onClick={() => onChange(o)}>
-            {capitalize(o)}
-          </button>
-        ))}
-      </div>
+      <SegmentedButtons label={label} {...buttons} />
     </Row>
   );
 }
 
 /** Text input that commits on blur or Enter, so half-typed values never reach the backend.
  *  Number spinner steps (input without typing) also commit, debounced, so they preview right away. */
-export function TextField({ label, description, value, onCommit, type = "text", min, max, suffix }: {
+export function TextField({ label, description, value, onCommit, type = "text", min, max, suffix, placeholder, stage }: Staged & {
   label: string;
   description?: ReactNode;
   value: string;
@@ -59,6 +76,7 @@ export function TextField({ label, description, value, onCommit, type = "text", 
   min?: number;
   max?: number;
   suffix?: string;
+  placeholder?: string;
 }) {
   const id = useId();
   const [text, setText] = useState(value);
@@ -87,6 +105,9 @@ export function TextField({ label, description, value, onCommit, type = "text", 
           type={type}
           min={min}
           max={max}
+          placeholder={placeholder}
+          data-stage={stage}
+          data-stage-label={stage && label}
           value={text}
           onChange={(e) => {
             const next = e.target.value;
@@ -106,7 +127,15 @@ export function TextField({ label, description, value, onCommit, type = "text", 
   );
 }
 
-export function NumberField({ value, onCommit, ...rest }: { label: string; description?: ReactNode; value: number; onCommit: (v: number) => void; min: number; max: number; suffix?: string }) {
+export function NumberField({ value, onCommit, ...rest }: Staged & {
+  label: string;
+  description?: ReactNode;
+  value: number;
+  onCommit: (v: number) => void;
+  min: number;
+  max: number;
+  suffix?: string;
+}) {
   return (
     <TextField
       {...rest}

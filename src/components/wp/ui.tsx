@@ -39,10 +39,14 @@ export function Ago({ unix }: { unix: number | null | undefined }) {
   return <span title={absoluteFromUnix(unix)}>{relativeTime(unix)}</span>;
 }
 
+// Scheme colors only (no literals outside a scheme); the name picks one so a person keeps their color.
+const AVATAR_COLORS = ["--style-red", "--style-green", "--style-yellow", "--style-blue", "--style-purple", "--a-orange", "--a-graphite"];
+
 export function Avatar({ name, src, size = "2.154rem" }: { name: string; src?: string | null; size?: string }) {
-  const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+  const hash = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 9973, 7);
+  const color = AVATAR_COLORS[hash % AVATAR_COLORS.length];
   return (
-    <span className="avatar" style={{ width: size, height: size, fontSize: `calc(${size} * 0.38)`, background: `hsl(${hue} 45% 45%)` }}>
+    <span className="avatar" style={{ width: size, height: size, fontSize: `calc(${size} * 0.38)`, background: `var(${color})` }}>
       {src ? <img src={src} alt="" onError={(e) => (e.currentTarget.style.display = "none")} /> : null}
       <span>{initials(name)}</span>
     </span>

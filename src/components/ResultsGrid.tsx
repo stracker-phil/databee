@@ -5,7 +5,7 @@ import { toAppError, type Cell, type ColumnMeta } from "../api";
 import { fullCellText, type CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import { cellDisplay, cellText, rowsToJson, rowsToTsv } from "../lib/format";
-import { rowHeightFor } from "../lib/theme";
+import { useRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
@@ -77,10 +77,9 @@ export function ResultsGrid({ columns, rows, source, rowOffset = 0, sort, onSort
   const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
   const maxChars = useStore((s) => s.settings?.maxCellChars ?? 500);
   const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
-  const density = useStore((s) => s.settings?.density ?? "comfortable");
   const selectCell = useStore((s) => s.selectCell);
   const toast = useStore((s) => s.toast);
-  const rowHeight = rowHeightFor({ dataFontSize, density });
+  const rowHeight = useRowHeight();
   const scrollRef = useRef<HTMLDivElement>(null);
   const stopDrag = useRef<(() => void) | null>(null);
   const [selected, setSelected] = useState<CellPos | null>(null);

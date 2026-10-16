@@ -133,8 +133,6 @@ export type DayBucket = { date: string, completed: number, processing: number, f
 
 export type DecodedValue = { format: Format, root: ValueNode | null, warning: string | null, error: string | null, };
 
-export type Density = "comfortable" | "compact";
-
 export type DiffEntry = { path: string, before: string | null, after: string | null, };
 
 export type DocField = { name: string, label: string | null, value: Cell, decoded: DecodedValue | null, link: EntityLink | null, hint: Hint | null, sensitive: Sensitive | null, 
@@ -438,7 +436,11 @@ export type SessionSummary = { key: string, expires: number | null, customerId: 
 
 export type SessionView = { doc: EntityDoc, key: string, expires: number | null, customer: EntityLink | null, items: number, total: string | null, email: string | null, value: DecodedValue | null, };
 
-export type Settings = { theme: Theme, accent: string, 
+export type Settings = { 
+/**
+ * Which of the two schemes applies: light, dark, or the OS appearance.
+ */
+theme: Theme, lightScheme: string, darkScheme: string, accent: string, 
 /**
  * Chrome: sidebar, tabs, labels, buttons (also scales rem).
  */
@@ -446,7 +448,15 @@ uiFontSize: number,
 /**
  * Data: grid cells, document values, trees, SQL editor. Reads the old `editorFontSize` key.
  */
-dataFontSize: number, density: Density, rowLimit: number, queryTimeoutSecs: number, confirmDestructive: boolean, nullLabel: string, 
+dataFontSize: number, rowPadding: number, 
+/**
+ * An installed font family; `None` uses the bundled Geist.
+ */
+fontUi: string | null, 
+/**
+ * An installed font family; `None` uses the bundled JetBrains Mono.
+ */
+fontMono: string | null, rowLimit: number, queryTimeoutSecs: number, confirmDestructive: boolean, nullLabel: string, 
 /**
  * Longer text cells cross IPC as a preview; `fetch_cell` returns the full value.
  */

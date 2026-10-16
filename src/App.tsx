@@ -14,8 +14,11 @@ import { CommandPalette } from "./components/CommandPalette";
 import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { PendingTray } from "./components/PendingTray";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
-import { applyAppearance } from "./lib/theme";
+import { applyAppearance, syncRowHeight, useSystemDark } from "./lib/theme";
 import { flushUiState, selectWp, useStore } from "./state/store";
+import "./styles/fonts.css";
+import "./styles/schemes/ayu-mirage.css";
+import "./styles/schemes/ayu-light.css";
 import "./styles/theme.css";
 import "./styles/app.css";
 
@@ -113,13 +116,15 @@ function Workspace() {
 
 export default function App() {
   const settings = useStore((s) => s.settings);
+  const systemDark = useSystemDark();
   useBackendEvents();
 
   useEffect(() => {
     if (settings) {
-      applyAppearance(settings);
+      applyAppearance(settings, systemDark);
+      syncRowHeight();
     }
-  }, [settings]);
+  }, [settings, systemDark]);
 
   return (
     <>

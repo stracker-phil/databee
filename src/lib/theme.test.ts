@@ -1,20 +1,71 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { settings } from "../test/settings";
-import { applyAppearance, rowHeightFor } from "./theme";
+import { applyAppearance, resolveScheme } from "./theme";
 
-describe("applyAppearance", () => {
-  it("sets the UI and data sizes independently", () => {
-    applyAppearance(settings({ uiFontSize: 15, dataFontSize: 11 }));
-    const style = document.documentElement.style;
-    expect(style.getPropertyValue("--ui-font-size")).toBe("15px");
-    expect(style.getPropertyValue("--data-font-size")).toBe("11px");
+const root = document.documentElement;
+
+describe("resolveScheme", () => {
+  it.each([
+    ["dark", false, "ayu-mirage", true],
+    ["light", true, "ayu-light", false],
+    ["system", true, "ayu-mirage", true],
+    ["system", false, "ayu-light", false],
+  ] as const)("picks the scheme for theme %s with system dark %s", (theme, systemDark, id, dark) => {
+    expect(resolveScheme(settings({ theme }), systemDark)).toEqual({ id, dark });
   });
 
-  it("derives the grid row height from the data size and density", () => {
-    expect(rowHeightFor({ dataFontSize: 12, density: "comfortable" })).toBe(26);
-    expect(rowHeightFor({ dataFontSize: 12, density: "compact" })).toBe(21);
-    expect(rowHeightFor({ dataFontSize: 18, density: "comfortable" })).toBeGreaterThan(rowHeightFor({ dataFontSize: 12, density: "comfortable" }));
-    applyAppearance(settings({ dataFontSize: 16, density: "compact" }));
-    expect(document.documentElement.style.getPropertyValue("--row-height")).toBe("28px");
+  it("uses the chosen scheme of the active side", () => {
+    expect(resolveScheme(settings({ theme: "light", lightScheme: "ayu-mirage" }), false)).toEqual({ id: "ayu-mirage", dark: true });
+  });
+});
+
+describe("applyAppearance", () => {
+  beforeEach(() => {
+    delete root.dataset.scheme;
+    delete root.dataset.accent;
+    root.removeAttribute("style");
+  });
+
+  it.each([
+    ["dark", false, "ayu-mirage"],
+    ["light", true, "ayu-light"],
+    ["system", true, "ayu-mirage"],
+    ["system", false, "ayu-light"],
+  ] as const)("sets the scheme for theme %s with system dark %s", (theme, systemDark, scheme) => {
+    applyAppearance(settings({ theme }), systemDark);
+    expect(root.dataset.scheme).toBe(scheme);
+  });
+
+  it("sets the accent", () => {
+    applyAppearance(settings({ accent: "gold" }), false);
+    expect(root.dataset.accent).toBe("gold");
+  });
+
+  it.each([
+    [1, "1px"],
+    [2, "3px"],
+    [3, "5px"],
+    [4, "8px"],
+  ])("maps row padding %i to --pad %s", (rowPadding, pad) => {
+    applyAppearance(settings({ rowPadding }), false);
+    expect(root.style.getPropertyValue("--pad")).toBe(pad);
+  });
+
+  it("sets the UI and data sizes independently", () => {
+    applyAppearance(settings({ uiFontSize: 15, dataFontSize: 11 }), false);
+    expect(root.style.getPropertyValue("--ui-font-size")).toBe("15px");
+    expect(root.style.getPropertyValue("--data-font-size")).toBe("11px");
+  });
+
+  it("puts a custom mono font in front of the bundled one", () => {
+    applyAppearance(settings({ fontMono: "Fira Code" }), false);
+    expect(root.style.getPropertyValue("--font-mono")).toContain('"Fira Code"');
+  });
+
+  it("removes the font override when the font is cleared", () => {
+    applyAppearance(settings({ fontMono: "Fira Code", fontUi: "Inter" }), false);
+    applyAppearance(settings({ fontMono: null, fontUi: null }), false);
+    expect(root.style.getPropertyValue("--font-mono")).toBe("");
+    expect(root.style.getPropertyValue("--font-ui")).toBe("");
   });
 });

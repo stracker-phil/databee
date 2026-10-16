@@ -86,6 +86,9 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   - `wp:nav:<list>`
   - `palette:search` and the palette results (list `palette:results`)
   - `settings:<page>` and `settings-nav:<page>`
+  - `appearance:<control>` on Settings → Appearance (`theme`, `light-scheme`, `dark-scheme`, `row-padding`,
+    `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are
+    `appearance:accent:<id>` (list `appearance:accent`)
 
   Sheets are marked with `data-stage-window`.
 - **Commands** come from the in-app registry, with `shortcut` and `enabled`.

@@ -1,30 +1,162 @@
 /** The core settings pages. Modules register their own pages from their install function. */
 import { Blocks, FolderOpen, Keyboard, Palette, Plug, ScrollText, SquareTerminal, Table2 } from "lucide-react";
-import { ACCENTS, api, LOG_LEVELS, SETTINGS_LIMITS, TEXT_SIZES, type LogLevel } from "../../api";
+import { useId, type CSSProperties } from "react";
+import {
+  ACCENTS, api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, SETTINGS_LIMITS, TEXT_SIZES, type LogLevel, type SchemeId,
+} from "../../api";
+import { ROW_PADDING_PX, rowPaddingPx } from "../../lib/theme";
 import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
-import { capitalize, Group, NumberField, Row, Segmented, Switch, TextField } from "./controls";
+import { capitalize, Group, NumberField, Row, Segmented, SegmentedButtons, Switch, TextField } from "./controls";
 import { ShortcutsPage } from "./ShortcutsPage";
 
-const ACCENT_VARS: Record<string, string> = Object.fromEntries(ACCENTS.map((a) => [a, `var(--accent-${a})`]));
+// Segmented buttons take string options; the keys of the px table are the only list of steps.
+const ROW_PADDING_STEPS: readonly string[] = Object.keys(ROW_PADDING_PX);
+
+/** A stored scheme id narrowed to a known one; unknown ids (hand-edited settings) show the first scheme. */
+const toSchemeId = (id: string): SchemeId => SCHEMES.find((scheme) => scheme.id === id)?.id ?? SCHEMES[0].id;
+
+/** Two swatches per scheme: its content background and the chosen accent in that scheme. */
+function SchemePreview({ scheme, accent }: { scheme: SchemeId; accent: string }) {
+  return (
+    <span className="scheme-preview" data-scheme={scheme} aria-hidden="true">
+      <span style={{ background: "var(--bg)", color: "var(--text)" }}>Aa</span>
+      <span style={{ background: `var(--a-${accent})` }} />
+    </span>
+  );
+}
+
+function SchemeSelect({ label, value, accent, stage, onChange }: {
+  label: string;
+  value: SchemeId;
+  accent: string;
+  stage: string;
+  onChange: (id: SchemeId) => void;
+}) {
+  const id = useId();
+  return (
+    <Row label={label} htmlFor={id}>
+      <div className="scheme-select">
+        <SchemePreview scheme={value} accent={accent} />
+        <select
+          id={id}
+          className="input"
+          data-stage={stage}
+          data-stage-label={label}
+          value={value}
+          onChange={(e) => onChange(toSchemeId(e.target.value))}
+        >
+          {SCHEMES.map((scheme) => (
+            <option key={scheme.id} value={scheme.id}>{scheme.label}</option>
+          ))}
+        </select>
+      </div>
+    </Row>
+  );
+}
+
+/** One sample row at the chosen padding, drawn like every list row (hairline below). */
+function RowPaddingPreview({ step }: { step: number }) {
+  return (
+    <div className="row-padding-preview" style={{ "--pad": `${rowPaddingPx(step)}px` } as CSSProperties} aria-hidden="true">
+      <span>option_name</span>
+      <span>siteurl</span>
+    </div>
+  );
+}
 
 function AppearancePage({ s, set }: SettingsPageProps) {
   return (
     <>
       <Group title="Look">
-        <Segmented label="Theme" options={["system", "light", "dark"] as const} value={s.theme} onChange={(theme) => set({ theme })} />
-        <Row label="Accent" description="Buttons, selection and focus rings.">
+        <Segmented
+          label="Theme"
+          description="Which scheme applies; System follows macOS."
+          options={["system", "light", "dark"] as const}
+          value={s.theme}
+          stage="appearance:theme"
+          onChange={(theme) => set({ theme })}
+        />
+        <SchemeSelect
+          label="Light scheme"
+          value={toSchemeId(s.lightScheme)}
+          accent={s.accent}
+          stage="appearance:light-scheme"
+          onChange={(lightScheme) => set({ lightScheme })}
+        />
+        <SchemeSelect
+          label="Dark scheme"
+          value={toSchemeId(s.darkScheme)}
+          accent={s.accent}
+          stage="appearance:dark-scheme"
+          onChange={(darkScheme) => set({ darkScheme })}
+        />
+        <Row label="Accent" description="Keys, links, selection and focus.">
           <div className="accent-swatches">
             {ACCENTS.map((a) => (
-              <button key={a} type="button" aria-label={`Accent ${a}`} aria-pressed={s.accent === a} style={{ background: ACCENT_VARS[a] }} onClick={() => set({ accent: a })} />
+              <button
+                key={a}
+                type="button"
+                aria-label={`Accent ${a}`}
+                aria-pressed={s.accent === a}
+                data-stage={`appearance:accent:${a}`}
+                data-stage-list="appearance:accent"
+                style={{ background: `var(--a-${a})` }}
+                onClick={() => set({ accent: a })}
+              />
             ))}
           </div>
         </Row>
+        <Row label="Row padding" description="Space above and below every row in grids and lists.">
+          <div className="row-padding">
+            <SegmentedButtons
+              label="Row padding"
+              options={ROW_PADDING_STEPS}
+              value={String(s.rowPadding)}
+              stage="appearance:row-padding"
+              onChange={(step) => set({ rowPadding: Number(step) })}
+            />
+            <RowPaddingPreview step={s.rowPadding} />
+          </div>
+        </Row>
         <Segmented label="Inspector" description="Where the value inspector and the WordPress detail pane open. Drag the divider to resize." options={["right", "bottom"] as const} value={s.inspectorDock} onChange={(inspectorDock) => set({ inspectorDock })} />
-        <Segmented label="Density" description="Row height in grids and lists." options={["comfortable", "compact"] as const} value={s.density} onChange={(density) => set({ density })} />
       </Group>
-      <Group title="Text size">
-        <NumberField label="UI size" description="Sidebar, tabs and labels." suffix="px" value={s.uiFontSize} min={TEXT_SIZES.ui.min} max={TEXT_SIZES.ui.max} onCommit={(uiFontSize) => set({ uiFontSize })} />
-        <NumberField label="Data size" description="Table cells, document values and the SQL editor. ⌘= / ⌘- zoom both." suffix="px" value={s.dataFontSize} min={TEXT_SIZES.data.min} max={TEXT_SIZES.data.max} onCommit={(dataFontSize) => set({ dataFontSize })} />
+      <Group title="Text">
+        <NumberField
+          label="UI size"
+          description="Sidebar, tabs and labels."
+          suffix="px"
+          value={s.uiFontSize}
+          min={TEXT_SIZES.ui.min}
+          max={TEXT_SIZES.ui.max}
+          stage="appearance:ui-size"
+          onCommit={(uiFontSize) => set({ uiFontSize })}
+        />
+        <NumberField
+          label="Data size"
+          description="Table cells, document values and the SQL editor. ⌘= / ⌘- zoom both."
+          suffix="px"
+          value={s.dataFontSize}
+          min={TEXT_SIZES.data.min}
+          max={TEXT_SIZES.data.max}
+          stage="appearance:data-size"
+          onCommit={(dataFontSize) => set({ dataFontSize })}
+        />
+        <TextField
+          label="UI font"
+          description="Any installed family; empty uses the bundled font."
+          placeholder={BUNDLED_FONTS.ui}
+          value={s.fontUi ?? ""}
+          stage="appearance:font-ui"
+          onCommit={(name) => set({ fontUi: name.trim() || null })}
+        />
+        <TextField
+          label="Mono font"
+          description="Every database value. Any installed family; empty uses the bundled font."
+          placeholder={BUNDLED_FONTS.mono}
+          value={s.fontMono ?? ""}
+          stage="appearance:font-mono"
+          onCommit={(name) => set({ fontMono: name.trim() || null })}
+        />
       </Group>
     </>
   );

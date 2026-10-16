@@ -33,15 +33,6 @@ pub enum Theme {
     Dark,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum Density {
-    #[default]
-    Comfortable,
-    Compact,
-}
-
 #[derive(
     Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum, TS,
 )]
@@ -78,23 +69,63 @@ pub enum Dock {
     Bottom,
 }
 
-/// Green and orange are status colors in the UI, so they are not offered as accents.
-pub const ACCENTS: &[&str] = &["blue", "purple", "pink", "graphite"];
+/// Accent hues; every color scheme defines each one. Values are uncolored by default, so no hue
+/// is reserved for status.
+pub const ACCENTS: &[&str] = &["orange", "gold", "blue", "purple", "graphite"];
+
+/// Built-in color schemes (`src/styles/schemes/<id>.css`).
+pub const SCHEMES: &[&str] = &["ayu-mirage", "ayu-light"];
+
+const DEFAULT_LIGHT_SCHEME: &str = "ayu-light";
+const DEFAULT_DARK_SCHEME: &str = "ayu-mirage";
+
+/// Row padding steps (1 tightest, 4 loosest); the frontend maps each to px.
+const ROW_PADDING_MIN: u8 = 1;
+const ROW_PADDING_MAX: u8 = 4;
+const DEFAULT_ROW_PADDING: u8 = 2;
+
+/// Reads `rowPadding`, or the retired `density` key it replaced (`compact` is the tightest step).
+/// Anything unreadable falls back to the default step instead of failing the file.
+fn row_padding<'de, D>(deserializer: D) -> Result<u8, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(deserializer)?;
+    Ok(match &raw {
+        serde_json::Value::String(density) if density == "compact" => 1,
+        serde_json::Value::Number(n) => n
+            .as_u64()
+            .and_then(|n| u8::try_from(n).ok())
+            .unwrap_or(DEFAULT_ROW_PADDING),
+        _ => DEFAULT_ROW_PADDING,
+    })
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
+    /// Which of the two schemes applies: light, dark, or the OS appearance.
     #[serde(deserialize_with = "lenient")]
     pub theme: Theme,
+    #[serde(deserialize_with = "lenient")]
+    pub light_scheme: String,
+    #[serde(deserialize_with = "lenient")]
+    pub dark_scheme: String,
     pub accent: String,
     /// Chrome: sidebar, tabs, labels, buttons (also scales rem).
     pub ui_font_size: u8,
     /// Data: grid cells, document values, trees, SQL editor. Reads the old `editorFontSize` key.
     #[serde(alias = "editorFontSize")]
     pub data_font_size: u8,
+    #[serde(alias = "density", deserialize_with = "row_padding")]
+    pub row_padding: u8,
+    /// An installed font family; `None` uses the bundled Geist.
     #[serde(deserialize_with = "lenient")]
-    pub density: Density,
+    pub font_ui: Option<String>,
+    /// An installed font family; `None` uses the bundled JetBrains Mono.
+    #[serde(deserialize_with = "lenient")]
+    pub font_mono: Option<String>,
     pub row_limit: u32,
     pub query_timeout_secs: u32,
     pub confirm_destructive: bool,
@@ -116,10 +147,14 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: Theme::System,
-            accent: "blue".into(),
+            light_scheme: DEFAULT_LIGHT_SCHEME.into(),
+            dark_scheme: DEFAULT_DARK_SCHEME.into(),
+            accent: "orange".into(),
             ui_font_size: 13,
             data_font_size: 12,
-            density: Density::Comfortable,
+            row_padding: DEFAULT_ROW_PADDING,
+            font_ui: None,
+            font_mono: None,
             row_limit: 1000,
             query_timeout_secs: 30,
             confirm_destructive: true,
@@ -151,9 +186,19 @@ impl Settings {
     /// Clamps every value into a usable range, so a hand-edited file can't break the app.
     pub fn sanitized(mut self) -> Self {
         let d = Settings::default();
+        // Retired accents (`pink`, the old `green`) and typos all land on the default.
         if !ACCENTS.contains(&self.accent.as_str()) {
             self.accent = d.accent;
         }
+        if !SCHEMES.contains(&self.light_scheme.as_str()) {
+            self.light_scheme = d.light_scheme;
+        }
+        if !SCHEMES.contains(&self.dark_scheme.as_str()) {
+            self.dark_scheme = d.dark_scheme;
+        }
+        self.row_padding = self.row_padding.clamp(ROW_PADDING_MIN, ROW_PADDING_MAX);
+        self.font_ui = family_name(self.font_ui);
+        self.font_mono = family_name(self.font_mono);
         self.ui_font_size = self.ui_font_size.clamp(10, 24);
         self.data_font_size = self.data_font_size.clamp(9, 28);
         self.row_limit = self.row_limit.clamp(10, 100_000);
@@ -175,6 +220,12 @@ impl Settings {
             .unwrap_or_default()
             .sanitized()
     }
+}
+
+/// A blank family name means "use the bundled font".
+fn family_name(name: Option<String>) -> Option<String> {
+    let trimmed = name?.trim().to_string();
+    (!trimmed.is_empty()).then_some(trimmed)
 }
 
 const FILE_NAME: &str = "settings.json";
@@ -278,7 +329,7 @@ mod tests {
         let settings = SettingsStore::open(dir.path()).get();
         assert_eq!(settings.data_font_size, 15);
         assert_eq!(settings.ui_font_size, 13);
-        assert_eq!(settings.accent, "blue");
+        assert_eq!(settings.accent, "orange");
     }
 
     #[tokio::test]
@@ -299,7 +350,7 @@ mod tests {
         assert_eq!(saved.row_limit, 10);
         assert_eq!(saved.data_font_size, 28);
         assert_eq!(saved.ui_font_size, 10);
-        assert_eq!(saved.accent, "blue");
+        assert_eq!(saved.accent, "orange");
     }
 
     fn open_with_json(json: &str) -> (tempfile::TempDir, SettingsStore) {
@@ -369,7 +420,7 @@ mod tests {
         let settings = store.get();
         assert_eq!(settings.theme, Theme::System);
         assert_eq!(settings.row_limit, 42);
-        assert_eq!(settings.density, Density::Compact);
+        assert_eq!(settings.row_padding, 1);
         assert_eq!(settings.log_level, LogLevel::Info);
         assert_eq!(settings.inspector_dock, Dock::Right);
         assert_eq!(
@@ -381,6 +432,132 @@ mod tests {
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(names, vec![std::ffi::OsString::from("settings.json")]);
+    }
+
+    #[test]
+    fn defaults_use_orange_accent_middle_padding_and_bundled_fonts() {
+        let settings = Settings::default();
+        assert_eq!(settings.accent, "orange");
+        assert_eq!(settings.row_padding, 2);
+        assert_eq!(settings.font_ui, None);
+        assert_eq!(settings.font_mono, None);
+        assert_eq!(settings.light_scheme, "ayu-light");
+        assert_eq!(settings.dark_scheme, "ayu-mirage");
+    }
+
+    #[test]
+    fn retired_and_unknown_accents_become_orange_and_known_ones_stay() {
+        for (accent, expected) in [
+            ("pink", "orange"),
+            ("neon", "orange"),
+            ("green", "orange"),
+            ("gold", "gold"),
+            ("graphite", "graphite"),
+        ] {
+            let json = format!(r#"{{"accent": "{accent}"}}"#);
+            let (_dir, store) = open_with_json(&json);
+            assert_eq!(store.get().accent, expected, "{accent}");
+        }
+    }
+
+    #[test]
+    fn row_padding_is_clamped_and_unreadable_values_use_the_default() {
+        for (json, expected) in [
+            (r#"{"rowPadding": 0}"#, 1),
+            (r#"{"rowPadding": 1}"#, 1),
+            (r#"{"rowPadding": 4}"#, 4),
+            (r#"{"rowPadding": 9}"#, 4),
+            (r#"{"rowPadding": 300}"#, 2),
+            (r#"{"rowPadding": -1}"#, 2),
+            (r#"{"rowPadding": "wide"}"#, 2),
+            (r#"{}"#, 2),
+        ] {
+            let (_dir, store) = open_with_json(json);
+            assert_eq!(store.get().row_padding, expected, "{json}");
+        }
+    }
+
+    #[test]
+    fn old_density_key_migrates_to_row_padding() {
+        for (json, expected) in [
+            (r#"{"density": "compact"}"#, 1),
+            (r#"{"density": "comfortable"}"#, 2),
+        ] {
+            let (_dir, store) = open_with_json(json);
+            assert_eq!(store.get().row_padding, expected, "{json}");
+        }
+    }
+
+    #[test]
+    fn missing_schemes_use_the_defaults() {
+        let (_dir, store) = open_with_json(r#"{"rowLimit": 42}"#);
+        let settings = store.get();
+        assert_eq!(settings.light_scheme, "ayu-light");
+        assert_eq!(settings.dark_scheme, "ayu-mirage");
+    }
+
+    #[test]
+    fn known_schemes_are_kept() {
+        let (_dir, store) =
+            open_with_json(r#"{"lightScheme": "ayu-mirage", "darkScheme": "ayu-light"}"#);
+        let settings = store.get();
+        assert_eq!(settings.light_scheme, "ayu-mirage");
+        assert_eq!(settings.dark_scheme, "ayu-light");
+    }
+
+    #[test]
+    fn unknown_or_non_string_schemes_reset_without_quarantining_the_file() {
+        let json = r#"{"lightScheme": "solarized", "darkScheme": 7, "rowLimit": 42}"#;
+        let (dir, store) = open_with_json(json);
+
+        let settings = store.get();
+        assert_eq!(settings.light_scheme, "ayu-light");
+        assert_eq!(settings.dark_scheme, "ayu-mirage");
+        assert_eq!(settings.row_limit, 42);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("settings.json")).unwrap(),
+            json
+        );
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("settings.json")]);
+    }
+
+    #[test]
+    fn font_families_are_trimmed_and_blank_means_bundled() {
+        for (json, ui, mono) in [
+            (r#"{"fontUi": ""}"#, None, None),
+            (r#"{"fontUi": "   ", "fontMono": "\t"}"#, None, None),
+            (r#"{"fontUi": null}"#, None, None),
+            (r#"{"fontUi": 5}"#, None, None),
+            (
+                r#"{"fontUi": "  Inter ", "fontMono": " Fira Code "}"#,
+                Some("Inter"),
+                Some("Fira Code"),
+            ),
+        ] {
+            let (_dir, store) = open_with_json(json);
+            let settings = store.get();
+            assert_eq!(settings.font_ui.as_deref(), ui, "{json}");
+            assert_eq!(settings.font_mono.as_deref(), mono, "{json}");
+        }
+    }
+
+    #[test]
+    fn peek_applies_the_new_appearance_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("settings.json"),
+            r#"{"accent": "pink", "density": "compact", "darkScheme": "solarized", "fontMono": " "}"#,
+        )
+        .unwrap();
+        let settings = Settings::peek(dir.path());
+        assert_eq!(settings.accent, "orange");
+        assert_eq!(settings.row_padding, 1);
+        assert_eq!(settings.dark_scheme, "ayu-mirage");
+        assert_eq!(settings.font_mono, None);
     }
 
     #[tokio::test]

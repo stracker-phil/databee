@@ -4,7 +4,7 @@ import { CheckCircle2, Loader2, Play, PlayCircle, Square } from "lucide-react";
 import { api, toAppError } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { formatCount } from "../lib/format";
-import { useResolvedTheme } from "../lib/theme";
+import { useResolvedScheme } from "../lib/theme";
 import { useStore, type QueryTab as QueryTabState } from "../state/store";
 import { ErrorPanel } from "./ErrorPanel";
 import { currentStatement, QueryEditor } from "./QueryEditor";
@@ -75,7 +75,7 @@ function ResultView({ tab }: { tab: QueryTabState }) {
 
 export function QueryTab({ tab }: { tab: QueryTabState }) {
   const database = useStore((s) => s.sessions.find((x) => x.id === tab.sessionId)?.database ?? null);
-  const theme = useResolvedTheme(useStore((s) => s.settings?.theme));
+  const scheme = useResolvedScheme(useStore((s) => s.settings));
   const { updateQueryTab, runQuery, cancelQuery } = useStore.getState();
   const schema = useCompletionSchema(tab.sessionId, database);
   const viewRef = useRef<EditorView | null>(null);
@@ -102,7 +102,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
         value={tab.sql}
         onChange={(sql) => updateQueryTab(tab.id, { sql })}
         schema={schema}
-        theme={theme}
+        dark={scheme.dark}
         onView={(v) => (viewRef.current = v)}
       />
       <Splitter axis="y" paneAfter={false} label="Resize editor" {...editor} />

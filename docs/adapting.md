@@ -54,7 +54,7 @@ Objective-C or NSWindow calls. The macOS behavior comes from dependencies, paths
 | **Traffic-light space** and drag regions | `.toolbar` `padding-left` in `app.css`; `data-tauri-drag-region` in `Toolbar.tsx` and `ConnectScreen.tsx` | Remove the padding. With native decorations, drag regions are optional | Same; or set `decorations: false` and draw your own window controls |
 | **Menu**: the app menu with Services, Hide and Show All | `menu.rs` | The menu bar renders inside the window. Drop the app menu and move Settings and Quit into File | Same |
 | **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs, `bindingFromEvent` assumes a Mac | `src/commands/registry.ts`; `metaKey` checks in `ResultsGrid`, `Sidebar`, `CommandPalette`, `FieldValue` and `WpWorkspace` | Map `Mod` to Ctrl, and render labels as `Ctrl+Shift+K` | Same |
-| **Fonts**: `-apple-system`, SF Pro, SF Mono | `theme.css` | Add `system-ui`, `Cantarell` and `DejaVu Sans Mono` fallbacks | `Segoe UI`, `Cascadia Mono` |
+| **Fonts**: bundled Geist and JetBrains Mono, with `-apple-system` and `Menlo` fallbacks | `fonts.css`, `theme.css` (`--font-*-bundled`) | Works; drop the macOS fallbacks or add `Cantarell` and `DejaVu Sans Mono` | Works; `Segoe UI`, `Cascadia Mono` as fallbacks |
 | **Bundle targets**: only `app` | `tauri.conf.json` `bundle.targets`; `package.json` scripts open `bundle/macos/DataBee.app` | `deb`, `appimage`, `rpm` | `nsis`, `msi`; `icons/icon.ico` exists but `bundle.icon` doesn't list it; `main.rs` needs the `windows_subsystem` attribute so release builds open no console |
 | **Install and dev scripts** (zsh, Swift, CoreGraphics, `screencapture`, `pkill`) | `scripts/` | Rewrite with `xdotool`/`wmctrl` plus `grim`/`import`, or drop `launch.sh` and use `bun tauri dev` | PowerShell |
 | **Wording**: "Keychain", "Finder", the `~/Library/...` socket example | `db_commands.rs`, `error.rs`, `cli.rs` help, `components/settings/pages.tsx`, `ConnectScreen.tsx`, `Dialogs.tsx` | "keyring", "file manager" | "Credential Manager", "Explorer" |
@@ -78,7 +78,7 @@ can do all of this:
 | Add a menu item | [backend.md: native menu](backend.md#native-menu) |
 | Add a setting | [backend.md: persistence](backend.md#persistence) |
 | Add a Tauri command | [backend.md: Tauri commands](backend.md#tauri-commands) |
-| Change colors, accents or density | [frontend.md: styling](frontend.md#styling) |
+| Change colors, schemes, accents or row padding | [frontend.md: styling](frontend.md#styling) |
 | Remove the Stage hook | [Removing Stage](#removing-stage) |
 
 ### Add a driver

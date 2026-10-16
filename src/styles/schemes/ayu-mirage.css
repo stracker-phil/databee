@@ -1,0 +1,55 @@
+/* Ayu Mirage: the default dark scheme. Defines every scheme token (docs/ux.md); the only place besides
+   ayu-light.css where color literals are allowed.
+   The selector is not limited to <html>: Settings previews a scheme inside its own element. */
+[data-scheme="ayu-mirage"] {
+  color-scheme: dark;
+
+  /* surfaces */
+  --chrome: #1f2430;
+  --bg: #242936;
+  --pop: #323a4c;
+  --field: #1a1f29;
+  --field-line: #3b4254;
+  --text: #cccac2;
+  --line: #2f3545;
+  --band: #2a3040;
+  --row-hover: #2b3142;
+  --shadow: 0 0 28px rgba(0, 0, 0, 0.38);
+  --shadow-small: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.15);
+  --scrim: rgba(10, 12, 18, 0.55);
+  /* text and marks drawn on an accent or value-style fill */
+  --on-accent: #1f2430;
+  /* the thumb of a switch, on either track */
+  --knob: #cccac2;
+
+  /* accent hues */
+  --a-orange: #ffa659;
+  --a-gold: #ffcc66;
+  --a-blue: #73d0ff;
+  --a-purple: #d4bfff;
+  --a-graphite: #8a919e;
+
+  /* value-style colors */
+  --style-red: #ff6666;
+  --style-green: #87d96c;
+  --style-yellow: #ffcc66;
+  --style-blue: #73d0ff;
+  --style-purple: #dfbfff;
+
+  /* CodeMirror */
+  --code-keyword: #ffad66;
+  --code-string: #d5ff80;
+  --code-number: #dfbfff;
+  --code-comment: #6e7c8f;
+  --code-function: #ffd173;
+  --code-type: #73d0ff;
+  --code-operator: #f29e74;
+  --code-name: #cccac2;
+  --code-invalid: #ff6666;
+  --code-cursor: #ffcc66;
+  --code-selection: rgba(64, 159, 255, 0.25);
+  --code-active-line: #1a1f29;
+  --code-gutter: #5c6773;
+  --code-match: rgba(105, 95, 63, 0.6);
+}

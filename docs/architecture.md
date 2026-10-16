@@ -93,7 +93,8 @@ src/                       React app
   components/              UI; components/wp/ is WordPress mode, components/settings/ the Settings dialog
   stage/                   page side of the Stage hook, its Settings page, installStage()
   lib/                     pure helpers (formatting, SQL ranges, theme)
-  styles/                  theme.css (tokens) + app.css (components)
+  styles/                  schemes/ (one file per color scheme), theme.css (derived tokens), fonts.css, app.css
+  assets/fonts/            bundled Geist and JetBrains Mono (OFL)
   test/                    api mock, fixtures
 dev/                       Docker fixtures for integration tests
 scripts/                   install links; dev/ drives the app headlessly

@@ -24,7 +24,18 @@ const LOG_LEVEL_RANK: Record<LogLevel, number> = { error: 0, warn: 1, info: 2, d
 /** The `Record` makes the compiler check every Rust level is listed. */
 export const LOG_LEVELS = (Object.keys(LOG_LEVEL_RANK) as LogLevel[]).sort((a, b) => LOG_LEVEL_RANK[a] - LOG_LEVEL_RANK[b]);
 
-export const ACCENTS = ["blue", "purple", "pink", "graphite"] as const;
+/** Accent hues, defined by every scheme. Rust's `ACCENTS` is the source of truth; keep these equal. */
+export const ACCENTS = ["orange", "gold", "blue", "purple", "graphite"] as const;
+
+/** Built-in color schemes (`src/styles/schemes/<id>.css`). Ids match Rust's `SCHEMES`. */
+export const SCHEMES = [
+  { id: "ayu-mirage", label: "Ayu Mirage", dark: true },
+  { id: "ayu-light", label: "Ayu Light", dark: false },
+] as const;
+export type SchemeId = (typeof SCHEMES)[number]["id"];
+
+/** Families bundled in `src/assets/fonts/`; the font settings fall back to them when empty. */
+export const BUNDLED_FONTS = { ui: "Geist", mono: "JetBrains Mono" } as const;
 
 /** Shortcut overrides by command id; `null` unbinds. Rust: the `Keybindings` alias (a map, so ts-rs can't export it). */
 export type Keybindings = Record<string, string | null>;

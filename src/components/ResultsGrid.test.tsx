@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api, type Cell } from "../api";
+import { syncRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
 import { connectedStore, num, resultSet, settings, text } from "../test/fixtures";
 import { ResultsGrid } from "./ResultsGrid";
@@ -167,22 +168,33 @@ describe("ResultsGrid sizing", () => {
       .slice(1)
       .map((r) => parseFloat((r as HTMLElement).style.top));
 
-  it("lays rows out without gaps or overlap at any data size", () => {
+  const measuredRowHeight = (height: number) => {
+    const original = Element.prototype.getBoundingClientRect;
+    return vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      return (this as HTMLElement).style.height.includes("--row-h") ? ({ height } as DOMRect) : original.call(this);
+    });
+  };
+
+  it("lays rows out without gaps or overlap at the default and a measured row height", () => {
     const rows = Array.from({ length: 5 }, (_, i) => [num(String(i)), text(`row ${i}`)]);
     const rs = resultSet({ rows });
-    connectedStore({ settings: settings({ dataFontSize: 12 }) });
+    connectedStore({ settings: settings() });
     const { unmount } = render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} />);
     const small = rowTops();
     expect(small.slice(1).map((top, i) => top - small[i])).toEqual([26, 26, 26, 26]);
     unmount();
 
-    connectedStore({ settings: settings({ dataFontSize: 18 }) });
-    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} />);
-    const large = rowTops();
-    const step = large[1] - large[0];
-    expect(step).toBe(39);
-    expect(large.slice(1).map((top, i) => top - large[i])).toEqual([step, step, step, step]);
-    const row = screen.getAllByRole("row")[1] as HTMLElement;
-    expect(parseFloat(row.style.height)).toBe(step);
+    const spy = measuredRowHeight(39);
+    try {
+      act(() => syncRowHeight());
+      render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} />);
+      const large = rowTops();
+      expect(large.slice(1).map((top, i) => top - large[i])).toEqual([39, 39, 39, 39]);
+      const row = screen.getAllByRole("row")[1] as HTMLElement;
+      expect(parseFloat(row.style.height)).toBe(39);
+    } finally {
+      spy.mockRestore();
+      act(() => syncRowHeight());
+    }
   });
 });

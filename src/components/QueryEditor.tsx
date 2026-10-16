@@ -4,13 +4,15 @@ import { useBindingLabel } from "../commands";
 import { MySQL, sql } from "@codemirror/lang-sql";
 import { Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
+import { codeTheme } from "../lib/codeTheme";
 import { statementAt } from "../lib/sql";
 
 interface Props {
   value: string;
   onChange: (value: string) => void;
   schema: Record<string, string[]>;
-  theme: "light" | "dark";
+  /** The applied scheme is dark; colors come from its `--code-*` tokens. */
+  dark: boolean;
   onView?: (view: EditorView) => void;
 }
 
@@ -23,7 +25,7 @@ export function currentStatement(view: EditorView): string {
   return range ? state.sliceDoc(range.from, range.to) : "";
 }
 
-export function QueryEditor({ value, onChange, schema, theme, onView }: Props) {
+export function QueryEditor({ value, onChange, schema, dark, onView }: Props) {
   const runKey = useBindingLabel("editor.run");
   const placeholder = runKey ? `${EXAMPLE_QUERY}   ${runKey} runs the statement at the cursor` : EXAMPLE_QUERY;
 
@@ -33,8 +35,9 @@ export function QueryEditor({ value, onChange, schema, theme, onView }: Props) {
       // ⌘↵ / ⇧⌘↵ are app commands (editor.run / editor.runAll); keep CodeMirror from inserting a newline.
       Prec.highest(keymap.of([{ key: "Mod-Enter", run: () => true }, { key: "Shift-Mod-Enter", run: () => true }])),
       EditorView.lineWrapping,
+      codeTheme(dark),
     ],
-    [schema],
+    [schema, dark],
   );
 
   return (
@@ -45,7 +48,7 @@ export function QueryEditor({ value, onChange, schema, theme, onView }: Props) {
       data-stage-role="field"
       value={value}
       height="100%"
-      theme={theme}
+      theme="none"
       autoFocus
       placeholder={placeholder}
       basicSetup={{ foldGutter: false, highlightActiveLineGutter: true }}

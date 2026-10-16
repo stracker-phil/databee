@@ -154,3 +154,9 @@ Rename the app to "ShopLens" and remove the Stage integration.
 ## License
 
 [MIT](LICENSE)
+
+## Credits
+
+- [Geist](https://github.com/vercel/geist-font) by Vercel and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono)
+  by JetBrains are bundled under the SIL Open Font License 1.1 (license files in `src/assets/fonts/`).
+- The Ayu Mirage and Ayu Light color schemes follow the [Ayu](https://github.com/ayu-theme/ayu-colors) palette.

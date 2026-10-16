@@ -3,10 +3,14 @@ import type { Settings } from "../api";
 export function settings(patch: Partial<Settings> = {}): Settings {
   return {
     theme: "system",
-    accent: "blue",
+    lightScheme: "ayu-light",
+    darkScheme: "ayu-mirage",
+    accent: "orange",
     uiFontSize: 13,
     dataFontSize: 12,
-    density: "comfortable",
+    rowPadding: 2,
+    fontUi: null,
+    fontMono: null,
     rowLimit: 1000,
     queryTimeoutSecs: 30,
     confirmDestructive: true,

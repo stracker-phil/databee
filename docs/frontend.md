@@ -138,7 +138,7 @@ subscriptions `onLaunch` and `onCommand`. The IPC types are generated from Rust 
 ([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts` (a module's types into its own folder, e.g. `src/stage/types.gen.ts`); never edit them. `bun run types`
 regenerates them (it runs the `export_bindings_*` tests), and `bun run lint` fails when a committed file is
 stale. `src/api/types.ts` re-exports the generated types plus the few frontend-only ones (`Keybindings`, `PaneSize`, `EMPTY_UI_STATE`, `TEXT_SIZES`, `SETTINGS_LIMITS`, `LOG_LEVELS`,
-`ACCENTS`). `TEXT_SIZES` and `SETTINGS_LIMITS` mirror the clamps in Rust's `Settings::sanitized`, which stays the
+`ACCENTS`, `SCHEMES`, `BUNDLED_FONTS`). `ACCENTS` and `SCHEMES` mirror Rust's lists of the same name. `TEXT_SIZES` and `SETTINGS_LIMITS` mirror the clamps in Rust's `Settings::sanitized`, which stays the
 source of truth; change both together. Command signatures in
 `api` stay hand-written. `toAppError(e)` normalizes rejections to `AppError` and accepts only a known `kind`. Derived connection facts come from Rust and are never recomputed in the page: the
 Keychain `account` (which also scopes favorites and history) is on `SessionInfo`, `RecentConnection` and login
@@ -315,35 +315,45 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText` |
 | `clipboard.ts` | `copyText` with a success or error toast |
 | `sql.ts` | statement ranges and the statement at the cursor |
-| `theme.ts` | appearance, row height, `useResolvedTheme` (one shared `prefers-color-scheme` query) |
+| `theme.ts` | `applyAppearance` (scheme, accent, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `applyInitialScheme` (first paint) |
+| `codeTheme.ts` | CodeMirror theme and syntax colors from the scheme's `--code-*` tokens |
 | `crumbs.ts` | WordPress breadcrumbs |
 | `wpFormat.ts` | WordPress formatting (absolute times, flags, initials, `shorten`) |
 
 ## Styling
 
-The CSS is plain and global: `styles/theme.css` holds the tokens and `styles/app.css` the components,
-sectioned with `/* ---------- name ---------- */` comments. There are no CSS modules. Icons come from
-`lucide-react`.
+The CSS is plain and global, imported in this order by `App.tsx`: `styles/fonts.css` (`@font-face` for the
+bundled fonts), `styles/schemes/<id>.css` (one file per color scheme), `styles/theme.css` (derived tokens and
+aliases) and `styles/app.css` (components, sectioned with `/* ---------- name ---------- */` comments). There
+are no CSS modules. Icons come from `lucide-react`. Token names, values and roles are in
+[ux.md](ux.md#color-schemes-and-tokens-from-u2a).
 
-- **Inset canvas.** The chrome (toolbar, sidebar, tab bar, status bar) is transparent over the window's native
-  vibrancy. Content sits on raised panels (`--bg-panel`, `--radius-panel`, `--shadow-panel`), with tonal cards
-  (`--bg-surface`) inside.
-- **Color roles.**
-  - `--accent` is for interactive elements only. The choices are blue, purple, pink and graphite, set through
-    `html[data-accent]`.
-  - Status colors (`--success`, `--warning`, `--danger`, `--info`, each with a `-soft` variant) are only for
-    status.
-  - Charts use `--chart-*` and `--category-*`. Grid cells are tinted by type with `--type-*`.
-- **Dark mode.** `html[data-theme]` is `light` or `dark`; without the attribute, the system theme applies.
-  The dark tokens are defined twice, once in the `prefers-color-scheme` media query and once under
-  `[data-theme="dark"]`. Edit both. Rust sets the native window theme so the vibrancy matches.
+- **Color schemes.** A scheme file sets every scheme token under `[data-scheme="<id>"]`: surfaces, text,
+  hairlines, shadows, the scrim, the accent hues `--a-*`, the value-style colors `--style-*` and the CodeMirror
+  colors `--code-*`. `applyAppearance` sets `data-scheme` on `<html>` from `theme` (system, light or dark)
+  and the `lightScheme` / `darkScheme` settings; `App.tsx` reapplies when macOS switches appearance. Rust
+  (`window.rs`) sets the native window theme from `theme`. The
+  selector is not tied to `<html>`, so Settings previews a scheme inside a swatch. Adding a scheme: a new file
+  in `styles/schemes/`, its import in `App.tsx`, its id in Rust's `SCHEMES` and in `SCHEMES` in
+  `src/api/types.ts`.
+- **No color literals** (`#hex`, `rgb(`, `hsl(`) outside `styles/schemes/`. Everything else uses a token or
+  a `color-mix()` of tokens.
+- **Derived tokens.** `theme.css` derives the opacity levels (`--o2`, `--o3`), the accent mixes (`--cell`,
+  `--sel`, `--lit`), `--accent` from `html[data-accent]` (default orange), the type sizes (`--fs-*`) and the
+  row height `--row-h` from `--pad`. Tokens that predate the schemes remain as aliases marked
+  `/* alias: removed in U2b/U12 */`; new code uses the new names.
 - **Sizing.** Everything is in rem. `html { font-size: var(--ui-font-size) }`, so ⌘= and ⌘- scale the whole UI.
-  `--data-font-size` sizes the grid, the editor and the value trees. Density changes only `--row-height`,
-  which the CSS and the virtualizer share.
+  `--data-font-size` sizes the grid, the editor and the value trees. The row-padding setting (steps 1 to 4)
+  sets `--pad` (1, 3, 5 or 8px); `--row-h` is a 20px line (more for large data sizes) plus twice `--pad`.
+  `useRowHeight` hands the measured value to the virtualizer.
+- **Fonts.** Geist (400, 500, 600) and JetBrains Mono (400, 500, 600, italic 400) are bundled as woff2 in
+  `src/assets/fonts/` with their OFL license files. The `fontUi` / `fontMono` settings put an installed family
+  in front of the bundled stack (`--font-ui-bundled`, `--font-mono-bundled`).
+- **CodeMirror.** `QueryEditor` passes `theme="none"` and adds `codeTheme(dark)`, so the editor reads the
+  `--code-*` tokens; `dark` (from `useResolvedScheme`) only picks CodeMirror's base styles.
 - **macOS look.**
   - The toolbar leaves `padding-left` for the traffic lights.
   - `data-tauri-drag-region` marks the draggable areas.
-  - Fonts are SF Pro and SF Mono.
   - `user-select: none` applies globally; inputs and `.selectable` opt back in.
   - Shortcut labels use the ⌘⌃⌥⇧ glyphs.
 

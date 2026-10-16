@@ -30,12 +30,13 @@ Separators between surfaces are `--line` hairlines. No inset panels, nested surf
 inset canvas and its tokens (`--bg-panel`, `--bg-surface`, `--shadow-panel`, `--radius-panel`, `--panel-gap`)
 go in U2b.
 
-## Color schemes and tokens (from U2a)
+## Color schemes and tokens
 
 A scheme is a complete token set in `src/styles/schemes/<id>.css`, applied through
-`:root[data-scheme="<id>"]`. Settings → Appearance picks one scheme for light and one for dark. Built-in:
-`ayu-mirage` (default dark) and `ayu-light` (default light). No color literal outside a scheme file; a
-Vitest scan enforces it.
+`[data-scheme="<id>"]` on `<html>` (and on the swatches that preview it in Settings). Settings → Appearance
+picks one scheme for light and one for dark; the theme setting (system, light, dark) decides which applies.
+Built-in: `ayu-mirage` (default dark) and `ayu-light` (default light). No color literal outside a scheme
+file; a Vitest scan enforces it.
 
 | Token | Ayu Mirage | Ayu Light | Role |
 |---|---|---|---|
@@ -49,14 +50,23 @@ Vitest scan enforces it.
 | `--band` | `#2a3040` | `#f2f3f5` | section header band |
 | `--row-hover` | `#2b3142` | `#f0f2f5` | hovered row |
 | `--shadow` | `0 0 28px rgba(0,0,0,.38)` | `0 0 28px rgba(30,40,60,.16)` | overlay glow, zero offset |
+| `--shadow-small` | `0 1px 2px rgba(0,0,0,.25)` | `0 1px 2px rgba(30,40,60,.2)` | selected segment, switch thumb |
+| `--shadow-inset` | `inset 0 1px 2px rgba(0,0,0,.15)` | `inset 0 1px 2px rgba(30,40,60,.08)` | field inset |
 | `--scrim` | `rgba(10,12,18,.55)` | `rgba(40,50,70,.2)` | behind modal dialogs |
+| `--on-accent` | `#1f2430` | `#ffffff` | text on an accent or value-style fill |
+| `--knob` | `#cccac2` | `#ffffff` | switch thumb |
 | `--a-orange` | `#ffa659` | `#fa8d3e` | accent hue (default) |
 | `--a-gold` | `#ffcc66` | `#f2ae49` | accent hue |
 | `--a-blue` | `#73d0ff` | `#399ee6` | accent hue |
 | `--a-purple` | `#d4bfff` | `#a37acc` | accent hue |
 | `--a-graphite` | `#8a919e` | `#8a9199` | accent hue |
-| `--style-red`, `--style-green`, `--style-yellow`, `--style-blue`, `--style-purple` | per scheme | per scheme | value-style colors |
-| `--code-*` | per scheme | per scheme | CodeMirror syntax colors |
+| `--style-red` | `#ff6666` | `#e65050` | value-style color |
+| `--style-green` | `#87d96c` | `#6cbf43` | value-style color |
+| `--style-yellow` | `#ffcc66` | `#eba400` | value-style color |
+| `--style-blue` | `#73d0ff` | `#399ee6` | value-style color |
+| `--style-purple` | `#dfbfff` | `#a37acc` | value-style color |
+| `--code-keyword`, `-string`, `-number`, `-comment`, `-function`, `-type`, `-operator`, `-name`, `-invalid` | Ayu Mirage syntax | Ayu Light syntax | SQL editor syntax colors |
+| `--code-cursor`, `-selection`, `-active-line`, `-gutter`, `-match` | per scheme | per scheme | SQL editor chrome |
 
 Derived tokens in `src/styles/theme.css`, the same for every scheme:
 
@@ -68,14 +78,19 @@ Derived tokens in `src/styles/theme.css`, the same for every scheme:
 | `--sel` | `--accent` at 20% | selected row or sidebar entry, focused value |
 | `--lit` | `--accent` at 15% | linked table highlight |
 | `--pad` | 1, 3, 5 or 8px | row padding (see row anatomy) |
-| `--row-h` | `20px + 2 × --pad` | row height for CSS and the virtualizer |
+| `--row-h` | `20px + 2 × --pad` (the line grows with data sizes above 12.5px) | row height for CSS and the virtualizer |
+| `--fs-small`, `--fs-base`, `--fs-large` | 11.5, 13 and 17px in rem | see type |
 | `--font-ui`, `--font-mono` | Geist, JetBrains Mono | bundled defaults; Settings accepts any installed family |
 
 Status colors (`--success`, `--warning`, `--danger`, `--info` and their `-soft` variants), `--type-*`,
 `--chart-*`, `--category-*` and `--tile-*` are removed. Until the components that use them are rewritten
-they survive as aliases marked `/* alias: removed in U2b/U12 */`.
+they survive as aliases onto scheme tokens (status and chart colors onto `--style-*`), marked
+`/* alias: removed in U2b/U12 */`.
 
-## Type (from U2a)
+**Fonts:** Geist (400, 500, 600) and JetBrains Mono (400, 500, 600, italic 400) are bundled (SIL OFL).
+Settings → Appearance "UI font" and "Mono font" take any installed family name; empty means the bundled one.
+
+## Type
 
 | Token | Size | Used for |
 |---|---|---|
@@ -87,7 +102,7 @@ Sizes are in rem, so ⌘= and ⌘- scale the whole UI. Line height is 20px at th
 and 600 for the table name in section bands and the object's `#key`. Numbers use tabular figures and are
 right-aligned in grids.
 
-## Opacity levels (from U2a)
+## Opacity levels
 
 | Level | Token | Opacity | Used for |
 |---|---|---|---|
@@ -100,7 +115,8 @@ right-aligned in grids.
 Every list shares one row: document rows, grid rows, sidebar items, palette results, Project page lists.
 
 - **Padding:** `--pad` above and below a 20px line. Settings → Appearance "row padding" has four steps
-  (1px, 3px, 5px, 8px); the default is step 2 (3px).
+  (1px, 3px, 5px, 8px); the default is step 2 (3px). The setting and `--pad` exist from U2a; rows adopt the
+  anatomy in U2b.
 - **Hairline:** every row has a 1px `--line` below it.
 - **Row hover:** the whole row takes `--row-hover` (subtle).
 - **Cell hover:** the hovered value itself takes `--cell` (stronger), with a 3px radius.

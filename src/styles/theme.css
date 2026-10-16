@@ -1,211 +1,154 @@
-/* Design tokens. Layout language: "inset canvas" — chrome (toolbar, sidebars, status bar) sits on the
-   window's native vibrancy; content lives on raised, rounded panels (--bg-panel, --shadow-panel) with
-   tonal cards (--bg-surface) instead of outlines. Theme: data-theme on <html> (absent = follow system).
-   Sizing: everything is rem; `--ui-font-size` drives chrome (html font-size), `--data-font-size` drives
-   grid cells, document values, trees and the SQL editor. Only hairlines and focus rings stay in px.
-   Color roles: `--accent` = interactive only; `--success/--warning/--danger/--info` = status only;
-   `--category-*` = chart slices and group colors. */
+/* Scheme-independent design tokens (docs/ux.md). Colors come from the active scheme
+   (`schemes/<id>.css`, chosen by `data-scheme` on <html>); this file only derives from them, so it holds
+   no color literal. lib/theme.ts sets `data-scheme`, `data-accent`, `--pad`, the font sizes and the
+   chosen font families. Sizing: everything is rem; `--ui-font-size` drives chrome (html font-size),
+   `--data-font-size` drives grid cells, document values, trees and the SQL editor. */
 :root {
-  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --font-ui-bundled: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono-bundled: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-ui: var(--font-ui-bundled);
+  --font-mono: var(--font-mono-bundled);
   --ui-font-size: 13px;
   --data-font-size: 12px;
+  /* 11.5px, 13px and 17px at the default UI size; rem so ⌘= and ⌘- scale them */
+  --fs-small: 0.885rem;
+  --fs-base: 1rem;
+  --fs-large: 1.308rem;
 
-  --accent-blue: #0a84ff;
-  --accent-purple: #a259ff;
-  --accent-pink: #ff375f;
-  --accent-graphite: #8e8e93;
-  --accent: var(--accent-blue);
-  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
-  --accent-text: #fff;
+  --accent: var(--a-orange);
+  --o2: color-mix(in srgb, var(--text) 62%, transparent);
+  --o3: color-mix(in srgb, var(--text) 40%, transparent);
+  --cell: color-mix(in srgb, var(--accent) 24%, transparent);
+  --sel: color-mix(in srgb, var(--accent) 20%, transparent);
+  --lit: color-mix(in srgb, var(--accent) 15%, transparent);
 
-  --bg: #ffffff;
-  --bg-elevated: #ffffff;
-  --bg-sidebar: #f3f3f5;
-  --bg-toolbar: #f7f7f8;
-  --bg-hover: rgba(0, 0, 0, 0.045);
-  --bg-active: rgba(0, 0, 0, 0.08);
-  --bg-input: #ffffff;
-  --bg-grid-stripe: rgba(0, 0, 0, 0.022);
-  --border: rgba(0, 0, 0, 0.1);
-  --border-strong: rgba(0, 0, 0, 0.18);
-  --text: #1d1d1f;
-  --text-secondary: #6e6e73;
-  --text-tertiary: #a1a1a6;
-
-  --danger: #d70015;
-  --danger-soft: rgba(215, 0, 21, 0.08);
-  --success: #248a3d;
-  --success-soft: rgba(36, 138, 61, 0.12);
-  --warning: #b25000;
-  --warning-soft: rgba(178, 80, 0, 0.12);
-  --info: #1c55c6;
-  --info-soft: rgba(28, 85, 198, 0.1);
-  --shadow-popover: 0 0.6rem 2.2rem rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
-
-  --type-number: #1c55c6;
-  --type-temporal: #8a3ffc;
-  --type-json: #b25000;
-  --type-null: var(--text-tertiary);
-
-  /* status hues for pills and charts (not the accent) */
-  --chart-green: #3a9b6f;
-  --chart-blue: #4a7fd6;
-  --chart-red: #d65a5a;
-  --chart-orange: #e09a3a;
-  --chart-purple: #8b6fd6;
-  --chart-gray: #9a9aa2;
-
-  /* category palette: 7 hues + neutral for "Other" */
-  --category-1: #4a7fd6;
-  --category-2: #3aa391;
-  --category-3: #d6894a;
-  --category-4: #8b6fd6;
-  --category-5: #d65a8a;
-  --category-6: #b9a63a;
-  --category-7: #5aa0c8;
-  --category-other: #a7a7ae;
-
-  /* soft fills for the (legacy) treemap tiles */
-  --tile-green: #d7efe3;
-  --tile-blue: #dbe6fb;
-  --tile-purple: #e6defb;
-  --tile-red: #f8dcd6;
-  --tile-orange: #fbe8cf;
-  --tile-gray: #ececef;
-  --tile-text: #1d1d1f;
-  --flash: rgba(255, 196, 0, 0.35);
+  /* Row padding step 2; lib/theme.ts sets the chosen step. The line grows past 20px only for large
+     data font sizes, so rows never clip their text. */
+  --pad: 3px;
+  --row-h: calc(max(20px, var(--data-font-size) * 1.6) + 2 * var(--pad));
 
   --radius-sm: 0.462rem;
   --radius: 0.692rem;
   --radius-lg: 0.923rem;
-  /* inset canvas: chrome sits on the window's vibrancy, content on raised panels */
-  --bg-chrome: transparent;
-  --bg-panel: #ffffff;
-  --bg-surface: #f5f5f7;
-  --shadow-panel: 0 0 0 0.5px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.05), 0 0.6rem 1.8rem -0.9rem rgba(0, 0, 0, 0.18);
-  --panel-gap: 0.462rem;
   --sidebar-width: 19.231rem;
+  --toolbar-height: 4rem;
+  --panel-gap: 0.462rem;
   --radius-panel: 0.769rem;
 
-  /* set in px by lib/theme.ts from the data size and density, so the virtualizer and CSS agree */
-  --row-height: 26px;
-  --toolbar-height: 4rem;
-  color-scheme: light;
+  /* alias: removed in U2b/U12 */
+  --accent-soft: var(--sel);
+  /* alias: removed in U2b/U12 */
+  --accent-text: var(--on-accent);
+  /* alias: removed in U2b/U12 */
+  --bg-elevated: var(--pop);
+  /* alias: removed in U2b/U12 */
+  --bg-sidebar: var(--chrome);
+  /* alias: removed in U2b/U12 */
+  --bg-toolbar: var(--chrome);
+  /* alias: removed in U2b/U12 */
+  --bg-chrome: var(--chrome);
+  /* alias: removed in U2b/U12 */
+  --bg-panel: var(--bg);
+  /* alias: removed in U2b/U12 */
+  --bg-surface: var(--band);
+  /* alias: removed in U2b/U12 */
+  --bg-hover: var(--row-hover);
+  /* alias: removed in U2b/U12 */
+  --bg-active: color-mix(in srgb, var(--text) 12%, transparent);
+  /* alias: removed in U2b/U12 */
+  --bg-input: var(--field);
+  /* alias: removed in U2b/U12 */
+  --bg-grid-stripe: color-mix(in srgb, var(--text) 3%, transparent);
+  /* alias: removed in U2b/U12 */
+  --border: var(--line);
+  /* alias: removed in U2b/U12 */
+  --border-strong: var(--field-line);
+  /* alias: removed in U2b/U12 */
+  --text-secondary: var(--o2);
+  /* alias: removed in U2b/U12 */
+  --text-tertiary: var(--o3);
+  /* alias: removed in U2b/U12 */
+  --shadow-popover: var(--shadow);
+  /* alias: removed in U2b/U12 */
+  --shadow-panel: 0 0 0 1px var(--line);
+  /* alias: removed in U2b/U12 */
+  --row-height: var(--row-h);
+  /* alias: removed in U2b/U12 */
+  --flash: color-mix(in srgb, var(--accent) 26%, transparent);
+
+  /* alias: removed in U2b/U12 */
+  --danger: var(--style-red);
+  /* alias: removed in U2b/U12 */
+  --danger-soft: color-mix(in srgb, var(--style-red) 12%, transparent);
+  /* alias: removed in U2b/U12 */
+  --success: var(--style-green);
+  /* alias: removed in U2b/U12 */
+  --success-soft: color-mix(in srgb, var(--style-green) 14%, transparent);
+  /* alias: removed in U2b/U12 */
+  --warning: var(--style-yellow);
+  /* alias: removed in U2b/U12 */
+  --warning-soft: color-mix(in srgb, var(--style-yellow) 14%, transparent);
+  /* alias: removed in U2b/U12 */
+  --info: var(--style-blue);
+  /* alias: removed in U2b/U12 */
+  --info-soft: color-mix(in srgb, var(--style-blue) 12%, transparent);
+
+  /* alias: removed in U2b/U12 */
+  --type-number: var(--style-blue);
+  /* alias: removed in U2b/U12 */
+  --type-temporal: var(--style-purple);
+  /* alias: removed in U2b/U12 */
+  --type-json: var(--style-yellow);
+  /* alias: removed in U2b/U12 */
+  --type-null: var(--o3);
+
+  /* alias: removed in U2b/U12 */
+  --chart-green: var(--style-green);
+  /* alias: removed in U2b/U12 */
+  --chart-blue: var(--style-blue);
+  /* alias: removed in U2b/U12 */
+  --chart-red: var(--style-red);
+  /* alias: removed in U2b/U12 */
+  --chart-orange: var(--a-orange);
+  /* alias: removed in U2b/U12 */
+  --chart-purple: var(--style-purple);
+  /* alias: removed in U2b/U12 */
+  --chart-gray: var(--a-graphite);
+
+  /* alias: removed in U2b/U12 */
+  --category-1: var(--style-blue);
+  /* alias: removed in U2b/U12 */
+  --category-2: var(--style-green);
+  /* alias: removed in U2b/U12 */
+  --category-3: var(--a-orange);
+  /* alias: removed in U2b/U12 */
+  --category-4: var(--style-purple);
+  /* alias: removed in U2b/U12 */
+  --category-5: var(--style-red);
+  /* alias: removed in U2b/U12 */
+  --category-6: var(--style-yellow);
+  /* alias: removed in U2b/U12 */
+  --category-7: var(--a-blue);
+  /* alias: removed in U2b/U12 */
+  --category-other: var(--a-graphite);
+
+  /* alias: removed in U2b/U12 */
+  --tile-green: color-mix(in srgb, var(--style-green) 18%, var(--bg));
+  /* alias: removed in U2b/U12 */
+  --tile-blue: color-mix(in srgb, var(--style-blue) 18%, var(--bg));
+  /* alias: removed in U2b/U12 */
+  --tile-purple: color-mix(in srgb, var(--style-purple) 18%, var(--bg));
+  /* alias: removed in U2b/U12 */
+  --tile-red: color-mix(in srgb, var(--style-red) 18%, var(--bg));
+  /* alias: removed in U2b/U12 */
+  --tile-orange: color-mix(in srgb, var(--a-orange) 18%, var(--bg));
+  /* alias: removed in U2b/U12 */
+  --tile-gray: color-mix(in srgb, var(--a-graphite) 18%, var(--bg));
+  /* alias: removed in U2b/U12 */
+  --tile-text: var(--text);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #1c1c1e;
-    --bg-elevated: #2a2a2d;
-    --bg-panel: #1c1c1e;
-    --bg-surface: #262628;
-    --shadow-panel: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 0.6rem 1.8rem -0.6rem rgba(0, 0, 0, 0.55);
-
-    --bg-sidebar: #252528;
-    --bg-toolbar: #232326;
-    --bg-hover: rgba(255, 255, 255, 0.06);
-    --bg-active: rgba(255, 255, 255, 0.11);
-    --bg-input: #2c2c2f;
-    --bg-grid-stripe: rgba(255, 255, 255, 0.025);
-    --border: rgba(255, 255, 255, 0.09);
-    --border-strong: rgba(255, 255, 255, 0.16);
-    --text: #f2f2f4;
-    --text-secondary: #a1a1a8;
-    --text-tertiary: #6c6c72;
-    --danger: #ff6961;
-    --danger-soft: rgba(255, 105, 97, 0.12);
-    --success: #4cd964;
-    --success-soft: rgba(76, 217, 100, 0.14);
-    --warning: #ffb340;
-    --warning-soft: rgba(255, 179, 64, 0.14);
-    --info: #7cacf8;
-    --info-soft: rgba(124, 172, 248, 0.14);
-    --shadow-popover: 0 0.8rem 2.6rem rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
-    --type-number: #7cacf8;
-    --type-temporal: #c5a3ff;
-    --type-json: #ffb340;
-    --chart-green: #48a77a;
-    --chart-blue: #5b8fe6;
-    --chart-red: #e06a62;
-    --chart-orange: #e8a24a;
-    --chart-purple: #9a82e8;
-    --chart-gray: #6c6c74;
-    --category-1: #5b8fe6;
-    --category-2: #48b5a1;
-    --category-3: #e39a5c;
-    --category-4: #9a82e8;
-    --category-5: #e46d9c;
-    --category-6: #cdb94c;
-    --category-7: #6cb3dc;
-    --category-other: #6c6c74;
-    --tile-green: #12332a;
-    --tile-blue: #172846;
-    --tile-purple: #231d4a;
-    --tile-red: #3a1a12;
-    --tile-orange: #3a2a12;
-    --tile-gray: #2a2a2e;
-    --tile-text: #f2f2f4;
-    --flash: rgba(255, 196, 0, 0.25);
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
-  --bg: #1c1c1e;
-  --bg-elevated: #2a2a2d;
-  --bg-panel: #1c1c1e;
-  --bg-surface: #262628;
-  --shadow-panel: 0 0 0 0.5px rgba(255, 255, 255, 0.08), 0 0.6rem 1.8rem -0.6rem rgba(0, 0, 0, 0.55);
-
-  --bg-sidebar: #252528;
-  --bg-toolbar: #232326;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-active: rgba(255, 255, 255, 0.11);
-  --bg-input: #2c2c2f;
-  --bg-grid-stripe: rgba(255, 255, 255, 0.025);
-  --border: rgba(255, 255, 255, 0.09);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --text: #f2f2f4;
-  --text-secondary: #a1a1a8;
-  --text-tertiary: #6c6c72;
-  --danger: #ff6961;
-  --danger-soft: rgba(255, 105, 97, 0.12);
-  --success: #4cd964;
-  --success-soft: rgba(76, 217, 100, 0.14);
-  --warning: #ffb340;
-  --warning-soft: rgba(255, 179, 64, 0.14);
-  --info: #7cacf8;
-  --info-soft: rgba(124, 172, 248, 0.14);
-  --shadow-popover: 0 0.8rem 2.6rem rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
-  --type-number: #7cacf8;
-  --type-temporal: #c5a3ff;
-  --type-json: #ffb340;
-  --chart-green: #48a77a;
-  --chart-blue: #5b8fe6;
-  --chart-red: #e06a62;
-  --chart-orange: #e8a24a;
-  --chart-purple: #9a82e8;
-  --chart-gray: #6c6c74;
-  --category-1: #5b8fe6;
-  --category-2: #48b5a1;
-  --category-3: #e39a5c;
-  --category-4: #9a82e8;
-  --category-5: #e46d9c;
-  --category-6: #cdb94c;
-  --category-7: #6cb3dc;
-  --category-other: #6c6c74;
-  --tile-green: #12332a;
-  --tile-blue: #172846;
-  --tile-purple: #231d4a;
-  --tile-red: #3a1a12;
-  --tile-orange: #3a2a12;
-  --tile-gray: #2a2a2e;
-  --tile-text: #f2f2f4;
-  --flash: rgba(255, 196, 0, 0.25);
-  color-scheme: dark;
-}
-
-:root[data-accent="purple"] { --accent: var(--accent-purple); }
-:root[data-accent="pink"] { --accent: var(--accent-pink); }
-:root[data-accent="graphite"] { --accent: var(--accent-graphite); }
+:root[data-accent="gold"] { --accent: var(--a-gold); }
+:root[data-accent="blue"] { --accent: var(--a-blue); }
+:root[data-accent="purple"] { --accent: var(--a-purple); }
+:root[data-accent="graphite"] { --accent: var(--a-graphite); }

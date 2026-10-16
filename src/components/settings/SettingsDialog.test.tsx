@@ -107,13 +107,70 @@ describe("SettingsDialog", () => {
     expect(useStore.getState().dialog).toBeNull();
   });
 
-  it("applies the saved theme and accent to the page", async () => {
-    mocked.getSettings.mockResolvedValue(settings());
-    render(<App />);
-    await userEvent.click(await screen.findByRole("button", { name: "Dark" }));
-    await userEvent.click(screen.getByRole("button", { name: "Accent purple" }));
-    expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(document.documentElement.dataset.accent).toBe("purple");
+  describe("Appearance page", () => {
+    const root = document.documentElement;
+    const start = (patch: Partial<ReturnType<typeof settings>> = {}) => {
+      mocked.getSettings.mockResolvedValue(settings(patch));
+      resetStore({ settings: settings(patch), dialog: { type: "settings" } });
+      render(<App />);
+    };
+
+    it("applies the saved theme and accent to the page", async () => {
+      start();
+      await userEvent.click(await screen.findByRole("button", { name: "Dark" }));
+      await userEvent.click(screen.getByRole("button", { name: "Accent purple" }));
+      expect(root.dataset.scheme).toBe("ayu-mirage");
+      expect(root.dataset.accent).toBe("purple");
+    });
+
+    it("saves the accent and applies it", async () => {
+      start();
+      await userEvent.click(await screen.findByRole("button", { name: "Accent gold" }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ accent: "gold" }));
+      expect(root.dataset.accent).toBe("gold");
+    });
+
+    it.each([
+      ["Dark", "dark", "ayu-mirage"],
+      ["Light", "light", "ayu-light"],
+    ])("switches to the %s scheme", async (name, theme, scheme) => {
+      start({ theme: theme === "dark" ? "light" : "dark" });
+      await userEvent.click(await screen.findByRole("button", { name }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ theme }));
+      expect(root.dataset.scheme).toBe(scheme);
+    });
+
+    it("saves the row padding and applies it", async () => {
+      start();
+      await userEvent.click(within(await screen.findByRole("group", { name: "Row padding" })).getByRole("button", { name: "1" }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ rowPadding: 1 }));
+      expect(root.style.getPropertyValue("--pad")).toBe("1px");
+    });
+
+    it("saves a typed mono font on Enter and applies it", async () => {
+      start();
+      await userEvent.type(await screen.findByLabelText("Mono font"), "Fira Code{Enter}");
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ fontMono: "Fira Code" }));
+      expect(root.style.getPropertyValue("--font-mono")).toContain("Fira Code");
+    });
+
+    it("saves null and drops the override when the mono font is emptied", async () => {
+      start({ fontMono: "Fira Code" });
+      const field = await screen.findByLabelText("Mono font");
+      await userEvent.clear(field);
+      await userEvent.keyboard("{Enter}");
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ fontMono: null }));
+      expect(root.style.getPropertyValue("--font-mono")).toBe("");
+    });
+
+    it.each([
+      ["Light scheme", "Ayu Mirage", "lightScheme", "ayu-mirage"],
+      ["Dark scheme", "Ayu Light", "darkScheme", "ayu-light"],
+    ])("saves the %s selection", async (label, option, key, id) => {
+      start();
+      await userEvent.selectOptions(await screen.findByLabelText(label), option);
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ [key]: id }));
+    });
   });
 
   it("records, resets and saves shortcut overrides", async () => {
