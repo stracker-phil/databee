@@ -429,6 +429,7 @@ pub async fn options_group(
     let hints = hints::HintContext {
         currency: ctx.site.currency.clone(),
         gmt_offset_secs: ctx.site.gmt_offset_secs,
+        price_decimals: ctx.site.price_decimals,
     };
     Ok(rs
         .rows

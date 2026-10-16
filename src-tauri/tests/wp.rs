@@ -300,6 +300,19 @@ async fn peek_summarizes_an_entity_in_a_few_facts() {
             .await
             .unwrap();
         assert!(user.iter().any(|f| f.label == "Email"));
+        let buyer = databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "user", "12")
+            .await
+            .unwrap();
+        let labels: Vec<&str> = buyer.iter().map(|f| f.label.as_str()).collect();
+        assert!(
+            labels.contains(&"Orders") && labels.contains(&"Spent"),
+            "{labels:?}"
+        );
+        assert_eq!(
+            labels.iter().position(|l| *l == "Orders"),
+            Some(1),
+            "{labels:?}"
+        );
         assert!(
             databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "order", "999999")
                 .await
@@ -584,13 +597,27 @@ async fn order_view_tells_the_story_of_a_checkout() {
             .unwrap();
         assert_eq!(
             logs.len(),
-            2,
-            "PayPal order ID and #4711 match, #14711 does not"
+            3,
+            "PayPal PATCH row, #4711 email row and serialized-context webhook row: {logs:?}"
         );
+        for l in &logs {
+            let text = format!("{} {}", l.title, l.raw.as_deref().unwrap_or(""));
+            assert!(
+                !text.contains("Stock reduced for order #47110")
+                    && !text.contains("Unrelated error #14711"),
+                "{text}"
+            );
+        }
+        let webhook = logs
+            .iter()
+            .find(|l| l.title.contains("Webhook delivered"))
+            .unwrap();
+        assert_eq!(webhook.detail.as_deref(), Some("webhooks"));
         let paypal = logs
             .iter()
             .find(|l| l.detail.as_deref() == Some("woocommerce-paypal-payments"))
             .unwrap();
+        assert_eq!(paypal.level, "info");
         assert_eq!(paypal.title, "PayPal API · PATCH order");
         assert!(paypal.raw.as_deref().unwrap().contains("66M12696JX411763D"));
         let row = paypal.row.as_ref().unwrap();

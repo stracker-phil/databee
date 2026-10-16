@@ -5,6 +5,8 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde::Serialize;
 
+use super::hints::DEFAULT_PRICE_DECIMALS;
+
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SiteInfo {
@@ -15,7 +17,7 @@ pub struct SiteInfo {
 }
 
 /// Site-level facts read from `wp_options`.
-#[derive(Serialize, Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SiteMeta {
     pub name: Option<String>,
@@ -28,6 +30,23 @@ pub struct SiteMeta {
     pub active_plugins: Vec<String>,
     /// Base URL for uploads, from `upload_url_path` or `<siteurl>/wp-content/uploads`.
     pub uploads_url: Option<String>,
+    /// From `woocommerce_price_num_decimals`.
+    pub price_decimals: u32,
+}
+
+impl Default for SiteMeta {
+    fn default() -> Self {
+        Self {
+            name: None,
+            url: None,
+            currency: None,
+            gmt_offset_secs: 0,
+            theme: None,
+            active_plugins: Vec::new(),
+            uploads_url: None,
+            price_decimals: DEFAULT_PRICE_DECIMALS,
+        }
+    }
 }
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +128,7 @@ pub const PROBED_OPTIONS: &[&str] = &[
     "siteurl",
     "blogname",
     "woocommerce_currency",
+    "woocommerce_price_num_decimals",
     "gmt_offset",
     "template",
     "stylesheet",
@@ -151,6 +171,9 @@ fn site_meta(options: &HashMap<String, String>) -> SiteMeta {
             .map_or(0, |h| (h * 3600.0) as i64),
         theme: opt("stylesheet").or_else(|| opt("template")),
         active_plugins,
+        price_decimals: opt("woocommerce_price_num_decimals")
+            .and_then(|d| d.trim().parse().ok())
+            .unwrap_or(DEFAULT_PRICE_DECIMALS),
     }
 }
 
@@ -334,6 +357,24 @@ mod tests {
             ["woocommerce", "woocommerce-paypal-payments"]
         );
         assert_eq!(ctx.site.theme.as_deref(), Some("storefront"));
+    }
+
+    #[test]
+    fn price_decimals_come_from_the_option_and_default_to_two() {
+        for (option, expected) in [
+            (Some("3"), 3),
+            (Some("0"), 0),
+            (Some("abc"), 2),
+            (Some(""), 2),
+            (None, 2),
+        ] {
+            let pairs: Vec<(&str, &str)> = option
+                .map(|v| ("woocommerce_price_num_decimals", v))
+                .into_iter()
+                .collect();
+            let ctx = build(&tables(CORE), &opts(&pairs), &HashMap::new()).unwrap();
+            assert_eq!(ctx.site.price_decimals, expected, "{option:?}");
+        }
     }
 
     #[test]

@@ -169,6 +169,7 @@ INSERT INTO wp_woocommerce_log (timestamp, level, source, message, context) VALU
   (UTC_TIMESTAMP() - INTERVAL 1 DAY, 100, 'woocommerce-paypal-payments', 'PATCH https://api-m.sandbox.paypal.com/v2/checkout/orders/66M12696JX411763D', NULL),
   (UTC_TIMESTAMP() - INTERVAL 1 DAY, 200, 'transactional-emails', 'Email "new_order" for order #4711 sent', NULL),
   (UTC_TIMESTAMP() - INTERVAL 1 DAY, 400, 'other', 'Unrelated error #14711', NULL),
+  (UTC_TIMESTAMP() - INTERVAL 1 DAY, 200, 'other', 'Stock reduced for order #47110', NULL),
   (UTC_TIMESTAMP() - INTERVAL 1 DAY, 200, 'webhooks', 'Webhook delivered', 'a:1:{s:5:"order";i:4711;}');
 INSERT INTO wp_woocommerce_payment_tokens (token_id, gateway_id, token, user_id, type, is_default) VALUES (7, 'ppcp-credit-card-gateway', 'tok_1', 12, 'CC', 1);
 INSERT INTO wp_woocommerce_payment_tokenmeta (payment_token_id, meta_key, meta_value) VALUES (7, 'card_type', 'visa'), (7, 'last4', '2503'), (7, 'expiry_month', '01'), (7, 'expiry_year', '2029');

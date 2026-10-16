@@ -367,6 +367,7 @@ export interface WpContext {
     theme: string | null;
     activePlugins: string[];
     uploadsUrl: string | null;
+    priceDecimals: number;
   };
 }
 

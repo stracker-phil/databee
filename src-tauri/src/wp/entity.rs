@@ -525,6 +525,7 @@ pub fn assemble(
             let hints = HintContext {
                 currency,
                 gmt_offset_secs: ctx.site.gmt_offset_secs,
+                price_decimals: ctx.site.price_decimals,
             };
 
             let fields = rows

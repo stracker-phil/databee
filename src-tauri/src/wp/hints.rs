@@ -2,9 +2,11 @@
 //! raw text into render hints (money, time, flag, …) and sensitivity. Hints annotate the
 //! raw value in the UI; they never replace it or rename the key.
 
+use std::str::FromStr;
 use std::sync::OnceLock;
 
 use chrono::{DateTime, NaiveDateTime};
+use rust_decimal::{Decimal, RoundingStrategy};
 use serde::{Deserialize, Serialize};
 
 use super::php::{self, PhpValue};
@@ -125,10 +127,21 @@ pub struct Annotation {
 }
 
 /// Site facts that affect rendering.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct HintContext {
     pub currency: Option<String>,
     pub gmt_offset_secs: i64,
+    pub price_decimals: u32,
+}
+
+impl Default for HintContext {
+    fn default() -> Self {
+        Self {
+            currency: None,
+            gmt_offset_secs: 0,
+            price_decimals: DEFAULT_PRICE_DECIMALS,
+        }
+    }
 }
 
 pub fn annotate(key: &str, raw: Option<&str>, ctx: &HintContext) -> Annotation {
@@ -150,7 +163,9 @@ pub fn annotate(key: &str, raw: Option<&str>, ctx: &HintContext) -> Annotation {
 
 fn hint_for(render: Render, key: &str, raw: &str, ctx: &HintContext) -> Option<Hint> {
     match render {
-        Render::Money => money(raw, ctx.currency.as_deref()).map(|text| Hint::Money { text }),
+        Render::Money => amount(raw).map(|value| Hint::Money {
+            text: format_money(value, ctx.currency.as_deref(), ctx.price_decimals),
+        }),
         Render::Time => time(key, raw, ctx),
         Render::Flag => flag(raw, true),
         Render::Url => url(raw),
@@ -278,25 +293,57 @@ fn currency_symbol(code: &str) -> Option<&'static str> {
     })
 }
 
-/// `95.40000000` + `USD` → `$95.40`; amounts without currency get two decimals.
-pub fn money(raw: &str, currency: Option<&str>) -> Option<String> {
-    let value: f64 = raw.trim().parse().ok()?;
-    let fixed = format!("{:.2}", value.abs());
-    let (int_part, cents) = fixed.split_once('.').unwrap_or((&fixed, "00"));
+/// `woocommerce_price_num_decimals` when the option is not set.
+pub const DEFAULT_PRICE_DECIMALS: u32 = 2;
+
+/// A stored amount as an exact decimal; `None` for text, `inf`, `NaN` or more than 28 digits.
+fn amount(raw: &str) -> Option<Decimal> {
+    let raw = raw.trim();
+    Decimal::from_str(raw)
+        .or_else(|_| Decimal::from_scientific(raw))
+        .ok()
+}
+
+/// `95.40000000` + `USD` + 2 → `$95.40`, rounded half away from zero; never `−0.00`.
+fn format_money(value: Decimal, currency: Option<&str>, decimals: u32) -> String {
+    let rounded = value.round_dp_with_strategy(decimals, RoundingStrategy::MidpointAwayFromZero);
+    let mut magnitude = rounded.abs();
+    magnitude.rescale(decimals);
+    let fixed = magnitude.to_string();
+    let (int_part, fraction) = fixed.split_once('.').unwrap_or((&fixed, ""));
     let grouped: Vec<String> = int_part
         .as_bytes()
         .rchunks(3)
         .rev()
         .map(|c| String::from_utf8_lossy(c).into_owned())
         .collect();
-    let amount = format!("{}.{cents}", grouped.join(","));
-    let sign = if value < 0.0 { "−" } else { "" };
-    Some(match currency {
+    let amount = match fraction {
+        "" => grouped.join(","),
+        f => format!("{}.{f}", grouped.join(",")),
+    };
+    let sign = if rounded.is_sign_negative() && !rounded.is_zero() {
+        "−"
+    } else {
+        ""
+    };
+    match currency {
         Some(code) => match currency_symbol(code) {
             Some(sym) => format!("{sign}{sym}{amount}"),
             None => format!("{sign}{amount} {code}"),
         },
         None => format!("{sign}{amount}"),
+    }
+}
+
+/// Formats a stored amount; unlike the `Render::Money` hint, non-numeric text comes back as stored (empty as `None`).
+pub fn money(raw: &str, currency: Option<&str>, decimals: u32) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(match amount(trimmed) {
+        Some(value) => format_money(value, currency, decimals),
+        None => trimmed.to_string(),
     })
 }
 
@@ -378,6 +425,7 @@ mod tests {
         HintContext {
             currency: Some("USD".into()),
             gmt_offset_secs: 3600,
+            price_decimals: 2,
         }
     }
 
@@ -402,10 +450,54 @@ mod tests {
                 text: "$95.40".into()
             })
         );
-        assert_eq!(money("-10", Some("EUR")).unwrap(), "−€10.00");
-        assert_eq!(money("5", Some("SEK")).unwrap(), "5.00 SEK");
-        assert_eq!(money("1999", Some("USD")).unwrap(), "$1,999.00");
-        assert_eq!(money("1234567.891", None).unwrap(), "1,234,567.89");
+        assert_eq!(money("-10", Some("EUR"), 2).unwrap(), "−€10.00");
+        assert_eq!(money("5", Some("SEK"), 2).unwrap(), "5.00 SEK");
+        assert_eq!(money("1999", Some("USD"), 2).unwrap(), "$1,999.00");
+        assert_eq!(money("1234567.891", None, 2).unwrap(), "1,234,567.89");
+    }
+
+    #[test]
+    fn money_edge_cases_keep_stored_text_or_round_exactly() {
+        for (raw, currency, decimals, expected) in [
+            ("inf", Some("USD"), 2, Some("inf")),
+            ("NaN", Some("USD"), 2, Some("NaN")),
+            ("", Some("USD"), 2, None),
+            (
+                "12345678901234567.89",
+                None,
+                2,
+                Some("12,345,678,901,234,567.89"),
+            ),
+            ("-0.001", None, 2, Some("0.00")),
+            ("1.2345", Some("USD"), 3, Some("$1.235")),
+            ("-1.0005", None, 3, Some("−1.001")),
+            ("1999.5", None, 0, Some("2,000")),
+        ] {
+            assert_eq!(
+                money(raw, currency, decimals).as_deref(),
+                expected,
+                "{raw} {decimals}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_finite_amounts_get_no_money_hint() {
+        assert_eq!(hint("total_amount", "inf"), None);
+    }
+
+    #[test]
+    fn money_hint_uses_the_site_price_decimals() {
+        let ctx = HintContext {
+            price_decimals: 3,
+            ..ctx()
+        };
+        assert_eq!(
+            annotate("total_amount", Some("95.4"), &ctx).hint,
+            Some(Hint::Money {
+                text: "$95.400".into()
+            })
+        );
     }
 
     #[test]

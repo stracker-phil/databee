@@ -1,4 +1,4 @@
-//! Hover peek: 3–5 key facts about an entity, derived from its document so HPOS and legacy
+//! Hover peek: up to seven key facts about an entity, derived from its document so HPOS and legacy
 //! storage need no special cases. Also "find everywhere": one value looked up across options,
 //! every meta table, Action Scheduler args and the WooCommerce log.
 
@@ -6,8 +6,8 @@ use serde::Serialize;
 
 use super::context::WpContext;
 use super::entity::{Catalog, EntityDoc, cell_str};
-use super::hints::Hint;
-use super::lists::{num, text};
+use super::hints::{Hint, money};
+use super::lists::{like, num, text};
 use super::{fetch, load_docs, quote_ident, sql_string};
 use crate::db::mysql::MySqlSession;
 use crate::error::AppResult;
@@ -133,35 +133,50 @@ pub async fn peek(
         });
     }
     if entity == "user" && ctx.hpos() {
-        let rs = fetch(
-            session,
-            &format!(
-                "SELECT COUNT(*), COALESCE(SUM(total_amount), 0) FROM {}.{} WHERE type = 'shop_order' AND customer_id = {} AND status IN ('wc-completed', 'wc-processing')",
-                quote_ident(db),
-                quote_ident(&ctx.table("wc_orders")),
-                id.parse::<u64>().unwrap_or(0)
-            ),
-        )
-        .await?;
-        if let Some(r) = rs.rows.first() {
-            let n = num(&r[0]).unwrap_or(0);
-            facts.push(PeekFact {
-                label: "Orders".into(),
-                value: format!("{n}"),
-                kind: "text",
-            });
-            if let Some(spent) =
-                text(&r[1]).and_then(|s| super::hints::money(&s, ctx.site.currency.as_deref()))
-            {
-                facts.push(PeekFact {
-                    label: "Spent".into(),
-                    value: spent,
-                    kind: "money",
-                });
-            }
-        }
+        // Order stats are the most telling facts about a customer: right after the identity.
+        let after_identity = facts.len().min(1);
+        let stats = customer_order_facts(session, ctx, db, id).await?;
+        facts.splice(after_identity..after_identity, stats);
     }
-    facts.truncate(5);
+    facts.truncate(MAX_FACTS);
+    Ok(facts)
+}
+
+const MAX_FACTS: usize = 7;
+
+async fn customer_order_facts(
+    session: &MySqlSession,
+    ctx: &WpContext,
+    db: &str,
+    id: &str,
+) -> AppResult<Vec<PeekFact>> {
+    let rs = fetch(
+        session,
+        &format!(
+            "SELECT COUNT(*), COALESCE(SUM(total_amount), 0) FROM {}.{} WHERE type = 'shop_order' AND customer_id = {} AND status IN ('wc-completed', 'wc-processing')",
+            quote_ident(db),
+            quote_ident(&ctx.table("wc_orders")),
+            id.parse::<u64>().unwrap_or(0)
+        ),
+    )
+    .await?;
+    let Some(r) = rs.rows.first() else {
+        return Ok(Vec::new());
+    };
+    let mut facts = vec![PeekFact {
+        label: "Orders".into(),
+        value: num(&r[0]).unwrap_or(0).to_string(),
+        kind: "text",
+    }];
+    if let Some(spent) =
+        text(&r[1]).and_then(|s| money(&s, ctx.site.currency.as_deref(), ctx.site.price_decimals))
+    {
+        facts.push(PeekFact {
+            label: "Spent".into(),
+            value: spent,
+            kind: "money",
+        });
+    }
     Ok(facts)
 }
 
@@ -298,16 +313,6 @@ const SOURCES: &[Source] = &[
     },
 ];
 
-fn escaped_like(value: &str) -> String {
-    sql_string(&format!(
-        "%{}%",
-        value
-            .replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
-    ))
-}
-
 pub async fn find_value(
     session: &MySqlSession,
     ctx: &WpContext,
@@ -329,7 +334,7 @@ pub async fn find_value(
             .iter()
             .map(|c| {
                 if src.like {
-                    format!("{} LIKE {}", quote_ident(c), escaped_like(value))
+                    format!("{} LIKE {}", quote_ident(c), like(value))
                 } else {
                     format!("{} = {}", quote_ident(c), sql_string(value))
                 }
@@ -350,7 +355,7 @@ pub async fn find_value(
             .iter()
             .map(|c| {
                 let cond = if src.like {
-                    format!("{} LIKE {}", quote_ident(c), escaped_like(value))
+                    format!("{} LIKE {}", quote_ident(c), like(value))
                 } else {
                     format!("{} = {}", quote_ident(c), sql_string(value))
                 };

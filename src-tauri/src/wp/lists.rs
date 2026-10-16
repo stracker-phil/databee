@@ -156,7 +156,7 @@ pub(crate) fn int(cell: &Cell) -> Option<i64> {
     cell_str(cell)?.trim().parse::<f64>().ok().map(|f| f as i64)
 }
 
-fn like(s: &str) -> String {
+pub(crate) fn like(s: &str) -> String {
     let escaped = s
         .replace('\\', "\\\\")
         .replace('%', "\\%")
@@ -309,7 +309,11 @@ pub fn orders_sql(db: &str, ctx: &WpContext, order_type: &str, q: &ListQuery) ->
     }
 }
 
-pub fn order_rows(rs: &ResultSet, fallback_currency: Option<&str>) -> Vec<OrderSummary> {
+pub fn order_rows(
+    rs: &ResultSet,
+    fallback_currency: Option<&str>,
+    decimals: u32,
+) -> Vec<OrderSummary> {
     rs.rows
         .iter()
         .filter(|r| r.len() > ORDER_COLS)
@@ -319,7 +323,7 @@ pub fn order_rows(rs: &ResultSet, fallback_currency: Option<&str>) -> Vec<OrderS
                 id: text(&r[0]).unwrap_or_default(),
                 kind: text(&r[1]).unwrap_or_default(),
                 status: text(&r[2]).unwrap_or_default(),
-                total: text(&r[3]).and_then(|v| money(&v, currency.as_deref())),
+                total: text(&r[3]).and_then(|v| money(&v, currency.as_deref(), decimals)),
                 gateway: text(&r[5]),
                 gateway_title: text(&r[6]),
                 email: text(&r[7]),
@@ -371,7 +375,10 @@ pub async fn orders(
     q: &ListQuery,
 ) -> AppResult<Page<OrderSummary>> {
     let rs = fetch(session, &orders_sql(db, ctx, order_type, q)).await?;
-    let (items, has_more) = page_split(order_rows(&rs, ctx.site.currency.as_deref()), q.limit());
+    let (items, has_more) = page_split(
+        order_rows(&rs, ctx.site.currency.as_deref(), ctx.site.price_decimals),
+        q.limit(),
+    );
     let (status_sql, gateway_sql) = order_facets_sql(db, ctx, order_type);
     let statuses = fetch(session, &status_sql).await?;
     let gateways = fetch(session, &gateway_sql).await?;
@@ -483,7 +490,7 @@ pub fn guests_sql(
     }
 }
 
-pub fn guest_rows(rs: &ResultSet, currency: Option<&str>) -> Vec<UserSummary> {
+pub fn guest_rows(rs: &ResultSet, currency: Option<&str>, decimals: u32) -> Vec<UserSummary> {
     rs.rows
         .iter()
         .filter_map(|r| {
@@ -495,7 +502,7 @@ pub fn guest_rows(rs: &ResultSet, currency: Option<&str>) -> Vec<UserSummary> {
                 registered: int(&r[4]),
                 roles: vec!["Guest".into()],
                 order_count: num(&r[1]).unwrap_or(0),
-                total_spent: text(&r[2]).and_then(|v| money(&v, currency)),
+                total_spent: text(&r[2]).and_then(|v| money(&v, currency, decimals)),
                 last_order: int(&r[3]),
                 avatar: None,
                 email: Some(email),
@@ -593,7 +600,8 @@ pub async fn users(
         for c in &mut items {
             if let Some(r) = by_id.get(&c.id) {
                 c.order_count = num(&r[1]).unwrap_or(0);
-                c.total_spent = text(&r[2]).and_then(|v| money(&v, ctx.site.currency.as_deref()));
+                c.total_spent = text(&r[2])
+                    .and_then(|v| money(&v, ctx.site.currency.as_deref(), ctx.site.price_decimals));
                 c.last_order = int(&r[3]);
             }
         }
@@ -718,14 +726,14 @@ pub fn products_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
     )
 }
 
-fn price_text(raw: &str, currency: Option<&str>) -> String {
+fn price_text(raw: &str, currency: Option<&str>, decimals: u32) -> String {
     match raw.split_once('–') {
         Some((a, b)) => format!(
             "{}–{}",
-            money(a, currency).unwrap_or_else(|| a.into()),
-            money(b, currency).unwrap_or_else(|| b.into())
+            money(a, currency, decimals).unwrap_or_else(|| a.into()),
+            money(b, currency, decimals).unwrap_or_else(|| b.into())
         ),
-        None => money(raw, currency).unwrap_or_else(|| raw.into()),
+        None => money(raw, currency, decimals).unwrap_or_else(|| raw.into()),
     }
 }
 
@@ -746,7 +754,7 @@ pub async fn products(
             status: text(&r[2]).unwrap_or_default(),
             kind: text(&r[3]),
             sku: text(&r[4]),
-            price: text(&r[5]).map(|p| price_text(&p, currency)),
+            price: text(&r[5]).map(|p| price_text(&p, currency, ctx.site.price_decimals)),
             stock_status: text(&r[6]),
             stock: text(&r[7]),
             total_sales: num(&r[8]).unwrap_or(0),
@@ -969,6 +977,7 @@ pub struct SessionSummary {
 pub fn session_summary(
     value: &str,
     currency: Option<&str>,
+    decimals: u32,
 ) -> (u64, Option<String>, Option<String>) {
     use super::php::{PhpKey, PhpValue, parse};
     let Ok(PhpValue::Array(top)) = parse(value.as_bytes()) else {
@@ -1009,7 +1018,7 @@ pub fn session_summary(
         .unwrap_or(0);
     let total = inner("cart_totals")
         .and_then(|t| field(&t, "total"))
-        .and_then(|v| money(&v, currency));
+        .and_then(|v| money(&v, currency, decimals));
     let email = inner("customer")
         .and_then(|c| field(&c, "email"))
         .filter(|e| !e.is_empty());
@@ -1038,7 +1047,7 @@ pub async fn sessions(
         .map(|r| {
             let key = text(&r[0]).unwrap_or_default();
             let (items, total, email) = text(&r[2])
-                .map(|v| session_summary(&v, ctx.site.currency.as_deref()))
+                .map(|v| session_summary(&v, ctx.site.currency.as_deref(), ctx.site.price_decimals))
                 .unwrap_or((0, None, None));
             SessionSummary {
                 customer_id: key.parse::<u64>().ok().map(|n| n.to_string()),
@@ -1287,7 +1296,7 @@ mod tests {
             ]],
             ..Default::default()
         };
-        let o = &order_rows(&rs, None)[0];
+        let o = &order_rows(&rs, None, 2)[0];
         assert_eq!(o.total.as_deref(), Some("$95.40"));
         assert_eq!(o.customer_id, None);
         assert_eq!(o.item_count, 2);
@@ -1296,8 +1305,11 @@ mod tests {
 
     #[test]
     fn product_prices_render_ranges() {
-        assert_eq!(price_text("10.0000–24.5000", Some("EUR")), "€10.00–€24.50");
-        assert_eq!(price_text("5", Some("USD")), "$5.00");
+        assert_eq!(
+            price_text("10.0000–24.5000", Some("EUR"), 2),
+            "€10.00–€24.50"
+        );
+        assert_eq!(price_text("5", Some("USD"), 2), "$5.00");
     }
 
     #[test]
@@ -1315,10 +1327,10 @@ mod tests {
             customer
         );
         assert_eq!(
-            session_summary(&value, Some("EUR")),
+            session_summary(&value, Some("EUR"), 2),
             (3, Some("€42.00".into()), Some("j@x.at".into()))
         );
-        assert_eq!(session_summary("garbage", None), (0, None, None));
+        assert_eq!(session_summary("garbage", None, 2), (0, None, None));
     }
 
     #[test]

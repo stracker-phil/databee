@@ -8,8 +8,8 @@ use serde::Serialize;
 
 use super::context::WpContext;
 use super::entity::{Catalog, EntityDoc, EntityLink, cell_str};
-use super::hints::{Hint, money};
-use super::lists::{self, ListQuery, OrderSummary, epoch, int, num, roles_of, text};
+use super::hints::{DEFAULT_PRICE_DECIMALS, Hint, money};
+use super::lists::{self, ListQuery, OrderSummary, epoch, int, like, num, roles_of, text};
 use super::php::{self, PhpKey, PhpValue};
 use super::{fetch, load_docs, post_images, sql_string, titles, value};
 use crate::db::mysql::MySqlSession;
@@ -281,10 +281,11 @@ pub fn paypal_fees(raw: &str) -> Option<Fees> {
     let f: f64 = fee.parse().ok()?;
     let n = net.and_then(|n| n.parse::<f64>().ok()).unwrap_or(g - f);
     let cur = (!currency.is_empty()).then_some(currency.as_str());
+    // PayPal reports fees in its own 2-decimal amounts, independent of the store's price decimals.
     Some(Fees {
-        gross: money(&g.to_string(), cur)?,
-        fee: money(&f.to_string(), cur)?,
-        net: money(&n.to_string(), cur)?,
+        gross: money(&g.to_string(), cur, DEFAULT_PRICE_DECIMALS)?,
+        fee: money(&f.to_string(), cur, DEFAULT_PRICE_DECIMALS)?,
+        net: money(&n.to_string(), cur, DEFAULT_PRICE_DECIMALS)?,
         fee_ratio: if g > 0.0 {
             (f / g).clamp(0.0, 1.0)
         } else {
@@ -293,11 +294,12 @@ pub fn paypal_fees(raw: &str) -> Option<Fees> {
     })
 }
 
-/// WooCommerce log levels (RFC 5424 mapped to 100–800).
+/// WooCommerce log levels (`WC_Log_Levels`): 100 debug, 200 info, 300 notice, 400 warning,
+/// 500 and up error, critical, alert, emergency. Debug and notice show as info.
 fn log_level(level: Option<u64>) -> &'static str {
     match level.unwrap_or(0) {
-        0..=250 => "info",
-        251..=300 => "warning",
+        0..=300 => "info",
+        301..=400 => "warning",
         _ => "error",
     }
 }
@@ -398,7 +400,7 @@ async fn order_items(
             .filter(|v| v != "0");
         out.push(LineItem {
             name: text(&r[1]).unwrap_or_default(),
-            total: total.and_then(|v| money(&v, currency)),
+            total: total.and_then(|v| money(&v, currency, ctx.site.price_decimals)),
             quantity,
             product: product_id.map(|p| link("post", p)),
             sku: None,
@@ -488,6 +490,7 @@ pub async fn order_view(
     let currency =
         pick(&doc, &["currency", "_order_currency"]).or_else(|| ctx.site.currency.clone());
     let cur = currency.as_deref();
+    let fmt_money = |v: &str| money(v, cur, ctx.site.price_decimals);
 
     // Addresses: HPOS table or legacy meta.
     let (billing, shipping) = if ctx.hpos() {
@@ -558,7 +561,7 @@ pub async fn order_view(
     let fmt = |k: &str| {
         sums.get(k)
             .filter(|v| **v != 0.0)
-            .and_then(|v| money(&format!("{v:.4}"), cur))
+            .and_then(|v| fmt_money(&format!("{v:.4}")))
     };
     let mut totals: Vec<(String, String)> = [
         ("Subtotal", fmt("subtotal")),
@@ -614,10 +617,10 @@ pub async fn order_view(
     if refunded > 0.0 {
         totals.push((
             "Refunded".into(),
-            format!("−{}", money(&refunded.to_string(), cur).unwrap_or_default()),
+            format!("−{}", fmt_money(&refunded.to_string()).unwrap_or_default()),
         ));
     }
-    if let Some(t) = total.as_deref().and_then(|v| money(v, cur)) {
+    if let Some(t) = total.as_deref().and_then(fmt_money) {
         totals.push(("Total".into(), t));
     }
 
@@ -630,9 +633,9 @@ pub async fn order_view(
                 let gross: f64 = total.as_deref()?.parse().ok()?;
                 let f: f64 = fee.parse().ok()?;
                 Some(Fees {
-                    gross: money(&gross.to_string(), cur)?,
-                    fee: money(&f.to_string(), cur)?,
-                    net: money(&(gross - f).to_string(), cur)?,
+                    gross: fmt_money(&gross.to_string())?,
+                    fee: fmt_money(&f.to_string())?,
+                    net: fmt_money(&(gross - f).to_string())?,
                     fee_ratio: if gross > 0.0 { f / gross } else { 0.0 },
                 })
             });
@@ -759,7 +762,7 @@ pub async fn order_view(
             *at,
             "refund",
             format!("Refund #{rid}"),
-            amount.as_deref().and_then(|a| money(a, cur)),
+            amount.as_deref().and_then(fmt_money),
             "warning",
             Some(link("order", rid.clone())),
         );
@@ -906,7 +909,7 @@ pub async fn order_view(
     Ok(OrderView {
         kind: pick(&doc, &["type", "post_type"]).unwrap_or_else(|| "shop_order".into()),
         status: pick(&doc, &["status", "post_status"]).unwrap_or_default(),
-        total: total.as_deref().and_then(|v| money(v, cur)),
+        total: total.as_deref().and_then(fmt_money),
         currency,
         created,
         paid,
@@ -928,6 +931,36 @@ pub async fn order_view(
         related,
         doc,
     })
+}
+
+/// WHERE alternatives that find an order's log lines: `#<id>` in the message as a whole number,
+/// the `order` key of the context (serialized PHP from `WC_Log_Handler_DB`, or JSON), and the
+/// payment IDs anywhere in the message.
+fn order_log_patterns(order_id: u64, payment_ids: &[String]) -> Vec<String> {
+    let id = order_id.to_string();
+    let serialized = [
+        format!("s:5:\"order\";i:{id};"),
+        format!("s:5:\"order\";s:{}:\"{id}\";", id.len()),
+    ];
+    // The REGEXPs end the number so `#4711` and `"order":4711` don't match 47110.
+    let mut patterns = vec![
+        format!("message REGEXP {}", sql_string(&format!("#{id}([^0-9]|$)"))),
+        format!(
+            "context REGEXP {}",
+            sql_string(&format!("\"order\": ?{id}[^0-9]"))
+        ),
+    ];
+    patterns.extend(
+        serialized
+            .iter()
+            .map(|c| format!("context LIKE {}", like(c))),
+    );
+    patterns.extend(
+        payment_ids
+            .iter()
+            .map(|p| format!("message LIKE {}", like(p))),
+    );
+    patterns
 }
 
 /// WooCommerce log lines that mention the order (by `#id`, the `order` context key, or its
@@ -952,25 +985,14 @@ pub async fn order_logs(
     let Some(doc) = doc else {
         return Ok(Vec::new());
     };
-    let mut patterns = vec![
-        format!("message LIKE {}", sql_string(&format!("%#{order_id}%"))),
-        format!(
-            "context LIKE {}",
-            sql_string(&format!("%\"order\": {order_id}%"))
-        ),
-    ];
-    for extra in [
+    let payment_ids: Vec<String> = [
         pick(&doc, &["_ppcp_paypal_order_id"]),
         pick(&doc, &["transaction_id", "_transaction_id"]),
     ]
     .into_iter()
     .flatten()
-    {
-        patterns.push(format!(
-            "message LIKE {}",
-            sql_string(&format!("%{extra}%"))
-        ));
-    }
+    .collect();
+    let patterns = order_log_patterns(order_id, &payment_ids);
     let window = match time_of(&doc, &["date_created_gmt", "post_date_gmt"]) {
         Some(created) => format!(
             " AND {} BETWEEN {} AND {}",
@@ -1083,9 +1105,13 @@ pub async fn guest_view(
         &lists::guests_sql(db, ctx, None, Some(email), 1, 0),
     )
     .await?;
-    let summary = lists::guest_rows(&stats, ctx.site.currency.as_deref())
-        .pop()
-        .ok_or_else(|| AppError::InvalidInput(format!("No guest orders for {email}")))?;
+    let summary = lists::guest_rows(
+        &stats,
+        ctx.site.currency.as_deref(),
+        ctx.site.price_decimals,
+    )
+    .pop()
+    .ok_or_else(|| AppError::InvalidInput(format!("No guest orders for {email}")))?;
     let q = ListQuery {
         search: Some(email.to_string()),
         limit: 10,
@@ -1127,6 +1153,7 @@ pub async fn guest_view(
             money(
                 &(spent / summary.order_count as f64).to_string(),
                 ctx.site.currency.as_deref(),
+                ctx.site.price_decimals,
             )
         });
     let name = summary.name.clone().unwrap_or_else(|| email.to_string());
@@ -1228,11 +1255,16 @@ pub async fn customer_view(
             if let Some(r) = rs.rows.first() {
                 order_count = num(&r[1]).unwrap_or(0);
                 let spent: f64 = text(&r[2]).and_then(|v| v.parse().ok()).unwrap_or(0.0);
-                total_spent = money(&spent.to_string(), ctx.site.currency.as_deref());
+                total_spent = money(
+                    &spent.to_string(),
+                    ctx.site.currency.as_deref(),
+                    ctx.site.price_decimals,
+                );
                 if order_count > 0 {
                     average_order = money(
                         &(spent / order_count as f64).to_string(),
                         ctx.site.currency.as_deref(),
+                        ctx.site.price_decimals,
                     );
                 }
             }
@@ -1399,7 +1431,7 @@ async fn customer_orders(
         )
     };
     let rs = fetch(session, &sql).await?;
-    let mut rows = lists::order_rows(&rs, ctx.site.currency.as_deref());
+    let mut rows = lists::order_rows(&rs, ctx.site.currency.as_deref(), ctx.site.price_decimals);
     rows.truncate(q.limit.max(1) as usize);
     Ok(rows)
 }
@@ -1474,6 +1506,7 @@ pub async fn product_view(
         .parse()
         .map_err(|_| AppError::InvalidInput(format!("'{id}' is not a valid ID")))?;
     let cur = ctx.site.currency.as_deref();
+    let fmt_money = |v: &str| money(v, cur, ctx.site.price_decimals);
     let m = |k: &str| doc.text(k).map(String::from);
 
     let terms_rs = fetch(
@@ -1586,7 +1619,7 @@ pub async fn product_view(
                     })
                     .collect(),
                 sku: get("_sku"),
-                price: get("_price").and_then(|p| money(&p, cur)),
+                price: get("_price").and_then(|p| fmt_money(&p)),
                 stock_status: get("_stock_status"),
                 stock: get("_stock"),
                 image: images.get(vid).cloned(),
@@ -1631,9 +1664,9 @@ pub async fn product_view(
         status: pick(&doc, &["post_status"]).unwrap_or_default(),
         image: doc.image.clone(),
         sku: m("_sku"),
-        price: m("_price").and_then(|p| money(&p, cur)),
-        regular_price: m("_regular_price").and_then(|p| money(&p, cur)),
-        sale_price: m("_sale_price").and_then(|p| money(&p, cur)),
+        price: m("_price").and_then(|p| fmt_money(&p)),
+        regular_price: m("_regular_price").and_then(|p| fmt_money(&p)),
+        sale_price: m("_sale_price").and_then(|p| fmt_money(&p)),
         stock_status: m("_stock_status"),
         stock: m("_stock"),
         total_sales: m("total_sales"),
@@ -1709,7 +1742,7 @@ pub async fn action_view(
         hook: pick(&doc, &["hook"]).unwrap_or_default(),
         status: pick(&doc, &["status"]).unwrap_or_default(),
         scheduled: time_of(&doc, &["scheduled_date_gmt"]),
-        args: pick(&doc, &["args", "extended_args"]).and_then(|a| value::decode(&a)),
+        args: pick(&doc, &["extended_args", "args"]).and_then(|a| value::decode(&a)),
         group,
         logs: logs
             .rows
@@ -1751,7 +1784,7 @@ pub async fn session_view(
     let raw = pick(&doc, &["session_value"]);
     let (items, total, email) = raw
         .as_deref()
-        .map(|v| lists::session_summary(v, ctx.site.currency.as_deref()))
+        .map(|v| lists::session_summary(v, ctx.site.currency.as_deref(), ctx.site.price_decimals))
         .unwrap_or((0, None, None));
     let customer = match key.parse::<u64>() {
         Ok(uid) => {
@@ -2068,6 +2101,37 @@ pub async fn search(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_levels_fold_into_info_warning_and_error() {
+        for (level, expected) in [
+            (Some(100), "info"),
+            (Some(200), "info"),
+            (Some(250), "info"),
+            (Some(300), "info"),
+            (Some(301), "warning"),
+            (Some(400), "warning"),
+            (Some(500), "error"),
+            (Some(600), "error"),
+            (None, "info"),
+        ] {
+            assert_eq!(log_level(level), expected, "{level:?}");
+        }
+    }
+
+    #[test]
+    fn order_log_patterns_match_whole_ids_and_escape_payment_ids() {
+        assert_eq!(
+            order_log_patterns(4711, &["a%b_c".into()]),
+            [
+                "message REGEXP '#4711([^0-9]|$)'",
+                "context REGEXP '\"order\": ?4711[^0-9]'",
+                "context LIKE '%s:5:\"order\";i:4711;%'",
+                "context LIKE '%s:5:\"order\";s:4:\"4711\";%'",
+                "message LIKE '%a\\\\%b\\\\_c%'",
+            ]
+        );
+    }
 
     #[test]
     fn html_entities_in_item_meta_are_decoded() {

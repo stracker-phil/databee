@@ -12,7 +12,7 @@ export const wpInfo: WpInfo = {
     version: "58975",
     sites: [],
     wc: { version: "9.3.0", hpos: "on_with_sync", hasActionScheduler: true },
-    site: { name: "Shop", url: "https://shop.test", currency: "EUR", gmtOffsetSecs: 0, theme: "storefront", activePlugins: ["woocommerce"], uploadsUrl: null },
+    site: { name: "Shop", url: "https://shop.test", currency: "EUR", gmtOffsetSecs: 0, theme: "storefront", activePlugins: ["woocommerce"], uploadsUrl: null, priceDecimals: 2 },
   },
   entities: [
     ["order", "Order"],

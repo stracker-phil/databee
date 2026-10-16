@@ -35,6 +35,7 @@ libc = "0.2.190"
 toml = "1.1.8"
 sha2 = "0.11.1"
 zeroize = "1.9.1"
+rust_decimal = { version = "1.43.0", default-features = false, features = ["std"] }
 
 [features]
 # Exposes test doubles (`MemoryStore`) to integration tests.

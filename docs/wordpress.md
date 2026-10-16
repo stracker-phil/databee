@@ -44,7 +44,7 @@ in `src/components/wp/`.
 1. **Prefix.** A prefix qualifies when `{p}options`, `{p}posts` and `{p}users` all exist; the shortest one wins.
    Multisite sub-sites have no users table, so they never win. Custom prefixes work.
 2. **Options.** One query reads the `PROBED_OPTIONS`: versions, HPOS flags, `siteurl`, `blogname`, currency,
-   GMT offset, theme, `active_plugins`, uploads path.
+   price decimals (`woocommerce_price_num_decimals`, default 2), GMT offset, theme, `active_plugins`, uploads path.
 3. **Facts:**
    - **WooCommerce:** a `woocommerce_version` option, or the WooCommerce order tables.
    - **HPOS:** `On` only when `woocommerce_custom_orders_table_enabled = yes` *and* `wc_orders` exists.
@@ -173,6 +173,31 @@ split detail pane is shown. The content list without a kind lists every visible 
 
 Every purpose-built view also embeds the generic document, so no stored field is hidden. Entity pages have
 Live mode (polls every 3 s and highlights changes), Snapshot, Compare and Source row.
+
+### Order logs
+
+`detail::order_logs` (`wp_order_logs`) lists `woocommerce_log` rows from a day before the order's creation to
+90 days after it. `detail::order_log_patterns` builds the match: `message REGEXP '#<id>([^0-9]|$)'` (so `#4711`
+does not find `#47110`), the context's `order` key in the serialized form `WC_Log_Handler_DB` stores
+(`s:5:"order";i:<id>;` or the string variant) and in JSON (`"order": ?<id>[^0-9]` as a REGEXP), and the
+PayPal order and transaction IDs anywhere in the message. Every LIKE value goes through `lists::like`, which
+escapes `%`, `_` and `\`. `detail::log_level` maps the `WC_Log_Levels` scale: up to 300 (debug, info, notice)
+is info, 301 to 400 (warning) is warning, above 400 is error.
+
+Action pages (`detail::action_view`) decode `extended_args` when it is set, because Action Scheduler then
+stores only a hash in `args`.
+
+### Peek
+
+`peek::peek` returns up to seven facts from `peek.rs` `FACTS`. For users on HPOS stores the order stats
+(Orders, Spent) come right after the first identity fact.
+
+### Money
+
+`hints::money(raw, currency, decimals)` parses the stored text as an exact `rust_decimal::Decimal`, rounds half
+away from zero to `SiteMeta.price_decimals` and never shows `−0.00`. Text that is not a finite number (`inf`,
+`NaN`, words) comes back unchanged without a currency, and money hints are only attached to values that parse.
+PayPal fee breakdowns (`detail::paypal_fees`) use `hints::DEFAULT_PRICE_DECIMALS`.
 
 ## Writes
 
