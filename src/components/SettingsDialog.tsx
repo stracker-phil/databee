@@ -1,11 +1,127 @@
-import { useState } from "react";
-import { FolderOpen, RotateCcw } from "lucide-react";
-import { ACCENTS, api, type Keybindings, type Settings } from "../api";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { Blocks, FolderOpen, Keyboard, Palette, Plug, RotateCcw, ScrollText, SquareTerminal, Table2, X, type LucideIcon } from "lucide-react";
+import { ACCENTS, api, type Settings } from "../api";
 import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, type Command } from "../commands";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
 
 const SCOPE_LABEL: Record<Command["scope"], string> = { global: "Everywhere", wp: "WordPress", db: "Database", table: "Table", editor: "Editor", document: "Document" };
+
+type Page = "appearance" | "shortcuts" | "queries" | "display" | "connections" | "wordpress" | "logging";
+
+const NAV: { group: string; pages: { id: Page; label: string; icon: LucideIcon }[] }[] = [
+  { group: "Interface", pages: [{ id: "appearance", label: "Appearance", icon: Palette }, { id: "shortcuts", label: "Shortcuts", icon: Keyboard }] },
+  {
+    group: "Database",
+    pages: [
+      { id: "queries", label: "Queries", icon: SquareTerminal },
+      { id: "display", label: "Display", icon: Table2 },
+      { id: "connections", label: "Connections", icon: Plug },
+    ],
+  },
+  { group: "WordPress", pages: [{ id: "wordpress", label: "WordPress", icon: Blocks }] },
+  { group: "System", pages: [{ id: "logging", label: "Logging", icon: ScrollText }] },
+];
+
+const PAGE_LABEL = Object.fromEntries(NAV.flatMap((g) => g.pages.map((p) => [p.id, p.label]))) as Record<Page, string>;
+
+const ACCENT_VARS: Record<string, string> = Object.fromEntries(ACCENTS.map((a) => [a, `var(--accent-${a})`]));
+
+const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
+
+function Group({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <section className="settings-group">
+      {title && <h3>{title}</h3>}
+      <div className="settings-card">{children}</div>
+    </section>
+  );
+}
+
+/** One card row: label and description on the left, the control on the right (or below when `stacked`). */
+function Row({ label, description, htmlFor, stacked, children }: { label: string; description?: ReactNode; htmlFor?: string; stacked?: boolean; children: ReactNode }) {
+  return (
+    <div className={`settings-row${stacked ? " stacked" : ""}`}>
+      <div className="settings-row-text">
+        {htmlFor ? <label htmlFor={htmlFor}>{label}</label> : <div className="settings-row-label">{label}</div>}
+        {description && <div className="settings-row-desc">{description}</div>}
+      </div>
+      <div className="settings-row-control">{children}</div>
+    </div>
+  );
+}
+
+function Switch({ label, description, checked, onChange }: { label: string; description?: ReactNode; checked: boolean; onChange: (v: boolean) => void }) {
+  const id = useId();
+  return (
+    <Row label={label} description={description} htmlFor={id}>
+      <input id={id} className="switch" type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </Row>
+  );
+}
+
+function Segmented<T extends string>({ label, description, options, value, onChange }: { label: string; description?: ReactNode; options: readonly T[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <Row label={label} description={description}>
+      <div className="segmented" role="group" aria-label={label}>
+        {options.map((o) => (
+          <button key={o} type="button" aria-pressed={value === o} onClick={() => onChange(o)}>
+            {capitalize(o)}
+          </button>
+        ))}
+      </div>
+    </Row>
+  );
+}
+
+/** Text input that commits on blur or Enter, so half-typed values never reach the backend. */
+function TextField({ label, description, value, onCommit, type = "text", min, max, suffix }: {
+  label: string;
+  description?: ReactNode;
+  value: string;
+  onCommit: (v: string) => void;
+  type?: "text" | "number";
+  min?: number;
+  max?: number;
+  suffix?: string;
+}) {
+  const id = useId();
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  const commit = () => text !== value && onCommit(text);
+  return (
+    <Row label={label} description={description} htmlFor={id}>
+      <div className="settings-input">
+        <input
+          id={id}
+          className={`input${type === "number" ? " number" : ""}`}
+          type={type}
+          min={min}
+          max={max}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => e.key === "Enter" && commit()}
+        />
+        {suffix && <span className="muted">{suffix}</span>}
+      </div>
+    </Row>
+  );
+}
+
+function NumberField({ value, onCommit, ...rest }: { label: string; description?: ReactNode; value: number; onCommit: (v: number) => void; min: number; max: number; suffix?: string }) {
+  return (
+    <TextField
+      {...rest}
+      type="number"
+      value={String(value)}
+      onCommit={(t) => {
+        const n = Number(t);
+        if (t.trim() !== "" && Number.isFinite(n)) onCommit(n);
+      }}
+    />
+  );
+}
 
 function ShortcutField({ value, onChange }: { value: string | null; onChange: (binding: string | null) => void }) {
   const [recording, setRecording] = useState(false);
@@ -36,20 +152,21 @@ function ShortcutField({ value, onChange }: { value: string | null; onChange: (b
   );
 }
 
-function ShortcutsSection({ bindings, onChange }: { bindings: Keybindings; onChange: (next: Keybindings) => void }) {
+function ShortcutsPage() {
+  const bindings = useStore((s) => s.keybindings);
+  const save = useStore((s) => s.saveKeybindings);
   const [search, setSearch] = useState("");
   const needle = search.trim().toLowerCase();
   const list = allCommands().filter((c) => !needle || c.title.toLowerCase().includes(needle) || c.id.includes(needle));
   const clashes = conflicts(bindings);
-  const set = (id: string, binding: string | null) => onChange({ ...bindings, [id]: binding });
+  const set = (id: string, binding: string | null) => void save({ ...bindings, [id]: binding });
   const reset = (id: string) => {
     const { [id]: _gone, ...rest } = bindings;
-    onChange(rest);
+    void save(rest);
   };
   return (
-    <section>
-      <h3>Shortcuts</h3>
-      <input className="input" aria-label="Search shortcuts" placeholder="Search commands…" value={search} onChange={(e) => setSearch(e.target.value)} />
+    <>
+      <input className="input settings-search" aria-label="Search shortcuts" placeholder="Search commands…" value={search} onChange={(e) => setSearch(e.target.value)} />
       {clashes.length > 0 && (
         <div className="shortcut-conflicts" role="alert">
           {clashes.map((c) => (
@@ -59,182 +176,147 @@ function ShortcutsSection({ bindings, onChange }: { bindings: Keybindings; onCha
           ))}
         </div>
       )}
-      <table className="shortcuts">
-        <tbody>
-          {list.map((c) => {
-            const overridden = Object.prototype.hasOwnProperty.call(bindings, c.id);
-            return (
-              <tr key={c.id}>
-                <td>
-                  {c.title}
-                  {c.menu && overridden && <div className="hint">Menu shortcut: applies after restart</div>}
-                </td>
-                <td className="muted small">{SCOPE_LABEL[c.scope]}</td>
-                <td>
-                  <ShortcutField value={bindingFor(c.id, bindings)} onChange={(b) => set(c.id, b)} />
-                </td>
-                <td>
-                  {overridden && (
-                    <button type="button" className="icon-btn tiny" aria-label={`Reset ${c.title}`} title="Reset to default" onClick={() => reset(c.id)}>
-                      <RotateCcw size="0.846rem" />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </section>
+      <Group>
+        {list.length === 0 && <div className="settings-row muted">No matching commands.</div>}
+        {list.map((c) => {
+          const overridden = Object.prototype.hasOwnProperty.call(bindings, c.id);
+          return (
+            <Row key={c.id} label={c.title} description={c.menu && overridden ? `${SCOPE_LABEL[c.scope]} · menu shortcut applies after restart` : SCOPE_LABEL[c.scope]}>
+              <div className="shortcut-control">
+                {overridden && (
+                  <button type="button" className="icon-btn tiny" aria-label={`Reset ${c.title}`} title="Reset to default" onClick={() => reset(c.id)}>
+                    <RotateCcw size="0.846rem" />
+                  </button>
+                )}
+                <ShortcutField value={bindingFor(c.id, bindings)} onChange={(b) => set(c.id, b)} />
+              </div>
+            </Row>
+          );
+        })}
+      </Group>
+    </>
   );
 }
 
-const ACCENT_VARS: Record<string, string> = Object.fromEntries(ACCENTS.map((a) => [a, `var(--accent-${a})`]));
+const INTRO: Record<Page, string> = {
+  appearance: "How databee looks. Changes apply right away.",
+  shortcuts: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.",
+  queries: "Limits and safety checks for the SQL editor and table views.",
+  display: "How values and schemas show up in grids, documents and the sidebar.",
+  connections: "Defaults for new connections.",
+  wordpress: "The WordPress lens for WooCommerce and WordPress databases.",
+  logging: "What databee writes to its log file.",
+};
 
-function NumberField({ label, value, onChange, min, max, suffix }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; suffix?: string }) {
-  return (
-    <label className="field">
-      <span>{label}{suffix ? ` (${suffix})` : ""}</span>
-      <input
-        className="input"
-        type="number"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-    </label>
-  );
-}
-
-export function SettingsDialog() {
-  const current = useStore((s) => s.settings);
-  const currentBindings = useStore((s) => s.keybindings);
-  const save = useStore((s) => s.saveSettings);
-  const saveKeybindings = useStore((s) => s.saveKeybindings);
-  const close = useStore((s) => s.closeDialog);
-  const [draft, setDraft] = useState<Settings | null>(current);
-  const [bindings, setBindings] = useState<Keybindings>(currentBindings);
-  if (!draft) return null;
-
-  const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setDraft({ ...draft, [key]: value });
-
-  return (
-    <Modal onClose={close} className="wide" labelledBy="settings-title">
-      <h2 id="settings-title">Settings</h2>
-
-      <section>
-        <h3>Appearance</h3>
-        <div className="field-row">
-          <div className="field">
-            <span>Theme</span>
-            <div className="segmented">
-              {(["system", "light", "dark"] as const).map((t) => (
-                <button key={t} type="button" aria-pressed={draft.theme === t} onClick={() => set("theme", t)}>
-                  {t[0].toUpperCase() + t.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="field">
-            <span>Density</span>
-            <div className="segmented">
-              {(["comfortable", "compact"] as const).map((d) => (
-                <button key={d} type="button" aria-pressed={draft.density === d} onClick={() => set("density", d)}>
-                  {d[0].toUpperCase() + d.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="field-row">
-          <div className="field">
-            <span>Accent</span>
-            <div className="accent-swatches">
-              {ACCENTS.map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  aria-label={`Accent ${a}`}
-                  aria-pressed={draft.accent === a}
-                  style={{ background: ACCENT_VARS[a] }}
-                  onClick={() => set("accent", a)}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="field-row">
-          <NumberField label="UI size" suffix="px" value={draft.uiFontSize} min={10} max={24} onChange={(v) => set("uiFontSize", v)} />
-          <NumberField label="Data size" suffix="px" value={draft.dataFontSize} min={9} max={28} onChange={(v) => set("dataFontSize", v)} />
-        </div>
-        <div className="hint">UI size scales sidebar, tabs and labels; data size scales table cells, document values and the SQL editor. ⌘= / ⌘- zoom both.</div>
-      </section>
-
-      <section>
-        <h3>Queries</h3>
-        <div className="field-row">
-          <NumberField label="Row limit" value={draft.rowLimit} min={10} max={100000} onChange={(v) => set("rowLimit", v)} />
-          <NumberField label="Query timeout" suffix="s" value={draft.queryTimeoutSecs} min={1} max={3600} onChange={(v) => set("queryTimeoutSecs", v)} />
-        </div>
-        <label className="check">
-          <input type="checkbox" checked={draft.confirmDestructive} onChange={(e) => set("confirmDestructive", e.target.checked)} />
-          Ask before DROP, TRUNCATE and DELETE/UPDATE without WHERE
-        </label>
-      </section>
-
-      <section>
-        <h3>Display</h3>
-        <div className="field-row">
-          <label className="field">
-            <span>NULL label</span>
-            <input className="input" value={draft.nullLabel} onChange={(e) => set("nullLabel", e.target.value)} />
-          </label>
-          <NumberField label="Max characters per cell" value={draft.maxCellChars} min={20} max={100000} onChange={(v) => set("maxCellChars", v)} />
-        </div>
-        <label className="check">
-          <input type="checkbox" checked={draft.showSystemSchemas} onChange={(e) => set("showSystemSchemas", e.target.checked)} />
-          Show system databases (mysql, sys, …)
-        </label>
-      </section>
-
-      <section>
-        <h3>Connections & logging</h3>
-        <div className="field-row">
-          <NumberField label="Connect timeout" suffix="s" value={draft.connectTimeoutSecs} min={1} max={120} onChange={(v) => set("connectTimeoutSecs", v)} />
-          <NumberField label="Default port" value={draft.defaultPort} min={1} max={65535} onChange={(v) => set("defaultPort", v)} />
-        </div>
-        <div className="field-row" style={{ alignItems: "flex-end" }}>
-          <label className="field">
-            <span>Log level</span>
-            <select className="input" value={draft.logLevel} onChange={(e) => set("logLevel", e.target.value as Settings["logLevel"])}>
+function PageBody({ page, s, set }: { page: Page; s: Settings; set: (patch: Partial<Settings>) => void }) {
+  switch (page) {
+    case "appearance":
+      return (
+        <>
+          <Group title="Look">
+            <Segmented label="Theme" options={["system", "light", "dark"] as const} value={s.theme} onChange={(theme) => set({ theme })} />
+            <Row label="Accent" description="Buttons, selection and focus rings.">
+              <div className="accent-swatches">
+                {ACCENTS.map((a) => (
+                  <button key={a} type="button" aria-label={`Accent ${a}`} aria-pressed={s.accent === a} style={{ background: ACCENT_VARS[a] }} onClick={() => set({ accent: a })} />
+                ))}
+              </div>
+            </Row>
+            <Segmented label="Density" description="Row height in grids and lists." options={["comfortable", "compact"] as const} value={s.density} onChange={(density) => set({ density })} />
+          </Group>
+          <Group title="Text size">
+            <NumberField label="UI size" description="Sidebar, tabs and labels." suffix="px" value={s.uiFontSize} min={10} max={24} onCommit={(uiFontSize) => set({ uiFontSize })} />
+            <NumberField label="Data size" description="Table cells, document values and the SQL editor. ⌘= / ⌘- zoom both." suffix="px" value={s.dataFontSize} min={9} max={28} onCommit={(dataFontSize) => set({ dataFontSize })} />
+          </Group>
+          <Group title="Privacy">
+            <Switch label="Screen share mode" description="Blurs emails, names and other personal data while presenting." checked={s.screenShareMode} onChange={(screenShareMode) => set({ screenShareMode })} />
+          </Group>
+        </>
+      );
+    case "shortcuts":
+      return <ShortcutsPage />;
+    case "queries":
+      return (
+        <Group>
+          <NumberField label="Row limit" description="Rows fetched per query in the SQL editor." value={s.rowLimit} min={10} max={100000} onCommit={(rowLimit) => set({ rowLimit })} />
+          <NumberField label="Query timeout" description="Queries running longer are stopped." suffix="s" value={s.queryTimeoutSecs} min={1} max={3600} onCommit={(queryTimeoutSecs) => set({ queryTimeoutSecs })} />
+          <Switch label="Confirm destructive statements" description="Ask before DROP, TRUNCATE and DELETE/UPDATE without WHERE." checked={s.confirmDestructive} onChange={(confirmDestructive) => set({ confirmDestructive })} />
+        </Group>
+      );
+    case "display":
+      return (
+        <Group>
+          <TextField label="NULL label" description="Shown in cells that hold NULL." value={s.nullLabel} onCommit={(nullLabel) => set({ nullLabel })} />
+          <NumberField label="Max characters per cell" description="Longer values are truncated in the grid." value={s.maxCellChars} min={20} max={100000} onCommit={(maxCellChars) => set({ maxCellChars })} />
+          <Switch label="Show system databases" description="mysql, sys, information_schema and performance_schema." checked={s.showSystemSchemas} onChange={(showSystemSchemas) => set({ showSystemSchemas })} />
+        </Group>
+      );
+    case "connections":
+      return (
+        <Group>
+          <NumberField label="Connect timeout" suffix="s" value={s.connectTimeoutSecs} min={1} max={120} onCommit={(connectTimeoutSecs) => set({ connectTimeoutSecs })} />
+          <NumberField label="Default port" description="Used when a connection doesn't name one." value={s.defaultPort} min={1} max={65535} onCommit={(defaultPort) => set({ defaultPort })} />
+        </Group>
+      );
+    case "wordpress":
+      return (
+        <Group>
+          <Switch label="Gravatar avatars" description="Loads customer avatars from gravatar.com, which sends a hash of each email address." checked={s.gravatar} onChange={(gravatar) => set({ gravatar })} />
+        </Group>
+      );
+    case "logging":
+      return (
+        <Group>
+          <Row label="Log level" htmlFor="settings-log-level" description={s.logLevel === "trace" ? "Trace logs include the SQL text of every query." : "Higher levels write more detail."}>
+            <select id="settings-log-level" className="input" value={s.logLevel} onChange={(e) => set({ logLevel: e.target.value as Settings["logLevel"] })}>
               {(["error", "warn", "info", "debug", "trace"] as const).map((l) => (
-                <option key={l} value={l}>{l}</option>
+                <option key={l} value={l}>{capitalize(l)}</option>
               ))}
             </select>
-          </label>
-          <button type="button" className="btn" onClick={() => void api.openLogFolder()}>
-            <FolderOpen size="1.077rem" /> Open log folder
+          </Row>
+          <Row label="Log files" description="The three most recent files are kept.">
+            <button type="button" className="btn" onClick={() => void api.openLogFolder()}>
+              <FolderOpen size="1.077rem" /> Open log folder
+            </button>
+          </Row>
+        </Group>
+      );
+  }
+}
+
+/** macOS-style settings: sidebar of pages, grouped cards, every change applies immediately. */
+export function SettingsDialog() {
+  const settings = useStore((s) => s.settings);
+  const save = useStore((s) => s.saveSettings);
+  const close = useStore((s) => s.closeDialog);
+  const [page, setPage] = useState<Page>("appearance");
+  if (!settings) return null;
+
+  const set = (patch: Partial<Settings>) => void save({ ...useStore.getState().settings!, ...patch }, { quiet: true });
+
+  return (
+    <Modal onClose={close} className="settings-window" labelledBy="settings-title">
+      <nav className="settings-nav" aria-label="Settings pages">
+        {NAV.map((g) => (
+          <div key={g.group} className="settings-nav-group">
+            <div className="settings-nav-heading">{g.group}</div>
+            {g.pages.map(({ id, label, icon: Icon }) => (
+              <button key={id} type="button" aria-current={page === id ? "page" : undefined} onClick={() => setPage(id)}>
+                <Icon size="1.077rem" /> {label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div className="settings-pane">
+        <header>
+          <h2 id="settings-title">{PAGE_LABEL[page]}</h2>
+          <button type="button" className="icon-btn" aria-label="Close settings" title="Close (Esc)" onClick={close}>
+            <X size="1.077rem" />
           </button>
-        </div>
-        {draft.logLevel === "trace" && <div className="hint">Trace logs include the SQL text of every query.</div>}
-      </section>
-
-      <ShortcutsSection bindings={bindings} onChange={setBindings} />
-
-      <div className="actions">
-        <button type="button" className="btn" onClick={close}>Cancel</button>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={async () => {
-            await save(draft);
-            if (JSON.stringify(bindings) !== JSON.stringify(currentBindings)) await saveKeybindings(bindings);
-            close();
-          }}
-        >
-          Save
-        </button>
+        </header>
+        <p className="settings-intro">{INTRO[page]}</p>
+        <PageBody page={page} s={settings} set={set} />
       </div>
     </Modal>
   );

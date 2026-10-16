@@ -6,7 +6,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import App from "../App";
 import { api } from "../api";
-import { resetStore } from "../state/store";
+import { resetStore, useStore } from "../state/store";
 import { settings } from "../test/fixtures";
 import { installCommands } from "../commands";
 import { SettingsDialog } from "./SettingsDialog";
@@ -19,21 +19,33 @@ describe("SettingsDialog", () => {
     resetStore({ settings: settings(), dialog: { type: "settings" } });
   });
 
-  it("saves edited values", async () => {
+  it("applies changes immediately, committing text fields on blur", async () => {
     render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Dark" }));
+    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ theme: "dark" }));
+    await userEvent.click(screen.getByRole("button", { name: "Queries" }));
     const rowLimit = screen.getByLabelText("Row limit");
     await userEvent.clear(rowLimit);
     await userEvent.type(rowLimit, "250");
-    await userEvent.click(screen.getByRole("button", { name: "Dark" }));
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ rowLimit: 250, theme: "dark" }));
+    expect(mocked.updateSettings).toHaveBeenCalledTimes(1);
+    await userEvent.tab();
+    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ rowLimit: 250, theme: "dark" }));
   });
 
-  it("discards changes on cancel", async () => {
+  it("switches pages from the sidebar", async () => {
     render(<SettingsDialog />);
-    await userEvent.click(screen.getByRole("button", { name: "Dark" }));
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "WordPress" }));
+    expect(screen.getByRole("heading", { name: "WordPress" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("switch", { name: "Gravatar avatars" }));
+    expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ gravatar: !settings().gravatar }));
+  });
+
+  it("closes without saving anything when nothing changed", async () => {
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Close settings" }));
     expect(mocked.updateSettings).not.toHaveBeenCalled();
+    expect(useStore.getState().dialog).toBeNull();
   });
 
   it("applies the saved theme and accent to the page", async () => {
@@ -41,7 +53,6 @@ describe("SettingsDialog", () => {
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: "Dark" }));
     await userEvent.click(screen.getByRole("button", { name: "Accent purple" }));
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.accent).toBe("purple");
   });
@@ -49,19 +60,20 @@ describe("SettingsDialog", () => {
   it("records, resets and saves shortcut overrides", async () => {
     installCommands();
     render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
     await userEvent.type(screen.getByLabelText("Search shortcuts"), "Command palette");
     const field = screen.getByRole("button", { name: "Record shortcut" });
     expect(field).toHaveTextContent("⌘K");
     await userEvent.click(field);
     await userEvent.keyboard("{Meta>}{Shift>}p{/Shift}{/Meta}");
     expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⇧P");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(mocked.setKeybindings).toHaveBeenCalledWith({ "palette.open": "Mod+Shift+P" });
   });
 
   it("warns when two commands in overlapping scopes share a binding", async () => {
     installCommands();
     render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
     await userEvent.type(screen.getByLabelText("Search shortcuts"), "Zoom in");
     await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
     await userEvent.keyboard("{Meta>}k{/Meta}");
@@ -72,6 +84,7 @@ describe("SettingsDialog", () => {
 
   it("warns that trace logging records SQL", async () => {
     render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Logging" }));
     await userEvent.selectOptions(screen.getByLabelText("Log level"), "trace");
     expect(screen.getByText(/include the SQL text/)).toBeInTheDocument();
   });

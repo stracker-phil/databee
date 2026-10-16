@@ -149,7 +149,8 @@ interface State {
 
 interface Actions {
   loadSettings(): Promise<void>;
-  saveSettings(settings: Settings): Promise<void>;
+  /** `quiet` skips the toast, for settings that apply as they change. */
+  saveSettings(settings: Settings, opts?: { quiet?: boolean }): Promise<void>;
   handleLaunchEvents(events: LaunchEvent[]): Promise<void>;
   connect(args: { spec: ConnectionSpec; password?: string; requestId?: string; savePassword?: boolean }): Promise<boolean>;
   disconnect(sessionId: string): Promise<void>;
@@ -260,10 +261,10 @@ export const useStore = create<Store>()((set, get) => {
       }
     },
 
-    async saveSettings(settings) {
+    async saveSettings(settings, opts) {
       try {
         set({ settings: await api.updateSettings(settings) });
-        get().toast("success", "Settings saved");
+        if (!opts?.quiet) get().toast("success", "Settings saved");
       } catch (e) {
         fail(e, "Could not save settings");
       }
