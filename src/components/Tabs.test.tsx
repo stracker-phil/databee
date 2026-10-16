@@ -45,6 +45,7 @@ describe("TabBar", () => {
     database: "db",
     table: "wp_posts",
     view: "data",
+    where: [],
     preview: true,
   };
 

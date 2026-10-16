@@ -3,7 +3,7 @@ import { Camera, GitCompare, Trash2 } from "lucide-react";
 import { api, toAppError, type DiffEntry, type SnapshotInfo } from "../../api";
 import { relativeTime } from "../../lib/format";
 import { selectActiveSession, useStore } from "../../state/store";
-import { ErrorPanel } from "../QueryTab";
+import { ErrorPanel } from "../ErrorPanel";
 import { Card, Loading } from "./ui";
 import { useWpData } from "./useWpData";
 

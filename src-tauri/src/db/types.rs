@@ -112,6 +112,18 @@ pub struct BrowseRequest {
     pub filter: Option<String>,
     #[serde(default)]
     pub primary_key: Option<String>,
+    /// Exact column matches (`openRow`), built into SQL by Rust; combined with `filter` by `AND`.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<ColumnEquals>>", optional)]
+    pub r#where: Vec<ColumnEquals>,
+}
+
+/// `column = value`, or `column IS NULL` for a `None` value.
+#[derive(Deserialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct ColumnEquals {
+    pub column: String,
+    pub value: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
@@ -122,6 +134,8 @@ pub enum FilterKind {
     Ids,
     /// A raw SQL condition, as typed.
     Sql,
+    /// The structured `where` of the request.
+    Columns,
 }
 
 /// The condition that actually ran, so the UI can show its interpretation.
@@ -144,6 +158,8 @@ pub struct BrowsePage {
     /// Page size after the clamp; the next page starts at `offset + limit`.
     pub limit: u32,
     pub filter: Option<AppliedFilter>,
+    /// The structured `where` as it ran, for the filter bar.
+    pub columns_filter: Option<AppliedFilter>,
 }
 
 #[cfg(test)]

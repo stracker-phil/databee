@@ -3,7 +3,7 @@ import { api, type BrowserSection } from "../../api";
 import { routeCrumbs } from "../../lib/crumbs";
 import { formatCount } from "../../lib/format";
 import { selectWp, selectWpRoute, useStore, type WpList, type WpRoute } from "../../state/store";
-import { ErrorPanel } from "../QueryTab";
+import { ErrorPanel } from "../ErrorPanel";
 import { DashboardScreen } from "./Dashboard";
 import { ListScreen } from "./Lists";
 import { EntityScreen } from "./views/EntityScreen";

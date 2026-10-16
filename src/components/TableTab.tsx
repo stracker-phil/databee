@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Copy, FileText, Filter, Hash, Loader2, Plus, RefreshCw } from "lucide-react";
-import { api, toAppError, type AppError, type BrowsePage, type ColumnMeta, type TableStructure } from "../api";
+import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Copy, FileText, Filter, Hash, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { api, toAppError, type AppError, type AppliedFilter, type BrowsePage, type ColumnEquals, type ColumnMeta, type TableStructure } from "../api";
 import { EVENTS } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { cellText } from "../lib/format";
 import { selectStructure, selectWp, useStore, type TableTab as TableTabState } from "../state/store";
 import type { MenuEntry } from "./ContextMenu";
-import { ErrorPanel } from "./QueryTab";
+import { ErrorPanel } from "./ErrorPanel";
 import { ResultsGrid } from "./ResultsGrid";
 
 /** Rust's default `rowLimit`, for the moment before settings load; Rust clamps the page size anyway. */
@@ -17,6 +17,7 @@ interface Browse {
   orderBy: string | null;
   descending: boolean;
   filter: string;
+  where: ColumnEquals[];
 }
 
 /** The table's structure from the store cache: one request per table and `dataVersion`, shared by all tabs. */
@@ -44,7 +45,7 @@ function columnIndex(columns: ColumnMeta[], name: string): number {
 function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean) {
   const pageSize = useStore((s) => s.settings?.rowLimit ?? DEFAULT_ROW_LIMIT);
   const dataVersion = useStore((s) => s.dataVersion);
-  const [browse, setBrowse] = useState<Browse>({ offset: 0, orderBy: null, descending: false, filter: tab.filter ?? "" });
+  const [browse, setBrowse] = useState<Browse>({ offset: 0, orderBy: null, descending: false, filter: tab.filter ?? "", where: tab.where });
   const [page, setPage] = useState<BrowsePage | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,6 +64,7 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
         descending: browse.descending,
         filter: browse.filter || null,
         primaryKey,
+        where: browse.where,
       });
       if (token !== latest.current) return;
       setPage(result);
@@ -116,6 +118,18 @@ function FilterBar({ tabId, initial, primaryKey, onApply }: { tabId: string; ini
         onChange={(e) => setValue(e.target.value)}
       />
     </form>
+  );
+}
+
+/** The structured column filter as Rust ran it; read-only, it can only be cleared. */
+function ColumnsFilterChip({ filter, onClear }: { filter: AppliedFilter; onClear: () => void }) {
+  return (
+    <span className="filter-chip" title={filter.sql}>
+      <Columns3 size="0.846rem" /> <code>{filter.label}</code>
+      <button className="icon-btn" aria-label="Clear column filter" onClick={onClear}>
+        <X size="0.846rem" />
+      </button>
+    </span>
   );
 }
 
@@ -215,6 +229,9 @@ function DataView({ tab }: { tab: TableTabState }) {
     <>
       <div className="table-head">
         <FilterBar tabId={tab.id} initial={tab.filter ?? ""} primaryKey={primaryKey} onApply={(filter) => setBrowse((b) => ({ ...b, offset: 0, filter }))} />
+        {page?.columnsFilter && browse.where.length > 0 && (
+          <ColumnsFilterChip filter={page.columnsFilter} onClear={() => setBrowse((b) => ({ ...b, offset: 0, where: [] }))} />
+        )}
         {page?.filter?.kind === "ids" && (
           <button className="filter-chip" title="Interpreted as a primary-key lookup; click to see the SQL" onClick={() => setShowFilterSql((v) => !v)}>
             <Hash size="0.846rem" /> {showFilterSql ? <code>{page.filter.sql}</code> : page.filter.label}

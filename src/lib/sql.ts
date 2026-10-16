@@ -84,18 +84,3 @@ export function statementAt(sql: string, cursor: number, selection?: Range): Ran
   const before = ranges.filter((r) => r.to <= cursor).pop();
   return before ?? ranges[0] ?? null;
 }
-
-/** A MySQL string literal: backslashes and single quotes escaped. */
-export function sqlString(value: string): string {
-  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-}
-
-/** A MySQL identifier in backticks, inner backticks doubled. */
-export function quoteIdent(name: string): string {
-  return `\`${name.replace(/`/g, "``")}\``;
-}
-
-/** `` `col` = 'value' `` joined with AND, for WHERE filters that open rows in the Database view. */
-export function whereEquals(pairs: [column: string, value: string][]): string {
-  return pairs.map(([c, v]) => `${quoteIdent(c)} = ${/^(0|[1-9]\d*)$/.test(v) ? v : sqlString(v)}`).join(" AND ");
-}

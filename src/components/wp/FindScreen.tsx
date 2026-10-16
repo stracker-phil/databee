@@ -1,24 +1,18 @@
 import { Table2 } from "lucide-react";
 import { api } from "../../api";
 import { formatCount } from "../../lib/format";
-import { selectActiveSession, useStore } from "../../state/store";
-import { ErrorPanel } from "../QueryTab";
+import { useStore } from "../../state/store";
+import { ErrorPanel } from "../ErrorPanel";
 import { Card, Loading } from "./ui";
 import { useWpData } from "./useWpData";
 
 /** "Find everywhere": one exact value across options, meta tables, action args and the log. */
 export function FindScreen({ value }: { value: string }) {
-  const session = useStore(selectActiveSession);
-  const { openEntity, navigate, openTableTab, setMode } = useStore.getState();
+  const { openEntity, navigate, openRow } = useStore.getState();
   const { data, error } = useWpData([value], (s, d) => api.wpFindValue(s, d, value));
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data) return <Loading />;
   const total = data.reduce((s, g) => s + g.count, 0);
-  const openRow = (table: string, idColumn: string, id: string) => {
-    if (!session?.database) return;
-    setMode("db");
-    openTableTab(session.database, table, "data", `\`${idColumn}\` = ${/^\d+$/.test(id) ? id : `'${id.replace(/'/g, "''")}'`}`);
-  };
   return (
     <div className="dash">
       <div className="dash-head">

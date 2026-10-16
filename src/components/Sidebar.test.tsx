@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -64,6 +64,15 @@ describe("Sidebar", () => {
       ["wp_options", true],
       ["wp_postmeta", false],
     ]);
+  });
+
+  it("opens a query tab with the SELECT that Rust builds from the table's context menu", async () => {
+    mocked.tableSelectSql.mockResolvedValue("SELECT * FROM `db`.`wp_options` LIMIT 100;");
+    render(<Sidebar />);
+    fireEvent.contextMenu(screen.getByText("wp_options"));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New query: SELECT …" }));
+    await waitFor(() => expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "query", sql: "SELECT * FROM `db`.`wp_options` LIMIT 100;" }));
+    expect(mocked.tableSelectSql).toHaveBeenCalledWith(session.id, "db", "wp_options");
   });
 
   it("shows query history for the server and reopens an entry", async () => {

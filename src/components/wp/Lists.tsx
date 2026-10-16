@@ -15,7 +15,7 @@ import {
 import { formatCount, relativeTime } from "../../lib/format";
 import { shorten } from "../../lib/wpFormat";
 import { selectWpRoute, useStore, type WpList } from "../../state/store";
-import { ErrorPanel } from "../QueryTab";
+import { ErrorPanel } from "../ErrorPanel";
 import { DEFAULT_PANE_HEIGHT, Splitter, usePaneSize, useWindowSize } from "../Splitter";
 import { BreakdownChart } from "./BreakdownChart";
 import { StackedBars } from "./charts";

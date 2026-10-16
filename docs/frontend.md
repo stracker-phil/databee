@@ -32,7 +32,7 @@ App
    ├─ FavoritesBar                     (Database mode)
    ├─ WpWorkspace                      (WordPress mode, see wordpress.md)
    │  or DbWorkspace: Sidebar | TabBar + TabPanels [| Splitter | Inspector]
-   │       TabPanels → QueryTab (QueryEditor, ResultsGrid | ErrorPanel)
+   │       TabPanels → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel)
    │                 → TableTab (filter bar + ResultsGrid | StructureView)
    ├─ PendingTray
    └─ StatusBar
@@ -66,7 +66,7 @@ and the state types, so components import everything from `state/store`.
 |---|---|
 | `settings` | `Settings \| null`; null until loaded |
 | `sessions`, `activeSessionId` | open connections (`SessionInfo`) |
-| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error) or `TableTab` (database, table, data/structure view, filter, preview) |
+| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error) or `TableTab` (database, table, data/structure view, filter, structured `where`, preview) |
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
 | `mode`, `modeChosen` | `"wp" \| "db"`. A WordPress database switches to `wp` until the user picks a mode |
@@ -210,7 +210,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 |---|---|
 | Shell | `Toolbar`, `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary` |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, structure view), `Inspector` + `ValueTree` (PHP/JSON decode) |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `Inspector` + `ValueTree` (PHP/JSON decode) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `CommandPalette`, `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens) |
 
@@ -268,7 +268,26 @@ cells are never editable: they show a `0x…` preview, which an edit would write
 filter always has the primary key. `useBrowse` drops replies that are not the latest request, and the
 `Pager` moves by `BrowsePage.limit` (Rust's clamped page size). A failed structure shows an alert and
 leaves editing off. `FilterBar` and `useRowEditing` hold the filter input and the row menu and cell edits;
-primary-key and WordPress id columns match case-insensitively.
+primary-key and WordPress id columns match case-insensitively. The tab's `where` goes into every browse
+request next to the typed filter; `ColumnsFilterChip` shows `BrowsePage.columnsFilter.label` read-only
+(the SQL as its tooltip), and its clear button drops the `where` for that tab.
+
+### Opening rows
+
+The page never builds SQL conditions. Opening rows in the Database view passes structured column matches
+(`ColumnEquals`: `{ column, value }`, a `null` value means `IS NULL`), and Rust renders and quotes them
+([Browsing tables](database.md#browsing-tables)):
+
+- `openRow(table, column, value)` (tabs slice): switches to Database mode (`setMode("db")`) and opens
+  `table` of the active database with `where: [{ column, value }]` in the preview tab. Source-row links,
+  timeline rows, "Find everywhere" hits, option rows and order item meta use it.
+- `openInDatabase(table, where?)`: the same with any number of matches, in a kept tab. `RowSource.where`
+  (`FieldValue.tsx`) carries the matches for a field's "Open row in Database view".
+- `openTableTab(database, table, view?, filter?, { preview?, where? })`: an open tab is reused only when
+  its `filter` and `where` are the same.
+
+The Sidebar's "New query: SELECT …" asks Rust for the statement (`api.tableSelectSql`), so identifier
+quoting stays in Rust too.
 
 Interactive elements carry `data-stage`, `data-stage-label` and `data-stage-list` attributes. These are the
 anchors for the [Stage hook](stage.md). Keep them stable when you change components.
@@ -279,7 +298,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 |---|---|
 | `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text, TSV/JSON export, `relativeTime` |
 | `clipboard.ts` | `copyText` with a success or error toast |
-| `sql.ts` | statement ranges and the statement at the cursor, `quoteIdent`, `sqlString`, `whereEquals` |
+| `sql.ts` | statement ranges and the statement at the cursor |
 | `theme.ts` | appearance, row height, `useResolvedTheme` (one shared `prefers-color-scheme` query) |
 | `crumbs.ts` | WordPress breadcrumbs |
 | `wpFormat.ts` | WordPress formatting (absolute times, flags, initials, `shorten`) |

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, Columns2, Radio, RefreshCw, Table2 } from "lucide-react";
 import { api, type EntityDoc, type EntityViewData } from "../../../api";
-import { selectActiveSession, useStore } from "../../../state/store";
-import { ErrorPanel } from "../../QueryTab";
+import { useStore } from "../../../state/store";
+import { ErrorPanel } from "../../ErrorPanel";
 import { Loading } from "../ui";
 import { useWpData } from "../useWpData";
 import { flattenDoc } from "./common";
@@ -16,8 +16,7 @@ export function docOf(v: EntityViewData): EntityDoc {
 }
 
 export function EntityScreen({ entity, id, embedded = false }: { entity: string; id: string; embedded?: boolean }) {
-  const session = useStore(selectActiveSession);
-  const { openTableTab, setMode, navigate, takeSnapshot, setEntityMeta } = useStore.getState();
+  const { openRow, navigate, takeSnapshot, setEntityMeta } = useStore.getState();
   const [live, setLive] = useState(false);
   const [changed, setChanged] = useState<Set<string>>(new Set());
   const [updatedAt, setUpdatedAt] = useState<number>(Date.now());
@@ -83,11 +82,7 @@ export function EntityScreen({ entity, id, embedded = false }: { entity: string;
         </button>
         <button
           className="btn"
-          onClick={() => {
-            if (!session?.database) return;
-            setMode("db");
-            openTableTab(session.database, doc.table, "data", `\`${doc.idColumn}\` = ${doc.id}`);
-          }}
+          onClick={() => openRow(doc.table, doc.idColumn, doc.id)}
         >
           <Table2 size="0.923rem" /> Source row
         </button>

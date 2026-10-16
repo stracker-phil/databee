@@ -1,4 +1,4 @@
-import { api, toAppError, type AppError, type Cell, type ColumnMeta, type ExecuteResponse } from "../../api";
+import { api, toAppError, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse } from "../../api";
 import { fail } from "../requests";
 import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
@@ -25,8 +25,10 @@ export interface TableTab {
   database: string;
   table: string;
   view: "data" | "structure";
-  /** Initial WHERE filter, e.g. when opened from a document's source link. */
+  /** Initial free-text WHERE filter, as typed. */
   filter?: string;
+  /** Exact column matches Rust turns into SQL, e.g. when opened from a document's source link. */
+  where: ColumnEquals[];
   /** Preview tabs (single click in the sidebar) are replaced by the next preview; pinning keeps them. */
   preview?: boolean;
 }
@@ -50,9 +52,11 @@ export interface TabsSlice {
   queryCounter: Record<string, number>;
   openQueryTab(sql?: string, title?: string): void;
   /** An open tab of the same table is activated; `view` and `preview: false` (pin) apply to it only when given. */
-  openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean }): void;
+  openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean; where?: ColumnEquals[] }): void;
   /** Switches to the Database view and opens `table` of the active database filtered by `where`. */
-  openInDatabase(table: string, where?: string): void;
+  openInDatabase(table: string, where?: ColumnEquals[]): void;
+  /** Switches to the Database view and opens the rows of `table` where `column` equals `value`, in the preview tab. */
+  openRow(table: string, column: string, value: string | null): void;
   pinTab(id: string): void;
   activateTab(id: string): void;
   closeTab(id: string): void;
@@ -78,6 +82,10 @@ function selectionOutside(s: Store, tabId: string | null) {
 /** Activates `tabId`; the selection belongs to the tab being left. */
 export function activate(s: Store, tabId: string | null) {
   return { activeTabId: tabId, selectedCell: tabId === s.activeTabId ? s.selectedCell : selectionOutside(s, s.activeTabId) };
+}
+
+function sameWhere(a: ColumnEquals[], b: ColumnEquals[]): boolean {
+  return a.length === b.length && a.every((x, i) => x.column === b[i].column && x.value === b[i].value);
 }
 
 export const tabsSlice: Slice<TabsSlice> = {
@@ -110,10 +118,16 @@ export const tabsSlice: Slice<TabsSlice> = {
     openTableTab(database, table, view, filter, opts = {}) {
       const session = selectActiveSession(get());
       if (!session) return;
+      const where = opts.where ?? [];
       set((s) => remembered(s, { kind: "table", database, table }));
       const existing = get().tabs.find(
         (t): t is TableTab =>
-          t.kind === "table" && t.sessionId === session.id && t.database === database && t.table === table && t.filter === filter,
+          t.kind === "table" &&
+          t.sessionId === session.id &&
+          t.database === database &&
+          t.table === table &&
+          t.filter === filter &&
+          sameWhere(t.where, where),
       );
       if (existing) {
         const updated: TableTab = { ...existing, view: view ?? existing.view, preview: existing.preview && opts.preview !== false };
@@ -124,11 +138,12 @@ export const tabsSlice: Slice<TabsSlice> = {
         id: `table-${nextTabId++}`,
         kind: "table",
         sessionId: session.id,
-        title: filter ? `${table} (filtered)` : table,
+        title: filter || where.length > 0 ? `${table} (filtered)` : table,
         database,
         table,
         view: view ?? "data",
         filter,
+        where,
         preview: opts.preview ?? false,
       };
       set((s) => {
@@ -144,7 +159,14 @@ export const tabsSlice: Slice<TabsSlice> = {
       const database = selectActiveSession(get())?.database;
       if (!database) return;
       get().setMode("db");
-      get().openTableTab(database, table, "data", where);
+      get().openTableTab(database, table, "data", undefined, { where });
+    },
+
+    openRow(table, column, value) {
+      const database = selectActiveSession(get())?.database;
+      if (!database) return;
+      get().setMode("db");
+      get().openTableTab(database, table, "data", undefined, { preview: true, where: [{ column, value }] });
     },
 
     pinTab(id) {

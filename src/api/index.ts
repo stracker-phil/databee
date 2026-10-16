@@ -91,6 +91,9 @@ export const api = {
   cancelQuery: (sessionId: string) => invoke<void>("cancel_query", { sessionId }),
   browseTable: (sessionId: string, request: BrowseRequest) =>
     invoke<BrowsePage>("browse_table", { sessionId, request }),
+  /** The "New query" SQL for a table, quoted by Rust. */
+  tableSelectSql: (sessionId: string, database: string, table: string) =>
+    invoke<string>("table_select_sql", { sessionId, database, table }),
 
   listFavorites: (account: string) => invoke<Favorite[]>("list_favorites", { account }),
   createFavorite: (favorite: NewFavorite) => invoke<Favorite>("create_favorite", { favorite }),

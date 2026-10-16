@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use tauri::State;
 
+use crate::db::browse::select_all_sql;
 use crate::db::changes::{self, ChangeRequest};
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, PlannedChange};
 use crate::db::safety::destructive_reason;
@@ -13,6 +14,9 @@ use crate::error::{AppError, AppResult};
 use crate::session::{self, OpenArgs, SessionInfo};
 use crate::state::AppState;
 use crate::store::history::HistoryEntry;
+
+/// Rows a "New query" on a table asks for.
+const NEW_QUERY_LIMIT: u32 = 100;
 
 #[tauri::command]
 pub async fn connect(state: State<'_, AppState>, args: OpenArgs) -> AppResult<SessionInfo> {
@@ -151,6 +155,18 @@ pub async fn cancel_query(state: State<'_, AppState>, session_id: String) -> App
     state.sessions.get(&session_id)?.db.cancel().await?;
     log::info!("Cancel requested");
     Ok(())
+}
+
+/// The starting SQL of a "New query" on a table; quoting stays in Rust.
+#[tauri::command]
+pub fn table_select_sql(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    table: String,
+) -> AppResult<String> {
+    let dialect = state.sessions.get(&session_id)?.db.dialect();
+    Ok(select_all_sql(dialect, &database, &table, NEW_QUERY_LIMIT))
 }
 
 #[tauri::command]

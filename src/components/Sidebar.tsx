@@ -5,7 +5,6 @@ import { api, type HistoryEntry, type TableInfo } from "../api";
 import { EVENTS } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { compactCount, formatBytes, formatCount, relativeTime } from "../lib/format";
-import { quoteIdent } from "../lib/sql";
 import { fail, selectActiveSession, selectActiveTab, selectVisibleDatabases, useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
@@ -107,6 +106,15 @@ function TablesPanel() {
 
   const openPreview = (db: string, table: string, preview = true) => openTableTab(db, table, "data", undefined, { preview });
 
+  const openSelectQuery = async (db: string, table: string) => {
+    if (!session) return;
+    try {
+      openQueryTab(await api.tableSelectSql(session.id, db, table));
+    } catch (e) {
+      fail(e, "Could not build the query");
+    }
+  };
+
   const tree = databases.map((d) => {
     const tableRows = (schema?.tables[d.name] ?? [])
       .filter((t) => !needle || t.name.toLowerCase().includes(needle))
@@ -127,7 +135,7 @@ function TablesPanel() {
       items: [
         { label: "Open data", action: () => openTableTab(db, t.name, "data") },
         { label: "Show structure", action: () => openTableTab(db, t.name, "structure") },
-        { label: "New query: SELECT …", action: () => openQueryTab(`SELECT *\nFROM ${quoteIdent(db)}.${quoteIdent(t.name)}\nLIMIT 100;`) },
+        { label: "New query: SELECT …", action: () => void openSelectQuery(db, t.name) },
         "separator",
         { label: "Add to favorites", action: () => void addFavorite(t.name, { kind: "table", database: db, table: t.name }) },
         { label: "Copy name", action: () => void copyText(t.name, "name") },

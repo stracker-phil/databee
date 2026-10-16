@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, Copy, Eye, Maximize2, Minimize2, Minus, MonitorSmartphone, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { api, type DocField, type NewValue } from "../../api";
+import { api, type ColumnEquals, type DocField, type NewValue } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { cellText, relativeTime } from "../../lib/format";
 import { absoluteFromUnix, flagEmoji, shorten } from "../../lib/wpFormat";
@@ -129,10 +129,10 @@ export function valueMenu(
   return items;
 }
 
-/** Renders one field according to its render hint; raw text is always one toggle away. */
-/** The table row a field is stored in, as a WHERE filter for the Database view. */
-export type RowSource = { table: string; where: string };
+/** The table row a field is stored in, as column matches for the Database view. */
+export type RowSource = { table: string; where: ColumnEquals[] };
 
+/** Renders one field according to its render hint; raw text is always one toggle away. */
 export function FieldValue({ field, target, source }: { field: DocField; target?: EditTarget; source?: RowSource }) {
   const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
   const toast = useStore((s) => s.toast);

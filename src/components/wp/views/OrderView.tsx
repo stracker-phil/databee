@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { api, type OrderView as OrderViewData, type TimelineEvent } from "../../../api";
-import { whereEquals } from "../../../lib/sql";
 import { absoluteFromUnix } from "../../../lib/wpFormat";
 import { selectActiveSession, selectWp, useStore } from "../../../state/store";
 import { LinkChip } from "../LinkChip";
@@ -61,7 +60,7 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
   const subscription = o.kind === "shop_subscription";
   const p = o.payment;
   const wp = useStore(selectWp);
-  const openInDatabase = useStore((s) => s.openInDatabase);
+  const openRow = useStore((s) => s.openRow);
   const prefix = wp?.context.prefix ?? "wp_";
   const hpos = !!wp?.context.wc && wp.context.wc.hpos !== "off";
   const k = (column: string) => (hpos ? column : `_${column}`);
@@ -102,7 +101,7 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
                   <div>
                     {i.product ? <button className="link-btn plain" onClick={() => useStore.getState().openEntity(i.product!.entity, i.product!.id)}>{i.name}</button> : i.name}
                     <span className="badge mono" style={{ marginLeft: 6 }}>{i.kind}</span>
-                    <button className="link-btn plain muted small mono" style={{ marginLeft: 6 }} title="Open this item's meta rows" onClick={() => openInDatabase(`${prefix}woocommerce_order_itemmeta`, whereEquals([["order_item_id", i.id]]))}>
+                    <button className="link-btn plain muted small mono" style={{ marginLeft: 6 }} title="Open this item's meta rows" onClick={() => openRow(`${prefix}woocommerce_order_itemmeta`, "order_item_id", i.id)}>
                       item #{i.id}
                     </button>
                   </div>

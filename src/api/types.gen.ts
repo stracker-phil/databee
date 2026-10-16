@@ -67,14 +67,22 @@ export type BrowsePage = { result: ResultSet, hasMore: boolean,
 /**
  * Page size after the clamp; the next page starts at `offset + limit`.
  */
-limit: number, filter: AppliedFilter | null, };
+limit: number, filter: AppliedFilter | null, 
+/**
+ * The structured `where` as it ran, for the filter bar.
+ */
+columnsFilter: AppliedFilter | null, };
 
 export type BrowseRequest = { database: string, table: string, offset: number, limit: number, orderBy?: string | null, descending?: boolean, 
 /**
  * Raw SQL condition typed by the user, e.g. `post_type = 'page'`, or ID shorthand
  * (`3229`, `3220-3229,3200`) when `primary_key` names a single-column key.
  */
-filter?: string | null, primaryKey?: string | null, };
+filter?: string | null, primaryKey?: string | null, 
+/**
+ * Exact column matches (`openRow`), built into SQL by Rust; combined with `filter` by `AND`.
+ */
+where?: Array<ColumnEquals>, };
 
 export type BrowserSection = { list: WpList, label: string, count: number, breakdown: Array<Facet>, };
 
@@ -87,6 +95,11 @@ export type Cell = { "t": "null" } | { "t": "number", "v": string } | { "t": "te
 export type ChangeRequest = { "type": "setCell", database: string, table: string, keyColumn: string, key: string, column: string, value: string | null, } | { "type": "deleteRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "duplicateRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "insertRow", database: string, table: string, values: Array<[string, string | null]>, };
 
 export type ChipTarget = { "kind": "list", list: WpList, params: { [key in string]: string }, } | { "kind": "timeline" };
+
+/**
+ * `column = value`, or `column IS NULL` for a `None` value.
+ */
+export type ColumnEquals = { column: string, value: string | null, };
 
 export type ColumnInfo = { name: string, columnType: string, nullable: boolean, default: string | null, key: string, extra: string, comment: string, autoIncrement: boolean, 
 /**
@@ -189,7 +202,7 @@ export type Fees = { gross: string, fee: string, net: string,
  */
 feeRatio: number, };
 
-export type FilterKind = "ids" | "sql";
+export type FilterKind = "ids" | "sql" | "columns";
 
 export type FindGroup = { 
 /**

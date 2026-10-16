@@ -1,6 +1,6 @@
 //! The paged SELECT behind the table view and the filter typed above it.
 
-use super::{AppliedFilter, BrowseRequest, Dialect, FilterKind, id_filter, lexer};
+use super::{AppliedFilter, BrowseRequest, ColumnEquals, Dialect, FilterKind, id_filter, lexer};
 use crate::error::{AppError, AppResult};
 
 /// Largest page served; the UI asks for its row limit and pages by the `limit` it gets back.
@@ -43,6 +43,46 @@ fn applied_filter(req: &BrowseRequest, dialect: Dialect) -> AppResult<Option<App
     }))
 }
 
+/// The request's structured `where` as one condition. Values are always quoted strings: MySQL
+/// compares them as strings for text columns and coerces them for numeric ones.
+pub fn columns_filter(req: &BrowseRequest, dialect: Dialect) -> Option<AppliedFilter> {
+    if req.r#where.is_empty() {
+        return None;
+    }
+    Some(AppliedFilter {
+        kind: FilterKind::Columns,
+        sql: render_columns(
+            &req.r#where,
+            |c| dialect.quote_ident(c),
+            |v| dialect.sql_string(v),
+        ),
+        label: render_columns(&req.r#where, str::to_string, str::to_string),
+    })
+}
+
+fn render_columns(
+    columns: &[ColumnEquals],
+    column: impl Fn(&str) -> String,
+    value: impl Fn(&str) -> String,
+) -> String {
+    columns
+        .iter()
+        .map(|c| match &c.value {
+            Some(v) => format!("{} = {}", column(&c.column), value(v)),
+            None => format!("{} IS NULL", column(&c.column)),
+        })
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
+/// The `SELECT` a new query tab starts with for a table, one clause per line.
+pub fn select_all_sql(dialect: Dialect, database: &str, table: &str, limit: u32) -> String {
+    format!(
+        "SELECT *\nFROM {}\nLIMIT {limit};",
+        dialect.table_ref(database, table)
+    )
+}
+
 /// Builds the paged SELECT for the table view and returns the filter it applied.
 /// Fetches one extra row to detect more pages.
 pub fn browse_sql(
@@ -54,9 +94,16 @@ pub fn browse_sql(
         dialect.table_ref(&req.database, &req.table)
     );
     let filter = applied_filter(req, dialect)?;
+    let mut conditions = Vec::new();
+    if let Some(columns) = columns_filter(req, dialect) {
+        conditions.push(format!("({})", columns.sql));
+    }
     if let Some(filter) = &filter {
         // The newline ends a trailing `#` or `-- ` comment before the closing parenthesis.
-        sql.push_str(&format!(" WHERE ({}\n)", filter.sql));
+        conditions.push(format!("({}\n)", filter.sql));
+    }
+    if !conditions.is_empty() {
+        sql.push_str(&format!(" WHERE {}", conditions.join(" AND ")));
     }
     if let Some(col) = &req.order_by {
         let dir = if req.descending { "DESC" } else { "ASC" };
@@ -285,6 +332,131 @@ mod tests {
                 .kind,
             FilterKind::Sql
         );
+    }
+
+    fn eq(column: &str, value: Option<&str>) -> ColumnEquals {
+        ColumnEquals {
+            column: column.into(),
+            value: value.map(Into::into),
+        }
+    }
+
+    fn where_sql(r#where: Vec<ColumnEquals>, dialect: Dialect) -> String {
+        browse_sql(&BrowseRequest { r#where, ..req() }, dialect)
+            .unwrap()
+            .0
+    }
+
+    #[test]
+    fn structured_where_renders_a_quoted_string_comparison() {
+        assert_eq!(
+            where_sql(vec![eq("ID", Some("007"))], Dialect::MYSQL),
+            "SELECT * FROM `wordpress`.`wp_posts` WHERE (`ID` = '007') LIMIT 101 OFFSET 0"
+        );
+    }
+
+    #[test]
+    fn structured_where_with_no_value_renders_is_null() {
+        assert_eq!(
+            where_sql(vec![eq("post_parent", None)], Dialect::MYSQL),
+            "SELECT * FROM `wordpress`.`wp_posts` WHERE (`post_parent` IS NULL) LIMIT 101 OFFSET 0"
+        );
+    }
+
+    #[test]
+    fn structured_where_entries_are_joined_with_and_in_one_group() {
+        assert_eq!(
+            where_sql(
+                vec![eq("ID", Some("7")), eq("post_parent", None)],
+                Dialect::MYSQL
+            ),
+            "SELECT * FROM `wordpress`.`wp_posts` WHERE (`ID` = '7' AND `post_parent` IS NULL) LIMIT 101 OFFSET 0"
+        );
+    }
+
+    #[test]
+    fn structured_where_values_are_escaped_per_dialect() {
+        let no_backslash = Dialect {
+            backslash_escapes: false,
+        };
+        for (dialect, expected) in [
+            (
+                Dialect::MYSQL,
+                r"SELECT * FROM `wordpress`.`wp_posts` WHERE (`c` = 'a''b\\c') LIMIT 101 OFFSET 0",
+            ),
+            (
+                no_backslash,
+                r"SELECT * FROM `wordpress`.`wp_posts` WHERE (`c` = 'a''b\c') LIMIT 101 OFFSET 0",
+            ),
+        ] {
+            assert_eq!(
+                where_sql(vec![eq("c", Some(r"a'b\c"))], dialect),
+                expected,
+                "{dialect:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn structured_where_comes_before_the_free_text_filter() {
+        let sql = browse_sql(
+            &BrowseRequest {
+                r#where: vec![eq("ID", Some("7"))],
+                filter: Some("post_type = 'page' # note".into()),
+                ..req()
+            },
+            Dialect::MYSQL,
+        )
+        .unwrap()
+        .0;
+        assert_eq!(
+            sql,
+            "SELECT * FROM `wordpress`.`wp_posts` WHERE (`ID` = '7') AND (post_type = 'page' # note\n) LIMIT 101 OFFSET 0"
+        );
+    }
+
+    #[test]
+    fn columns_filter_carries_quoted_sql_and_a_raw_label() {
+        let applied = columns_filter(
+            &BrowseRequest {
+                r#where: vec![eq("ID", Some("007")), eq("post_parent", None)],
+                ..req()
+            },
+            Dialect::MYSQL,
+        )
+        .unwrap();
+        assert_eq!(applied.kind, FilterKind::Columns);
+        assert_eq!(applied.sql, "`ID` = '007' AND `post_parent` IS NULL");
+        assert_eq!(applied.label, "ID = 007 AND post_parent IS NULL");
+    }
+
+    #[test]
+    fn columns_filter_is_none_without_where() {
+        assert!(columns_filter(&req(), Dialect::MYSQL).is_none());
+    }
+
+    #[test]
+    fn select_all_sql_puts_each_clause_on_its_own_line() {
+        assert_eq!(
+            select_all_sql(Dialect::MYSQL, "db", "t", 100),
+            "SELECT *\nFROM `db`.`t`\nLIMIT 100;"
+        );
+        assert_eq!(
+            select_all_sql(Dialect::MYSQL, "d`b", "t`x", 5),
+            "SELECT *\nFROM `d``b`.`t``x`\nLIMIT 5;"
+        );
+    }
+
+    #[test]
+    fn browse_request_where_defaults_to_empty_and_reads_null_values() {
+        let base = r#""database":"d","table":"t","limit":10"#;
+        let without: BrowseRequest = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+        assert!(without.r#where.is_empty());
+        let with: BrowseRequest = serde_json::from_str(&format!(
+            r#"{{{base},"where":[{{"column":"ID","value":null}}]}}"#
+        ))
+        .unwrap();
+        assert_eq!(with.r#where, vec![eq("ID", None)]);
     }
 
     #[test]

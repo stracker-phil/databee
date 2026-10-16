@@ -21,7 +21,7 @@ const structure: TableStructure = {
   ddl: "CREATE TABLE wp_posts (...)",
 };
 
-const tab: TableTabState = { id: "t1", kind: "table", sessionId: session.id, title: "wp_posts", database: "db", table: "wp_posts", view: "data" };
+const tab: TableTabState = { id: "t1", kind: "table", sessionId: session.id, title: "wp_posts", database: "db", table: "wp_posts", view: "data", where: [] };
 
 describe("TableTab", () => {
   beforeEach(() => {
@@ -29,7 +29,7 @@ describe("TableTab", () => {
     connectedStore();
     useStore.setState({ tabs: [tab], activeTabId: tab.id });
     mocked.describeTable.mockResolvedValue(structure);
-    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: null });
+    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: null, columnsFilter: null });
   });
 
   it("sends the primary key with the filter and shows the ID interpretation as a chip", async () => {
@@ -38,6 +38,7 @@ describe("TableTab", () => {
       hasMore: false,
       limit: 500,
       filter: { kind: "ids", sql: "`ID` IN (3229, 3227)", label: "ID in (3229, 3227)" },
+      columnsFilter: null,
     });
     render(<TableTab tab={tab} />);
     const where = screen.getByLabelText("WHERE filter");
@@ -50,7 +51,7 @@ describe("TableTab", () => {
   });
 
   it("shows no chip for plain SQL filters", async () => {
-    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: { kind: "sql", sql: "post_type = 'page'", label: "post_type = 'page'" } });
+    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: { kind: "sql", sql: "post_type = 'page'", label: "post_type = 'page'" }, columnsFilter: null });
     render(<TableTab tab={tab} />);
     await screen.findByText("Hello world");
     expect(screen.queryByRole("button", { name: /ID in/ })).not.toBeInTheDocument();
@@ -110,12 +111,50 @@ describe("TableTab", () => {
     });
   });
 
+  describe("opening a row", () => {
+    const Active = () => {
+      const active = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId));
+      return active?.kind === "table" ? <TableTab tab={active} /> : null;
+    };
+    const rowFilter = { kind: "columns" as const, sql: "`ID` = 7", label: "ID = 7" };
+
+    beforeEach(() => {
+      useStore.setState({ tabs: [], activeTabId: null });
+      mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: null, columnsFilter: rowFilter });
+    });
+
+    it("requests the row by column equality and shows the filter Rust reports", async () => {
+      useStore.getState().openRow("wp_posts", "ID", "7");
+      render(<Active />);
+      expect(await screen.findByText("ID = 7")).toBeInTheDocument();
+      expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ table: "wp_posts", where: [{ column: "ID", value: "7" }] }));
+    });
+
+    it("passes a null value through as null", async () => {
+      useStore.getState().openRow("wp_posts", "post_parent", null);
+      render(<Active />);
+      await waitFor(() => expect(mocked.browseTable).toHaveBeenCalled());
+      expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ where: [{ column: "post_parent", value: null }] }));
+    });
+
+    it("requests the table without the column filter once the chip is cleared", async () => {
+      useStore.getState().openRow("wp_posts", "ID", "7");
+      render(<Active />);
+      await screen.findByText("ID = 7");
+      mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: null, columnsFilter: null });
+      await userEvent.click(screen.getByRole("button", { name: "Clear column filter" }));
+      await waitFor(() => expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ where: [] })));
+      expect(screen.queryByText("ID = 7")).not.toBeInTheDocument();
+    });
+  });
+
   describe("paging", () => {
     const pageOf = (label: string, patch: Partial<BrowsePage> = {}): BrowsePage => ({
       result: resultSet({ rows: [[num("1"), text(`${label}-x`)], [num("2"), text(`${label}-y`)]] }),
       hasMore: true,
       limit: 2,
       filter: null,
+      columnsFilter: null,
       ...patch,
     });
     const held = () => {

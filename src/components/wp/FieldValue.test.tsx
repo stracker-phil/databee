@@ -79,11 +79,14 @@ describe("FieldValue rendering", () => {
   });
 
   it("opens the row a field is stored in from its menu", async () => {
-    render(<FieldValue field={field("_ppcp_paypal_intent", "CAPTURE")} source={{ table: "wp_wc_orders_meta", where: "`order_id` = 4711 AND `meta_key` = '_ppcp_paypal_intent'" }} />);
+    render(<FieldValue field={field("_ppcp_paypal_intent", "CAPTURE")} source={{ table: "wp_wc_orders_meta", where: [{ column: "order_id", value: "4711" }, { column: "meta_key", value: "_ppcp_paypal_intent" }] }} />);
     await userEvent.click(screen.getByRole("button", { name: "Actions for _ppcp_paypal_intent" }));
     await userEvent.click(screen.getByText("Open row in Database view"));
     expect(useStore.getState().mode).toBe("db");
-    expect(useStore.getState().tabs.at(-1)).toMatchObject({ table: "wp_wc_orders_meta", filter: "`order_id` = 4711 AND `meta_key` = '_ppcp_paypal_intent'" });
+    expect(useStore.getState().tabs.at(-1)).toMatchObject({
+      table: "wp_wc_orders_meta",
+      where: [{ column: "order_id", value: "4711" }, { column: "meta_key", value: "_ppcp_paypal_intent" }],
+    });
   });
 });
 

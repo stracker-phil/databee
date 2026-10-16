@@ -14,7 +14,7 @@ use sqlx::mysql::{MySqlConnectOptions, MySqlConnection, MySqlPool, MySqlPoolOpti
 use self::editor::EditorConnection;
 use self::script::{run_script, scalar};
 use self::timeouts::{connect_within, pooled_within, query_within};
-use super::browse::{browse_sql, page_limit};
+use super::browse::{browse_sql, columns_filter, page_limit};
 use super::{
     BrowsePage, BrowseRequest, Database, DatabaseInfo, Dialect, ExecuteResponse, ResultSet,
     TableInfo, TableStructure,
@@ -246,6 +246,7 @@ impl Database for MySqlSession {
             has_more,
             limit,
             filter,
+            columns_filter: columns_filter(req, self.dialect()),
         })
     }
 

@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock, Info, RefreshCw } from "lucide-reac
 import { api, type HookFailures, type Insight } from "../../api";
 import { compactCount, formatBytes, formatCount } from "../../lib/format";
 import { selectActiveSession, selectWp, useStore } from "../../state/store";
-import { ErrorPanel } from "../QueryTab";
+import { ErrorPanel } from "../ErrorPanel";
 import { BreakdownChart } from "./BreakdownChart";
 import { Segments, StackedBars } from "./charts";
 import { Ago, Card, Loading, Stat, StatusPill } from "./ui";
@@ -65,7 +65,7 @@ function HookGroup({ group }: { group: HookFailures }) {
 export function DashboardScreen() {
   const session = useStore(selectActiveSession);
   const wp = useStore(selectWp);
-  const { navigate, openEntity, openTableTab, setMode } = useStore.getState();
+  const { navigate, openEntity, openInDatabase } = useStore.getState();
   const { data, error, loading, reload } = useWpData([], api.wpDashboard);
   const { data: options } = useWpData([], api.wpOptions);
   const [breakdown, setBreakdown] = useState<"autoload" | "rows">("autoload");
@@ -79,11 +79,7 @@ export function DashboardScreen() {
     id: t.name,
     label: t.name.replace(ctx.prefix, ""),
     value: t.rows,
-    onOpen: () => {
-      if (!session.database) return;
-      setMode("db");
-      openTableTab(session.database, t.name);
-    },
+    onOpen: () => openInDatabase(t.name),
   }));
   const autoloadItems = (options?.groups ?? [])
     .filter((g) => g.autoloadBytes > 0)

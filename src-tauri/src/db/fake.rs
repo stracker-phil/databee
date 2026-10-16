@@ -156,6 +156,7 @@ impl Database for FakeDatabase {
             has_more: false,
             limit: req.limit,
             filter,
+            columns_filter: super::browse::columns_filter(req, Dialect::MYSQL),
         })
     }
 

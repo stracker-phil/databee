@@ -131,7 +131,7 @@ export const APP_COMMANDS: Command[] = [
     when: () => onEntity() && !!useStore.getState().entityMeta,
     run: () => {
       const meta = useStore.getState().entityMeta;
-      if (meta) useStore.getState().openInDatabase(meta.table, `\`${meta.idColumn}\` = ${meta.id}`);
+      if (meta) useStore.getState().openRow(meta.table, meta.idColumn, meta.id);
     },
   },
   {

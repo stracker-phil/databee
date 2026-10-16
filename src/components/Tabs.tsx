@@ -15,9 +15,10 @@ function tabIcon(tab: Tab) {
 
 function tabTooltip(tab: Tab): string {
   if (tab.kind === "query") return tab.title;
-  const filter = tab.filter ? ` WHERE ${tab.filter}` : "";
+  const columns = tab.where.map((w) => ` · ${w.column}: ${w.value ?? "NULL"}`).join("");
+  const filter = tab.filter ? ` · ${tab.filter}` : "";
   const preview = tab.preview ? " · preview (double-click to keep)" : "";
-  return `${tab.database}.${tab.table}${filter}${preview}`;
+  return `${tab.database}.${tab.table}${columns}${filter}${preview}`;
 }
 
 function TabItem({ tab, active }: { tab: Tab; active: boolean }) {

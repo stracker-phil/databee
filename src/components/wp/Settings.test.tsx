@@ -34,7 +34,7 @@ describe("SettingsScreen", () => {
     render(<SettingsScreen />);
     await userEvent.click(await screen.findByRole("button", { name: /woocommerce-ppcp-data-common/ }));
     expect(useStore.getState().mode).toBe("db");
-    expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "table", table: "wp_options", filter: "`option_name` = 'woocommerce-ppcp-data-common'" });
+    expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "table", table: "wp_options", where: [{ column: "option_name", value: "woocommerce-ppcp-data-common" }] });
   });
 
   describe("option group", () => {

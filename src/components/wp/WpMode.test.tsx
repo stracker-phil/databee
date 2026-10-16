@@ -277,7 +277,7 @@ describe("WordPress mode", () => {
     expect(screen.getByText("Order created")).toBeInTheDocument();
     await userEvent.click(within(screen.getByRole("list")).getByRole("button", { name: /Source row/ }));
     const tab = useStore.getState().tabs.at(-1)!;
-    expect(tab.kind === "table" && [tab.table, tab.filter]).toEqual(["wp_woocommerce_log", "`log_id` = 1732"]);
+    expect(tab.kind === "table" && [tab.table, tab.where]).toEqual(["wp_woocommerce_log", [{ column: "log_id", value: "1732" }]]);
     expect(useStore.getState().mode).toBe("db");
   });
 
@@ -287,7 +287,7 @@ describe("WordPress mode", () => {
     expect(within(await screen.findByRole("region", { name: "Payment" })).getByText("_ppcp_paypal_order_id")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Payment" })).getByText("payment_method")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "item #1" }));
-    expect(useStore.getState().tabs.at(-1)).toMatchObject({ table: "wp_woocommerce_order_itemmeta", filter: "`order_item_id` = 1" });
+    expect(useStore.getState().tabs.at(-1)).toMatchObject({ table: "wp_woocommerce_order_itemmeta", where: [{ column: "order_item_id", value: "1" }] });
   });
 
   it("queues an order status change from the header", async () => {

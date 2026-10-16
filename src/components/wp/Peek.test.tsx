@@ -107,6 +107,6 @@ describe("Find everywhere", () => {
     expect(useStore.getState().wpNav.stack.at(-1)).toEqual({ screen: "entity", entity: "order", id: "4711" });
     await userEvent.click(screen.getAllByRole("button", { name: /row/ }).at(-1)!);
     const tab = useStore.getState().tabs.at(-1)!;
-    expect(tab.kind === "table" && [tab.table, tab.filter]).toEqual(["wp_woocommerce_log", "`log_id` = 55"]);
+    expect(tab.kind === "table" && [tab.table, tab.where]).toEqual(["wp_woocommerce_log", [{ column: "log_id", value: "55" }]]);
   });
 });

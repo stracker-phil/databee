@@ -141,13 +141,20 @@ Full binary values never cross IPC. Only the first 16 bytes are sent, as hex.
 `browse_table` → `Database::browse` → `browse_sql`:
 
 ```sql
-SELECT * FROM `db`.`t` [WHERE (<filter>\n)] [ORDER BY `col` ASC|DESC] LIMIT <limit + 1> OFFSET <offset>
+SELECT * FROM `db`.`t` [WHERE (<columns>) AND (<filter>\n)] [ORDER BY `col` ASC|DESC] LIMIT <limit + 1> OFFSET <offset>
 ```
 
 - **Paging:** fetching one extra row tells whether there is a next page. The UI asks for `rowLimit` rows;
   `page_limit` clamps the requested limit to `1..=MAX_PAGE_ROWS` (500) and `BrowsePage.limit` reports the
   clamped size, which the UI pages by.
 - **Sorting:** one column at a time, quoted with `Dialect::quote_ident`.
+- **Structured `where`:** `BrowseRequest.where` is a list of `ColumnEquals` (`{ column, value }`) sent by
+  `openRow` and `openInDatabase` ([frontend.md](frontend.md#opening-rows)). `browse::columns_filter` renders each as
+  `` `col` = 'value' `` (`Dialect::quote_ident`, `Dialect::sql_string`), or `` `col` IS NULL `` for a `null`
+  value, joined with `AND` into one group placed before the typed filter. Values are always quoted strings,
+  never bare literals: MySQL compares them as strings for text columns and coerces them for numeric ones.
+  `BrowsePage.columnsFilter` (`kind: columns`) reports the group as it ran: `sql` quoted, `label`
+  unquoted for the filter bar.
 - **Filter:**
   - If the table has a single-column primary key and the text matches the id grammar, the text becomes
     `pk = n`, `pk IN (…)` or `pk BETWEEN a AND b`. The grammar (`db::id_filter::parse_ids`) is comma-separated tokens, each
@@ -162,6 +169,8 @@ SELECT * FROM `db`.`t` [WHERE (<filter>\n)] [ORDER BY `col` ASC|DESC] LIMIT <lim
     (`lexer::is_terminated`). A filter of only whitespace and comments counts as no filter (`lexer::is_blank`).
   - `browse_sql` returns the applied filter (`kind` is `FilterKind`: `ids` or `sql`) next to the SQL, and
     `browse` hands it to the UI so it can show how the text was read.
+- **New query:** `table_select_sql` returns `browse::select_all_sql` (`SELECT *`, the quoted
+  `Dialect::table_ref`, `LIMIT 100`) for the Sidebar's "New query: SELECT …".
 
 Introspection uses `information_schema`:
 - `SCHEMATA` for databases;

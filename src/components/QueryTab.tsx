@@ -1,26 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
-import { AlertTriangle, CheckCircle2, Loader2, Play, PlayCircle, Square } from "lucide-react";
+import { CheckCircle2, Loader2, Play, PlayCircle, Square } from "lucide-react";
 import { api, toAppError } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { formatCount } from "../lib/format";
 import { useResolvedTheme } from "../lib/theme";
 import { useStore, type QueryTab as QueryTabState } from "../state/store";
+import { ErrorPanel } from "./ErrorPanel";
 import { currentStatement, QueryEditor } from "./QueryEditor";
 import { ResultsGrid } from "./ResultsGrid";
 import { Splitter, usePaneSize, useWindowSize } from "./Splitter";
-
-export function ErrorPanel({ message, code }: { message: string; code: string | null }) {
-  return (
-    <div className="error-panel" role="alert" data-stage="query:error" data-stage-label="Query error">
-      <AlertTriangle size="1.231rem" style={{ flex: "none", marginTop: 1 }} />
-      <div>
-        {code && <div className="code">Error {code}</div>}
-        <div className="msg">{message}</div>
-      </div>
-    </div>
-  );
-}
 
 /** Columns per table for completion; reloads when the table list changes (DDL reloads it). */
 function useCompletionSchema(sessionId: string, database: string | null) {

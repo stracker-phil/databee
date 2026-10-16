@@ -2,9 +2,8 @@ import { useState } from "react";
 import { Eraser } from "lucide-react";
 import { api } from "../../api";
 import { formatBytes, formatCount } from "../../lib/format";
-import { whereEquals } from "../../lib/sql";
 import { selectActiveSession, selectWp, useStore } from "../../state/store";
-import { ErrorPanel } from "../QueryTab";
+import { ErrorPanel } from "../ErrorPanel";
 import { BreakdownChart } from "./BreakdownChart";
 import { FieldList } from "./FieldValue";
 import { Ago, Card, Loading, Stat } from "./ui";
@@ -45,7 +44,7 @@ function OptionGroup({ prefix }: { prefix: string }) {
 export function SettingsScreen({ params }: { params?: Record<string, string> }) {
   const session = useStore(selectActiveSession);
   const queueChange = useStore((s) => s.queueChange);
-  const openInDatabase = useStore((s) => s.openInDatabase);
+  const openRow = useStore((s) => s.openRow);
   const [prefix, setPrefix] = useState<string | null>(params?.prefix ?? null);
   const { data, error } = useWpData([], api.wpOptions);
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
@@ -75,7 +74,7 @@ export function SettingsScreen({ params }: { params?: Record<string, string> }) 
       <Card title="Largest autoloaded options" aside="click to open the row">
         <div className="rows">
           {data.largestAutoload.map((o) => (
-            <button key={o.name} className="row-link" onClick={() => openInDatabase(data.table, whereEquals([["option_name", o.name]]))}>
+            <button key={o.name} className="row-link" onClick={() => openRow(data.table, "option_name", o.name)}>
               <span className="grow-text mono">{o.name}</span>
               <span className="muted">{formatBytes(o.bytes)}</span>
             </button>

@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Database, Lock, Table2 } from "lucide-react";
-import type { Address, ChipTarget, DocField, EntityDoc, RelatedChip, TimelineEvent } from "../../../api";
+import type { Address, ChipTarget, ColumnEquals, DocField, EntityDoc, RelatedChip, TimelineEvent } from "../../../api";
 import { cellText } from "../../../lib/format";
-import { whereEquals } from "../../../lib/sql";
 import { flagEmoji } from "../../../lib/wpFormat";
-import { selectActiveSession, useStore } from "../../../state/store";
+import { useStore } from "../../../state/store";
 import { FieldList } from "../FieldValue";
 import { LinkChip } from "../LinkChip";
 import { Ago, Card } from "../ui";
@@ -75,15 +74,10 @@ const KIND_ICON: Record<string, string> = {
 
 function TimelineItem({ e }: { e: TimelineEvent }) {
   const openEntity = useStore((s) => s.openEntity);
-  const session = useStore(selectActiveSession);
+  const openSourceRow = useStore((s) => s.openRow);
   const [open, setOpen] = useState(false);
   const expandable = !!e.raw && e.raw.trim() !== e.title.trim();
-  const openRow = () => {
-    if (!e.row || !session?.database) return;
-    const s = useStore.getState();
-    s.setMode("db");
-    s.openTableTab(session.database, e.row.table, "data", `\`${e.row.idColumn}\` = ${e.row.id}`);
-  };
+  const openRow = () => e.row && openSourceRow(e.row.table, e.row.idColumn, e.row.id);
   return (
     <li className={`tl-item tl-${e.level}`}>
       <span className="tl-icon" aria-hidden>{KIND_ICON[e.kind] ?? "•"}</span>
@@ -106,7 +100,7 @@ function TimelineItem({ e }: { e: TimelineEvent }) {
           {e.row && (
             <>
               {" · "}
-              <button className="link-btn plain small" onClick={openRow} title={`${e.row.table} where ${e.row.idColumn} = ${e.row.id}`}>
+              <button className="link-btn plain small" onClick={openRow} title={`${e.row.table}, ${e.row.idColumn}: ${e.row.id}`}>
                 <Table2 size="0.692rem" /> Source row
               </button>
             </>
@@ -132,11 +126,13 @@ export function Timeline({ events }: { events: TimelineEvent[] }) {
 /** The complete generic document: fields, grouped meta, relations as navigation. */
 /** The complete stored document: the row's columns and every meta key, as stored. */
 export function AllFields({ doc, changed }: { doc: EntityDoc; changed?: Set<string> }) {
-  const openInDatabase = useStore((s) => s.openInDatabase);
+  const openRow = useStore((s) => s.openRow);
   const meta = doc.meta.reduce((n, g) => n + g.entries.length, 0);
-  const row = whereEquals([[doc.idColumn, doc.id]]);
+  const row: ColumnEquals[] = [{ column: doc.idColumn, value: doc.id }];
   const ms = doc.metaSource;
-  const metaRow = ms ? (f: DocField) => ({ table: ms.table, where: whereEquals([[ms.fk, doc.id], [ms.key, f.name]]) }) : undefined;
+  const metaRow = ms
+    ? (f: DocField) => ({ table: ms.table, where: [{ column: ms.fk, value: doc.id }, { column: ms.key, value: f.name }] })
+    : undefined;
   return (
     <details className="all-fields" open>
       <summary>
@@ -146,7 +142,7 @@ export function AllFields({ doc, changed }: { doc: EntityDoc; changed?: Set<stri
       <Card
         title={<span className="mono">{doc.table}</span>}
         aside={
-          <button className="btn tiny" onClick={() => openInDatabase(doc.table, row)} title={`Open WHERE ${row}`}>
+          <button className="btn tiny" onClick={() => openRow(doc.table, doc.idColumn, doc.id)} title={`Open ${doc.table}, ${doc.idColumn}: ${doc.id}`}>
             <Database size="0.846rem" /> Open row
           </button>
         }
@@ -158,7 +154,7 @@ export function AllFields({ doc, changed }: { doc: EntityDoc; changed?: Set<stri
           <span className="mono">{ms.table}</span>
           <span className="muted"> · {meta} keys</span>
           <div className="spacer" />
-          <button className="btn tiny" onClick={() => openInDatabase(ms.table, whereEquals([[ms.fk, doc.id]]))}>
+          <button className="btn tiny" onClick={() => openRow(ms.table, ms.fk, doc.id)}>
             <Database size="0.846rem" /> Open all meta rows
           </button>
         </div>
