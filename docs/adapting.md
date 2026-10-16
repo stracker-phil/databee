@@ -32,7 +32,7 @@ The app's name and ids live in a few places. Change them together.
 | Product name (window title, bundle `DataBee.app`, app menu) | `src-tauri/tauri.conf.json` `productName` and window `title`; `menu.rs`; `index.html`; `Toolbar.tsx`; `stage/mod.rs` `NAME` | |
 | Bundle identifier `com.philippstracker.databee` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER`; `scripts/dev/js.sh` (socket path) | Also names the config dir and the log dir. Changing it starts with empty settings. |
 | Binary and CLI command `databee` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli.rs` `name`; `scripts/install-cli.sh`; `scripts/dev/launch.sh` | The Rust lib is `databee_lib`, also used by `main.rs` and `tests/` |
-| Keychain service `"databee"` | `secrets.rs` `SERVICE` | Changing it loses saved passwords |
+| Keychain service `"databee"` | `secrets/keychain.rs` `SERVICE` | Changing it loses saved passwords |
 | Socket file `databee.sock` | `lib.rs`, `scripts/dev/js.sh` | |
 | Env vars `DATABEE_*` | `dev.rs`, `scripts/dev/launch.sh`, tests | |
 | Window events `databee:*`, `window.databee` | `src/commands/index.ts`, `src/main.tsx`, the dev scripts | Internal only |
@@ -46,7 +46,7 @@ Objective-C or NSWindow calls. The macOS behavior comes from dependencies, paths
 
 | Piece | Where | Linux | Windows |
 |---|---|---|---|
-| **Keychain** (`security-framework`) | `secrets.rs` `Keychain`; the crate won't build elsewhere | Implement `SecretStore` with the `keyring` crate (Secret Service / libsecret), and gate `security-framework` under `[target.'cfg(target_os = "macos")'.dependencies]` | `keyring` (Credential Manager) |
+| **Keychain** (`security-framework`) | `secrets/keychain.rs` `Keychain`; the crate won't build elsewhere | Implement `SecretStore` with the `keyring` crate (Secret Service / libsecret) (see [swap the secret store](#swap-the-secret-store)), and gate `security-framework` under `[target.'cfg(target_os = "macos")'.dependencies]` | `keyring` (Credential Manager) |
 | **Config dir** hard-coded to `~/Library/Application Support/<id>` | `lib.rs` `config_dir()`, `scripts/dev/js.sh` | `dirs::config_dir()` (`~/.config/<id>`). It must resolve before Tauri starts, because the CLI and socket run first | `dirs::config_dir()` (`%APPDATA%\<id>`) |
 | **Unix socket** for the single-instance handoff (`std::os::unix`, `tokio::net::UnixListener`, mode 0600) | `ipc.rs` | Works as is. Mind the ~108-byte path limit; `$XDG_RUNTIME_DIR` is a good home | Doesn't compile. Use a named pipe (`tokio::net::windows::named_pipe`) with the same line protocol. Don't switch to `tauri-plugin-single-instance`: it passes argv, and DataBee keeps passwords out of argv on purpose |
 | **File permissions** (`PermissionsExt`, `OpenOptionsExt`, `DirBuilderExt`; 0600 files, 0700 dir) | `ipc.rs`, `store/json_file.rs` | Works | Gate with `#[cfg(unix)]` |
@@ -80,6 +80,12 @@ can do all of this:
 | Add a Tauri command | [backend.md: Tauri commands](backend.md#tauri-commands) |
 | Change colors, accents or density | [frontend.md: styling](frontend.md#styling) |
 | Remove the Stage hook | [stage.md](stage.md) |
+
+### Swap the secret store
+
+Add `src-tauri/src/secrets/<impl>.rs` implementing `SecretStore` (`get`, `set`, `delete`); `pub mod` it in
+`secrets/mod.rs`; change the one `Box::new(secrets::Keychain)` line in `lib.rs`; optionally delete
+`keychain.rs` and `security-framework`.
 
 ### Removing the WordPress layer
 

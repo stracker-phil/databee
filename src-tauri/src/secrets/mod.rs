@@ -1,6 +1,11 @@
 use crate::connection::{ConnectionSpec, Secret};
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 
+mod keychain;
+#[cfg(any(test, feature = "test-util"))]
+mod memory;
+
+pub use keychain::Keychain;
 #[cfg(any(test, feature = "test-util"))]
 pub use memory::MemoryStore;
 
@@ -8,41 +13,6 @@ pub trait SecretStore: Send + Sync {
     fn get(&self, account: &str) -> AppResult<Option<Secret>>;
     fn set(&self, account: &str, secret: &Secret) -> AppResult<()>;
     fn delete(&self, account: &str) -> AppResult<()>;
-}
-
-/// Generic passwords in the login Keychain, service "databee".
-pub struct Keychain;
-
-const SERVICE: &str = "databee";
-const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
-
-impl SecretStore for Keychain {
-    fn get(&self, account: &str) -> AppResult<Option<Secret>> {
-        match security_framework::passwords::get_generic_password(SERVICE, account) {
-            Ok(bytes) => String::from_utf8(bytes)
-                .map(|s| Some(Secret::new(s)))
-                .map_err(|_| AppError::Keychain("stored password is not UTF-8".into())),
-            Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
-            Err(e) => Err(AppError::Keychain(e.to_string())),
-        }
-    }
-
-    fn set(&self, account: &str, secret: &Secret) -> AppResult<()> {
-        security_framework::passwords::set_generic_password(
-            SERVICE,
-            account,
-            secret.expose().as_bytes(),
-        )
-        .map_err(|e| AppError::Keychain(e.to_string()))
-    }
-
-    fn delete(&self, account: &str) -> AppResult<()> {
-        match security_framework::passwords::delete_generic_password(SERVICE, account) {
-            Ok(()) => Ok(()),
-            Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(()),
-            Err(e) => Err(AppError::Keychain(e.to_string())),
-        }
-    }
 }
 
 /// Where a password came from.
@@ -85,42 +55,10 @@ pub fn resolve_password(
     }
 }
 
-/// In-memory store for tests; not compiled into the app.
-#[cfg(any(test, feature = "test-util"))]
-mod memory {
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
-    use super::SecretStore;
-    use crate::connection::Secret;
-    use crate::error::AppResult;
-    use crate::lock::MutexExt;
-
-    #[derive(Default)]
-    pub struct MemoryStore(Mutex<HashMap<String, Secret>>);
-
-    impl SecretStore for MemoryStore {
-        fn get(&self, account: &str) -> AppResult<Option<Secret>> {
-            Ok(self.0.lock_unpoisoned().get(account).cloned())
-        }
-
-        fn set(&self, account: &str, secret: &Secret) -> AppResult<()> {
-            self.0
-                .lock_unpoisoned()
-                .insert(account.to_string(), secret.clone());
-            Ok(())
-        }
-
-        fn delete(&self, account: &str) -> AppResult<()> {
-            self.0.lock_unpoisoned().remove(account);
-            Ok(())
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::AppError;
 
     fn spec() -> ConnectionSpec {
         ConnectionSpec {
@@ -184,11 +122,6 @@ mod tests {
         let source = resolve_password(None, &FailingStore, &spec());
         assert!(matches!(source, PasswordSource::Unavailable(_)));
         assert_eq!(source.secret(), None);
-    }
-
-    #[test]
-    fn deleting_a_missing_entry_succeeds() {
-        assert!(MemoryStore::default().delete("missing").is_ok());
     }
 
     #[test]

@@ -190,13 +190,19 @@ Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.d
 
 ## Secrets
 
-`secrets.rs` defines the `SecretStore` trait (`get`, `set`, `delete`) and implements it twice:
+`secrets/mod.rs` defines the `SecretStore` trait (`get`, `set`, `delete`) and `resolve_password`; each
+implementation has its own file:
 
-- `Keychain`: generic passwords with service `"databee"` and account `ConnectionSpec::account()`
+- `keychain.rs`, `Keychain`: the only file that imports `security_framework`. Generic passwords with service `"databee"` and account `ConnectionSpec::account()`
   (`user@host:port`, or `user@socket`), so one password covers every database on a server. `%`, `@` and `:` in
   the user are percent-encoded, so `a@b` on `c` and `a` on `b@c` get different entries; other users keep
   their plain name.
-- `MemoryStore`: for tests, behind `#[cfg(any(test, feature = "test-util"))]`.
+- `memory.rs`, `MemoryStore`: for tests, behind `#[cfg(any(test, feature = "test-util"))]`. The crate lists
+  itself with `test-util` as a dev-dependency, so integration tests in `tests/` can use it
+  ([ADR 0019](adr/0019-test-doubles-behind-test-util.md)); release builds never contain it.
+
+The implementation is chosen in exactly one line, `Box::new(secrets::Keychain)` where `run` builds `AppState`
+in `lib.rs`. To use another store, see [adapting.md](adapting.md#swap-the-secret-store).
 
 `resolve_password` returns a `PasswordSource`: `Provided` (the page's password, else the CLI password for the
 launch request), `Stored` (Keychain), `None`, or `Unavailable(reason)` when the Keychain lookup failed.

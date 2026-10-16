@@ -75,8 +75,9 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/wp/                  WordPress detection, PHP serialize, entities, views
   src/store/               JSON stores in the config dir
   src/stage/               Stage HTTP API and request hub
-  src/secrets.rs           Keychain-backed SecretStore
-  src/menu.rs              native menu from the command ids
+  src/secrets/             SecretStore trait; Keychain and test MemoryStore
+  src/menu.rs              native menu (MENU_ITEMS)
+  src/window.rs            window theme and bring-to-front
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
   src/lock.rs              poison-tolerant std lock access
   tests/                   integration tests (Docker, #[ignore])

@@ -49,4 +49,6 @@ opt-level = 3
 strip = true
 
 [dev-dependencies]
+# Itself with test doubles, so integration tests in tests/ can use them (ADR 0019).
+databee = { path = ".", features = ["test-util"] }
 tempfile = "3.27.0"
