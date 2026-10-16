@@ -21,7 +21,7 @@ in `src/components/wp/`.
 
 | File | Responsibility |
 |---|---|
-| `mod.rs` | Detection I/O, document loading, link resolution, options queries, `fetch` (30 s timeout), `sql_string` |
+| `mod.rs` | Detection I/O, document loading, link resolution, options queries, `fetch` (30 s timeout), `sql_string` (wraps `Dialect::MYSQL`) |
 | `context.rs` | Detection logic with no I/O: prefix, versions, WooCommerce, HPOS mode, multisite, site facts |
 | `php.rs` | Lossless parser and serializer for PHP `serialize()` data |
 | `value.rs` | Turns stored text (PHP or JSON) into a generic `ValueNode` tree. Serialized strings inside other values are decoded up to 3 levels deep |

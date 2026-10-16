@@ -24,7 +24,7 @@ use serde::Serialize;
 use self::context::WpContext;
 use self::entity::{Catalog, EntityDoc, TableEntity};
 use crate::db::mysql::MySqlSession;
-use crate::db::{Cell, ResultSet, quote_ident};
+use crate::db::{Cell, Dialect, ResultSet, quote_ident};
 use crate::error::{AppError, AppResult};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -57,7 +57,7 @@ fn text(cell: &Cell) -> Option<String> {
 }
 
 pub(crate) fn sql_string(s: &str) -> String {
-    format!("'{}'", s.replace('\\', "\\\\").replace('\'', "''"))
+    Dialect::MYSQL.sql_string(s)
 }
 
 pub(crate) async fn fetch(db: &MySqlSession, sql: &str) -> AppResult<ResultSet> {

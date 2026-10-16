@@ -8,15 +8,27 @@ enum Piece<'a> {
     Other,
 }
 
-fn scan(sql: &str) -> Vec<Piece<'_>> {
+struct Scan<'a> {
+    pieces: Vec<Piece<'a>>,
+    terminated: bool,
+}
+
+fn scan(sql: &str) -> Scan<'_> {
     let bytes = sql.as_bytes();
     let mut pieces = Vec::new();
+    let mut terminated = true;
     let mut i = 0;
     while i < bytes.len() {
         let c = bytes[i];
         match c {
             b'\'' | b'"' | b'`' => {
-                i = skip_quoted(bytes, i, c);
+                i = match skip_quoted(bytes, i, c) {
+                    Some(end) => end,
+                    None => {
+                        terminated = false;
+                        bytes.len()
+                    }
+                };
                 pieces.push(Piece::Other);
             }
             b'#' => i = skip_line(bytes, i),
@@ -26,9 +38,13 @@ fn scan(sql: &str) -> Vec<Piece<'_>> {
                 i = skip_line(bytes, i)
             }
             b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                i = sql[i + 2..]
-                    .find("*/")
-                    .map_or(bytes.len(), |end| i + 2 + end + 2);
+                i = match sql[i + 2..].find("*/") {
+                    Some(end) => i + 2 + end + 2,
+                    None => {
+                        terminated = false;
+                        bytes.len()
+                    }
+                };
             }
             b';' => {
                 pieces.push(Piece::Semicolon(i));
@@ -49,10 +65,11 @@ fn scan(sql: &str) -> Vec<Piece<'_>> {
             }
         }
     }
-    pieces
+    Scan { pieces, terminated }
 }
 
-fn skip_quoted(bytes: &[u8], start: usize, quote: u8) -> usize {
+/// The index after the closing quote, or `None` when the quote is never closed.
+fn skip_quoted(bytes: &[u8], start: usize, quote: u8) -> Option<usize> {
     let mut i = start + 1;
     while i < bytes.len() {
         if bytes[i] == b'\\' && quote != b'`' {
@@ -65,11 +82,11 @@ fn skip_quoted(bytes: &[u8], start: usize, quote: u8) -> usize {
                 i += 2;
                 continue;
             }
-            return i + 1;
+            return Some(i + 1);
         }
         i += 1;
     }
-    bytes.len()
+    None
 }
 
 fn skip_line(bytes: &[u8], start: usize) -> usize {
@@ -83,7 +100,7 @@ fn skip_line(bytes: &[u8], start: usize) -> usize {
 pub fn split_statements(sql: &str) -> Vec<&str> {
     let mut statements = Vec::new();
     let mut start = 0;
-    for piece in scan(sql) {
+    for piece in scan(sql).pieces {
         if let Piece::Semicolon(pos) = piece {
             statements.push(&sql[start..pos]);
             start = pos + 1;
@@ -93,13 +110,14 @@ pub fn split_statements(sql: &str) -> Vec<&str> {
     statements
         .into_iter()
         .map(str::trim)
-        .filter(|s| scan(s).iter().any(|p| !matches!(p, Piece::Semicolon(_))))
+        .filter(|s| !is_blank(s))
         .collect()
 }
 
 /// Bare words (keywords and unquoted identifiers) in upper case, in order.
 pub fn words(statement: &str) -> Vec<String> {
     scan(statement)
+        .pieces
         .into_iter()
         .filter_map(|p| match p {
             Piece::Word(w) => Some(w.to_ascii_uppercase()),
@@ -108,9 +126,40 @@ pub fn words(statement: &str) -> Vec<String> {
         .collect()
 }
 
+/// False when the text ends inside a quote or a `/* */` comment.
+pub fn is_terminated(sql: &str) -> bool {
+    scan(sql).terminated
+}
+
+/// True when the text holds nothing but whitespace and comments.
+pub fn is_blank(sql: &str) -> bool {
+    scan(sql).pieces.is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_quotes_and_block_comments_are_unterminated() {
+        for sql in ["'abc", "\"abc", "`abc", "/* x", r"'abc\"] {
+            assert!(!is_terminated(sql), "{sql}");
+        }
+    }
+
+    #[test]
+    fn line_comments_and_plain_text_are_terminated() {
+        for sql in ["a -- x", "a # x", "a 'b'", "/* x */"] {
+            assert!(is_terminated(sql), "{sql}");
+        }
+    }
+
+    #[test]
+    fn only_whitespace_and_comments_is_blank() {
+        for (sql, blank) in [(" -- x\n /* y */ ", true), ("", true), ("--x", false)] {
+            assert_eq!(is_blank(sql), blank, "{sql}");
+        }
+    }
 
     #[test]
     fn splits_on_top_level_semicolons() {

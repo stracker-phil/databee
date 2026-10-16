@@ -8,12 +8,12 @@ use sqlx::{
     AssertSqlSafe, Column, ConnectOptions, Either, Executor, Row, SqlSafeStr, Statement, TypeInfo,
 };
 
+use super::browse::{browse_sql, page_limit};
 use super::lexer::split_statements;
 use super::safety::returns_rows;
 use super::{
-    BrowsePage, BrowseRequest, Cell, ColumnInfo, ColumnMeta, DatabaseInfo, ExecuteResponse,
-    IndexInfo, ResultSet, SYSTEM_SCHEMAS, TableInfo, TableStructure, applied_filter, browse_sql,
-    cell, quote_ident,
+    BrowsePage, BrowseRequest, Cell, ColumnInfo, ColumnMeta, DatabaseInfo, Dialect,
+    ExecuteResponse, IndexInfo, ResultSet, TableInfo, TableStructure, cell, quote_ident,
 };
 use crate::connection::{ConnectionSpec, Secret};
 use crate::error::{AppError, AppResult};
@@ -183,7 +183,9 @@ impl MySqlSession {
             .into_iter()
             .filter_map(|mut r| r.remove(0))
             .map(|name| DatabaseInfo {
-                is_system: SYSTEM_SCHEMAS.contains(&name.to_ascii_lowercase().as_str()),
+                is_system: Dialect::MYSQL
+                    .system_schemas()
+                    .contains(&name.to_ascii_lowercase().as_str()),
                 name,
             })
             .collect())
@@ -294,8 +296,8 @@ impl MySqlSession {
     }
 
     pub async fn browse(&self, req: &BrowseRequest, timeout: Duration) -> AppResult<BrowsePage> {
-        let sql = browse_sql(req)?;
-        let limit = req.limit as usize;
+        let (sql, filter) = browse_sql(req, Dialect::MYSQL)?;
+        let limit = page_limit(req) as usize;
         let mut conn = self.meta.acquire().await?;
         let outcome = tokio::time::timeout(timeout, run_script(&mut conn, &sql, limit)).await;
         let mut result = match outcome {
@@ -311,7 +313,7 @@ impl MySqlSession {
         Ok(BrowsePage {
             result,
             has_more,
-            filter: applied_filter(req)?,
+            filter,
         })
     }
 

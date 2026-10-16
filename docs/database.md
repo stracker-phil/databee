@@ -7,9 +7,12 @@ in `src-tauri/src/db_commands.rs`.
 
 | File | Responsibility |
 |---|---|
-| `db/mod.rs` | Shared DTOs (`ResultSet`, `ExecuteResponse`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage`), `quote_ident` (backticks), `browse_sql`, `applied_filter`, `SYSTEM_SCHEMAS` |
+| `db/mod.rs` | Module declarations, re-exports, and `quote_ident`, a wrapper around `Dialect::MYSQL` |
+| `db/types.rs` | Shared DTOs (`ResultSet`, `ExecuteResponse`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage`, `AppliedFilter`, `FilterKind`) |
+| `db/dialect.rs` | `Dialect` (only `Dialect::MYSQL` so far): `quote_ident` (backticks), `sql_string`, `table_ref`, `system_schemas` |
+| `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
 | `db/mysql.rs` | `MySqlSession`, the only driver. It owns all I/O. |
-| `db/lexer.rs` | A small MySQL-aware scanner, not a parser. It knows the three quote styles, backslash escapes and the `#`, `-- ` and `/* */` comments. `split_statements`, `words` |
+| `db/lexer.rs` | A small MySQL-aware scanner, not a parser. It knows the three quote styles, backslash escapes and the `#`, `-- ` and `/* */` comments. `split_statements`, `words`, `is_terminated`, `is_blank` |
 | `db/safety.rs` | `destructive_reason` (which statements need confirmation), `returns_rows` |
 | `db/cell.rs` | `Cell`: decodes text-protocol bytes by column type |
 | `db/id_filter.rs` | Primary-key shorthand in the WHERE field: `3229`, `3229, 3227`, `3220-3229` |
@@ -94,18 +97,23 @@ Full binary values never cross IPC. Only the first 16 bytes are sent, as hex.
 `browse_table` → `MySqlSession::browse` → `browse_sql`:
 
 ```sql
-SELECT * FROM `db`.`t` [WHERE <filter>] [ORDER BY `col` ASC|DESC] LIMIT <limit + 1> OFFSET <offset>
+SELECT * FROM `db`.`t` [WHERE (<filter>\n)] [ORDER BY `col` ASC|DESC] LIMIT <limit + 1> OFFSET <offset>
 ```
 
 - **Paging:** fetching one extra row tells whether there is a next page. The UI uses
-  `min(rowLimit, 500)` per page.
-- **Sorting:** one column at a time, quoted with `quote_ident`.
+  `min(rowLimit, 500)` per page; `page_limit` clamps the requested limit to `1..=MAX_PAGE_ROWS` (500).
+- **Sorting:** one column at a time, quoted with `Dialect::quote_ident`.
 - **Filter:**
   - If the table has a single-column primary key and the text matches the id grammar, the text becomes
     `pk = n`, `pk IN (…)` or `pk BETWEEN a AND b`.
   - Any other text is inserted **verbatim** as a WHERE clause. It must be a single statement; `1; DROP …` is
     rejected.
-  - The applied filter is returned so the UI can show how the text was read.
+  - The filter is wrapped as `WHERE (<filter>\n)`: the newline ends a trailing `#` or `-- ` comment, so it
+    can't comment out `ORDER BY` or `LIMIT`.
+  - A filter that ends inside a quote or a `/* */` comment is rejected as `invalid_input`
+    (`lexer::is_terminated`). A filter of only whitespace and comments counts as no filter (`lexer::is_blank`).
+  - `browse_sql` returns the applied filter (`kind` is `FilterKind`: `ids` or `sql`) next to the SQL, and
+    `browse` hands it to the UI so it can show how the text was read.
 
 Introspection uses `information_schema`:
 - `SCHEMATA` for databases;
@@ -140,11 +148,13 @@ There is no driver trait yet. `Session.db` is a concrete `MySqlSession`, and eve
    current public API: `connect`, `close`, `execute`, `cancel`, `use_database`, `databases`, `tables`,
    `structure`, `completion`, `browse`, `apply`, `fetch`, `current_database`, `server_version`. An enum is
    easier with async. Switch `Session.db`, `db_commands.rs` and `wp/*` to it.
-2. **Dialect.** These are MySQL-specific today and need a per-engine version:
-   - `quote_ident` (backticks);
-   - `sql_string` (backslash escaping, in `wp/mod.rs`);
+2. **Dialect.** `db/dialect.rs` holds the start of a per-engine `Dialect`; only `Dialect::MYSQL` exists, and
+   `db::quote_ident` and `wp::sql_string` still call it directly. These are MySQL-specific today and need a
+   per-engine version:
+   - `Dialect::quote_ident` and `Dialect::table_ref` (backticks);
+   - `Dialect::sql_string` (backslash escaping);
    - the lexer options (`#` comments, backslash escapes);
-   - `SYSTEM_SCHEMAS`;
+   - `Dialect::system_schemas`;
    - the cancel SQL (`KILL QUERY` → `pg_cancel_backend`; SQLite uses an interrupt);
    - `DELETE … LIMIT 1`;
    - `UTC_TIMESTAMP()` and `INTERVAL` in the WordPress plans.
