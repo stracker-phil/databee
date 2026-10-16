@@ -560,7 +560,7 @@ export interface InsightAction {
   kind: "navigate" | "change";
   list: string | null;
   status: string | null;
-  change: ChangeRequest | null;
+  change: WpChangeRequest | null;
 }
 
 export interface Insight {
@@ -752,11 +752,15 @@ export type EntityViewData =
   | SessionView
   | ({ view: "generic" } & EntityDoc);
 
+/** Row edits, planned by the core (`db::changes`). */
 export type ChangeRequest =
   | { type: "setCell"; database: string; table: string; keyColumn: string; key: string; column: string; value: string | null }
   | { type: "deleteRow"; database: string; table: string; keyColumn: string; key: string }
   | { type: "duplicateRow"; database: string; table: string; keyColumn: string; key: string }
-  | { type: "insertRow"; database: string; table: string; values: [string, string | null][] }
+  | { type: "insertRow"; database: string; table: string; values: [string, string | null][] };
+
+/** WordPress edits, planned by the lens (`wp::changes`). */
+export type WpChangeRequest =
   | { type: "setMeta"; database: string; entity: string; id: string; key: string; value: string }
   | { type: "deleteMeta"; database: string; entity: string; id: string; key: string }
   | { type: "setOrderStatus"; database: string; id: string; status: string }
@@ -766,10 +770,18 @@ export type ChangeRequest =
   | { type: "retryAction"; database: string; id: string }
   | { type: "cancelAction"; database: string; id: string };
 
+/** A change Rust planned and keeps until it is applied by `id`; `statements` are for display. */
 export interface PlannedChange {
+  id: number;
   description: string;
   statements: string[];
-  undo: string[];
+  canUndo: boolean;
+}
+
+export interface AppliedBatch {
+  batchId: number;
+  affected: number;
+  canUndo: boolean;
 }
 
 export type NewValue =

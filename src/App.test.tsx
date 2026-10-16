@@ -182,7 +182,7 @@ describe("App", () => {
   });
 
   describe("palette commands across sessions", () => {
-    const planned = { description: "Set post_title", statements: ["UPDATE wp_posts SET post_title = 'x'"], undo: ["UPDATE wp_posts SET post_title = 'y'"] };
+    const planned = { id: 1, description: "Set post_title", statements: ["UPDATE wp_posts SET post_title = 'x'"], canUndo: true };
     const other: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:52958/blog", displayName: "Blog", database: "db" };
 
     const search = async (text: string) => {
@@ -212,7 +212,7 @@ describe("App", () => {
     });
 
     it("lists Undo last apply only for the session that has an applied batch", async () => {
-      useStore.setState({ applied: [{ sessionId: "s2", changes: [planned] }] });
+      useStore.setState({ applied: [{ sessionId: "s2", batchId: 1, canUndo: true }] });
       render(<App />);
       await search("Undo last");
       expect(screen.queryByRole("option", { name: /Undo last apply/ })).not.toBeInTheDocument();

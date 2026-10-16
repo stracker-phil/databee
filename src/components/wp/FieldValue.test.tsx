@@ -99,7 +99,8 @@ describe("FieldValue editing", () => {
     const input = screen.getByLabelText("New value");
     await userEvent.clear(input);
     await userEvent.type(input, "new{Enter}");
-    expect(mocked.planChange).toHaveBeenCalledWith("s1", { type: "setMeta", database: "db", entity: "order", id: "4711", key: "_note", value: "new" });
+    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", { type: "setMeta", database: "db", entity: "order", id: "4711", key: "_note", value: "new" });
+    expect(mocked.planChange).not.toHaveBeenCalled();
     expect(useStore.getState().pending).toHaveLength(1);
   });
 
@@ -113,7 +114,7 @@ describe("FieldValue editing", () => {
   it("toggles flags with one click", async () => {
     render(<FieldValue field={field("is_vat_exempt", "no", { hint: { type: "flag", on: false } })} target={{ kind: "meta", entity: "order", id: "4711" }} />);
     await userEvent.click(screen.getByRole("button", { name: /no/ }));
-    expect(mocked.planChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", key: "is_vat_exempt", value: "yes" }));
+    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", key: "is_vat_exempt", value: "yes" }));
   });
 
   it("edits a serialized value node by its index path", async () => {
@@ -130,7 +131,7 @@ describe("FieldValue editing", () => {
     await userEvent.clear(input);
     await userEvent.type(input, "New{Enter}");
     expect(mocked.editSerialized).toHaveBeenCalledWith('a:1:{s:5:"title";s:6:"PayPal";}', [0], { kind: "string", text: "New" });
-    expect(mocked.planChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", value: 'a:1:{s:5:"title";s:3:"New";}' }));
+    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", value: 'a:1:{s:5:"title";s:3:"New";}' }));
   });
 
   it("sends the index of the right node when two properties share a display key", async () => {

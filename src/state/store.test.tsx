@@ -48,7 +48,7 @@ const inspect = (tabId: string) =>
 const inspector = () => screen.queryByRole("complementary", { name: "Value inspector" });
 const tabTitles = () => screen.getAllByRole("tab").map((t) => t.querySelector(".title")?.textContent);
 
-const planned = (description: string) => ({ description, statements: [`-- ${description}`], undo: [] });
+const planned = (description: string) => ({ description, statements: [`-- ${description}`], canUndo: true });
 
 describe("store behavior", () => {
   beforeEach(() => {

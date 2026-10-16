@@ -5,8 +5,6 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use crate::db::Dialect;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptionRow {
     pub name: String,
@@ -171,47 +169,6 @@ pub fn overview(
     }
 }
 
-/// SQL that deletes the given expired transients and their timeout rows. Returned to the
-/// user for review instead of being executed.
-pub fn cleanup_sql(
-    dialect: Dialect,
-    database: &str,
-    table: &str,
-    transients: &[TransientInfo],
-) -> String {
-    let quote = |s: &str| dialect.sql_string(s);
-    let names: Vec<String> = transients
-        .iter()
-        .filter(|t| t.expired)
-        .flat_map(|t| {
-            let base = if t.site_wide {
-                "_site_transient_"
-            } else {
-                "_transient_"
-            };
-            let timeout = if t.site_wide {
-                "_site_transient_timeout_"
-            } else {
-                "_transient_timeout_"
-            };
-            [
-                quote(&format!("{base}{}", t.name)),
-                quote(&format!("{timeout}{}", t.name)),
-            ]
-        })
-        .collect();
-    if names.is_empty() {
-        return "-- No expired transients".into();
-    }
-    format!(
-        "-- {} expired transients\nDELETE FROM {}.{} WHERE option_name IN (\n  {}\n);",
-        names.len() / 2,
-        dialect.quote_ident(database),
-        dialect.quote_ident(table),
-        names.join(",\n  ")
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,30 +258,5 @@ mod tests {
             ]
         );
         assert!(o.transients[1].site_wide);
-    }
-
-    #[test]
-    fn cleanup_sql_targets_only_expired_transients_and_timeouts() {
-        let ts = vec![
-            TransientInfo {
-                name: "old".into(),
-                site_wide: false,
-                bytes: 1,
-                expires_at: Some(1),
-                expired: true,
-            },
-            TransientInfo {
-                name: "keep".into(),
-                site_wide: false,
-                bytes: 1,
-                expires_at: None,
-                expired: false,
-            },
-        ];
-        let sql = cleanup_sql(Dialect::MYSQL, "db", "wp_options", &ts);
-        assert!(sql.contains("'_transient_old'"));
-        assert!(sql.contains("'_transient_timeout_old'"));
-        assert!(!sql.contains("keep"));
-        assert!(sql.contains("DELETE FROM `db`.`wp_options`"));
     }
 }

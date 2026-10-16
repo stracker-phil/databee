@@ -176,8 +176,8 @@ Introspection uses `information_schema`:
 Grid edits are core (`db/changes.rs`) and work without the WordPress module. Every write goes plan, review,
 apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/0012-plans-applied-by-id.md)):
 
-1. `TableTab` asks for a `ChangeRequest`: `setCell`, `deleteRow`, `duplicateRow` or `insertRow`.
-2. `plan_row_change` plans it (`db::changes::plan`): each variant fetches what it needs (the current row, the
+1. `TableTab` queues a `ChangeRequest` (`queueChange` in the store): `setCell`, `deleteRow`, `duplicateRow` or `insertRow`.
+2. `plan_change` plans it (`db::changes::plan`): each variant fetches what it needs (the current row, the
    structure), then a pure `build_*` function turns that into a `Plan { database, description, statements,
    undo }`. A `setCell`, `deleteRow` or `duplicateRow` requires the key to match **exactly one row**. For
    `setCell` the undo restores the old value; for `deleteRow` it reinserts the row without its generated
@@ -186,8 +186,8 @@ apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/
    undo. `duplicateRow` copies every column except auto-increment and generated ones.
 3. The plan is stored in the session (`Session.plans`, `db/plans.rs`) under an id; the page receives a
    `PlannedChange { id, description, statements, canUndo }`, where `statements` are for display only.
-   `discard_change` drops one.
-4. `apply_planned(ids)` takes the plans (atomically: an unknown id fails and leaves every plan pending) and
+   `discard_change` drops one. The pending tray lists each plan's description and statements as returned.
+4. `apply_changes(ids)` takes the plans (atomically: an unknown id fails and leaves every plan pending) and
    runs their statements in **one transaction** on a pool connection (`Database::apply`). This is atomic only
    for transactional engines; MyISAM tables and implicit DDL commits are not covered. On failure the plans
    stay pending for a retry; on success it returns `{ batchId, affected, canUndo }` and bumps the session's

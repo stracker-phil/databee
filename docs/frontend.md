@@ -52,7 +52,7 @@ Dialogs · CommandPalette · Toasts
 | `mode`, `modeChosen` | `"wp" \| "db"`. A WordPress database switches to `wp` until the user picks a mode |
 | `wp`, `wpNav` | detection results per `session/db`; navigation stack (max 100) |
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow) |
-| `pending`, `applied`, `applying` | planned changes; last 20 applied batches, for undo; an apply or undo is in flight |
+| `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
 | `selectedCell` | `{ tabId, row, col, column, cell }`; opens the Inspector |
 | `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
 | `dataVersion` | bumped by ⌘R and after apply or undo; views re-fetch when it changes |
@@ -78,6 +78,9 @@ Conventions:
   Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]`
   pass through). The palette renders inside `Modal` too. `ContextMenu` focuses its first item, moves
   with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
+- Writes: `queueChange` asks Rust to plan (`planChange` for row edits, `wpPlanChange` for WordPress edits) and
+  keeps the returned plan; `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
+  (`undoBatch`); `discardChange` / `discardAll` drop plans in Rust too. The page never sends SQL to write.
 - In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
   refuses a tab that is already `running`.

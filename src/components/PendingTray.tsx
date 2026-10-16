@@ -31,7 +31,7 @@ export function PendingTray() {
         )}
         {pending.length > 0 && (
           <>
-            <button data-stage="tray:discard" className="btn" onClick={discardAll}>Discard all</button>
+            <button data-stage="tray:discard" className="btn" onClick={() => void discardAll()}>Discard all</button>
             <button ref={applyRef} data-stage="tray:apply" className="btn btn-primary" disabled={applying} aria-busy={applying} onClick={() => void applyChanges()}>
               {applying && <Loader2 size="0.923rem" className="spin" />} Apply (⌘S)
             </button>
@@ -47,12 +47,20 @@ export function PendingTray() {
                   {open[p.id] ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" />}
                 </button>
                 <span className="grow-text">{p.description}</span>
-                {p.undo.length === 0 && <span className="badge" title="No automatic undo">no undo</span>}
-                <button className="icon-btn tiny" aria-label={`Discard ${p.description}`} onClick={() => discardChange(p.id)}>
+                {!p.canUndo && <span className="badge" title="No automatic undo">no undo</span>}
+                <button className="icon-btn tiny" aria-label={`Discard ${p.description}`} onClick={() => void discardChange(p.id)}>
                   <X size="0.846rem" />
                 </button>
               </div>
-              {open[p.id] && <pre className="tray-sql">{p.statements.join(";\n")};</pre>}
+              {open[p.id] && (
+                <ul className="tray-sql" aria-label="SQL">
+                  {p.statements.map((sql, i) => (
+                    <li key={i}>
+                      <code>{sql}</code>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
         </ul>

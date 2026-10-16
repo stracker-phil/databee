@@ -1,7 +1,6 @@
-use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::db::changes::{ChangeRequest, Plan};
+use crate::db::changes::Plan;
 use crate::db::plans::PlannedChange;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -11,12 +10,12 @@ use crate::wp::context::WpContext;
 use crate::wp::dashboard::{self, BrowserSection, Dashboard, DayBucket};
 use crate::wp::detail::{self, EntityView, SearchHit};
 use crate::wp::entity::DocField;
-use crate::wp::entity::{self, Catalog, EntityDoc};
+use crate::wp::entity::{self, Catalog};
 use crate::wp::lists::{
     self, ActionSummary, ListQuery, OrderSummary, Page, PostSummary, ProductSummary,
     SessionSummary, UserSummary,
 };
-use crate::wp::options::{self, OptionsOverview};
+use crate::wp::options::OptionsOverview;
 use crate::wp::{self as lens, WpInfo};
 
 fn catalog(state: &AppState, ctx: &WpContext) -> AppResult<Catalog> {
@@ -81,52 +80,6 @@ pub async fn wp_detect(
 }
 
 #[tauri::command]
-pub async fn wp_load(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    entity: String,
-    ids: Vec<String>,
-) -> AppResult<Vec<EntityDoc>> {
-    let ctx = required_context(&state, &session_id, &database).await?;
-    let catalog = catalog(&state, &ctx)?;
-    let session = state.sessions.get(&session_id)?;
-    lens::load_docs(
-        session.db.as_ref(),
-        &ctx,
-        &catalog,
-        &database,
-        &entity,
-        &ids,
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn wp_expand(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    entity: String,
-    id: String,
-    relation: String,
-) -> AppResult<Vec<EntityDoc>> {
-    let ctx = required_context(&state, &session_id, &database).await?;
-    let catalog = catalog(&state, &ctx)?;
-    let session = state.sessions.get(&session_id)?;
-    lens::expand(
-        session.db.as_ref(),
-        &ctx,
-        &catalog,
-        &database,
-        &entity,
-        &id,
-        &relation,
-    )
-    .await
-}
-
-#[tauri::command]
 pub async fn wp_options(
     state: State<'_, AppState>,
     session_id: String,
@@ -135,22 +88,6 @@ pub async fn wp_options(
     let ctx = required_context(&state, &session_id, &database).await?;
     let session = state.sessions.get(&session_id)?;
     lens::options_overview(session.db.as_ref(), &ctx, &database).await
-}
-
-#[tauri::command]
-pub async fn wp_transient_cleanup_sql(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-) -> AppResult<String> {
-    let dialect = state.sessions.get(&session_id)?.db.dialect();
-    let overview = wp_options(state, session_id, database.clone()).await?;
-    Ok(options::cleanup_sql(
-        dialect,
-        &database,
-        &overview.table,
-        &overview.transients,
-    ))
 }
 
 /// Shared prelude for WordPress-mode commands: context, catalog and session.
@@ -441,66 +378,4 @@ pub async fn wp_plan_change(
 async fn plan_wp(state: &AppState, session_id: &str, change: &WpChangeRequest) -> AppResult<Plan> {
     let (ctx, catalog, session) = wp_env(state, session_id, change.database()).await?;
     changes::plan(session.db.as_ref(), &ctx, &catalog, change).await
-}
-
-/// Either kind of change, for the combined `plan_change` the page still calls.
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-pub enum AnyChange {
-    Row(ChangeRequest),
-    Wp(WpChangeRequest),
-}
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct LegacyPlannedChange {
-    pub description: String,
-    pub statements: Vec<String>,
-    pub undo: Vec<String>,
-}
-
-/// Plans without storing; replaced by `plan_row_change` and `wp_plan_change`.
-#[tauri::command]
-pub async fn plan_change(
-    state: State<'_, AppState>,
-    session_id: String,
-    change: AnyChange,
-) -> AppResult<LegacyPlannedChange> {
-    let plan = match &change {
-        AnyChange::Row(change) => {
-            let session = state.sessions.get(&session_id)?;
-            let timeout = state.settings.get().query_timeout();
-            crate::db::changes::plan(session.db.as_ref(), change, timeout).await?
-        }
-        AnyChange::Wp(change) => plan_wp(&state, &session_id, change).await?,
-    };
-    Ok(LegacyPlannedChange {
-        description: plan.description,
-        statements: plan.statements,
-        undo: plan.undo,
-    })
-}
-
-#[tauri::command]
-pub async fn apply_changes(
-    state: State<'_, AppState>,
-    session_id: String,
-    statements: Vec<String>,
-) -> AppResult<u64> {
-    let session = state.sessions.get(&session_id)?;
-    let timeout = state.settings.get().query_timeout();
-    log::info!(
-        "Applying {} statements on {}",
-        statements.len(),
-        session.spec.identity()
-    );
-    for sql in &statements {
-        log::trace!("SQL: {sql}");
-    }
-    let affected = session.db.apply(&statements, timeout).await?;
-    // Statements carry no database of their own, so every context of the session may be stale.
-    if let Some(cache) = session.ext.get::<WpCache>() {
-        cache.clear();
-    }
-    Ok(affected)
 }

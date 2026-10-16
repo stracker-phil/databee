@@ -169,7 +169,7 @@ pub async fn browse_table(
 }
 
 #[tauri::command]
-pub async fn plan_row_change(
+pub async fn plan_change(
     state: State<'_, AppState>,
     session_id: String,
     change: ChangeRequest,
@@ -187,7 +187,7 @@ pub fn discard_change(state: State<'_, AppState>, session_id: String, id: PlanId
 }
 
 #[tauri::command]
-pub async fn apply_planned(
+pub async fn apply_changes(
     state: State<'_, AppState>,
     session_id: String,
     ids: Vec<PlanId>,

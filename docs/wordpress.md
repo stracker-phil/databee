@@ -62,8 +62,9 @@ in `src/components/wp/`.
      UTC ranges for a `CASE` over the `*_gmt` column, and "today" comes from the server's `UTC_TIMESTAMP()`.
 
 The result `WpContext` is cached per database in the session's `WpCache` (`wp/cache.rs`, attached to
-`Session.ext`), until `wp_detect(refresh)` or a successful `apply_changes` (which clears the session's cache,
-since statements name no database). The cache dies with the session, so a reconnect detects again.
+`Session.ext`), until `wp_detect(refresh)` or until an applied or undone batch writes to that database (each
+entry remembers the session's write count, `Session::writes`). The cache dies with the session, so a
+reconnect detects again.
 Only WordPress databases are cached, so one that becomes WordPress is detected on the next call.
 The UI receives `WpInfo`, which holds the context, the entity names for the palette, and a map from table to
 entity. That map lets the Database view offer "Open as WordPress document".
@@ -240,12 +241,11 @@ backslash. LIKE patterns go through `Dialect::like` / `like_contains` (with `db:
 3. Add a component in `views/` and a branch in `EntityScreen.tsx`.
 
 **A new write:**
-1. Add a `ChangeRequest` variant that carries `database`.
-2. Plan both `statements` and `undo` in `changes::plan`.
-3. Add it to the `database` match in `plan_change`.
-4. Mirror the type in TypeScript.
-5. Trigger it with `queueChange`.
-6. Optionally return it from `dashboard::insights` as a one-click action.
+1. Add a `WpChangeRequest` variant that carries `database`, and its arm in `WpChangeRequest::database`.
+2. Plan both `statements` and `undo` in `changes::plan`: fetch the current state, then a pure `build_*`.
+3. Mirror the type in `WpChangeRequest` in `src/api/types.ts`.
+4. Trigger it with `queueChange`.
+5. Optionally return it from `dashboard::insights` as a one-click action.
 
 **Another plugin** (Subscriptions, Yoast, a payment gateway):
 1. Add entities with a fitting `when`. If it needs a plugin-specific condition, add a `When` variant and the

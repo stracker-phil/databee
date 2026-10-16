@@ -35,10 +35,10 @@ export function queryTab(patch: Partial<QueryTab> = {}): QueryTab {
   return { id: "q1", kind: "query", sessionId: "s1", title: "Query 1", sql: "", running: false, activeResult: 0, ...patch };
 }
 
-type PendingChange = PlannedChange & { id: number; sessionId: string };
+type PendingChange = PlannedChange & { sessionId: string };
 
 export function pendingChange(patch: Partial<PendingChange> = {}): PendingChange {
-  return { description: "Set x", statements: ["UPDATE `wp_options` SET `option_value` = 'x'"], undo: ["UPDATE `wp_options` SET `option_value` = 'y'"], id: 1, sessionId: "s1", ...patch };
+  return { id: 1, description: "Set x", statements: ["UPDATE `wp_options` SET `option_value` = 'x'"], canUndo: true, sessionId: "s1", ...patch };
 }
 
 /** A store with one connected session showing the given tabs. */

@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type SnapshotInfo, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type SnapshotInfo, type TableStructure, type UiState } from "../api/types";
 import { NOW } from "./now";
 import { session } from "./session";
 import { settings } from "./settings";
@@ -24,6 +24,8 @@ const emptyDashboard: Dashboard = {
 
 /** An `api` where every call resolves to a minimal valid value of its return type; override per test with mockResolvedValue. */
 export function createApiMock(): typeof realApi {
+  let nextChangeId = 1;
+  const planned = (type: string): PlannedChange => ({ id: nextChangeId++, description: `planned ${type}`, statements: [`-- ${type}`], canUndo: true });
   return {
     getSettings: vi.fn().mockResolvedValue(settings()),
     updateSettings: vi.fn(async (s) => s),
@@ -58,10 +60,7 @@ export function createApiMock(): typeof realApi {
     listHistory: vi.fn().mockResolvedValue([]),
     clearHistory: vi.fn().mockResolvedValue(undefined),
     wpDetect: vi.fn().mockResolvedValue(null),
-    wpLoad: vi.fn().mockResolvedValue([]),
-    wpExpand: vi.fn().mockResolvedValue([]),
     wpOptions: vi.fn().mockResolvedValue({ table: "wp_options", totalCount: 0, autoloadBytes: 0, groups: [], largestAutoload: [], transients: [] }),
-    wpTransientCleanupSql: vi.fn().mockResolvedValue("-- No expired transients"),
     decodeValue: vi.fn().mockResolvedValue(null),
     wpDashboard: vi.fn().mockResolvedValue(emptyDashboard),
     wpBrowser: vi.fn().mockResolvedValue([]),
@@ -95,8 +94,11 @@ export function createApiMock(): typeof realApi {
     wpFindValue: vi.fn().mockResolvedValue([]),
     wpFailedByHook: vi.fn().mockResolvedValue([]),
     wpOptionsGroup: vi.fn().mockResolvedValue([]),
-    planChange: vi.fn(async (_s, change) => ({ description: `planned ${change.type}`, statements: [`-- ${change.type}`], undo: [`-- undo ${change.type}`] })),
-    applyChanges: vi.fn().mockResolvedValue(1),
+    planChange: vi.fn(async (_s, change) => planned(change.type)),
+    wpPlanChange: vi.fn(async (_s, change) => planned(change.type)),
+    discardChange: vi.fn().mockResolvedValue(undefined),
+    applyChanges: vi.fn().mockResolvedValue({ batchId: 1, affected: 1, canUndo: true }),
+    undoBatch: vi.fn().mockResolvedValue(1),
     editSerialized: vi.fn().mockResolvedValue("edited"),
     wpSnapshotTake: vi.fn(async (_s, _d, scope, label): Promise<SnapshotInfo> => ({ id: "snap-1", label, scope, created: new Date(NOW).toISOString(), paths: 0 })),
     wpSnapshots: vi.fn().mockResolvedValue([]),

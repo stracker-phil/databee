@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AppliedBatch,
   ChangeRequest,
   CompareRow,
   DiffEntry,
   NewValue,
   PlannedChange,
+  WpChangeRequest,
   SnapshotInfo,
   SnapshotScope,
   ActionSummary,
@@ -28,7 +30,6 @@ import type {
   TimelineEvent,
   AppError,
   DecodedValue,
-  EntityDoc,
   OptionsOverview,
   WpInfo,
   BrowsePage,
@@ -105,13 +106,7 @@ export const api = {
 
   wpDetect: (sessionId: string, database: string, refresh = false) =>
     invoke<WpInfo | null>("wp_detect", { sessionId, database, refresh }),
-  wpLoad: (sessionId: string, database: string, entity: string, ids: string[]) =>
-    invoke<EntityDoc[]>("wp_load", { sessionId, database, entity, ids }),
-  wpExpand: (sessionId: string, database: string, entity: string, id: string, relation: string) =>
-    invoke<EntityDoc[]>("wp_expand", { sessionId, database, entity, id, relation }),
   wpOptions: (sessionId: string, database: string) => invoke<OptionsOverview>("wp_options", { sessionId, database }),
-  wpTransientCleanupSql: (sessionId: string, database: string) =>
-    invoke<string>("wp_transient_cleanup_sql", { sessionId, database }),
   decodeValue: (text: string) => invoke<DecodedValue | null>("decode_value", { text }),
   wpDashboard: (sessionId: string, database: string) => invoke<Dashboard>("wp_dashboard", { sessionId, database }),
   wpBrowser: (sessionId: string, database: string) => invoke<BrowserSection[]>("wp_browser", { sessionId, database }),
@@ -144,7 +139,10 @@ export const api = {
     invoke<DocField[]>("wp_options_group", { sessionId, database, prefix }),
 
   planChange: (sessionId: string, change: ChangeRequest) => invoke<PlannedChange>("plan_change", { sessionId, change }),
-  applyChanges: (sessionId: string, statements: string[]) => invoke<number>("apply_changes", { sessionId, statements }),
+  wpPlanChange: (sessionId: string, change: WpChangeRequest) => invoke<PlannedChange>("wp_plan_change", { sessionId, change }),
+  discardChange: (sessionId: string, id: number) => invoke<void>("discard_change", { sessionId, id }),
+  applyChanges: (sessionId: string, ids: number[]) => invoke<AppliedBatch>("apply_changes", { sessionId, ids }),
+  undoBatch: (sessionId: string, batchId: number) => invoke<number>("undo_batch", { sessionId, batchId }),
   editSerialized: (raw: string, path: number[], value: NewValue) => invoke<string>("edit_serialized", { raw, path, value }),
   wpSnapshotTake: (sessionId: string, database: string, scope: SnapshotScope, label: string) =>
     invoke<SnapshotInfo>("wp_snapshot_take", { sessionId, database, scope, label }),

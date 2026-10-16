@@ -127,7 +127,7 @@ describe("WordPress mode", () => {
   it("turns alerts into actions: changes queue with SQL, reviews open filtered lists", async () => {
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: "Set retention" }));
-    expect(mocked.planChange).toHaveBeenCalledWith("s1", { type: "deleteLogsBefore", database: "db", days: 30, source: null });
+    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", { type: "deleteLogsBefore", database: "db", days: 30, source: null });
     expect(within(await screen.findByRole("region", { name: "Pending changes" })).getByText("1 pending change")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Review" }));
     expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "actions", params: { status: "failed" } });
@@ -292,7 +292,7 @@ describe("WordPress mode", () => {
     useStore.getState().openEntity("order", "4711");
     render(<WpWorkspace />);
     await userEvent.selectOptions(await screen.findByLabelText("Change status"), "completed");
-    expect(mocked.planChange).toHaveBeenCalledWith("s1", { type: "setOrderStatus", database: "db", id: "4711", status: "completed" });
+    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", { type: "setOrderStatus", database: "db", id: "4711", status: "completed" });
   });
 
   it("highlights fields that changed in live mode", async () => {
@@ -495,23 +495,30 @@ describe("Pending changes", () => {
     wpStore();
   });
 
-  it("applies queued SQL in one batch and can undo it", async () => {
+  it("plans WordPress changes through wpPlanChange, applies them by id in one batch and undoes that batch", async () => {
+    mocked.wpPlanChange
+      .mockResolvedValueOnce({ id: 11, description: "planned retryAction", statements: ["-- retryAction"], canUndo: true })
+      .mockResolvedValueOnce({ id: 12, description: "planned setAutoload", statements: ["-- setAutoload"], canUndo: true });
+    mocked.applyChanges.mockResolvedValueOnce({ batchId: 7, affected: 2, canUndo: true });
     await useStore.getState().queueChange({ type: "retryAction", database: "db", id: "1" });
     await useStore.getState().queueChange({ type: "setAutoload", database: "db", option: "x", on: false });
     render(<PendingTray />);
     expect(screen.getByText("2 pending changes")).toBeInTheDocument();
+    expect(mocked.planChange).not.toHaveBeenCalled();
     await userEvent.click(screen.getAllByRole("button", { name: "Show SQL" })[0]);
-    expect(screen.getByText("-- retryAction;")).toBeInTheDocument();
+    expect(screen.getByText("-- retryAction")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
-    expect(mocked.applyChanges).toHaveBeenCalledWith("s1", ["-- retryAction", "-- setAutoload"]);
+    expect(mocked.applyChanges).toHaveBeenCalledWith("s1", [11, 12]);
     await userEvent.click(await screen.findByRole("button", { name: /Undo last apply/ }));
-    expect(mocked.applyChanges).toHaveBeenLastCalledWith("s1", ["-- undo setAutoload", "-- undo retryAction"]);
+    expect(mocked.undoBatch).toHaveBeenCalledWith("s1", 7);
   });
 
-  it("discards single changes without writing", async () => {
+  it("discards a single change on the server and removes it from the tray", async () => {
+    mocked.wpPlanChange.mockResolvedValueOnce({ id: 21, description: "planned retryAction", statements: ["-- retryAction"], canUndo: true });
     await useStore.getState().queueChange({ type: "retryAction", database: "db", id: "1" });
     render(<PendingTray />);
     await userEvent.click(screen.getByRole("button", { name: /Discard planned retryAction/ }));
+    expect(mocked.discardChange).toHaveBeenCalledWith("s1", 21);
     expect(screen.queryByText(/pending change/)).not.toBeInTheDocument();
     expect(mocked.applyChanges).not.toHaveBeenCalled();
   });

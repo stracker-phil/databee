@@ -7,6 +7,7 @@ import {
   type AppError,
   type ChangeRequest,
   type PlannedChange,
+  type WpChangeRequest,
   type Cell,
   type ColumnInfo,
   type ColumnMeta,
@@ -159,8 +160,8 @@ interface State {
   /** Per-connection UI state (column widths, split width) by connection identity. */
   uiState: Record<string, UiState>;
   /** Planned edits waiting for review, and applied batches that can be undone. */
-  pending: (PlannedChange & { id: number; sessionId: string })[];
-  applied: { sessionId: string; changes: PlannedChange[] }[];
+  pending: (PlannedChange & { sessionId: string })[];
+  applied: { sessionId: string; batchId: number; canUndo: boolean }[];
   /** An apply or undo is in flight; both refuse to start another. */
   applying: boolean;
   /** Query tabs opened per session, for unique default titles. */
@@ -200,9 +201,9 @@ interface Actions {
   goForward(): void;
   openEntity(entity: string, id: string): void;
   bumpData(): void;
-  queueChange(change: ChangeRequest): Promise<boolean>;
-  discardChange(id: number): void;
-  discardAll(): void;
+  queueChange(change: ChangeRequest | WpChangeRequest): Promise<boolean>;
+  discardChange(id: number): Promise<void>;
+  discardAll(): Promise<void>;
   applyChanges(): Promise<void>;
   undoLast(): Promise<void>;
   takeSnapshot(entity: string, id: string): Promise<void>;
@@ -277,7 +278,6 @@ const initialState: State = {
 const HOME_NAV: State["wpNav"] = { stack: [{ screen: "dashboard" }], index: 0 };
 
 let nextTabId = 1;
-let nextPendingId = 1;
 let nextToastId = 1;
 
 /** Shows an error toast (which also logs it) and returns the error. */
@@ -641,8 +641,10 @@ export const useStore = create<Store>()((set, get) => {
       const session = selectActiveSession(get());
       if (!session) return false;
       try {
-        const planned = await api.planChange(session.id, change);
-        set((s) => ({ pending: [...s.pending, { ...planned, id: nextPendingId++, sessionId: session.id }] }));
+        const planned = isRowChange(change)
+          ? await api.planChange(session.id, change)
+          : await api.wpPlanChange(session.id, change);
+        set((s) => ({ pending: [...s.pending, { ...planned, sessionId: session.id }] }));
         return true;
       } catch (e) {
         fail(e, "Cannot prepare change");
@@ -650,12 +652,19 @@ export const useStore = create<Store>()((set, get) => {
       }
     },
 
-    discardChange(id) {
-      set((s) => ({ pending: s.pending.filter((p) => p.id !== id) }));
+    async discardChange(id) {
+      const item = get().pending.find((p) => p.id === id);
+      if (!item) return;
+      try {
+        await api.discardChange(item.sessionId, id);
+        set((s) => ({ pending: s.pending.filter((p) => p !== item) }));
+      } catch (e) {
+        fail(e, "Cannot discard change");
+      }
     },
 
-    discardAll() {
-      set({ pending: [] });
+    async discardAll() {
+      for (const item of selectActivePending(get())) await get().discardChange(item.id);
     },
 
     async applyChanges() {
@@ -664,10 +673,13 @@ export const useStore = create<Store>()((set, get) => {
       if (get().applying || !session || batch.length === 0) return;
       await whileApplying(async () => {
         try {
-          await api.applyChanges(session.id, batch.flatMap((p) => p.statements));
+          const applied = await api.applyChanges(
+            session.id,
+            batch.map((p) => p.id),
+          );
           set((s) => ({
             pending: s.pending.filter((p) => !batch.includes(p)),
-            applied: [...s.applied, { sessionId: session.id, changes: batch }].slice(-20),
+            applied: [...s.applied, { sessionId: session.id, batchId: applied.batchId, canUndo: applied.canUndo }].slice(-20),
           }));
           get().toast("success", `Applied ${batch.length} ${batch.length === 1 ? "change" : "changes"}`);
           get().bumpData();
@@ -679,16 +691,15 @@ export const useStore = create<Store>()((set, get) => {
 
     async undoLast() {
       const session = selectActiveSession(get());
-      const last = [...get().applied].reverse().find((a) => a.sessionId === session?.id);
+      const last = lastBatch(get());
       if (get().applying || !session || !last) return;
-      const statements = [...last.changes].reverse().flatMap((c) => c.undo);
-      if (statements.length === 0) {
+      if (!last.canUndo) {
         get().toast("info", "This change can't be undone automatically");
         return;
       }
       await whileApplying(async () => {
         try {
-          await api.applyChanges(session.id, statements);
+          await api.undoBatch(session.id, last.batchId);
           set((s) => ({ applied: s.applied.filter((a) => a !== last) }));
           get().toast("success", "Undone");
           get().bumpData();
@@ -1060,7 +1071,15 @@ export const selectWpRoute = (s: Store): WpRoute => s.wpNav.stack[s.wpNav.index]
 
 /** Pending edits of the active session; apply and undo work per session. */
 export const selectActivePending = (s: Store) => s.pending.filter((p) => p.sessionId === s.activeSessionId);
-export const selectCanUndo = (s: Store) => s.applied.some((a) => a.sessionId === s.activeSessionId);
+const lastBatch = (s: Store) => [...s.applied].reverse().find((a) => a.sessionId === s.activeSessionId);
+
+/** The newest applied batch of the active session can be undone. */
+export const selectCanUndo = (s: Store) => lastBatch(s)?.canUndo ?? false;
+
+/** Row edits are planned by the core; every other change by the WordPress lens. */
+const ROW_CHANGES: ChangeRequest["type"][] = ["setCell", "deleteRow", "duplicateRow", "insertRow"];
+const isRowChange = (change: ChangeRequest | WpChangeRequest): change is ChangeRequest =>
+  (ROW_CHANGES as string[]).includes(change.type);
 
 export const selectActiveTab = (s: Store) => s.tabs.find((t) => t.id === s.activeTabId) ?? null;
 
