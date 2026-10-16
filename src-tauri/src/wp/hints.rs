@@ -1,6 +1,6 @@
-//! What a stored value *means*: the key registry (`meta_keys.toml`) plus value sniffing
-//! turn raw text into render hints (money, time, flag, …), labels, groups and
-//! sensitivity. The UI only draws the hints.
+//! How a stored value reads: the key registry (`meta_keys.toml`) plus value sniffing turn
+//! raw text into render hints (money, time, flag, …) and sensitivity. Hints annotate the
+//! raw value in the UI; they never replace it or rename the key.
 
 use std::sync::OnceLock;
 
@@ -35,8 +35,6 @@ pub enum Sensitive {
 struct KeyRule {
     #[serde(rename = "match")]
     pattern: String,
-    group: Option<String>,
-    label: Option<String>,
     render: Option<Render>,
     sensitive: Option<Sensitive>,
 }
@@ -54,33 +52,6 @@ fn rules() -> &'static [KeyRule] {
             .key
     })
 }
-
-/// Display order of registry groups; unknown prefix groups follow.
-pub const GROUP_ORDER: &[&str] = &[
-    "Profile",
-    "Customer",
-    "Billing address",
-    "Shipping address",
-    "Payment",
-    "PayPal",
-    "Order",
-    "Line item",
-    "Subscription",
-    "Pricing",
-    "Inventory",
-    "Product",
-    "Shipping",
-    "Attribution",
-    "Fraud check",
-    "Notifications",
-    "Activity",
-    "Sessions",
-    "Security",
-    "Analytics",
-    "Reviews",
-    "File",
-    "Admin UI",
-];
 
 /// `*` matches any run of characters.
 fn glob(pattern: &str, key: &str) -> bool {
@@ -107,14 +78,10 @@ fn glob(pattern: &str, key: &str) -> bool {
 fn rule_for(key: &str) -> KeyRule {
     let mut merged = KeyRule {
         pattern: String::new(),
-        group: None,
-        label: None,
         render: None,
         sensitive: None,
     };
     for r in rules().iter().filter(|r| glob(&r.pattern, key)) {
-        merged.group = merged.group.or_else(|| r.group.clone());
-        merged.label = merged.label.or_else(|| r.label.clone());
         merged.render = merged.render.or(r.render);
         merged.sensitive = merged.sensitive.or(r.sensitive);
     }
@@ -153,8 +120,6 @@ pub enum Hint {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Annotation {
-    pub label: Option<String>,
-    pub group: Option<String>,
     pub hint: Option<Hint>,
     pub sensitive: Option<Sensitive>,
 }
@@ -169,8 +134,6 @@ pub struct HintContext {
 pub fn annotate(key: &str, raw: Option<&str>, ctx: &HintContext) -> Annotation {
     let rule = rule_for(key);
     let mut a = Annotation {
-        label: rule.label,
-        group: rule.group,
         hint: None,
         sensitive: rule.sensitive,
     };
@@ -429,17 +392,6 @@ mod tests {
         assert!(glob("*user-settings*", "wp_user-settings-time"));
         assert!(!glob("billing_*", "shipping_city"));
         assert!(glob("_price", "_price"));
-    }
-
-    #[test]
-    fn registry_groups_known_keys_instead_of_first_word() {
-        let group = |k: &str| annotate(k, Some("x"), &ctx()).group;
-        assert_eq!(group("last_name").as_deref(), Some("Profile"));
-        assert_eq!(group("last_update").as_deref(), Some("Activity"));
-        assert_eq!(group("show_admin_bar_front").as_deref(), Some("Admin UI"));
-        assert_eq!(group("billing_city").as_deref(), Some("Billing address"));
-        assert_eq!(group("_ppcp_paypal_order_id").as_deref(), Some("PayPal"));
-        assert_eq!(group("my_plugin_thing"), None);
     }
 
     #[test]

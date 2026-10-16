@@ -1,11 +1,10 @@
-# What known keys (meta keys and entity columns) mean. First match wins.
+# How known keys (meta keys and entity columns) render. All matching rules merge; the first to set a property wins.
 # match:     exact key, or a glob with * (e.g. "billing_*")
-# group:     display group; unknown keys fall back to prefix grouping
-# label:     human label (optional)
 # render:    money | time | flag | url | user_agent | email | roles | country | guest_or_user | text
 # sensitive: secret (masked until clicked)
 
 # ---------- columns ----------
+
 [[key]]
 match = "*_amount"
 render = "money"
@@ -15,8 +14,6 @@ render = "time"
 [[key]]
 match = "customer_id"
 render = "guest_or_user"
-[[key]]
-match = "ip_address"
 [[key]]
 match = "user_agent"
 render = "user_agent"
@@ -41,486 +38,151 @@ render = "time"
 [[key]]
 match = "post_modified_gmt"
 render = "time"
-[[key]]
-match = "order_key"
-sensitive = "secret"
 
 # ---------- user profile ----------
 [[key]]
-match = "first_name"
-group = "Profile"
-label = "First name"
-[[key]]
-match = "last_name"
-group = "Profile"
-label = "Last name"
-[[key]]
-match = "nickname"
-group = "Profile"
-label = "Nickname"
-[[key]]
-match = "description"
-group = "Profile"
-label = "Biography"
-[[key]]
-match = "locale"
-group = "Profile"
-label = "Language"
+match = "order_key"
+sensitive = "secret"
 [[key]]
 match = "*capabilities"
-group = "Profile"
-label = "Roles"
 render = "roles"
 [[key]]
-match = "*user_level"
-group = "Profile"
-label = "User level"
-[[key]]
 match = "paying_customer"
-group = "Customer"
-label = "Paying customer"
 render = "flag"
 [[key]]
-match = "_order_count"
-group = "Customer"
-label = "Order count"
-[[key]]
 match = "_money_spent"
-group = "Customer"
-label = "Money spent"
 render = "money"
 [[key]]
 match = "wc_last_active"
-group = "Activity"
-label = "Last active"
 render = "time"
 [[key]]
 match = "last_update"
-group = "Activity"
-label = "Last update"
 render = "time"
 [[key]]
 match = "session_tokens"
-group = "Security"
-label = "Login sessions"
 sensitive = "secret"
-[[key]]
-match = "*persistent_shopping_cart"
-group = "Sessions"
-label = "Persistent cart"
-[[key]]
-match = "_woocommerce_tracks_anon_id"
-group = "Analytics"
-label = "Tracks ID"
-
 # ---------- admin UI preferences ----------
 [[key]]
 match = "rich_editing"
-group = "Admin UI"
-label = "Visual editor"
 render = "flag"
 [[key]]
 match = "syntax_highlighting"
-group = "Admin UI"
-label = "Syntax highlighting"
 render = "flag"
 [[key]]
 match = "comment_shortcuts"
-group = "Admin UI"
-label = "Comment shortcuts"
 render = "flag"
 [[key]]
-match = "admin_color"
-group = "Admin UI"
-label = "Admin color"
-[[key]]
 match = "use_ssl"
-group = "Admin UI"
-label = "Force SSL"
 render = "flag"
 [[key]]
 match = "show_admin_bar_front"
-group = "Admin UI"
-label = "Toolbar on site"
 render = "flag"
 [[key]]
 match = "show_welcome_panel"
-group = "Admin UI"
-label = "Welcome panel"
 render = "flag"
-[[key]]
-match = "dismissed_wp_pointers"
-group = "Admin UI"
-label = "Dismissed pointers"
-[[key]]
-match = "*dashboard_quick_press_last_post_id"
-group = "Admin UI"
-[[key]]
-match = "*user-settings*"
-group = "Admin UI"
-[[key]]
-match = "metaboxhidden_*"
-group = "Admin UI"
-[[key]]
-match = "closedpostboxes_*"
-group = "Admin UI"
-[[key]]
-match = "meta-box-order_*"
-group = "Admin UI"
-[[key]]
-match = "screen_layout_*"
-group = "Admin UI"
-[[key]]
-match = "manage*columnshidden"
-group = "Admin UI"
-[[key]]
-match = "edit_*_per_page"
-group = "Admin UI"
-[[key]]
-match = "_edit_lock"
-group = "Admin UI"
-label = "Edit lock"
-[[key]]
-match = "_edit_last"
-group = "Admin UI"
-label = "Last edited by"
-
 # ---------- addresses ----------
 [[key]]
 match = "*billing_email"
-group = "Billing address"
-label = "Email"
 render = "email"
 [[key]]
 match = "*billing_country"
-group = "Billing address"
-label = "Country"
 render = "country"
-[[key]]
-match = "*billing_*"
-group = "Billing address"
 [[key]]
 match = "*shipping_country"
-group = "Shipping address"
-label = "Country"
 render = "country"
-[[key]]
-match = "*shipping_*"
-group = "Shipping address"
-[[key]]
-match = "_billing_address_index"
-group = "Billing address"
-label = "Search index"
-[[key]]
-match = "_shipping_address_index"
-group = "Shipping address"
-label = "Search index"
-
 # ---------- PayPal Payments ----------
 [[key]]
-match = "_ppcp_paypal_order_id"
-group = "PayPal"
-label = "PayPal order ID"
-[[key]]
-match = "_ppcp_paypal_intent"
-group = "PayPal"
-label = "Intent"
-[[key]]
-match = "_ppcp_paypal_payment_mode"
-group = "PayPal"
-label = "Mode"
-[[key]]
-match = "_ppcp_paypal_payment_source"
-group = "PayPal"
-label = "Payment source"
-[[key]]
-match = "_ppcp_paypal_fees"
-group = "PayPal"
-label = "Fees"
-[[key]]
 match = "PayPal Transaction Fee"
-group = "PayPal"
-label = "Transaction fee"
 render = "money"
 [[key]]
 match = "_ppcp_*email"
-group = "PayPal"
 render = "email"
-[[key]]
-match = "_ppcp_*phone"
-group = "PayPal"
-[[key]]
-match = "_ppcp_*"
-group = "PayPal"
-[[key]]
-match = "ppcp_*"
-group = "PayPal"
-[[key]]
-match = "*_paypal_*"
-group = "PayPal"
-
 # ---------- order ----------
 [[key]]
-match = "_transaction_id"
-group = "Payment"
-label = "Transaction ID"
-[[key]]
-match = "_payment_method"
-group = "Payment"
-label = "Payment method"
-[[key]]
-match = "_payment_method_title"
-group = "Payment"
-label = "Payment method title"
-[[key]]
-match = "_payment_tokens"
-group = "Payment"
-label = "Payment tokens"
-[[key]]
 match = "_customer_user"
-group = "Order"
-label = "Customer"
 render = "guest_or_user"
 [[key]]
 match = "_order_total"
-group = "Order"
-label = "Total"
 render = "money"
 [[key]]
-match = "_order_*"
-group = "Order"
-[[key]]
-match = "_cart_hash"
-group = "Order"
-label = "Cart hash"
-[[key]]
 match = "_order_key"
-group = "Order"
-label = "Order key"
 sensitive = "secret"
 [[key]]
 match = "is_vat_exempt"
-group = "Order"
-label = "VAT exempt"
 render = "flag"
 [[key]]
 match = "_date_paid"
-group = "Order"
-label = "Paid"
 render = "time"
 [[key]]
 match = "_date_completed"
-group = "Order"
-label = "Completed"
 render = "time"
 [[key]]
 match = "_paid_date"
-group = "Order"
-label = "Paid"
 render = "time"
 [[key]]
 match = "_completed_date"
-group = "Order"
-label = "Completed"
 render = "time"
 [[key]]
-match = "_customer_ip_address"
-group = "Order"
-label = "Customer IP"
-[[key]]
 match = "_customer_user_agent"
-group = "Order"
-label = "User agent"
 render = "user_agent"
 [[key]]
 match = "_wc_order_attribution_session_start_time"
-group = "Attribution"
-label = "Session start"
 render = "time"
 [[key]]
 match = "_wc_order_attribution_user_agent"
-group = "Attribution"
-label = "User agent"
 render = "user_agent"
 [[key]]
 match = "_wc_order_attribution_session_entry"
-group = "Attribution"
-label = "Entry page"
 render = "url"
 [[key]]
 match = "_wc_order_attribution_referrer"
-group = "Attribution"
-label = "Referrer"
 render = "url"
 [[key]]
-match = "_wc_order_attribution_*"
-group = "Attribution"
-[[key]]
 match = "_wc_push_notification_*"
-group = "Notifications"
 render = "time"
-[[key]]
-match = "*recaptcha*"
-group = "Fraud check"
-
 # ---------- subscriptions ----------
 [[key]]
 match = "_schedule_*"
-group = "Subscription"
 render = "time"
 [[key]]
-match = "_billing_period"
-group = "Subscription"
-label = "Billing period"
-[[key]]
-match = "_billing_interval"
-group = "Subscription"
-label = "Billing interval"
-[[key]]
 match = "_requires_manual_renewal"
-group = "Subscription"
-label = "Manual renewal"
 render = "flag"
-[[key]]
-match = "_subscription_*"
-group = "Subscription"
-
 # ---------- products ----------
 [[key]]
 match = "_price"
-group = "Pricing"
-label = "Price"
 render = "money"
 [[key]]
 match = "_regular_price"
-group = "Pricing"
-label = "Regular price"
 render = "money"
 [[key]]
 match = "_sale_price"
-group = "Pricing"
-label = "Sale price"
 render = "money"
 [[key]]
 match = "_sale_price_dates_*"
-group = "Pricing"
 render = "time"
 [[key]]
-match = "_sku"
-group = "Inventory"
-label = "SKU"
-[[key]]
-match = "_stock"
-group = "Inventory"
-label = "Stock"
-[[key]]
-match = "_stock_status"
-group = "Inventory"
-label = "Stock status"
-[[key]]
 match = "_manage_stock"
-group = "Inventory"
-label = "Manage stock"
 render = "flag"
-[[key]]
-match = "_backorders"
-group = "Inventory"
-label = "Backorders"
 [[key]]
 match = "_sold_individually"
-group = "Inventory"
-label = "Sold individually"
 render = "flag"
 [[key]]
-match = "total_sales"
-group = "Inventory"
-label = "Total sales"
-[[key]]
 match = "_virtual"
-group = "Product"
-label = "Virtual"
 render = "flag"
 [[key]]
 match = "_downloadable"
-group = "Product"
-label = "Downloadable"
 render = "flag"
-[[key]]
-match = "_thumbnail_id"
-group = "Product"
-label = "Image"
-[[key]]
-match = "_product_image_gallery"
-group = "Product"
-label = "Gallery"
-[[key]]
-match = "_product_attributes"
-group = "Product"
-label = "Attributes"
-[[key]]
-match = "_tax_*"
-group = "Pricing"
-[[key]]
-match = "_weight"
-group = "Shipping"
-label = "Weight"
-[[key]]
-match = "_length"
-group = "Shipping"
-label = "Length"
-[[key]]
-match = "_width"
-group = "Shipping"
-label = "Width"
-[[key]]
-match = "_height"
-group = "Shipping"
-label = "Height"
-[[key]]
-match = "_wc_*rating*"
-group = "Reviews"
-[[key]]
-match = "_wc_review_count"
-group = "Reviews"
-label = "Review count"
-
 # ---------- order items ----------
 [[key]]
-match = "_qty"
-group = "Line item"
-label = "Quantity"
-[[key]]
 match = "_line_*tax"
-group = "Line item"
 render = "money"
 [[key]]
 match = "_line_total"
-group = "Line item"
-label = "Total"
 render = "money"
 [[key]]
 match = "_line_subtotal"
-group = "Line item"
-label = "Subtotal"
 render = "money"
-[[key]]
-match = "_product_id"
-group = "Line item"
-label = "Product"
-[[key]]
-match = "_variation_id"
-group = "Line item"
-label = "Variation"
-
 # ---------- attachments & misc ----------
-[[key]]
-match = "_wp_attached_file"
-group = "File"
-label = "File"
-[[key]]
-match = "_wp_attachment_metadata"
-group = "File"
-label = "Metadata"
 [[key]]
 match = "*password*"
 sensitive = "secret"

@@ -17,7 +17,7 @@ describe("FieldValue rendering", () => {
     wpStore();
   });
 
-  it("formats money, relative times and roles", () => {
+  it("shows stored values with readable notes next to them", () => {
     const unix = Math.round(Date.now() / 1000) - 2 * 86400;
     render(
       <FieldList
@@ -30,16 +30,20 @@ describe("FieldValue rendering", () => {
         ]}
       />,
     );
+    expect(screen.getByText("95.40000000")).toBeInTheDocument();
     expect(screen.getByText("$95.40")).toBeInTheDocument();
+    expect(screen.getByText(String(unix))).toBeInTheDocument();
     expect(screen.getByText("2 d ago")).toBeInTheDocument();
     expect(screen.getByText("customer")).toBeInTheDocument();
-    expect(screen.getByText("Guest")).toBeInTheDocument();
-    expect(screen.getByText("🇦🇹 AT")).toBeInTheDocument();
+    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.getByText("guest")).toBeInTheDocument();
+    expect(screen.getByText("AT")).toBeInTheDocument();
   });
 
-  it("shows labels with the raw key as tooltip", () => {
+  it("names every field by its stored key, never a label", () => {
     render(<FieldList fields={[field("_ppcp_paypal_intent", "CAPTURE", { label: "Intent" })]} />);
-    expect(screen.getByText("Intent")).toHaveAttribute("title", "Intent (_ppcp_paypal_intent)");
+    expect(screen.getByText("_ppcp_paypal_intent")).toBeInTheDocument();
+    expect(screen.queryByText("Intent")).not.toBeInTheDocument();
   });
 
   it("opens web links through the backend", async () => {
@@ -48,9 +52,10 @@ describe("FieldValue rendering", () => {
     expect(mocked.openUrl).toHaveBeenCalledWith("https://shop.test/cart");
   });
 
-  it("summarizes user agents and keeps the raw string on hover", () => {
+  it("shows the user agent string with a short summary", () => {
     render(<FieldValue field={field("ua", "Mozilla/5.0 …", { hint: { type: "userAgent", text: "Chrome 154 · macOS" } })} />);
-    expect(screen.getByText(/Chrome 154 · macOS/)).toHaveAttribute("title", "Mozilla/5.0 …");
+    expect(screen.getByText("Mozilla/5.0 …")).toBeInTheDocument();
+    expect(screen.getByText(/Chrome 154 · macOS/)).toBeInTheDocument();
   });
 
   it("masks secrets until revealed", async () => {
@@ -69,10 +74,12 @@ describe("FieldValue rendering", () => {
     expect(screen.getByText(token)).toBeInTheDocument();
   });
 
-  it("can always show the raw value behind a hint", async () => {
-    render(<FieldValue field={field("total_amount", "95.40000000", { hint: { type: "money", text: "$95.40" } })} />);
-    await userEvent.click(screen.getByTitle("Show raw value"));
-    expect(screen.getByText("95.40000000")).toBeInTheDocument();
+  it("opens the row a field is stored in from its menu", async () => {
+    render(<FieldValue field={field("_ppcp_paypal_intent", "CAPTURE")} source={{ table: "wp_wc_orders_meta", where: "`order_id` = 4711 AND `meta_key` = '_ppcp_paypal_intent'" }} />);
+    await userEvent.click(screen.getByRole("button", { name: "Actions for _ppcp_paypal_intent" }));
+    await userEvent.click(screen.getByText("Open row in Database view"));
+    expect(useStore.getState().mode).toBe("db");
+    expect(useStore.getState().tabs.at(-1)).toMatchObject({ table: "wp_wc_orders_meta", filter: "`order_id` = 4711 AND `meta_key` = '_ppcp_paypal_intent'" });
   });
 });
 

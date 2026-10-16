@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 use super::context::WpContext;
-use super::hints::{GROUP_ORDER, Hint, HintContext, Sensitive, annotate};
+use super::hints::{Hint, HintContext, Sensitive, annotate};
 use super::value::{self, DecodedValue};
 use crate::db::{Cell, ResultSet, quote_ident};
 use crate::error::{AppError, AppResult};
@@ -300,8 +300,6 @@ pub struct DocField {
     pub link: Option<EntityLink>,
     pub hint: Option<Hint>,
     pub sensitive: Option<Sensitive>,
-    #[serde(skip)]
-    pub group: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -310,8 +308,6 @@ pub struct MetaGroup {
     pub name: String,
     /// All keys start with `_` (hidden from the WordPress UI).
     pub private: bool,
-    /// Group comes from the key registry rather than a shared prefix.
-    pub known: bool,
     pub entries: Vec<DocField>,
 }
 
@@ -339,7 +335,19 @@ pub struct EntityDoc {
     pub id_column: String,
     pub fields: Vec<DocField>,
     pub meta: Vec<MetaGroup>,
+    /// Where the meta rows live, so the UI can open them filtered in the table view.
+    pub meta_source: Option<MetaSource>,
     pub relations: Vec<RelationInfo>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaSource {
+    pub table: String,
+    /// Column holding the entity ID, e.g. `order_id`.
+    pub fk: String,
+    /// Column holding the key, e.g. `meta_key`.
+    pub key: String,
 }
 
 impl EntityDoc {
@@ -396,10 +404,9 @@ pub(crate) fn field(
     DocField {
         decoded: cell_str(&value).and_then(value::decode),
         link: link_for(catalog, link_target, &value),
-        label: a.label,
+        label: None,
         hint: a.hint,
         sensitive: a.sensitive,
-        group: a.group,
         name,
         value,
     }
@@ -415,33 +422,28 @@ fn meta_prefix(key: &str) -> &str {
         .unwrap_or("")
 }
 
-/// Groups meta by the key registry; unknown keys fall back to shared prefixes (split into
-/// public and `_private`), and single leftovers go to "Other". Known groups come first, in
-/// `GROUP_ORDER`.
+/// Groups meta by its literal key prefix (`_ppcp*`, `billing*`), public and `_private` keys
+/// apart; keys that share their prefix with no other key go to "Other". Groups and keys are
+/// sorted by name, "Other" last.
 pub fn group_meta(entries: Vec<DocField>) -> Vec<MetaGroup> {
-    let fallback_key = |e: &DocField| (e.name.starts_with('_'), meta_prefix(&e.name).to_string());
-    let mut counts: HashMap<(bool, String), usize> = HashMap::new();
-    for e in entries.iter().filter(|e| e.group.is_none()) {
-        *counts.entry(fallback_key(e)).or_default() += 1;
+    let pattern = |e: &DocField| {
+        let prefix = meta_prefix(&e.name);
+        (!prefix.is_empty()).then(|| {
+            let underscore = if e.name.starts_with('_') { "_" } else { "" };
+            format!("{underscore}{prefix}*")
+        })
+    };
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for p in entries.iter().filter_map(pattern) {
+        *counts.entry(p).or_default() += 1;
     }
     let mut groups: Vec<MetaGroup> = Vec::new();
     for e in entries {
+        let name = pattern(&e)
+            .filter(|p| counts[p] > 1)
+            .unwrap_or_else(|| "Other".to_string());
         let private = e.name.starts_with('_');
-        let (name, known) = match &e.group {
-            Some(g) => (g.clone(), true),
-            None => {
-                let key = fallback_key(&e);
-                if !key.1.is_empty() && counts[&key] > 1 {
-                    (key.1, false)
-                } else {
-                    ("Other".to_string(), false)
-                }
-            }
-        };
-        match groups
-            .iter_mut()
-            .find(|g| g.name == name && (g.known || name == "Other" || g.private == private))
-        {
+        match groups.iter_mut().find(|g| g.name == name) {
             Some(g) => {
                 g.private &= private;
                 g.entries.push(e);
@@ -449,26 +451,18 @@ pub fn group_meta(entries: Vec<DocField>) -> Vec<MetaGroup> {
             None => groups.push(MetaGroup {
                 name,
                 private,
-                known,
                 entries: vec![e],
             }),
         }
     }
-    let rank = |g: &MetaGroup| {
-        if g.known {
-            (
-                0,
-                GROUP_ORDER
-                    .iter()
-                    .position(|n| *n == g.name)
-                    .unwrap_or(usize::MAX),
-                false,
-            )
-        } else {
-            (if g.name == "Other" { 2 } else { 1 }, 0, g.private)
-        }
-    };
-    groups.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| a.name.cmp(&b.name)));
+    for g in &mut groups {
+        g.entries.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+    groups.sort_by(|a, b| {
+        (a.name == "Other")
+            .cmp(&(b.name == "Other"))
+            .then_with(|| a.name.cmp(&b.name))
+    });
     groups
 }
 
@@ -580,6 +574,11 @@ pub fn assemble(
                 id_column: def.id.clone(),
                 fields,
                 meta: group_meta(meta_fields),
+                meta_source: def.meta.as_ref().map(|m| MetaSource {
+                    table: ctx.table(&m.table),
+                    fk: m.fk.clone(),
+                    key: m.key.clone(),
+                }),
                 relations,
                 id,
             }
@@ -758,7 +757,7 @@ mod tests {
     }
 
     #[test]
-    fn meta_groups_come_from_the_registry_with_prefix_fallback() {
+    fn meta_groups_by_literal_key_prefix() {
         let groups = group_meta(
             [
                 "_ppcp_paypal_order_id",
@@ -779,20 +778,20 @@ mod tests {
         );
         let shape: Vec<_> = groups
             .iter()
-            .map(|g| (g.name.as_str(), g.known, g.entries.len()))
+            .map(|g| (g.name.as_str(), g.private, g.entries.len()))
             .collect();
         assert_eq!(
             shape,
             [
-                ("Billing address", true, 2),
-                ("Payment", true, 1),
-                ("PayPal", true, 2),
-                ("foo", false, 2),
-                ("myplugin", false, 2),
-                ("Other", false, 2),
+                ("_myplugin*", true, 2),
+                ("_ppcp*", true, 2),
+                ("billing*", false, 2),
+                ("foo*", false, 2),
+                ("Other", false, 3),
             ]
         );
-        assert!(groups[4].private);
+        let other: Vec<_> = groups[4].entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(other, ["_lonely", "_transaction_id", "color"]);
     }
 
     #[test]
@@ -854,12 +853,17 @@ mod tests {
             .unwrap();
         assert_eq!(parent.link, None, "0 is not a reference");
 
-        assert_eq!(doc.meta[0].name, "PayPal");
+        assert_eq!(doc.meta[0].name, "_ppcp*");
         assert!(doc.meta[0].private);
         let total = doc.fields.iter().find(|f| f.name == "status").unwrap();
         assert_eq!(total.hint, None);
         assert_eq!(
-            doc.meta[0].entries[1].decoded.as_ref().unwrap().format,
+            doc.field("_ppcp_fees")
+                .unwrap()
+                .decoded
+                .as_ref()
+                .unwrap()
+                .format,
             "php"
         );
 

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Lock, Table2 } from "lucide-react";
-import type { Address, EntityDoc, RelatedChip, TimelineEvent } from "../../../api";
+import { ChevronDown, ChevronRight, Database, Lock, Table2 } from "lucide-react";
+import type { Address, DocField, EntityDoc, RelatedChip, TimelineEvent } from "../../../api";
 import { cellText } from "../../../lib/format";
+import { whereEquals } from "../../../lib/sql";
 import { flagEmoji } from "../../../lib/wpFormat";
 import { selectActiveSession, useStore } from "../../../state/store";
 import { FieldList } from "../FieldValue";
@@ -129,26 +130,48 @@ export function Timeline({ events }: { events: TimelineEvent[] }) {
 }
 
 /** The complete generic document: fields, grouped meta, relations as navigation. */
-export function AllFields({ doc, changed, open = false }: { doc: EntityDoc; changed?: Set<string>; open?: boolean }) {
+/** The complete stored document: the row's columns and every meta key, as stored. */
+export function AllFields({ doc, changed }: { doc: EntityDoc; changed?: Set<string> }) {
+  const openInDatabase = useStore((s) => s.openInDatabase);
   const meta = doc.meta.reduce((n, g) => n + g.entries.length, 0);
+  const row = whereEquals([[doc.idColumn, doc.id]]);
+  const ms = doc.metaSource;
+  const metaRow = ms ? (f: DocField) => ({ table: ms.table, where: whereEquals([[ms.fk, doc.id], [ms.key, f.name]]) }) : undefined;
   return (
-    <details className="all-fields" open={open}>
+    <details className="all-fields" open>
       <summary>
-        <ChevronRight size="0.923rem" /> All fields & meta <span className="badge">{doc.fields.length + meta}</span>
-        <span className="muted"> · {doc.table}</span>
+        <ChevronRight size="0.923rem" /> Stored fields & meta <span className="badge">{doc.fields.length + meta}</span>
+        <span className="muted mono"> · {doc.table}</span>
       </summary>
-      <Card title="Fields">
-        <FieldList fields={doc.fields} changed={changed} target={{ kind: "row", table: doc.table, keyColumn: doc.idColumn, key: doc.id }} />
+      <Card
+        title={<span className="mono">{doc.table}</span>}
+        aside={
+          <button className="btn tiny" onClick={() => openInDatabase(doc.table, row)} title={`Open WHERE ${row}`}>
+            <Database size="0.846rem" /> Open row
+          </button>
+        }
+      >
+        <FieldList fields={doc.fields} changed={changed} target={{ kind: "row", table: doc.table, keyColumn: doc.idColumn, key: doc.id }} source={() => ({ table: doc.table, where: row })} />
       </Card>
+      {ms && meta > 0 && (
+        <div className="meta-head">
+          <span className="mono">{ms.table}</span>
+          <span className="muted"> · {meta} keys</span>
+          <div className="spacer" />
+          <button className="btn tiny" onClick={() => openInDatabase(ms.table, whereEquals([[ms.fk, doc.id]]))}>
+            <Database size="0.846rem" /> Open all meta rows
+          </button>
+        </div>
+      )}
       {doc.meta.map((g) => (
-        <details key={`${g.known}-${g.private}-${g.name}`} className="meta-group" open={g.known || doc.meta.length <= 4}>
+        <details key={`${g.private}-${g.name}`} className="meta-group" open>
           <summary>
             <ChevronRight size="0.846rem" />
-            {!g.known && g.private && <Lock size="0.769rem" />}
-            {g.name}
+            {g.private && <Lock size="0.769rem" />}
+            <span className="mono">{g.name}</span>
             <span className="badge">{g.entries.length}</span>
           </summary>
-          <FieldList fields={g.entries} changed={changed} prefix="meta." target={{ kind: "meta", entity: doc.entity, id: doc.id }} />
+          <FieldList fields={g.entries} changed={changed} prefix="meta." target={{ kind: "meta", entity: doc.entity, id: doc.id }} source={metaRow} />
         </details>
       ))}
     </details>

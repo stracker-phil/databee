@@ -280,7 +280,10 @@ export interface EntityDoc {
   table: string;
   idColumn: string;
   fields: DocField[];
-  meta: { name: string; private: boolean; known: boolean; entries: DocField[] }[];
+  /** Grouped by literal key prefix (`_ppcp*`); "Other" holds keys that share no prefix. */
+  meta: { name: string; private: boolean; entries: DocField[] }[];
+  /** Meta table and its entity-ID and key columns. */
+  metaSource: { table: string; fk: string; key: string } | null;
   relations: { name: string; label: string; entity: string; count: number }[];
 }
 

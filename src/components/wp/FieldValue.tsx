@@ -112,8 +112,13 @@ const PIVOTS: Record<string, { list: WpList; param: "search" | "kind" | "status"
 };
 
 /** Context-menu entries for a value: copy, filter the matching list, find it everywhere. */
-export function valueMenu(name: string, text: string, actions: { copy: () => void; navigate: (route: Parameters<ReturnType<typeof useStore.getState>["navigate"]>[0]) => void }): MenuEntry[] {
+export function valueMenu(
+  name: string,
+  text: string,
+  actions: { copy: () => void; navigate: (route: Parameters<ReturnType<typeof useStore.getState>["navigate"]>[0]) => void; openRow?: () => void },
+): MenuEntry[] {
   const items: MenuEntry[] = [{ label: "Copy value", action: actions.copy }];
+  if (actions.openRow) items.push({ label: "Open row in Database view", action: actions.openRow });
   const pivot = PIVOTS[name];
   if (pivot && text && (pivot.param !== "status" || text.startsWith("wc-") || pivot.list === "content")) {
     items.push({ label: `Filter ${pivot.label} by this value`, action: () => actions.navigate({ screen: "list", list: pivot.list, params: { [pivot.param]: text } }) });
@@ -127,7 +132,10 @@ export function valueMenu(name: string, text: string, actions: { copy: () => voi
 const FLAG_OPPOSITE: Record<string, string> = { yes: "no", no: "yes", true: "false", false: "true", on: "off", off: "on", "1": "0", "0": "1" };
 
 /** Renders one field according to its render hint; raw text is always one toggle away. */
-export function FieldValue({ field, target }: { field: DocField; target?: EditTarget }) {
+/** The table row a field is stored in, as a WHERE filter for the Database view. */
+export type RowSource = { table: string; where: string };
+
+export function FieldValue({ field, target, source }: { field: DocField; target?: EditTarget; source?: RowSource }) {
   const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
   const toast = useStore((s) => s.toast);
   const [raw, setRaw] = useState(false);
@@ -170,13 +178,20 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
     body = <LinkChip link={link} />;
   } else if (decoded && !raw) {
     body = <ValueTree value={decoded} onEdit={editTree} />;
-  } else if (hint && !raw) {
+  } else if (hint) {
+    // The stored value always shows; the hint only annotates it.
+    const plain = text.length > COLLAPSE_AT ? <LongText text={text} /> : <span>{text}</span>;
+    const note = (n: React.ReactNode, title?: string) => (
+      <>
+        {plain} <span className="hint-note" title={title}>{n}</span>
+      </>
+    );
     switch (hint.type) {
       case "money":
-        body = <span className="money">{hint.text}</span>;
+        body = note(hint.text);
         break;
       case "time":
-        body = <span title={`${absoluteFromUnix(hint.unix)}${hint.utc ? "" : " (site time)"} · ${text}`}>{relativeFromUnix(hint.unix)}</span>;
+        body = note(relativeFromUnix(hint.unix), `${absoluteFromUnix(hint.unix)}${hint.utc ? "" : " (site time)"}`);
         break;
       case "flag": {
         const opposite = FLAG_OPPOSITE[text.toLowerCase()];
@@ -194,31 +209,29 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
       }
       case "url":
         body = (
-          <a href={hint.href} className="url" onClick={(e) => (e.preventDefault(), void api.openUrl(hint.href))} title={hint.href}>
-            {shorten(hint.href.replace(/^https?:\/\//, ""), 48, 12)}
+          <a href={hint.href} className="url" onClick={(e) => (e.preventDefault(), void api.openUrl(hint.href))} title={`Open ${hint.href}`}>
+            {text}
           </a>
         );
         break;
       case "userAgent":
-        body = (
-          <span title={text}>
+        body = note(
+          <>
             <MonitorSmartphone size="0.923rem" style={{ verticalAlign: -2 }} /> {hint.text}
-          </span>
+          </>,
         );
         break;
       case "roles":
-        body = hint.roles.map((r) => (
-          <span key={r} className="badge" style={{ marginRight: 4 }}>{r}</span>
-        ));
+        body = note(hint.roles.join(", "));
         break;
       case "country":
-        body = <span>{flagEmoji(hint.code)} {hint.code}</span>;
+        body = note(flagEmoji(hint.code));
         break;
       case "guest":
-        body = <span className="badge">Guest</span>;
+        body = note("guest");
         break;
       case "email":
-        body = <span>{text}</span>;
+        body = plain;
         break;
     }
   } else if (text.length > COLLAPSE_AT) {
@@ -227,28 +240,30 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
     body = <span>{text}</span>;
   }
 
-  const canToggle = (decoded || (hint && hint.type !== "email")) && sensitive !== "secret" && !link;
+  const canToggle = !!decoded && sensitive !== "secret" && !link;
   const menuItems = () =>
     valueMenu(field.name, text, {
       copy: () => void navigator.clipboard.writeText(text).then(() => toast("success", "Copied value")),
       navigate: (route) => useStore.getState().navigate(route),
+      openRow: source && (() => useStore.getState().openInDatabase(source.table, source.where)),
     });
-  const openMenu = (x: number, y: number) => value.t !== "null" && setMenu({ x, y });
+  const hasMenu = value.t !== "null" || !!source;
+  const openMenu = (x: number, y: number) => hasMenu && setMenu({ x, y });
   return (
     <span
       className="field-value"
       onContextMenu={(e) => {
-        if (value.t === "null") return;
+        if (!hasMenu) return;
         e.preventDefault();
         openMenu(e.clientX, e.clientY);
       }}
     >
       {body}
-      {value.t !== "null" && (
+      {hasMenu && (
         <button
           className="row-action"
           aria-label={`Actions for ${field.name}`}
-          title="Copy · filter · find everywhere"
+          title="Copy · open row · filter · find everywhere"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             openMenu(r.left, r.bottom);
@@ -259,8 +274,8 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
       )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />}
       {canToggle && (
-        <button className="raw-toggle" onClick={() => setRaw(!raw)} title={raw ? "Show formatted" : "Show raw value"}>
-          {raw ? "fmt" : "raw"}
+        <button className="raw-toggle" onClick={() => setRaw(!raw)} title={raw ? "Show decoded tree" : "Show raw value"}>
+          {raw ? "tree" : "raw"}
         </button>
       )}
       {save && (
@@ -279,13 +294,13 @@ export function FieldValue({ field, target }: { field: DocField; target?: EditTa
   );
 }
 
-export function FieldList({ fields, changed, prefix = "", target }: { fields: DocField[]; changed?: Set<string>; prefix?: string; target?: EditTarget }) {
+export function FieldList({ fields, changed, prefix = "", target, source }: { fields: DocField[]; changed?: Set<string>; prefix?: string; target?: EditTarget; source?: (f: DocField) => RowSource | undefined }) {
   return (
     <div className="kv">
       {fields.map((f) => (
         <div key={f.name} className={`kv-row${changed?.has(prefix + f.name) ? " flash" : ""}`}>
-          <div className="k" title={f.label ? `${f.label} (${f.name})` : f.name}>{f.label ?? f.name}</div>
-          <div className="v"><FieldValue field={f} target={target} /></div>
+          <div className="k mono" title={f.name}>{f.name}</div>
+          <div className="v"><FieldValue field={f} target={target} source={source?.(f)} /></div>
         </div>
       ))}
     </div>

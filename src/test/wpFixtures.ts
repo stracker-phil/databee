@@ -47,7 +47,8 @@ export function doc(patch: Partial<EntityDoc> = {}): EntityDoc {
     table: "wp_wc_orders",
     idColumn: "id",
     fields: [field("id", "4711"), field("status", "wc-processing")],
-    meta: [{ name: "PayPal", private: true, known: true, entries: [field("_ppcp_paypal_order_id", "66M12696JX411763D")] }],
+    meta: [{ name: "_ppcp*", private: true, entries: [field("_ppcp_paypal_order_id", "66M12696JX411763D")] }],
+    metaSource: { table: "wp_wc_orders_meta", fk: "order_id", key: "meta_key" },
     relations: [],
     ...patch,
   };

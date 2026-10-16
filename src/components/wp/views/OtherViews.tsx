@@ -240,7 +240,7 @@ export function GenericView({ doc, changed }: { doc: EntityDoc; changed: Set<str
         <h2>#{doc.id} {doc.title && <span style={{ fontWeight: 400 }}>{doc.title}</span>}</h2>
         {doc.subtitle && <span className="badge">{doc.subtitle}</span>}
       </div>
-      <AllFields doc={doc} changed={changed} open />
+      <AllFields doc={doc} changed={changed} />
     </div>
   );
 }

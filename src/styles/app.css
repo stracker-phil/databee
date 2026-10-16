@@ -715,3 +715,7 @@ button.flag-pill:not(:disabled):hover { outline: 1px solid var(--accent); }
 
 .badge.tone-warning { background: var(--warning-soft); color: var(--warning); }
 .confidence { display: inline-flex; align-items: center; gap: 0.308rem; min-width: 7rem; justify-content: flex-end; }
+
+/* ---------- stored values: the raw value first, readable notes after it ---------- */
+.hint-note { color: var(--text-tertiary); font-size: 0.885rem; margin-left: 0.308rem; white-space: nowrap; }
+.meta-head { display: flex; align-items: center; gap: 0.462rem; margin: 0.769rem 0 0.308rem; font-size: 0.923rem; }

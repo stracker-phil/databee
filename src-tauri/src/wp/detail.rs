@@ -1190,6 +1190,7 @@ pub async fn guest_view(
             },
             fields: Vec::new(),
             meta: Vec::new(),
+            meta_source: None,
             relations: Vec::new(),
         },
         name,
