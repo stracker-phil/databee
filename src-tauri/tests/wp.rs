@@ -993,3 +993,301 @@ async fn snapshots_diff_and_compare() {
         );
     }
 }
+
+// ---------- undo fidelity and plan refusals ----------
+
+fn set_cell(
+    table: &str,
+    key_column: &str,
+    key: &str,
+    column: &str,
+    value: Option<&str>,
+) -> databee_lib::wp::changes::ChangeRequest {
+    databee_lib::wp::changes::ChangeRequest::SetCell {
+        database: "wp_write".into(),
+        table: table.into(),
+        key_column: key_column.into(),
+        key: key.into(),
+        column: column.into(),
+        value: value.map(String::from),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn undo_restores_an_empty_string_instead_of_null() {
+    use databee_lib::wp::changes::plan;
+    for db in sessions().await {
+        let read = "SELECT post_name FROM wp_write.wp_posts WHERE ID = 201";
+        assert_eq!(scalar(&db, read).await.as_deref(), Some(""));
+        let change = plan(
+            &db,
+            None,
+            None,
+            &set_cell("wp_posts", "ID", "201", "post_name", Some("x")),
+        )
+        .await
+        .unwrap();
+        apply(&db, &change.statements).await;
+        assert_eq!(scalar(&db, read).await.as_deref(), Some("x"));
+        apply(&db, &change.undo).await;
+        assert_eq!(
+            scalar(&db, read).await.as_deref(),
+            Some(""),
+            "restored as '' and not NULL"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn undo_restores_a_null_cell_to_null() {
+    use databee_lib::wp::changes::plan;
+    for db in sessions().await {
+        let id = scalar(
+            &db,
+            "SELECT id FROM wp_write.wp_wc_order_addresses WHERE order_id = 4711 AND address_type = 'shipping'",
+        )
+        .await
+        .unwrap();
+        let read = format!("SELECT email FROM wp_write.wp_wc_order_addresses WHERE id = {id}");
+        assert_eq!(scalar(&db, &read).await, None);
+        let change = plan(
+            &db,
+            None,
+            None,
+            &set_cell(
+                "wp_wc_order_addresses",
+                "id",
+                &id,
+                "email",
+                Some("ship@shop.test"),
+            ),
+        )
+        .await
+        .unwrap();
+        apply(&db, &change.statements).await;
+        assert_eq!(scalar(&db, &read).await.as_deref(), Some("ship@shop.test"));
+        apply(&db, &change.undo).await;
+        assert_eq!(scalar(&db, &read).await, None, "restored as NULL");
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn editing_a_binary_cell_has_no_undo() {
+    use databee_lib::wp::changes::{ChangeRequest, plan};
+    for db in sessions().await {
+        let change = plan(
+            &db,
+            None,
+            None,
+            &ChangeRequest::SetCell {
+                database: "databee_test".into(),
+                table: "types".into(),
+                key_column: "id".into(),
+                key: "1".into(),
+                column: "blob_data".into(),
+                value: Some("x".into()),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(change.undo.is_empty(), "{:?}", change.undo);
+        assert!(
+            change.description.contains("no undo"),
+            "{}",
+            change.description
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn undo_of_a_key_column_change_finds_the_row_by_its_new_key() {
+    use databee_lib::wp::changes::plan;
+    for db in sessions().await {
+        let count = |name: &'static str| {
+            let db = &db;
+            async move {
+                scalar(
+                    db,
+                    &format!(
+                        "SELECT COUNT(*) FROM wp_write.wp_options WHERE option_name = '{name}'"
+                    ),
+                )
+                .await
+            }
+        };
+        let change = plan(
+            &db,
+            None,
+            None,
+            &set_cell(
+                "wp_options",
+                "option_name",
+                "zzz_mystery_setting",
+                "option_name",
+                Some("zzz_renamed"),
+            ),
+        )
+        .await
+        .unwrap();
+        apply(&db, &change.statements).await;
+        assert_eq!(count("zzz_renamed").await.as_deref(), Some("1"));
+        assert_eq!(count("zzz_mystery_setting").await.as_deref(), Some("0"));
+        apply(&db, &change.undo).await;
+        assert_eq!(count("zzz_mystery_setting").await.as_deref(), Some("1"));
+        assert_eq!(count("zzz_renamed").await.as_deref(), Some("0"));
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn set_meta_refuses_duplicate_rows() {
+    use databee_lib::wp::changes::{ChangeRequest, plan};
+    for (db, ctx, catalog) in write_env().await {
+        apply(
+            &db,
+            &["INSERT INTO wp_write.wp_usermeta (user_id, meta_key, meta_value) VALUES (12, 'billing_city', 'Graz')".into()],
+        )
+        .await;
+        let result = plan(
+            &db,
+            Some(&ctx),
+            Some(&catalog),
+            &ChangeRequest::SetMeta {
+                database: "wp_write".into(),
+                entity: "user".into(),
+                id: "12".into(),
+                key: "billing_city".into(),
+                value: "Linz".into(),
+            },
+        )
+        .await;
+        apply(
+            &db,
+            &["DELETE FROM wp_write.wp_usermeta WHERE user_id = 12 AND meta_key = 'billing_city' AND meta_value = 'Graz'".into()],
+        )
+        .await;
+        let err = result.expect_err("two rows of one meta key");
+        let message = err.to_string();
+        assert!(
+            message.contains("billing_city") && message.contains('2'),
+            "{message}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn delete_meta_of_a_missing_key_is_refused() {
+    use databee_lib::wp::changes::{ChangeRequest, plan};
+    for (db, ctx, catalog) in write_env().await {
+        let result = plan(
+            &db,
+            Some(&ctx),
+            Some(&catalog),
+            &ChangeRequest::DeleteMeta {
+                database: "wp_write".into(),
+                entity: "user".into(),
+                id: "12".into(),
+                key: "no_such_key".into(),
+            },
+        )
+        .await;
+        assert!(result.is_err(), "{result:?}");
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn log_retention_plans_a_fixed_cutoff_literal() {
+    use databee_lib::wp::changes::{ChangeRequest, plan};
+    for (db, ctx, catalog) in write_env().await {
+        let change = plan(
+            &db,
+            Some(&ctx),
+            Some(&catalog),
+            &ChangeRequest::DeleteLogsBefore {
+                database: "wp_write".into(),
+                days: 0,
+                source: None,
+            },
+        )
+        .await
+        .unwrap();
+        let sql = &change.statements[0];
+        assert!(!sql.contains("UTC_TIMESTAMP"), "{sql}");
+        assert!(
+            sql.starts_with("DELETE FROM `wp_write`.`wp_woocommerce_log` WHERE `timestamp` < '"),
+            "{sql}"
+        );
+    }
+}
+
+// ---------- legacy store (wp_legacy: orders in wp_posts, HPOS off) ----------
+
+async fn legacy_env() -> Vec<(MySqlSession, databee_lib::wp::context::WpContext, Catalog)> {
+    let mut out = Vec::new();
+    for db in sessions().await {
+        let ctx = detect(&db, "wp_legacy").await.unwrap().unwrap();
+        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+        out.push((db, ctx, catalog));
+    }
+    out
+}
+
+#[tokio::test]
+#[ignore]
+async fn legacy_store_is_detected_without_hpos() {
+    for (_, ctx, _) in legacy_env().await {
+        assert!(ctx.wc.is_some());
+        assert!(!ctx.hpos());
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn legacy_user_document_loads_without_an_orders_relation() {
+    for (db, ctx, catalog) in legacy_env().await {
+        let docs = load_docs(&db, &ctx, &catalog, "wp_legacy", "user", &["7".into()])
+            .await
+            .unwrap();
+        assert_eq!(docs.len(), 1);
+        assert!(docs[0].relations.iter().all(|r| r.name != "orders"));
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn legacy_customer_view_lists_posts_based_orders() {
+    for (db, ctx, catalog) in legacy_env().await {
+        let EntityView::Customer(c) =
+            entity_view(&db, &ctx, &catalog, "wp_legacy", "user", "7", false)
+                .await
+                .unwrap()
+        else {
+            panic!("expected customer view")
+        };
+        let mut ids: Vec<&str> = c.orders.iter().map(|o| o.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, ["501", "502"]);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn legacy_order_document_counts_its_notes() {
+    for (db, ctx, catalog) in legacy_env().await {
+        let docs = load_docs(&db, &ctx, &catalog, "wp_legacy", "order", &["501".into()])
+            .await
+            .unwrap();
+        let notes = docs[0]
+            .relations
+            .iter()
+            .find(|r| r.name == "notes")
+            .unwrap();
+        assert_eq!(notes.count, 2);
+    }
+}

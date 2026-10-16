@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::context::WpContext;
-use super::entity::Catalog;
+use super::entity::{Catalog, cell_str};
 use super::lists::text;
 use super::php::{self, PhpKey, PhpValue};
 use super::{fetch, sql_string};
@@ -111,51 +111,86 @@ fn wp_table(db: &str, ctx: &WpContext, table: &str) -> String {
     tref(db, &ctx.table(table))
 }
 
-pub fn logs_before_filter(days: u32, source: Option<&str>) -> String {
-    let mut f = format!("`timestamp` < UTC_TIMESTAMP() - INTERVAL {days} DAY");
+/// `cutoff` is a literal fixed at plan time, so the applied DELETE removes exactly the
+/// entries that were counted.
+pub fn logs_before_filter(cutoff: &str, source: Option<&str>) -> String {
+    let mut f = format!("`timestamp` < {}", sql_string(cutoff));
     if let Some(s) = source {
         f.push_str(&format!(" AND `source` = {}", sql_string(s)));
     }
     f
 }
 
-/// `INSERT` statements that recreate the given rows exactly.
+/// The SQL literal that restores `cell` exactly: `NULL` stays `NULL`, `''` stays `''`.
+/// `None` for binary cells, which only carry a preview.
+fn restore_literal(cell: &Cell) -> Option<String> {
+    match cell {
+        Cell::Bytes { .. } => None,
+        _ => Some(sql_value(cell_str(cell))),
+    }
+}
+
+/// `INSERT` statements that recreate the given rows exactly; empty when a row holds
+/// binary data.
 pub fn reinsert_sql(table: &str, rows: &ResultSet) -> Vec<String> {
-    // Binary cells only carry a preview, so such rows can't be restored from SQL text.
-    if rows
+    let Some(values) = rows
         .rows
         .iter()
-        .flatten()
-        .any(|c| matches!(c, Cell::Bytes { .. }))
-    {
+        .map(|r| r.iter().map(restore_literal).collect::<Option<Vec<_>>>())
+        .collect::<Option<Vec<_>>>()
+    else {
         return Vec::new();
-    }
+    };
     let cols = rows
         .columns
         .iter()
         .map(|c| quote_ident(&c.name))
         .collect::<Vec<_>>()
         .join(", ");
-    rows.rows
+    values
         .iter()
-        .map(|r| {
-            let values = r
-                .iter()
-                .map(|c| match c {
-                    Cell::Null | Cell::Bytes { .. } => "NULL".to_string(),
-                    Cell::Number(s) | Cell::Text(s) | Cell::Temporal(s) | Cell::Json(s) => {
-                        sql_string(s)
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("INSERT INTO {table} ({cols}) VALUES ({values})")
-        })
+        .map(|v| format!("INSERT INTO {table} ({cols}) VALUES ({})", v.join(", ")))
         .collect()
 }
 
 fn first_text(rs: &ResultSet) -> Option<Option<String>> {
     rs.rows.first().map(|r| text(&r[0]))
+}
+
+/// The plan's `undo` restoring `column` from `old`, plus a description note when there is
+/// none.
+fn restore_undo(
+    table: &str,
+    column: &str,
+    old: &Cell,
+    filter: Option<&str>,
+) -> (Vec<String>, String) {
+    let before = restore_literal(old);
+    if let (Some(before), Some(filter)) = (&before, filter) {
+        let sql = format!(
+            "UPDATE {table} SET {} = {before} WHERE {filter}",
+            quote_ident(column)
+        );
+        return (vec![sql], String::new());
+    }
+    let reason = if before.is_none() {
+        "binary value"
+    } else {
+        "the key becomes NULL"
+    };
+    (Vec::new(), format!(" (no undo: {reason})"))
+}
+
+/// Fixed at plan time, so the review shows exactly the rows the DELETE removes.
+async fn log_cutoff(session: &MySqlSession, days: u32) -> AppResult<String> {
+    let rs = fetch(
+        session,
+        &format!("SELECT UTC_TIMESTAMP() - INTERVAL {days} DAY"),
+    )
+    .await?;
+    first_text(&rs)
+        .flatten()
+        .ok_or_else(|| AppError::InvalidInput("The server returned no time".into()))
 }
 
 pub async fn plan(
@@ -187,19 +222,23 @@ pub async fn plan(
                     old.rows.len()
                 )));
             }
-            let before = first_text(&old).flatten();
+            // After a key change the row is only found by its new key.
+            let undo_filter = if column == key_column {
+                value
+                    .as_deref()
+                    .map(|v| format!("{} = {}", quote_ident(key_column), sql_string(v)))
+            } else {
+                Some(filter.clone())
+            };
+            let (undo, note) = restore_undo(&t, column, &old.rows[0][0], undo_filter.as_deref());
             PlannedChange {
-                description: format!("{table}.{column} of {key_column} {key}"),
+                description: format!("{table}.{column} of {key_column} {key}{note}"),
                 statements: vec![format!(
                     "UPDATE {t} SET {} = {} WHERE {filter}",
                     quote_ident(column),
                     sql_value(value.as_deref())
                 )],
-                undo: vec![format!(
-                    "UPDATE {t} SET {} = {} WHERE {filter}",
-                    quote_ident(column),
-                    sql_value(before.as_deref())
-                )],
+                undo,
             }
         }
         ChangeRequest::DeleteRow {
@@ -315,26 +354,25 @@ pub async fn plan(
                     )],
                     undo: vec![format!("DELETE FROM {t} WHERE {filter}")],
                 },
-                n => PlannedChange {
-                    description: format!(
-                        "Meta {key} of {entity} #{id}{}",
-                        if n > 1 {
-                            format!(" ({n} rows)")
-                        } else {
-                            String::new()
-                        }
-                    ),
-                    statements: vec![format!(
-                        "UPDATE {t} SET {} = {} WHERE {filter}",
-                        quote_ident(&meta.value),
-                        sql_string(value)
-                    )],
-                    undo: vec![format!(
-                        "UPDATE {t} SET {} = {} WHERE {filter}",
-                        quote_ident(&meta.value),
-                        sql_value(first_text(&old).flatten().as_deref())
-                    )],
-                },
+                1 => {
+                    let (undo, note) =
+                        restore_undo(&t, &meta.value, &old.rows[0][0], Some(&filter));
+                    PlannedChange {
+                        description: format!("Meta {key} of {entity} #{id}{note}"),
+                        statements: vec![format!(
+                            "UPDATE {t} SET {} = {} WHERE {filter}",
+                            quote_ident(&meta.value),
+                            sql_string(value)
+                        )],
+                        undo,
+                    }
+                }
+                // One undo value can't restore rows that held different values.
+                n => {
+                    return Err(AppError::InvalidInput(format!(
+                        "{entity} #{id} has {n} rows of meta {key}; edit them in the Database view"
+                    )));
+                }
             }
         }
         ChangeRequest::DeleteMeta {
@@ -360,6 +398,11 @@ pub async fn plan(
                 sql_string(key)
             );
             let rows = fetch(session, &format!("SELECT * FROM {t} WHERE {filter}")).await?;
+            if rows.rows.is_empty() {
+                return Err(AppError::InvalidInput(format!(
+                    "{entity} #{id} has no meta {key}"
+                )));
+            }
             PlannedChange {
                 description: format!("Delete meta {key} of {entity} #{id}"),
                 statements: vec![format!("DELETE FROM {t} WHERE {filter}")],
@@ -510,7 +553,7 @@ pub async fn plan(
                 ));
             }
             let t = wp_table(database, ctx, "woocommerce_log");
-            let filter = logs_before_filter(*days, source.as_deref());
+            let filter = logs_before_filter(&log_cutoff(session, *days).await?, source.as_deref());
             let count = fetch(session, &format!("SELECT COUNT(*) FROM {t} WHERE {filter}")).await?;
             let n = count
                 .rows
@@ -550,7 +593,7 @@ pub async fn plan(
                 .rows
                 .first()
                 .ok_or_else(|| AppError::InvalidInput(format!("Action #{id} was not found")))?;
-            let (before_status, before_date) = (text(&row[0]).unwrap_or_default(), text(&row[1]));
+            let (before_status, before_date) = (cell_str(&row[0]), cell_str(&row[1]));
             let retry = matches!(req, ChangeRequest::RetryAction { .. });
             PlannedChange {
                 description: format!("{} action #{id}", if retry { "Retry" } else { "Cancel" }),
@@ -563,8 +606,8 @@ pub async fn plan(
                 }],
                 undo: vec![format!(
                     "UPDATE {t} SET status = {}, scheduled_date_gmt = {} WHERE action_id = {n}",
-                    sql_string(&before_status),
-                    sql_value(before_date.as_deref())
+                    sql_value(before_status),
+                    sql_value(before_date)
                 )],
             }
         }
@@ -592,14 +635,36 @@ fn php_new(v: &NewValue) -> AppResult<PhpValue> {
                 .map_err(|_| AppError::InvalidInput(format!("'{s}' is not an integer")))?,
         ),
         NewValue::Float(s) => {
-            s.trim()
-                .parse::<f64>()
-                .map_err(|_| AppError::InvalidInput(format!("'{s}' is not a number")))?;
-            PhpValue::Float(s.trim().to_string())
+            let s = s.trim();
+            if !is_php_float(s) {
+                return Err(AppError::InvalidInput(format!("'{s}' is not a PHP float")));
+            }
+            PhpValue::Float(s.to_string())
         }
         NewValue::Bool(b) => PhpValue::Bool(*b),
         NewValue::Null => PhpValue::Null,
     })
+}
+
+/// The float syntax `unserialize()` reads after `d:`. Rust spellings (`inf`, `nan`,
+/// `infinity`) would produce a value PHP rejects.
+fn is_php_float(s: &str) -> bool {
+    if matches!(s, "INF" | "-INF" | "NAN") {
+        return true;
+    }
+    fn unsigned(p: &str) -> &str {
+        p.strip_prefix(['+', '-']).unwrap_or(p)
+    }
+    let digits = |p: &str| p.bytes().all(|b| b.is_ascii_digit());
+    let (mantissa, exponent) = match unsigned(s).split_once(['e', 'E']) {
+        Some((m, e)) => (m, Some(unsigned(e))),
+        None => (unsigned(s), None),
+    };
+    let mantissa_ok = match mantissa.split_once('.') {
+        Some((int, frac)) => digits(int) && digits(frac) && !(int.is_empty() && frac.is_empty()),
+        None => !mantissa.is_empty() && digits(mantissa),
+    };
+    mantissa_ok && exponent.is_none_or(|e| !e.is_empty() && digits(e))
 }
 
 fn key_matches(key: &PhpKey, segment: &str) -> bool {
@@ -639,6 +704,32 @@ fn set_php(value: &mut PhpValue, path: &[String], new: &NewValue) -> AppResult<(
     }
 }
 
+fn contains_ref(value: &PhpValue) -> bool {
+    match value {
+        PhpValue::Ref { .. } => true,
+        PhpValue::Array(items) | PhpValue::Object { props: items, .. } => {
+            items.iter().any(|(_, v)| contains_ref(v))
+        }
+        _ => false,
+    }
+}
+
+/// Whether an `r:`/`R:` reference sits at or after the value at `path` in serialization
+/// order. References count values in that order, so replacing a subtree can shift them.
+/// A nested serialized string (`decoded`) has its own numbering.
+fn ref_at_or_after(value: &PhpValue, path: &[String]) -> bool {
+    let Some((head, rest)) = path.split_first() else {
+        return contains_ref(value);
+    };
+    let (PhpValue::Array(items) | PhpValue::Object { props: items, .. }) = value else {
+        return false;
+    };
+    let Some(pos) = items.iter().position(|(k, _)| key_matches(k, head)) else {
+        return false;
+    };
+    ref_at_or_after(&items[pos].1, rest) || items[pos + 1..].iter().any(|(_, v)| contains_ref(v))
+}
+
 fn set_json(value: &mut serde_json::Value, path: &[String], new: &NewValue) -> AppResult<()> {
     let Some((head, rest)) = path.split_first() else {
         *value = match new {
@@ -669,17 +760,36 @@ fn set_json(value: &mut serde_json::Value, path: &[String], new: &NewValue) -> A
 }
 
 /// Replaces the value at `path` (keys as shown in the value tree) and re-serializes.
-/// PHP output has correct byte lengths; untouched parts stay byte-identical.
+/// PHP output has correct byte lengths; untouched parts, including whitespace around the
+/// value, stay byte-identical.
 pub fn edit_serialized(raw: &str, path: &[String], new: &NewValue) -> AppResult<String> {
-    let trimmed = raw.trim();
-    if php::looks_serialized(trimmed) {
-        let mut v = php::parse(trimmed.as_bytes())
-            .map_err(|e| AppError::InvalidInput(format!("Cannot edit: {e}")))?;
-        set_php(&mut v, path, new)?;
-        return String::from_utf8(php::serialize(&v))
-            .map_err(|_| AppError::InvalidInput("Result is not UTF-8".into()));
+    let core = raw.trim();
+    let lead = &raw[..raw.len() - raw.trim_start().len()];
+    let tail = &raw[lead.len() + core.len()..];
+    let edited = if php::looks_serialized(core) {
+        edit_php(core, path, new)?
+    } else {
+        edit_json(core, path, new)?
+    };
+    Ok(format!("{lead}{edited}{tail}"))
+}
+
+fn edit_php(raw: &str, path: &[String], new: &NewValue) -> AppResult<String> {
+    let mut v = php::parse(raw.as_bytes())
+        .map_err(|e| AppError::InvalidInput(format!("Cannot edit: {e}")))?;
+    if ref_at_or_after(&v, path) {
+        return Err(AppError::InvalidInput(
+            "Cannot edit: PHP references (r:/R:) at or after this value would point elsewhere"
+                .into(),
+        ));
     }
-    let mut v: serde_json::Value = serde_json::from_str(trimmed)
+    set_php(&mut v, path, new)?;
+    String::from_utf8(php::serialize(&v))
+        .map_err(|_| AppError::InvalidInput("Result is not UTF-8".into()))
+}
+
+fn edit_json(raw: &str, path: &[String], new: &NewValue) -> AppResult<String> {
+    let mut v: serde_json::Value = serde_json::from_str(raw)
         .map_err(|e| AppError::InvalidInput(format!("Cannot edit: {e}")))?;
     set_json(&mut v, path, new)?;
     Ok(v.to_string())
@@ -762,6 +872,46 @@ mod tests {
     }
 
     #[test]
+    fn float_edits_accept_only_the_syntax_php_reads() {
+        let raw = r#"a:1:{s:1:"f";d:1;}"#;
+        for text in ["1.5", "-1.0E+25", "INF", "-INF", "NAN"] {
+            let out = edit_serialized(raw, &path(&["f"]), &NewValue::Float(text.into()))
+                .unwrap_or_else(|e| panic!("{text}: {e:?}"));
+            assert_eq!(out, format!(r#"a:1:{{s:1:"f";d:{text};}}"#), "{text}");
+        }
+        for text in ["inf", "nan", "infinity"] {
+            let err =
+                edit_serialized(raw, &path(&["f"]), &NewValue::Float(text.into())).expect_err(text);
+            assert_eq!(err.kind(), "invalid_input", "{text}");
+        }
+    }
+
+    #[test]
+    fn whitespace_around_a_serialized_value_is_kept() {
+        let out = edit_serialized(
+            "  a:1:{s:1:\"k\";i:1;}\n",
+            &path(&["k"]),
+            &NewValue::Int("2".into()),
+        )
+        .unwrap();
+        assert_eq!(out, "  a:1:{s:1:\"k\";i:2;}\n");
+    }
+
+    #[test]
+    fn edits_are_refused_when_a_reference_sits_at_or_after_the_value() {
+        let ref_after = r#"a:2:{s:1:"a";i:1;s:1:"b";r:2;}"#;
+        for key in ["a", "b"] {
+            assert!(
+                edit_serialized(ref_after, &path(&[key]), &NewValue::Int("5".into())).is_err(),
+                "{key}"
+            );
+        }
+        let ref_before = r#"a:2:{s:1:"a";r:1;s:1:"b";i:1;}"#;
+        let out = edit_serialized(ref_before, &path(&["b"]), &NewValue::Int("5".into())).unwrap();
+        assert_eq!(out, r#"a:2:{s:1:"a";r:1;s:1:"b";i:5;}"#);
+    }
+
+    #[test]
     fn edits_json_keeping_key_order() {
         let out = edit_serialized(
             r#"{"z":1,"a":{"b":"x"}}"#,
@@ -777,12 +927,12 @@ mod tests {
     #[test]
     fn log_retention_filter_targets_age_and_source() {
         assert_eq!(
-            logs_before_filter(30, None),
-            "`timestamp` < UTC_TIMESTAMP() - INTERVAL 30 DAY"
+            logs_before_filter("2026-09-16 12:00:00", None),
+            "`timestamp` < '2026-09-16 12:00:00'"
         );
         assert_eq!(
-            logs_before_filter(7, Some("woocommerce-paypal-payments")),
-            "`timestamp` < UTC_TIMESTAMP() - INTERVAL 7 DAY AND `source` = 'woocommerce-paypal-payments'"
+            logs_before_filter("2026-10-09 12:00:00", Some("woocommerce-paypal-payments")),
+            "`timestamp` < '2026-10-09 12:00:00' AND `source` = 'woocommerce-paypal-payments'"
         );
     }
 

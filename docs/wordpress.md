@@ -49,6 +49,11 @@ in `src/components/wp/`.
    - **WooCommerce:** a `woocommerce_version` option, or the WooCommerce order tables.
    - **HPOS:** `On` only when `woocommerce_custom_orders_table_enabled = yes` *and* `wc_orders` exists.
      `OnWithSync` when data sync is also on.
+   - **Legacy store:** WooCommerce with HPOS off keeps orders in `posts` (`shop_order`, customer in the
+     `_customer_user` meta). Entities and relations carry a `when` (`hpos`, `legacy_orders`), and both the
+     catalog and `wp::load_docs` skip those that don't apply, so the `user.orders` relation (an
+     `wc_orders.customer_id` column) is not counted on legacy stores. Customer views list legacy orders through
+     `_customer_user` instead.
    - **Action Scheduler:** whether its tables exist.
    - **Multisite:** sites come from `{main}{N}_options` plus `wp_blogs`.
 
@@ -80,10 +85,15 @@ Decoding modes:
 
 1. The UI sends the raw value, a path of tree keys and a typed `NewValue`.
 2. The path may step into a serialized string inside another value (segment `"decoded"`).
-3. The whole value is re-serialized, which recomputes every `s:N`. Untouched parts stay byte-identical.
+3. The whole value is re-serialized, which recomputes every `s:N`. Untouched parts, including whitespace
+   around the value, stay byte-identical.
 4. The result is only a string. It is written through the usual `queueChange` pipeline.
 
-Only values that parse strictly can be edited.
+Only values that parse strictly can be edited. Refused edits:
+- a float that is not PHP float syntax (digits with optional sign, fraction and exponent, or `INF`, `-INF`,
+  `NAN`); Rust spellings like `inf` or `infinity` would be unreadable for `unserialize()`;
+- any edit when an `r:`/`R:` reference sits at or after the edited value: references count values in
+  serialization order, so replacing a subtree could make them point elsewhere.
 
 ## Entities
 
@@ -171,16 +181,23 @@ in [database.md](database.md#editing-rows):
 
 | Variant | Effect | Undo |
 |---|---|---|
-| `SetCell`, `DeleteRow` | key must match one row | yes; none for rows with binary cells |
+| `SetCell`, `DeleteRow` | key must match one row | yes; none for binary values |
 | `DuplicateRow`, `InsertRow` | | none |
-| `SetMeta`, `DeleteMeta` | meta rows of an entity | yes |
+| `SetMeta` | inserts, or updates the one row of that key; refuses when the key has several rows | yes |
+| `DeleteMeta` | meta rows of an entity; refuses when the key has no row | reinserts exact rows |
 | `SetOrderStatus` | `wc_orders.status` plus the posts copy when it exists | yes |
 | `SetAutoload` | keeps the stored style: `yes`/`no` or `on`/`off` (WP 6.6+) | yes |
 | `DeleteExpiredTransients` | value plus timeout rows, site transients too | reinserts exact rows |
-| `DeleteLogsBefore` | WooCommerce log retention; refuses if nothing matches | none |
+| `DeleteLogsBefore` | WooCommerce log retention, cutoff fixed at plan time; refuses if nothing matches | none |
 | `RetryAction`, `CancelAction` | Action Scheduler status | yes |
 
 The tray warns that these are raw SQL writes, so no WordPress hooks run.
+
+Undo fidelity: old values are restored exactly (`changes::restore_literal`). `NULL` stays `NULL` and `''`
+stays `''`. Binary cells only carry a preview, so their edits get no undo and the description says why
+(`(no undo: …)`). When `SetCell` changes the key column itself, the undo finds the row by its new key.
+`DeleteLogsBefore` reads `UTC_TIMESTAMP()` once while planning and embeds the cutoff as a literal, so the
+DELETE removes exactly the counted entries.
 
 ## Extending
 
@@ -232,7 +249,7 @@ The tray warns that these are raw SQL writes, so no WordPress hooks run.
   resolver, serialized edits, insights, SQL builders and log humanizers.
 - **`src-tauri/tests/wp.rs`** runs against the Docker fixture `wp_test`: WordPress plus WooCommerce with HPOS and
   sync. Reads go against `wp_test`, and every write goes into its copy `wp_write`, so read and write tests
-  never race.
+  never race. `wp_legacy` covers a posts-based (HPOS off) store.
 - **`src-tauri/tests/php_roundtrip.rs`** checks round trips against a real database of your own. It only reads:
   `DATABEE_WP_TEST=mysql://user:pass@host:port/db`.
 - **Frontend:** `src/components/wp/WpMode.test.tsx` plus tests per component.

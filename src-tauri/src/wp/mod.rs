@@ -138,7 +138,7 @@ pub async fn load_docs(
         _ => None,
     };
     let mut counts = HashMap::new();
-    for rel in &def.relations {
+    for rel in def.relations.iter().filter(|r| r.when.applies(ctx)) {
         let Ok(target) = catalog.get(&rel.entity) else {
             continue;
         };

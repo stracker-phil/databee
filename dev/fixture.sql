@@ -168,7 +168,8 @@ INSERT INTO wp_woocommerce_sessions (session_key, session_value, session_expiry)
 INSERT INTO wp_woocommerce_log (timestamp, level, source, message, context) VALUES
   (UTC_TIMESTAMP() - INTERVAL 1 DAY, 100, 'woocommerce-paypal-payments', 'PATCH https://api-m.sandbox.paypal.com/v2/checkout/orders/66M12696JX411763D', NULL),
   (UTC_TIMESTAMP() - INTERVAL 1 DAY, 200, 'transactional-emails', 'Email "new_order" for order #4711 sent', NULL),
-  (UTC_TIMESTAMP() - INTERVAL 1 DAY, 400, 'other', 'Unrelated error #14711', NULL);
+  (UTC_TIMESTAMP() - INTERVAL 1 DAY, 400, 'other', 'Unrelated error #14711', NULL),
+  (UTC_TIMESTAMP() - INTERVAL 1 DAY, 200, 'webhooks', 'Webhook delivered', 'a:1:{s:5:"order";i:4711;}');
 INSERT INTO wp_woocommerce_payment_tokens (token_id, gateway_id, token, user_id, type, is_default) VALUES (7, 'ppcp-credit-card-gateway', 'tok_1', 12, 'CC', 1);
 INSERT INTO wp_woocommerce_payment_tokenmeta (payment_token_id, meta_key, meta_value) VALUES (7, 'card_type', 'visa'), (7, 'last4', '2503'), (7, 'expiry_month', '01'), (7, 'expiry_year', '2029');
 
@@ -224,3 +225,74 @@ CREATE TABLE wp_write.wp_woocommerce_payment_tokens LIKE wp_test.wp_woocommerce_
 INSERT INTO wp_write.wp_woocommerce_payment_tokens SELECT * FROM wp_test.wp_woocommerce_payment_tokens;
 CREATE TABLE wp_write.wp_woocommerce_payment_tokenmeta LIKE wp_test.wp_woocommerce_payment_tokenmeta;
 INSERT INTO wp_write.wp_woocommerce_payment_tokenmeta SELECT * FROM wp_test.wp_woocommerce_payment_tokenmeta;
+
+-- Legacy WooCommerce install (orders in wp_posts, HPOS off, no wc_orders tables).
+CREATE DATABASE wp_legacy CHARACTER SET utf8mb4;
+USE wp_legacy;
+CREATE TABLE wp_options LIKE wp_test.wp_options;
+CREATE TABLE wp_users LIKE wp_test.wp_users;
+CREATE TABLE wp_usermeta LIKE wp_test.wp_usermeta;
+CREATE TABLE wp_posts LIKE wp_test.wp_posts;
+CREATE TABLE wp_postmeta LIKE wp_test.wp_postmeta;
+CREATE TABLE wp_comments LIKE wp_test.wp_comments;
+CREATE TABLE wp_commentmeta LIKE wp_test.wp_commentmeta;
+CREATE TABLE wp_terms LIKE wp_test.wp_terms;
+CREATE TABLE wp_term_taxonomy LIKE wp_test.wp_term_taxonomy;
+CREATE TABLE wp_term_relationships LIKE wp_test.wp_term_relationships;
+CREATE TABLE wp_woocommerce_order_items LIKE wp_test.wp_woocommerce_order_items;
+CREATE TABLE wp_woocommerce_order_itemmeta LIKE wp_test.wp_woocommerce_order_itemmeta;
+CREATE TABLE wp_actionscheduler_actions LIKE wp_test.wp_actionscheduler_actions;
+CREATE TABLE wp_actionscheduler_groups LIKE wp_test.wp_actionscheduler_groups;
+CREATE TABLE wp_actionscheduler_logs LIKE wp_test.wp_actionscheduler_logs;
+CREATE TABLE wp_woocommerce_log LIKE wp_test.wp_woocommerce_log;
+CREATE TABLE wp_woocommerce_payment_tokens LIKE wp_test.wp_woocommerce_payment_tokens;
+CREATE TABLE wp_woocommerce_payment_tokenmeta LIKE wp_test.wp_woocommerce_payment_tokenmeta;
+
+INSERT INTO wp_options (option_name, option_value, autoload) VALUES
+  ('siteurl', 'https://legacy.test', 'yes'),
+  ('blogname', 'Legacy Shop', 'yes'),
+  ('db_version', '57155', 'yes'),
+  ('woocommerce_version', '8.2.1', 'yes'),
+  ('woocommerce_currency', 'USD', 'yes'),
+  ('active_plugins', 'a:1:{i:0;s:27:"woocommerce/woocommerce.php";}', 'yes'),
+  ('woocommerce_custom_orders_table_enabled', 'no', 'yes'),
+  ('woocommerce_custom_orders_table_data_sync_enabled', 'no', 'yes');
+
+INSERT INTO wp_users (ID, user_login, user_pass, user_email, user_registered, display_name) VALUES
+  (1, 'admin', '$P$admin', 'admin@legacy.test', '2024-01-01 00:00:00', 'Admin'),
+  (7, 'sam', '$P$secret', 'sam@legacy.test', '2025-03-04 09:00:00', 'Sam Smith');
+INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES
+  (1, 'wp_capabilities', 'a:1:{s:13:"administrator";b:1;}'),
+  (7, 'wp_capabilities', 'a:1:{s:8:"customer";b:1;}'),
+  (7, 'billing_first_name', 'Sam'),
+  (7, 'billing_email', 'sam@legacy.test');
+
+INSERT INTO wp_posts (ID, post_author, post_date_gmt, post_modified_gmt, post_title, post_name, post_status, post_type, post_parent) VALUES
+  (10, 1, '2025-01-01 00:00:00', '2025-01-01 00:00:00', 'Poster', 'poster', 'publish', 'product', 0),
+  (501, 1, UTC_TIMESTAMP() - INTERVAL 2 DAY, UTC_TIMESTAMP() - INTERVAL 2 DAY, 'Order &ndash; 501', 'order-501', 'wc-completed', 'shop_order', 0),
+  (502, 1, UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() - INTERVAL 1 DAY, 'Order &ndash; 502', 'order-502', 'wc-processing', 'shop_order', 0),
+  (503, 1, UTC_TIMESTAMP() - INTERVAL 3 HOUR, UTC_TIMESTAMP() - INTERVAL 3 HOUR, 'Order &ndash; 503', 'order-503', 'wc-on-hold', 'shop_order', 0),
+  (504, 1, UTC_TIMESTAMP() - INTERVAL 1 HOUR, UTC_TIMESTAMP() - INTERVAL 1 HOUR, 'Refund &ndash; 504', 'refund-504', 'wc-completed', 'shop_order_refund', 501);
+INSERT INTO wp_postmeta (post_id, meta_key, meta_value) VALUES
+  (10, '_price', '15.00'), (10, '_sku', 'POSTER-1'),
+  (501, '_customer_user', '7'), (501, '_order_total', '30.00'), (501, '_order_currency', 'USD'),
+  (501, '_payment_method', 'ppcp-gateway'), (501, '_payment_method_title', 'PayPal'), (501, '_transaction_id', '8AB12345CD678901E'),
+  (501, '_billing_first_name', 'Sam'), (501, '_billing_last_name', 'Smith'), (501, '_billing_email', 'sam@legacy.test'), (501, '_billing_city', 'Austin'), (501, '_billing_country', 'US'),
+  (502, '_customer_user', '7'), (502, '_order_total', '15.00'), (502, '_order_currency', 'USD'),
+  (502, '_payment_method', 'ppcp-gateway'), (502, '_payment_method_title', 'PayPal'),
+  (502, '_billing_first_name', 'Sam'), (502, '_billing_last_name', 'Smith'), (502, '_billing_email', 'sam@legacy.test'),
+  (503, '_customer_user', '0'), (503, '_order_total', '15.00'), (503, '_order_currency', 'USD'),
+  (503, '_payment_method', 'bacs'), (503, '_payment_method_title', 'Direct bank transfer'),
+  (503, '_billing_first_name', 'Gail'), (503, '_billing_last_name', 'Guest'), (503, '_billing_email', 'guest@legacy.test'),
+  (504, '_order_total', '-5.00'), (504, '_order_currency', 'USD'), (504, '_refund_amount', '5.00');
+INSERT INTO wp_woocommerce_order_items (order_item_id, order_item_name, order_item_type, order_id) VALUES
+  (1, 'Poster', 'line_item', 501), (2, 'Poster', 'line_item', 502), (3, 'Poster', 'line_item', 503);
+INSERT INTO wp_woocommerce_order_itemmeta (order_item_id, meta_key, meta_value) VALUES
+  (1, '_product_id', '10'), (1, '_qty', '2'), (1, '_line_total', '30.00'),
+  (2, '_product_id', '10'), (2, '_qty', '1'), (2, '_line_total', '15.00'),
+  (3, '_product_id', '10'), (3, '_qty', '1'), (3, '_line_total', '15.00');
+INSERT INTO wp_comments (comment_post_ID, comment_author, comment_date_gmt, comment_content, comment_type) VALUES
+  (501, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 2 DAY, 'Order status changed from Processing to Completed.', 'order_note'),
+  (501, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 1 HOUR, 'Refunded $5.00', 'order_note');
+INSERT INTO wp_woocommerce_log (timestamp, level, source, message, context) VALUES
+  (UTC_TIMESTAMP() - INTERVAL 2 DAY, 200, 'transactional-emails', 'Email "customer_completed_order" for order #501 sent', NULL);

@@ -25,7 +25,7 @@ pub enum When {
 }
 
 impl When {
-    fn applies(self, ctx: &WpContext) -> bool {
+    pub(super) fn applies(self, ctx: &WpContext) -> bool {
         match self {
             When::Always => true,
             When::Woocommerce => ctx.wc.is_some(),

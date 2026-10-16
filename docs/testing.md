@@ -29,7 +29,7 @@ The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules
   | File | Needs |
   |---|---|
   | `mysql.rs` | the Docker fixtures; checks the driver on MariaDB and MySQL |
-  | `wp.rs` | the Docker fixtures (`wp_test` read-only, `wp_write` for edits) |
+  | `wp.rs` | the Docker fixtures (`wp_test` and `wp_legacy` read-only, `wp_write` for edits) |
   | `php_roundtrip.rs` | `DATABEE_WP_TEST=mysql://user:pass@host:port/db`: a real WordPress database of your own, read-only; it skips when the variable is unset |
 
 ## Docker fixtures
@@ -48,6 +48,7 @@ every run, because the fixture uses `UTC_TIMESTAMP()` for relative dates.
 | `databee_test` | not WordPress: posts-like table, one column per decoder family, a view |
 | `wp_test` | WordPress plus WooCommerce (HPOS with sync) schema and seed data for the lens tests |
 | `wp_write` | `CREATE TABLE … LIKE` copies for edit and undo tests |
+| `wp_legacy` | WooCommerce with HPOS off: orders in `wp_posts` (a customer with two orders, a guest order, a refund, order notes), no `wc_orders` tables |
 
 The fixtures are also useful for manual testing:
 
