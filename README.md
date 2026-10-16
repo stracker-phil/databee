@@ -71,8 +71,16 @@ databee --help
 Password sources, in order: `--password` / `--password-stdin` / `--password-env`, then the
 URL, then the Keychain (account `user@host:port`), then a prompt in the app.
 
-To install the `databee` command, run `scripts/install-cli.sh`. It links `~/.local/bin/databee` to the built app.
-To open the app from Spotlight/Launchpad, run `scripts/install-app.sh`. It links `~/Applications/databee.app` to the build output, so rebuilds are picked up automatically.
+### Install
+
+Two symlinks point at the debug build, so every `bun run build:app` is picked up without reinstalling:
+
+| Link | Created by | Use |
+| --- | --- | --- |
+| `~/.local/bin/databee` → `databee.app/Contents/MacOS/databee` | `scripts/install-cli.sh` | the `databee` CLI command, from any shell (`~/.local/bin` must be on `PATH`) |
+| `~/Applications/databee.app` → `databee.app` | `scripts/install-app.sh` | the GUI launcher in Spotlight, Launchpad and the Dock |
+
+Both scripts take an optional path to another `databee.app` (e.g. a release build).
 
 ## Development
 
