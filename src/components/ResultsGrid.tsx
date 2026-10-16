@@ -202,7 +202,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
         {virtualizer.getVirtualItems().map((v) => {
           const row = rows[v.index];
           return (
-            <div key={v.key} className="grid-row" role="row" style={{ top: v.start, height: rowHeight, width: totalWidth }}>
+            <div key={v.key} className={`grid-row${v.index % 2 ? " stripe" : ""}`} role="row" style={{ top: v.start, height: rowHeight, width: totalWidth }}>
               <div className="grid-cell grid-rownum" style={{ width: ROW_NUMBER_WIDTH }}>
                 {rowOffset + v.index + 1}
               </div>

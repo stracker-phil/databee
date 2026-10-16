@@ -195,7 +195,8 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
   box-shadow: 0 -2px 0 0 var(--bg-toolbar);
 }
 .grid-row { display: flex; position: absolute; left: 0; height: var(--row-height); }
-.grid-row:nth-child(even) { background: var(--bg-grid-stripe); }
+/* by data index, not DOM position: virtualized rows are recycled while scrolling */
+.grid-row.stripe { background: var(--bg-grid-stripe); }
 .grid-cell, .grid-hcell {
   flex: none; padding: 0 0.615rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   border-right: 0.5px solid var(--border); line-height: var(--row-height); height: var(--row-height);
