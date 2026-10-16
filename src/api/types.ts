@@ -23,6 +23,8 @@ export interface Settings {
   logLevel: LogLevel;
   screenShareMode: boolean;
   gravatar: boolean;
+  /** Value inspector and WordPress detail pane: beside or below the content. */
+  inspectorDock: "right" | "bottom";
 }
 
 export const ACCENTS = ["blue", "purple", "pink", "graphite"] as const;
@@ -169,7 +171,14 @@ export interface BrowsePage {
 export interface UiState {
   tables: Record<string, { widths: Record<string, number> }>;
   splitWidth: number | null;
+  inspectorWidth: number | null;
+  paneHeight: number | null;
+  editorHeight: number | null;
 }
+
+export type PaneSize = "splitWidth" | "inspectorWidth" | "paneHeight" | "editorHeight";
+
+export const EMPTY_UI_STATE: UiState = { tables: {}, splitWidth: null, inspectorWidth: null, paneHeight: null, editorHeight: null };
 
 export type FavoriteTarget =
   | { kind: "table"; database: string; table: string }

@@ -1,5 +1,5 @@
 //! Per-connection UI state (`ui_state.json`), keyed by connection identity
-//! (`user@host:port/database`): column widths per table, split-view width.
+//! (`user@host:port/database`): column widths per table and pane sizes, all in px.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -21,7 +21,14 @@ pub struct TableUi {
 #[serde(default, rename_all = "camelCase")]
 pub struct UiState {
     pub tables: BTreeMap<String, TableUi>,
+    /// WordPress detail pane, docked right.
     pub split_width: Option<u32>,
+    /// Value inspector, docked right.
+    pub inspector_width: Option<u32>,
+    /// Inspector or detail pane, docked at the bottom.
+    pub pane_height: Option<u32>,
+    /// SQL editor above the query results.
+    pub editor_height: Option<u32>,
 }
 
 pub struct UiStateStore {
@@ -71,6 +78,9 @@ mod tests {
             },
         );
         state.split_width = Some(520);
+        state.inspector_width = Some(400);
+        state.pane_height = Some(280);
+        state.editor_height = Some(90);
         store.set("root@127.0.0.1:52958/db", state.clone()).unwrap();
 
         let reopened = UiStateStore::open(dir.path());

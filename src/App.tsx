@@ -5,6 +5,7 @@ import { Dialogs } from "./components/Dialogs";
 import { FavoritesBar } from "./components/FavoritesBar";
 import { Inspector } from "./components/Inspector";
 import { Sidebar } from "./components/Sidebar";
+import { DEFAULT_PANE_HEIGHT, Splitter, usePaneSize, useWindowSize } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
 import { TabBar, TabPanels } from "./components/Tabs";
 import { Toasts } from "./components/Toasts";
@@ -43,10 +44,52 @@ function useBackendEvents() {
   }, []);
 }
 
+/** Sidebar, tabs and the value inspector, docked right or below the tabs. */
+function DbWorkspace() {
+  const inspecting = useStore((s) => s.selectedCell !== null);
+  const bottom = useStore((s) => s.settings?.inspectorDock === "bottom");
+  const { width, height } = useWindowSize();
+  const side = usePaneSize("inspectorWidth", 360, 240, width - 700);
+  const below = usePaneSize("paneHeight", DEFAULT_PANE_HEIGHT, 160, height - 260);
+  const main = (
+    <main className="main">
+      <TabBar />
+      <TabPanels />
+    </main>
+  );
+  if (!inspecting) {
+    return (
+      <div className="workspace">
+        <Sidebar />
+        {main}
+      </div>
+    );
+  }
+  if (bottom) {
+    return (
+      <div className="workspace">
+        <Sidebar />
+        <div className="main-stack dock-bottom" style={{ gridTemplateRows: `minmax(0, 1fr) auto ${below.size}px` }}>
+          {main}
+          <Splitter axis="y" paneAfter label="Resize inspector" {...below} />
+          <Inspector />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="workspace" style={{ gridTemplateColumns: `19.231rem minmax(0, 1fr) auto ${side.size}px` }}>
+      <Sidebar />
+      {main}
+      <Splitter axis="x" paneAfter label="Resize inspector" {...side} />
+      <Inspector />
+    </div>
+  );
+}
+
 export default function App() {
   const settings = useStore((s) => s.settings);
   const hasSessions = useStore((s) => s.sessions.length > 0);
-  const inspecting = useStore((s) => s.selectedCell !== null);
   const wpMode = useStore((s) => s.mode === "wp" && !!selectWp(s));
   const showFavorites = useStore((s) => !(s.mode === "wp" && selectWp(s)) || s.favorites.length > 0);
   useBackendEvents();
@@ -67,14 +110,7 @@ export default function App() {
           {wpMode ? (
             <WpWorkspace />
           ) : (
-            <div className={`workspace${inspecting ? " with-inspector" : ""}`}>
-              <Sidebar />
-              <main className="main">
-                <TabBar />
-                <TabPanels />
-              </main>
-              {inspecting && <Inspector />}
-            </div>
+            <DbWorkspace />
           )}
           <PendingTray />
           <StatusBar />

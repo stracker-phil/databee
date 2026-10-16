@@ -175,6 +175,19 @@ describe("WordPress mode", () => {
     expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3227" });
   });
 
+  it("resizes the side pane by dragging the divider", async () => {
+    window.innerWidth = 1600;
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    await userEvent.click(await screen.findByRole("row", { name: /#3229/ }));
+    const handle = await screen.findByRole("separator", { name: "Resize detail pane" });
+    fireEvent.mouseDown(handle, { button: 0, clientX: 1000 });
+    fireEvent.mouseMove(window, { clientX: 950 });
+    fireEvent.mouseMove(window, { clientX: 900 });
+    fireEvent.mouseUp(window, { clientX: 880 });
+    expect(handle).toHaveAttribute("aria-valuenow", "680");
+  });
+
   it("lists guest checkouts as customers with a Guest badge", async () => {
     window.innerWidth = 1200;
     mocked.wpCustomers.mockResolvedValue({

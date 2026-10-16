@@ -228,6 +228,7 @@ function PageBody({ page, s, set }: { page: Page; s: Settings; set: (patch: Part
                 ))}
               </div>
             </Row>
+            <Segmented label="Inspector" description="Where the value inspector and the WordPress detail pane open. Drag the divider to resize." options={["right", "bottom"] as const} value={s.inspectorDock} onChange={(inspectorDock) => set({ inspectorDock })} />
             <Segmented label="Density" description="Row height in grids and lists." options={["comfortable", "compact"] as const} value={s.density} onChange={(density) => set({ density })} />
           </Group>
           <Group title="Text size">

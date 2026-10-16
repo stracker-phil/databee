@@ -14,8 +14,9 @@ import {
 } from "../../api";
 import { formatCount } from "../../lib/format";
 import { relativeFromUnix, shorten } from "../../lib/wpFormat";
-import { selectActiveSession, selectWpRoute, useStore, type WpList } from "../../state/store";
+import { selectWpRoute, useStore, type WpList } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
+import { DEFAULT_PANE_HEIGHT, Splitter, usePaneSize, useWindowSize } from "../Splitter";
 import { BreakdownChart } from "./BreakdownChart";
 import { StackedBars } from "./charts";
 import { Ago, Avatar, Card, StatusPill, Thumb } from "./ui";
@@ -120,16 +121,6 @@ function useDebounced<T>(value: T, ms = 250): T {
     return () => clearTimeout(t);
   }, [value, ms]);
   return v;
-}
-
-function useWindowWidth() {
-  const [w, setW] = useState(window.innerWidth);
-  useEffect(() => {
-    const on = () => setW(window.innerWidth);
-    window.addEventListener("resize", on);
-    return () => window.removeEventListener("resize", on);
-  }, []);
-  return w;
 }
 
 function Chips({ facets, value, onChange, allLabel = "All" }: { facets: Facet[]; value: string | null; onChange: (v: string | null) => void; allLabel?: string }) {
@@ -328,25 +319,6 @@ function FailedByHook({ onPick }: { onPick: (hook: string) => void }) {
   );
 }
 
-/** Drag handle between list and detail; the width is kept per connection. */
-function Splitter({ onResize }: { onResize: (dx: number) => void }) {
-  const start = (e: React.MouseEvent) => {
-    e.preventDefault();
-    let last = e.clientX;
-    const move = (ev: MouseEvent) => {
-      onResize(last - ev.clientX);
-      last = ev.clientX;
-    };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  };
-  return <div className="splitter" role="separator" aria-orientation="vertical" aria-label="Resize detail pane" onMouseDown={start} />;
-}
-
 export function ListScreen({ list, params }: { list: Exclude<WpList, "settings" | "plugins">; params?: Record<string, string> }) {
   const [status, setStatus] = useState<string | null>(params?.status ?? null);
   const [kind, setKind] = useState<string | null>(params?.kind ?? null);
@@ -361,11 +333,13 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings" 
   );
 
   const route = useStore(selectWpRoute);
-  const session = useStore(selectActiveSession);
-  const { replaceRoute, openEntity, setSplitWidth } = useStore.getState();
-  const splitWidth = useStore((s) => (session ? (s.uiState[session.identity]?.splitWidth ?? null) : null)) ?? DEFAULT_SPLIT;
-  const width = useWindowWidth();
-  const split = width >= SPLIT_MIN_WIDTH;
+  const { replaceRoute, openEntity } = useStore.getState();
+  const bottom = useStore((s) => s.settings?.inspectorDock === "bottom");
+  const { width, height } = useWindowSize();
+  const side = usePaneSize("splitWidth", DEFAULT_SPLIT, 360, width - 480);
+  const below = usePaneSize("paneHeight", DEFAULT_PANE_HEIGHT, 160, height - 260);
+  const pane = bottom ? below : side;
+  const split = bottom || width >= SPLIT_MIN_WIDTH;
   const selected = route.screen === "list" && route.list === list ? (route.selected ?? null) : null;
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -467,9 +441,9 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings" 
 
   if (!split || !selected) return listPane;
   return (
-    <div className="list-split" style={{ gridTemplateColumns: `minmax(0, 1fr) 0.385rem ${splitWidth}px` }}>
+    <div className={`list-split${bottom ? " dock-bottom" : ""}`} style={bottom ? { gridTemplateRows: `minmax(0, 1fr) auto ${pane.size}px` } : { gridTemplateColumns: `minmax(0, 1fr) auto ${pane.size}px` }}>
       {listPane}
-      <Splitter onResize={(dx) => session && setSplitWidth(session.identity, Math.max(360, Math.min(width - 480, splitWidth + dx)))} />
+      <Splitter axis={bottom ? "y" : "x"} paneAfter label="Resize detail pane" {...pane} />
       <aside className="detail-pane" aria-label="Detail">
         <div className="detail-head">
           <span className="muted small">{selected.entity} #{selected.id}</span>

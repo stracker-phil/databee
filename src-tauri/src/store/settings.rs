@@ -46,6 +46,15 @@ impl From<LogLevel> for log::LevelFilter {
     }
 }
 
+/// Where the value inspector and the WordPress detail pane sit next to the content.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Dock {
+    #[default]
+    Right,
+    Bottom,
+}
+
 /// Green and orange are status colors in the UI, so they are not offered as accents.
 pub const ACCENTS: &[&str] = &["blue", "purple", "pink", "graphite"];
 
@@ -73,6 +82,7 @@ pub struct Settings {
     pub screen_share_mode: bool,
     /// Loads avatars from Gravatar (sends hashed emails to gravatar.com).
     pub gravatar: bool,
+    pub inspector_dock: Dock,
 }
 
 impl Default for Settings {
@@ -94,6 +104,7 @@ impl Default for Settings {
             log_level: LogLevel::Info,
             screen_share_mode: false,
             gravatar: false,
+            inspector_dock: Dock::Right,
         }
     }
 }
@@ -162,6 +173,7 @@ mod tests {
         let changed = Settings {
             theme: Theme::Dark,
             row_limit: 250,
+            inspector_dock: Dock::Bottom,
             ..Settings::default()
         };
         store.update(changed.clone()).unwrap();

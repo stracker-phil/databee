@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   accountOf,
+  EMPTY_UI_STATE,
   api,
   toAppError,
   type AppError,
@@ -15,6 +16,7 @@ import {
   type FavoriteTarget,
   type Keybindings,
   type LaunchEvent,
+  type PaneSize,
   type SessionInfo,
   type Settings,
   type TableInfo,
@@ -180,7 +182,8 @@ interface Actions {
   setEntityMeta(meta: EntityMeta | null): void;
   loadUiState(identity: string): Promise<void>;
   setTableWidths(identity: string, table: string, widths: Record<string, number>): void;
-  setSplitWidth(identity: string, width: number): void;
+  /** Persists a dragged pane size for this connection. */
+  setPaneSize(identity: string, pane: PaneSize, px: number): void;
   /** Activates the next (+1) or previous (-1) tab of the active session. */
   cycleTab(delta: number): void;
   loadWp(sessionId: string, database: string, refresh?: boolean): Promise<void>;
@@ -590,15 +593,15 @@ export const useStore = create<Store>()((set, get) => {
     },
 
     setTableWidths(identity, table, widths) {
-      const current = get().uiState[identity] ?? { tables: {}, splitWidth: null };
+      const current = get().uiState[identity] ?? EMPTY_UI_STATE;
       const ui: UiState = { ...current, tables: { ...current.tables, [table]: { widths } } };
       set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
       persistUiState(identity, ui);
     },
 
-    setSplitWidth(identity, width) {
-      const current = get().uiState[identity] ?? { tables: {}, splitWidth: null };
-      const ui: UiState = { ...current, splitWidth: width };
+    setPaneSize(identity, pane, px) {
+      const current = get().uiState[identity] ?? EMPTY_UI_STATE;
+      const ui: UiState = { ...current, [pane]: Math.round(px) };
       set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
       persistUiState(identity, ui);
     },

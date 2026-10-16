@@ -8,6 +8,7 @@ import { useResolvedTheme } from "../lib/theme";
 import { useStore, type QueryTab as QueryTabState } from "../state/store";
 import { currentStatement, QueryEditor } from "./QueryEditor";
 import { ResultsGrid } from "./ResultsGrid";
+import { Splitter, usePaneSize, useWindowSize } from "./Splitter";
 
 export function ErrorPanel({ message, code }: { message: string; code: string | null }) {
   return (
@@ -56,11 +57,13 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
     return () => window.removeEventListener(EVENTS.runQuery, onRun);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, tab.id, tab.sql]);
+  const { height } = useWindowSize();
+  const editor = usePaneSize("editorHeight", 140, 48, height - 320);
   const results = tab.response?.results ?? [];
   const result = results[tab.activeResult];
 
   return (
-    <div className="query">
+    <div className="query" style={{ gridTemplateRows: `${editor.size}px auto auto minmax(0, 1fr)` }}>
       <QueryEditor
         value={tab.sql}
         onChange={(sql) => updateTab(tab.id, { sql })}
@@ -68,6 +71,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
         theme={theme}
         onView={(v) => (viewRef.current = v)}
       />
+      <Splitter axis="y" paneAfter={false} label="Resize editor" {...editor} />
       <div className="action-bar">
         {tab.running ? (
           <button className="btn" onClick={() => void cancelQuery(tab.id)}>

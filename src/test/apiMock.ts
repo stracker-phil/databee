@@ -66,7 +66,7 @@ export function createApiMock(): typeof realApi {
     onLaunch: vi.fn().mockResolvedValue(() => {}),
     onCommand: vi.fn().mockResolvedValue(() => {}),
     getKeybindings: vi.fn().mockResolvedValue({}),
-    getUiState: vi.fn().mockResolvedValue({ tables: {}, splitWidth: null }),
+    getUiState: vi.fn().mockResolvedValue({ tables: {}, splitWidth: null, inspectorWidth: null, paneHeight: null, editorHeight: null } satisfies UiState),
     setUiState: vi.fn().mockImplementation(async (_i: string, ui: UiState) => ui),
     setKeybindings: vi.fn().mockImplementation(async (b: Keybindings) => b),
   };

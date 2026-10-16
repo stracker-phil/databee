@@ -18,6 +18,7 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     logLevel: "info",
     screenShareMode: false,
     gravatar: false,
+    inspectorDock: "right",
     ...patch,
   };
 }

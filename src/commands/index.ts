@@ -85,6 +85,16 @@ export const APP_COMMANDS: Command[] = [
       if (s.settings) void s.saveSettings({ ...s.settings, screenShareMode: !s.settings.screenShareMode });
     },
   },
+  {
+    id: "view.inspectorDock",
+    title: "Toggle inspector position (right / bottom)",
+    scope: "global",
+    menu: true,
+    run: () => {
+      const s = useStore.getState();
+      if (s.settings) void s.saveSettings({ ...s.settings, inspectorDock: s.settings.inspectorDock === "bottom" ? "right" : "bottom" }, { quiet: true });
+    },
+  },
   { id: "table.focusFilter", title: "Value filter (WHERE)", scope: "table", defaultBinding: "Mod+F", run: () => void window.dispatchEvent(new Event(EVENTS.focusWhere)) },
   { id: "sidebar.focusFilter", title: "Filter tables", scope: "db", defaultBinding: "Mod+Shift+F", run: () => void window.dispatchEvent(new Event(EVENTS.focusTableFilter)) },
   {

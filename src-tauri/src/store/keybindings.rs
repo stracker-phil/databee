@@ -12,7 +12,8 @@ use crate::error::AppResult;
 /// `None` means the user unbound the command.
 pub type Keybindings = BTreeMap<String, Option<String>>;
 
-/// Commands that live in the native menu, with their default bindings (mirrors `src/commands`).
+/// Commands that live in the native menu, with their default bindings (mirrors `src/commands`);
+/// an empty binding means none by default.
 pub const MENU_DEFAULTS: &[(&str, &str)] = &[
     ("connection.new", "Mod+N"),
     ("tabs.new", "Mod+T"),
@@ -22,6 +23,7 @@ pub const MENU_DEFAULTS: &[(&str, &str)] = &[
     ("changes.apply", "Mod+S"),
     ("nav.back", "Mod+["),
     ("nav.forward", "Mod+]"),
+    ("view.inspectorDock", ""),
 ];
 
 pub struct KeybindingsStore {
@@ -57,7 +59,8 @@ impl KeybindingsStore {
             None => MENU_DEFAULTS
                 .iter()
                 .find(|(i, _)| *i == id)
-                .map(|(_, b)| b.to_string()),
+                .map(|(_, b)| b.to_string())
+                .filter(|b| !b.is_empty()),
         }
     }
 }
@@ -101,6 +104,7 @@ mod tests {
             Some("Mod+W")
         );
         assert_eq!(reopened.menu_binding("unknown"), None);
+        assert_eq!(reopened.menu_binding("view.inspectorDock"), None);
     }
 
     #[test]

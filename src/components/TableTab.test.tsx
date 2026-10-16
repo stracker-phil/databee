@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, type TableStructure } from "../api";
+import { api, EMPTY_UI_STATE, type TableStructure } from "../api";
 import { useStore, type TableTab as TableTabState } from "../state/store";
 import { connectedStore, resultSet, session } from "../test/fixtures";
 import { TableTab } from "./TableTab";
@@ -70,7 +70,7 @@ describe("TableTab", () => {
   });
 
   it("applies saved widths and auto-fits on double-click", async () => {
-    useStore.setState({ uiState: { [session.identity]: { tables: { "db.wp_posts": { widths: { ID: 300, post_title: 90 } } }, splitWidth: null } } });
+    useStore.setState({ uiState: { [session.identity]: { ...EMPTY_UI_STATE, tables: { "db.wp_posts": { widths: { ID: 300, post_title: 90 } } } } } });
     render(<TableTab tab={tab} />);
     await screen.findByText("Hello world");
     const grid = screen.getByRole("grid");

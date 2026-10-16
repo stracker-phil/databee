@@ -15,6 +15,7 @@ const LABELS: &[(&str, &str)] = &[
     ("changes.apply", "Apply Pending Changes"),
     ("nav.back", "Back"),
     ("nav.forward", "Forward"),
+    ("view.inspectorDock", "Toggle Inspector Position"),
 ];
 
 pub fn build(app: &App, bindings: &KeybindingsStore) -> tauri::Result<Menu<Wry>> {
@@ -58,6 +59,9 @@ pub fn build(app: &App, bindings: &KeybindingsStore) -> tauri::Result<Menu<Wry>>
         .separator()
         .item(&item("favorites.add")?)
         .build()?;
+    let view = SubmenuBuilder::new(app, "View")
+        .item(&item("view.inspectorDock")?)
+        .build()?;
     let go = SubmenuBuilder::new(app, "Go")
         .item(&item("nav.back")?)
         .item(&item("nav.forward")?)
@@ -69,7 +73,7 @@ pub fn build(app: &App, bindings: &KeybindingsStore) -> tauri::Result<Menu<Wry>>
         .separator()
         .bring_all_to_front()
         .build()?;
-    Menu::with_items(app, &[&app_menu, &file, &edit, &go, &window])
+    Menu::with_items(app, &[&app_menu, &file, &edit, &view, &go, &window])
 }
 
 pub fn forward(app: &tauri::AppHandle, id: &str) {
