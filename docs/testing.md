@@ -2,6 +2,10 @@
 
 ## Commands
 
+Coding agents don't run these themselves. They hand test writing to the `write-ts-unit-test` and
+`write-rust-unit-test` agents and runs to the `ci` agent (`.claude/agents/`), so test code and test output stay
+out of the main context ([`.claude/rules/testing.md`](../.claude/rules/testing.md)).
+
 | Command | Runs |
 |---|---|
 | `bun run test` | Vitest UI tests (`test:ui`), then the Rust unit tests (`test:rust`) |

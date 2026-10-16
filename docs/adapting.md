@@ -19,7 +19,9 @@ Remove the WordPress layer; I only need the plain SQL client.
 `CLAUDE.md` is loaded automatically. It points the agent to the rules in `.claude/rules/` and to these docs.
 The `ship-step` skill (`.claude/skills/ship-step/`) runs after every step: it cleans up the code, runs
 tests, lint, a build and a launch, then commits. Code cleanup is the `clean-up-code` skill
-(`.claude/skills/clean-up-code/`), and it runs before every commit. This page lists what such changes touch.
+(`.claude/skills/clean-up-code/`), and it runs before every commit. Subagents in `.claude/agents/` write the
+tests, run the suites (on Haiku) and review changed files, so the main agent's context stays small. This page
+lists what such changes touch.
 
 ## Identity
 
