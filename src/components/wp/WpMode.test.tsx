@@ -148,6 +148,14 @@ describe("WordPress mode", () => {
     await vi.waitFor(() => expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ search: "jane" })));
   });
 
+  it("lists orders with their stored status slug and gateway ID", async () => {
+    useStore.getState().navigate({ screen: "list", list: "orders" });
+    render(<WpWorkspace />);
+    const row = await screen.findByRole("row", { name: /#3229/ });
+    expect(row).toHaveTextContent("wc-processing");
+    expect(within(row).getByText("ppcp-gateway")).toHaveAttribute("title", "PayPal");
+  });
+
   it("sorts lists from the header row", async () => {
     useStore.getState().navigate({ screen: "list", list: "orders" });
     render(<WpWorkspace />);

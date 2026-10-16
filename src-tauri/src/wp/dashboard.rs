@@ -5,9 +5,7 @@ use serde::Serialize;
 
 use super::changes::ChangeRequest;
 use super::context::{HposMode, WpContext};
-use super::lists::{
-    self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary, num, status_label, text,
-};
+use super::lists::{self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary, num, text};
 use super::{fetch, sql_string};
 use crate::db::mysql::MySqlSession;
 use crate::db::{TableInfo, quote_ident};
@@ -410,7 +408,7 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
                 .filter_map(|r| {
                     let v = text(&r[0])?;
                     Some(Facet {
-                        label: status_label(&v),
+                        label: v.clone(),
                         count: num(&r[1]).unwrap_or(0),
                         value: v,
                     })
@@ -472,7 +470,7 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
             .filter_map(|r| {
                 let v = text(&r[0])?;
                 Some(Facet {
-                    label: status_label(&v),
+                    label: v.clone(),
                     count: num(&r[1]).unwrap_or(0),
                     value: v,
                 })
@@ -552,7 +550,7 @@ pub async fn browser(
             .filter_map(|r| {
                 let v = text(&r[0])?;
                 Some(Facet {
-                    label: status_label(&v),
+                    label: v.clone(),
                     count: num(&r[1]).unwrap_or(0),
                     value: v,
                 })

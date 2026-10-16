@@ -16,7 +16,7 @@ function OrdersMini({ orders, title }: { orders: CustomerData["orders"]; title: 
           <button key={o.id} className="row-link" onClick={() => openEntity("order", o.id)}>
             <span className="row-id">#{o.id}</span>
             <StatusPill status={o.status} />
-            <span className="grow-text muted">{o.gatewayTitle}</span>
+            <span className="grow-text muted mono" title={o.gatewayTitle ?? undefined}>{o.gateway}</span>
             <span className="muted">{o.itemCount} items</span>
             <span className="money row-total">{o.total}</span>
             <span className="muted row-when"><Ago unix={o.created} /></span>

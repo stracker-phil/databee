@@ -174,7 +174,7 @@ function OrderCells({ o }: { o: OrderSummary }) {
         {o.name && o.email && <span className="muted"> · {o.email}</span>}
       </span>
       <span className="col-status"><StatusPill status={o.status} /></span>
-      <span className="row-gateway">{o.gatewayTitle ?? o.gateway ?? ""}</span>
+      <span className="row-gateway mono" title={o.gatewayTitle ?? undefined}>{o.gateway ?? ""}</span>
       <span className="muted row-items">{o.itemCount} {o.itemCount === 1 ? "item" : "items"}</span>
       <span className="money row-total">{o.total}</span>
       <span className="muted row-when"><Ago unix={o.created} /></span>
@@ -209,7 +209,7 @@ function ProductCells({ p }: { p: ProductSummary }) {
         {p.variations > 0 && <span className="muted small"> · {p.variations} variations</span>}
         {p.status !== "publish" && <span style={{ marginLeft: "0.462rem" }}><StatusPill status={p.status} /></span>}
       </span>
-      <span className="col-status">{p.stockStatus && <StatusPill status={p.stockStatus} label={p.stockStatus === "instock" ? `In stock${p.stock ? ` · ${p.stock}` : ""}` : undefined} />}</span>
+      <span className="col-status">{p.stockStatus && <StatusPill status={p.stockStatus} label={`${p.stockStatus}${p.stock ? ` · ${p.stock}` : ""}`} />}</span>
       <span className="muted row-items">{p.totalSales} sold</span>
       <span className="money row-total">{p.price}</span>
     </>

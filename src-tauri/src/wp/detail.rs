@@ -1546,7 +1546,6 @@ pub async fn product_view(
     let terms: Vec<(String, Vec<String>)> = by_tax
         .into_iter()
         .filter(|(t, _)| matches!(t.as_str(), "product_cat" | "product_tag" | "product_brand"))
-        .map(|(t, v)| (lists::status_label(t.trim_start_matches("product_")), v))
         .collect();
 
     // Variations with their attributes and stock in two queries.

@@ -198,7 +198,7 @@ export function DashboardScreen() {
                 <span className="row-id">#{o.id}</span>
                 <span className="grow-text">{o.name || o.email || "guest"}</span>
                 <StatusPill status={o.status} />
-                <span className="row-gateway">{o.gatewayTitle ?? o.gateway ?? ""}</span>
+                <span className="row-gateway mono" title={o.gatewayTitle ?? undefined}>{o.gateway ?? ""}</span>
                 <span className="money row-total">{o.total}</span>
                 <span className="muted row-when"><Ago unix={o.created} /></span>
               </button>

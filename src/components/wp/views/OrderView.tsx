@@ -67,7 +67,7 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
         <h2>#{o.doc.id}</h2>
         <StatusSelect order={o} />
         <span className="money big">{o.total}</span>
-        {p?.gatewayTitle && <span className="muted">{p.gatewayTitle}</span>}
+        {p?.gateway && <span className="muted mono" title={p.gatewayTitle ?? undefined}>{p.gateway}</span>}
         {o.customer ? <LinkChip link={o.customer} /> : <span className="badge">Guest</span>}
         <div className="spacer" />
         {o.created && <span className="muted" title={absoluteFromUnix(o.created)}>created <Ago unix={o.created} /></span>}
@@ -123,7 +123,7 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
         {p && (
           <Card title="Payment" className="grow">
             <div className="kv">
-              <Row label="Gateway">{p.gatewayTitle ?? p.gateway}</Row>
+              <Row label="Gateway"><span className="mono">{p.gateway}</span>{p.gatewayTitle && <span className="hint-note">{p.gatewayTitle}</span>}</Row>
               <Row label="Transaction ID"><span className="mono">{p.transactionId}</span></Row>
               <Row label="PayPal order ID"><span className="mono">{p.paypalOrderId}</span></Row>
               <Row label="Intent">{p.intent}</Row>

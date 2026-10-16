@@ -193,14 +193,6 @@ fn facets(rs: &ResultSet, label: impl Fn(&str) -> String) -> Vec<Facet> {
 }
 
 /// `wc-processing` → `Processing`.
-pub fn status_label(status: &str) -> String {
-    let s = status.trim_start_matches("wc-").replace(['-', '_'], " ");
-    let mut c = s.chars();
-    c.next()
-        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
-        .unwrap_or_default()
-}
-
 fn t(db: &str, ctx: &WpContext, table: &str) -> String {
     format!("{}.{}", quote_ident(db), quote_ident(&ctx.table(table)))
 }
@@ -350,7 +342,7 @@ fn order_facets_sql(db: &str, ctx: &WpContext, order_type: &str) -> (String, Str
         (
             format!("SELECT status, COUNT(*) FROM {from} GROUP BY status"),
             format!(
-                "SELECT payment_method, COUNT(*), MAX(payment_method_title) FROM {from} AND payment_method <> '' GROUP BY payment_method"
+                "SELECT payment_method, COUNT(*) FROM {from} AND payment_method <> '' GROUP BY payment_method"
             ),
         )
     } else {
@@ -361,8 +353,7 @@ fn order_facets_sql(db: &str, ctx: &WpContext, order_type: &str) -> (String, Str
                 sql_string(order_type)
             ),
             format!(
-                "SELECT m.meta_value, COUNT(*), MAX(t.meta_value) FROM {posts} p JOIN {pm} m ON m.post_id = p.ID AND m.meta_key = '_payment_method' \
-                 LEFT JOIN {pm} t ON t.post_id = p.ID AND t.meta_key = '_payment_method_title' \
+                "SELECT m.meta_value, COUNT(*) FROM {posts} p JOIN {pm} m ON m.post_id = p.ID AND m.meta_key = '_payment_method' \
                  WHERE p.post_type = {ty} AND m.meta_value <> '' GROUP BY m.meta_value",
                 posts = t(db, ctx, "posts"),
                 pm = t(db, ctx, "postmeta"),
@@ -384,21 +375,11 @@ pub async fn orders(
     let (status_sql, gateway_sql) = order_facets_sql(db, ctx, order_type);
     let statuses = fetch(session, &status_sql).await?;
     let gateways = fetch(session, &gateway_sql).await?;
-    let gateway_titles: HashMap<String, String> = gateways
-        .rows
-        .iter()
-        .filter_map(|r| Some((text(&r[0])?, text(&r[2])?)))
-        .collect();
     Ok(Page {
         items,
         has_more,
-        facets: facets(&statuses, status_label),
-        kinds: facets(&gateways, |g| {
-            gateway_titles
-                .get(g)
-                .cloned()
-                .unwrap_or_else(|| g.to_string())
-        }),
+        facets: facets(&statuses, str::to_string),
+        kinds: facets(&gateways, str::to_string),
     })
 }
 
@@ -668,7 +649,7 @@ async fn customer_kinds(
     let mut kinds: Vec<Facet> = role_counts
         .into_iter()
         .map(|(value, count)| Facet {
-            label: status_label(&value),
+            label: value.clone(),
             value,
             count,
         })
@@ -847,8 +828,8 @@ pub async fn products(
     Ok(Page {
         items,
         has_more,
-        facets: facets(&statuses, status_label),
-        kinds: facets(&kinds, status_label),
+        facets: facets(&statuses, str::to_string),
+        kinds: facets(&kinds, str::to_string),
     })
 }
 
@@ -947,7 +928,7 @@ pub async fn actions(
     Ok(Page {
         items,
         has_more,
-        facets: facets(&statuses, status_label),
+        facets: facets(&statuses, str::to_string),
         kinds: facets(&hooks, |h| h.to_string()),
     })
 }
@@ -1174,7 +1155,7 @@ pub async fn content(
         &format!("SELECT post_type, COUNT(*) FROM {posts} WHERE post_type NOT IN ({hidden}) AND post_status <> 'auto-draft' GROUP BY post_type"),
     )
     .await?;
-    let kinds = facets(&kinds, status_label);
+    let kinds = facets(&kinds, str::to_string);
     let kind = q.kind.clone().or_else(|| {
         kinds
             .iter()
@@ -1243,7 +1224,7 @@ pub async fn content(
     Ok(Page {
         items,
         has_more,
-        facets: facets(&statuses, status_label),
+        facets: facets(&statuses, str::to_string),
         kinds,
     })
 }
@@ -1297,13 +1278,6 @@ mod tests {
             site: Default::default(),
             tables: ["wp_wc_product_meta_lookup".to_string()].into(),
         }
-    }
-
-    #[test]
-    fn status_labels_are_readable() {
-        assert_eq!(status_label("wc-on-hold"), "On hold");
-        assert_eq!(status_label("publish"), "Publish");
-        assert_eq!(status_label("in-progress"), "In progress");
     }
 
     #[test]

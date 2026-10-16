@@ -34,7 +34,7 @@ describe("Peek cards", () => {
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     await act(() => vi.advanceTimersByTimeAsync(PEEK_DELAY_MS + 10));
     const card = await screen.findByRole("tooltip");
-    expect(card).toHaveTextContent("Processing");
+    expect(card).toHaveTextContent("wc-processing");
     expect(card).toHaveTextContent("€49.90");
     expect(card).toHaveTextContent("jane@shop.test");
     expect(mocked.wpPeek).toHaveBeenCalledWith("s1", "db", "order", "4711");

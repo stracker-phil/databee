@@ -28,13 +28,9 @@ export function statusTone(status: string): string {
   return STATUS_TONES[status.replace(/^wc-/, "")] ?? "gray";
 }
 
-export function statusText(status: string): string {
-  const s = status.replace(/^wc-/, "").replace(/[-_]/g, " ");
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
+/** A stored status slug (`wc-on-hold`), colored by what it means. */
 export function StatusPill({ status, label }: { status: string; label?: string }) {
-  return <span className={`pill tone-${statusTone(status)}`}>{label ?? statusText(status)}</span>;
+  return <span className={`pill tone-${statusTone(status)}`}>{label ?? status}</span>;
 }
 
 export function Ago({ unix }: { unix: number | null | undefined }) {
