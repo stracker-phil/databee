@@ -1,5 +1,6 @@
 //! Per-connection UI state (`ui_state.json`), keyed by connection identity
-//! (`user@host:port/database`): column widths per table and pane sizes, all in px.
+//! (`user@host:port/database`): column widths per table and pane sizes (all in px), and whether the
+//! sidebar is collapsed.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -29,6 +30,7 @@ pub struct UiState {
     pub bottom_pane_height: Option<u32>,
     #[serde(alias = "editorHeight")]
     pub sql_editor_height: Option<u32>,
+    pub sidebar_hidden: bool,
 }
 
 pub struct UiStateStore {
@@ -124,6 +126,35 @@ mod tests {
         assert_eq!(state.detail_pane_width, Some(500));
         assert_eq!(state.bottom_pane_height, Some(250));
         assert_eq!(state.sql_editor_height, Some(120));
+    }
+
+    #[tokio::test]
+    async fn hidden_sidebar_survives_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = UiStateStore::open(dir.path());
+        let state = UiState {
+            sidebar_hidden: true,
+            ..UiState::default()
+        };
+        store.set("a@b:1/db", state.clone()).await.unwrap();
+
+        let reopened = UiStateStore::open(dir.path()).get("a@b:1/db");
+        assert!(reopened.sidebar_hidden);
+        assert_eq!(reopened, state);
+    }
+
+    #[test]
+    fn file_without_sidebar_hidden_loads_as_visible_and_keeps_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("ui_state.json"),
+            r#"{"a@b:1/db": {"inspectorWidth": 410, "tables": {"t": {"widths": {"id": 60}}}}}"#,
+        )
+        .unwrap();
+        let state = UiStateStore::open(dir.path()).get("a@b:1/db");
+        assert!(!state.sidebar_hidden);
+        assert_eq!(state.inspector_width, Some(410));
+        assert_eq!(state.tables["t"].widths["id"], 60);
     }
 
     #[tokio::test]

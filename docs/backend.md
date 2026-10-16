@@ -62,7 +62,7 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `recents` | `RecentsStore` | `connections.json` (last 20 connections) |
 | `favorites` | `FavoritesStore` | `favorites.json` |
 | `history` | `HistoryStore` | `history.json` (last 500 queries, written behind) |
-| `ui_state` | `UiStateStore` | `ui_state.json` (column widths, pane sizes per connection) |
+| `ui_state` | `UiStateStore` | `ui_state.json` (column widths, pane sizes, sidebar hidden per connection) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
@@ -212,7 +212,7 @@ snapshot migration). Store methods that write are `async` and the commands calli
 | `stage.json` | Stage's own settings (`stage::settings::StageStore`, see [stage.md](stage.md)); not part of `settings.json` |
 | `snapshots.json` | WordPress plugin: index of snapshots (id, label, account, database, scope, created, `paths` count), 30 per account and database (`MAX_PER_DATABASE`); adding one evicts the oldest of that database only and deletes its values file |
 | `snapshots/<id>.json` | one snapshot's `path → value` map (0600, dir 0700) |
-| `ui_state.json` | per connection: column widths, `detailPaneWidth`, `inspectorWidth`, `bottomPaneHeight`, `sqlEditorHeight` (older names load via serde aliases). `UiStateStore::forget` drops a connection's entry |
+| `ui_state.json` | per connection: column widths, `detailPaneWidth`, `inspectorWidth`, `bottomPaneHeight`, `sqlEditorHeight`, `sidebarHidden` (older names load via serde aliases; missing fields take their defaults). `UiStateStore::forget` drops a connection's entry |
 | `entities.toml` | WordPress plugin: optional user entity definitions ([wordpress.md](wordpress.md#entities)) |
 | `databee.sock` | the IPC socket |
 | `databee.lock` | the instance lock |

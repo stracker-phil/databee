@@ -14,8 +14,6 @@ interface Props {
   rows: Cell[][];
   /** The result set the rows belong to; without it `longText` cells can't be fetched in full. */
   source: CellSource;
-  /** Row number of the first row (for paged table views). */
-  rowOffset?: number;
   sort?: { column: string | null; descending: boolean };
   onSort?: (column: string) => void;
   /** Extra context-menu entries for a row (e.g. "Open as document"). */
@@ -28,7 +26,6 @@ interface Props {
   onColumnWidthsChange?: (widths: Record<string, number>) => void;
 }
 
-const ROW_NUMBER_WIDTH = 52;
 const MIN_WIDTH_REM = 3;
 const MAX_FIT_REM = 40;
 
@@ -36,6 +33,18 @@ const MAX_FIT_REM = 40;
 const INITIAL_VIEWPORT = { width: 1000, height: 800 };
 
 type CellPos = { row: number; col: number };
+
+/** Kinds show through alignment and opacity, never through color (docs/ux.md, Value grammar). */
+const KIND_CLASS: Partial<Record<Cell["t"], string>> = { number: " num", null: " null", bytes: " bytes" };
+
+const samePos = <T extends CellPos>(a: T | null, row: number, col: number): a is T => a?.row === row && a.col === col;
+
+function cellClass(cell: Cell, row: number, col: number, marks: { selected: CellPos | null; editing: CellPos | null }): string {
+  let name = `grid-cell${KIND_CLASS[cell.t] ?? ""}`;
+  if (samePos(marks.selected, row, col)) name += " selected";
+  if (samePos(marks.editing, row, col)) name += " editing";
+  return name;
+}
 
 interface KeyContext {
   at: CellPos;
@@ -68,12 +77,13 @@ const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSi
 /** Width that fits the header and the given rows; one character is ~0.6 of the data font size. */
 function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLabel: string, fontSize: number, cap: number): number {
   const charWidth = fontSize * 0.6;
-  const header = col.name.length + col.typeName.length * 0.8 + 2;
+  // The type sits under the name in smaller text, so the wider of the two sets the header's width.
+  const header = Math.max(col.name.length, col.typeName.length * 0.85) + 2;
   const longest = rows.reduce((max, r) => Math.max(max, Math.min(cellDisplay(r[index], nullLabel, 60).length, 60)), 0);
   return Math.round(Math.min(cap, Math.max(64, Math.max(header, longest) * charWidth + 20)));
 }
 
-export function ResultsGrid({ columns, rows, source, rowOffset = 0, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange }: Props) {
+export function ResultsGrid({ columns, rows, source, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange }: Props) {
   const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
   const maxChars = useStore((s) => s.settings?.maxCellChars ?? 500);
   const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
@@ -103,7 +113,7 @@ export function ResultsGrid({ columns, rows, source, rowOffset = 0, sort, onSort
 
   const measured = useMemo(() => columns.map((c, i) => fitWidth(c, i, rows.slice(0, 50), nullLabel, dataFontSize, 380)), [columns, rows, nullLabel, dataFontSize]);
   const widths = columns.map((c, i) => manual[c.name] ?? columnWidths?.[c.name] ?? measured[i]);
-  const totalWidth = ROW_NUMBER_WIDTH + widths.reduce((a, b) => a + b, 0);
+  const totalWidth = widths.reduce((a, b) => a + b, 0);
   const names = columns.map((c) => c.name);
   // Per-column CSS variables on the grid root; cells only reference them.
   const colVars = Object.fromEntries(widths.map((w, i) => [`--col-${i}`, `${w}px`])) as React.CSSProperties;
@@ -230,9 +240,18 @@ export function ResultsGrid({ columns, rows, source, rowOffset = 0, sort, onSort
   }
 
   return (
-    <div className="grid" data-stage="results" data-stage-label="Results" ref={scrollRef} tabIndex={0} onKeyDown={onKeyDown} role="grid" aria-rowcount={rows.length} style={colVars}>
+    <div
+      className="grid"
+      data-stage="results"
+      data-stage-label="Results"
+      ref={scrollRef}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      role="grid"
+      aria-rowcount={rows.length}
+      style={colVars}
+    >
       <div className="grid-head" style={{ width: totalWidth }} role="row">
-        <div className="grid-hcell grid-rownum" style={{ width: ROW_NUMBER_WIDTH }} />
         {columns.map((c, i) => {
           const sorted = sort?.column === c.name;
           return (
@@ -245,9 +264,11 @@ export function ResultsGrid({ columns, rows, source, rowOffset = 0, sort, onSort
               aria-sort={sorted ? (sort?.descending ? "descending" : "ascending") : undefined}
               onClick={() => onSort?.(c.name)}
             >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
+              <span className="name">
+                {c.name}
+                {sorted && (sort?.descending ? <ArrowDown size="0.769rem" /> : <ArrowUp size="0.769rem" />)}
+              </span>
               <span className="type">{c.typeName.toLowerCase()}</span>
-              {sorted && (sort?.descending ? <ArrowDown size="0.846rem" /> : <ArrowUp size="0.846rem" />)}
               <span
                 className="col-resize"
                 role="separator"
@@ -266,21 +287,18 @@ export function ResultsGrid({ columns, rows, source, rowOffset = 0, sort, onSort
         {virtualizer.getVirtualItems().map((v) => {
           const row = rows[v.index];
           return (
-            <div key={v.key} className={`grid-row${v.index % 2 ? " stripe" : ""}`} role="row" style={{ top: v.start, height: rowHeight, width: totalWidth }}>
-              <div className="grid-cell grid-rownum" style={{ width: ROW_NUMBER_WIDTH }}>
-                {rowOffset + v.index + 1}
-              </div>
+            <div key={v.key} className="grid-row" role="row" style={{ top: v.start, height: rowHeight, width: totalWidth }}>
               {row.map((cell, ci) => (
                 <div
                   key={ci}
                   role="gridcell"
-                  className={`grid-cell t-${cell.t}${selected?.row === v.index && selected.col === ci ? " selected" : ""}${editing?.row === v.index && editing.col === ci ? " editing" : ""}`}
+                  className={cellClass(cell, v.index, ci, { selected, editing })}
                   style={{ width: `var(--col-${ci})` }}
                   onMouseDown={() => select(v.index, ci)}
                   onDoubleClick={() => startEdit({ row: v.index, col: ci })}
                   onContextMenu={(e) => openMenu(e, v.index, ci)}
                 >
-                  {editing?.row === v.index && editing.col === ci ? (
+                  {samePos(editing, v.index, ci) ? (
                     <input
                       className="cell-input"
                       autoFocus

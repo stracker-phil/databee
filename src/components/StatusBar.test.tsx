@@ -4,13 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api } from "../api";
 import { installCommands } from "../commands";
-import { useStore } from "../state/store";
+import { selectSidebarHidden, useStore, type TableTab } from "../state/store";
 import { connectedStore, pendingChange } from "../test/fixtures";
 import { StatusBar } from "./StatusBar";
-
-const mocked = vi.mocked(api, true);
 
 describe("StatusBar", () => {
   beforeEach(() => {
@@ -19,18 +16,32 @@ describe("StatusBar", () => {
     installCommands();
   });
 
-  it("cycles the theme from its chip", async () => {
+  it("has no theme or inspector chips", () => {
     render(<StatusBar />);
-    await userEvent.click(screen.getByRole("button", { name: "Theme: system" }));
-    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ theme: "light" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Theme: light" }));
-    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ theme: "dark" }));
+    expect(screen.queryByRole("button", { name: /Theme/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Inspector/ })).not.toBeInTheDocument();
   });
 
-  it("moves the inspector from its chip", async () => {
+  it("hides the sidebar from its toggle and reports the button as not pressed", async () => {
     render(<StatusBar />);
-    await userEvent.click(screen.getByRole("button", { name: "Inspector: right" }));
-    expect(await screen.findByRole("button", { name: "Inspector: bottom" })).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Toggle sidebar" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(selectSidebarHidden(useStore.getState())).toBe(true);
+  });
+
+  it("shows a table tab's address as database.table", () => {
+    const tab: TableTab = { id: "t1", kind: "table", sessionId: "s1", title: "wp_posts", database: "db", table: "wp_posts", view: "data", where: [] };
+    useStore.setState({ tabs: [tab], activeTabId: "t1" });
+    render(<StatusBar />);
+    expect(screen.getByText("db.wp_posts")).toBeInTheDocument();
+  });
+
+  it("shows plain text and no button when nothing is pending", () => {
+    render(<StatusBar />);
+    expect(screen.getByText("pending 0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /pending/ })).not.toBeInTheDocument();
   });
 
   it("flags pending changes", () => {

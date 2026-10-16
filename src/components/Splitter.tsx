@@ -47,12 +47,10 @@ interface Props {
   onResize: (px: number) => void;
   onCommit: (px: number) => void;
   label: string;
-  /** Sits in the gap between two panels instead of on a hairline inside one. */
-  gap?: boolean;
 }
 
 /** Drag handle between two panes; arrow keys resize in steps. */
-export function Splitter({ axis, paneAfter, size, min, max, onResize, onCommit, label, gap = false }: Props) {
+export function Splitter({ axis, paneAfter, size, min, max, onResize, onCommit, label }: Props) {
   const sign = paneAfter ? -1 : 1;
   // Removes the window listeners and the body cursor class of a drag in progress.
   const stopDrag = useRef<(() => void) | null>(null);
@@ -88,7 +86,7 @@ export function Splitter({ axis, paneAfter, size, min, max, onResize, onCommit, 
   };
   return (
     <div
-      className={`splitter splitter-${axis}${gap ? " gap" : ""}`}
+      className={`splitter splitter-${axis}`}
       role="separator"
       tabIndex={0}
       aria-orientation={axis === "x" ? "vertical" : "horizontal"}

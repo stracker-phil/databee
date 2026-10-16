@@ -1,5 +1,6 @@
 import { EMPTY_UI_STATE, api, type AppError, type ColumnInfo, type ConnectionSpec, type PaneSize, type UiState } from "../../api";
 import { fail } from "../requests";
+import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
 
 export type Mode = "wp" | "db";
@@ -49,6 +50,8 @@ export interface UiSlice {
   setTableWidths(identity: string, table: string, widths: Record<string, number>): void;
   /** Persists a dragged pane size for this connection. */
   setPaneSize(identity: string, pane: PaneSize, px: number): void;
+  /** Shows or hides the sidebar of the active connection and persists the choice. */
+  toggleSidebar(): void;
   setMode(mode: Mode): void;
 }
 
@@ -71,75 +74,84 @@ export function retitledRecent(s: Store, key: string, title: string): Partial<St
 }
 
 export const uiSlice: Slice<UiSlice> = {
-  create: (set, get) => ({
-    toasts: [],
-    dialog: null,
-    sidebarPanel: "tables",
-    paletteOpen: false,
-    paletteSeed: "",
-    uiState: {},
-    recentNav: [],
-    ...resetMode(),
-
-    toast(kind, message) {
-      if (kind === "error") void api.logError(message).catch(() => {});
-      const same = get().toasts.find((t) => t.kind === kind && t.message === message);
-      if (same) {
-        set((s) => ({ toasts: s.toasts.map((t) => (t.id === same.id ? { ...t, count: t.count + 1 } : t)) }));
-        return;
-      }
-      const id = nextToastId++;
-      set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message, count: 1 }] }));
-    },
-
-    dismissToast(id) {
-      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-    },
-
-    openDialog(dialog) {
-      set({ dialog });
-    },
-
-    closeDialog() {
-      set({ dialog: null });
-    },
-
-    setSidebarPanel(sidebarPanel) {
-      set({ sidebarPanel });
-    },
-
-    setPaletteOpen(paletteOpen, seed = "") {
-      set({ paletteOpen, paletteSeed: seed });
-    },
-
-    async loadUiState(identity) {
-      if (get().uiState[identity]) return;
-      try {
-        const ui = await api.getUiState(identity);
-        set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
-      } catch (e) {
-        fail(e, "Could not load view state");
-      }
-    },
-
-    setTableWidths(identity, table, widths) {
+  create: (set, get) => {
+    /** Applies `patch` to one connection's UI state, then saves it debounced. */
+    const patchUiState = (identity: string, patch: (current: UiState) => Partial<UiState>) => {
       const current = get().uiState[identity] ?? EMPTY_UI_STATE;
-      const ui: UiState = { ...current, tables: { ...current.tables, [table]: { widths } } };
+      const ui: UiState = { ...current, ...patch(current) };
       set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
       persistUiState(identity, ui);
-    },
+    };
 
-    setPaneSize(identity, pane, px) {
-      const current = get().uiState[identity] ?? EMPTY_UI_STATE;
-      const ui: UiState = { ...current, [pane]: Math.round(px) };
-      set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
-      persistUiState(identity, ui);
-    },
+    return {
+      toasts: [],
+      dialog: null,
+      sidebarPanel: "tables",
+      paletteOpen: false,
+      paletteSeed: "",
+      uiState: {},
+      recentNav: [],
+      ...resetMode(),
 
-    setMode(mode) {
-      set({ mode, modeChosen: true });
-    },
-  }),
+      toast(kind, message) {
+        if (kind === "error") void api.logError(message).catch(() => {});
+        const same = get().toasts.find((t) => t.kind === kind && t.message === message);
+        if (same) {
+          set((s) => ({ toasts: s.toasts.map((t) => (t.id === same.id ? { ...t, count: t.count + 1 } : t)) }));
+          return;
+        }
+        const id = nextToastId++;
+        set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message, count: 1 }] }));
+      },
+
+      dismissToast(id) {
+        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+      },
+
+      openDialog(dialog) {
+        set({ dialog });
+      },
+
+      closeDialog() {
+        set({ dialog: null });
+      },
+
+      setSidebarPanel(sidebarPanel) {
+        set({ sidebarPanel });
+      },
+
+      setPaletteOpen(paletteOpen, seed = "") {
+        set({ paletteOpen, paletteSeed: seed });
+      },
+
+      async loadUiState(identity) {
+        if (get().uiState[identity]) return;
+        try {
+          const ui = await api.getUiState(identity);
+          set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
+        } catch (e) {
+          fail(e, "Could not load view state");
+        }
+      },
+
+      setTableWidths(identity, table, widths) {
+        patchUiState(identity, (current) => ({ tables: { ...current.tables, [table]: { widths } } }));
+      },
+
+      setPaneSize(identity, pane, px) {
+        patchUiState(identity, () => ({ [pane]: Math.round(px) }));
+      },
+
+      toggleSidebar() {
+        const session = selectActiveSession(get());
+        if (session) patchUiState(session.identity, (current) => ({ sidebarHidden: !current.sidebarHidden }));
+      },
+
+      setMode(mode) {
+        set({ mode, modeChosen: true });
+      },
+    };
+  },
 };
 
 const uiWrites = new Map<string, { ui: UiState; timer: ReturnType<typeof setTimeout> }>();

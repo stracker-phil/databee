@@ -15,7 +15,7 @@ import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { PendingTray } from "./components/PendingTray";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
 import { applyAppearance, syncRowHeight, useSystemDark } from "./lib/theme";
-import { flushUiState, selectWp, useStore } from "./state/store";
+import { flushUiState, selectSidebarHidden, selectWp, useStore } from "./state/store";
 import "./styles/fonts.css";
 import "./styles/schemes/ayu-mirage.css";
 import "./styles/schemes/ayu-light.css";
@@ -56,7 +56,8 @@ const RESERVED_HEIGHT = 260;
 
 /**
  * Sidebar, tabs and the value inspector, docked right or below the tabs. `main` keeps its tree position
- * in every layout, so docking never remounts the editors; only the grid template changes.
+ * in every layout, so docking never remounts the editors; only the grid template changes. Hiding the
+ * sidebar removes it entirely (no rail); its child slot stays (as `false`), so `main` stays mounted too.
  */
 function DbWorkspace() {
   const inspecting = useStore((s) => s.selectedCell !== null);
@@ -64,19 +65,21 @@ function DbWorkspace() {
   const { width, height } = useWindowSize();
   const side = usePaneSize("inspectorWidth", 360, 240, width - RESERVED_WIDTH);
   const below = usePaneSize("bottomPaneHeight", DEFAULT_PANE_HEIGHT, 160, height - RESERVED_HEIGHT);
+  const sidebarHidden = useStore(selectSidebarHidden);
   const pane = bottom ? below : side;
   const classes = ["workspace"];
   if (inspecting) classes.push(bottom ? "dock-bottom" : "dock-right");
+  if (sidebarHidden) classes.push("no-sidebar");
   return (
     <div className={classes.join(" ")} style={inspecting ? ({ "--inspector-size": `${pane.size}px` } as React.CSSProperties) : undefined}>
-      <Sidebar />
+      {!sidebarHidden && <Sidebar />}
       <main className="main">
         <TabBar />
         <TabPanels />
       </main>
       {inspecting && (
         <>
-          <Splitter axis={bottom ? "y" : "x"} paneAfter gap label="Resize inspector" {...pane} />
+          <Splitter axis={bottom ? "y" : "x"} paneAfter label="Resize inspector" {...pane} />
           <Inspector />
         </>
       )}

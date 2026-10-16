@@ -161,6 +161,31 @@ describe("ResultsGrid keyboard selection", () => {
   });
 });
 
+describe("ResultsGrid value grammar", () => {
+  const rs = resultSet();
+  const rows = [rs.rows[0], rs.rows[1]];
+
+  beforeEach(() => connectedStore());
+
+  it("renders no row-number cell: a row has one cell per column", () => {
+    render(<ResultsGrid columns={rs.columns} rows={[rs.rows[0]]} source={source} />);
+    expect(screen.getAllByRole("gridcell")).toHaveLength(rs.columns.length);
+  });
+
+  it("marks number and null cells by kind and adds no per-type classes", () => {
+    render(<ResultsGrid columns={rs.columns} rows={rows} source={source} />);
+    expect(screen.getByText("1")).toHaveClass("num");
+    expect(screen.getByText("NULL")).toHaveClass("null");
+    for (const cell of screen.getAllByRole("gridcell")) expect(cell.className).not.toMatch(/(^|\s)t-/);
+  });
+
+  it("shows each column's type under its name", () => {
+    render(<ResultsGrid columns={rs.columns} rows={rows} source={source} />);
+    expect(screen.getByText("bigint unsigned")).toBeInTheDocument();
+    expect(screen.getByText("text")).toBeInTheDocument();
+  });
+});
+
 describe("ResultsGrid sizing", () => {
   const rowTops = () =>
     screen

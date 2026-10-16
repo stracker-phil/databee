@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api } from "../api";
-import { useStore } from "../state/store";
+import { installCommands } from "../commands";
+import { useStore, type TableTab } from "../state/store";
 import { connectedStore, session } from "../test/fixtures";
 import { Sidebar } from "./Sidebar";
 
@@ -22,6 +23,25 @@ describe("Sidebar", () => {
     const tree = screen.getByRole("tree");
     expect(within(tree).getByText("wp_options")).toBeInTheDocument();
     expect(within(tree).queryByText("mysql")).not.toBeInTheDocument();
+  });
+
+  it("captions the current database with its table count", () => {
+    render(<Sidebar />);
+    expect(screen.getByText("db · 3 tables")).toBeInTheDocument();
+  });
+
+  it("shows the filter shortcut as a key cap", () => {
+    installCommands();
+    render(<Sidebar />);
+    expect(screen.getByLabelText("Filter tables").closest("label")).toHaveTextContent("⌘⇧F");
+  });
+
+  it("marks the row of the active table tab as selected", () => {
+    const tab: TableTab = { id: "t1", kind: "table", sessionId: "s1", title: "wp_posts", database: "db", table: "wp_posts", view: "data", where: [] };
+    useStore.setState({ tabs: [tab], activeTabId: "t1" });
+    render(<Sidebar />);
+    expect(screen.getByText("wp_posts").closest("[role=treeitem]")).toHaveClass("sel");
+    expect(screen.getByText("wp_options").closest("[role=treeitem]")).not.toHaveClass("sel");
   });
 
   it("filters tables by name", async () => {

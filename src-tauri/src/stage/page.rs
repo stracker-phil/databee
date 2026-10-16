@@ -243,7 +243,7 @@ pub struct InfoReply {
     /// What the main window shows.
     #[serde(default)]
     pub view: Option<String>,
-    /// The main window's toggleable panels: `{ "inspector": "open" }`.
+    /// The main window's toggleable panels: `{ "inspector": "open", "sidebar": "closed" }`.
     #[serde(default)]
     #[ts(type = "Record<string, \"open\" | \"closed\">")]
     pub ui: serde_json::Map<String, Value>,

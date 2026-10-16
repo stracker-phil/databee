@@ -66,7 +66,7 @@ function ResultView({ tab }: { tab: QueryTabState }) {
   }
   return (
     <div className="message-panel">
-      <CheckCircle2 size="1.538rem" style={{ color: "var(--success)" }} />
+      <CheckCircle2 size="1.538rem" style={{ color: "var(--style-green)" }} />
       <div className="big">{formatCount(result.affectedRows)} {result.affectedRows === 1 ? "row" : "rows"} affected</div>
       {result.lastInsertId != null && <div className="muted">Last insert ID: {result.lastInsertId}</div>}
     </div>

@@ -1,90 +1,107 @@
-import { Monitor, Moon, PanelBottom, PanelRight, Sun } from "lucide-react";
-import { api, type Settings } from "../api";
-import { runCommand, useBindingLabel } from "../commands";
-import { copyText } from "../lib/clipboard";
+import { PanelLeft } from "lucide-react";
+import { api } from "../api";
+import { useBindingLabel } from "../commands";
 import { formatCount } from "../lib/format";
-import { selectActivePending, selectActiveSession, selectActiveTab, selectWp, useStore } from "../state/store";
+import { isWpView, selectActivePending, selectActiveTab, selectSidebarHidden, selectWp, useStore, type QueryTab, type TableTab } from "../state/store";
 
-const NEXT_THEME: Record<Settings["theme"], Settings["theme"]> = { system: "light", light: "dark", dark: "system" };
-const THEME_ICON = { system: Monitor, light: Sun, dark: Moon };
-
-export function StatusBar() {
-  const session = useStore(selectActiveSession);
-  const tab = useStore(selectActiveTab);
-  const settings = useStore((s) => s.settings);
+/** WordPress mode: the site URL, the table prefix and WooCommerce's stored version and HPOS mode. */
+function WpFacts() {
   const wp = useStore(selectWp);
-  const wpMode = useStore((s) => s.mode === "wp");
+  if (!wp) return null;
+  const wc = wp.context.wc;
+  const url = wp.context.site.url;
+  return (
+    <>
+      {url && (
+        <button data-stage="statusbar:site" className="status-text" title={`Open ${url}`} onClick={() => void api.openUrl(url)}>
+          {url.replace(/^https?:\/\//, "")}
+        </button>
+      )}
+      <span>prefix {wp.context.prefix}</span>
+      {wc && <span>WooCommerce {wc.version ?? "?"} · hpos {wc.hpos}</span>}
+    </>
+  );
+}
+
+/** A table tab's location: `db.table`, then its column matches and typed filter. */
+function tableAddress(tab: TableTab): string {
+  const columns = tab.where.map((w) => ` · ${w.column} = ${w.value ?? "NULL"}`).join("");
+  const filter = tab.filter ? ` · ${tab.filter}` : "";
+  return `${tab.database}.${tab.table}${columns}${filter}`;
+}
+
+function QuerySummary({ tab }: { tab: QueryTab }) {
+  const rowLimit = useStore((s) => s.settings?.rowLimit ?? 0);
+  if (!tab.response || tab.error) return null;
+  const r = tab.response.results[tab.activeResult];
+  return (
+    <>
+      {r?.returnsRows && (
+        <span className={r.truncated ? "warn" : undefined}>
+          {r.truncated
+            ? `Showing ${formatCount(r.rows.length)} of ${formatCount(r.totalRows)} rows (row limit ${formatCount(rowLimit)})`
+            : `${formatCount(r.rows.length)} ${r.rows.length === 1 ? "row" : "rows"}`}
+        </span>
+      )}
+      <span>{formatCount(tab.response.elapsedMs)} ms</span>
+      {tab.response.results.length > 1 && <span>{tab.response.results.length} statements</span>}
+    </>
+  );
+}
+
+/** The address slot: where the active tab is. */
+function Address() {
+  const tab = useStore(selectActiveTab);
+  const wpMode = useStore(isWpView);
+  if (wpMode) return <WpFacts />;
+  if (tab?.kind === "table") return <span className="address mono">{tableAddress(tab)}</span>;
+  if (tab?.kind === "query") return <QuerySummary tab={tab} />;
+  return null;
+}
+
+function SidebarToggle() {
+  const hidden = useStore(selectSidebarHidden);
+  const keys = useBindingLabel("view.sidebar");
+  return (
+    <button
+      data-stage="statusbar:sidebar"
+      className="icon-btn status-icon"
+      aria-label="Toggle sidebar"
+      aria-pressed={!hidden}
+      title={keys ? `Toggle sidebar (${keys})` : "Toggle sidebar"}
+      onClick={() => useStore.getState().toggleSidebar()}
+    >
+      <PanelLeft size="1.077rem" />
+    </button>
+  );
+}
+
+function PendingCount() {
   const pending = useStore((s) => selectActivePending(s).length);
   const applyKey = useBindingLabel("changes.apply");
-  const { saveSettings, focusPendingTray } = useStore.getState();
-  const rowLimit = settings?.rowLimit ?? 0;
+  if (pending === 0) return <span>pending 0</span>;
+  return (
+    <button
+      data-stage="statusbar:pending"
+      className="status-text pending"
+      aria-label={`${pending} pending ${pending === 1 ? "change" : "changes"}`}
+      title={`Review and apply in the tray${applyKey ? ` (${applyKey})` : ""}`}
+      onClick={() => useStore.getState().focusPendingTray()}
+    >
+      pending {pending}
+    </button>
+  );
+}
 
-  let left: React.ReactNode = null;
-  if (wpMode && wp) {
-    const wc = wp.context.wc;
-    const url = wp.context.site.url;
-    left = (
-      <>
-        {url && (
-          <button data-stage="statusbar:site" className="status-chip" title={`Open ${url}`} onClick={() => void api.openUrl(url)}>
-            {url.replace(/^https?:\/\//, "")}
-          </button>
-        )}
-        <span>prefix {wp.context.prefix}</span>
-        {wc && <span>WooCommerce {wc.version ?? "?"}{wc.hpos === "off" ? " · legacy orders" : wc.hpos === "on_with_sync" ? " · HPOS + sync" : " · HPOS"}</span>}
-      </>
-    );
-  } else if (tab?.kind === "query" && tab.response && !tab.error) {
-    const r = tab.response.results[tab.activeResult];
-    left = (
-      <>
-        {r?.returnsRows && (
-          <span className={r.truncated ? "warn" : undefined}>
-            {r.truncated
-              ? `Showing ${formatCount(r.rows.length)} of ${formatCount(r.totalRows)} rows (row limit ${formatCount(rowLimit)})`
-              : `${formatCount(r.rows.length)} ${r.rows.length === 1 ? "row" : "rows"}`}
-          </span>
-        )}
-        <span>{formatCount(tab.response.elapsedMs)} ms</span>
-        {tab.response.results.length > 1 && <span>{tab.response.results.length} statements</span>}
-      </>
-    );
-  } else if (tab?.kind === "table") {
-    left = <span>{tab.database}.{tab.table}</span>;
-  }
-
-  const ThemeIcon = THEME_ICON[settings?.theme ?? "system"];
-  const DockIcon = settings?.inspectorDock === "bottom" ? PanelBottom : PanelRight;
+/** Left to right: sidebar toggle, address, spacer, pending count. */
+export function StatusBar() {
+  const wpMode = useStore(isWpView);
   return (
     <footer className="statusbar" data-stage="statusbar" data-stage-label="Status bar">
-      {left}
+      {!wpMode && <SidebarToggle />}
+      <Address />
       <div className="spacer" />
-      {pending > 0 && (
-        <button data-stage="statusbar:pending" className="status-chip warn" title={`Review and apply in the tray${applyKey ? ` (${applyKey})` : ""}`} onClick={focusPendingTray}>
-          {pending} pending {pending === 1 ? "change" : "changes"}
-        </button>
-      )}
-      {settings && (
-        <>
-          <button data-stage="statusbar:dock" className="status-chip" aria-label={`Inspector: ${settings.inspectorDock}`} title="Move the inspector (right / bottom)" onClick={() => runCommand("view.inspectorDock")}>
-            <DockIcon size="0.923rem" />
-          </button>
-          <button data-stage="statusbar:theme" className="status-chip" aria-label={`Theme: ${settings.theme}`} title={`Theme: ${settings.theme} (click for ${NEXT_THEME[settings.theme]})`} onClick={() => void saveSettings({ ...settings, theme: NEXT_THEME[settings.theme] }, { quiet: true })}>
-            <ThemeIcon size="0.923rem" />
-          </button>
-        </>
-      )}
-      {session && (
-        <button
-          data-stage="statusbar:connection"
-          data-stage-label={session.identity}
-          className="status-chip"
-          title={`${session.serverVersion} · click to copy ${session.identity}`}
-          onClick={() => void copyText(session.identity, "connection")}
-        >
-          <span className="dot" /> {session.identity}
-        </button>
-      )}
+      <PendingCount />
     </footer>
   );
 }

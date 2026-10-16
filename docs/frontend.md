@@ -33,14 +33,14 @@ Layout:
 App
 ├─ ConnectScreen                       (no session)
 └─ .app grid
-   ├─ Toolbar                          connection pill, database select, mode toggle
+   ├─ Toolbar                          connection / database text (pickers), mode switch, search field (palette), icon buttons
    ├─ FavoritesBar                     (Database mode)
    ├─ WpWorkspace                      (WordPress mode, see wordpress.md)
-   │  or DbWorkspace: Sidebar | TabBar + TabPanels [| Splitter | Inspector]
+   │  or DbWorkspace: [Sidebar |] TabBar + TabPanels [| Splitter | Inspector]
    │       TabPanels → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel)
    │                 → TableTab (filter bar + ResultsGrid | StructureView)
    ├─ PendingTray
-   └─ StatusBar
+   └─ StatusBar                        ▤ sidebar toggle, address, pending n
 Dialogs · CommandPalette · Toasts
 ```
 
@@ -82,14 +82,15 @@ and the state types, so components import everything from `state/store`.
 | `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
 | `dataVersion` | bumped by ⌘R and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
-| `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar chip uses it) |
-| `paletteOpen`, `keybindings`, `favorites`, `toasts`, `uiState`, `recentNav`, `entityMeta` | as named |
+| `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar's `pending n` button uses it) |
+| `uiState` | per connection identity: column widths, pane sizes and `sidebarHidden` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag |
+| `paletteOpen`, `keybindings`, `favorites`, `toasts`, `recentNav`, `entityMeta` | as named |
 
 Conventions:
 - Components subscribe with narrow selectors (`useStore((s) => s.x)`), and `useShallow` for derived arrays.
 - Event handlers call actions through `useStore.getState()`.
 - Selectors live in `selectors.ts`: `selectActiveSession`, `selectActiveTab`, `selectStructure`,
-  `selectActivePending`, `selectCanUndo`, `selectVisibleDatabases` (the active session's databases without
+  `selectActivePending`, `selectCanUndo`, `selectSidebarHidden`, `selectVisibleDatabases` (the active session's databases without
   system schemas unless shown or current; use with `useShallow`), `selectWp`, `selectWpRoute`. For
   `selectWp`, `undefined` means not probed yet and `null` means not WordPress.
 - Store actions wrap API errors in `fail(e, context)`, which shows an error toast and writes the message to
@@ -125,7 +126,7 @@ Conventions:
   also resets `mode` to `db` and `modeChosen`. `connect` resets `wpNav`, `mode` and the selection and reuses
   the session's query tab on reconnect.
 - Tab updates are typed: `updateQueryTab` and `updateTableTab` only patch tabs of their kind.
-- UI state (`setTableWidths`, `setPaneSize`) is written debounced; `flushUiState` writes it on
+- UI state (`setTableWidths`, `setPaneSize`, `toggleSidebar`) is written debounced; `flushUiState` writes it on
   `beforeunload` (registered in `App.tsx`).
 - Some errors become state instead: a password dialog, a tab's `ErrorPanel`, a confirm dialog for
   `confirmation_required`.
@@ -213,7 +214,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 
 | Area | Components |
 |---|---|
-| Shell | `Toolbar`, `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary` |
+| Shell | `Toolbar`, `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `Inspector` + `ValueTree` (PHP/JSON decode) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `CommandPalette`, `ContextMenu`, `Toasts` |
@@ -252,9 +253,22 @@ registerSettingsPage({ id: "presentations", group: "System", label: "Presentatio
 
 `App.tsx`: `Workspace` returns the connect screen, the WordPress shell or the database shell (`AppShell`
 wraps the toolbar, pending tray and status bar). In `DbWorkspace`, `main` (`TabBar` + `TabPanels`) keeps
-the same tree position whatever the inspector does: docking only switches the class on `.workspace`
-(`dock-right`, `dock-bottom`) and the `--inspector-size` variable, so CodeMirror history and table pages
-survive. The sidebar width is the `--sidebar-width` token in `theme.css`. All tabs of the active session
+the same tree position whatever the inspector or the sidebar does: docking only switches the class on
+`.workspace` (`dock-right`, `dock-bottom`) and the `--inspector-size` variable, and a hidden sidebar
+(`view.sidebar`, `selectSidebarHidden`) leaves an empty slot and adds `no-sidebar`, so CodeMirror history and
+table pages survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There are no inset
+panels: chrome (`--chrome`) and content (`--bg`) meet at `--line` hairlines, and the inspector splitter is
+one of them.
+
+- **Toolbar:** `ConnectionText` shows `connection / database` as mono text; a transparent native select over
+  each name (`Connection` only with several sessions, `Database` always) opens the picker. `SearchField` is a
+  button styled as a field (label "Go to") that opens the palette; its key cap follows `palette.open`.
+- **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (WordPress mode: the
+  site facts; table tab: `db.table` with its column matches and filter; query tab: rows, time and statement
+  count, with the row-limit warning), spacer, `PendingCount` (`pending n`, a button to the tray when n > 0).
+  The theme and dock chips are gone: both stay in Settings and the palette.
+- **Sidebar:** the Tables/History switch, the filter (`InsetField`, key cap from `sidebar.focusFilter`), a
+  `db · N tables` caption, then the tree. Rows are `.si` items (`sel` for the active table). All tabs of the active session
 stay mounted; inactive panels are `hidden`. Tabs use a roving `tabIndex` with Left/Right arrows
 (`TabItem`, `tabIcon`). Shortcut hints (new tab, run statement, run all, editor placeholder) come from
 `useBindingLabel(commandId)` in `commands/index.ts`, so they follow rebinding.
@@ -262,7 +276,10 @@ stay mounted; inactive panels are `hidden`. Tabs use a roving `tabIndex` with Le
 ### Results grid
 
 `ResultsGrid` resets its selection and inline editor when `rows` changes identity and clamps indices
-before use. Keys live in `KEY_ACTIONS` (arrows, Home/End, PageUp/PageDown, Enter to edit, ⌘C). `bytes`
+before use. It has no row-number column. Header cells show the column name with the sort arrow, and the type
+below it. Hover is plain CSS (`--row-hover` on the row, `--cell` on the cell), so crossing cells never
+re-renders the grid. Cell classes name the kind only where it changes alignment or opacity (`num`, `null`,
+`bytes`), never a color. Keys live in `KEY_ACTIONS` (arrows, Home/End, PageUp/PageDown, Enter to edit, ⌘C). `bytes`
 cells are never editable: they show a `0x…` preview, which an edit would write back.
 
 Rust cuts text longer than the `maxCellChars` setting to a `longText { len, preview }` cell
@@ -326,7 +343,7 @@ The CSS is plain and global, imported in this order by `App.tsx`: `styles/fonts.
 bundled fonts), `styles/schemes/<id>.css` (one file per color scheme), `styles/theme.css` (derived tokens and
 aliases) and `styles/app.css` (components, sectioned with `/* ---------- name ---------- */` comments). There
 are no CSS modules. Icons come from `lucide-react`. Token names, values and roles are in
-[ux.md](ux.md#color-schemes-and-tokens-from-u2a).
+[ux.md](ux.md#color-schemes-and-tokens).
 
 - **Color schemes.** A scheme file sets every scheme token under `[data-scheme="<id>"]`: surfaces, text,
   hairlines, shadows, the scrim, the accent hues `--a-*`, the value-style colors `--style-*` and the CodeMirror
@@ -340,8 +357,8 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
   a `color-mix()` of tokens.
 - **Derived tokens.** `theme.css` derives the opacity levels (`--o2`, `--o3`), the accent mixes (`--cell`,
   `--sel`, `--lit`), `--accent` from `html[data-accent]` (default orange), the type sizes (`--fs-*`) and the
-  row height `--row-h` from `--pad`. Tokens that predate the schemes remain as aliases marked
-  `/* alias: removed in U2b/U12 */`; new code uses the new names.
+  row height `--row-h` from `--pad`. Old names that the WordPress screens still read remain as aliases
+  marked `/* alias: removed in U2b/U12 */`; core CSS and components use only the new names.
 - **Sizing.** Everything is in rem. `html { font-size: var(--ui-font-size) }`, so ⌘= and ⌘- scale the whole UI.
   `--data-font-size` sizes the grid, the editor and the value trees. The row-padding setting (steps 1 to 4)
   sets `--pad` (1, 3, 5 or 8px); `--row-h` is a 20px line (more for large data sizes) plus twice `--pad`.

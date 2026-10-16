@@ -1,13 +1,13 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await import("./test/apiMock")).createApiMock() }));
 
 import App from "./App";
-import { api, type SessionInfo } from "./api";
+import { api, EMPTY_UI_STATE, type SessionInfo } from "./api";
 import { runCommand } from "./commands";
-import { resetStore, useStore } from "./state/store";
+import { resetStore, selectSidebarHidden, useStore } from "./state/store";
 import { connectedStore, queryTab, resultSet, session, settings } from "./test/fixtures";
 
 const mocked = vi.mocked(api, true);
@@ -26,7 +26,7 @@ describe("App", () => {
     expect(screen.getByText("Shop")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Query 1/ })).toBeInTheDocument();
     expect(await screen.findByText("wp_options")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /root@127.0.0.1:52958\/db/ })).toHaveAttribute("title", expect.stringContaining("10.3.39-MariaDB"));
+    expect(screen.getByTitle(/root@127\.0\.0\.1:52958\/db · .*10\.3\.39-MariaDB/)).toHaveTextContent("Shop");
   });
 
   it("runs menu commands by id", async () => {
@@ -93,6 +93,61 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByText("Launch request failed: socket closed")).toBeInTheDocument();
     expect(screen.queryByText(/\[object Object\]/)).not.toBeInTheDocument();
+  });
+
+  describe("sidebar toggle", () => {
+    const tree = () => screen.queryByRole("tree", { name: "Databases" });
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      connectedStore();
+    });
+
+    it("hides the sidebar with view.sidebar and persists the choice for the connection", async () => {
+      render(<App />);
+      expect(await screen.findByRole("tree", { name: "Databases" })).toBeInTheDocument();
+      act(() => runCommand("view.sidebar"));
+      expect(selectSidebarHidden(useStore.getState())).toBe(true);
+      expect(tree()).not.toBeInTheDocument();
+      await waitFor(() => expect(mocked.setUiState).toHaveBeenCalledWith(session.identity, expect.objectContaining({ sidebarHidden: true })));
+    });
+
+    it("toggles the sidebar on ⌘\\", async () => {
+      render(<App />);
+      await screen.findByRole("tree", { name: "Databases" });
+      fireEvent.keyDown(window, { key: "\\", code: "Backslash", metaKey: true });
+      expect(tree()).not.toBeInTheDocument();
+      fireEvent.keyDown(window, { key: "\\", code: "Backslash", metaKey: true });
+      expect(await screen.findByRole("tree", { name: "Databases" })).toBeInTheDocument();
+    });
+
+    it("hides the sidebar when Toggle sidebar is chosen in the palette", async () => {
+      render(<App />);
+      await screen.findByRole("tree", { name: "Databases" });
+      act(() => useStore.getState().setPaletteOpen(true));
+      await userEvent.type(await screen.findByLabelText("Search everything"), "Toggle sidebar");
+      await userEvent.click(await screen.findByRole("option", { name: /Toggle sidebar/ }));
+      expect(tree()).not.toBeInTheDocument();
+    });
+
+    it("hides the sidebar from the status bar button", async () => {
+      render(<App />);
+      const toggle = await screen.findByRole("button", { name: "Toggle sidebar" });
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      await userEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      expect(tree()).not.toBeInTheDocument();
+    });
+
+    it("keeps the sidebar hidden after reconnecting when the saved view state says so", async () => {
+      resetStore();
+      mocked.connect.mockResolvedValue(session);
+      mocked.getUiState.mockResolvedValueOnce({ ...EMPTY_UI_STATE, sidebarHidden: true });
+      render(<App />);
+      await act(() => useStore.getState().connect({ spec: session.spec }));
+      await waitFor(() => expect(tree()).not.toBeInTheDocument());
+      expect(await screen.findByRole("button", { name: "Toggle sidebar" })).toHaveAttribute("aria-pressed", "false");
+    });
   });
 
   describe("shortcuts behind overlays", () => {

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { ChevronDown, ChevronRight, Database, Eye, History, RefreshCw, Search, Table2, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Filter, History, RefreshCw, Table2, Trash2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { api, type HistoryEntry, type TableInfo } from "../api";
-import { EVENTS } from "../commands";
+import { EVENTS, useBindingLabel } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { compactCount, formatBytes, formatCount, relativeTime } from "../lib/format";
 import { fail, selectActiveSession, selectActiveTab, selectVisibleDatabases, useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { InsetField } from "./Field";
 
 const dbKey = (name: string) => `db:${name}`;
 const tableKey = (db: string, name: string) => `table:${db}.${name}`;
@@ -87,6 +88,7 @@ function TablesPanel() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
   const filterRef = useRef<HTMLInputElement>(null);
+  const filterKeys = useBindingLabel("sidebar.focusFilter");
 
   useEffect(() => {
     const focus = () => filterRef.current?.focus();
@@ -95,6 +97,7 @@ function TablesPanel() {
   }, []);
 
   const current = session?.database ?? null;
+  const currentTables = current ? schema?.tables[current] : undefined;
   const isOpen = (db: string) => expanded[db] ?? db === current;
   const needle = filter.trim().toLowerCase();
 
@@ -146,13 +149,10 @@ function TablesPanel() {
   return (
     <>
       <div className="sidebar-head">
-        <div style={{ position: "relative", flex: 1 }}>
-          <Search size="0.923rem" style={{ position: "absolute", left: "0.615rem", top: "0.538rem", color: "var(--text-tertiary)" }} />
+        <InsetField icon={<Filter size="0.846rem" />} keys={filterKeys} className="sidebar-filter">
           <input
             ref={filterRef}
-            className="input"
-            style={{ paddingLeft: 24 }}
-            placeholder="Filter tables  ⌘⇧F"
+            placeholder="Filter tables"
             aria-label="Filter tables"
             data-stage="sidebar:filter"
             value={filter}
@@ -161,11 +161,16 @@ function TablesPanel() {
               if (e.key === "Escape") setFilter("");
             }}
           />
-        </div>
+        </InsetField>
         <button data-stage="sidebar:refresh" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => void loadDatabases(session.id)}>
           <RefreshCw size="1rem" />
         </button>
       </div>
+      {currentTables && (
+        <div className="sidebar-caption">
+          {current} · {formatCount(currentTables.length)} {currentTables.length === 1 ? "table" : "tables"}
+        </div>
+      )}
       <div className="sidebar-body" role="tree" aria-label="Databases">
         {tree.map(({ d, row, tableRows }) => (
           <div key={d.name} role="none">
@@ -173,15 +178,14 @@ function TablesPanel() {
               {...rowProps(row)}
               aria-level={1}
               aria-expanded={row.open}
-              className={`tree-row${d.isSystem ? " system" : ""}`}
+              className={`si${d.isSystem ? " system" : ""}`}
               data-stage={`database:${d.name}`}
               data-stage-list="databases"
               data-stage-label={d.name}
               onClick={() => toggle(d.name)}
             >
-              {row.open ? <ChevronDown size="0.923rem" /> : <ChevronRight size="0.923rem" />}
-              <Database size="1rem" />
-              <span className="label" style={{ fontWeight: d.name === current ? 600 : 400 }}>{d.name}</span>
+              {row.open ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" />}
+              <span className={`label${d.name === current ? " current" : ""}`}>{d.name}</span>
               {schema?.tables[d.name] && <span className="meta">{schema.tables[d.name].length}</span>}
             </div>
             {row.open && (
@@ -193,6 +197,7 @@ function TablesPanel() {
                 {tableRows.map((tr) => {
                   const t = tr.table;
                   const active = activeTab?.kind === "table" && activeTab.database === d.name && activeTab.table === t.name;
+                  const meta = t.isView ? "view" : t.rowsEstimate != null ? compactCount(t.rowsEstimate) : null;
                   return (
                     <div
                       key={t.name}
@@ -202,15 +207,14 @@ function TablesPanel() {
                       data-stage-list="tables"
                       aria-selected={active}
                       data-stage-label={t.name}
-                      className={`tree-row${active ? " active" : ""}`}
+                      className={`si${active ? " sel" : ""}`}
                       title={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}
                       onClick={(e) => openPreview(d.name, t.name, !e.metaKey)}
                       onDoubleClick={() => openTableTab(d.name, t.name, undefined, undefined, { preview: false })}
                       onContextMenu={(e) => tableMenu(d.name, t, e)}
                     >
-                      {t.isView ? <Eye size="1rem" /> : <Table2 size="1rem" />}
                       <span className="label">{t.name}</span>
-                      {t.rowsEstimate != null && !t.isView && <span className="meta">{compactCount(t.rowsEstimate)}</span>}
+                      {meta && <span className="meta">{meta}</span>}
                     </div>
                   );
                 })}
@@ -262,7 +266,7 @@ function HistoryPanel() {
   return (
     <>
       <div className="sidebar-head">
-        <span className="muted" style={{ flex: 1, paddingLeft: 4 }}>{entries.length} queries</span>
+        <span className="sidebar-caption">{formatCount(entries.length)} {entries.length === 1 ? "query" : "queries"}</span>
         <button className="icon-btn" aria-label="Clear history" title="Clear history" disabled={entries.length === 0} onClick={() => void clear()}>
           <Trash2 size="1rem" />
         </button>
@@ -273,7 +277,7 @@ function HistoryPanel() {
           <div
             // Entries carry no id, and executedAt + sql can repeat.
             key={i}
-            className={`history-item${e.error ? " failed" : ""}`}
+            className={`si history-item${e.error ? " failed" : ""}`}
             title="Double-click to open in a new tab"
             onDoubleClick={() => openQueryTab(e.sql)}
           >
@@ -295,15 +299,13 @@ export function Sidebar() {
   const setPanel = useStore((s) => s.setSidebarPanel);
   return (
     <aside className="sidebar" data-stage="sidebar" data-stage-label="Sidebar">
-      <div style={{ padding: "8px 8px 0" }}>
-        <div className="segmented" style={{ width: "100%" }}>
-          <button data-stage="sidebar:tables" style={{ flex: 1 }} aria-pressed={panel === "tables"} onClick={() => setPanel("tables")}>
-            <Table2 size="0.923rem" style={{ verticalAlign: -2 }} /> Tables
-          </button>
-          <button data-stage="sidebar:history" style={{ flex: 1 }} aria-pressed={panel === "history"} onClick={() => setPanel("history")}>
-            <History size="0.923rem" style={{ verticalAlign: -2 }} /> History
-          </button>
-        </div>
+      <div className="segmented sidebar-switch">
+        <button data-stage="sidebar:tables" aria-pressed={panel === "tables"} onClick={() => setPanel("tables")}>
+          <Table2 size="0.846rem" /> Tables
+        </button>
+        <button data-stage="sidebar:history" aria-pressed={panel === "history"} onClick={() => setPanel("history")}>
+          <History size="0.846rem" /> History
+        </button>
       </div>
       {panel === "tables" ? <TablesPanel /> : <HistoryPanel />}
     </aside>

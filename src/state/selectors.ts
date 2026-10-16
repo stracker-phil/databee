@@ -10,6 +10,12 @@ export const selectStructure = (s: Store, sessionId: string, database: string, t
 
 export const selectActiveSession = (s: Store) => s.sessions.find((x) => x.id === s.activeSessionId) ?? null;
 
+/** The sidebar is collapsed for the active connection (persisted in its UI state). */
+export const selectSidebarHidden = (s: Store): boolean => {
+  const session = selectActiveSession(s);
+  return !!session && !!s.uiState[session.identity]?.sidebarHidden;
+};
+
 export const selectActiveTab = (s: Store) => s.tabs.find((t) => t.id === s.activeTabId) ?? null;
 
 /** Databases of the active session, without system schemas unless shown or current. */

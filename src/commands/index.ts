@@ -1,5 +1,5 @@
 import { TEXT_SIZES } from "../api";
-import { isWpView, selectActivePending, selectActiveTab, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
+import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
 
@@ -80,6 +80,14 @@ export const APP_COMMANDS: Command[] = [
   { id: "view.zoomIn", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", run: () => zoom(1) },
   { id: "view.zoomOut", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", run: () => zoom(-1) },
   { id: "view.zoomReset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", run: () => zoom(null) },
+  {
+    id: "view.sidebar",
+    title: "Toggle sidebar",
+    scope: "global",
+    defaultBinding: "Mod+\\",
+    when: () => !!selectActiveSession(useStore.getState()),
+    run: () => useStore.getState().toggleSidebar(),
+  },
   { id: "view.refresh", title: "Refresh current view", scope: "global", defaultBinding: "Mod+R", run: () => useStore.getState().bumpData() },
   {
     id: "view.inspectorDock",

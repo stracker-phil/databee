@@ -1,7 +1,7 @@
 /** What Stage reads about DataBee: the main window's view and panels, its sheets, and a short state. */
 import type { StageInfoReply, StageRect, StageSurface } from "./types";
 import { resolveSettingsPage, settingsPages } from "../registry/settingsPages";
-import { selectActiveSession, selectActiveTab, selectWp, selectWpRoute, useStore } from "../state/store";
+import { selectActiveSession, selectActiveTab, selectSidebarHidden, selectWp, selectWpRoute, useStore } from "../state/store";
 
 type Flat = StageInfoReply["state"];
 
@@ -49,7 +49,14 @@ export function stageSurfaces(): StageSurface[] {
 }
 
 export function stageUi(): StageInfoReply["ui"] {
-  return { inspector: useStore.getState().selectedCell ? "open" : "closed" };
+  const s = useStore.getState();
+  return { inspector: s.selectedCell ? "open" : "closed", sidebar: sidebarState() };
+}
+
+/** The database sidebar; WordPress mode and the connect screen have none. */
+function sidebarState(): "open" | "closed" {
+  const s = useStore.getState();
+  return stageView() === "db" && !selectSidebarHidden(s) ? "open" : "closed";
 }
 
 export function stageState(): Flat {
@@ -68,6 +75,7 @@ export function stageState(): Flat {
     tabs: s.tabs.filter((t) => t.sessionId === session?.id).length,
     tab: tab ? `${tab.kind}: ${tab.title}` : null,
     inspector: s.selectedCell ? "open" : "closed",
+    sidebar: sidebarState(),
     settings: settingsPage() ?? "closed",
     palette: s.paletteOpen ? "open" : "closed",
     dialog: s.dialog && s.dialog.type !== "settings" ? s.dialog.type : null,

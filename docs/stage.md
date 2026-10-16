@@ -76,8 +76,9 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
 
 - **Windows.** `main` is the native window. Settings and the command palette are sheets inside it. The hook
   exposes them as the windows `settings` and `palette`, with `movable: false`; their bounds come from the page.
-  `settings` lists its pages as `sections`. `main.view` reports the current view, and `main.ui.inspector`
-  reports whether the inspector is open or closed.
+  `settings` lists its pages as `sections`. `main.view` reports the current view; `main.ui.inspector` and
+  `main.ui.sidebar` report whether the inspector and the database sidebar are open or closed (the sidebar
+  toggles with the `view.sidebar` command).
 - **Anchors** are `data-stage` attributes, with optional `-label`, `-role` and `-list`. Ids follow the data
   where rows have stable ids:
   - `table:<db>.<table>` (list `tables`)
@@ -90,7 +91,14 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are
     `appearance:accent:<id>` (list `appearance:accent`)
 
+  - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:search` (opens the palette),
+    `toolbar:mode:<wp|db>`, `statusbar:sidebar` (the ▤ toggle), `statusbar:pending`
+
   Sheets are marked with `data-stage-window`.
+
+  **Removed anchors.** U2b removed `statusbar:theme` and `statusbar:dock` (use Settings → Appearance and the
+  `view.inspectorDock` command) and `statusbar:connection` (the toolbar shows the connection;
+  `toolbar:connection` carries its identity).
 - **Commands** come from the in-app registry, with `shortcut` and `enabled`.
 - **Keys.** When a key combination is a command's shortcut, that command runs in the current view, even
   without focus. So ⌘, ⌘K and ⌘T behave like their menu items. Other keys go to the focused element;

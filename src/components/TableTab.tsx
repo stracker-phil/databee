@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Copy, FileText, Filter, Hash, Loader2, Plus, RefreshCw, X } from "lucide-react";
 import { api, toAppError, type AppError, type AppliedFilter, type BrowsePage, type ColumnEquals, type ColumnMeta, type TableStructure } from "../api";
-import { EVENTS } from "../commands";
+import { EVENTS, useBindingLabel } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { cellText } from "../lib/format";
 import { selectStructure, selectWp, useStore, type TableTab as TableTabState } from "../state/store";
 import type { MenuEntry } from "./ContextMenu";
 import { ErrorPanel } from "./ErrorPanel";
+import { InsetField } from "./Field";
 import { ResultsGrid } from "./ResultsGrid";
 
 /** Rust's default `rowLimit`, for the moment before settings load; Rust clamps the page size anyway. */
@@ -89,6 +90,7 @@ function FilterBar({ tabId, initial, primaryKey, onApply }: { tabId: string; ini
   const [value, setValue] = useState(initial);
   const inputRef = useRef<HTMLInputElement>(null);
   const isActive = useStore((s) => s.activeTabId === tabId);
+  const keys = useBindingLabel("table.focusFilter");
 
   useEffect(() => {
     if (!isActive) return;
@@ -100,23 +102,22 @@ function FilterBar({ tabId, initial, primaryKey, onApply }: { tabId: string; ini
   return (
     <form
       className="filter"
-      style={{ position: "relative" }}
       onSubmit={(e) => {
         e.preventDefault();
         onApply(value.trim());
       }}
     >
-      <Filter size="0.923rem" style={{ position: "absolute", left: "0.615rem", top: "0.538rem", color: "var(--text-tertiary)" }} />
-      <input
-        ref={inputRef}
-        className="input mono"
-        style={{ paddingLeft: 24 }}
-        aria-label="WHERE filter"
-        data-stage="table:filter"
-        placeholder={primaryKey ? `WHERE … or IDs: 3229, 3220-3229   ⌘F · ↵ to apply` : "WHERE …   e.g. post_type = 'shop_order'   ⌘F · ↵ to apply"}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-      />
+      <InsetField icon={<Filter size="0.846rem" />} keys={keys}>
+        <input
+          ref={inputRef}
+          className="mono"
+          aria-label="WHERE filter"
+          data-stage="table:filter"
+          placeholder={primaryKey ? "WHERE … or IDs: 3229, 3220-3229   ↵ to apply" : "WHERE …   e.g. post_type = 'shop_order'   ↵ to apply"}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+      </InsetField>
     </form>
   );
 }
@@ -276,7 +277,6 @@ function DataView({ tab }: { tab: TableTabState }) {
           columns={page.result.columns}
           rows={page.result.rows}
           source={{ sessionId: tab.sessionId, resultId: page.result.id }}
-          rowOffset={browse.offset}
           sort={{ column: browse.orderBy, descending: browse.descending }}
           onSort={sortBy}
           columnWidths={savedWidths}

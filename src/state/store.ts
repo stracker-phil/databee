@@ -15,6 +15,7 @@ export {
   selectActiveSession,
   selectActiveTab,
   selectCanUndo,
+  selectSidebarHidden,
   selectStructure,
   selectVisibleDatabases,
   selectWp,

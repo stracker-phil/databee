@@ -565,7 +565,7 @@ export type TransientInfo = { name: string, siteWide: boolean, bytes: number,
  */
 expiresAt: number | null, expired: boolean, };
 
-export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: number | null, inspectorWidth: number | null, bottomPaneHeight: number | null, sqlEditorHeight: number | null, };
+export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: number | null, inspectorWidth: number | null, bottomPaneHeight: number | null, sqlEditorHeight: number | null, sidebarHidden: boolean, };
 
 /**
  * The uploads base URL as stored, with the option it came from.

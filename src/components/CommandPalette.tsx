@@ -3,6 +3,7 @@ import { CornerDownLeft, Search } from "lucide-react";
 import { api, type SearchHit } from "../api";
 import { allCommands, bindingFor, bindingLabel, type Command } from "../commands";
 import { selectActiveSession, selectWp, useStore, type RecentNav } from "../state/store";
+import { KeyCap } from "./Field";
 import { Modal } from "./Modal";
 
 interface Item {
@@ -179,12 +180,12 @@ function PaletteList({ items, active, wantEntities, needle, onHover, onChoose }:
             onClick={() => onChoose(i)}
           >
             {header && <span className="palette-section">{header}</span>}
-            {it.badge && <span className="badge">{it.badge}</span>}
+            {it.badge && <span className="palette-kind">{it.badge}</span>}
             <span className="grow-text">
               {it.title}
               {it.subtitle && <span className="muted"> · {it.subtitle}</span>}
             </span>
-            {it.binding && <kbd className="kbd-chip">{it.binding}</kbd>}
+            <KeyCap keys={it.binding ?? ""} />
             {i === active && <CornerDownLeft size="0.923rem" className="muted" />}
           </li>
         );
@@ -219,7 +220,7 @@ function PaletteSheet() {
   return (
     <Modal onClose={() => setPaletteOpen(false)} className="palette" label="Command palette" stageWindow="palette">
       <div className="palette-input">
-        <Search size="1.154rem" />
+        <Search size="1.077rem" aria-hidden="true" />
         <input
           autoFocus
           aria-label="Search everything"
