@@ -319,8 +319,10 @@ export function SettingsDialog() {
             <X size="1.077rem" />
           </button>
         </header>
-        <p className="settings-intro">{INTRO[page]}</p>
-        <PageBody page={page} s={settings} set={set} />
+        <div className="settings-body">
+          <p className="settings-intro">{INTRO[page]}</p>
+          <PageBody page={page} s={settings} set={set} />
+        </div>
       </div>
     </Modal>
   );

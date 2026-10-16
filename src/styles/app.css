@@ -341,10 +341,12 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .settings-nav button svg { color: var(--text-secondary); flex: none; }
 .settings-nav button:hover { background: var(--bg-hover); }
 .settings-nav button[aria-current="page"] { background: var(--bg-active); }
-.settings-pane { flex: 1; min-width: 0; overflow: auto; padding: 1.231rem 1.538rem 1.846rem; display: flex; flex-direction: column; gap: 0.923rem; background: var(--bg); }
-.settings-pane > header { display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; }
+/* The title bar stays put; only the page below it scrolls. */
+.settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+.settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; padding: 1.231rem 1.538rem 0.769rem; border-bottom: 0.5px solid var(--border); }
+.settings-body { flex: 1; min-height: 0; overflow: auto; padding: 0.923rem 1.538rem 1.846rem; display: flex; flex-direction: column; gap: 0.923rem; }
 .settings-pane h2 { font-size: 1.231rem; }
-.settings-intro { margin: -0.462rem 0 0.154rem; color: var(--text-secondary); line-height: 1.45; }
+.settings-intro { margin: 0 0 0.154rem; color: var(--text-secondary); line-height: 1.45; }
 .dialog .settings-group { display: flex; flex-direction: column; gap: 0.462rem; border: none; padding: 0; }
 .dialog .settings-group h3 { margin: 0 0 0 0.923rem; font-size: 0.923rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text); }
 .settings-card { background: var(--bg-sidebar); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 0 0.923rem; }
