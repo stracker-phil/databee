@@ -1,6 +1,7 @@
 //! WordPress lens: detection, PHP value decoding, entity documents and the options
 //! inspector. All WordPress knowledge lives here; the UI only renders the results.
 
+pub mod cache;
 pub mod changes;
 pub mod context;
 pub mod dashboard;

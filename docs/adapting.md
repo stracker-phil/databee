@@ -100,7 +100,7 @@ WordPress mode is mostly additive, with one catch: the edit pipeline (`ChangeReq
 
 1. Move the generic variants (`SetCell`, `DeleteRow`, `DuplicateRow`, `InsertRow`) and their planning into
    `db/`, along with `plan_change` and `apply_changes`.
-2. Delete `src-tauri/src/wp/`, `wp_commands.rs`, the `wp_*` registrations, `AppState.wp_cache` and the
+2. Delete `src-tauri/src/wp/`, `wp_commands.rs`, the `wp_*` registrations and the
    `wordpress` settings page.
 3. In the frontend:
    - delete `src/components/wp/` and `src/lib/wpFormat.ts`;

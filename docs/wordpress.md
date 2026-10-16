@@ -63,8 +63,9 @@ in `src/components/wp/`.
      histogram bucket by local day (and hour): `dashboard::day_spans` / `hour_spans` turn the site's days into
      UTC ranges for a `CASE` over the `*_gmt` column, and "today" comes from the server's `UTC_TIMESTAMP()`.
 
-The result `WpContext` is cached per `session/database` in `AppState.wp_cache` until `wp_detect(refresh)`,
-a successful `apply_changes` or `disconnect` (`AppState::invalidate_wp` drops every entry of the session).
+The result `WpContext` is cached per database in the session's `WpCache` (`wp/cache.rs`, attached to
+`Session.ext`), until `wp_detect(refresh)` or a successful `apply_changes` (which clears the session's cache,
+since statements name no database). The cache dies with the session, so a reconnect detects again.
 Only WordPress databases are cached, so one that becomes WordPress is detected on the next call.
 The UI receives `WpInfo`, which holds the context, the entity names for the palette, and a map from table to
 entity. That map lets the Database view offer "Open as WordPress document".

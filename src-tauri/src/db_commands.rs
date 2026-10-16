@@ -194,6 +194,7 @@ mod tests {
             id: "s1".into(),
             spec: spec(),
             db: Box::new(db),
+            ext: Default::default(),
         });
         (dir, state)
     }

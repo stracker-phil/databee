@@ -54,6 +54,8 @@ with the `sidebar` vibrancy effect. No Rust code creates windows.
 mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic while a guard is held poisons a
 `std::sync` lock: code takes these locks with `lock::MutexExt::lock_unpoisoned` and
 `lock::RwLockExt::{read_unpoisoned, write_unpoisoned}` instead of `unwrap()`, and keeps working with the data.
+`AppState` holds no module data: per-session data of a module lives in `Session.ext`
+([ADR 0013](adr/0013-session-extensions.md)).
 
 | Field | Type | Holds |
 |---|---|---|
@@ -67,7 +69,6 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
-| `wp_cache` | `Mutex<HashMap<"session/db", WpContext>>` | WordPress detection results; cleared per session by `invalidate_wp` |
 | `config_dir` | `PathBuf` | used to read the optional `entities.toml` |
 | `log_override` | `Option<LogLevel>` | the CLI `--log-level`; wins over the stored level (`settings_effects`) |
 

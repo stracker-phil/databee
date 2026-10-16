@@ -1,8 +1,8 @@
 use tauri::State;
 
 use crate::error::{AppError, AppResult};
-use crate::lock::MutexExt;
-use crate::state::{AppState, wp_cache_key};
+use crate::state::AppState;
+use crate::wp::cache::WpCache;
 use crate::wp::context::WpContext;
 use crate::wp::dashboard::{self, BrowserSection, Dashboard, DayBucket};
 use crate::wp::detail::{self, EntityView, SearchHit};
@@ -30,11 +30,11 @@ async fn context(
     database: &str,
     refresh: bool,
 ) -> AppResult<Option<WpContext>> {
-    let key = wp_cache_key(session_id, database);
-    if !refresh && let Some(cached) = state.wp_cache.lock_unpoisoned().get(&key) {
-        return Ok(Some(cached.clone()));
-    }
     let session = state.sessions.get(session_id)?;
+    let cache = session.ext.get_or_insert_with(WpCache::default);
+    if !refresh && let Some(cached) = cache.get(database) {
+        return Ok(Some(cached));
+    }
     let ctx = lens::detect(session.db.as_ref(), database).await?;
     match &ctx {
         Some(c) => log::info!(
@@ -45,11 +45,10 @@ async fn context(
         ),
         None => log::debug!("{database} is not a WordPress database"),
     }
-    let mut cache = state.wp_cache.lock_unpoisoned();
     match &ctx {
-        Some(c) => cache.insert(key, c.clone()),
-        None => cache.remove(&key),
-    };
+        Some(c) => cache.insert(database, c.clone()),
+        None => cache.remove(database),
+    }
     Ok(ctx)
 }
 
@@ -477,7 +476,9 @@ pub async fn apply_changes(
     }
     let affected = session.db.apply(&statements, timeout).await?;
     // Statements carry no database of their own, so every context of the session may be stale.
-    state.invalidate_wp(&session_id);
+    if let Some(cache) = session.ext.get::<WpCache>() {
+        cache.clear();
+    }
     Ok(affected)
 }
 

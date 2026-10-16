@@ -25,7 +25,9 @@ in `src-tauri/src/db_commands.rs`.
 
 Outside `db/`:
 - `connection.rs` has `ConnectionSpec` and `Secret`.
-- `session.rs` has `Session { id, spec, db: Box<dyn Database> }` and the `Sessions` map.
+- `session.rs` has `Session { id, spec, db: Box<dyn Database>, ext }` and the `Sessions` map. `ext` is a
+  type-keyed `Extensions` map where a module keeps per-session data that dies with the session
+  ([ADR 0013](adr/0013-session-extensions.md)); the WordPress lens keeps its `WpCache` there.
 - `error.rs` maps `sqlx::Error` to `AppError`.
 
 ## Connection model
