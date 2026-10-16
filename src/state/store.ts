@@ -55,7 +55,7 @@ export type Tab = QueryTab | TableTab;
 export type WpList =
   | "orders"
   | "subscriptions"
-  | "customers"
+  | "users"
   | "products"
   | "actions"
   | "sessions"

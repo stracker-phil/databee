@@ -35,7 +35,7 @@ export function EntityScreen({ entity, id, embedded = false }: { entity: string;
     const d = docOf(data);
     if (!embedded) setEntityMeta({
       key: `${entity}:${id}`,
-      parent: data.view === "product" ? "products" : data.view === "customer" ? "customers" : undefined,
+      parent: data.view === "product" ? "products" : data.view === "customer" ? "users" : undefined,
       title: data.view === "order" || !d.title ? `#${id}` : d.title,
       table: d.table,
       idColumn: d.idColumn,

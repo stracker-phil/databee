@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalL
 import {
   api,
   type ActionSummary,
-  type CustomerSummary,
+  type UserSummary,
   type Facet,
   type ListQuery,
   type OrderSummary,
@@ -33,7 +33,7 @@ type Loader = (sessionId: string, database: string, q: ListQuery) => Promise<Pag
 const LOADERS: Record<Exclude<WpList, "settings">, Loader> = {
   orders: (s, d, q) => api.wpOrders(s, d, "shop_order", q),
   subscriptions: (s, d, q) => api.wpOrders(s, d, "shop_subscription", q),
-  customers: api.wpCustomers,
+  users: api.wpUsers,
   products: api.wpProducts,
   actions: api.wpActions,
   sessions: api.wpSessions,
@@ -43,7 +43,7 @@ const LOADERS: Record<Exclude<WpList, "settings">, Loader> = {
 const KIND_LABEL: Partial<Record<WpList, string>> = {
   orders: "Gateway",
   subscriptions: "Gateway",
-  customers: "Role",
+  users: "Role",
   products: "Type",
   actions: "Hook",
   content: "Type",
@@ -76,13 +76,13 @@ const COLUMNS: Record<Exclude<WpList, "settings">, Column[]> = {
     { label: "Total", className: "row-total", sort: "total" },
     { label: "Created", className: "row-when", sort: "created" },
   ],
-  customers: [
+  users: [
     { label: "", className: "col-avatar" },
-    { label: "Customer", className: "grow-text", sort: "name" },
+    { label: "User", className: "grow-text", sort: "name" },
     { label: "Roles", className: "row-roles" },
     { label: "Orders", className: "row-items" },
     { label: "Spent", className: "row-total" },
-    { label: "Last order", className: "row-when", sort: "registered" },
+    { label: "Registered", className: "row-when", sort: "registered" },
   ],
   products: [
     { label: "", className: "col-avatar" },
@@ -146,8 +146,8 @@ export function rowTarget(list: WpList, item: unknown): { entity: string; id: st
     case "orders":
     case "subscriptions":
       return { entity: "order", id: (item as OrderSummary).id };
-    case "customers":
-      return { entity: "user", id: (item as CustomerSummary).id };
+    case "users":
+      return { entity: "user", id: (item as UserSummary).id };
     case "actions":
       return { entity: "action", id: (item as ActionSummary).id };
     case "sessions":
@@ -182,18 +182,18 @@ function OrderCells({ o }: { o: OrderSummary }) {
   );
 }
 
-function CustomerCells({ c }: { c: CustomerSummary }) {
+function UserCells({ c }: { c: UserSummary }) {
   return (
     <>
       <span className="col-avatar"><Avatar name={c.name || c.login} src={c.avatar} /></span>
       <span className="grow-text">
-        <span>{c.name || c.login}</span>
-        <span className="muted"> · {c.email}</span>
+        <span className="mono">#{c.id} {c.login}</span>
+        <span className="muted"> · {[c.name, c.email].filter(Boolean).join(" · ")}</span>
       </span>
       <span className="row-roles">{c.roles.map((r) => <span key={r} className="badge">{r}</span>)}</span>
       <span className="muted row-items">{c.orderCount} {c.orderCount === 1 ? "order" : "orders"}</span>
       <span className="money row-total">{c.totalSpent ?? ""}</span>
-      <span className="muted row-when"><Ago unix={c.lastOrder ?? c.registered} /></span>
+      <span className="muted row-when"><Ago unix={c.registered} /></span>
     </>
   );
 }
@@ -269,9 +269,9 @@ function cellsFor(list: WpList, item: unknown): { key: string; node: ReactNode; 
       const o = item as OrderSummary;
       return { key: o.id, node: <OrderCells o={o} /> };
     }
-    case "customers": {
-      const c = item as CustomerSummary;
-      return { key: c.id, node: <CustomerCells c={c} /> };
+    case "users": {
+      const c = item as UserSummary;
+      return { key: c.id, node: <UserCells c={c} /> };
     }
     case "products": {
       const p = item as ProductSummary;

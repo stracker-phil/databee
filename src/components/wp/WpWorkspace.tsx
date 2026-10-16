@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Boxes, CalendarClock, ChevronRight, FileText, LayoutDashboard, Repeat, Search, Settings2, ShoppingBag, ShoppingCart, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Boxes, CalendarClock, Camera, ChevronRight, FileText, LayoutDashboard, Repeat, Search, Settings2, ShoppingBag, ShoppingCart, Users } from "lucide-react";
 import { api, type BrowserSection } from "../../api";
 import { routeCrumbs } from "../../lib/crumbs";
 import { selectWp, selectWpRoute, useStore, type WpList, type WpRoute } from "../../state/store";
@@ -14,13 +14,21 @@ import { useWpData } from "./useWpData";
 const ICONS: Record<string, typeof ShoppingCart> = {
   orders: ShoppingCart,
   subscriptions: Repeat,
-  customers: Users,
+  users: Users,
   products: ShoppingBag,
   actions: CalendarClock,
   sessions: Boxes,
   content: FileText,
   settings: Settings2,
 };
+
+/** Sidebar groups in wp-admin's order: core data, then WooCommerce, then tools (wp-admin
+ *  files Scheduled Actions under Tools). Sections the database doesn't have are skipped. */
+const NAV_GROUPS: { title: string; lists: WpList[] }[] = [
+  { title: "WordPress", lists: ["content", "users", "settings"] },
+  { title: "WooCommerce", lists: ["orders", "subscriptions", "products", "sessions"] },
+  { title: "Tools", lists: ["actions"] },
+];
 
 /** Statuses that need a look; everything else is just a number. */
 const ATTENTION: Record<string, { statuses: string[]; tone: "red" | "orange"; label: string }[]> = {
@@ -94,16 +102,26 @@ function Nav({ route }: { route: WpRoute }) {
           <span className="nav-label">Dashboard</span>
         </span>
       </button>
-      {(data ?? []).map((s) => (
-        <NavItem key={s.list} section={s} active={activeList === s.list} />
-      ))}
-      <div className="nav-sep" />
-      <button className={`nav-item${route.screen === "snapshots" ? " active" : ""}`} onClick={() => navigate({ screen: "snapshots" })}>
-        <span className="nav-row">
-          <CalendarClock size="1.077rem" />
-          <span className="nav-label">Snapshots & diff</span>
-        </span>
-      </button>
+      {NAV_GROUPS.map((g) => {
+        const sections = g.lists.map((l) => data?.find((s) => s.list === l)).filter((s) => s != null);
+        if (sections.length === 0 && g.title !== "Tools") return null;
+        return (
+          <div key={g.title} className="nav-group" role="group" aria-label={g.title}>
+            <div className="nav-heading">{g.title}</div>
+            {sections.map((s) => (
+              <NavItem key={s.list} section={s} active={activeList === s.list} />
+            ))}
+            {g.title === "Tools" && (
+              <button className={`nav-item${route.screen === "snapshots" ? " active" : ""}`} onClick={() => navigate({ screen: "snapshots" })}>
+                <span className="nav-row">
+                  <Camera size="1.077rem" />
+                  <span className="nav-label">Snapshots & diff</span>
+                </span>
+              </button>
+            )}
+          </div>
+        );
+      })}
     </nav>
   );
 }

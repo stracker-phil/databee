@@ -9,7 +9,7 @@ export interface Crumb {
 
 const ENTITY_PARENT: Record<string, WpList> = {
   order: "orders",
-  user: "customers",
+  user: "users",
   post: "content",
   action: "actions",
   session: "sessions",

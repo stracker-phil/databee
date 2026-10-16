@@ -4,7 +4,7 @@ import { routeCrumbs } from "./crumbs";
 describe("routeCrumbs", () => {
   it("shows the hierarchy of a route, not where the user came from", () => {
     expect(routeCrumbs({ screen: "entity", entity: "order", id: "3226" }).map((c) => c.label)).toEqual(["Orders", "#3226"]);
-    expect(routeCrumbs({ screen: "list", list: "settings" }).map((c) => c.label)).toEqual(["Settings & options"]);
+    expect(routeCrumbs({ screen: "list", list: "settings" }).map((c) => c.label)).toEqual(["Options"]);
     expect(routeCrumbs({ screen: "list", list: "actions", params: { status: "failed" } }).map((c) => c.label)).toEqual(["Scheduled actions", "Failed"]);
     expect(routeCrumbs({ screen: "list", list: "orders", params: { status: "wc-on-hold" } }).map((c) => c.label)).toEqual(["Orders", "On hold"]);
   });

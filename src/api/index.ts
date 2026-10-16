@@ -10,7 +10,7 @@ import type {
   SnapshotScope,
   ActionSummary,
   BrowserSection,
-  CustomerSummary,
+  UserSummary,
   Dashboard,
   DayBucket,
   DocField,
@@ -111,8 +111,8 @@ export const api = {
   wpBrowser: (sessionId: string, database: string) => invoke<BrowserSection[]>("wp_browser", { sessionId, database }),
   wpOrders: (sessionId: string, database: string, orderType: string, query: ListQuery) =>
     invoke<Page<OrderSummary>>("wp_orders", { sessionId, database, orderType, query }),
-  wpCustomers: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<CustomerSummary>>("wp_customers", { sessionId, database, query }),
+  wpUsers: (sessionId: string, database: string, query: ListQuery) =>
+    invoke<Page<UserSummary>>("wp_users", { sessionId, database, query }),
   wpProducts: (sessionId: string, database: string, query: ListQuery) =>
     invoke<Page<ProductSummary>>("wp_products", { sessionId, database, query }),
   wpActions: (sessionId: string, database: string, query: ListQuery) =>

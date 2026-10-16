@@ -54,13 +54,13 @@ const SCREENS: Command[] = [
   go("go.orders", "Orders", { screen: "list", list: "orders" }),
   go("go.failedOrders", "Failed orders", { screen: "list", list: "orders", params: { status: "wc-failed" } }),
   go("go.subscriptions", "Subscriptions", { screen: "list", list: "subscriptions" }),
-  go("go.customers", "Customers", { screen: "list", list: "customers" }),
+  go("go.users", "Users", { screen: "list", list: "users" }),
   go("go.products", "Products", { screen: "list", list: "products" }),
   go("go.actions", "Scheduled actions", { screen: "list", list: "actions" }),
   go("go.failedActions", "Failed actions", { screen: "list", list: "actions", params: { status: "failed" } }),
   go("go.sessions", "Sessions", { screen: "list", list: "sessions" }),
   go("go.content", "Content", { screen: "list", list: "content" }),
-  go("go.settings", "Settings & options", { screen: "list", list: "settings" }),
+  go("go.settings", "Options", { screen: "list", list: "settings" }),
   go("go.snapshots", "Snapshots & diff", { screen: "snapshots" }),
 ];
 
@@ -150,12 +150,12 @@ export const APP_COMMANDS: Command[] = [
 export const LIST_LABELS: Record<WpList, string> = {
   orders: "Orders",
   subscriptions: "Subscriptions",
-  customers: "Customers",
+  users: "Users",
   products: "Products",
   actions: "Scheduled actions",
   sessions: "Sessions",
   content: "Content",
-  settings: "Settings & options",
+  settings: "Options",
 };
 
 let installed = false;

@@ -186,7 +186,7 @@ fn start_app(
             wp_commands::wp_dashboard,
             wp_commands::wp_browser,
             wp_commands::wp_orders,
-            wp_commands::wp_customers,
+            wp_commands::wp_users,
             wp_commands::wp_products,
             wp_commands::wp_actions,
             wp_commands::wp_action_histogram,

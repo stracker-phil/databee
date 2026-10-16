@@ -8,7 +8,7 @@ use crate::wp::detail::{self, EntityView, SearchHit};
 use crate::wp::entity::DocField;
 use crate::wp::entity::{self, Catalog, EntityDoc};
 use crate::wp::lists::{
-    self, ActionSummary, CustomerSummary, ListQuery, OrderSummary, Page, PostSummary,
+    self, ActionSummary, UserSummary, ListQuery, OrderSummary, Page, PostSummary,
     ProductSummary, SessionSummary,
 };
 use crate::wp::options::{self, OptionsOverview};
@@ -189,14 +189,14 @@ pub async fn wp_orders(
 }
 
 #[tauri::command]
-pub async fn wp_customers(
+pub async fn wp_users(
     state: State<'_, AppState>,
     session_id: String,
     database: String,
     query: ListQuery,
-) -> AppResult<Page<CustomerSummary>> {
+) -> AppResult<Page<UserSummary>> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    lists::customers(
+    lists::users(
         &s.db,
         &ctx,
         &database,

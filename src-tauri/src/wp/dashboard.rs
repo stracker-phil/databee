@@ -531,7 +531,7 @@ pub async fn dashboard(session: &MySqlSession, ctx: &WpContext, db: &str) -> App
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserSection {
-    /// orders, subscriptions, customers, products, actions, sessions, content, settings
+    /// orders, subscriptions, users, products, actions, sessions, content, settings
     pub list: &'static str,
     pub label: &'static str,
     pub count: u64,
@@ -596,12 +596,8 @@ pub async fn browser(
     )
     .await?;
     out.push(BrowserSection {
-        list: "customers",
-        label: if ctx.wc.is_some() {
-            "Customers"
-        } else {
-            "Users"
-        },
+        list: "users",
+        label: "Users",
         count: users.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
         breakdown: Vec::new(),
     });
@@ -659,7 +655,7 @@ pub async fn browser(
     .await?;
     out.push(BrowserSection {
         list: "settings",
-        label: "Settings & options",
+        label: "Options",
         count: rs.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
         breakdown: Vec::new(),
     });

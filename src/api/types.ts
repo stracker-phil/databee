@@ -336,7 +336,7 @@ export interface OrderSummary {
   itemCount: number;
 }
 
-export interface CustomerSummary {
+export interface UserSummary {
   id: string;
   login: string;
   email: string | null;

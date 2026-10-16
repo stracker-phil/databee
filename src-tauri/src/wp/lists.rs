@@ -19,7 +19,7 @@ pub const PAGE_MAX: u32 = 200;
 #[serde(rename_all = "camelCase", default)]
 pub struct ListQuery {
     pub status: Option<String>,
-    /// Orders: gateway id; products: product type; customers: role; content: post type.
+    /// Orders: gateway id; products: product type; users: role; content: post type.
     pub kind: Option<String>,
     pub search: Option<String>,
     pub offset: u64,
@@ -53,7 +53,7 @@ pub const SORT_KEYS: &[(&str, &[(&str, &str)])] = &[
         ],
     ),
     (
-        "customers",
+        "users",
         &[
             ("registered", "u.user_registered"),
             ("name", "u.display_name"),
@@ -383,11 +383,11 @@ pub async fn orders(
     })
 }
 
-// ---------- customers ----------
+// ---------- users ----------
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct CustomerSummary {
+pub struct UserSummary {
     pub id: String,
     pub login: String,
     pub email: Option<String>,
@@ -400,7 +400,7 @@ pub struct CustomerSummary {
     pub avatar: Option<String>,
 }
 
-pub fn customers_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
+pub fn users_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
     let caps = sql_string(&format!("{}capabilities", ctx.prefix));
     let mut filter = "1 = 1".to_string();
     if let Some(role) = &q.kind {
@@ -420,7 +420,7 @@ pub fn customers_sql(db: &str, ctx: &WpContext, q: &ListQuery) -> String {
         "SELECT u.ID, u.user_login, u.user_email, u.display_name, {registered}, c.meta_value \
          FROM {users} u LEFT JOIN {usermeta} c ON c.user_id = u.ID AND c.meta_key = {caps} \
          WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
-        order = order_by("customers", q, "u.ID"),
+        order = order_by("users", q, "u.ID"),
         registered = epoch("u.user_registered"),
         users = t(db, ctx, "users"),
         usermeta = t(db, ctx, "usermeta"),
@@ -483,12 +483,12 @@ pub fn guests_sql(
     }
 }
 
-pub fn guest_rows(rs: &ResultSet, currency: Option<&str>) -> Vec<CustomerSummary> {
+pub fn guest_rows(rs: &ResultSet, currency: Option<&str>) -> Vec<UserSummary> {
     rs.rows
         .iter()
         .filter_map(|r| {
             let email = text(&r[0])?;
-            Some(CustomerSummary {
+            Some(UserSummary {
                 id: format!("{GUEST_PREFIX}{email}"),
                 login: email.clone(),
                 name: text(&r[5]).filter(|n| !n.trim().is_empty()),
@@ -552,36 +552,22 @@ pub fn gravatar(email: &str) -> String {
     format!("https://gravatar.com/avatar/{hex}?s=96&d=404")
 }
 
-pub async fn customers(
+/// `wp_users` with roles and, on shops, order stats. Guest checkouts are not users; they
+/// open from their orders (`guest:<email>`).
+pub async fn users(
     session: &MySqlSession,
     ctx: &WpContext,
     db: &str,
     q: &ListQuery,
     with_gravatar: bool,
-) -> AppResult<Page<CustomerSummary>> {
-    let guests_wanted = ctx.wc.is_some() && q.kind.as_deref().is_none_or(|k| k == "guest");
-    let currency = ctx.site.currency.as_deref();
-    if ctx.wc.is_some() && q.kind.as_deref() == Some("guest") {
-        let rs = fetch(
-            session,
-            &guests_sql(db, ctx, q.search(), None, q.limit() + 1, q.offset),
-        )
-        .await?;
-        let (items, has_more) = page_split(guest_rows(&rs, currency), q.limit());
-        return Ok(Page {
-            items,
-            has_more,
-            facets: Vec::new(),
-            kinds: customer_kinds(session, ctx, db).await?,
-        });
-    }
-    let rs = fetch(session, &customers_sql(db, ctx, q)).await?;
-    let rows: Vec<CustomerSummary> = rs
+) -> AppResult<Page<UserSummary>> {
+    let rs = fetch(session, &users_sql(db, ctx, q)).await?;
+    let rows: Vec<UserSummary> = rs
         .rows
         .iter()
         .map(|r| {
             let email = text(&r[2]);
-            CustomerSummary {
+            UserSummary {
                 id: text(&r[0]).unwrap_or_default(),
                 login: text(&r[1]).unwrap_or_default(),
                 avatar: email.as_deref().filter(|_| with_gravatar).map(gravatar),
@@ -612,21 +598,16 @@ pub async fn customers(
             }
         }
     }
-    // Guests follow the registered users once those are exhausted.
-    if guests_wanted && !has_more {
-        let rs = fetch(session, &guests_sql(db, ctx, q.search(), None, PAGE_MAX, 0)).await?;
-        items.extend(guest_rows(&rs, currency));
-    }
     Ok(Page {
         items,
         has_more,
         facets: Vec::new(),
-        kinds: customer_kinds(session, ctx, db).await?,
+        kinds: role_facets(session, ctx, db).await?,
     })
 }
 
-/// Role counts for the kind filter, plus a `guest` entry when the shop has guest orders.
-async fn customer_kinds(
+/// Role counts from `{prefix}capabilities` for the kind filter.
+async fn role_facets(
     session: &MySqlSession,
     ctx: &WpContext,
     db: &str,
@@ -655,24 +636,6 @@ async fn customer_kinds(
         })
         .collect();
     kinds.sort_by_key(|a| std::cmp::Reverse(a.count));
-    if ctx.wc.is_some() {
-        let rs = fetch(
-            session,
-            &format!(
-                "SELECT COUNT(*) FROM ({}) g",
-                guests_sql(db, ctx, None, None, 100_000, 0)
-            ),
-        )
-        .await?;
-        let n = rs.rows.first().and_then(|r| num(&r[0])).unwrap_or(0);
-        if n > 0 {
-            kinds.push(Facet {
-                value: "guest".into(),
-                label: "Guest".into(),
-                count: n,
-            });
-        }
-    }
     Ok(kinds)
 }
 

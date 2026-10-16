@@ -236,38 +236,13 @@ async fn lists_sort_by_whitelisted_keys() {
 
 #[tokio::test]
 #[ignore]
-async fn guest_checkouts_appear_as_virtual_customers() {
+async fn guest_checkouts_are_not_users_but_open_from_orders_and_search() {
     for (db, ctx, catalog) in env().await {
-        let all = lists::customers(&db, &ctx, "wp_test", &lists::ListQuery::default(), false)
+        let all = lists::users(&db, &ctx, "wp_test", &lists::ListQuery::default(), false)
             .await
             .unwrap();
-        let guest = all
-            .items
-            .iter()
-            .find(|c| c.id == "guest:guest@shop.test")
-            .expect("guest listed after users");
-        assert_eq!(guest.roles, ["Guest"]);
-        assert_eq!(guest.order_count, 1);
-        assert_eq!(guest.email.as_deref(), Some("guest@shop.test"));
-        assert!(
-            !all.items.iter().any(|c| c.id == "guest:jane@shop.test"),
-            "registered emails are not guests"
-        );
-        assert!(all.kinds.iter().any(|k| k.value == "guest" && k.count == 1));
-
-        let only = lists::customers(
-            &db,
-            &ctx,
-            "wp_test",
-            &lists::ListQuery {
-                kind: Some("guest".into()),
-                ..Default::default()
-            },
-            false,
-        )
-        .await
-        .unwrap();
-        assert!(only.items.iter().all(|c| c.id.starts_with("guest:")));
+        assert!(!all.items.iter().any(|c| c.id.starts_with("guest:")));
+        assert!(!all.kinds.iter().any(|k| k.value == "guest"));
 
         let EntityView::Customer(c) = entity_view(
             &db,
@@ -378,7 +353,7 @@ async fn entity_browser_counts_sections() {
         let count = |list: &str| sections.iter().find(|s| s.list == list).map(|s| s.count);
         assert_eq!(count("orders"), Some(2));
         assert_eq!(count("subscriptions"), Some(1));
-        assert_eq!(count("customers"), Some(2));
+        assert_eq!(count("users"), Some(2));
         assert_eq!(count("products"), Some(2));
         assert_eq!(count("actions"), Some(4));
         assert_eq!(count("sessions"), Some(2));
@@ -446,14 +421,14 @@ async fn lists_filter_and_search() {
             .unwrap();
         assert_eq!(subs.items[0].id, "4714");
 
-        let customers = lists::customers(&db, &ctx, "wp_test", &q(None, None), false)
+        let users = lists::users(&db, &ctx, "wp_test", &q(None, None), false)
             .await
             .unwrap();
-        let jane = customers.items.iter().find(|c| c.id == "12").unwrap();
+        let jane = users.items.iter().find(|c| c.id == "12").unwrap();
         assert_eq!(jane.roles, ["customer"]);
         assert_eq!(jane.order_count, 1);
         assert_eq!(jane.total_spent.as_deref(), Some("€49.90"));
-        assert!(customers.kinds.iter().any(|k| k.value == "administrator"));
+        assert!(users.kinds.iter().any(|k| k.value == "administrator"));
 
         let products = lists::products(&db, &ctx, "wp_test", &q(None, Some("MUG")))
             .await
