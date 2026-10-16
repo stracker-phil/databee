@@ -227,7 +227,7 @@ const INTRO: Record<Page, string> = {
   logging: "What DataBee writes to its log file.",
 };
 
-/** §10 of the Stage protocol: the hook's switch, status, port, token and discovery file. */
+/** §10 of the Stage protocol: the hook's switch, status, port, token and register command. */
 function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Settings>) => void }) {
   const [status, setStatus] = useState<StageStatus | null>(null);
   const [revealed, setRevealed] = useState(false);
@@ -250,14 +250,14 @@ function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Setti
       <Row label="Status" description={status?.running ? status.url : undefined}>
         {status?.error ? (
           <span className="pill tone-orange">{status.error}</span>
-        ) : status?.discoveryFile ? (
-          <span className="pill tone-green">Discoverable</span>
+        ) : status?.running ? (
+          <span className="pill tone-green">Ready</span>
         ) : (
           <span className="badge">Off</span>
         )}
       </Row>
-      <NumberField label="Port" description="27184 unless another app needs it." value={s.stage.port} min={1024} max={65535} onCommit={(port) => stage({ port })} />
-      <Row label="Token" description="Presenters read it from the discovery file; a new token disconnects them until they read it again.">
+      <NumberField label="Port" description="27184 unless another app needs it. Register again after a change." value={s.stage.port} min={1024} max={65535} onCommit={(port) => stage({ port })} />
+      <Row label="Token" description="A new token disconnects presenters until DataBee is registered again.">
         <button type="button" className="btn mono" title={revealed ? "Hide" : "Show the token"} onClick={() => setRevealed((r) => !r)}>
           {revealed ? s.stage.token : "••••••••••••"}
         </button>
@@ -268,10 +268,10 @@ function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Setti
           <RefreshCw size="1rem" /> New Token
         </button>
       </Row>
-      {status?.discoveryFile && (
-        <Row label="Discovery file" description={<code className="mono small">{status.discoveryFile}</code>}>
-          <button type="button" className="btn" onClick={() => void api.stageShowDiscoveryFile()}>
-            <FolderOpen size="1.077rem" /> Show in Finder
+      {status && (
+        <Row label="Register with Stage" description={<code className="mono small selectable">{status.registerCommand}</code>}>
+          <button type="button" className="btn" onClick={() => void navigator.clipboard.writeText(status.registerCommand).then(() => toast("success", "Copied the register command"))}>
+            <Copy size="1rem" /> Copy
           </button>
         </Row>
       )}

@@ -27,7 +27,7 @@ The app's name and ids live in a few places. Change them together.
 | What | Where | Note |
 |---|---|---|
 | Product name (window title, bundle `DataBee.app`, app menu) | `src-tauri/tauri.conf.json` `productName` and window `title`; `menu.rs`; `index.html`; `Toolbar.tsx`; `stage/mod.rs` `NAME` | |
-| Bundle identifier `com.philippstracker.databee` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER`; `scripts/dev/js.sh` (socket path) | Also names the config dir, the log dir and the Stage discovery file. Changing it starts with empty settings. |
+| Bundle identifier `com.philippstracker.databee` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER`; `scripts/dev/js.sh` (socket path) | Also names the config dir and the log dir. Changing it starts with empty settings. |
 | Binary and CLI command `databee` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli.rs` `name`; `scripts/install-cli.sh`; `scripts/dev/launch.sh` | The Rust lib is `databee_lib`, also used by `main.rs` and `tests/` |
 | Keychain service `"databee"` | `secrets.rs` `SERVICE` | Changing it loses saved passwords |
 | Socket file `databee.sock` | `lib.rs`, `scripts/dev/js.sh` | |
@@ -46,7 +46,7 @@ Objective-C or NSWindow calls. The macOS behavior comes from dependencies, paths
 | **Keychain** (`security-framework`) | `secrets.rs` `Keychain`; the crate won't build elsewhere | Implement `SecretStore` with the `keyring` crate (Secret Service / libsecret), and gate `security-framework` under `[target.'cfg(target_os = "macos")'.dependencies]` | `keyring` (Credential Manager) |
 | **Config dir** hard-coded to `~/Library/Application Support/<id>` | `lib.rs` `config_dir()`, `scripts/dev/js.sh` | `dirs::config_dir()` (`~/.config/<id>`). It must resolve before Tauri starts, because the CLI and socket run first | `dirs::config_dir()` (`%APPDATA%\<id>`) |
 | **Unix socket** for the single-instance handoff (`std::os::unix`, `tokio::net::UnixListener`, mode 0600) | `ipc.rs` | Works as is. Mind the ~108-byte path limit; `$XDG_RUNTIME_DIR` is a good home | Doesn't compile. Use a named pipe (`tokio::net::windows::named_pipe`) with the same line protocol. `tauri-plugin-single-instance` is already a dependency, but it passes argv, and DataBee keeps passwords out of argv on purpose |
-| **File permissions** (`PermissionsExt`, 0600) | `ipc.rs`, `stage/discovery.rs` | Works | Gate with `#[cfg(unix)]` |
+| **File permissions** (`PermissionsExt`, 0600) | `ipc.rs` | Works | Gate with `#[cfg(unix)]` |
 | **Window chrome**: `titleBarStyle: Overlay`, `hiddenTitle`, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; the Cargo feature `macos-private-api` | Ignored by Tauri. The CSS expects transparent chrome, so give `html`/`.app` an opaque `--bg-chrome` | `windowEffects: ["mica"]` works; otherwise use an opaque background |
 | **Traffic-light space** and drag regions | `.toolbar` `padding-left` in `app.css`; `data-tauri-drag-region` in `Toolbar.tsx` and `ConnectScreen.tsx` | Remove the padding. With native decorations, drag regions are optional | Same; or set `decorations: false` and draw your own window controls |
 | **Menu**: the app menu with Services, Hide and Show All | `menu.rs` | The menu bar renders inside the window. Drop the app menu and move Settings and Quit into File | Same |

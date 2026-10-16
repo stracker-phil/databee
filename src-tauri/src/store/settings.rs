@@ -55,13 +55,13 @@ pub enum Dock {
     Bottom,
 }
 
-/// The local HTTP API through which Stage presents DataBee (docs: README "Presentations").
+/// The local HTTP API through which Stage presents DataBee (docs/stage.md).
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct StageSettings {
     pub enabled: bool,
     pub port: u16,
-    /// Generated on first start; also in the discovery file, never in the log.
+    /// Generated on first start; registered with Stage by the user, never in the log.
     pub token: String,
 }
 

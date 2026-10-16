@@ -31,7 +31,6 @@ Stage hook each have their own page.
    - In debug builds it applies `DATABEE_WINDOW_FRAME` (see [testing](testing.md#driving-the-app)).
    - It binds the IPC socket and serves it in a task.
 
-   On `RunEvent::Exit`, Stage removes its discovery file.
 
 The window itself is declared in `tauri.conf.json`: label `main`, overlay title bar, transparent background
 with the `sidebar` vibrancy effect. No Rust code creates windows.
@@ -68,7 +67,7 @@ The TypeScript wrappers in `src/api/index.ts` use the same names in camelCase.
 | `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only), `take_launch_events`, `log_frontend_error`, `list_recents`, `remove_recent`, `forget_password`, `list_favorites`, `save_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
 | `db_commands.rs` | `connect`, `disconnect`, `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table` (see [database.md](database.md)) |
 | `wp_commands.rs` | `wp_detect`, `wp_dashboard`, `wp_browser`, the list commands (`wp_orders`, `wp_users`, `wp_products`, `wp_actions`, `wp_sessions`, `wp_content`), `wp_view`, `wp_search`, `wp_peek`, `wp_find_value`, options and snapshots, `plan_change`, `apply_changes`, `edit_serialized`, `decode_value` (see [wordpress.md](wordpress.md)) |
-| `stage_commands.rs` | `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_new_token`, `stage_show_discovery_file` |
+| `stage_commands.rs` | `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_new_token` |
 
 **Adding a command:**
 1. Write a `#[tauri::command]` function that returns `AppResult<T>`. `T` must be `Serialize` with
@@ -200,7 +199,7 @@ The menu isn't rebuilt when a binding changes, so a new menu accelerator takes e
 |---|---|
 | `tauri` (feature `macos-private-api`), `tauri-build` | app framework; the feature allows a transparent window |
 | `tauri-plugin-log`, `log` | logging |
-| `tauri-plugin-opener` | open URLs and the log folder; reveal the discovery file |
+| `tauri-plugin-opener` | open URLs and the log folder |
 | `tauri-plugin-single-instance` | unused (the custom socket replaces it) |
 | `sqlx` (`mysql`, `mysql-rsa`, no TLS) | MySQL/MariaDB driver |
 | `tokio` | runtime, IPC socket, Stage HTTP server |

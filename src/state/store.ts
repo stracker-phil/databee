@@ -272,7 +272,7 @@ export const useStore = create<Store>()((set, get) => {
     async newStageToken() {
       try {
         set({ settings: await api.stageNewToken() });
-        get().toast("success", "New token; Stage picks it up from the discovery file");
+        get().toast("success", "New token; register DataBee with Stage again");
       } catch (e) {
         fail(e, "Could not replace the token");
       }

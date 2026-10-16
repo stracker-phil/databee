@@ -1,5 +1,5 @@
-//! The Stage hook protocol's pure parts (docs/stage.md §2): rectangles in screen
-//! points, request bounds, key combinations, the discovery record and the pages' replies.
+//! The Stage hook protocol's pure parts (docs/stage.md): rectangles in screen
+//! points, request bounds, key combinations, the register command and the pages' replies.
 
 use std::collections::HashMap;
 
@@ -288,36 +288,10 @@ pub fn stage_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}/v1/stage")
 }
 
-/// `~/Library/Application Support/stage/apps/<id>.json`, present while the API runs.
-#[derive(Serialize, Debug, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct Discovery {
-    pub protocol: u32,
-    pub name: String,
-    pub id: String,
-    pub url: String,
-    pub token: String,
-    pub pid: u32,
-    pub updated_at: String,
-}
-
-pub fn discovery_record(
-    name: &str,
-    id: &str,
-    port: u16,
-    token: &str,
-    pid: u32,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Discovery {
-    Discovery {
-        protocol: PROTOCOL,
-        name: name.into(),
-        id: id.into(),
-        url: stage_url(port),
-        token: token.into(),
-        pid,
-        updated_at: now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-    }
+/// The terminal command that registers this hook with Stage (protocol §3.1); Stage reads the
+/// app's name and id from `describe`. Tokens are hex, so nothing needs quoting.
+pub fn register_command(port: u16, token: &str) -> String {
+    format!("stage register {} --token {token}", stage_url(port))
 }
 
 // The pages' replies -------------------------------------------------------------------------
@@ -644,22 +618,10 @@ mod tests {
     }
 
     #[test]
-    fn discovery_record_points_at_the_stage_url() {
-        let now = chrono::DateTime::parse_from_rfc3339("2026-10-15T12:00:00Z")
-            .unwrap()
-            .to_utc();
-        let record = discovery_record("DataBee", "com.example", 27184, "t", 42, now);
+    fn register_command_names_the_hook_url_and_token() {
         assert_eq!(
-            serde_json::to_value(&record).unwrap(),
-            serde_json::json!({
-                "protocol": 1,
-                "name": "DataBee",
-                "id": "com.example",
-                "url": "http://127.0.0.1:27184/v1/stage",
-                "token": "t",
-                "pid": 42,
-                "updatedAt": "2026-10-15T12:00:00.000Z"
-            })
+            register_command(27184, "abc123"),
+            "stage register http://127.0.0.1:27184/v1/stage --token abc123"
         );
     }
 

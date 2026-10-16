@@ -39,8 +39,8 @@ export interface StageStatus {
   running: boolean;
   error: string | null;
   url: string;
-  /** Set while the discovery file exists. */
-  discoveryFile: string | null;
+  /** `stage register …` with this hook's URL and token, ready to paste into a terminal. */
+  registerCommand: string;
   /** When a presenter last used the hook (ISO 8601). */
   lastRequest: string | null;
 }

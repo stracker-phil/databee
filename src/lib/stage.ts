@@ -1,4 +1,4 @@
-/** Rectangle math of the Stage hook (docs: README "Presentations"). */
+/** Rectangle math of the Stage hook (docs/stage.md): visible parts and centers of anchors. */
 import type { StageRect } from "../api";
 
 const area = (rect: StageRect) => rect.width * rect.height;

@@ -98,15 +98,16 @@ describe("SettingsDialog", () => {
     expect(screen.getByText(/include the SQL text/)).toBeInTheDocument();
   });
 
-  it("shows whether Stage can find DataBee and manages the API token", async () => {
-    mocked.stageStatus.mockResolvedValue({ enabled: true, running: true, error: null, url: "http://127.0.0.1:27184/v1/stage", discoveryFile: "/apps/databee.json", lastRequest: new Date(Date.now() - 120_000).toISOString() });
+  it("shows the hook's status and the command that registers it with Stage", async () => {
+    const command = "stage register http://127.0.0.1:27184/v1/stage --token token-123";
+    mocked.stageStatus.mockResolvedValue({ enabled: true, running: true, error: null, url: "http://127.0.0.1:27184/v1/stage", registerCommand: command, lastRequest: new Date(Date.now() - 120_000).toISOString() });
     render(<SettingsDialog />);
     await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
-    expect(await screen.findByText("Discoverable")).toBeInTheDocument();
-    expect(screen.getByText("/apps/databee.json")).toBeInTheDocument();
+    expect(await screen.findByText("Ready")).toBeInTheDocument();
+    expect(screen.getByText(command)).toBeInTheDocument();
     expect(screen.getByText("2 min ago")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Show in Finder" }));
-    expect(mocked.stageShowDiscoveryFile).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(command);
 
     expect(screen.queryByText("token-123")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "••••••••••••" }));
@@ -115,7 +116,7 @@ describe("SettingsDialog", () => {
     expect(mocked.stageNewToken).toHaveBeenCalled();
     expect(await screen.findByText("token-new")).toBeInTheDocument();
 
-    mocked.stageStatus.mockResolvedValue({ enabled: false, running: false, error: null, url: "http://127.0.0.1:27184/v1/stage", discoveryFile: null, lastRequest: null });
+    mocked.stageStatus.mockResolvedValue({ enabled: false, running: false, error: null, url: "http://127.0.0.1:27184/v1/stage", registerCommand: command, lastRequest: null });
     await userEvent.click(screen.getByLabelText("Allow presentations"));
     expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ stage: { enabled: false, port: 27184, token: "token-new" } }));
     expect(await screen.findByText("Off")).toBeInTheDocument();
@@ -123,7 +124,7 @@ describe("SettingsDialog", () => {
   });
 
   it("names the port conflict when the API can't start", async () => {
-    mocked.stageStatus.mockResolvedValue({ enabled: true, running: false, error: "Port 27184 is already used by another app.", url: "http://127.0.0.1:27184/v1/stage", discoveryFile: null, lastRequest: null });
+    mocked.stageStatus.mockResolvedValue({ enabled: true, running: false, error: "Port 27184 is already used by another app.", url: "http://127.0.0.1:27184/v1/stage", registerCommand: "stage register http://127.0.0.1:27184/v1/stage --token t", lastRequest: null });
     render(<SettingsDialog />);
     await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
     expect(await screen.findByText("Port 27184 is already used by another app.")).toBeInTheDocument();

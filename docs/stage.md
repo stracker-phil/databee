@@ -21,13 +21,13 @@ The `data-stage*` attributes in the components are inert without the hook.
 - **Rejected requests.** Requests with an `Origin` header or a foreign `Host` get 403, so browsers can't reach
   the server. The token is a bearer header or `?token=`, compared in constant time; a wrong or missing token
   gets 401.
-- **Discovery file.** While the server runs, it is published at
-  `~/Library/Application Support/stage/apps/<bundle id>.json`. The file has mode 0600 and is written
-  atomically. It holds the URL and the token and is removed when the hook stops or the app quits.
+- **Registration.** DataBee writes no files for the presenter. You register the hook with Stage once.
+  Settings → Presentations shows the command with this app's URL and token filled in:
+  `stage register http://127.0.0.1:27184/v1/stage --token <token>`. Stage reads the name and id from
+  `describe`. The registration survives restarts of both apps. A new port or token needs a new registration.
 
 ```sh
-F="$HOME/Library/Application Support/stage/apps/com.philippstracker.databee.json"
-URL=$(plutil -extract url raw "$F"); TOKEN=$(plutil -extract token raw "$F")
+URL="http://127.0.0.1:27184/v1/stage"; TOKEN="<token from Settings → Presentations>"
 api() { curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$URL/$1" ${2:+-d "$2"}; echo; }
 api describe
 api window '{"window":"settings","action":"show","section":"presentations"}'
@@ -40,11 +40,10 @@ api act '{"kind":"keys","keys":"Enter","window":"palette"}'
 
 | Rust (`src-tauri/src/stage/`) | Responsibility |
 |---|---|
-| `protocol.rs` | Pure protocol types and helpers: key parsing and canonical form, bounds, screen rects, discovery record, page reply types (`PageAnchor`, `ActReply`, `InfoReply`, `PageCommand`, `Surface`) |
+| `protocol.rs` | Pure protocol types and helpers: key parsing and canonical form, bounds, screen rects, the register command, page reply types (`PageAnchor`, `ActReply`, `InfoReply`, `PageCommand`, `Surface`) |
 | `http.rs` | The HTTP server: `parse_request` and `respond`, testable without sockets; size limits; Origin, Host and token checks |
 | `hooks.rs` | The hub. It answers each verb, keeping the protocol's status codes (400, 404, 409, 500) and messages. It forwards page work as Tauri events and waits for the reply under a timeout. `StageHost` abstracts the native window, so tests use a fake host. |
-| `discovery.rs` | Publishes and removes the discovery file |
-| `mod.rs` | `Stage`: start, stop and restart from settings, status for the settings page, last request time |
+| `mod.rs` | `Stage`: start, stop and restart from settings, status for the settings page (including the register command), last request time |
 
 The page side lives in `src/stage/`:
 

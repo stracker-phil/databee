@@ -222,16 +222,8 @@ fn start_app(
             stage_commands::stage_done,
             stage_commands::stage_info,
             stage_commands::stage_status,
-            stage_commands::stage_show_discovery_file,
             stage_commands::stage_new_token,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event
-                && let Some(presenter) = app.try_state::<stage::Stage>()
-            {
-                presenter.quit();
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

@@ -1,13 +1,11 @@
-//! The Stage hook (docs/stage.md): a local HTTP API through which Stage, a separate
-//! presentation app, reads DataBee's window, anchors and commands and makes it act. While the
-//! API listens, a discovery file tells Stage where it is.
+//! The Stage hook (docs/stage.md): a local HTTP API through which Stage, a separate presentation
+//! app, reads DataBee's window, anchors and commands and makes it act. The user registers the
+//! hook with Stage once (`stage register <url> --token <token>`); DataBee writes no files for it.
 
-pub mod discovery;
 pub mod hooks;
 pub mod http;
 pub mod protocol;
 
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -15,7 +13,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::store::settings::StageSettings;
 use hooks::{Frame, Hub, StageHost, Timeouts};
-use protocol::{MAIN, ScreenRect, stage_url};
+use protocol::{MAIN, ScreenRect, register_command, stage_url};
 
 pub const NAME: &str = "DataBee";
 
@@ -107,8 +105,8 @@ pub struct StageStatus {
     pub running: bool,
     pub error: Option<String>,
     pub url: String,
-    /// Set while the discovery file exists.
-    pub discovery_file: Option<String>,
+    /// `stage register …` with this hook's URL and token, for the user to paste into a terminal.
+    pub register_command: String,
     /// When a presenter last used the hook (ISO 8601).
     pub last_request: Option<String>,
 }
@@ -118,13 +116,13 @@ struct Server {
     task: Option<tauri::async_runtime::JoinHandle<()>>,
     enabled: bool,
     port: u16,
+    token: String,
     error: Option<String>,
 }
 
 /// The API server and the hub its requests go to; managed Tauri state.
 pub struct Stage {
     pub hub: Arc<Hub>,
-    file: PathBuf,
     server: Mutex<Server>,
 }
 
@@ -137,7 +135,6 @@ impl Stage {
                 NAME,
                 id,
             )),
-            file: discovery::path_in(&discovery::folder(), id),
             server: Mutex::default(),
         }
     }
@@ -148,6 +145,7 @@ impl Stage {
         let mut server = self.server.lock().unwrap();
         server.enabled = settings.enabled;
         server.port = settings.port;
+        server.token = settings.token.clone();
         if !settings.enabled {
             return;
         }
@@ -175,22 +173,6 @@ impl Stage {
             }
         }));
         log::info!("Stage API listening on {}", stage_url(settings.port));
-        if let Err(e) = discovery::publish(
-            &self.file,
-            NAME,
-            &self.hub_id(),
-            settings.port,
-            &settings.token,
-        ) {
-            log::warn!("Couldn't write the Stage discovery file: {e}");
-        }
-    }
-
-    fn hub_id(&self) -> String {
-        self.file
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default()
     }
 
     pub fn stop(&self) {
@@ -199,12 +181,6 @@ impl Stage {
             task.abort();
         }
         server.error = None;
-        discovery::remove(&self.file);
-    }
-
-    /// Removes the discovery file; the process is quitting.
-    pub fn quit(&self) {
-        discovery::remove(&self.file);
     }
 
     pub fn status(&self) -> StageStatus {
@@ -214,15 +190,11 @@ impl Stage {
             running: server.task.is_some(),
             error: server.error.clone(),
             url: stage_url(server.port),
-            discovery_file: self.file.exists().then(|| self.file.display().to_string()),
+            register_command: register_command(server.port, &server.token),
             last_request: self
                 .hub
                 .last_request()
                 .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
         }
-    }
-
-    pub fn discovery_path(&self) -> &std::path::Path {
-        &self.file
     }
 }

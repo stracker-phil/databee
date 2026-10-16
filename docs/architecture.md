@@ -74,7 +74,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/db/                  MySQL driver, SQL lexer, safety, cell decoding
   src/wp/                  WordPress detection, PHP serialize, entities, views
   src/store/               JSON stores in the config dir
-  src/stage/               Stage HTTP API, discovery file, request hub
+  src/stage/               Stage HTTP API and request hub
   src/secrets.rs           Keychain-backed SecretStore
   src/menu.rs              native menu from the command ids
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret

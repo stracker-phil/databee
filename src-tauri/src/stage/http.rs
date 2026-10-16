@@ -1,4 +1,4 @@
-//! The Stage hook's transport (docs/stage.md §2.2): `GET|POST
+//! The Stage hook's transport (docs/stage.md, protocol §4): `GET|POST
 //! http://127.0.0.1:<port>/v1/stage/<verb>` with `Authorization: Bearer <token>`. One request per
 //! connection; only local tools may use it (no Origin header, a loopback Host).
 
