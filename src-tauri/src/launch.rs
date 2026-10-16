@@ -3,10 +3,13 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::connection::{ConnectionSpec, Secret};
 use crate::ipc::IpcMessage;
 use crate::lock::MutexExt;
+use crate::state::AppState;
+use crate::window;
 
 /// Emitted without payload when a launch arrives; the page then calls `take_launch_events`.
 pub const LAUNCH_EVENT: &str = "launch";
@@ -117,6 +120,21 @@ impl LaunchQueue {
             .lock_unpoisoned()
             .retain(|_, (_, added)| added.elapsed() < ttl);
     }
+}
+
+/// Handles a message from another DataBee process (CLI launch, activation, dev eval).
+pub fn on_ipc_message(handle: &AppHandle, message: IpcMessage) {
+    #[cfg(debug_assertions)]
+    if let IpcMessage::Eval { js } = &message {
+        crate::dev::eval(handle, js);
+        return;
+    }
+    log::info!("Received {} from another process", message.kind());
+    let queued_event = handle.state::<AppState>().launches.push(message);
+    if queued_event && let Err(e) = handle.emit(LAUNCH_EVENT, ()) {
+        log::warn!("Couldn't notify the page of a launch request: {e}");
+    }
+    window::bring_to_front(handle);
 }
 
 #[cfg(test)]

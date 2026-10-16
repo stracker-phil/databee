@@ -10,7 +10,7 @@ use crate::store::favorites::FavoritesStore;
 use crate::store::history::HistoryStore;
 use crate::store::keybindings::KeybindingsStore;
 use crate::store::recents::RecentsStore;
-use crate::store::settings::SettingsStore;
+use crate::store::settings::{LogLevel, SettingsStore};
 use crate::store::snapshots::SnapshotStore;
 use crate::store::ui_state::UiStateStore;
 use crate::wp::context::WpContext;
@@ -27,6 +27,8 @@ pub struct AppState {
     pub secrets: Box<dyn SecretStore>,
     pub sessions: Sessions,
     pub config_dir: PathBuf,
+    /// `--log-level` from the CLI; wins over the stored level until the app quits.
+    pub log_override: Option<LogLevel>,
     /// Detected WordPress context per `session/database`. Databases that are not WordPress
     /// are not cached, so one that becomes WordPress is detected on the next call.
     pub wp_cache: Mutex<HashMap<String, WpContext>>,
@@ -46,6 +48,7 @@ impl AppState {
             secrets,
             sessions: Sessions::default(),
             config_dir: config_dir.to_path_buf(),
+            log_override: None,
             wp_cache: Mutex::default(),
         }
     }

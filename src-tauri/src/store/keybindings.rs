@@ -4,25 +4,12 @@
 
 use super::json_store::JsonStore;
 use crate::error::AppResult;
+use crate::menu::MENU_ITEMS;
 use std::collections::BTreeMap;
 use std::path::Path;
 
 /// `None` means the user unbound the command.
 pub type Keybindings = BTreeMap<String, Option<String>>;
-
-/// Commands that live in the native menu, with their default bindings (mirrors `src/commands`);
-/// an empty binding means none by default.
-pub const MENU_DEFAULTS: &[(&str, &str)] = &[
-    ("connection.new", "Mod+N"),
-    ("tabs.new", "Mod+T"),
-    ("tabs.close", "Mod+W"),
-    ("favorites.add", "Mod+D"),
-    ("settings.open", "Mod+,"),
-    ("changes.apply", "Mod+S"),
-    ("nav.back", "Mod+["),
-    ("nav.forward", "Mod+]"),
-    ("view.inspectorDock", ""),
-];
 
 pub struct KeybindingsStore {
     store: JsonStore<Keybindings>,
@@ -53,10 +40,10 @@ impl KeybindingsStore {
         if let Some(custom) = self.store.read(|current| current.get(id).cloned()) {
             return custom;
         }
-        MENU_DEFAULTS
+        MENU_ITEMS
             .iter()
-            .find(|(i, _)| *i == id)
-            .map(|(_, b)| b.to_string())
+            .find(|item| item.id == id)
+            .map(|item| item.default_binding.to_string())
             .filter(|b| !b.is_empty())
     }
 }
@@ -132,8 +119,6 @@ fn is_accelerator_char(key: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const COMMANDS_TS: &str = include_str!("../../../src/commands/index.ts");
 
     fn overrides(entries: &[(&str, Option<&str>)]) -> Keybindings {
         entries
@@ -262,26 +247,5 @@ mod tests {
         let store = KeybindingsStore::open(dir.path());
         assert_eq!(store.get(), overrides(&[("tabs.close", Some("Mod+Q"))]));
         assert_eq!(store.menu_binding("tabs.new").as_deref(), Some("Mod+T"));
-    }
-
-    #[test]
-    fn menu_defaults_match_the_frontend_command_registry() {
-        for (id, binding) in MENU_DEFAULTS {
-            let marker = format!("id: \"{id}\"");
-            let start = COMMANDS_TS
-                .find(&marker)
-                .unwrap_or_else(|| panic!("{id} is not registered in src/commands/index.ts"));
-            let rest = &COMMANDS_TS[start + marker.len()..];
-            let block = &rest[..rest.find("id: \"").unwrap_or(rest.len())];
-            assert!(block.contains("menu: true"), "{id} is not a menu command");
-            if binding.is_empty() {
-                assert!(!block.contains("defaultBinding"), "{id}");
-            } else {
-                assert!(
-                    block.contains(&format!("defaultBinding: \"{binding}\"")),
-                    "{id} default differs from {binding}"
-                );
-            }
-        }
     }
 }

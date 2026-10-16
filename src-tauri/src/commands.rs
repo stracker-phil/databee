@@ -4,29 +4,63 @@ use tauri_plugin_opener::OpenerExt;
 use crate::connection::ConnectionSpec;
 use crate::error::{AppError, AppResult};
 use crate::launch::LaunchEvent;
+use crate::menu;
 use crate::stage::Stage;
 use crate::state::AppState;
 use crate::store::favorites::{Favorite, NewFavorite};
 use crate::store::history::HistoryEntry;
 use crate::store::keybindings::Keybindings;
 use crate::store::recents::RecentConnection;
-use crate::store::settings::{Settings, Theme};
+use crate::store::settings::{LogLevel, Settings, Theme};
 use crate::store::ui_state::UiState;
+use crate::window;
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Settings {
     state.settings.get()
 }
 
-/// Gives the window the app's theme, so the vibrancy behind the chrome matches the colors
-/// drawn on top of it; `System` follows macOS.
-pub fn apply_window_theme(app: &AppHandle, theme: Theme) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_theme(match theme {
-            Theme::System => None,
-            Theme::Light => Some(tauri::Theme::Light),
-            Theme::Dark => Some(tauri::Theme::Dark),
-        });
+/// What a settings change has to apply outside the store.
+#[derive(Debug, PartialEq)]
+struct SettingsEffects {
+    theme: Option<Theme>,
+    log_level: Option<log::LevelFilter>,
+    restart_stage: bool,
+}
+
+/// Without `previous` (at startup) everything applies. A `--log-level` from the CLI wins over
+/// the stored level for the app's lifetime.
+fn settings_effects(
+    previous: Option<&Settings>,
+    saved: &Settings,
+    log_override: Option<LogLevel>,
+) -> SettingsEffects {
+    let startup = previous.is_none();
+    let log_level = match log_override {
+        Some(cli_level) => startup.then_some(cli_level),
+        None => previous
+            .is_none_or(|p| p.log_level != saved.log_level)
+            .then_some(saved.log_level),
+    };
+    SettingsEffects {
+        theme: previous
+            .is_none_or(|p| p.theme != saved.theme)
+            .then_some(saved.theme),
+        log_level: log_level.map(Into::into),
+        restart_stage: previous.is_none_or(|p| p.stage != saved.stage),
+    }
+}
+
+pub fn apply_settings(app: &AppHandle, previous: Option<&Settings>, saved: &Settings) {
+    let effects = settings_effects(previous, saved, app.state::<AppState>().log_override);
+    if let Some(theme) = effects.theme {
+        window::apply_window_theme(app, theme);
+    }
+    if let Some(level) = effects.log_level {
+        log::set_max_level(level);
+    }
+    if effects.restart_stage {
+        app.state::<Stage>().start(&saved.stage);
     }
 }
 
@@ -37,11 +71,7 @@ pub fn update_settings(
     settings: Settings,
 ) -> AppResult<Settings> {
     let (previous, saved) = state.settings.update(settings)?;
-    if saved.stage != previous.stage {
-        app.state::<Stage>().start(&saved.stage);
-    }
-    apply_window_theme(&app, saved.theme);
-    log::set_max_level(saved.log_level.into());
+    apply_settings(&app, Some(&previous), &saved);
     log::info!("Settings updated");
     Ok(saved)
 }
@@ -53,10 +83,13 @@ pub fn get_keybindings(state: State<'_, AppState>) -> Keybindings {
 
 #[tauri::command]
 pub fn set_keybindings(
+    app: AppHandle,
     state: State<'_, AppState>,
     bindings: Keybindings,
 ) -> AppResult<Keybindings> {
-    state.keybindings.update(bindings)
+    let saved = state.keybindings.update(bindings)?;
+    menu::rebuild(&app);
+    Ok(saved)
 }
 
 #[tauri::command]
@@ -211,5 +244,99 @@ mod tests {
     #[test]
     fn logged_text_escapes_line_breaks() {
         assert_eq!(sanitize_log_text("a\nb\rc"), "a\\nb\\rc");
+    }
+
+    fn with_theme(theme: Theme) -> Settings {
+        Settings {
+            theme,
+            ..Settings::default()
+        }
+    }
+
+    #[test]
+    fn changed_theme_is_applied() {
+        let previous = with_theme(Theme::Light);
+        let saved = with_theme(Theme::Dark);
+        let effects = settings_effects(Some(&previous), &saved, None);
+        assert_eq!(
+            effects,
+            SettingsEffects {
+                theme: Some(Theme::Dark),
+                log_level: None,
+                restart_stage: false,
+            }
+        );
+    }
+
+    #[test]
+    fn unchanged_settings_apply_nothing() {
+        let settings = Settings::default();
+        let effects = settings_effects(Some(&settings), &settings, None);
+        assert_eq!(
+            effects,
+            SettingsEffects {
+                theme: None,
+                log_level: None,
+                restart_stage: false,
+            }
+        );
+    }
+
+    #[test]
+    fn changed_log_level_is_applied() {
+        let previous = Settings::default();
+        let saved = Settings {
+            log_level: LogLevel::Debug,
+            ..Settings::default()
+        };
+        let effects = settings_effects(Some(&previous), &saved, None);
+        assert_eq!(effects.log_level, Some(log::LevelFilter::Debug));
+    }
+
+    #[test]
+    fn cli_log_override_beats_a_changed_log_level() {
+        let previous = Settings::default();
+        let saved = Settings {
+            log_level: LogLevel::Trace,
+            ..Settings::default()
+        };
+        let effects = settings_effects(Some(&previous), &saved, Some(LogLevel::Error));
+        assert_eq!(effects.log_level, None);
+    }
+
+    #[test]
+    fn cli_log_override_is_applied_at_startup() {
+        let saved = Settings {
+            log_level: LogLevel::Trace,
+            ..Settings::default()
+        };
+        let effects = settings_effects(None, &saved, Some(LogLevel::Error));
+        assert_eq!(effects.log_level, Some(log::LevelFilter::Error));
+    }
+
+    #[test]
+    fn startup_without_override_applies_everything() {
+        let saved = Settings {
+            theme: Theme::Dark,
+            log_level: LogLevel::Warn,
+            ..Settings::default()
+        };
+        assert_eq!(
+            settings_effects(None, &saved, None),
+            SettingsEffects {
+                theme: Some(Theme::Dark),
+                log_level: Some(log::LevelFilter::Warn),
+                restart_stage: true,
+            }
+        );
+    }
+
+    #[test]
+    fn changed_stage_setting_restarts_stage() {
+        let previous = Settings::default();
+        let mut saved = Settings::default();
+        saved.stage.port = previous.stage.port + 1;
+        assert!(settings_effects(Some(&previous), &saved, None).restart_stage);
+        assert!(!settings_effects(Some(&previous), &previous, None).restart_stage);
     }
 }

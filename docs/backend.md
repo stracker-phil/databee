@@ -18,21 +18,32 @@ Stage hook each have their own page.
 3. **Single-instance handoff.** `ipc::try_forward` sends the message to a running instance (see
    [below](#cli-and-single-instance-handoff)). Only when no instance listens does startup continue, after
    taking the instance lock. The handoff is custom (no `tauri-plugin-single-instance`).
-4. **`start_app`** builds Tauri:
+4. **`AppState`.** `run` opens every JSON store with `AppState::open`, installs the Keychain secret store and
+   keeps the `--log-level` override in `AppState::log_override`. The effective level (override, else the
+   stored `log_level`) is computed here, so logging never starts at `Trace`.
+5. **`start_app`** builds Tauri, with `.manage(state)` as the first builder call so plugins can use it:
    - plugins: log (stdout plus a rotating file, 3 × 5 MiB; `sqlx` is capped at Warn so SQL text stays out of
-     the log) and opener;
+     the log), `init_logging` (a one-line plugin that sets the effective level right after the log plugin's
+     setup, which sets `Trace` because its dispatch level caps every later change) and opener;
    - `on_menu_event` → `menu::forward`.
 
    Then `setup` runs:
-   - `AppState::open` loads every JSON store and installs the Keychain secret store.
    - It builds the native menu from the keybindings store.
-   - The log level comes from `--log-level`, or else from the settings.
    - It queues the initial launch request. The page pulls it later.
-   - It applies the window theme so the vibrancy matches.
-   - It generates a Stage token if there is none and starts the Stage server.
-   - In debug builds it applies `DATABEE_WINDOW_FRAME` (see [testing](testing.md#driving-the-app)).
-   - It binds the IPC socket and serves it in a task.
+   - `ensure_stage_token` generates a Stage token if there is none. A token that can't be saved is logged
+     and kept in memory.
+   - It manages `Stage` and calls `commands::apply_settings(app, None, &settings)`: window theme
+     (`window::apply_window_theme`), log level and the Stage server.
+   - In debug builds `apply_dev_frame` applies `DATABEE_WINDOW_FRAME` (see [testing](testing.md#driving-the-app)).
+   - `start_ipc` binds the IPC socket and serves it in a task; every message goes to
+     `launch::on_ipc_message`. A bind error is logged and the app runs without single-instance handoff.
 
+### Settings side effects
+
+`update_settings` and startup both call `commands::apply_settings(app, previous, saved)`. The decision is the
+pure `settings_effects(previous, saved, log_override)`: without `previous` everything applies; otherwise only
+what changed (theme, log level, Stage settings). A CLI `--log-level` wins for the app's lifetime, so a
+settings change never resets it.
 
 The window itself is declared in `tauri.conf.json`: label `main`, overlay title bar, transparent background
 with the `sidebar` vibrancy effect. No Rust code creates windows.
@@ -58,6 +69,7 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
 | `wp_cache` | `Mutex<HashMap<"session/db", WpContext>>` | WordPress detection results; cleared per session by `invalidate_wp` |
 | `config_dir` | `PathBuf` | used to read the optional `entities.toml` |
+| `log_override` | `Option<LogLevel>` | the CLI `--log-level`; wins over the stored level (`settings_effects`) |
 
 `stage::Stage` is managed separately (see [stage.md](stage.md)).
 
@@ -130,6 +142,9 @@ A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}
   - `error {message}`
   - `activate`
   - `eval {js}`: compiled into debug builds only, used by `scripts/dev/js.sh`.
+- **Handling** (`launch::on_ipc_message`): `eval` runs in the window; everything else is logged by type
+  (`IpcMessage::kind`, never the contents), goes through `LaunchQueue::push`, emits `launch` when it queued an
+  event, then unminimizes and focuses the window (not with `DATABEE_BACKGROUND=1`).
 - The launch `password` is a `Secret`: plain string on the wire (`connection::serialize_exposed`), redacted in
   `IpcMessage`'s derived `Debug`.
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
@@ -224,22 +239,22 @@ escaped, so the page cannot forge log lines.
 
 ## Native menu
 
-`menu.rs` builds the menus once, at startup: DataBee, File, Edit, View, Go and Window. Items that map to
-app commands use the ids listed in `LABELS`. Their accelerators come from
-`KeybindingsStore::menu_binding`: the user override, else `MENU_DEFAULTS` in `store/keybindings.rs`. Those
-defaults mirror the `defaultBinding` of the TypeScript commands marked `menu: true`. A click emits `command`
-with the id. `keybindings::accelerator` converts a binding to Tauri's form (`Mod` → `CmdOrCtrl`, `-` →
-`Minus`, `=` → `Equal`). Tauri accelerators name physical keys and have none for `+`, so `+` becomes
-`Shift+Equal` (its US-layout key); a key without an accelerator name (e.g. `Ä`) gets no menu accelerator,
+`menu.rs` builds the menus: DataBee, File, Edit, View, Go and Window. Items that map to app commands are listed
+once in `MENU_ITEMS` (id, label, default binding). Their accelerators come from
+`KeybindingsStore::menu_binding`: the user override, else the `MENU_ITEMS` default. Those defaults mirror the
+`defaultBinding` of the TypeScript commands marked `menu: true` (a unit test in `menu.rs` compares them). A
+click emits `command` with the id (`menu::forward`; `is_menu_command` filters out the native items).
+`keybindings::accelerator` converts a binding to Tauri's form (`Mod` → `CmdOrCtrl`, `-` → `Minus`, `=` →
+`Equal`). Tauri accelerators name physical keys and have none for `+`, so `+` becomes `Shift+Equal` (its
+US-layout key); a binding without an accelerator (e.g. `Ä`) is logged and the item gets no menu accelerator,
 while the webview still handles it.
 
 To add a menu item:
-1. Set `menu: true` on the TypeScript command.
-2. Add the id to `LABELS` in `menu.rs`.
+1. Set `menu: true` (and `defaultBinding`) on the TypeScript command.
+2. Add the id, label and default to `MENU_ITEMS` in `menu.rs`.
 3. Place the item in `build()`.
-4. Add the default to `MENU_DEFAULTS`.
 
-The menu isn't rebuilt when a binding changes, so a new menu accelerator takes effect after a restart.
+`set_keybindings` rebuilds the menu (`menu::rebuild`), so a new accelerator applies at once.
 
 ## Dependencies
 

@@ -16,6 +16,7 @@ pub mod stage;
 mod stage_commands;
 mod state;
 pub mod store;
+mod window;
 pub mod wp;
 mod wp_commands;
 
@@ -23,7 +24,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use tauri::{Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
 use crate::cli::CliOutcome;
@@ -95,7 +96,8 @@ fn log_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .rotation_strategy(RotationStrategy::KeepSome(3))
         .max_file_size(MAX_LOG_BYTES)
         .timezone_strategy(TimezoneStrategy::UseLocal)
-        // Effective level is set from settings in `setup`.
+        // The dispatch caps every later `log::set_max_level`, so it lets everything through;
+        // `init_logging` sets the effective level.
         .level(log::LevelFilter::Trace)
         // sqlx logs statements at info; SQL text must not reach the log by default.
         .level_for("sqlx", log::LevelFilter::Warn)
@@ -105,6 +107,56 @@ fn log_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .build()
 }
 
+/// Runs after `log_plugin`'s setup, which raises the max level to `Trace`, and applies the effective level.
+fn init_logging(level: LogLevel) -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("log-level")
+        .setup(move |_, _| {
+            log::set_max_level(level.into());
+            Ok(())
+        })
+        .build()
+}
+
+#[cfg(debug_assertions)]
+fn apply_dev_frame(app: &tauri::App) {
+    let (Some((x, y, w, h)), Some(window)) = (dev::window_frame(), app.get_webview_window("main"))
+    else {
+        return;
+    };
+    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+    let _ = window.set_size(tauri::LogicalSize::new(w, h));
+}
+
+/// Without the socket the app still runs, only without single-instance handoff.
+fn start_ipc(handle: AppHandle, socket: &Path) {
+    let listener = match ipc::bind(socket) {
+        Ok(listener) => listener,
+        Err(e) => {
+            log::warn!("Cannot listen on {}: {e}", socket.display());
+            return;
+        }
+    };
+    tauri::async_runtime::spawn(ipc::serve(listener, move |message| {
+        launch::on_ipc_message(&handle, message)
+    }));
+}
+
+/// A token that can't be saved still works until the app quits.
+fn ensure_stage_token(state: &AppState) -> Settings {
+    let mut settings = state.settings.get();
+    if !settings.stage.token.is_empty() {
+        return settings;
+    }
+    settings.stage.token = stage::new_token();
+    match state.settings.update(settings.clone()) {
+        Ok((_, saved)) => saved,
+        Err(e) => {
+            log::warn!("Cannot save the Stage token: {e}");
+            settings
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let config_dir = config_dir();
@@ -112,11 +164,11 @@ pub fn run() {
         eprintln!("Cannot create {}: {e}", config_dir.display());
     }
     let socket = config_dir.join("databee.sock");
-    let default_port = Settings::peek(&config_dir).default_port;
+    let stored = Settings::peek(&config_dir);
 
     let (message, log_override) = match cli::parse(
         std::env::args_os(),
-        default_port,
+        stored.default_port,
         &mut std::io::stdin().lock(),
         &|key| std::env::var(key).ok(),
     ) {
@@ -149,69 +201,34 @@ pub fn run() {
         }
     };
 
-    start_app(config_dir, socket, message, log_override);
+    let mut state = AppState::open(&config_dir, Box::new(secrets::Keychain));
+    state.log_override = log_override;
+    start_app(
+        state,
+        socket,
+        message,
+        log_override.unwrap_or(stored.log_level),
+    );
 }
 
-fn start_app(
-    config_dir: PathBuf,
-    socket: PathBuf,
-    initial: IpcMessage,
-    log_override: Option<LogLevel>,
-) {
+fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: LogLevel) {
     tauri::Builder::default()
+        .manage(state)
         .plugin(log_plugin())
+        .plugin(init_logging(log_level))
         .plugin(tauri_plugin_opener::init())
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
         .setup(move |app| {
-            let state = AppState::open(&config_dir, Box::new(secrets::Keychain));
-            app.set_menu(menu::build(app, &state.keybindings)?)?;
-            let level = log_override.unwrap_or(state.settings.get().log_level);
-            log::set_max_level(level.into());
             log::info!("DataBee {} started", env!("CARGO_PKG_VERSION"));
+            let state = app.state::<AppState>();
+            app.set_menu(menu::build(app, &state.keybindings)?)?;
             state.launches.push(initial);
-            commands::apply_window_theme(app.handle(), state.settings.get().theme);
-            let mut settings = state.settings.get();
-            if settings.stage.token.is_empty() {
-                settings.stage.token = stage::new_token();
-                settings = state.settings.update(settings)?.1;
-            }
-            let presenter = stage::Stage::new(app.handle(), IDENTIFIER);
-            presenter.start(&settings.stage);
-            app.manage(presenter);
-            app.manage(state);
-
+            let settings = ensure_stage_token(&state);
+            app.manage(stage::Stage::new(app.handle(), IDENTIFIER));
+            commands::apply_settings(app.handle(), None, &settings);
             #[cfg(debug_assertions)]
-            if let (Some((x, y, w, h)), Some(window)) =
-                (dev::window_frame(), app.get_webview_window("main"))
-            {
-                let _ = window.set_position(tauri::LogicalPosition::new(x, y));
-                let _ = window.set_size(tauri::LogicalSize::new(w, h));
-            }
-
-            let listener = ipc::bind(&socket)?;
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(ipc::serve(listener, move |message| {
-                let window = handle.get_webview_window("main");
-                #[cfg(debug_assertions)]
-                if let IpcMessage::Eval { js } = &message {
-                    if let Some(w) = &window {
-                        let _ = w.eval(js);
-                    }
-                    return;
-                }
-                log::info!("Received launch request from another process");
-                if handle.state::<AppState>().launches.push(message) {
-                    let _ = handle.emit(launch::LAUNCH_EVENT, ());
-                }
-                #[cfg(debug_assertions)]
-                if dev::background() {
-                    return;
-                }
-                if let Some(window) = window {
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
-            }));
+            apply_dev_frame(app);
+            start_ipc(app.handle().clone(), &socket);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -283,4 +300,16 @@ fn start_app(
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identifier_matches_the_tauri_config() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(conf["identifier"], serde_json::json!(IDENTIFIER));
+    }
 }

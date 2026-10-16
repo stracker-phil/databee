@@ -37,6 +37,19 @@ pub enum IpcMessage {
     },
 }
 
+impl IpcMessage {
+    /// The message type for logs; never its contents (passwords, scripts).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            IpcMessage::Launch { .. } => "Launch",
+            IpcMessage::Error { .. } => "Error",
+            IpcMessage::Activate => "Activate",
+            #[cfg(debug_assertions)]
+            IpcMessage::Eval { .. } => "Eval",
+        }
+    }
+}
+
 impl From<Launch> for IpcMessage {
     fn from(l: Launch) -> Self {
         IpcMessage::Launch {

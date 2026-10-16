@@ -12,6 +12,17 @@ pub fn background() -> bool {
     std::env::var("DATABEE_BACKGROUND").is_ok_and(|v| v == "1")
 }
 
+/// Runs JavaScript sent by `scripts/dev/js.sh` in the main window.
+pub fn eval(app: &tauri::AppHandle, js: &str) {
+    use tauri::Manager;
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if let Err(e) = window.eval(js) {
+        log::warn!("Couldn't evaluate script from scripts/dev: {e}");
+    }
+}
+
 fn parse_frame(raw: &str) -> Option<(f64, f64, f64, f64)> {
     let v: Vec<f64> = raw
         .split(',')
