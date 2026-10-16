@@ -48,6 +48,7 @@ Dialogs · CommandPalette · Toasts
 | `sessions`, `activeSessionId` | open connections (`SessionInfo`) |
 | `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error) or `TableTab` (database, table, data/structure view, filter, preview) |
 | `schema` | per session: databases and tables per database |
+| `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
 | `mode`, `modeChosen` | `"wp" \| "db"`. A WordPress database switches to `wp` until the user picks a mode |
 | `wp`, `wpNav` | detection results per `session/db`; navigation stack (max 100) |
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow) |
@@ -73,7 +74,7 @@ Conventions:
 - Selection: `selectCell` tags the cell with the active tab. `clearSelectionFor(state, tabId)` drops it when
   its tab closes or is left (`activate`); a `dataVersion` bump (`bumpData`) clears it outright.
 - `disconnect(sessionId)` purges in one `set`: the session, its tabs, schema, `queryCounter`, `pending` and
-  `applied` entries, every `wp` key `<session>/…`, the selection if its tab was closed, and `wpNav` and
+  `applied` entries, every `wp` and `structures` key `<session>/…`, the selection if its tab was closed, and `wpNav` and
   `entityMeta` when the session was active.
 - `switchDatabase` resets `wpNav`, the selection and `entityMeta`; unless the target is known WordPress it
   also resets `mode` to `db` and `modeChosen`. `connect` resets `wpNav`, `mode` and the selection and reuses
@@ -153,6 +154,33 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Database workspace | `Sidebar` (tables tree with filter, history), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, structure view), `Inspector` + `ValueTree` (PHP/JSON decode) |
 | Overlays | `Modal`, `Dialogs`, `SettingsDialog` (pages: Appearance, Shortcuts, Queries, Display, Connections, WordPress, Presentations, Logging), `CommandPalette`, `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens) |
+
+### Workspace layout
+
+`App.tsx`: `Workspace` returns the connect screen, the WordPress shell or the database shell (`AppShell`
+wraps the toolbar, pending tray and status bar). In `DbWorkspace`, `main` (`TabBar` + `TabPanels`) keeps
+the same tree position whatever the inspector does: docking only switches the class on `.workspace`
+(`dock-right`, `dock-bottom`) and the `--inspector-size` variable, so CodeMirror history and table pages
+survive. The sidebar width is the `--sidebar-width` token in `theme.css`. All tabs of the active session
+stay mounted; inactive panels are `hidden`. Tabs use a roving `tabIndex` with Left/Right arrows
+(`TabItem`, `tabIcon`). Shortcut hints (new tab, run statement, run all, editor placeholder) come from
+`useBindingLabel(commandId)` in `commands/index.ts`, so they follow rebinding.
+
+### Results grid
+
+`ResultsGrid` resets its selection and inline editor when `rows` changes identity and clamps indices
+before use. Keys live in `KEY_ACTIONS` (arrows, Home/End, PageUp/PageDown, Enter to edit, ⌘C). `bytes`
+cells are never editable: they show a `0x…` preview, which an edit would write back.
+
+### Table tabs
+
+`TableTab.tsx`: `useTableStructure` reads the store's `structures` cache (`loadStructure`, keyed by
+`session/database/table`, one `describeTable` per `dataVersion`, purged on disconnect); `DataView` and
+`StructureView` share it. `DataView` browses only once the structure (or its error) is known, so an ID
+filter always has the primary key. `useBrowse` drops replies that are not the latest request, and the
+`Pager` moves by `BrowsePage.limit` (Rust's clamped page size). A failed structure shows an alert and
+leaves editing off. `FilterBar` and `useRowEditing` hold the filter input and the row menu and cell edits;
+primary-key and WordPress id columns match case-insensitively.
 
 Interactive elements carry `data-stage`, `data-stage-label` and `data-stage-list` attributes. These are the
 anchors for the [Stage hook](stage.md). Keep them stable when you change components.

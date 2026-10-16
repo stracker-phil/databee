@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 export interface MenuItem {
   label: string;
   action: () => void;
+  disabled?: boolean;
 }
 
 export type MenuEntry = MenuItem | "separator";
@@ -40,6 +41,7 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
           <button
             key={item.label}
             role="menuitem"
+            disabled={item.disabled}
             onClick={() => {
               onClose();
               item.action();

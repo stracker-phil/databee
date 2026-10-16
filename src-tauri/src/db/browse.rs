@@ -3,7 +3,7 @@
 use super::{AppliedFilter, BrowseRequest, Dialect, FilterKind, id_filter, lexer};
 use crate::error::{AppError, AppResult};
 
-/// Matches the largest page the UI asks for.
+/// Largest page served; the UI asks for its row limit and pages by the `limit` it gets back.
 const MAX_PAGE_ROWS: u32 = 500;
 
 /// Page size the caller gets; the query fetches one more row to detect a next page.

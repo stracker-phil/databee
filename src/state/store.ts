@@ -22,6 +22,7 @@ import {
   type SessionInfo,
   type Settings,
   type TableInfo,
+  type TableStructure,
   type UiState,
   type WpInfo,
 } from "../api";
@@ -91,6 +92,13 @@ export type Dialog =
   | { type: "prompt"; title: string; value: string; onSubmit: (value: string) => void }
   | { type: "insertRow"; database: string; table: string; columns: ColumnInfo[] };
 
+/** A table's `describeTable` reply for one `dataVersion`; the previous structure stays while reloading. */
+export interface StructureEntry {
+  version: number;
+  structure: TableStructure | null;
+  error: AppError | null;
+}
+
 export interface SchemaState {
   databases: DatabaseInfo[];
   tables: Record<string, TableInfo[]>;
@@ -126,6 +134,8 @@ interface State {
   tabs: Tab[];
   activeTabId: string | null;
   schema: Record<string, SchemaState>;
+  /** Table structures by `session/database/table`, shared by every tab of that table. */
+  structures: Record<string, StructureEntry>;
   favorites: Favorite[];
   toasts: Toast[];
   dialog: Dialog | null;
@@ -171,6 +181,8 @@ interface Actions {
   switchDatabase(sessionId: string, database: string): Promise<void>;
   loadDatabases(sessionId: string): Promise<void>;
   loadTables(sessionId: string, database: string): Promise<void>;
+  /** Describes the table once per `dataVersion`; the reply lands in `structures`. */
+  loadStructure(sessionId: string, database: string, table: string): Promise<void>;
   openQueryTab(sql?: string, title?: string): void;
   /** An open tab of the same table is activated; `view` and `preview: false` (pin) apply to it only when given. */
   openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean }): void;
@@ -233,6 +245,7 @@ const initialState: State = {
   tabs: [],
   activeTabId: null,
   schema: {},
+  structures: {},
   favorites: [],
   toasts: [],
   dialog: null,
@@ -289,6 +302,8 @@ function beginRequest(key: string) {
 }
 
 const isLatest = (key: string, token: number) => latestRequest.get(key) === token;
+
+const structureKey = (sessionId: string, database: string, table: string) => `${sessionId}/${database}/${table}`;
 
 /** Route identity that does not depend on property order. */
 function routeKey(route: WpRoute): string {
@@ -410,7 +425,9 @@ export const useStore = create<Store>()((set, get) => {
         const selectionKept = tabs.some((t) => t.id === s.selectedCell?.tabId);
         const { [sessionId]: _schema, ...schema } = s.schema;
         const { [sessionId]: _counter, ...queryCounter } = s.queryCounter;
-        const wp = Object.fromEntries(Object.entries(s.wp).filter(([key]) => !key.startsWith(`${sessionId}/`)));
+        const ofOtherSession = ([key]: [string, unknown]) => !key.startsWith(`${sessionId}/`);
+        const wp = Object.fromEntries(Object.entries(s.wp).filter(ofOtherSession));
+        const structures = Object.fromEntries(Object.entries(s.structures).filter(ofOtherSession));
         return {
           sessions,
           tabs,
@@ -419,6 +436,7 @@ export const useStore = create<Store>()((set, get) => {
           schema,
           queryCounter,
           wp,
+          structures,
           pending: s.pending.filter((p) => p.sessionId !== sessionId),
           applied: s.applied.filter((a) => a.sessionId !== sessionId),
           selectedCell: selectionKept ? s.selectedCell : null,
@@ -486,6 +504,24 @@ export const useStore = create<Store>()((set, get) => {
         });
       } catch (e) {
         fail(e, `Could not list tables of ${database}`);
+      }
+    },
+
+    async loadStructure(sessionId, database, table) {
+      const key = structureKey(sessionId, database, table);
+      const version = get().dataVersion;
+      const cached: StructureEntry | undefined = get().structures[key];
+      if (cached?.version === version) return;
+      const write = (entry: Omit<StructureEntry, "version">) => set((s) => ({ structures: { ...s.structures, [key]: { ...entry, version } } }));
+      // A newer version or a disconnect (which drops the entry) makes this reply stale.
+      const current = () => get().structures[key]?.version === version;
+      // Claiming the version up front dedupes concurrent callers; the old structure stays visible meanwhile.
+      write({ structure: cached?.structure ?? null, error: cached?.error ?? null });
+      try {
+        const structure = await api.describeTable(sessionId, database, table);
+        if (current()) write({ structure, error: null });
+      } catch (e) {
+        if (current()) write({ structure: null, error: toAppError(e) });
       }
     },
 
@@ -1002,6 +1038,9 @@ function retitleRecent(key: string, title: string) {
 export function resetStore(patch: Partial<State> = {}) {
   useStore.setState({ ...initialState, ...patch });
 }
+
+export const selectStructure = (s: Store, sessionId: string, database: string, table: string): StructureEntry | undefined =>
+  s.structures[structureKey(sessionId, database, table)];
 
 export const selectActiveSession = (s: Store) => s.sessions.find((x) => x.id === s.activeSessionId) ?? null;
 export const selectWpRoute = (s: Store): WpRoute => s.wpNav.stack[s.wpNav.index] ?? { screen: "dashboard" };

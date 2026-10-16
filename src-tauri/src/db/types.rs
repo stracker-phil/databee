@@ -121,5 +121,7 @@ pub struct AppliedFilter {
 pub struct BrowsePage {
     pub result: ResultSet,
     pub has_more: bool,
+    /// Page size after the clamp; the next page starts at `offset + limit`.
+    pub limit: u32,
     pub filter: Option<AppliedFilter>,
 }

@@ -354,9 +354,10 @@ impl MySqlSession {
 
     pub async fn browse(&self, req: &BrowseRequest, timeout: Duration) -> AppResult<BrowsePage> {
         let (sql, filter) = browse_sql(req, Dialect::MYSQL)?;
-        let limit = page_limit(req) as usize;
+        let limit = page_limit(req);
         let mut conn = self.meta.acquire().await?;
-        let outcome = tokio::time::timeout(timeout, run_script(&mut conn, &sql, limit)).await;
+        let outcome =
+            tokio::time::timeout(timeout, run_script(&mut conn, &sql, limit as usize)).await;
         let mut result = match outcome {
             Ok(results) => results?.pop().unwrap_or_default(),
             Err(_) => {
@@ -370,6 +371,7 @@ impl MySqlSession {
         Ok(BrowsePage {
             result,
             has_more,
+            limit,
             filter,
         })
     }

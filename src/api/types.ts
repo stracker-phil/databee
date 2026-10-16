@@ -293,6 +293,8 @@ export interface AppliedFilter {
 export interface BrowsePage {
   result: ResultSet;
   hasMore: boolean;
+  /** Page size after Rust's clamp; the next page starts at `offset + limit`. */
+  limit: number;
   filter?: AppliedFilter | null;
 }
 

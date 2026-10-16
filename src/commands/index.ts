@@ -1,6 +1,6 @@
 import { TEXT_SIZES } from "../api";
 import { selectActivePending, selectActiveTab, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
-import { allCommands, getCommand, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
+import { allCommands, bindingFor, bindingLabel, getCommand, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 
 export * from "./registry";
 
@@ -174,6 +174,12 @@ export const LIST_LABELS: Record<WpList, string> = {
 export function installCommands() {
   if (allCommands().length === 0) registerCommands(APP_COMMANDS);
   setOverrides(useStore.getState().keybindings);
+}
+
+/** The key label of a command (`⌘T`), or "" when unbound; follows the user's rebinding. */
+export function useBindingLabel(id: string): string {
+  const custom = useStore((s) => s.keybindings);
+  return bindingLabel(bindingFor(id, custom));
 }
 
 /** Runs a command by id (native menu items and tests use this). */

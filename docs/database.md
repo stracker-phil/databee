@@ -131,8 +131,9 @@ Full binary values never cross IPC. Only the first 16 bytes are sent, as hex.
 SELECT * FROM `db`.`t` [WHERE (<filter>\n)] [ORDER BY `col` ASC|DESC] LIMIT <limit + 1> OFFSET <offset>
 ```
 
-- **Paging:** fetching one extra row tells whether there is a next page. The UI uses
-  `min(rowLimit, 500)` per page; `page_limit` clamps the requested limit to `1..=MAX_PAGE_ROWS` (500).
+- **Paging:** fetching one extra row tells whether there is a next page. The UI asks for `rowLimit` rows;
+  `page_limit` clamps the requested limit to `1..=MAX_PAGE_ROWS` (500) and `BrowsePage.limit` reports the
+  clamped size, which the UI pages by.
 - **Sorting:** one column at a time, quoted with `Dialect::quote_ident`.
 - **Filter:**
   - If the table has a single-column primary key and the text matches the id grammar, the text becomes

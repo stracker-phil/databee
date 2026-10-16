@@ -1,5 +1,6 @@
-import { useMemo, useRef } from "react";
-import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
+import { useMemo } from "react";
+import CodeMirror from "@uiw/react-codemirror";
+import { useBindingLabel } from "../commands";
 import { MySQL, sql } from "@codemirror/lang-sql";
 import { Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
@@ -13,6 +14,8 @@ interface Props {
   onView?: (view: EditorView) => void;
 }
 
+const EXAMPLE_QUERY = "SELECT * FROM wp_options WHERE autoload = 'yes'";
+
 export function currentStatement(view: EditorView): string {
   const { state } = view;
   const sel = state.selection.main;
@@ -21,7 +24,8 @@ export function currentStatement(view: EditorView): string {
 }
 
 export function QueryEditor({ value, onChange, schema, theme, onView }: Props) {
-  const ref = useRef<ReactCodeMirrorRef>(null);
+  const runKey = useBindingLabel("editor.run");
+  const placeholder = runKey ? `${EXAMPLE_QUERY}   ${runKey} runs the statement at the cursor` : EXAMPLE_QUERY;
 
   const extensions = useMemo(
     () => [
@@ -35,7 +39,6 @@ export function QueryEditor({ value, onChange, schema, theme, onView }: Props) {
 
   return (
     <CodeMirror
-      ref={ref}
       className="editor"
       data-stage="editor"
       data-stage-label="SQL editor"
@@ -44,7 +47,7 @@ export function QueryEditor({ value, onChange, schema, theme, onView }: Props) {
       height="100%"
       theme={theme}
       autoFocus
-      placeholder="SELECT * FROM wp_options WHERE autoload = 'yes'  —  ⌘↵ runs the statement at the cursor"
+      placeholder={placeholder}
       basicSetup={{ foldGutter: false, highlightActiveLineGutter: true }}
       extensions={extensions}
       onChange={onChange}

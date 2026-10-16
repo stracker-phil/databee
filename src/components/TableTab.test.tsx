@@ -1,12 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE, type TableStructure } from "../api";
+import { api, EMPTY_UI_STATE, type BrowsePage, type TableStructure } from "../api";
 import { useStore, type TableTab as TableTabState } from "../state/store";
-import { connectedStore, resultSet, session } from "../test/fixtures";
+import { connectedStore, num, resultSet, session, text } from "../test/fixtures";
 import { TableTab } from "./TableTab";
 
 const mocked = vi.mocked(api, true);
@@ -28,13 +28,14 @@ describe("TableTab", () => {
     connectedStore();
     useStore.setState({ tabs: [tab], activeTabId: tab.id });
     mocked.describeTable.mockResolvedValue(structure);
-    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, filter: null });
+    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: null });
   });
 
   it("sends the primary key with the filter and shows the ID interpretation as a chip", async () => {
     mocked.browseTable.mockResolvedValue({
       result: resultSet(),
       hasMore: false,
+      limit: 500,
       filter: { kind: "ids", sql: "`ID` IN (3229, 3227)", label: "ID in (3229, 3227)" },
     });
     render(<TableTab tab={tab} />);
@@ -48,7 +49,7 @@ describe("TableTab", () => {
   });
 
   it("shows no chip for plain SQL filters", async () => {
-    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, filter: { kind: "sql", sql: "post_type = 'page'", label: "post_type = 'page'" } });
+    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: { kind: "sql", sql: "post_type = 'page'", label: "post_type = 'page'" } });
     render(<TableTab tab={tab} />);
     await screen.findByText("Hello world");
     expect(screen.queryByRole("button", { name: /ID in/ })).not.toBeInTheDocument();
@@ -79,6 +80,95 @@ describe("TableTab", () => {
     const fitted = parseFloat(grid.style.getPropertyValue("--col-0"));
     expect(fitted).toBeLessThan(300);
     expect(fitted).toBeGreaterThanOrEqual(39);
+  });
+
+  describe("opening", () => {
+    it("describes the table once and browses it once", async () => {
+      render(<TableTab tab={tab} />);
+      await screen.findByText("Hello world");
+      expect(mocked.describeTable).toHaveBeenCalledTimes(1);
+      expect(mocked.browseTable).toHaveBeenCalledTimes(1);
+    });
+
+    it("sends the primary key with the very first browse of a tab opened with an ID filter", async () => {
+      render(<TableTab tab={{ ...tab, filter: "3229" }} />);
+      await screen.findByText("Hello world");
+      expect(mocked.browseTable).toHaveBeenNthCalledWith(1, session.id, expect.objectContaining({ filter: "3229", primaryKey: "ID" }));
+    });
+
+    it("does not describe the table again when switching Data, Structure and Data", async () => {
+      useStore.setState({ tabs: [tab] });
+      const Live = () => <TableTab tab={useStore((s) => s.tabs[0]) as TableTabState} />;
+      render(<Live />);
+      await screen.findByText("Hello world");
+      await userEvent.click(screen.getByRole("button", { name: "Structure" }));
+      await screen.findByRole("heading", { name: "Columns" });
+      await userEvent.click(screen.getByRole("button", { name: "Data" }));
+      await screen.findByText("Hello world");
+      expect(mocked.describeTable).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("paging", () => {
+    const pageOf = (label: string, patch: Partial<BrowsePage> = {}): BrowsePage => ({
+      result: resultSet({ rows: [[num("1"), text(`${label}-x`)], [num("2"), text(`${label}-y`)]] }),
+      hasMore: true,
+      limit: 2,
+      filter: null,
+      ...patch,
+    });
+    const held = () => {
+      let resolve!: (page: BrowsePage) => void;
+      const promise = new Promise<BrowsePage>((r) => (resolve = r));
+      return { promise, resolve };
+    };
+
+    it("shows the latest page when an earlier page's reply arrives last", async () => {
+      const first = held();
+      const second = held();
+      mocked.browseTable.mockResolvedValueOnce(pageOf("p0")).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      render(<TableTab tab={tab} />);
+      await screen.findByText("p0-x");
+
+      await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+      await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+      await act(async () => second.resolve(pageOf("p4", { hasMore: false })));
+      await act(async () => first.resolve(pageOf("p2")));
+
+      expect(await screen.findByText("p4-x")).toBeInTheDocument();
+      expect(screen.queryByText("p2-x")).not.toBeInTheDocument();
+      expect(screen.getByText("5–6")).toBeInTheDocument();
+    });
+
+    it("advances by the page size Rust served, not by the rowLimit setting", async () => {
+      mocked.browseTable.mockResolvedValue(pageOf("p0", { limit: 500 }));
+      render(<TableTab tab={tab} />);
+      await screen.findByText("p0-x");
+      await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+      await waitFor(() => expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ offset: 500 })));
+    });
+  });
+
+  describe("editing", () => {
+    it("reports an unavailable structure, opens no editor and disables Insert row", async () => {
+      mocked.describeTable.mockRejectedValue({ kind: "database", message: "Table is locked", code: null });
+      render(<TableTab tab={tab} />);
+      expect(await screen.findByRole("alert")).toHaveTextContent(/Editing unavailable.*Table is locked/);
+      await userEvent.dblClick(await screen.findByText("Hello world"));
+      expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Insert row" })).toBeDisabled();
+    });
+
+    it("offers Delete row when the primary key differs from the result column in case", async () => {
+      mocked.describeTable.mockResolvedValue({
+        ...structure,
+        columns: [{ ...structure.columns[0], name: "id" }, structure.columns[1]],
+        indexes: [{ name: "PRIMARY", unique: true, columns: ["id"] }],
+      });
+      render(<TableTab tab={tab} />);
+      fireEvent.contextMenu(await screen.findByText("Hello world"));
+      expect(screen.getByRole("menuitem", { name: "Delete row" })).toBeInTheDocument();
+    });
   });
 
   describe("structure view", () => {

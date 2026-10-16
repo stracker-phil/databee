@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { api } from "./api";
+import { api, toAppError } from "./api";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { Dialogs } from "./components/Dialogs";
 import { FavoritesBar } from "./components/FavoritesBar";
@@ -24,7 +24,7 @@ function useBackendEvents() {
   useEffect(() => {
     const { loadSettings, handleLaunchEvents, toast } = useStore.getState();
     const drainLaunches = () =>
-      api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${String(e)}`));
+      api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     installCommands();
     void loadSettings().then(() => (installCommands(), drainLaunches()));
@@ -47,53 +47,73 @@ function useBackendEvents() {
   }, []);
 }
 
-/** Sidebar, tabs and the value inspector, docked right or below the tabs. */
+/** Room the sidebar and tab area keep when the inspector is dragged wider. */
+const RESERVED_WIDTH = 700;
+/** Room the tab bar and a few result rows keep when the bottom inspector is dragged taller. */
+const RESERVED_HEIGHT = 260;
+
+/**
+ * Sidebar, tabs and the value inspector, docked right or below the tabs. `main` keeps its tree position
+ * in every layout, so docking never remounts the editors; only the grid template changes.
+ */
 function DbWorkspace() {
   const inspecting = useStore((s) => s.selectedCell !== null);
   const bottom = useStore((s) => s.settings?.inspectorDock === "bottom");
   const { width, height } = useWindowSize();
-  const side = usePaneSize("inspectorWidth", 360, 240, width - 700);
-  const below = usePaneSize("bottomPaneHeight", DEFAULT_PANE_HEIGHT, 160, height - 260);
-  const main = (
-    <main className="main">
-      <TabBar />
-      <TabPanels />
-    </main>
-  );
-  if (!inspecting) {
-    return (
-      <div className="workspace">
-        <Sidebar />
-        {main}
-      </div>
-    );
-  }
-  if (bottom) {
-    return (
-      <div className="workspace">
-        <Sidebar />
-        <div className="main-stack dock-bottom" style={{ gridTemplateRows: `minmax(0, 1fr) auto ${below.size}px` }}>
-          {main}
-          <Splitter axis="y" paneAfter gap label="Resize inspector" {...below} />
+  const side = usePaneSize("inspectorWidth", 360, 240, width - RESERVED_WIDTH);
+  const below = usePaneSize("bottomPaneHeight", DEFAULT_PANE_HEIGHT, 160, height - RESERVED_HEIGHT);
+  const pane = bottom ? below : side;
+  const classes = ["workspace"];
+  if (inspecting) classes.push(bottom ? "dock-bottom" : "dock-right");
+  return (
+    <div className={classes.join(" ")} style={inspecting ? ({ "--inspector-size": `${pane.size}px` } as React.CSSProperties) : undefined}>
+      <Sidebar />
+      <main className="main">
+        <TabBar />
+        <TabPanels />
+      </main>
+      {inspecting && (
+        <>
+          <Splitter axis={bottom ? "y" : "x"} paneAfter gap label="Resize inspector" {...pane} />
           <Inspector />
-        </div>
-      </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="app">
+      <Toolbar />
+      {children}
+      <PendingTray />
+      <StatusBar />
+    </div>
+  );
+}
+
+function Workspace() {
+  const hasSessions = useStore((s) => s.sessions.length > 0);
+  const wpMode = useStore((s) => s.mode === "wp" && !!selectWp(s));
+  if (!hasSessions) return <ConnectScreen />;
+  if (wpMode) {
+    return (
+      <AppShell>
+        <WpWorkspace />
+      </AppShell>
     );
   }
   return (
-    <div className="workspace" style={{ gridTemplateColumns: `19.231rem minmax(0, 1fr) auto ${side.size}px` }}>
-      <Sidebar />
-      {main}
-      <Splitter axis="x" paneAfter gap label="Resize inspector" {...side} />
-      <Inspector />
-    </div>
+    <AppShell>
+      <FavoritesBar />
+      <DbWorkspace />
+    </AppShell>
   );
 }
 
 export default function App() {
   const settings = useStore((s) => s.settings);
-  const hasSessions = useStore((s) => s.sessions.length > 0);
-  const wpMode = useStore((s) => s.mode === "wp" && !!selectWp(s));
   useBackendEvents();
 
   useEffect(() => {
@@ -104,21 +124,7 @@ export default function App() {
 
   return (
     <>
-      {hasSessions ? (
-        <div className="app">
-          <Toolbar />
-          {!wpMode && <FavoritesBar />}
-          {wpMode ? (
-            <WpWorkspace />
-          ) : (
-            <DbWorkspace />
-          )}
-          <PendingTray />
-          <StatusBar />
-        </div>
-      ) : (
-        <ConnectScreen />
-      )}
+      <Workspace />
       <Dialogs />
       <CommandPalette />
       <Toasts />

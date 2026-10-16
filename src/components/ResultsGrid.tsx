@@ -28,6 +28,37 @@ const ROW_NUMBER_WIDTH = 52;
 const MIN_WIDTH_REM = 3;
 const MAX_FIT_REM = 40;
 
+/** Viewport the virtualizer assumes until the first layout measurement, so the first frame already has rows. */
+const INITIAL_VIEWPORT = { width: 1000, height: 800 };
+
+type CellPos = { row: number; col: number };
+
+interface KeyContext {
+  at: CellPos;
+  lastCol: number;
+  /** Rows that fit the viewport, for PageUp / PageDown. */
+  pageRows: number;
+  moveTo(row: number, col: number): void;
+  edit(at: CellPos): void;
+  copyValue(at: CellPos): void;
+}
+
+/** Grid keys by `e.key`, with `Mod+` for ⌘ chords. */
+const KEY_ACTIONS: Record<string, (c: KeyContext) => void> = {
+  ArrowUp: (c) => c.moveTo(c.at.row - 1, c.at.col),
+  ArrowDown: (c) => c.moveTo(c.at.row + 1, c.at.col),
+  ArrowLeft: (c) => c.moveTo(c.at.row, c.at.col - 1),
+  ArrowRight: (c) => c.moveTo(c.at.row, c.at.col + 1),
+  Home: (c) => c.moveTo(c.at.row, 0),
+  End: (c) => c.moveTo(c.at.row, c.lastCol),
+  PageUp: (c) => c.moveTo(c.at.row - c.pageRows, c.at.col),
+  PageDown: (c) => c.moveTo(c.at.row + c.pageRows, c.at.col),
+  Enter: (c) => c.edit(c.at),
+  "Mod+c": (c) => c.copyValue(c.at),
+};
+
+const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value));
+
 const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 13;
 
 /** Width that fits the header and the given rows; one character is ~0.6 of the data font size. */
@@ -39,19 +70,28 @@ function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLabel: str
 }
 
 export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange }: Props) {
-  const settings = useStore((s) => s.settings);
+  const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
+  const maxChars = useStore((s) => s.settings?.maxCellChars ?? 500);
+  const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
+  const density = useStore((s) => s.settings?.density ?? "comfortable");
   const selectCell = useStore((s) => s.selectCell);
   const toast = useStore((s) => s.toast);
-  const nullLabel = settings?.nullLabel ?? "NULL";
-  const maxChars = settings?.maxCellChars ?? 500;
-  const dataFontSize = settings?.dataFontSize ?? 12;
-  const rowHeight = rowHeightFor({ dataFontSize, density: settings?.density ?? "comfortable" });
+  const rowHeight = rowHeightFor({ dataFontSize, density });
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [selected, setSelected] = useState<{ row: number; col: number } | null>(null);
+  const stopDrag = useRef<(() => void) | null>(null);
+  const [selected, setSelected] = useState<CellPos | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
-  const [editing, setEditing] = useState<{ row: number; col: number; text: string } | null>(null);
-  /** Widths changed in this grid (drag / auto-fit); win over saved and measured widths. */
+  const [editing, setEditing] = useState<(CellPos & { text: string }) | null>(null);
+  // Widths changed in this grid (drag / auto-fit); win over saved and measured widths.
   const [manual, setManual] = useState<Record<string, number>>({});
+  const [selectionRows, setSelectionRows] = useState(rows);
+  // New rows invalidate cell positions; resetting during render keeps stale indices out of every frame.
+  if (selectionRows !== rows) {
+    setSelectionRows(rows);
+    setSelected(null);
+    setEditing(null);
+  }
+  useEffect(() => () => stopDrag.current?.(), []);
 
   const measured = useMemo(() => columns.map((c, i) => fitWidth(c, i, rows.slice(0, 50), nullLabel, dataFontSize, 380)), [columns, rows, nullLabel, dataFontSize]);
   const widths = columns.map((c, i) => manual[c.name] ?? columnWidths?.[c.name] ?? measured[i]);
@@ -65,7 +105,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
     getScrollElement: () => scrollRef.current,
     estimateSize: () => rowHeight,
     overscan: 12,
-    initialRect: { width: 1000, height: 800 },
+    initialRect: INITIAL_VIEWPORT,
   });
   // Row height follows the data size setting; re-measure so rows neither overlap nor gap.
   useEffect(() => virtualizer.measure(), [rowHeight, virtualizer]);
@@ -87,11 +127,16 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
       latest = Math.max(min, Math.round(startWidth + ev.clientX - startX));
       setManual((m) => ({ ...m, [name]: latest }));
     };
-    const up = () => {
+    const stop = () => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
+      stopDrag.current = null;
+    };
+    const up = () => {
+      stop();
       commitWidths({ ...manual, [name]: latest });
     };
+    stopDrag.current = stop;
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   };
@@ -115,6 +160,16 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
     selectCell({ row, col, column: columns[col], cell: rows[row][col] });
   };
 
+  // A bytes cell shows a `0x…` preview, not its value; editing it would write the preview back.
+  const canEdit = (cell: Cell) => !!onEditCell && cell.t !== "bytes";
+
+  const startEdit = ({ row, col }: CellPos) => {
+    const cell = rows[row]?.[col];
+    if (cell && canEdit(cell)) setEditing({ row, col, text: cellText(cell) });
+  };
+
+  const copyCell = ({ row, col }: CellPos) => copy(cellText(rows[row][col]), "value");
+
   const openMenu = (e: React.MouseEvent, row: number, col: number) => {
     e.preventDefault();
     select(row, col);
@@ -122,10 +177,10 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "Copy value", action: () => copy(cellText(rows[row][col]), "value") },
+        { label: "Copy value", action: () => copyCell({ row, col }) },
         ...(onEditCell
           ? ([
-              { label: "Edit value", action: () => setEditing({ row, col, text: cellText(rows[row][col]) }) },
+              { label: "Edit value", disabled: !canEdit(rows[row][col]), action: () => startEdit({ row, col }) },
               { label: "Set to NULL", action: () => onEditCell(row, col, null) },
             ] as MenuEntry[])
           : []),
@@ -140,25 +195,23 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!selected) return;
-    if (e.metaKey && e.key === "c") {
-      e.preventDefault();
-      copy(cellText(rows[selected.row][selected.col]), "value");
-      return;
-    }
-    const moves: Record<string, [number, number]> = {
-      ArrowUp: [-1, 0],
-      ArrowDown: [1, 0],
-      ArrowLeft: [0, -1],
-      ArrowRight: [0, 1],
-    };
-    const move = moves[e.key];
-    if (!move) return;
+    const action = KEY_ACTIONS[e.metaKey ? `Mod+${e.key.toLowerCase()}` : e.key];
+    if (!action || !selected || rows.length === 0) return;
     e.preventDefault();
-    const row = Math.min(rows.length - 1, Math.max(0, selected.row + move[0]));
-    const col = Math.min(columns.length - 1, Math.max(0, selected.col + move[1]));
-    select(row, col);
-    virtualizer.scrollToIndex(row);
+    const lastRow = rows.length - 1;
+    const lastCol = columns.length - 1;
+    action({
+      at: { row: clamp(selected.row, lastRow), col: clamp(selected.col, lastCol) },
+      lastCol,
+      pageRows: Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 0) / rowHeight) - 1),
+      moveTo: (row, col) => {
+        const target = clamp(row, lastRow);
+        select(target, clamp(col, lastCol));
+        virtualizer.scrollToIndex(target);
+      },
+      edit: startEdit,
+      copyValue: copyCell,
+    });
   };
 
   if (columns.length === 0) {
@@ -213,7 +266,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
                   className={`grid-cell t-${cell.t}${selected?.row === v.index && selected.col === ci ? " selected" : ""}${editing?.row === v.index && editing.col === ci ? " editing" : ""}`}
                   style={{ width: `var(--col-${ci})` }}
                   onMouseDown={() => select(v.index, ci)}
-                  onDoubleClick={() => onEditCell && setEditing({ row: v.index, col: ci, text: cellText(cell) })}
+                  onDoubleClick={() => startEdit({ row: v.index, col: ci })}
                   onContextMenu={(e) => openMenu(e, v.index, ci)}
                 >
                   {editing?.row === v.index && editing.col === ci ? (

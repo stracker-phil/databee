@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +6,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api } from "../api";
 import { useStore } from "../state/store";
-import { connectedStore, queryTab, resultSet } from "../test/fixtures";
+import { connectedStore, queryTab, resultSet, table } from "../test/fixtures";
 import { Dialogs } from "./Dialogs";
 import { handleKeydown, installCommands } from "../commands";
 import { QueryTab } from "./QueryTab";
@@ -114,5 +114,46 @@ describe("QueryTab", () => {
     await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
     expect(mocked.cancelQuery).toHaveBeenCalledWith("s1");
+  });
+
+  describe("shortcut hint", () => {
+    beforeEach(() => {
+      connectedStore();
+      installCommands();
+    });
+
+    it("shows the bound run shortcuts", () => {
+      renderTab("SELECT 1");
+      expect(screen.getByText(/⌘↵ statement/)).toBeInTheDocument();
+      expect(screen.getByText(/⌘⇧↵ all/)).toBeInTheDocument();
+    });
+
+    it("follows a rebinding of editor.run", async () => {
+      renderTab("SELECT 1");
+      await act(() => useStore.getState().saveKeybindings({ "editor.run": "Mod+Shift+R" }));
+      expect(screen.getByText(/⌘⇧R statement/)).toBeInTheDocument();
+      expect(screen.queryByText(/⌘↵ statement/)).not.toBeInTheDocument();
+    });
+
+    it("drops the run part of the hint when editor.run is unbound", async () => {
+      renderTab("SELECT 1");
+      await act(() => useStore.getState().saveKeybindings({ "editor.run": null }));
+      expect(screen.queryByText(/ statement/)).not.toBeInTheDocument();
+      expect(screen.getByText(/⌘⇧↵ all/)).toBeInTheDocument();
+    });
+  });
+
+  describe("completion schema", () => {
+    it("is requested again after a DDL statement reloads the table list", async () => {
+      mocked.execute.mockResolvedValue({ results: [resultSet({ returnsRows: false, columns: [], rows: [] })], elapsedMs: 1, database: "db" });
+      mocked.listTables.mockResolvedValue([table("wp_new")]);
+      renderTab("CREATE TABLE wp_new (id INT)");
+      await waitFor(() => expect(mocked.completionSchema).toHaveBeenCalledTimes(1));
+
+      await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
+
+      await waitFor(() => expect(mocked.completionSchema).toHaveBeenCalledTimes(2));
+      expect(mocked.completionSchema).toHaveBeenLastCalledWith("s1", "db");
+    });
   });
 });

@@ -40,6 +40,77 @@ describe("ResultsGrid editing", () => {
     await userEvent.dblClick(screen.getByText("Hello world"));
     expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
   });
+
+  it("opens the editor for a text cell on Enter", async () => {
+    const rs = resultSet();
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={vi.fn()} />);
+    await userEvent.click(screen.getByText("Hello world"));
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByLabelText("Edit cell")).toHaveValue("Hello world");
+  });
+
+  describe("with a bytes cell", () => {
+    const rs = resultSet({ rows: [[num("1"), { t: "bytes", v: { len: 2, hexPreview: "cafe" } }]] });
+    const bytes = () => screen.getByText(/0xcafe/);
+
+    it("opens no editor on double-click", async () => {
+      render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={vi.fn()} />);
+      await userEvent.dblClick(bytes());
+      expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
+    });
+
+    it("opens no editor on Enter", async () => {
+      render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={vi.fn()} />);
+      await userEvent.click(bytes());
+      await userEvent.keyboard("{Enter}");
+      expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
+    });
+
+    it("disables Edit value in the context menu", () => {
+      render(<ResultsGrid columns={rs.columns} rows={rs.rows} onEditCell={vi.fn()} />);
+      fireEvent.contextMenu(bytes());
+      expect(screen.getByRole("menuitem", { name: "Edit value" })).toBeDisabled();
+    });
+  });
+});
+
+describe("ResultsGrid keyboard selection", () => {
+  const columns = resultSet().columns;
+  const rows = [0, 1, 2].map((i) => [text(`a${i}`), text(`b${i}`)]);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore();
+  });
+
+  it.each([
+    { key: "ArrowDown", from: "a0", to: "a1" },
+    { key: "ArrowDown", from: "a2", to: "a2" },
+    { key: "ArrowRight", from: "a1", to: "b1" },
+    { key: "ArrowRight", from: "b0", to: "b0" },
+    { key: "Home", from: "b1", to: "a1" },
+    { key: "End", from: "a1", to: "b1" },
+  ])("$key moves the selection from $from to $to", async ({ key, from, to }) => {
+    render(<ResultsGrid columns={columns} rows={rows} />);
+    await userEvent.click(screen.getByText(from));
+    await userEvent.keyboard(`{${key}}`);
+    expect(screen.getByText(to)).toHaveClass("selected");
+    if (to !== from) expect(screen.getByText(from)).not.toHaveClass("selected");
+  });
+
+  it("drops the selection when the rows are replaced by fewer rows", async () => {
+    const many = Array.from({ length: 8 }, (_, i) => [text(`a${i}`), text(`b${i}`)]);
+    const { rerender } = render(<ResultsGrid columns={columns} rows={many} />);
+    await userEvent.click(screen.getByText("b5"));
+    expect(screen.getByText("b5")).toHaveClass("selected");
+
+    rerender(<ResultsGrid columns={columns} rows={many.slice(0, 2)} />);
+    await userEvent.keyboard("{Meta>}c{/Meta}");
+    await userEvent.keyboard("{ArrowDown}{ArrowRight}");
+
+    for (const cell of screen.getAllByRole("gridcell")) expect(cell).not.toHaveClass("selected");
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+  });
 });
 
 describe("ResultsGrid sizing", () => {
