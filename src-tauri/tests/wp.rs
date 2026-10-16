@@ -887,10 +887,10 @@ async fn edits_apply_and_undo_cleanly() {
 
         // Serialized option edited via a path keeps valid lengths.
         let raw = scalar(&db, "SELECT option_value FROM wp_write.wp_options WHERE option_name = 'woocommerce_ppcp-settings'").await.unwrap();
-        let edited = databee_lib::wp::changes::edit_serialized(
+        let edited = databee_lib::decode::edit::edit_serialized(
             &raw,
-            &["title".to_string()],
-            &databee_lib::wp::changes::NewValue::String("PayPal ✓".into()),
+            &[1],
+            &databee_lib::decode::edit::NewValue::String("PayPal ✓".into()),
         )
         .unwrap();
         let change = p(C::SetCell {
@@ -905,7 +905,7 @@ async fn edits_apply_and_undo_cleanly() {
         apply(&db, &change.statements).await;
         let stored = scalar(&db, "SELECT option_value FROM wp_write.wp_options WHERE option_name = 'woocommerce_ppcp-settings'").await.unwrap();
         assert!(
-            databee_lib::wp::php::parse(stored.as_bytes()).is_ok(),
+            databee_lib::decode::php::parse(stored.as_bytes()).is_ok(),
             "{stored}"
         );
         apply(&db, &change.undo).await;

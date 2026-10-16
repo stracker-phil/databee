@@ -13,7 +13,6 @@ use crate::wp::lists::{
     SessionSummary, UserSummary,
 };
 use crate::wp::options::{self, OptionsOverview};
-use crate::wp::value::{self, DecodedValue};
 use crate::wp::{self as lens, WpInfo};
 
 fn catalog(state: &AppState, ctx: &WpContext) -> AppResult<Catalog> {
@@ -147,11 +146,6 @@ pub async fn wp_transient_cleanup_sql(
         &overview.table,
         &overview.transients,
     ))
-}
-
-#[tauri::command]
-pub fn decode_value(text: String) -> Option<DecodedValue> {
-    value::decode(&text)
 }
 
 /// Shared prelude for WordPress-mode commands: context, catalog and session.
@@ -480,13 +474,4 @@ pub async fn apply_changes(
         cache.clear();
     }
     Ok(affected)
-}
-
-#[tauri::command]
-pub fn edit_serialized(
-    raw: String,
-    path: Vec<String>,
-    value: crate::wp::changes::NewValue,
-) -> AppResult<String> {
-    crate::wp::changes::edit_serialized(&raw, &path, &value)
 }

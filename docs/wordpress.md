@@ -23,8 +23,6 @@ in `src/components/wp/`.
 |---|---|
 | `mod.rs` | Detection I/O, document loading, link resolution, options queries, `fetch` (30 s timeout) |
 | `context.rs` | Detection logic with no I/O: prefix, versions, WooCommerce, HPOS mode, multisite, site facts |
-| `php.rs` | Lossless parser and serializer for PHP `serialize()` data |
-| `value.rs` | Turns stored text (PHP or JSON) into a generic `ValueNode` tree. Serialized strings inside other values are decoded up to 3 levels deep |
 | `entity.rs` + `entities.toml` | Entity definitions as data, plus the resolver that turns them into SQL and documents |
 | `hints.rs` + `meta_keys.toml` | Render hints (money, time, flag, URL, user agent, email, roles, country, guest) and secret masking, keyed by glob rules |
 | `lists.rs` | List screens: orders, subscriptions, users (including guests), products, actions, sessions, content. One query per page, plus one batched query for extras and facets |
@@ -33,7 +31,7 @@ in `src/components/wp/`.
 | `options.rs` | Options inspector: autoload by prefix, transients, cleanup SQL |
 | `peek.rs` | Hover peek facts and "find everywhere" |
 | `snapshot.rs` | Snapshots, diffs and comparisons over flattened `path → value` maps |
-| `changes.rs` | Every write: planned SQL plus undo SQL, and edits to serialized values |
+| `changes.rs` | Every write: planned SQL plus undo SQL |
 | `logs.rs` | Short titles for WooCommerce log lines, such as `PayPal API · capture order → 201` |
 | `media.rs` | Thumbnail URLs from attachment meta |
 
@@ -74,35 +72,8 @@ Multisite sub-sites are detected but not used yet. All queries go to the main pr
 
 ## PHP serialize
 
-`php.rs` round-trips exactly: `serialize(parse(x)) == x` for valid input. The test suite checks this, and
-`tests/php_roundtrip.rs` checks it against every serialized value of a real database. The parser:
-
-- keeps **strings as bytes**, because `s:N` counts bytes; invalid UTF-8 is preserved;
-- keeps **floats as their source text**;
-- keeps **entry order**;
-- **never runs or instantiates anything:** `O:` objects become a class name plus properties, while `C:`,
-  references and PHP 8.1 enums stay as opaque nodes;
-- applies **limits:** nesting depth 128, preallocation capped at 1024; garbage input returns `ParseError`.
-
-Decoding modes:
-- **Strict** parsing fails at the first wrong byte length.
-- **Lenient** parsing ignores `s:N` and finds the end of each string by its delimiter. This repairs data that
-  was re-encoded after it was serialized.
-- `value::decode` tries strict first. If only lenient succeeds, it returns the tree with a warning.
-
-**Editing** (`changes::edit_serialized`):
-
-1. The UI sends the raw value, a path of tree keys and a typed `NewValue`.
-2. The path may step into a serialized string inside another value (segment `"decoded"`).
-3. The whole value is re-serialized, which recomputes every `s:N`. Untouched parts, including whitespace
-   around the value, stay byte-identical.
-4. The result is only a string. It is written through the usual `queueChange` pipeline.
-
-Only values that parse strictly can be edited. Refused edits:
-- a float that is not PHP float syntax (digits with optional sign, fraction and exponent, or `INF`, `-INF`,
-  `NAN`); Rust spellings like `inf` or `infinity` would be unreadable for `unserialize()`;
-- any edit when an `r:`/`R:` reference sits at or after the edited value: references count values in
-  serialization order, so replacing a subtree could make them point elsewhere.
+Decoding and editing stored values (PHP serialize, JSON) is core and lives in `src-tauri/src/decode/`; see
+[decode.md](decode.md). The lens uses `decode::php` for its own reads (`PhpValue::get`, `as_text`).
 
 ## Entities
 
@@ -286,7 +257,7 @@ backslash. LIKE patterns go through `Dialect::like` / `like_contains` (with `db:
 ## Tests
 
 - **Unit tests** in each module cover detection variants, PHP round trips and limits, exact SQL from the
-  resolver, serialized edits, insights, SQL builders and log humanizers.
+  resolver, insights, SQL builders and log humanizers.
 - **`src-tauri/tests/wp.rs`** runs against the Docker fixture `wp_test`: WordPress plus WooCommerce with HPOS and
   sync. Reads go against `wp_test`, and every write goes into its copy `wp_write`, so read and write tests
   never race. `wp_legacy` covers a posts-based (HPOS off) store.

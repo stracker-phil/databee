@@ -146,7 +146,7 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
   const text = cellText(value);
 
   const editTree = save
-    ? async (path: string[], v: NewValue) => {
+    ? async (path: number[], v: NewValue) => {
         try {
           await save(await api.editSerialized(text, path, v));
         } catch (e) {

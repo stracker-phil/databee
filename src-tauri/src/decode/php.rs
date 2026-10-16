@@ -2,6 +2,7 @@
 //! objects are kept as class name + properties. Strings are bytes because `s:N` counts
 //! bytes, and real databases contain broken UTF-8 and wrong lengths.
 
+use std::borrow::Cow;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +36,40 @@ pub enum PhpValue {
     },
     /// PHP 8.1 enum case, e.g. `Suit:Hearts`.
     Enum(Vec<u8>),
+}
+
+impl PhpValue {
+    /// The entry of an array or object by key text; int keys match their decimal form.
+    pub fn get(&self, key: &str) -> Option<&PhpValue> {
+        let (PhpValue::Array(entries) | PhpValue::Object { props: entries, .. }) = self else {
+            return None;
+        };
+        entries.iter().find(|(k, _)| k.is(key)).map(|(_, v)| v)
+    }
+
+    /// The entry at `key` as text, see `as_text`.
+    pub fn text_at(&self, key: &str) -> Option<String> {
+        self.get(key)?.as_text().map(Cow::into_owned)
+    }
+
+    /// Strings (lossy UTF-8), ints and floats as text.
+    pub fn as_text(&self) -> Option<Cow<'_, str>> {
+        match self {
+            PhpValue::Str(s) => Some(String::from_utf8_lossy(s)),
+            PhpValue::Int(i) => Some(Cow::Owned(i.to_string())),
+            PhpValue::Float(f) => Some(Cow::Borrowed(f)),
+            _ => None,
+        }
+    }
+}
+
+impl PhpKey {
+    fn is(&self, key: &str) -> bool {
+        match self {
+            PhpKey::Int(i) => i.to_string() == key,
+            PhpKey::Str(s) => s == key.as_bytes(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,17 +127,56 @@ fn parse_with(input: &[u8], mode: Mode) -> Result<PhpValue, ParseError> {
     Ok(value)
 }
 
-/// Mirrors WordPress `is_serialized()`: a cheap check before trying to parse.
+/// Mirrors WordPress `is_serialized()` (strict), plus `C:` objects: a cheap check before
+/// trying to parse.
 pub fn looks_serialized(text: &str) -> bool {
     let t = text.trim();
     if t == "N;" {
         return true;
     }
     let b = t.as_bytes();
-    b.len() >= 4
-        && b[1] == b':'
-        && matches!(b[0], b'a' | b'O' | b's' | b'b' | b'i' | b'd' | b'C' | b'E')
-        && matches!(b[b.len() - 1], b';' | b'}')
+    if b.len() < 4 || b[1] != b':' || !matches!(b[b.len() - 1], b';' | b'}') {
+        return false;
+    }
+    match b[0] {
+        b's' => b[b.len() - 2] == b'"' && counted_prefix(&b[2..]),
+        b'a' | b'O' | b'E' | b'C' => counted_prefix(&b[2..]),
+        b'b' | b'i' | b'd' => {
+            let body = &b[2..b.len() - 1];
+            !body.is_empty()
+                && body
+                    .iter()
+                    .all(|c| c.is_ascii_digit() || matches!(c, b'.' | b'E' | b'+' | b'-'))
+        }
+        _ => false,
+    }
+}
+
+/// `<digits>:` as after `a:`, `O:` or `s:`.
+fn counted_prefix(rest: &[u8]) -> bool {
+    let digits = rest.iter().take_while(|c| c.is_ascii_digit()).count();
+    digits > 0 && rest.get(digits) == Some(&b':')
+}
+
+/// The float syntax `unserialize()` reads after `d:`. Rust spellings (`inf`, `nan`,
+/// `infinity`) would produce a value PHP rejects.
+pub fn is_php_float(s: &str) -> bool {
+    if matches!(s, "INF" | "-INF" | "NAN") {
+        return true;
+    }
+    fn unsigned(p: &str) -> &str {
+        p.strip_prefix(['+', '-']).unwrap_or(p)
+    }
+    let digits = |p: &str| p.bytes().all(|b| b.is_ascii_digit());
+    let (mantissa, exponent) = match unsigned(s).split_once(['e', 'E']) {
+        Some((m, e)) => (m, Some(unsigned(e))),
+        None => (unsigned(s), None),
+    };
+    let mantissa_ok = match mantissa.split_once('.') {
+        Some((int, frac)) => digits(int) && digits(frac) && !(int.is_empty() && frac.is_empty()),
+        None => !mantissa.is_empty() && digits(mantissa),
+    };
+    mantissa_ok && exponent.is_none_or(|e| !e.is_empty() && digits(e))
 }
 
 impl Parser<'_> {
@@ -137,12 +211,14 @@ impl Parser<'_> {
         Ok(&self.input[start..start + len])
     }
 
+    /// Only the form `serialize()` writes (`5`, `-5`, never `+5`, `05` or `-0`), so a
+    /// parsed value always serializes back to the same bytes.
     fn int_until(&mut self, end: u8) -> Result<i64, ParseError> {
         let start = self.pos;
         let raw = self.until(end)?;
         std::str::from_utf8(raw)
             .ok()
-            .and_then(|s| s.parse::<i64>().ok())
+            .and_then(|s| s.parse::<i64>().ok().filter(|i| i.to_string() == s))
             .ok_or(ParseError {
                 offset: start,
                 message: "invalid integer".into(),
@@ -158,14 +234,17 @@ impl Parser<'_> {
         })
     }
 
-    /// `N:"bytes"` — the length prefix has already been read up to the colon.
-    fn quoted(&mut self, len: usize) -> Result<Vec<u8>, ParseError> {
+    /// `N:"bytes"` followed by `terminator`; the length prefix has already been read up to
+    /// the colon. The terminator is left for the caller.
+    fn quoted(&mut self, len: usize, terminator: u8) -> Result<Vec<u8>, ParseError> {
         self.expect(b'"')?;
-        let start = self.pos;
-        let fits = start + len < self.input.len() && self.input[start + len] == b'"';
-        if fits {
+        let (input, start) = (self.input, self.pos);
+        let closes_at = |i: usize| {
+            input.get(start + i) == Some(&b'"') && input.get(start + i + 1) == Some(&terminator)
+        };
+        if closes_at(len) {
             self.pos = start + len + 1;
-            return Ok(self.input[start..start + len].to_vec());
+            return Ok(input[start..start + len].to_vec());
         }
         if self.mode == Mode::Strict {
             return Err(ParseError {
@@ -173,13 +252,14 @@ impl Parser<'_> {
                 message: format!("string length {len} does not match its content"),
             });
         }
-        // Lenient: the string ends at the first `"` followed by a valid terminator.
-        let rest = &self.input[start..];
-        let end = (0..rest.len())
-            .find(|&i| rest[i] == b'"' && matches!(rest.get(i + 1), Some(b';' | b':') | None))
+        // Lenient: the closing quote nearest to the declared length. The whole parse must
+        // still consume the input, so a wrong pick fails instead of yielding a wrong tree.
+        let end = (0..input.len() - start)
+            .filter(|&i| closes_at(i))
+            .min_by_key(|&i| i.abs_diff(len))
             .ok_or_else(|| self.error("unterminated string"))?;
         self.pos = start + end + 1;
-        Ok(rest[..end].to_vec())
+        Ok(input[start..start + end].to_vec())
     }
 
     fn value(&mut self) -> Result<PhpValue, ParseError> {
@@ -209,15 +289,21 @@ impl Parser<'_> {
             }
             b'd' => {
                 self.expect(b':')?;
+                let start = self.pos;
                 let raw = self.until(b';')?;
-                let text =
-                    String::from_utf8(raw.to_vec()).map_err(|_| self.error("invalid float"))?;
-                PhpValue::Float(text)
+                let text = std::str::from_utf8(raw)
+                    .ok()
+                    .filter(|t| is_php_float(t))
+                    .ok_or(ParseError {
+                        offset: start,
+                        message: "invalid float".into(),
+                    })?;
+                PhpValue::Float(text.to_string())
             }
             b's' => {
                 self.expect(b':')?;
                 let len = self.count_until(b':')?;
-                let s = self.quoted(len)?;
+                let s = self.quoted(len, b';')?;
                 self.expect(b';')?;
                 PhpValue::Str(s)
             }
@@ -229,7 +315,7 @@ impl Parser<'_> {
             b'O' => {
                 self.expect(b':')?;
                 let len = self.count_until(b':')?;
-                let class = self.quoted(len)?;
+                let class = self.quoted(len, b':')?;
                 self.expect(b':')?;
                 let n = self.count_until(b':')?;
                 PhpValue::Object {
@@ -240,7 +326,7 @@ impl Parser<'_> {
             b'C' => {
                 self.expect(b':')?;
                 let len = self.count_until(b':')?;
-                let class = self.quoted(len)?;
+                let class = self.quoted(len, b':')?;
                 self.expect(b':')?;
                 let n = self.count_until(b':')?;
                 self.expect(b'{')?;
@@ -256,15 +342,23 @@ impl Parser<'_> {
             }
             b'r' | b'R' => {
                 self.expect(b':')?;
+                let start = self.pos;
+                let index = self.int_until(b';')?;
+                if index < 1 {
+                    return Err(ParseError {
+                        offset: start,
+                        message: "references count from 1".into(),
+                    });
+                }
                 PhpValue::Ref {
                     strong: tag == b'R',
-                    index: self.int_until(b';')?,
+                    index,
                 }
             }
             b'E' => {
                 self.expect(b':')?;
                 let len = self.count_until(b':')?;
-                let name = self.quoted(len)?;
+                let name = self.quoted(len, b';')?;
                 self.expect(b';')?;
                 PhpValue::Enum(name)
             }
@@ -479,5 +573,216 @@ mod tests {
         assert!(looks_serialized("N;"));
         assert!(!looks_serialized("yes"));
         assert!(!looks_serialized("{\"a\":1}"));
+    }
+
+    #[test]
+    fn looks_serialized_follows_wordpress_is_serialized() {
+        for (text, expected) in [
+            ("a:0:{}", true),
+            ("s:3:\"abc\";", true),
+            ("i:5;", true),
+            ("b:1;", true),
+            ("N;", true),
+            ("C:3:\"Foo\":0:{}", true),
+            ("a: note;", false),
+            ("i:abc;", false),
+            ("s:3:\"abc\"", false),
+            ("x:1;", false),
+            ("i:", false),
+        ] {
+            assert_eq!(looks_serialized(text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn non_canonical_ints_and_bools_are_rejected_in_both_modes() {
+        for raw in [
+            "i:+1;",
+            "i:05;",
+            "i:-0;",
+            "i:;",
+            "b:2;",
+            "b:+1;",
+            "b:01;",
+            "a:+1:{i:0;N;}",
+        ] {
+            assert!(parse(raw.as_bytes()).is_err(), "strict {raw}");
+            assert!(parse_lenient(raw.as_bytes()).is_err(), "lenient {raw}");
+        }
+    }
+
+    #[test]
+    fn canonical_ints_at_the_i64_edges_round_trip() {
+        for raw in ["i:0;", "i:9223372036854775807;", "i:-9223372036854775808;"] {
+            assert_eq!(
+                serialize(&parse(raw.as_bytes()).unwrap()),
+                raw.as_bytes(),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn php_float_syntax_parses_and_round_trips() {
+        for text in ["-INF", "NAN", "INF", "1.0E+25", "-1.5e-3", ".5", "5.", "0"] {
+            let raw = format!("d:{text};");
+            let parsed = parse(raw.as_bytes()).unwrap_or_else(|e| panic!("{raw}: {e}"));
+            assert_eq!(parsed, PhpValue::Float(text.into()), "{raw}");
+            assert_eq!(serialize(&parsed), raw.as_bytes(), "{raw}");
+        }
+    }
+
+    #[test]
+    fn non_php_floats_are_rejected() {
+        for raw in [
+            "d:abc;",
+            "d:inf;",
+            "d:nan;",
+            "d:infinity;",
+            "d:;",
+            "d:.;",
+            "d:1e;",
+            "d:1.2.3;",
+        ] {
+            assert!(parse(raw.as_bytes()).is_err(), "strict {raw}");
+            assert!(parse_lenient(raw.as_bytes()).is_err(), "lenient {raw}");
+        }
+    }
+
+    #[test]
+    fn private_properties_round_trip() {
+        let raw = "O:3:\"Foo\":1:{s:8:\"\0Foo\0bar\";i:1;}";
+        let parsed = parse(raw.as_bytes()).unwrap();
+        assert_eq!(
+            parsed,
+            PhpValue::Object {
+                class: b"Foo".to_vec(),
+                props: vec![(PhpKey::Str(b"\0Foo\0bar".to_vec()), PhpValue::Int(1))]
+            }
+        );
+        assert_eq!(serialize(&parsed), raw.as_bytes());
+    }
+
+    #[test]
+    fn custom_objects_with_a_wrong_payload_length_fail() {
+        for raw in [
+            r#"C:3:"Foo":5:{ab}"#,
+            r#"C:3:"Foo":1:{ab}"#,
+            r#"C:3:"Foo":2:{ab"#,
+            r#"C:4:"Foo":0:{}"#,
+        ] {
+            assert!(parse(raw.as_bytes()).is_err(), "{raw}");
+        }
+        assert_eq!(
+            parse(br#"C:3:"Foo":2:{ab}"#).unwrap(),
+            PhpValue::Custom {
+                class: b"Foo".to_vec(),
+                data: b"ab".to_vec()
+            }
+        );
+    }
+
+    #[test]
+    fn references_must_count_from_one() {
+        for raw in ["r:-1;", "r:0;", "R:0;", "R:-1;", "r:+1;"] {
+            assert!(parse(raw.as_bytes()).is_err(), "strict {raw}");
+            assert!(parse_lenient(raw.as_bytes()).is_err(), "lenient {raw}");
+        }
+        assert_eq!(
+            parse(b"r:1;").unwrap(),
+            PhpValue::Ref {
+                strong: false,
+                index: 1
+            }
+        );
+    }
+
+    #[test]
+    fn enums_with_an_invalid_length_fail() {
+        for raw in [
+            r#"E:5:"Suit:Hearts";"#,
+            r#"E:3:"abcd";"#,
+            r#"E:-1:"x";"#,
+            r#"E:x:"x";"#,
+        ] {
+            assert!(parse(raw.as_bytes()).is_err(), "{raw}");
+        }
+    }
+
+    #[test]
+    fn duplicate_array_keys_are_kept_in_order() {
+        let raw = br#"a:4:{s:1:"a";i:1;s:1:"a";i:2;i:7;i:3;i:7;i:4;}"#;
+        let parsed = parse(raw).unwrap();
+        assert_eq!(
+            parsed,
+            PhpValue::Array(vec![
+                (key("a"), PhpValue::Int(1)),
+                (key("a"), PhpValue::Int(2)),
+                (PhpKey::Int(7), PhpValue::Int(3)),
+                (PhpKey::Int(7), PhpValue::Int(4)),
+            ])
+        );
+        assert_eq!(serialize(&parsed), raw);
+    }
+
+    #[test]
+    fn lenient_mode_never_turns_a_misplaced_closing_quote_into_a_wrong_tree() {
+        let expected = PhpValue::Array(vec![(key("k"), s("x\";y"))]);
+        assert_eq!(
+            parse(br#"a:1:{s:1:"k";s:4:"x";y";}"#).unwrap(),
+            expected,
+            "correct length"
+        );
+        assert_eq!(
+            parse_lenient(br#"a:1:{s:1:"k";s:9:"x";y";}"#).unwrap(),
+            expected,
+            "declared too long"
+        );
+        let too_short = br#"a:1:{s:1:"k";s:2:"x";y";}"#;
+        assert!(parse(too_short).is_err());
+        if let Ok(v) = parse_lenient(too_short) {
+            assert_eq!(v, expected, "declared too short");
+        }
+    }
+
+    #[test]
+    fn get_finds_array_and_object_entries_by_key_text() {
+        let array = PhpValue::Array(vec![
+            (key("a"), PhpValue::Int(1)),
+            (PhpKey::Int(5), s("five")),
+        ]);
+        assert_eq!(array.get("a"), Some(&PhpValue::Int(1)));
+        assert_eq!(array.get("5"), Some(&s("five")));
+        assert_eq!(array.get("b"), None);
+        assert_eq!(array.get("6"), None);
+
+        let object = parse(br#"O:3:"Foo":1:{s:1:"x";b:1;}"#).unwrap();
+        assert_eq!(object.get("x"), Some(&PhpValue::Bool(true)));
+
+        for scalar in [PhpValue::Null, PhpValue::Int(1), s("a")] {
+            assert_eq!(scalar.get("a"), None, "{scalar:?}");
+        }
+    }
+
+    #[test]
+    fn as_text_covers_strings_ints_and_floats_only() {
+        assert_eq!(s("hi").as_text().as_deref(), Some("hi"));
+        assert_eq!(
+            PhpValue::Str(vec![0xff]).as_text().as_deref(),
+            Some("\u{fffd}")
+        );
+        assert_eq!(PhpValue::Int(-5).as_text().as_deref(), Some("-5"));
+        assert_eq!(
+            PhpValue::Float("1.0E+25".into()).as_text().as_deref(),
+            Some("1.0E+25")
+        );
+        for value in [
+            PhpValue::Null,
+            PhpValue::Bool(true),
+            PhpValue::Array(vec![]),
+            PhpValue::Enum(b"A:B".to_vec()),
+        ] {
+            assert_eq!(value.as_text(), None, "{value:?}");
+        }
     }
 }

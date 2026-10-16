@@ -345,8 +345,18 @@ export interface ValueNode {
   kind: "null" | "bool" | "int" | "float" | "string" | "array" | "object" | "ref" | "enum" | "custom";
   text?: string;
   class?: string;
-  children?: { key: string; keyKind: "int" | "string" | "public" | "protected" | "private"; node: ValueNode }[];
+  children?: ValueChild[];
   note?: string;
+}
+
+export interface ValueChild {
+  key: string;
+  keyKind: "int" | "string" | "public" | "protected" | "private";
+  /** The class that declares a private property. */
+  declaringClass?: string;
+  /** The stored key bytes as hex when they are not valid UTF-8. */
+  rawHex?: string;
+  node: ValueNode;
 }
 
 export interface DecodedValue {

@@ -116,7 +116,7 @@ describe("FieldValue editing", () => {
     expect(mocked.planChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", key: "is_vat_exempt", value: "yes" }));
   });
 
-  it("edits a serialized value node by path", async () => {
+  it("edits a serialized value node by its index path", async () => {
     const decoded: DecodedValue = {
       format: "php",
       root: { kind: "array", children: [{ key: "title", keyKind: "string", node: { kind: "string", text: "PayPal" } }] },
@@ -129,8 +129,29 @@ describe("FieldValue editing", () => {
     const input = screen.getByLabelText("New value");
     await userEvent.clear(input);
     await userEvent.type(input, "New{Enter}");
-    expect(mocked.editSerialized).toHaveBeenCalledWith('a:1:{s:5:"title";s:6:"PayPal";}', ["title"], { kind: "string", text: "New" });
+    expect(mocked.editSerialized).toHaveBeenCalledWith('a:1:{s:5:"title";s:6:"PayPal";}', [0], { kind: "string", text: "New" });
     expect(mocked.planChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", value: 'a:1:{s:5:"title";s:3:"New";}' }));
+  });
+
+  it("sends the index of the right node when two properties share a display key", async () => {
+    const decoded: DecodedValue = {
+      format: "php",
+      root: {
+        kind: "object",
+        class: "Foo",
+        children: [
+          { key: "bar", keyKind: "protected", node: { kind: "string", text: "first" } },
+          { key: "bar", keyKind: "public", node: { kind: "string", text: "second" } },
+        ],
+      },
+      warning: null,
+      error: null,
+    };
+    mocked.editSerialized.mockResolvedValue("edited");
+    render(<FieldValue field={field("obj", "O:3:…", { decoded })} target={{ kind: "meta", entity: "order", id: "4711" }} />);
+    await userEvent.click(screen.getAllByRole("button", { name: "Edit bar" })[1]);
+    await userEvent.type(screen.getByLabelText("New value"), "{Control>}a{/Control}x{Enter}");
+    expect(mocked.editSerialized).toHaveBeenCalledWith("O:3:…", [1], { kind: "string", text: "x" });
   });
 
   it("is read-only without an edit target", () => {

@@ -3,6 +3,7 @@ mod commands;
 pub mod connection;
 pub mod db;
 mod db_commands;
+pub mod decode;
 #[cfg(debug_assertions)]
 mod dev;
 pub mod error;
@@ -267,7 +268,6 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             wp_commands::wp_expand,
             wp_commands::wp_options,
             wp_commands::wp_transient_cleanup_sql,
-            wp_commands::decode_value,
             wp_commands::wp_dashboard,
             wp_commands::wp_browser,
             wp_commands::wp_orders,
@@ -291,7 +291,8 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             wp_commands::wp_compare,
             wp_commands::plan_change,
             wp_commands::apply_changes,
-            wp_commands::edit_serialized,
+            decode::commands::decode_value,
+            decode::commands::edit_serialized,
             stage_commands::stage_anchors,
             stage_commands::stage_done,
             stage_commands::stage_info,

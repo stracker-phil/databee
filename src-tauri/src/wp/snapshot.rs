@@ -9,9 +9,9 @@ use super::context::WpContext;
 use super::detail::args_reference;
 use super::entity::{Catalog, EntityDoc, cell_str};
 use super::lists::{epoch, text};
-use super::value::ValueNode;
 use super::{expand, fetch, load_docs};
 use crate::db::Database;
+use crate::decode::value::ValueNode;
 use crate::error::{AppError, AppResult};
 
 pub type Paths = BTreeMap<String, String>;
@@ -20,7 +20,9 @@ fn flatten_node(prefix: &str, node: &ValueNode, out: &mut Paths) {
     if node.children.is_empty() {
         out.insert(
             prefix.to_string(),
-            node.text.clone().unwrap_or_else(|| node.kind.to_string()),
+            node.text
+                .clone()
+                .unwrap_or_else(|| node.kind.as_str().to_string()),
         );
         return;
     }
@@ -35,7 +37,7 @@ fn flatten_node(prefix: &str, node: &ValueNode, out: &mut Paths) {
 fn flatten_value(
     path: &str,
     raw: Option<&str>,
-    decoded: Option<&super::value::DecodedValue>,
+    decoded: Option<&crate::decode::value::DecodedValue>,
     out: &mut Paths,
 ) {
     match decoded.and_then(|d| d.root.as_ref()) {
@@ -191,7 +193,7 @@ pub async fn capture(
         for r in &rs.rows {
             let Some(name) = text(&r[0]) else { continue };
             let raw = text(&r[1]);
-            let decoded = raw.as_deref().and_then(super::value::decode);
+            let decoded = raw.as_deref().and_then(crate::decode::value::decode);
             flatten_value(
                 &format!("options/{name}"),
                 raw.as_deref(),
@@ -254,7 +256,7 @@ pub async fn compare(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wp::value::decode;
+    use crate::decode::value::decode;
 
     #[test]
     fn decoded_values_flatten_into_sub_paths() {

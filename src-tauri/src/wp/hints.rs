@@ -10,7 +10,7 @@ use rust_decimal::{Decimal, RoundingStrategy};
 use serde::{Deserialize, Serialize};
 
 use super::context::SiteZone;
-use super::php::{self, PhpValue};
+use crate::decode::php::{self, PhpValue};
 
 #[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

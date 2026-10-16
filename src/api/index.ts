@@ -145,7 +145,7 @@ export const api = {
 
   planChange: (sessionId: string, change: ChangeRequest) => invoke<PlannedChange>("plan_change", { sessionId, change }),
   applyChanges: (sessionId: string, statements: string[]) => invoke<number>("apply_changes", { sessionId, statements }),
-  editSerialized: (raw: string, path: string[], value: NewValue) => invoke<string>("edit_serialized", { raw, path, value }),
+  editSerialized: (raw: string, path: number[], value: NewValue) => invoke<string>("edit_serialized", { raw, path, value }),
   wpSnapshotTake: (sessionId: string, database: string, scope: SnapshotScope, label: string) =>
     invoke<SnapshotInfo>("wp_snapshot_take", { sessionId, database, scope, label }),
   wpSnapshots: (sessionId: string, database: string) => invoke<SnapshotInfo[]>("wp_snapshots", { sessionId, database }),

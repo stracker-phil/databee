@@ -1007,48 +1007,32 @@ pub fn session_summary(
     currency: Option<&str>,
     decimals: u32,
 ) -> (u64, Option<String>, Option<String>) {
-    use super::php::{PhpKey, PhpValue, parse};
-    let Ok(PhpValue::Array(top)) = parse(value.as_bytes()) else {
+    use crate::decode::php::{PhpValue, parse};
+    let Ok(top) = parse(value.as_bytes()) else {
         return (0, None, None);
     };
-    let inner = |key: &str| -> Option<Vec<(PhpKey, PhpValue)>> {
-        top.iter()
-            .find(|(k, _)| matches!(k, PhpKey::Str(s) if s == key.as_bytes()))
-            .and_then(|(_, v)| match v {
-                PhpValue::Str(s) => match parse(s) {
-                    Ok(PhpValue::Array(a)) => Some(a),
-                    _ => None,
-                },
-                _ => None,
-            })
+    let inner = |key: &str| match top.get(key)? {
+        PhpValue::Str(s) => parse(s).ok(),
+        _ => None,
     };
-    let field = |arr: &[(PhpKey, PhpValue)], key: &str| -> Option<String> {
-        arr.iter()
-            .find(|(k, _)| matches!(k, PhpKey::Str(s) if s == key.as_bytes()))
-            .and_then(|(_, v)| match v {
-                PhpValue::Str(s) => String::from_utf8(s.clone()).ok(),
-                PhpValue::Int(i) => Some(i.to_string()),
-                PhpValue::Float(f) => Some(f.clone()),
-                _ => None,
+    let items = match inner("cart") {
+        Some(PhpValue::Array(cart)) => cart
+            .iter()
+            .map(|(_, item)| match item {
+                PhpValue::Array(_) => item
+                    .text_at("quantity")
+                    .and_then(|q| q.parse::<u64>().ok())
+                    .unwrap_or(1),
+                _ => 0,
             })
+            .sum(),
+        _ => 0,
     };
-    let items = inner("cart")
-        .map(|cart| {
-            cart.iter()
-                .map(|(_, item)| match item {
-                    PhpValue::Array(fields) => field(fields, "quantity")
-                        .and_then(|q| q.parse::<u64>().ok())
-                        .unwrap_or(1),
-                    _ => 0,
-                })
-                .sum()
-        })
-        .unwrap_or(0);
     let total = inner("cart_totals")
-        .and_then(|t| field(&t, "total"))
+        .and_then(|t| t.text_at("total"))
         .and_then(|v| money(&v, currency, decimals));
     let email = inner("customer")
-        .and_then(|c| field(&c, "email"))
+        .and_then(|c| c.text_at("email"))
         .filter(|e| !e.is_empty());
     (items, total, email)
 }

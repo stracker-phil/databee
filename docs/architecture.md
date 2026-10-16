@@ -15,7 +15,7 @@ These rules hold everywhere in the code. Keep them when you change things.
    *plan* a change, shows the planned SQL, and sends it back to be applied.
 2. **One IPC boundary.** `src/api/index.ts` is the only module that calls `invoke` or `listen`. The rest of the
    frontend imports `api` from there, which is also what UI tests mock.
-3. **Errors are data.** Every command returns `Result<T, AppError>`, which serializes as `{ kind, message, code }`.
+3. **Errors are data.** Every command returns `Result<T, AppError>`, which serializes as `{ kind, message, code, account }`.
    The UI branches on `kind` (e.g. `password_required`, `confirmation_required`).
 4. **Passwords never touch files, logs or the webview.** They live in the `Secret` type. It redacts in
    `Debug`, is zeroed on drop and has no `Serialize` impl. Passwords are stored in the OS keychain and handed to a connect call by
@@ -72,7 +72,8 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/wp_commands.rs       WordPress lens + plan/apply of changes
   src/stage_commands.rs    Stage page replies and settings controls
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
-  src/wp/                  WordPress detection, PHP serialize, entities, views
+  src/decode/              PHP serialize and JSON value trees, leaf edits
+  src/wp/                  WordPress detection, entities, views
   src/store/               JSON stores in the config dir
   src/stage/               Stage HTTP API and request hub
   src/secrets/             SecretStore trait; Keychain and test MemoryStore

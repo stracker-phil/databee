@@ -209,12 +209,12 @@ fn site_meta(options: &HashMap<String, String>) -> SiteMeta {
     let opt = |k: &str| options.get(k).filter(|v| !v.is_empty()).cloned();
     let url = opt("siteurl").map(|u| u.trim_end_matches('/').to_string());
     let active_plugins = opt("active_plugins")
-        .and_then(|raw| super::php::parse(raw.as_bytes()).ok())
+        .and_then(|raw| crate::decode::php::parse(raw.as_bytes()).ok())
         .map(|v| match v {
-            super::php::PhpValue::Array(items) => items
+            crate::decode::php::PhpValue::Array(items) => items
                 .into_iter()
                 .filter_map(|(_, v)| match v {
-                    super::php::PhpValue::Str(s) => String::from_utf8(s).ok(),
+                    crate::decode::php::PhpValue::Str(s) => String::from_utf8(s).ok(),
                     _ => None,
                 })
                 .map(|path| {

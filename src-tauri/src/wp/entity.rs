@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use super::context::WpContext;
 use super::hints::{Hint, HintContext, Sensitive, annotate};
-use super::value::{self, DecodedValue};
 use crate::db::{Cell, Dialect, ResultSet};
+use crate::decode::value::{self, DecodedValue};
 use crate::error::{AppError, AppResult};
 
 const BUILTIN: &str = include_str!("entities.toml");
@@ -881,7 +881,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .format,
-            "php"
+            crate::decode::value::Format::Php
         );
 
         let items = doc.relations.iter().find(|r| r.name == "items").unwrap();

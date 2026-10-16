@@ -13,9 +13,7 @@ pub mod logs;
 pub mod media;
 pub mod options;
 pub mod peek;
-pub mod php;
 pub mod snapshot;
-pub mod value;
 
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;

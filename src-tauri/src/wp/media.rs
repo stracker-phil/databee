@@ -1,7 +1,7 @@
 //! Attachment URLs for thumbnails, built from `_wp_attached_file` and the size list in
 //! `_wp_attachment_metadata`. Images are loaded by the UI straight from the site.
 
-use super::php::{self, PhpKey, PhpValue};
+use crate::decode::php::{self, PhpValue};
 
 const PREFERRED_SIZES: &[&str] = &[
     "woocommerce_thumbnail",
@@ -10,27 +10,13 @@ const PREFERRED_SIZES: &[&str] = &[
     "woocommerce_gallery_thumbnail",
 ];
 
-fn entry<'a>(items: &'a [(PhpKey, PhpValue)], key: &str) -> Option<&'a PhpValue> {
-    items
-        .iter()
-        .find(|(k, _)| matches!(k, PhpKey::Str(s) if s == key.as_bytes()))
-        .map(|(_, v)| v)
-}
-
 fn thumbnail_file(metadata: &str) -> Option<String> {
-    let PhpValue::Array(meta) = php::parse(metadata.as_bytes()).ok()? else {
-        return None;
-    };
-    let Some(PhpValue::Array(sizes)) = entry(&meta, "sizes") else {
-        return None;
-    };
+    let meta = php::parse(metadata.as_bytes()).ok()?;
+    let sizes = meta.get("sizes")?;
     PREFERRED_SIZES
         .iter()
-        .find_map(|size| match entry(sizes, size) {
-            Some(PhpValue::Array(s)) => match entry(s, "file") {
-                Some(PhpValue::Str(f)) => String::from_utf8(f.clone()).ok(),
-                _ => None,
-            },
+        .find_map(|size| match sizes.get(size)?.get("file")? {
+            PhpValue::Str(f) => String::from_utf8(f.clone()).ok(),
             _ => None,
         })
 }

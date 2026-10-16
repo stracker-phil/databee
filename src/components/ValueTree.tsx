@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Pencil } from "lucide-react";
-import type { DecodedValue, NewValue, ValueNode } from "../api";
+import type { DecodedValue, NewValue, ValueChild, ValueNode } from "../api";
 
-/** Called with the key path of an edited leaf and its new typed value. */
-export type TreeEdit = (path: string[], value: NewValue) => void;
+/** Called with the child-index path of an edited leaf and its new typed value. */
+export type TreeEdit = (path: number[], value: NewValue) => void;
 
 function LeafEditor({ node, onSave, onCancel }: { node: ValueNode; onSave: (v: NewValue) => void; onCancel: () => void }) {
   const [text, setText] = useState(node.kind === "null" ? "" : (node.text ?? ""));
@@ -45,15 +45,11 @@ function LeafEditor({ node, onSave, onCancel }: { node: ValueNode; onSave: (v: N
   );
 }
 
-type Child = NonNullable<ValueNode["children"]>[number];
-
-const KEY_HINT: Record<Child["keyKind"], string> = {
-  int: "",
-  string: "",
-  public: "",
-  protected: "protected",
-  private: "private",
-};
+function keyHint(child: ValueChild): string {
+  if (child.keyKind === "protected") return "protected";
+  if (child.keyKind === "private") return child.declaringClass ? `private ${child.declaringClass}` : "private";
+  return child.rawHex ? `0x${child.rawHex}` : "";
+}
 
 function summary(node: ValueNode): string {
   const n = node.children?.length ?? 0;
@@ -76,7 +72,25 @@ function Leaf({ node }: { node: ValueNode }) {
   return <span className={`vt-${node.kind}`}>{node.text}</span>;
 }
 
-function Row({ label, keyKind, node, depth, path, onEdit }: { label?: string; keyKind?: Child["keyKind"]; node: ValueNode; depth: number; path: string[]; onEdit?: TreeEdit }) {
+/** `path` addresses the node by child indexes; `labels` are the same steps as shown. A row is
+ * either a child or the root `node`. */
+function Row({
+  child,
+  node: root,
+  depth,
+  path,
+  labels,
+  onEdit,
+}: {
+  child?: ValueChild;
+  node?: ValueNode;
+  depth: number;
+  path: number[];
+  labels: string[];
+  onEdit?: TreeEdit;
+}) {
+  const node = child?.node ?? root!;
+  const hint = child ? keyHint(child) : "";
   const hasChildren = (node.children?.length ?? 0) > 0;
   const [open, setOpen] = useState(depth < 2);
   const [editing, setEditing] = useState(false);
@@ -85,10 +99,10 @@ function Row({ label, keyKind, node, depth, path, onEdit }: { label?: string; ke
     <div className="vt-row" role="treeitem" aria-expanded={hasChildren ? open : undefined}>
       <div className="vt-line" onClick={() => hasChildren && setOpen(!open)}>
         <span className="vt-toggle">{hasChildren ? open ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" /> : null}</span>
-        {label !== undefined && (
-          <span className={`vt-key${keyKind === "int" ? " int" : ""}`}>
-            {label}
-            {keyKind && KEY_HINT[keyKind] && <span className="vt-vis"> {KEY_HINT[keyKind]}</span>}
+        {child && (
+          <span className={`vt-key${child.keyKind === "int" ? " int" : ""}`}>
+            {child.key}
+            {hint && <span className="vt-vis"> {hint}</span>}
           </span>
         )}
         {editing ? (
@@ -107,7 +121,7 @@ function Row({ label, keyKind, node, depth, path, onEdit }: { label?: string; ke
         )}
         {node.note && <span className="badge" style={{ marginLeft: 6 }}>{node.note}</span>}
         {editable && !editing && (
-          <button className="vt-edit" aria-label={`Edit ${path.join("/") || "value"}`} onClick={(e) => (e.stopPropagation(), setEditing(true))}>
+          <button className="vt-edit" aria-label={`Edit ${labels.join("/") || "value"}`} onClick={(e) => (e.stopPropagation(), setEditing(true))}>
             <Pencil size="0.769rem" />
           </button>
         )}
@@ -115,7 +129,14 @@ function Row({ label, keyKind, node, depth, path, onEdit }: { label?: string; ke
       {hasChildren && open && (
         <div className="vt-children" role="group">
           {node.children!.map((c, i) => (
-            <Row key={`${c.key}-${i}`} label={c.key} keyKind={c.keyKind} node={c.node} depth={depth + 1} path={[...path, c.key]} onEdit={onEdit} />
+            <Row
+              key={`${c.key}-${i}`}
+              child={c}
+              depth={depth + 1}
+              path={[...path, i]}
+              labels={[...labels, c.key]}
+              onEdit={onEdit}
+            />
           ))}
         </div>
       )}
@@ -136,7 +157,7 @@ export function ValueTree({ value, onEdit }: { value: DecodedValue; onEdit?: Tre
           <AlertTriangle size="0.923rem" /> Could not decode: {value.error}
         </div>
       )}
-      {value.root && <Row node={value.root} depth={0} path={[]} onEdit={onEdit} />}
+      {value.root && <Row node={value.root} depth={0} path={[]} labels={[]} onEdit={onEdit} />}
     </div>
   );
 }

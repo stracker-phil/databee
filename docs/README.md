@@ -8,7 +8,8 @@ use it, see the [project README](../README.md).
 | [architecture.md](architecture.md) | Design rules, process model, repository map, one request end to end |
 | [backend.md](backend.md) | Rust core: startup, `AppState`, Tauri commands, events, CLI and single-instance IPC, persistence, secrets, errors, native menu |
 | [database.md](database.md) | MySQL driver: connection model, query execution, cell decoding, browsing, edits, adding an engine |
-| [wordpress.md](wordpress.md) | WordPress lens: detection, PHP serialize, entities (TOML), screens, writes, extending |
+| [decode.md](decode.md) | Decoding and editing stored values: PHP serialize, JSON, value trees |
+| [wordpress.md](wordpress.md) | WordPress lens: detection, entities (TOML), screens, writes, extending |
 | [frontend.md](frontend.md) | React app: boot, store, API boundary, command registry, components, styling, tests |
 | [stage.md](stage.md) | Optional local HTTP API for the Stage presenter app |
 | [testing.md](testing.md) | Unit and integration tests, Docker fixtures, scripts that drive the app in the background |

@@ -10,10 +10,11 @@ use super::context::WpContext;
 use super::entity::{Catalog, EntityDoc, EntityLink, cell_str};
 use super::hints::{DEFAULT_PRICE_DECIMALS, Hint, money};
 use super::lists::{self, ListQuery, OrderSummary, epoch, int, num, roles_of, text};
-use super::php::{self, PhpKey, PhpValue};
-use super::{fetch, load_docs, post_images, titles, value};
+use super::{fetch, load_docs, post_images, titles};
 use crate::db::Database;
 use crate::db::{Dialect, ResultSet};
+use crate::decode::php::{self, PhpValue};
+use crate::decode::value;
 use crate::error::{AppError, AppResult};
 
 fn t(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
@@ -44,22 +45,6 @@ fn link(entity: &str, id: impl Into<String>) -> EntityLink {
         id: id.into(),
         label: None,
         image: None,
-    }
-}
-
-fn php_entry<'a>(items: &'a [(PhpKey, PhpValue)], key: &str) -> Option<&'a PhpValue> {
-    items
-        .iter()
-        .find(|(k, _)| matches!(k, PhpKey::Str(s) if s == key.as_bytes()))
-        .map(|(_, v)| v)
-}
-
-fn php_str(v: Option<&PhpValue>) -> Option<String> {
-    match v? {
-        PhpValue::Str(s) => String::from_utf8(s.clone()).ok(),
-        PhpValue::Int(i) => Some(i.to_string()),
-        PhpValue::Float(f) => Some(f.clone()),
-        _ => None,
     }
 }
 
@@ -266,16 +251,12 @@ pub fn decode_entities(s: &str) -> String {
 
 /// Gross → fee → net from `_ppcp_paypal_fees` (serialized PayPal breakdown).
 pub fn paypal_fees(raw: &str) -> Option<Fees> {
-    let PhpValue::Array(top) = php::parse(raw.as_bytes()).ok()? else {
-        return None;
-    };
+    let top = php::parse(raw.as_bytes()).ok()?;
     let amount = |key: &str| -> Option<(String, String)> {
-        let PhpValue::Array(a) = php_entry(&top, key)? else {
-            return None;
-        };
+        let a = top.get(key)?;
         Some((
-            php_str(php_entry(a, "value"))?,
-            php_str(php_entry(a, "currency_code")).unwrap_or_default(),
+            a.text_at("value")?,
+            a.text_at("currency_code").unwrap_or_default(),
         ))
     };
     let (gross, currency) = amount("gross_amount")?;
@@ -1492,11 +1473,10 @@ pub fn product_attributes(raw: &str) -> Vec<(String, String, bool)> {
     items
         .iter()
         .filter_map(|(_, v)| {
-            let PhpValue::Array(a) = v else { return None };
-            let name = php_str(php_entry(a, "name"))?;
-            let value = php_str(php_entry(a, "value")).unwrap_or_default();
+            let name = v.text_at("name")?;
+            let value = v.text_at("value").unwrap_or_default();
             let taxonomy = matches!(
-                php_entry(a, "is_taxonomy"),
+                v.get("is_taxonomy"),
                 Some(PhpValue::Int(1)) | Some(PhpValue::Bool(true))
             );
             Some((name, value, taxonomy))

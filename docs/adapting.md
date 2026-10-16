@@ -109,8 +109,8 @@ WordPress mode is mostly additive, with one catch: the edit pipeline (`ChangeReq
    - remove the mode toggle in `Toolbar`, and render `DbWorkspace` directly in `App.tsx`.
 4. Delete `tests/wp.rs`, `tests/php_roundtrip.rs` and the `wp_test`/`wp_write`/`wp_legacy` parts of the fixture.
 
-Keep `wp/php.rs` and `wp/value.rs` if you want the Inspector to keep decoding PHP-serialized values.
-Otherwise drop `decode_value`, and the Inspector falls back to JSON only, which needs a small decoder.
+The Inspector's decoding and editing of PHP-serialized and JSON values is core (`src-tauri/src/decode/`) and
+stays.
 
 ## Conventions to keep
 

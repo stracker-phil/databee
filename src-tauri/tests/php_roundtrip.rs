@@ -9,7 +9,8 @@ use databee_lib::connection::{ConnectionSpec, Secret};
 use databee_lib::db::Cell;
 use databee_lib::db::Database;
 use databee_lib::db::mysql::MySqlSession;
-use databee_lib::wp::{detect, php};
+use databee_lib::decode::php;
+use databee_lib::wp::detect;
 
 #[tokio::test]
 #[ignore]
