@@ -23,13 +23,22 @@ describe("SettingsDialog", () => {
     render(<SettingsDialog />);
     await userEvent.click(screen.getByRole("button", { name: "Dark" }));
     expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ theme: "dark" }));
-    await userEvent.click(screen.getByRole("button", { name: "Queries" }));
-    const rowLimit = screen.getByLabelText("Row limit");
-    await userEvent.clear(rowLimit);
-    await userEvent.type(rowLimit, "250");
+    await userEvent.click(screen.getByRole("button", { name: "Display" }));
+    const nullLabel = screen.getByLabelText("NULL label");
+    await userEvent.clear(nullLabel);
+    await userEvent.type(nullLabel, "∅");
     expect(mocked.updateSettings).toHaveBeenCalledTimes(1);
     await userEvent.tab();
-    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ rowLimit: 250, theme: "dark" }));
+    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ nullLabel: "∅", theme: "dark" }));
+  });
+
+  it("previews in-range sizes while typing", async () => {
+    render(<SettingsDialog />);
+    const uiSize = screen.getByLabelText("UI size");
+    await userEvent.clear(uiSize);
+    await userEvent.type(uiSize, "16");
+    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ uiFontSize: 16 }));
+    expect(mocked.updateSettings).not.toHaveBeenCalledWith(expect.objectContaining({ uiFontSize: 1 }));
   });
 
   it("switches pages from the sidebar", async () => {

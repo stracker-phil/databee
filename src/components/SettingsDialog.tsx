@@ -74,7 +74,8 @@ function Segmented<T extends string>({ label, description, options, value, onCha
   );
 }
 
-/** Text input that commits on blur or Enter, so half-typed values never reach the backend. */
+/** Text input that commits on blur or Enter, so half-typed values never reach the backend.
+ *  Numbers within [min, max] commit as they change, so spinner clicks preview right away. */
 function TextField({ label, description, value, onCommit, type = "text", min, max, suffix }: {
   label: string;
   description?: ReactNode;
@@ -99,7 +100,12 @@ function TextField({ label, description, value, onCommit, type = "text", min, ma
           min={min}
           max={max}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            setText(next);
+            const n = Number(next);
+            if (type === "number" && next.trim() !== "" && n >= (min ?? -Infinity) && n <= (max ?? Infinity) && next !== value) onCommit(next);
+          }}
           onBlur={commit}
           onKeyDown={(e) => e.key === "Enter" && commit()}
         />
