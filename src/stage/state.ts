@@ -1,4 +1,4 @@
-/** What Stage reads about databee: the main window's view and panels, its sheets, and a short state. */
+/** What Stage reads about DataBee: the main window's view and panels, its sheets, and a short state. */
 import type { StageInfoReply, StageRect, StageSurface } from "../api";
 import { SETTINGS_PAGES } from "../components/SettingsDialog";
 import { selectActiveSession, selectActiveTab, selectWp, selectWpRoute, useStore } from "../state/store";

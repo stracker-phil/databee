@@ -38,7 +38,7 @@ export function Toolbar() {
           </button>
         </div>
       ) : (
-        <span className="app-title">databee</span>
+        <span className="app-title">DataBee</span>
       )}
       {wp && (
         <div className="segmented mode-switch" role="group" aria-label="Mode" data-stage="toolbar:mode">

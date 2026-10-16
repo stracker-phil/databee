@@ -55,7 +55,7 @@ pub enum Dock {
     Bottom,
 }
 
-/// The local HTTP API through which Stage presents databee (docs: README "Presentations").
+/// The local HTTP API through which Stage presents DataBee (docs: README "Presentations").
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct StageSettings {

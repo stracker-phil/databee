@@ -24,7 +24,7 @@ export interface Settings {
   gravatar: boolean;
   /** Value inspector and WordPress detail pane: beside or below the content. */
   inspectorDock: "right" | "bottom";
-  /** The local HTTP API through which Stage presents databee. */
+  /** The local HTTP API through which Stage presents DataBee. */
   stage: StageSettings;
 }
 

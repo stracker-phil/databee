@@ -1,8 +1,8 @@
 //! The Stage hook's verbs (Stage protocol 1, revision 2026-10-16, §5): what a presenter may read
-//! and make databee do. The page answers anchor, act and info requests (src/stage/hooks.ts);
+//! and make DataBee do. The page answers anchor, act and info requests (src/stage/hooks.ts);
 //! `http.rs` routes `/v1/stage/<verb>` here.
 //!
-//! databee has one native window. Settings and the command palette are sheets inside it; the hook
+//! DataBee has one native window. Settings and the command palette are sheets inside it; the hook
 //! exposes them as the windows `settings` and `palette`, measured by the page.
 
 use std::collections::HashMap;
@@ -244,7 +244,7 @@ impl Hub {
         let palette_open = Self::is_shown("palette", frame, info);
         let mut main = json!({
             "id": MAIN,
-            "title": frame.map_or("databee", |f| f.title.as_str()),
+            "title": frame.map_or("DataBee", |f| f.title.as_str()),
             "visible": shown_main.is_some(),
             // A sheet on top takes the keys.
             "focused": shown_main.is_some_and(|f| f.focused)
@@ -320,7 +320,7 @@ impl Hub {
             None => (Vec::new(), Map::new()),
         };
         out.insert("commands".into(), json!(commands));
-        // databee has no global shortcuts; in-app ones work through `keys`.
+        // DataBee has no global shortcuts; in-app ones work through `keys`.
         out.insert("hotkeys".into(), json!([]));
         out.insert("state".into(), Value::Object(state));
         out
@@ -401,7 +401,7 @@ impl Hub {
             (_, "place") => {
                 return Err(StageError::new(
                     409,
-                    format!("The {id} window places itself (a sheet centred in databee's window)."),
+                    format!("The {id} window places itself (a sheet centred in DataBee's window)."),
                 ));
             }
             (_, "show") => {
@@ -611,7 +611,7 @@ impl Hub {
         let no_focus = || {
             StageError::new(
                 409,
-                "No databee window has keyboard focus; pass window=main (or settings, palette).",
+                "No DataBee window has keyboard focus; pass window=main (or settings, palette).",
             )
         };
         if frame.is_none() {
@@ -707,7 +707,7 @@ pub(crate) mod tests {
             height: 800,
         };
         Frame {
-            title: "databee".into(),
+            title: "DataBee".into(),
             visible,
             focused,
             bounds: rect,
@@ -924,7 +924,7 @@ pub(crate) mod tests {
         let hub = Arc::new(Hub::new(
             Box::new(page.clone()),
             timeouts,
-            "databee",
+            "DataBee",
             "com.test",
         ));
         page.hub.set(Arc::downgrade(&hub)).unwrap();
@@ -971,11 +971,11 @@ pub(crate) mod tests {
         let d = run(&hub, "describe", &[]).await.unwrap();
         assert_eq!(d["protocol"], 1);
         assert_eq!(d["features"], json!(FEATURES));
-        assert_eq!(d["app"]["name"], "databee");
+        assert_eq!(d["app"]["name"], "DataBee");
         assert_eq!(
             d["windows"][0],
             json!({
-                "id": "main", "title": "databee", "visible": true, "focused": true, "movable": true,
+                "id": "main", "title": "DataBee", "visible": true, "focused": true, "movable": true,
                 "bounds": { "x": 100, "y": 50, "width": 1200, "height": 800 },
                 "content": { "x": 100, "y": 50, "width": 1200, "height": 800 },
                 "view": "db", "ui": { "inspector": "closed" }

@@ -27,7 +27,7 @@ pub fn build(app: &App, bindings: &KeybindingsStore) -> tauri::Result<Menu<Wry>>
         }
         builder.build(app)
     };
-    let app_menu = SubmenuBuilder::new(app, "databee")
+    let app_menu = SubmenuBuilder::new(app, "DataBee")
         .about(Some(AboutMetadata::default()))
         .separator()
         .item(&item("settings.open")?)

@@ -98,7 +98,7 @@ describe("SettingsDialog", () => {
     expect(screen.getByText(/include the SQL text/)).toBeInTheDocument();
   });
 
-  it("shows whether Stage can find databee and manages the API token", async () => {
+  it("shows whether Stage can find DataBee and manages the API token", async () => {
     mocked.stageStatus.mockResolvedValue({ enabled: true, running: true, error: null, url: "http://127.0.0.1:27184/v1/stage", discoveryFile: "/apps/databee.json", lastRequest: new Date(Date.now() - 120_000).toISOString() });
     render(<SettingsDialog />);
     await userEvent.click(screen.getByRole("button", { name: "Presentations" }));

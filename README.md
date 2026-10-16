@@ -1,4 +1,4 @@
-# databee
+# DataBee
 
 A minimalistic SQL client for macOS (Apple Silicon), built for senior WordPress & WooCommerce
 developers inspecting their local MySQL/MariaDB databases (DDEV, Docker). It shows what is stored,
@@ -6,7 +6,7 @@ not a friendlier version of it: it is not a tool for site admins or shop owners.
 
 ## Features
 
-- **CLI-first launching:** another app or script opens databee with connection details. A second launch hands its request to the running window.
+- **CLI-first launching:** another app or script opens DataBee with connection details. A second launch hands its request to the running window.
 - **Keychain:** passwords are stored in the macOS Keychain and never written to files or logs.
 - **Browsing:**
   - schema tree with filter (⌘⇧F); a single click opens a table as a preview tab, double-click or ⌘-click keeps it
@@ -76,19 +76,19 @@ Two symlinks point at the debug build, so every `bun run build:app` is picked up
 
 | Link | Created by | Use |
 | --- | --- | --- |
-| `~/.local/bin/databee` → `databee.app/Contents/MacOS/databee` | `scripts/install-cli.sh` | the `databee` CLI command, from any shell (`~/.local/bin` must be on `PATH`) |
-| `~/Applications/databee.app` → `databee.app` | `scripts/install-app.sh` | the GUI launcher in Spotlight, Launchpad and the Dock |
+| `~/.local/bin/databee` → `DataBee.app/Contents/MacOS/databee` | `scripts/install-cli.sh` | the `databee` CLI command, from any shell (`~/.local/bin` must be on `PATH`) |
+| `~/Applications/DataBee.app` → `DataBee.app` | `scripts/install-app.sh` | the GUI launcher in Spotlight, Launchpad and the Dock |
 
-Both scripts take an optional path to another `databee.app` (e.g. a release build).
+Both scripts take an optional path to another `DataBee.app` (e.g. a release build).
 
 ## Presentations (Stage)
 
-Stage, a separate app, presents databee: it spotlights parts of the window, shows captions, and
-clicks, types and runs commands. databee implements the Stage hook (protocol 1, revision 2026-10-16;
+Stage, a separate app, presents DataBee: it spotlights parts of the window, shows captions, and
+clicks, types and runs commands. DataBee implements the Stage hook (protocol 1, revision 2026-10-16;
 the spec is served by a running Stage at `http://127.0.0.1:27190/v1/protocol`) on
 `http://127.0.0.1:27184/v1/stage/{describe,window,act,state}`, with every optional feature:
 `reveal visible sections ui type.append keys.window scroll wait`. Settings → Presentations turns it
-off and shows the port, token, discovery file and the last presenter request. 27184 is databee's
+off and shows the port, token, discovery file and the last presenter request. 27184 is DataBee's
 fixed default (27180–27183 belong to other apps, 27190 to Stage).
 
 While the hook listens, `~/Library/Application Support/stage/apps/com.philippstracker.databee.json`
@@ -112,8 +112,8 @@ api act '{"kind":"keys","keys":"Enter","window":"palette"}'
   `app:settings` and `view:palette`. Families: `settings:open:<page>`, `table:open:<table>` (current
   database) and `wp:open:<entity>:<id>` (e.g. `wp:open:order:4711`).
 - **Keys.** A command's shortcut runs that command, in the current view and without focus, so ⌘, ⌘K
-  and ⌘T work like their menu items. Other keys go to the focused element; `window=` focuses databee
-  first. Enter in a field submits its form. `hotkeys` is empty because databee has no global shortcuts.
+  and ⌘T work like their menu items. Other keys go to the focused element; `window=` focuses DataBee
+  first. Enter in a field submits its form. `hotkeys` is empty because DataBee has no global shortcuts.
 - **Anchors** are `data-stage` attributes (`data-stage-label`, `-role`, `-list`). Ids follow data where rows have stable ids:
   `table:<db>.<table>` (list `tables`), `tab:table:<db>.<table>`, `<entity>:<id>` for WordPress list rows
   (list `wp:<list>`), `wp:nav:<list>`, `palette:search` and `palette:item:*` (list `palette:results`),

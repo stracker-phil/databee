@@ -1,5 +1,5 @@
 /**
- * databee's commands as the Stage hook lists them: the registry's (with their shortcut in Stage
+ * DataBee's commands as the Stage hook lists them: the registry's (with their shortcut in Stage
  * notation), conventional ids where the protocol has one (§7), and families that take an argument.
  */
 import type { StageCommand } from "../api";

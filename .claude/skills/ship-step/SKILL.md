@@ -1,6 +1,6 @@
 ---
 name: ship-step
-description: Finish a development step in databee - run tests and lint, build and launch the app, then commit. Use at the end of every feature or change.
+description: Finish a development step in DataBee - run tests and lint, build and launch the app, then commit. Use at the end of every feature or change.
 ---
 
 1. `bun run test`: fix failures before continuing.

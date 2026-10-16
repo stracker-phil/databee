@@ -1,5 +1,5 @@
 //! The Stage hook (docs/stage.md): a local HTTP API through which Stage, a separate
-//! presentation app, reads databee's window, anchors and commands and makes it act. While the
+//! presentation app, reads DataBee's window, anchors and commands and makes it act. While the
 //! API listens, a discovery file tells Stage where it is.
 
 pub mod discovery;
@@ -17,7 +17,7 @@ use crate::store::settings::StageSettings;
 use hooks::{Frame, Hub, StageHost, Timeouts};
 use protocol::{MAIN, ScreenRect, stage_url};
 
-pub const NAME: &str = "databee";
+pub const NAME: &str = "DataBee";
 
 /// 256 random bits as hex; generated on first start and on "New token".
 pub fn new_token() -> String {

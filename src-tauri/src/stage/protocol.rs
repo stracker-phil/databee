@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const PROTOCOL: u32 = 1;
-/// The protocol's name for databee's only window.
+/// The protocol's name for DataBee's only window.
 pub const MAIN: &str = "main";
 const MAX_LABEL: usize = 200;
 
@@ -330,7 +330,7 @@ fn short(text: String) -> String {
     }
 }
 
-/// The windows databee exposes, in `describe` order. Settings and the palette are sheets inside
+/// The windows DataBee exposes, in `describe` order. Settings and the palette are sheets inside
 /// the main window; the page measures them.
 pub const WINDOWS: [&str; 3] = [MAIN, "settings", "palette"];
 
@@ -648,12 +648,12 @@ mod tests {
         let now = chrono::DateTime::parse_from_rfc3339("2026-10-15T12:00:00Z")
             .unwrap()
             .to_utc();
-        let record = discovery_record("databee", "com.example", 27184, "t", 42, now);
+        let record = discovery_record("DataBee", "com.example", 27184, "t", 42, now);
         assert_eq!(
             serde_json::to_value(&record).unwrap(),
             serde_json::json!({
                 "protocol": 1,
-                "name": "databee",
+                "name": "DataBee",
                 "id": "com.example",
                 "url": "http://127.0.0.1:27184/v1/stage",
                 "token": "t",

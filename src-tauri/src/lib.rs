@@ -92,7 +92,7 @@ pub fn run() {
     match ipc::try_forward(&socket, &message) {
         Ok(true) => std::process::exit(exit_code),
         Ok(false) => {}
-        Err(e) => eprintln!("Could not reach running databee instance: {e}"),
+        Err(e) => eprintln!("Could not reach running DataBee instance: {e}"),
     }
 
     start_app(config_dir, socket, message, log_override);
@@ -113,7 +113,7 @@ fn start_app(
             app.set_menu(menu::build(app, &state.keybindings)?)?;
             let level = log_override.unwrap_or(state.settings.get().log_level);
             log::set_max_level(level.into());
-            log::info!("databee {} started", env!("CARGO_PKG_VERSION"));
+            log::info!("DataBee {} started", env!("CARGO_PKG_VERSION"));
             state.launches.push(initial);
             commands::apply_window_theme(app.handle(), state.settings.get().theme);
             let mut settings = state.settings.get();

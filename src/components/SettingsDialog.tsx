@@ -217,14 +217,14 @@ function ShortcutsPage() {
 }
 
 const INTRO: Record<Page, string> = {
-  appearance: "How databee looks. Changes apply right away.",
+  appearance: "How DataBee looks. Changes apply right away.",
   shortcuts: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.",
   queries: "Limits and safety checks for the SQL editor and table views.",
   display: "How values and schemas show up in grids, documents and the sidebar.",
   connections: "Defaults for new connections.",
   wordpress: "The WordPress lens for WooCommerce and WordPress databases.",
-  presentations: "Lets a presenter app such as Stage highlight parts of databee and click through it for a demo. Only apps on this Mac can connect.",
-  logging: "What databee writes to its log file.",
+  presentations: "Lets a presenter app such as Stage highlight parts of DataBee and click through it for a demo. Only apps on this Mac can connect.",
+  logging: "What DataBee writes to its log file.",
 };
 
 /** §10 of the Stage protocol: the hook's switch, status, port, token and discovery file. */

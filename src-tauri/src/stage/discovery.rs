@@ -64,7 +64,7 @@ mod tests {
     fn publishes_a_private_record_and_removes_it() {
         let dir = tempfile::tempdir().unwrap();
         let file = path_in(&dir.path().join("apps"), "com.example");
-        publish(&file, "databee", "com.example", 27184, "token").unwrap();
+        publish(&file, "DataBee", "com.example", 27184, "token").unwrap();
         let record: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(record["url"], "http://127.0.0.1:27184/v1/stage");
@@ -72,7 +72,7 @@ mod tests {
         let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         assert!(!file.with_extension("json.partial").exists());
-        publish(&file, "databee", "com.example", 27185, "new").unwrap();
+        publish(&file, "DataBee", "com.example", 27185, "new").unwrap();
         assert!(std::fs::read_to_string(&file).unwrap().contains("27185"));
         remove(&file);
         assert!(!file.exists());

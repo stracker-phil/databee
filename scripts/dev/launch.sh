@@ -3,7 +3,7 @@
 # Usage: scripts/dev/launch.sh [databee CLI args...]     Terminal app name: $DATABEE_DEV_TERMINAL (default Terminal)
 set -e
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-BIN="$ROOT/src-tauri/target/debug/bundle/macos/databee.app/Contents/MacOS/databee"
+BIN="$ROOT/src-tauri/target/debug/bundle/macos/DataBee.app/Contents/MacOS/databee"
 [[ -x "$BIN" ]] || { echo "Build first: bun run build:app"; exit 1; }
 
 FRAME=$(swift - "${DATABEE_DEV_TERMINAL:-Terminal}" <<'SWIFT' 2>/dev/null
@@ -37,4 +37,4 @@ sleep 0.5
 LOG="${TMPDIR:-/tmp}/databee-dev.log"
 DATABEE_WINDOW_FRAME="$FRAME" DATABEE_BACKGROUND=1 nohup "$BIN" "$@" >"$LOG" 2>&1 &
 disown
-echo "databee started at $FRAME (log: $LOG)"
+echo "DataBee started at $FRAME (log: $LOG)"

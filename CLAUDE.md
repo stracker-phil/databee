@@ -1,4 +1,4 @@
-# databee
+# DataBee
 
 Minimalistic SQL client for senior WordPress developers working on local sites: MySQL/MariaDB
 (often DDEV/Docker, dummy data), SQLite later. Not for site admins or shop owners; the WordPress
