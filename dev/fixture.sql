@@ -48,7 +48,7 @@ USE wp_test;
 CREATE TABLE wp_options (option_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, option_name varchar(191) UNIQUE, option_value longtext, autoload varchar(20) DEFAULT 'yes');
 CREATE TABLE wp_users (ID bigint unsigned AUTO_INCREMENT PRIMARY KEY, user_login varchar(60), user_pass varchar(255), user_email varchar(100), user_registered datetime DEFAULT '0000-00-00 00:00:00', display_name varchar(250));
 CREATE TABLE wp_usermeta (umeta_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, user_id bigint unsigned, meta_key varchar(255), meta_value longtext);
-CREATE TABLE wp_posts (ID bigint unsigned AUTO_INCREMENT PRIMARY KEY, post_author bigint unsigned DEFAULT 0, post_date_gmt datetime DEFAULT '0000-00-00 00:00:00', post_modified datetime DEFAULT '0000-00-00 00:00:00', post_modified_gmt datetime DEFAULT '0000-00-00 00:00:00', post_title text, post_name varchar(200) DEFAULT '', post_status varchar(20), post_type varchar(20), post_parent bigint unsigned DEFAULT 0, menu_order int DEFAULT 0);
+CREATE TABLE wp_posts (ID bigint unsigned AUTO_INCREMENT PRIMARY KEY, post_author bigint unsigned DEFAULT 0, post_date datetime NOT NULL DEFAULT '0000-00-00 00:00:00', post_date_gmt datetime DEFAULT '0000-00-00 00:00:00', post_content longtext NOT NULL, post_title text, post_excerpt text, post_status varchar(20), post_name varchar(200) DEFAULT '', post_modified datetime DEFAULT '0000-00-00 00:00:00', post_modified_gmt datetime DEFAULT '0000-00-00 00:00:00', post_parent bigint unsigned DEFAULT 0, guid varchar(255) NOT NULL DEFAULT '', menu_order int DEFAULT 0, post_type varchar(20));
 CREATE TABLE wp_postmeta (meta_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, post_id bigint unsigned, meta_key varchar(255), meta_value longtext);
 CREATE TABLE wp_comments (comment_ID bigint unsigned AUTO_INCREMENT PRIMARY KEY, comment_post_ID bigint unsigned, comment_author varchar(255), comment_date_gmt datetime DEFAULT '0000-00-00 00:00:00', comment_content text, comment_type varchar(20), comment_parent bigint unsigned DEFAULT 0, user_id bigint unsigned DEFAULT 0);
 CREATE TABLE wp_commentmeta (meta_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, comment_id bigint unsigned, meta_key varchar(255), meta_value longtext);
@@ -61,9 +61,9 @@ CREATE TABLE wp_wc_order_addresses (id bigint unsigned AUTO_INCREMENT PRIMARY KE
 CREATE TABLE wp_wc_order_operational_data (id bigint unsigned AUTO_INCREMENT PRIMARY KEY, order_id bigint unsigned, created_via varchar(100), date_paid_gmt datetime NULL, date_completed_gmt datetime NULL);
 CREATE TABLE wp_woocommerce_order_items (order_item_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, order_item_name text, order_item_type varchar(200), order_id bigint unsigned);
 CREATE TABLE wp_woocommerce_order_itemmeta (meta_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, order_item_id bigint unsigned, meta_key varchar(255), meta_value longtext);
-CREATE TABLE wp_wc_product_meta_lookup (product_id bigint PRIMARY KEY, sku varchar(100), min_price decimal(19,4), max_price decimal(19,4), stock_quantity double, stock_status varchar(100), total_sales bigint DEFAULT 0);
+CREATE TABLE wp_wc_product_meta_lookup (product_id bigint PRIMARY KEY, sku varchar(100), min_price decimal(19,4), max_price decimal(19,4), stock_quantity double, stock_status varchar(100), total_sales bigint DEFAULT 0, has_price_range tinyint(1) GENERATED ALWAYS AS (min_price <> max_price) STORED);
 CREATE TABLE wp_wc_order_product_lookup (order_item_id bigint unsigned PRIMARY KEY, order_id bigint unsigned, product_id bigint unsigned, variation_id bigint unsigned);
-CREATE TABLE wp_actionscheduler_actions (action_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, hook varchar(191), status varchar(20), scheduled_date_gmt datetime DEFAULT '0000-00-00 00:00:00', args varchar(191), group_id bigint unsigned DEFAULT 0, attempts int DEFAULT 0, claim_id bigint unsigned DEFAULT 0, last_attempt_gmt datetime DEFAULT '0000-00-00 00:00:00', extended_args varchar(8000));
+CREATE TABLE wp_actionscheduler_actions (action_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, hook varchar(191), status varchar(20), scheduled_date_gmt datetime DEFAULT '0000-00-00 00:00:00', scheduled_date_local datetime DEFAULT '0000-00-00 00:00:00', priority tinyint unsigned NOT NULL DEFAULT 10, args varchar(191), group_id bigint unsigned DEFAULT 0, attempts int DEFAULT 0, claim_id bigint unsigned DEFAULT 0, last_attempt_gmt datetime DEFAULT '0000-00-00 00:00:00', last_attempt_local datetime DEFAULT '0000-00-00 00:00:00', extended_args varchar(8000) DEFAULT NULL);
 CREATE TABLE wp_actionscheduler_groups (group_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, slug varchar(255));
 CREATE TABLE wp_actionscheduler_logs (log_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, action_id bigint unsigned, message text, log_date_gmt datetime);
 CREATE TABLE wp_woocommerce_sessions (session_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, session_key char(32) UNIQUE, session_value longtext, session_expiry bigint unsigned);
@@ -123,7 +123,8 @@ INSERT INTO wp_postmeta (post_id, meta_key, meta_value) VALUES
   (200, '_product_attributes', 'a:1:{s:8:"pa_color";a:3:{s:4:"name";s:8:"pa_color";s:5:"value";s:0:"";s:11:"is_taxonomy";i:1;}}'),
   (201, 'attribute_pa_color', 'red'), (201, '_price', '20'), (201, '_sku', 'SHIRT-R'), (201, '_stock_status', 'instock'),
   (202, 'attribute_pa_color', 'blue'), (202, '_price', '22'), (202, '_sku', 'SHIRT-B'), (202, '_stock_status', 'outofstock');
-INSERT INTO wp_wc_product_meta_lookup VALUES (123, 'MUG-1', 24.95, 24.95, NULL, 'instock', 5), (200, '', 20, 22, NULL, 'instock', 1);
+INSERT INTO wp_wc_product_meta_lookup (product_id, sku, min_price, max_price, stock_quantity, stock_status, total_sales) VALUES (123, 'MUG-1', 24.95, 24.95, NULL, 'instock', 5), (200, '', 20, 22, NULL, 'instock', 1);
+UPDATE wp_posts SET guid = 'https://shop.test/wp-content/uploads/2026/01/mug.jpg' WHERE ID = 124;
 
 INSERT INTO wp_wc_orders VALUES
   (4711, 'wc-processing', 'shop_order', 'EUR', 49.90, 12, 'jane@shop.test', UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() - INTERVAL 1 DAY, 0, 'ppcp-gateway', 'PayPal', '61P3809224872131H'),
@@ -152,6 +153,7 @@ INSERT INTO wp_wc_order_product_lookup VALUES (1, 4711, 123, 0), (3, 4713, 200, 
 INSERT INTO wp_comments (comment_post_ID, comment_author, comment_date_gmt, comment_content, comment_type) VALUES
   (4711, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 1 DAY + INTERVAL 1 MINUTE, 'Payment captured', 'order_note'),
   (4711, 'Jane', UTC_TIMESTAMP(), 'Nice mug', 'review');
+INSERT INTO wp_commentmeta (comment_id, meta_key, meta_value) VALUES (1, 'is_customer_note', '0');
 
 INSERT INTO wp_actionscheduler_groups (group_id, slug) VALUES (1, 'woocommerce-paypal-payments');
 INSERT INTO wp_actionscheduler_actions (action_id, hook, status, scheduled_date_gmt, args, group_id, attempts, last_attempt_gmt) VALUES
@@ -210,7 +212,7 @@ INSERT INTO wp_write.wp_woocommerce_order_items SELECT * FROM wp_test.wp_woocomm
 CREATE TABLE wp_write.wp_woocommerce_order_itemmeta LIKE wp_test.wp_woocommerce_order_itemmeta;
 INSERT INTO wp_write.wp_woocommerce_order_itemmeta SELECT * FROM wp_test.wp_woocommerce_order_itemmeta;
 CREATE TABLE wp_write.wp_wc_product_meta_lookup LIKE wp_test.wp_wc_product_meta_lookup;
-INSERT INTO wp_write.wp_wc_product_meta_lookup SELECT * FROM wp_test.wp_wc_product_meta_lookup;
+INSERT INTO wp_write.wp_wc_product_meta_lookup (product_id, sku, min_price, max_price, stock_quantity, stock_status, total_sales) SELECT product_id, sku, min_price, max_price, stock_quantity, stock_status, total_sales FROM wp_test.wp_wc_product_meta_lookup;
 CREATE TABLE wp_write.wp_wc_order_product_lookup LIKE wp_test.wp_wc_order_product_lookup;
 INSERT INTO wp_write.wp_wc_order_product_lookup SELECT * FROM wp_test.wp_wc_order_product_lookup;
 CREATE TABLE wp_write.wp_actionscheduler_actions LIKE wp_test.wp_actionscheduler_actions;
@@ -298,3 +300,60 @@ INSERT INTO wp_comments (comment_post_ID, comment_author, comment_date_gmt, comm
   (501, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 1 HOUR, 'Refunded $5.00', 'order_note');
 INSERT INTO wp_woocommerce_log (timestamp, level, source, message, context) VALUES
   (UTC_TIMESTAMP() - INTERVAL 2 DAY, 200, 'transactional-emails', 'Email "customer_completed_order" for order #501 sent', NULL);
+
+-- Custom table prefix (xy_) for prefix detection.
+CREATE DATABASE wp_custom CHARACTER SET utf8mb4;
+USE wp_custom;
+CREATE TABLE xy_options LIKE wp_test.wp_options;
+CREATE TABLE xy_users LIKE wp_test.wp_users;
+CREATE TABLE xy_usermeta LIKE wp_test.wp_usermeta;
+CREATE TABLE xy_posts LIKE wp_test.wp_posts;
+CREATE TABLE xy_postmeta LIKE wp_test.wp_postmeta;
+
+INSERT INTO xy_options (option_name, option_value, autoload) VALUES
+  ('siteurl', 'https://custom.test', 'yes'),
+  ('blogname', 'Custom Prefix Site', 'yes'),
+  ('db_version', '58975', 'yes'),
+  ('active_plugins', 'a:0:{}', 'yes');
+INSERT INTO xy_users (ID, user_login, user_pass, user_email, user_registered, display_name) VALUES
+  (1, 'admin', '$P$admin', 'admin@custom.test', '2025-01-01 00:00:00', 'Admin');
+INSERT INTO xy_usermeta (user_id, meta_key, meta_value) VALUES
+  (1, 'xy_capabilities', 'a:1:{s:13:"administrator";b:1;}');
+INSERT INTO xy_posts (ID, post_author, post_date_gmt, post_modified_gmt, post_title, post_name, post_status, post_type, post_parent) VALUES
+  (1, 1, '2025-01-01 00:00:00', '2025-01-01 00:00:00', 'Hello world', 'hello-world', 'publish', 'post', 0);
+
+-- Multisite network: main site (wp_) and sub-site 2 (wp_2_, no wp_2_users: users are network-wide).
+CREATE DATABASE wp_multi CHARACTER SET utf8mb4;
+USE wp_multi;
+CREATE TABLE wp_options LIKE wp_test.wp_options;
+CREATE TABLE wp_users LIKE wp_test.wp_users;
+CREATE TABLE wp_usermeta LIKE wp_test.wp_usermeta;
+CREATE TABLE wp_posts LIKE wp_test.wp_posts;
+CREATE TABLE wp_postmeta LIKE wp_test.wp_postmeta;
+CREATE TABLE wp_2_options LIKE wp_test.wp_options;
+CREATE TABLE wp_2_posts LIKE wp_test.wp_posts;
+CREATE TABLE wp_2_postmeta LIKE wp_test.wp_postmeta;
+CREATE TABLE wp_blogs (blog_id bigint(20) NOT NULL AUTO_INCREMENT, site_id bigint(20) NOT NULL DEFAULT 0, domain varchar(200) NOT NULL DEFAULT '', path varchar(100) NOT NULL DEFAULT '', registered datetime NOT NULL DEFAULT '0000-00-00 00:00:00', last_updated datetime NOT NULL DEFAULT '0000-00-00 00:00:00', public tinyint(2) NOT NULL DEFAULT 1, archived tinyint(2) NOT NULL DEFAULT 0, mature tinyint(2) NOT NULL DEFAULT 0, spam tinyint(2) NOT NULL DEFAULT 0, deleted tinyint(2) NOT NULL DEFAULT 0, lang_id int(11) NOT NULL DEFAULT 0, PRIMARY KEY (blog_id));
+CREATE TABLE wp_sitemeta (meta_id bigint(20) NOT NULL AUTO_INCREMENT, site_id bigint(20) NOT NULL DEFAULT 0, meta_key varchar(255) DEFAULT NULL, meta_value longtext, PRIMARY KEY (meta_id));
+
+INSERT INTO wp_blogs (blog_id, site_id, domain, path) VALUES
+  (1, 1, 'network.test', '/'),
+  (2, 1, 'shop.network.test', '/');
+INSERT INTO wp_sitemeta (site_id, meta_key, meta_value) VALUES
+  (1, 'site_name', 'Test Network'),
+  (1, 'active_sitewide_plugins', 'a:1:{s:27:"woocommerce/woocommerce.php";i:1700000000;}');
+INSERT INTO wp_options (option_name, option_value, autoload) VALUES
+  ('siteurl', 'https://network.test', 'yes'),
+  ('blogname', 'Network Main', 'yes'),
+  ('db_version', '58975', 'yes'),
+  ('active_plugins', 'a:0:{}', 'yes');
+INSERT INTO wp_2_options (option_name, option_value, autoload) VALUES
+  ('siteurl', 'https://shop.network.test', 'yes'),
+  ('blogname', 'Network Shop', 'yes'),
+  ('db_version', '58975', 'yes');
+INSERT INTO wp_users (ID, user_login, user_pass, user_email, user_registered, display_name) VALUES
+  (1, 'admin', '$P$admin', 'admin@network.test', '2025-01-01 00:00:00', 'Admin');
+INSERT INTO wp_posts (ID, post_author, post_date_gmt, post_modified_gmt, post_title, post_name, post_status, post_type, post_parent) VALUES
+  (1, 1, '2025-01-01 00:00:00', '2025-01-01 00:00:00', 'Main hello', 'main-hello', 'publish', 'post', 0);
+INSERT INTO wp_2_posts (ID, post_author, post_date_gmt, post_modified_gmt, post_title, post_name, post_status, post_type, post_parent) VALUES
+  (1, 1, '2025-01-01 00:00:00', '2025-01-01 00:00:00', 'Shop hello', 'shop-hello', 'publish', 'post', 0);

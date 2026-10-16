@@ -368,6 +368,20 @@ export type PeekFact = { label: string, value: string, kind: FactKind, };
  */
 export type PlannedChange = { id: number, description: string, statements: Array<string>, canUndo: boolean, };
 
+/**
+ * Plugins listed in one option.
+ */
+export type PluginList = { 
+/**
+ * The option the list was read from: `active_plugins` (in `options`) or
+ * `active_sitewide_plugins` (in `sitemeta`).
+ */
+source: "active_plugins" | "active_sitewide_plugins", 
+/**
+ * Plugin slugs (the directory or file name of each stored plugin path), e.g. `woocommerce`.
+ */
+plugins: Array<string>, };
+
 export type PostSummary = { id: string, title: string | null, kind: string, status: string, author: string | null, date: number | null, modified: number | null, };
 
 export type ProductSummary = { id: string, name: string, status: string, kind: string | null, sku: string | null, price: string | null, stockStatus: string | null, stock: string | null, totalSales: number, variations: number, image: string | null, };
@@ -445,7 +459,7 @@ gravatar: boolean, inspectorDock: Dock, };
 export type SiteInfo = { blogId: number, prefix: string, domain: string | null, path: string | null, };
 
 /**
- * Site-level facts read from `wp_options`.
+ * Site-level facts read from `wp_options` (and `wp_sitemeta` on multisite).
  */
 export type SiteMeta = { name: string | null, url: string | null, currency: string | null, zone: string, 
 /**
@@ -453,13 +467,18 @@ export type SiteMeta = { name: string | null, url: string | null, currency: stri
  */
 zoneSource: "timezone_string" | "gmt_offset", theme: string | null, 
 /**
- * Plugin slugs from `active_plugins`, e.g. `woocommerce`.
+ * From `active_plugins`.
  */
-activePlugins: Array<string>, 
+activePlugins: PluginList, 
 /**
- * Base URL for uploads, from `upload_url_path` or `<siteurl>/wp-content/uploads`.
+ * Network-activated plugins from `active_sitewide_plugins`, when the network stores it.
  */
-uploadsUrl: string | null, 
+networkPlugins: PluginList | null, 
+/**
+ * From `upload_url_path` when set. WordPress derives the default from `WP_CONTENT_URL`
+ * and `upload_path`, which the database does not prove, so it is not guessed.
+ */
+uploadsUrl: UploadsUrl | null, 
 /**
  * From `woocommerce_price_num_decimals`.
  */
@@ -537,6 +556,11 @@ export type TransientInfo = { name: string, siteWide: boolean, bytes: number,
 expiresAt: number | null, expired: boolean, };
 
 export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: number | null, inspectorWidth: number | null, bottomPaneHeight: number | null, sqlEditorHeight: number | null, };
+
+/**
+ * The uploads base URL as stored, with the option it came from.
+ */
+export type UploadsUrl = { url: string, source: "upload_url_path", };
 
 export type UserSummary = { id: string, login: string, email: string | null, name: string | null, registered: number | null, roles: Array<string>, orderCount: number, totalSpent: string | null, lastOrder: number | null, avatar: string | null, };
 

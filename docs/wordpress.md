@@ -24,11 +24,11 @@ store and the `entities.toml` cache) and its integration tests. The page calls t
 
 | File | Responsibility |
 |---|---|
-| `mod.rs` | Plugin setup (`init`, `WpState`, `COMMANDS`), detection I/O, document loading, link resolution, options queries, `fetch` (30 s timeout) |
+| `mod.rs` | Plugin setup (`init`, `WpState`, `COMMANDS`), document loading, link resolution, featured images, options queries, `fetch` (30 s timeout) |
 | `commands.rs` | The Tauri commands, which only forward. `wp_env` builds a `WpEnv` (context, catalog, session) for each |
 | `cache.rs` | `WpCache`: detected contexts per session (`Session.ext`), stale once the session wrote to that database; `cache::detect` reads it or detects and fills it |
 | `catalog_cache.rs` | `CatalogCache`: built-in plus user entity definitions, reparsed only when `entities.toml`'s mtime changes |
-| `context.rs` | Detection logic with no I/O: prefix, versions, WooCommerce, HPOS mode, multisite, site facts |
+| `context/` | Detection: `probe.rs` runs the queries into a plain `Probe`; `mod.rs` (`detect`, the pure `build`) turns it into `WpContext` (prefix, versions, WooCommerce, HPOS mode, multisite, site facts); `timezone.rs` holds `SiteZone` |
 | `sql.rs` | Shared SQL fragments: `table_ref`, `PAID_STATUSES` / `paid_statuses_sql`, `AUTOLOAD_ON` / `autoload_on_sql`, and the `Filter` builder for list `WHERE` clauses (conditions plus one search group led by an ID match). LIKE escaping lives in `db::Dialect` |
 | `rows.rs` | Cell readers for query results: `cell_str` (keeps `""` apart from NULL; undo uses it), `string`, `text` (blank is `None`), `count` (`u64`), `num` (`f64`), `int` (exact `i64`), `column_index`, and `facets` for `(value, count)` chips |
 | `entity.rs` + `entities.toml` | Entity definitions as data, plus the resolver that turns them into SQL and documents |
@@ -46,14 +46,19 @@ store and the `entities.toml` cache) and its integration tests. The page calls t
 
 ## Detection
 
-`wp::detect`, then `context::build`:
+`context::detect` (re-exported as `wp::detect`) runs `probe::probe`, then the pure `context::build(Probe)`.
+`Probe` holds the main prefix and what the database stores, uninterpreted: the table set, the `PROBED_OPTIONS` (NULL is `None`),
+the `PROBED_NETWORK_OPTIONS` from `{prefix}sitemeta` of network 1 (WordPress's default `SITE_ID_CURRENT_SITE`)
+and `{prefix}blogs`. Unit tests build contexts from hand-made probes.
 
-1. **Prefix.** A prefix qualifies when `{p}options`, `{p}posts` and `{p}users` all exist; the shortest one wins.
-   Multisite sub-sites have no users table, so they never win. Custom prefixes work.
+1. **Prefix.** A prefix qualifies when `{p}options`, `{p}posts` and `{p}users` all exist; the shortest one wins,
+   and among equally long ones the alphabetically first. Multisite sub-sites have no users table, so they never
+   win. Custom prefixes work.
 2. **Options.** One query reads the `PROBED_OPTIONS`: versions, HPOS flags, `siteurl`, `blogname`, currency,
-   price decimals (`woocommerce_price_num_decimals`, default 2), time zone, theme, `active_plugins`, uploads path.
+   price decimals (`woocommerce_price_num_decimals`, default 2), time zone, theme, `active_plugins`,
+   `upload_url_path`. On multisite a second query reads `active_sitewide_plugins` from `sitemeta`.
 3. **Facts:**
-   - **WooCommerce:** a `woocommerce_version` option, or the WooCommerce order tables.
+   - **WooCommerce:** a non-empty `woocommerce_version` option, or the WooCommerce order tables.
    - **HPOS:** `On` only when `woocommerce_custom_orders_table_enabled = yes` *and* `wc_orders` exists.
      `OnWithSync` when data sync is also on.
    - **Legacy store:** WooCommerce with HPOS off keeps orders in `posts` (`shop_order`, customer in the
@@ -62,13 +67,23 @@ store and the `entities.toml` cache) and its integration tests. The page calls t
      `wc_orders.customer_id` column) is not counted on legacy stores. Customer views list legacy orders through
      `_customer_user` instead.
    - **Action Scheduler:** whether its tables exist.
-   - **Multisite:** sites come from `{main}{N}_options` plus `wp_blogs`.
-   - **Time zone:** `SiteMeta.zone` is a `context::SiteZone`: `Named` from `timezone_string` (with DST, via
-     `chrono-tz`), or `Fixed` from `gmt_offset` (hours, may be fractional) when `timezone_string` is empty or
-     not a zone name. `SiteMeta.zone_source` names the option it came from. Local `DATETIME` values without
-     `gmt` in the key become instants through `SiteZone::to_utc` (`hints::time`). The dashboard and the action
-     histogram bucket by local day (and hour): `dashboard::day_spans` / `hour_spans` turn the site's days into
-     UTC ranges for a `CASE` over the `*_gmt` column, and "today" comes from the server's `UTC_TIMESTAMP()`.
+   - **Multisite:** sites come from `{main}{N}_options` plus `wp_blogs`; a `{main}{N}_` table set without
+     `_options` is not a site.
+   - **Plugins:** `SiteMeta.active_plugins` (from `active_plugins`, the paths are array values) and, on
+     multisite, `SiteMeta.network_plugins` (from `active_sitewide_plugins`, the paths are array keys). Both are a
+     `PluginList` whose `source` names the option; plugins are slugs (the directory or file name of the stored
+     path). An unserialized or broken value is an empty list.
+   - **Uploads:** `SiteMeta.uploads_url` is `upload_url_path` when set (`source: "upload_url_path"`) and absent
+     otherwise: the default depends on `WP_CONTENT_URL` and `upload_path`, which the database doesn't prove.
+     Featured images (`wp::post_images`) then take each attachment's base from its `guid` minus its
+     `_wp_attached_file` (`media::uploads_base_from_guid`).
+   - **Time zone:** `SiteMeta.zone` is a `context::SiteZone` (`context/timezone.rs`): `Named` from
+     `timezone_string` (with DST, via `chrono-tz`), or `Fixed` from `gmt_offset` (hours, may be fractional) when
+     `timezone_string` is empty or not a zone name. `SiteMeta.zone_source` names the option it came from. Local
+     `DATETIME` values without `gmt` in the key become instants through `SiteZone::to_utc` (`hints::time`). The
+     dashboard and the action histogram bucket by local day (and hour): `dashboard::day_spans` / `hour_spans`
+     turn the site's days into UTC ranges for a `CASE` over the `*_gmt` column, and "today" comes from the
+     server's `UTC_TIMESTAMP()`.
 
 The result `WpContext` is cached per database in the session's `WpCache` (`wp/cache.rs`, attached to
 `Session.ext`; `cache::detect` is the entry point), until `wp_detect(refresh)` or until an applied or undone batch writes to that database (each
@@ -269,8 +284,8 @@ backslash. LIKE patterns go through `Dialect::like` / `like_contains` (with `db:
 
 **Another plugin** (Subscriptions, Yoast, a payment gateway):
 1. Add entities with a fitting `when`. If it needs a plugin-specific condition, add a `When` variant and the
-   `WpContext` fact behind it. `site.active_plugins` already holds the plugin slugs, and probed options go
-   into `PROBED_OPTIONS`.
+   `WpContext` fact behind it. `site.active_plugins` and `site.network_plugins` already hold the plugin slugs,
+   and probed options go into `PROBED_OPTIONS` (network options into `PROBED_NETWORK_OPTIONS`).
 2. Missing plugin tables are skipped automatically.
 3. Add key rules in `meta_keys.toml`, log humanizers in `logs.rs`, and dashboard insights as needed.
 4. Never attribute keys to the plugin by their names.

@@ -22,6 +22,8 @@ pub mod snapshot;
 pub mod snapshots_store;
 pub mod sql;
 
+pub use self::context::detect;
+
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::time::Duration;
@@ -170,61 +172,6 @@ pub(crate) async fn fetch(db: &dyn Database, sql: &str) -> AppResult<ResultSet> 
     db.fetch(sql, TIMEOUT).await
 }
 
-/// Probes a database; `None` when it isn't a WordPress install.
-pub async fn detect(db: &dyn Database, database: &str) -> AppResult<Option<WpContext>> {
-    let tables: Vec<String> = db
-        .tables(database)
-        .await?
-        .into_iter()
-        .map(|t| t.name)
-        .collect();
-    let Some(prefix) = context::main_prefix(&tables) else {
-        return Ok(None);
-    };
-    let dialect = db.dialect();
-    let names: Vec<String> = context::PROBED_OPTIONS
-        .iter()
-        .map(|n| dialect.sql_string(n))
-        .collect();
-    let rs = fetch(
-        db,
-        &format!(
-            "SELECT option_name, option_value FROM {}.{} WHERE option_name IN ({})",
-            dialect.quote_ident(database),
-            dialect.quote_ident(&format!("{prefix}options")),
-            names.join(", ")
-        ),
-    )
-    .await?;
-    let options: HashMap<String, String> = rs
-        .rows
-        .iter()
-        .filter_map(|r| Some((string(&r[0])?, string(&r[1])?)))
-        .collect();
-
-    let mut blogs = HashMap::new();
-    if tables.contains(&format!("{prefix}blogs")) {
-        let rs = fetch(
-            db,
-            &format!(
-                "SELECT blog_id, domain, path FROM {}.{}",
-                dialect.quote_ident(database),
-                dialect.quote_ident(&format!("{prefix}blogs"))
-            ),
-        )
-        .await?;
-        for r in &rs.rows {
-            if let (Some(id), Some(domain), Some(path)) =
-                (string(&r[0]), string(&r[1]), string(&r[2]))
-                && let Ok(id) = id.parse()
-            {
-                blogs.insert(id, (domain, path));
-            }
-        }
-    }
-    Ok(context::build(&tables, &options, &blogs))
-}
-
 /// Loads documents for the given IDs, in that order, with meta and relation counts
 /// fetched in one query each.
 pub async fn load_docs(
@@ -318,7 +265,8 @@ pub async fn titles(
         .collect())
 }
 
-/// Featured-image thumbnail URL per post ID (posts without one are left out).
+/// Featured-image thumbnail URL per post ID (posts without one are left out). The uploads base
+/// is `upload_url_path` when set, else what each attachment's `guid` proves.
 pub async fn post_images(
     db: &dyn Database,
     ctx: &WpContext,
@@ -326,7 +274,7 @@ pub async fn post_images(
     post_ids: &[String],
 ) -> AppResult<HashMap<String, String>> {
     let dialect = db.dialect();
-    let (Some(uploads), Ok(ids)) = (&ctx.site.uploads_url, entity::parse_ids(post_ids)) else {
+    let Ok(ids) = entity::parse_ids(post_ids) else {
         return Ok(HashMap::new());
     };
     if ids.is_empty() {
@@ -381,15 +329,62 @@ pub async fn post_images(
             slot.1 = string(&r[2]);
         }
     }
+    let bases = uploads_bases(db, ctx, database, &list(&attachment_ids), &attached).await?;
     Ok(thumb_of
         .into_iter()
         .filter_map(|(post, att)| {
-            let (file, meta) = attached.get(&att.to_string())?;
-            Some((
-                post,
-                media::attachment_url(uploads, file.as_deref()?, meta.as_deref()),
-            ))
+            let att = att.to_string();
+            let (file, meta) = attached.get(&att)?;
+            let url = media::attachment_url(bases.get(&att)?, file.as_deref()?, meta.as_deref());
+            Some((post, url))
         })
+        .collect())
+}
+
+/// The uploads base per attachment ID in `attached` (`ID → (attached file, metadata)`):
+/// `upload_url_path` when set, else what each attachment's `guid` proves for its file.
+async fn uploads_bases(
+    db: &dyn Database,
+    ctx: &WpContext,
+    database: &str,
+    id_list: &str,
+    attached: &HashMap<String, (Option<String>, Option<String>)>,
+) -> AppResult<HashMap<String, String>> {
+    if let Some(uploads) = &ctx.site.uploads_url {
+        return Ok(attached
+            .keys()
+            .map(|id| (id.clone(), uploads.url.clone()))
+            .collect());
+    }
+    let guids = attachment_guids(db, ctx, database, id_list).await?;
+    Ok(attached
+        .iter()
+        .filter_map(|(id, (file, _))| {
+            let base = media::uploads_base_from_guid(guids.get(id)?, file.as_deref()?)?;
+            Some((id.clone(), base.to_string()))
+        })
+        .collect())
+}
+
+/// `ID → guid` of attachment posts; `id_list` is a comma-separated list of IDs.
+async fn attachment_guids(
+    db: &dyn Database,
+    ctx: &WpContext,
+    database: &str,
+    id_list: &str,
+) -> AppResult<HashMap<String, String>> {
+    let rs = fetch(
+        db,
+        &format!(
+            "SELECT ID, guid FROM {} WHERE ID IN ({id_list})",
+            sql::table_ref(db.dialect(), database, ctx, "posts")
+        ),
+    )
+    .await?;
+    Ok(rs
+        .rows
+        .iter()
+        .filter_map(|r| Some((string(&r[0])?, string(&r[1])?)))
         .collect())
 }
 

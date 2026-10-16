@@ -8,6 +8,7 @@
 //!
 //!   DATABEE_WP_TEST=mysql://root:root@127.0.0.1:52958/db cargo test --lib -- --ignored --nocapture every_serialized_value_round_trips
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::cli::{self, CliOutcome, Launch};
@@ -16,12 +17,12 @@ use crate::db::Database;
 use crate::db::mysql::MySqlSession;
 use crate::decode::php;
 use crate::test_support::sessions;
-use crate::wp::context::{HposMode, SiteZone};
+use crate::wp::context::{HposMode, SiteInfo, SiteZone};
 use crate::wp::dashboard::{Granularity, action_histogram, browser, dashboard};
 use crate::wp::detail::{EntityView, EventKind, EventLevel, entity_view, search};
 use crate::wp::entity::{Catalog, definitions};
 use crate::wp::lists::{self, ListQuery};
-use crate::wp::{WpList, detect, expand, load_docs, options_overview};
+use crate::wp::{WpList, detect, expand, load_docs, options_overview, post_images};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -190,7 +191,7 @@ async fn env() -> Vec<(MySqlSession, crate::wp::context::WpContext, Catalog)> {
 async fn dashboard_summarizes_orders_actions_and_health() {
     for (db, ctx, _) in env().await {
         assert_eq!(ctx.site.currency.as_deref(), Some("EUR"));
-        assert_eq!(ctx.site.active_plugins, ["woocommerce"]);
+        assert_eq!(ctx.site.active_plugins.plugins, ["woocommerce"]);
         let d = dashboard(&db, &ctx, "wp_test").await.unwrap();
         let orders = d.orders.unwrap();
         assert_eq!(orders.total, 2, "subscriptions and refunds are not orders");
@@ -1367,6 +1368,74 @@ async fn legacy_order_document_counts_its_notes() {
             .find(|r| r.name == "notes")
             .unwrap();
         assert_eq!(notes.count, 2);
+    }
+}
+
+// ---------- detection fixtures (wp_custom, wp_multi, read-only) ----------
+
+#[tokio::test]
+#[ignore]
+async fn a_custom_table_prefix_is_detected() {
+    for db in sessions("wp_test").await {
+        let ctx = detect(&db, "wp_custom").await.unwrap().unwrap();
+        assert_eq!(ctx.prefix, "xy_");
+        assert_eq!(ctx.site.name.as_deref(), Some("Custom Prefix Site"));
+        assert_eq!(ctx.wc, None);
+        assert!(ctx.sites.is_empty());
+        assert!(ctx.has_table("options"));
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn a_multisite_network_lists_sub_sites_and_network_plugins() {
+    for db in sessions("wp_test").await {
+        let ctx = detect(&db, "wp_multi").await.unwrap().unwrap();
+        assert_eq!(ctx.prefix, "wp_");
+        assert_eq!(
+            ctx.sites,
+            [SiteInfo {
+                blog_id: 2,
+                prefix: "wp_2_".into(),
+                domain: Some("shop.network.test".into()),
+                path: Some("/".into()),
+            }]
+        );
+        let network = ctx.site.network_plugins.unwrap();
+        assert_eq!(network.source, "active_sitewide_plugins");
+        assert_eq!(network.plugins, ["woocommerce"]);
+        assert!(ctx.site.active_plugins.plugins.is_empty());
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn single_sites_have_no_network_plugins_or_sub_sites() {
+    for db in sessions("wp_test").await {
+        for database in ["wp_test", "wp_legacy", "wp_custom"] {
+            let ctx = detect(&db, database).await.unwrap().unwrap();
+            assert_eq!(ctx.site.network_plugins, None, "{database}");
+            assert!(ctx.sites.is_empty(), "{database}");
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn product_images_use_the_uploads_base_the_attachment_guid_proves() {
+    for (db, ctx, _) in env().await {
+        assert_eq!(ctx.site.uploads_url, None);
+        let images = post_images(&db, &ctx, "wp_test", &["123".into(), "200".into()])
+            .await
+            .unwrap();
+        assert_eq!(
+            images,
+            HashMap::from([(
+                "123".to_string(),
+                "https://shop.test/wp-content/uploads/2026/01/mug-150x150.jpg".to_string()
+            )]),
+            "the shirt has no featured image"
+        );
     }
 }
 

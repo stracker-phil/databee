@@ -21,6 +21,17 @@ fn thumbnail_file(metadata: &str) -> Option<String> {
         })
 }
 
+/// The uploads base URL an attachment's `guid` proves: the guid without its `_wp_attached_file`
+/// path, e.g. `https://shop.test/wp-content/uploads/2025/10/mug.jpg` with `2025/10/mug.jpg` →
+/// `https://shop.test/wp-content/uploads`. `None` when the guid does not end with that path.
+pub fn uploads_base_from_guid<'a>(guid: &'a str, attached_file: &str) -> Option<&'a str> {
+    let file = attached_file.trim_start_matches('/');
+    if file.is_empty() {
+        return None;
+    }
+    guid.strip_suffix(file)?.strip_suffix('/')
+}
+
 /// `uploads` + `2025/10/mug.jpg` (+ metadata) → URL of a small rendition when one exists.
 pub fn attachment_url(uploads: &str, attached_file: &str, metadata: Option<&str>) -> String {
     let file = attached_file.trim_start_matches('/');
@@ -49,6 +60,46 @@ mod tests {
             ),
             "https://shop.test/wp-content/uploads/2025/10/sWUQDRXxoAg-150x150.jpg"
         );
+    }
+
+    #[test]
+    fn the_guid_proves_the_uploads_base() {
+        for (guid, file, base) in [
+            (
+                "https://shop.test/wp-content/uploads/2025/10/mug.jpg",
+                "2025/10/mug.jpg",
+                "https://shop.test/wp-content/uploads",
+            ),
+            (
+                "https://shop.test/wp-content/uploads/2025/10/mug.jpg",
+                "/2025/10/mug.jpg",
+                "https://shop.test/wp-content/uploads",
+            ),
+            (
+                "https://shop.test/sites/2/mug.jpg",
+                "mug.jpg",
+                "https://shop.test/sites/2",
+            ),
+        ] {
+            assert_eq!(uploads_base_from_guid(guid, file), Some(base), "{guid}");
+        }
+    }
+
+    #[test]
+    fn a_guid_that_does_not_end_with_the_file_proves_nothing() {
+        for (guid, file) in [
+            ("https://shop.test/?attachment_id=124", "2025/10/mug.jpg"),
+            (
+                "https://shop.test/wp-content/uploads/2025/10/other.jpg",
+                "2025/10/mug.jpg",
+            ),
+            ("https://shop.test/wp-content/uploads/2025/10/mug.jpg", ""),
+            ("https://shop.test/wp-content/uploads/2025/10/mug.jpg", "/"),
+            ("https://shop.test/uploadsmug.jpg", "mug.jpg"),
+            ("mug.jpg", "mug.jpg"),
+        ] {
+            assert_eq!(uploads_base_from_guid(guid, file), None, "{guid} / {file}");
+        }
     }
 
     #[test]

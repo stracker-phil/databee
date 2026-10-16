@@ -51,6 +51,8 @@ every run, because the fixture uses `UTC_TIMESTAMP()` for relative dates.
 | `wp_test` | WordPress plus WooCommerce (HPOS with sync) schema and seed data for the lens tests |
 | `wp_write` | `CREATE TABLE … LIKE` copies for edit and undo tests |
 | `wp_legacy` | WooCommerce with HPOS off: orders in `wp_posts` (a customer with two orders, a guest order, a refund, order notes), no `wc_orders` tables |
+| `wp_custom` | WordPress with table prefix `xy_` (core tables only), for prefix detection |
+| `wp_multi` | multisite network: main-site `wp_` tables, `wp_blogs`, `wp_sitemeta` (`active_sitewide_plugins`), sub-site 2 (`wp_2_options`, `wp_2_posts`, no `wp_2_users`) |
 
 The fixtures are also useful for manual testing:
 
