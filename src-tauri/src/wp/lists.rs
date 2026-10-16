@@ -607,11 +607,7 @@ pub async fn users(
 }
 
 /// Role counts from `{prefix}capabilities` for the kind filter.
-async fn role_facets(
-    session: &MySqlSession,
-    ctx: &WpContext,
-    db: &str,
-) -> AppResult<Vec<Facet>> {
+async fn role_facets(session: &MySqlSession, ctx: &WpContext, db: &str) -> AppResult<Vec<Facet>> {
     let roles = fetch(
         session,
         &format!(

@@ -132,9 +132,7 @@ async fn wordpress_mode_queries_work_on_real_data() {
     lists::orders(&db, &ctx, &database, "shop_subscription", &q)
         .await
         .unwrap();
-    let customers = lists::users(&db, &ctx, &database, &q, false)
-        .await
-        .unwrap();
+    let customers = lists::users(&db, &ctx, &database, &q, false).await.unwrap();
     let products = lists::products(&db, &ctx, &database, &q).await.unwrap();
     lists::content(&db, &ctx, &database, &q).await.unwrap();
     if ctx.has_table("actionscheduler_actions") {

@@ -79,9 +79,9 @@ async fn loads_an_order_document_with_meta_links_and_relation_counts() {
             .unwrap();
         assert_eq!(serde_json::to_value(&total.hint).unwrap()["text"], "€49.90");
 
-        let ppcp = order.meta.iter().find(|g| g.name == "PayPal").unwrap();
+        let ppcp = order.meta.iter().find(|g| g.name == "_ppcp*").unwrap();
         assert!(ppcp.private);
-        assert_eq!(ppcp.entries.len(), 4);
+        assert!(ppcp.entries.iter().all(|e| e.name.starts_with("_ppcp")));
 
         let count = |name: &str| {
             order
@@ -389,12 +389,12 @@ async fn lists_filter_and_search() {
         assert!(
             all.facets
                 .iter()
-                .any(|f| f.value == "wc-failed" && f.label == "Failed")
+                .any(|f| f.value == "wc-failed" && f.label == "wc-failed")
         );
         assert!(
             all.kinds
                 .iter()
-                .any(|g| g.value == "ppcp-gateway" && g.label == "PayPal")
+                .any(|g| g.value == "ppcp-gateway" && g.label == "ppcp-gateway")
         );
         let failed = lists::orders(
             &db,
@@ -514,9 +514,15 @@ async fn order_view_tells_the_story_of_a_checkout() {
         let p = o.payment.as_ref().unwrap();
         assert_eq!(p.paypal_order_id.as_deref(), Some("66M12696JX411763D"));
         assert_eq!(p.fees.as_ref().unwrap().net, "€47.86");
-        assert_eq!(
-            o.attribution.as_ref().unwrap().user_agent.as_deref(),
-            Some("Chrome 154 · macOS")
+        assert!(
+            o.attribution
+                .as_ref()
+                .unwrap()
+                .user_agent
+                .as_deref()
+                .unwrap()
+                .starts_with("Mozilla/5.0 (Macintosh"),
+            "the stored user agent, not a summary"
         );
 
         let kinds: Vec<&str> = o.timeline.iter().map(|e| e.kind).collect();
@@ -579,9 +585,8 @@ async fn customer_and_product_views() {
         assert_eq!(c.billing.as_ref().unwrap().country.as_deref(), Some("AT"));
         let groups: Vec<&str> = c.doc.meta.iter().map(|g| g.name.as_str()).collect();
         assert!(
-            groups.contains(&"Profile")
-                && groups.contains(&"Admin UI")
-                && groups.contains(&"Security")
+            groups.iter().all(|g| *g == "Other" || g.ends_with('*')),
+            "meta is grouped by literal key prefix: {groups:?}"
         );
 
         let EntityView::Product(p) =

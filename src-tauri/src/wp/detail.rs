@@ -180,7 +180,8 @@ pub struct LineItem {
     pub total: Option<String>,
     pub product: Option<EntityLink>,
     pub sku: Option<String>,
-    /// Visible item meta (variation attributes, shipping method details, …).
+    /// Item meta without `_` keys, empty and serialized values; the rest is one click away
+    /// in `woocommerce_order_itemmeta`.
     pub meta: Vec<(String, String)>,
 }
 
@@ -247,22 +248,6 @@ pub struct OrderView {
     pub timeline: Vec<TimelineEvent>,
     pub related: Vec<RelatedChip>,
 }
-
-/// Internal item meta WooCommerce shows nowhere either.
-const HIDDEN_ITEM_META: &[&str] = &[
-    "method_id",
-    "instance_id",
-    "cost",
-    "total_tax",
-    "taxes",
-    "rate_id",
-    "compound",
-    "tax_amount",
-    "shipping_tax_amount",
-    "rate_percent",
-    "discount_amount",
-    "discount_amount_tax",
-];
 
 /// WooCommerce stores some item meta HTML-escaped (`Mug &times; 1`).
 pub fn decode_entities(s: &str) -> String {
@@ -419,12 +404,7 @@ async fn order_items(
             sku: None,
             meta: m
                 .into_iter()
-                .filter(|(k, v)| {
-                    !k.starts_with('_')
-                        && !HIDDEN_ITEM_META.contains(&k.as_str())
-                        && !v.is_empty()
-                        && !php::looks_serialized(v)
-                })
+                .filter(|(k, v)| !k.starts_with('_') && !v.is_empty() && !php::looks_serialized(v))
                 .map(|(k, v)| (k, decode_entities(&v)))
                 .collect(),
             kind,
@@ -691,7 +671,7 @@ pub async fn order_view(
             pages: a("session_pages"),
             sessions: a("session_count"),
             device: a("device_type"),
-            user_agent: a("user_agent").map(|ua| super::hints::user_agent(&ua)),
+            user_agent: a("user_agent"),
             session_start: time_of(&doc, &["_wc_order_attribution_session_start_time"]),
             utm,
         };

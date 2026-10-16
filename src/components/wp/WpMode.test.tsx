@@ -269,6 +269,15 @@ describe("WordPress mode", () => {
     expect(useStore.getState().mode).toBe("db");
   });
 
+  it("names payment facts by their stored keys and opens item meta rows", async () => {
+    useStore.getState().openEntity("order", "4711");
+    render(<WpWorkspace />);
+    expect(within(await screen.findByRole("region", { name: "Payment" })).getByText("_ppcp_paypal_order_id")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Payment" })).getByText("payment_method")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "item #1" }));
+    expect(useStore.getState().tabs.at(-1)).toMatchObject({ table: "wp_woocommerce_order_itemmeta", filter: "`order_item_id` = 1" });
+  });
+
   it("queues an order status change from the header", async () => {
     useStore.getState().openEntity("order", "4711");
     render(<WpWorkspace />);

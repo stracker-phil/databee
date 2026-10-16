@@ -60,7 +60,7 @@ export function Stat({ label, value, sub, tone }: { label: string; value: ReactN
 
 export function Card({ title, aside, children, className = "" }: { title?: ReactNode; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`card ${className}`}>
+    <section className={`card ${className}`} aria-label={typeof title === "string" ? title : undefined}>
       {(title || aside) && (
         <header className="card-head">
           <h3>{title}</h3>

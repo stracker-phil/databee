@@ -8,8 +8,8 @@ use crate::wp::detail::{self, EntityView, SearchHit};
 use crate::wp::entity::DocField;
 use crate::wp::entity::{self, Catalog, EntityDoc};
 use crate::wp::lists::{
-    self, ActionSummary, UserSummary, ListQuery, OrderSummary, Page, PostSummary,
-    ProductSummary, SessionSummary,
+    self, ActionSummary, ListQuery, OrderSummary, Page, PostSummary, ProductSummary,
+    SessionSummary, UserSummary,
 };
 use crate::wp::options::{self, OptionsOverview};
 use crate::wp::value::{self, DecodedValue};

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { api, type OrderView as OrderViewData, type TimelineEvent } from "../../../api";
+import { whereEquals } from "../../../lib/sql";
 import { absoluteFromUnix } from "../../../lib/wpFormat";
-import { selectActiveSession, useStore } from "../../../state/store";
+import { selectActiveSession, selectWp, useStore } from "../../../state/store";
 import { LinkChip } from "../LinkChip";
 import { Ago, Card, StatusPill, Thumb } from "../ui";
 import { AddressCard, AllFields, RelationStrip, Timeline } from "./common";
@@ -35,10 +36,11 @@ function StatusSelect({ order }: { order: OrderViewData }) {
   );
 }
 
+/** A summary row named by the key it reads. */
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return children == null || children === "" ? null : (
     <div className="kv-row">
-      <div className="k">{label}</div>
+      <div className="k mono" title={label}>{label}</div>
       <div className="v">{children}</div>
     </div>
   );
@@ -58,6 +60,11 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
   const timeline = [...o.timeline, ...(logs ?? [])].sort((a, b) => a.at - b.at);
   const subscription = o.kind === "shop_subscription";
   const p = o.payment;
+  const wp = useStore(selectWp);
+  const openInDatabase = useStore((s) => s.openInDatabase);
+  const prefix = wp?.context.prefix ?? "wp_";
+  const hpos = !!wp?.context.wc && wp.context.wc.hpos !== "off";
+  const k = (column: string) => (hpos ? column : `_${column}`);
 
   return (
     <div className="entity order-layout">
@@ -94,7 +101,10 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
                 <div className="grow-text">
                   <div>
                     {i.product ? <button className="link-btn plain" onClick={() => useStore.getState().openEntity(i.product!.entity, i.product!.id)}>{i.name}</button> : i.name}
-                    {i.kind !== "line_item" && <span className="badge" style={{ marginLeft: 6 }}>{i.kind.replace("_", " ")}</span>}
+                    <span className="badge mono" style={{ marginLeft: 6 }}>{i.kind}</span>
+                    <button className="link-btn plain muted small mono" style={{ marginLeft: 6 }} title="Open this item's meta rows" onClick={() => openInDatabase(`${prefix}woocommerce_order_itemmeta`, whereEquals([["order_item_id", i.id]]))}>
+                      item #{i.id}
+                    </button>
                   </div>
                   <div className="muted small">
                     {[i.sku && <span key="sku" className="mono">{i.sku}</span>, ...i.meta.map(([k, v]) => <span key={k}>{k}: {v}</span>)]
@@ -123,17 +133,18 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
         {p && (
           <Card title="Payment" className="grow">
             <div className="kv">
-              <Row label="Gateway"><span className="mono">{p.gateway}</span>{p.gatewayTitle && <span className="hint-note">{p.gatewayTitle}</span>}</Row>
-              <Row label="Transaction ID"><span className="mono">{p.transactionId}</span></Row>
-              <Row label="PayPal order ID"><span className="mono">{p.paypalOrderId}</span></Row>
-              <Row label="Intent">{p.intent}</Row>
-              <Row label="Mode">{p.mode && <span className={`pill tone-${p.mode === "live" ? "green" : "orange"}`}>{p.mode}</span>}</Row>
-              <Row label="Source">{p.source}</Row>
-              <Row label="Payer">{p.payerEmail && <span>{p.payerEmail}</span>}</Row>
-              <Row label="Paid">{o.paid && <Ago unix={o.paid} />}</Row>
+              <Row label={k("payment_method")}><span className="mono">{p.gateway}</span></Row>
+              <Row label={k("payment_method_title")}>{p.gatewayTitle}</Row>
+              <Row label={k("transaction_id")}><span className="mono">{p.transactionId}</span></Row>
+              <Row label="_ppcp_paypal_order_id"><span className="mono">{p.paypalOrderId}</span></Row>
+              <Row label="_ppcp_paypal_intent">{p.intent}</Row>
+              <Row label="_ppcp_paypal_payment_mode">{p.mode && <span className={`pill tone-${p.mode === "live" ? "green" : "orange"}`}>{p.mode}</span>}</Row>
+              <Row label="_ppcp_paypal_payment_source">{p.source}</Row>
+              <Row label="_ppcp_paypal_payer_email">{p.payerEmail}</Row>
+              <Row label={hpos ? "date_paid_gmt" : "_date_paid"}>{o.paid && <Ago unix={o.paid} />}</Row>
             </div>
             {p.fees && (
-              <div className="waterfall" aria-label="Fees">
+              <div className="waterfall" aria-label="Fees" title="From _ppcp_paypal_fees">
                 <div className="wf-bar">
                   <span className="wf-net" style={{ width: `${(1 - p.fees.feeRatio) * 100}%` }} />
                   <span className="wf-fee" style={{ width: `${p.fees.feeRatio * 100}%` }} />
@@ -148,22 +159,24 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
           </Card>
         )}
         {o.attribution && (
-          <Card title="Attribution" className="grow">
+          <Card title={<>Attribution <span className="muted mono small">_wc_order_attribution_*</span></>} className="grow">
             <div className="kv">
-              <Row label="Source">{[o.attribution.sourceType, o.attribution.source].filter(Boolean).join(" · ")}</Row>
-              <Row label="Referrer">{o.attribution.referrer}</Row>
-              <Row label="Entry page">
+              <Row label="source_type">{o.attribution.sourceType}</Row>
+              <Row label="referrer">{o.attribution.referrer}</Row>
+              <Row label="session_entry">
                 {o.attribution.entry && (
                   <a className="url" href={o.attribution.entry} onClick={(e) => (e.preventDefault(), void api.openUrl(o.attribution!.entry!))}>
-                    {o.attribution.entry.replace(/^https?:\/\//, "")} <ExternalLink size="0.769rem" />
+                    {o.attribution.entry} <ExternalLink size="0.769rem" />
                   </a>
                 )}
               </Row>
-              <Row label="Session">{o.attribution.pages && `${o.attribution.pages} pages · ${o.attribution.sessions ?? "?"} sessions`}</Row>
-              <Row label="Device">{[o.attribution.device, o.attribution.userAgent].filter(Boolean).join(" · ")}</Row>
-              <Row label="Started">{o.attribution.sessionStart && <Ago unix={o.attribution.sessionStart} />}</Row>
-              {o.attribution.utm.map(([k, v]) => (
-                <Row key={k} label={`UTM ${k}`}>{v}</Row>
+              <Row label="session_pages">{o.attribution.pages}</Row>
+              <Row label="session_count">{o.attribution.sessions}</Row>
+              <Row label="device_type">{o.attribution.device}</Row>
+              <Row label="user_agent">{o.attribution.userAgent}</Row>
+              <Row label="session_start_time">{o.attribution.sessionStart && <Ago unix={o.attribution.sessionStart} />}</Row>
+              {o.attribution.utm.map(([key, v]) => (
+                <Row key={key} label={`utm_${key}`}>{v}</Row>
               ))}
             </div>
           </Card>
