@@ -10,6 +10,8 @@ mod launch;
 mod menu;
 pub mod secrets;
 mod session;
+pub mod stage;
+mod stage_commands;
 mod state;
 pub mod store;
 pub mod wp;
@@ -114,6 +116,14 @@ fn start_app(
             log::info!("databee {} started", env!("CARGO_PKG_VERSION"));
             state.launches.push(initial);
             commands::apply_window_theme(app.handle(), state.settings.get().theme);
+            let mut settings = state.settings.get();
+            if settings.stage.token.is_empty() {
+                settings.stage.token = stage::new_token();
+                settings = state.settings.update(settings)?;
+            }
+            let presenter = stage::Stage::new(app.handle(), IDENTIFIER);
+            presenter.start(&settings.stage);
+            app.manage(presenter);
             app.manage(state);
 
             if let (Some((x, y, w, h)), Some(window)) =
@@ -208,7 +218,19 @@ fn start_app(
             wp_commands::plan_change,
             wp_commands::apply_changes,
             wp_commands::edit_serialized,
+            stage_commands::stage_anchors,
+            stage_commands::stage_done,
+            stage_commands::stage_info,
+            stage_commands::stage_status,
+            stage_commands::stage_new_token,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event
+                && let Some(presenter) = app.try_state::<stage::Stage>()
+            {
+                presenter.quit();
+            }
+        });
 }

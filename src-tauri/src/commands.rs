@@ -4,6 +4,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::connection::ConnectionSpec;
 use crate::error::{AppError, AppResult};
 use crate::launch::LaunchEvent;
+use crate::stage::Stage;
 use crate::state::AppState;
 use crate::store::favorites::Favorite;
 use crate::store::history::HistoryEntry;
@@ -35,7 +36,11 @@ pub fn update_settings(
     state: State<'_, AppState>,
     settings: Settings,
 ) -> AppResult<Settings> {
+    let previous = state.settings.get();
     let saved = state.settings.update(settings)?;
+    if saved.stage != previous.stage {
+        app.state::<Stage>().start(&saved.stage);
+    }
     apply_window_theme(&app, saved.theme);
     log::set_max_level(saved.log_level.into());
     log::info!("Settings updated");
