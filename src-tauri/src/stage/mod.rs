@@ -114,7 +114,7 @@ impl StageHost for TauriHost {
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct StageStatus {
     pub enabled: bool,

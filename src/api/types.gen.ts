@@ -28,11 +28,6 @@ export type ActionView = { doc: EntityDoc, hook: string, status: string, schedul
 export type Address = { name: string | null, company: string | null, lines: Array<string>, country: string | null, email: string | null, phone: string | null, };
 
 /**
- * The page's answer to `stage:collect`.
- */
-export type AnchorsReply = { request: string, page: string, anchors: Array<PageAnchor>, };
-
-/**
  * The JSON shape of an `AppError`.
  */
 export type AppError = { kind: ErrorKind, message: string, code: string | null, account: string | null, 
@@ -345,15 +340,6 @@ limit: number,
  */
 facets: Array<Facet>, kinds: Array<Facet>, };
 
-/**
- * An element marked `data-stage="<id>"`, as the page measures it.
- */
-export type PageAnchor = { id: string, label: string, rect: StageRect, inView: boolean, 
-/**
- * The part that shows through its scroll areas and the window; None when nothing does.
- */
-visible: StageRect | null, window: string, role?: string, list?: string, selected?: boolean, checked?: boolean, expanded?: boolean, disabled?: boolean, };
-
 export type PaymentPanel = { gateway: string | null, gatewayTitle: string | null, transactionId: string | null, paypalOrderId: string | null, intent: string | null, mode: string | null, source: string | null, payerEmail: string | null, fees: Fees | null, };
 
 export type PaymentToken = { id: string, gateway: string, kind: string, isDefault: boolean, summary: string, };
@@ -475,85 +461,6 @@ optionPattern: string | null,
  * Scheduled actions referencing the entity ID.
  */
 includeActions: boolean, };
-
-/**
- * The page's answer to `stage:act`; `handled` is false when the anchor isn't on that page.
- */
-export type StageActReply = { request: string, page: string, handled: boolean, ok: boolean, error?: string | null, 
-/**
- * The HTTP status for a failure when it isn't 500 (e.g. 409: not scrollable).
- */
-status?: number | null, 
-/**
- * The window the anchor is in, or the one that got the keys.
- */
-window?: string | null, 
-/**
- * The anchor's rectangle once in view, before acting.
- */
-rect?: StageRect | null, visible?: StageRect | null, 
-/**
- * `keys` that ran a command (its shortcut) instead of reaching an element.
- */
-command?: string | null, };
-
-export type StageChoice = { id: string, title: string, };
-
-/**
- * One command: the registry's, or a family (`arg` + `choices`) whose members append an argument.
- */
-export type StageCommand = { id: string, help: string, shortcut?: string | null, enabled: boolean, arg?: string | null, choices?: Array<StageChoice> | null, };
-
-/**
- * The page's answer to `stage:info`: what it shows and can do.
- */
-export type StageInfoReply = { request: string, page: string, state: Record<string, string | number | boolean | null>, 
-/**
- * What the main window shows.
- */
-view: string | null, 
-/**
- * The main window's toggleable panels: `{ "inspector": "open" }`.
- */
-ui: Record<string, "open" | "closed">, surfaces: Array<StageSurface>, commands: Array<StageCommand>, };
-
-/**
- * A key combination as a page dispatches it (`KeyboardEvent` names).
- */
-export type StageKeys = { key: string, 
-/**
- * "KeyK", "Digit2", "Enter", "F2"; empty when unknown.
- */
-code: string, meta: boolean, shift: boolean, alt: boolean, ctrl: boolean, };
-
-/**
- * CSS pixels from the page's top-left, as a page measures them.
- */
-export type StageRect = { x: number, y: number, width: number, height: number, };
-
-/**
- * The local HTTP API through which Stage presents DataBee (docs/stage.md).
- */
-export type StageSettings = { enabled: boolean, port: number, 
-/**
- * Registered with Stage by the user, never in the log.
- */
-token: string, };
-
-export type StageStatus = { enabled: boolean, running: boolean, error: string | null, url: string, 
-/**
- * `stage register …` with this hook's URL and token, for the user to paste into a terminal.
- */
-registerCommand: string, 
-/**
- * When a presenter last used the hook (ISO 8601).
- */
-lastRequest: string | null, };
-
-/**
- * A window the page draws inside the main one (settings, palette); `rect` None while closed.
- */
-export type StageSurface = { id: string, title: string, rect?: StageRect | null, sections?: Array<StageChoice> | null, section?: string | null, };
 
 export type TableEntity = { entity: string, idColumn: string, };
 

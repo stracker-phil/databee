@@ -58,7 +58,7 @@ Objective-C or NSWindow calls. The macOS behavior comes from dependencies, paths
 | **Bundle targets**: only `app` | `tauri.conf.json` `bundle.targets`; `package.json` scripts open `bundle/macos/DataBee.app` | `deb`, `appimage`, `rpm` | `nsis`, `msi`; `icons/icon.ico` exists but `bundle.icon` doesn't list it; `main.rs` needs the `windows_subsystem` attribute so release builds open no console |
 | **Install and dev scripts** (zsh, Swift, CoreGraphics, `screencapture`, `pkill`) | `scripts/` | Rewrite with `xdotool`/`wmctrl` plus `grim`/`import`, or drop `launch.sh` and use `bun tauri dev` | PowerShell |
 | **Wording**: "Keychain", "Finder", the `~/Library/...` socket example | `db_commands.rs`, `error.rs`, `cli.rs` help, `components/settings/pages.tsx`, `ConnectScreen.tsx`, `Dialogs.tsx` | "keyring", "file manager" | "Credential Manager", "Explorer" |
-| **Stage hook**: the presenter app is macOS-only | `stage/`, `src/stage/` | Remove or leave off | Remove or leave off |
+| **Stage hook**: the presenter app is macOS-only | `stage/`, `src/stage/` | Remove ([Removing Stage](#removing-stage)) or leave off | Same |
 | **Tests**: `navigator.platform = "MacIntel"` | `src/test-setup.ts`; tests that type `{Meta>}` | Make the platform a parameter, or drop it | Same |
 
 A port is done when `bun run test`, `bun run lint` and `bun run tauri build` pass on the target, and the app
@@ -79,7 +79,7 @@ can do all of this:
 | Add a setting | [backend.md: persistence](backend.md#persistence) |
 | Add a Tauri command | [backend.md: Tauri commands](backend.md#tauri-commands) |
 | Change colors, accents or density | [frontend.md: styling](frontend.md#styling) |
-| Remove the Stage hook | [stage.md: removing Stage](stage.md) |
+| Remove the Stage hook | [Removing Stage](#removing-stage) |
 
 ### Add a driver
 
@@ -92,6 +92,10 @@ on `ConnectionSpec`; one arm in `db::open`. Nothing in `wp/` changes. Details:
 Add `src-tauri/src/secrets/<impl>.rs` implementing `SecretStore` (`get`, `set`, `delete`); `pub mod` it in
 `secrets/mod.rs`; change the one `Arc::new(secrets::Keychain)` line in `lib.rs`; optionally delete
 `keychain.rs` and `security-framework`.
+
+### Removing Stage
+
+Stage is a module on both sides ([stage.md](stage.md)). **Remove Stage**: `git rm -r src-tauri/src/stage src/stage src-tauri/capabilities/stage.json docs/stage.md`; delete `pub mod stage;` and `.plugin(stage::init(&config_dir))` in `lib.rs`; delete the `.plugin("stage", …)` line and `STAGE_COMMANDS` in `build.rs`; delete the `installStage` import and call in `src/modules.ts`; optionally strip `data-stage*` attributes; run `bun run lint && bun run test`.
 
 ### Removing the WordPress layer
 

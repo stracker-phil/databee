@@ -17,7 +17,7 @@ const LEGACY_FILE: &str = "settings.json";
 
 /// The local HTTP API through which Stage presents DataBee (docs/stage.md).
 #[derive(Serialize, Deserialize, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
 pub struct StageSettings {
     pub enabled: bool,

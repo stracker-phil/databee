@@ -47,7 +47,7 @@ pub fn required<'a>(params: &'a Params, key: &str) -> StageResult<&'a str> {
 
 /// CSS pixels from the page's top-left, as a page measures them.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 #[ts(rename = "StageRect")]
 pub struct PageRect {
     pub x: f64,
@@ -128,7 +128,7 @@ pub fn parse_bounds(params: &Params) -> StageResult<Bounds> {
 
 /// A key combination as a page dispatches it (`KeyboardEvent` names).
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 pub struct StageKeys {
     pub key: String,
     /// "KeyK", "Digit2", "Enter", "F2"; empty when unknown.
@@ -334,7 +334,7 @@ fn enabled() -> bool {
 
 /// An element marked `data-stage="<id>"`, as the page measures it.
 #[derive(Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 #[ts(optional_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct PageAnchor {
@@ -364,7 +364,7 @@ pub struct PageAnchor {
 
 /// The page's answer to `stage:collect`.
 #[derive(Deserialize, Clone, Debug, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 pub struct AnchorsReply {
     pub request: String,
     pub page: String,
@@ -396,7 +396,7 @@ impl AnchorsReply {
 
 /// The page's answer to `stage:act`; `handled` is false when the anchor isn't on that page.
 #[derive(Deserialize, Clone, Debug, PartialEq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 #[ts(rename = "StageActReply", optional_fields = nullable)]
 pub struct ActReply {
     pub request: String,
@@ -422,7 +422,7 @@ pub struct ActReply {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 #[ts(rename = "StageChoice")]
 pub struct Choice {
     pub id: String,
@@ -431,7 +431,7 @@ pub struct Choice {
 
 /// One command: the registry's, or a family (`arg` + `choices`) whose members append an argument.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 #[ts(rename = "StageCommand")]
 pub struct PageCommand {
     pub id: String,
@@ -459,7 +459,7 @@ impl PageCommand {
 
 /// A window the page draws inside the main one (settings, palette); `rect` None while closed.
 #[derive(Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 #[ts(rename = "StageSurface", optional_fields = nullable)]
 pub struct Surface {
     pub id: String,
@@ -474,7 +474,7 @@ pub struct Surface {
 
 /// The page's answer to `stage:info`: what it shows and can do.
 #[derive(Deserialize, Clone, Debug, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/stage/types.gen.ts")]
 #[ts(rename = "StageInfoReply")]
 pub struct InfoReply {
     pub request: String,

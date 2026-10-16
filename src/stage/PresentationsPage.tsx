@@ -1,27 +1,28 @@
 import { useEffect, useState } from "react";
 import { Copy, RefreshCw } from "lucide-react";
-import { api, type StageSettings, type StageStatus } from "../api";
 import { Group, NumberField, Row, Switch } from "../components/settings/controls";
 import { copyText } from "../lib/clipboard";
 import { relativeTime } from "../lib/format";
 import { fail, useStore } from "../state/store";
+import { stageApi } from "./api";
+import type { StageSettings, StageStatus } from "./types";
 
 /** Port bounds. Rust's `StageSettings::sanitized` is the source of truth: it replaces ports below 1024. */
 const PORT_LIMITS = { min: 1024, max: 65_535 } as const;
 
-/** §10 of the Stage protocol: the hook's switch, status, port, token and register command. */
+/** The hook's switch, status, port, token and register command (docs/stage.md). */
 export function PresentationsPage() {
   const [s, setStage] = useState<StageSettings | null>(null);
   const [status, setStatus] = useState<StageStatus | null>(null);
   const [revealed, setRevealed] = useState(false);
   const toast = useStore((st) => st.toast);
   useEffect(() => {
-    api.stageSettings().then(setStage, (e) => fail(e, "Could not load the presentation settings"));
+    stageApi.settings().then(setStage, (e) => fail(e, "Could not load the presentation settings"));
   }, []);
   useEffect(() => {
     if (!s) return;
     let alive = true;
-    const load = () => api.stageStatus().then((next) => alive && setStatus(next), () => alive && setStatus(null));
+    const load = () => stageApi.status().then((next) => alive && setStatus(next), () => alive && setStatus(null));
     void load();
     // Keeps "Last presenter request" current while the page is open.
     const timer = setInterval(load, 5000);
@@ -32,9 +33,9 @@ export function PresentationsPage() {
   }, [s?.enabled, s?.port, s?.token]);
   if (!s) return null;
   const patchStage = (patch: Partial<StageSettings>) =>
-    api.stageUpdateSettings({ ...s, ...patch }).then(setStage, (e) => fail(e, "Could not save the presentation settings"));
+    stageApi.updateSettings({ ...s, ...patch }).then(setStage, (e) => fail(e, "Could not save the presentation settings"));
   const newToken = () =>
-    api.stageNewToken().then(
+    stageApi.newToken().then(
       (next) => {
         setStage(next);
         toast("success", "New token; register DataBee with Stage again");
@@ -62,7 +63,7 @@ export function PresentationsPage() {
           <Copy size="1rem" />
         </button>
         <button type="button" className="btn" onClick={() => void newToken()}>
-          <RefreshCw size="1rem" /> New Token
+          <RefreshCw size="1rem" /> New token
         </button>
       </Row>
       {status && (

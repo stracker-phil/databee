@@ -2,7 +2,7 @@
  * DataBee's commands as the Stage hook lists them: the registry's (with their shortcut in Stage
  * notation), conventional ids where the protocol has one (§7), and families that take an argument.
  */
-import type { StageCommand } from "../api";
+import type { StageCommand } from "./types";
 import { activeScopes, allCommands, bindingFor, getCommand, resolveKeydown, runCommand, type KeyLike } from "../commands";
 import { selectActiveSession, selectWp, useStore } from "../state/store";
 import { settingsSections } from "./state";

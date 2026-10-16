@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { centerOf, intersectRect, isInView, visiblePart } from "./stage";
+import { centerOf, intersectRect, isInView, visiblePart } from "./rect";
 
 const list = { x: 0, y: 100, width: 300, height: 200 };
 const page = { x: 0, y: 0, width: 800, height: 600 };

@@ -7,11 +7,12 @@
  * Markup: `data-stage` (id), `data-stage-label`, `data-stage-role`, `data-stage-list`, and
  * `data-stage-window` on a sheet (settings, palette) that Stage sees as a window of its own.
  */
-import { api, type PageAnchor, type StageActReply, type StageActRequest, type StageKeys, type StageRect, type StageWindow } from "../api";
-import { centerOf, isInView, visiblePart } from "../lib/stage";
 import { useStore } from "../state/store";
+import { stageApi } from "./api";
 import { commandForKeys, runStageCommand, stageCommands, stageId } from "./commands";
+import { centerOf, isInView, visiblePart } from "./rect";
 import { stageState, stageSurfaces, stageUi, stageView } from "./state";
+import type { PageAnchor, StageActReply, StageActRequest, StageKeys, StageRect, StageWindow } from "./types";
 
 const PAGE = "main";
 const MAX_LABEL = 80;
@@ -381,17 +382,17 @@ export async function perform(request: StageActRequest): Promise<StageActReply> 
 /** Call once, when the app starts; returns the listeners to remove. */
 export function installStageHooks() {
   return [
-    api.onStageCollect((request) => void api.stageAnchors(request, collectAnchors()).catch(() => undefined)),
-    api.onStageInfo(
+    stageApi.onCollect((request) => void stageApi.anchors(request, PAGE, collectAnchors()).catch(() => undefined)),
+    stageApi.onInfo(
       (request) =>
-        void api
-          .stageInfo({ request, page: PAGE, state: stageState(), view: stageView(), ui: stageUi(), surfaces: stageSurfaces(), commands: stageCommands() })
+        void stageApi
+          .info({ request, page: PAGE, state: stageState(), view: stageView(), ui: stageUi(), surfaces: stageSurfaces(), commands: stageCommands() })
           .catch(() => undefined),
     ),
-    api.onStageAct(
+    stageApi.onAct(
       (request) =>
         void perform(request)
-          .then((reply) => api.stageDone(reply))
+          .then((reply) => stageApi.done(reply))
           .catch(() => undefined),
     ),
   ];

@@ -3,15 +3,17 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
+vi.mock("./api", async () => ({ stageApi: (await import("./apiMock")).createStageApiMock() }));
 
-import { api, type StageActRequest, type StageKeys } from "../api";
 import { installCommands } from "../commands";
 import { resetStore, useStore } from "../state/store";
 import { connectedStore } from "../test/fixtures";
 import { registerCoreSettingsPages } from "../components/settings/pages";
+import { stageApi } from "./api";
 import { installStage } from "./install";
+import type { StageActRequest, StageKeys } from "./types";
 
-const mocked = vi.mocked(api, true);
+const mocked = vi.mocked(stageApi, true);
 
 /** jsdom has no layout: elements take their box from a `data-rect="x,y,width,height"` attribute. */
 function stubLayout() {
@@ -30,17 +32,17 @@ function hooks() {
   installStage();
   const handler = <T,>(on: { mock: { calls: unknown[][] } }) => on.mock.calls.at(-1)![0] as (arg: T) => void;
   const act = async (request: Omit<StageActRequest, "request">) => {
-    mocked.stageDone.mockClear();
-    handler<StageActRequest>(mocked.onStageAct)({ request: "r1", ...request });
-    await vi.waitFor(() => expect(mocked.stageDone).toHaveBeenCalled());
-    return mocked.stageDone.mock.calls.at(-1)![0];
+    mocked.done.mockClear();
+    handler<StageActRequest>(mocked.onAct)({ request: "r1", ...request });
+    await vi.waitFor(() => expect(mocked.done).toHaveBeenCalled());
+    return mocked.done.mock.calls.at(-1)![0];
   };
   return {
     act,
-    collect: () => handler<string>(mocked.onStageCollect)("c1"),
+    collect: () => handler<string>(mocked.onCollect)("c1"),
     info: () => {
-      handler<string>(mocked.onStageInfo)("i1");
-      return mocked.stageInfo.mock.calls.at(-1)![0];
+      handler<string>(mocked.onInfo)("i1");
+      return mocked.info.mock.calls.at(-1)![0];
     },
   };
 }
@@ -72,7 +74,7 @@ describe("Stage page hooks", () => {
       </div>,
     );
     hooks().collect();
-    expect(mocked.stageAnchors).toHaveBeenCalledWith("c1", [
+    expect(mocked.anchors).toHaveBeenCalledWith("c1", "main", [
       { id: "toolbar:settings", label: "Settings", window: "main", rect: { x: 10, y: 8, width: 24, height: 24 }, inView: true, visible: { x: 10, y: 8, width: 24, height: 24 }, role: "button" },
       { id: "toolbar:mode:db", label: "Database", window: "main", rect: { x: 80, y: 8, width: 60, height: 24 }, inView: true, visible: { x: 80, y: 8, width: 60, height: 24 }, role: "toggle", checked: true },
       { id: "table:db.wp_posts", label: "wp_posts", window: "main", rect: { x: 0, y: 2000, width: 240, height: 24 }, inView: false, visible: null, role: "item", list: "tables", selected: true },

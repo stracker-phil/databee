@@ -133,12 +133,11 @@ Conventions:
 ## API boundary
 
 Only `api.ts` files import `@tauri-apps/api` or `@tauri-apps/plugin-*`: the core's is `src/api/index.ts`, a
-module's will be `src/<module>/api.ts` ([ADR 0002](adr/0002-ipc-in-api-files.md)). `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic, plus the event
-subscriptions `onLaunch`, `onCommand` and `onStage*`. The IPC types are generated from Rust with `ts-rs`
-([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts`; never edit it. `bun run types`
-regenerates it (it runs the `export_bindings_*` tests), and `bun run lint` fails when the committed file is
-stale. `src/api/types.ts` re-exports the generated types plus the few frontend-only ones (`Keybindings`,
-`StageWindow`, `StageActRequest`, `PaneSize`, `EMPTY_UI_STATE`, `TEXT_SIZES`, `SETTINGS_LIMITS`, `LOG_LEVELS`,
+module's is `src/<module>/api.ts` (Stage: `src/stage/api.ts`) ([ADR 0002](adr/0002-ipc-in-api-files.md)). `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic, plus the event
+subscriptions `onLaunch` and `onCommand`. The IPC types are generated from Rust with `ts-rs`
+([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts` (a module's types into its own folder, e.g. `src/stage/types.gen.ts`); never edit them. `bun run types`
+regenerates them (it runs the `export_bindings_*` tests), and `bun run lint` fails when a committed file is
+stale. `src/api/types.ts` re-exports the generated types plus the few frontend-only ones (`Keybindings`, `PaneSize`, `EMPTY_UI_STATE`, `TEXT_SIZES`, `SETTINGS_LIMITS`, `LOG_LEVELS`,
 `ACCENTS`). `TEXT_SIZES` and `SETTINGS_LIMITS` mirror the clamps in Rust's `Settings::sanitized`, which stays the
 source of truth; change both together. Command signatures in
 `api` stay hand-written. `toAppError(e)` normalizes rejections to `AppError` and accepts only a known `kind`. Derived connection facts come from Rust and are never recomputed in the page: the
@@ -308,7 +307,6 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `theme.ts` | appearance, row height, `useResolvedTheme` (one shared `prefers-color-scheme` query) |
 | `crumbs.ts` | WordPress breadcrumbs |
 | `wpFormat.ts` | WordPress formatting (absolute times, flags, initials, `shorten`) |
-| `stage.ts` | rectangle math |
 
 ## Styling
 

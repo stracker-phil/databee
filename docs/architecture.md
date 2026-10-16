@@ -16,7 +16,7 @@ These rules hold everywhere in the code. Keep them when you change things.
 2. **IPC only in `api.ts` files, one per module.** Only a module's API file imports `@tauri-apps/api` or a
    `@tauri-apps/plugin-*` package and calls `invoke` or `listen`. The core's file is `src/api/index.ts`;
    a module's is `src/<module>/api.ts`. The rest of the frontend imports `api` from there, which is also
-   what UI tests mock. (Stage's wrappers still live in `src/api/index.ts` until it moves to its own file.)
+   what UI tests mock. Stage's is `src/stage/api.ts` (`stageApi`).
 3. **Errors are data.** Every command returns `Result<T, AppError>`, which serializes as `{ kind, message, code, account }`.
    The UI branches on `kind` (e.g. `password_required`, `confirmation_required`).
 4. **Passwords never touch files, logs or the webview.** They live in the `Secret` type. It redacts in
@@ -119,7 +119,7 @@ folder and its install line. The core never imports a module; modules import the
   commands are still registered by the core.
 
 Not yet separated: the `wp` store slice and the WordPress commands live in the core (`src/state/slices/wp.ts`,
-`src/commands/index.ts`), `App.tsx` renders `WpWorkspace`, and the Stage wrappers are in `src/api/index.ts`.
+`src/commands/index.ts`), and `App.tsx` renders `WpWorkspace`.
 See [ADR 0015](adr/0015-frontend-registries.md).
 
 ## A request, end to end

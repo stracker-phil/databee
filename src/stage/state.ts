@@ -1,5 +1,5 @@
 /** What Stage reads about DataBee: the main window's view and panels, its sheets, and a short state. */
-import type { StageInfoReply, StageRect, StageSurface } from "../api";
+import type { StageInfoReply, StageRect, StageSurface } from "./types";
 import { resolveSettingsPage, settingsPages } from "../registry/settingsPages";
 import { selectActiveSession, selectActiveTab, selectWp, selectWpRoute, useStore } from "../state/store";
 

@@ -8,13 +8,7 @@ keys.window scroll wait`.
 The hook does nothing without a presenter. If you don't use Stage, you can ignore this page, or turn the hook
 off under Settings → Presentations.
 
-**Removing Stage.** The Rust half is a plugin with one install line:
-1. `git rm -r src-tauri/src/stage src-tauri/capabilities/stage.json`.
-2. Delete `pub mod stage;` and `.plugin(stage::init(&config_dir))` in `lib.rs`, and the `.plugin("stage", …)`
-   attribute and `STAGE_COMMANDS` in `build.rs`.
-3. Frontend (until 2.C2 makes it a module): delete `src/stage/`, `src/lib/stage.ts`, its `installStage()` line in
-   `src/modules.ts`, the `stage*` wrappers in `src/api/index.ts` and the Presentations settings page.
-4. Optionally strip the `data-stage*` attributes (they are inert without the hook); run `bun run lint && bun run test`.
+**Remove Stage**: `git rm -r src-tauri/src/stage src/stage src-tauri/capabilities/stage.json docs/stage.md`; delete `pub mod stage;` and `.plugin(stage::init(&config_dir))` in `lib.rs`; delete the `.plugin("stage", …)` line and `STAGE_COMMANDS` in `build.rs`; delete the `installStage` import and call in `src/modules.ts`; optionally strip `data-stage*` attributes; run `bun run lint && bun run test`. Both halves are modules, so nothing else refers to Stage.
 
 ## Transport
 
@@ -55,11 +49,15 @@ The page side lives in `src/stage/`:
 | File | Responsibility |
 |---|---|
 | `install.ts` | `installStage()`, called once from `installModules()` (`src/modules.ts`): registers the Presentations Settings page (`registerStageSettingsPage`) and starts the hooks (`installStageHooks`) |
-| `PresentationsPage.tsx` | Settings → Presentations: the switch, status, port, token and register command. It loads and saves `StageSettings` itself (`stageSettings`, `stageUpdateSettings`, `stageNewToken`) and polls `stageStatus` while open |
+| `api.ts` | `stageApi`, the module's only `invoke`/`listen` caller: `status`, `settings`, `updateSettings`, `newToken` (`plugin:stage|…`), the `stage:collect`, `stage:info` and `stage:act` subscriptions (`onCollect`, `onInfo`, `onAct`) and the replies `anchors` (the caller passes the page id), `done`, `info` |
+| `apiMock.ts` | `createStageApiMock()` for tests that mock `./api` (status running, settings with `token-123`) |
+| `types.gen.ts` | ts-rs output for the Stage types in `src-tauri/src/stage/` (`#[ts(export_to = "src/stage/types.gen.ts")]`); regenerate with `bun run types`, never edit |
+| `types.ts` | Re-exports `types.gen.ts` plus the hand-written `StageWindow` and `StageActRequest` (built as JSON in `stage::hooks`) |
+| `PresentationsPage.tsx` | Settings → Presentations: the switch, status, port, token and register command. It loads and saves `StageSettings` itself (`stageApi.settings`, `updateSettings`, `newToken`) and polls `stageApi.status` while open |
 | `hooks.ts` | Answers `stage:collect`: anchors, read from the `data-stage*` attributes, with their rects, visibility, role, list and states. Answers `stage:act` with reveal, click, type (replace or append; CodeMirror too), keys, scroll and wait, then replies with `stage_anchors` or `stage_done`. |
 | `state.ts` | `stageView()` (`connect`, `db`, `wp:<screen>`), `stageSurfaces()` (the settings window's sections are `settingsSections()`, from the settings page registry), `stageUi()` and the flat `stageState()`. `stageState()` never includes SQL text or passwords. |
 | `commands.ts` | The registry's commands in Stage form, with shortcuts in Stage notation. Conventional ids: `app:settings`, `view:palette`. Families: `settings:open:<page>`, `table:open:<table>`, `wp:open:<entity>:<id>` |
-| `src/lib/stage.ts` | Rectangle math (`intersectRect`, `visiblePart`, `isInView`, `centerOf`) |
+| `rect.ts` | Rectangle math (`intersectRect`, `visiblePart`, `isInView`, `centerOf`) |
 
 One verb, for example `act kind=click anchor=toolbar:settings`:
 1. `http.rs` authenticates the request and parses it.
