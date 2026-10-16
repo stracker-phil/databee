@@ -85,7 +85,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   tauri.conf.json          window, bundle and identifier config
 src/                       React app
   api/                     the IPC boundary + types generated from Rust (ts-rs)
-  state/store.ts           zustand store (all app state and actions)
+  state/                   zustand store: store.ts (composition root), slices/, selectors, session events
   commands/                command registry, scopes, default shortcuts
   components/              UI; components/wp/ is WordPress mode
   stage/                   page side of the Stage hook

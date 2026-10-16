@@ -7,9 +7,11 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import App from "../App";
 import { api, type ExecuteResponse, type Favorite, type SessionInfo, type WpInfo } from "../api";
 import { FavoritesBar } from "../components/FavoritesBar";
+import { StatusBar } from "../components/StatusBar";
 import { TabBar } from "../components/Tabs";
 import { Toasts } from "../components/Toasts";
-import { connectedStore, queryTab, resultSet, session, text } from "../test/fixtures";
+import { Toolbar } from "../components/Toolbar";
+import { connectedStore, pendingChange, queryTab, resultSet, session, text } from "../test/fixtures";
 import { wpInfo, wpStore } from "../test/wpFixtures";
 import { useStore, type QueryTab } from "./store";
 
@@ -80,6 +82,68 @@ describe("store behavior", () => {
       expect(tabTitles()).toEqual(["Blog scratch"]);
       expect(useStore.getState().pending.map((p) => p.sessionId)).toEqual(["s2", "s2"]);
       expect(useStore.getState().tabs.map((t) => t.id)).toEqual(["b"]);
+    });
+
+    describe("with state in every slice", () => {
+      beforeEach(() => {
+        twoSessions([queryTab({ id: "a", title: "Shop scratch" }), queryTab({ id: "b", sessionId: "s2", title: "Blog scratch" })], { session: "s1", tab: "a" });
+        inspect("a");
+        useStore.setState((s) => ({
+          pending: [pendingChange({ id: 1, sessionId: "s1" }), pendingChange({ id: 2, sessionId: "s1" }), pendingChange({ id: 3, sessionId: "s2" })],
+          applied: [
+            { sessionId: "s1", batchId: 10, canUndo: true },
+            { sessionId: "s2", batchId: 11, canUndo: true },
+          ],
+          wp: { ...s.wp, "s1/db": wpInfo, "s2/other": wpInfo },
+          wpNav: { stack: [{ screen: "dashboard" }, { screen: "entity", entity: "order", id: "4711" }], index: 1 },
+          entityMeta: { key: "order:4711", table: "wp_wc_orders", idColumn: "id", id: "4711" },
+        }));
+      });
+
+      it("removes the closed active session's changes, cell, WordPress info and navigation and keeps the other session's", async () => {
+        render(
+          <>
+            <StatusBar />
+            <TabBar />
+            <Toolbar />
+          </>,
+        );
+        expect(screen.getByRole("button", { name: "2 pending changes" })).toBeInTheDocument();
+        expect(screen.getByRole("group", { name: "Mode" })).toBeInTheDocument();
+
+        await act(() => useStore.getState().disconnect("s1"));
+
+        expect(screen.getByRole("button", { name: "1 pending change" })).toBeInTheDocument();
+        expect(tabTitles()).toEqual(["Blog scratch"]);
+        expect(screen.queryByRole("group", { name: "Mode" })).not.toBeInTheDocument();
+        const state = useStore.getState();
+        expect(state.pending.map((p) => p.sessionId)).toEqual(["s2"]);
+        expect(state.applied.map((a) => a.sessionId)).toEqual(["s2"]);
+        expect(state.selectedCell).toBeNull();
+        expect(Object.keys(state.wp)).toEqual(["s2/other"]);
+        expect(state.wpNav).toEqual({ stack: [{ screen: "dashboard" }], index: 0 });
+        expect(state.entityMeta).toBeNull();
+      });
+
+      it("leaves the active session's changes, cell and navigation alone when another session closes", async () => {
+        render(
+          <>
+            <StatusBar />
+            <TabBar />
+          </>,
+        );
+
+        await act(() => useStore.getState().disconnect("s2"));
+
+        expect(screen.getByRole("button", { name: "2 pending changes" })).toBeInTheDocument();
+        expect(tabTitles()).toEqual(["Shop scratch"]);
+        const state = useStore.getState();
+        expect(state.applied.map((a) => a.sessionId)).toEqual(["s1"]);
+        expect(state.selectedCell?.tabId).toBe("a");
+        expect(Object.keys(state.wp)).toEqual(["s1/db"]);
+        expect(state.wpNav.index).toBe(1);
+        expect(state.entityMeta?.key).toBe("order:4711");
+      });
     });
 
     it("closes the inspector when the inspected cell's tab belonged to the session", async () => {

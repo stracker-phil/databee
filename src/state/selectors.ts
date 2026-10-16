@@ -1,0 +1,38 @@
+import type { DatabaseInfo, WpInfo } from "../api";
+import type { StructureEntry } from "./slices/session";
+import type { WpRoute } from "./slices/wp";
+import type { Store } from "./store";
+
+export const structureKey = (sessionId: string, database: string, table: string) => `${sessionId}/${database}/${table}`;
+
+export const selectStructure = (s: Store, sessionId: string, database: string, table: string): StructureEntry | undefined =>
+  s.structures[structureKey(sessionId, database, table)];
+
+export const selectActiveSession = (s: Store) => s.sessions.find((x) => x.id === s.activeSessionId) ?? null;
+
+export const selectActiveTab = (s: Store) => s.tabs.find((t) => t.id === s.activeTabId) ?? null;
+
+/** Databases of the active session, without system schemas unless shown or current. */
+export const selectVisibleDatabases = (s: Store): DatabaseInfo[] => {
+  const session = selectActiveSession(s);
+  if (!session) return [];
+  const showSystem = s.settings?.showSystemSchemas ?? false;
+  const databases = s.schema[session.id]?.databases ?? [];
+  return databases.filter((d) => showSystem || !d.isSystem || d.name === session.database);
+};
+
+/** Pending edits of the active session; apply and undo work per session. */
+export const selectActivePending = (s: Store) => s.pending.filter((p) => p.sessionId === s.activeSessionId);
+
+export const selectLastBatch = (s: Store) => [...s.applied].reverse().find((a) => a.sessionId === s.activeSessionId);
+
+/** The newest applied batch of the active session can be undone. */
+export const selectCanUndo = (s: Store) => selectLastBatch(s)?.canUndo ?? false;
+
+export const selectWpRoute = (s: Store): WpRoute => s.wpNav.stack[s.wpNav.index] ?? { screen: "dashboard" };
+
+/** WordPress info for the active session's current database (undefined = not probed yet). */
+export const selectWp = (s: Store): WpInfo | null | undefined => {
+  const session = selectActiveSession(s);
+  return session?.database ? s.wp[`${session.id}/${session.database}`] : null;
+};

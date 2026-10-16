@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { ChevronDown, ChevronRight, Database, Eye, History, RefreshCw, Search, Table2, Trash2 } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 import { api, type HistoryEntry, type TableInfo } from "../api";
 import { EVENTS } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { compactCount, formatBytes, formatCount, relativeTime } from "../lib/format";
 import { quoteIdent } from "../lib/sql";
-import { fail, selectActiveSession, selectActiveTab, useStore } from "../state/store";
+import { fail, selectActiveSession, selectActiveTab, selectVisibleDatabases, useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 
 const dbKey = (name: string) => `db:${name}`;
@@ -80,7 +81,7 @@ function useTreeFocus(rows: TreeRow[], { toggle, openTable }: TreeActions) {
 function TablesPanel() {
   const session = useStore(selectActiveSession);
   const schema = useStore((s) => (session ? s.schema[session.id] : undefined));
-  const showSystem = useStore((s) => s.settings?.showSystemSchemas ?? false);
+  const databases = useStore(useShallow(selectVisibleDatabases));
   const activeTab = useStore(selectActiveTab);
   const { loadTables, loadDatabases, openTableTab, openQueryTab, addFavorite } = useStore.getState();
   const [filter, setFilter] = useState("");
@@ -97,11 +98,6 @@ function TablesPanel() {
   const current = session?.database ?? null;
   const isOpen = (db: string) => expanded[db] ?? db === current;
   const needle = filter.trim().toLowerCase();
-
-  const databases = useMemo(
-    () => (schema?.databases ?? []).filter((d) => showSystem || !d.isSystem || d.name === current),
-    [schema, showSystem, current],
-  );
 
   const toggle = (db: string) => {
     const open = !isOpen(db);

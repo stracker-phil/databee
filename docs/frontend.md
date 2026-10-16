@@ -40,7 +40,26 @@ Dialogs · CommandPalette · Toasts
 
 ## Store
 
-`src/state/store.ts` is a single store with no middleware.
+One zustand store with no middleware, composed from slices. `src/state/store.ts` is only the composition
+root: it creates the store, keeps the slice registry and re-exports the selectors, `fail`, `flushUiState`
+and the state types, so components import everything from `state/store`.
+
+- `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs`, `changes`, `data`,
+  `favorites`, `ui`, and the temporary `wp` until it moves to the WordPress module). Each exports its
+  member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
+  the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
+- `Store` is an interface extending every core slice's interface. A module adds its members with
+  `declare module "../state/store" { interface Store { … } }` and registers with `registerSlice(slice)`,
+  which merges `slice.create(set, get)` into the live store, so registering after creation works.
+- `resetStore(patch)` (tests) re-runs every registered slice's `create`, then applies `patch`.
+- `src/state/events.ts`: `onSessionEvent(handler)` (returns the unsubscribe function) and
+  `emitSessionEvent`. `databaseChanged { sessionId, database }` fires after `switchDatabase` and when
+  `loadDatabases` reloads the list of a session with a current database; the `wp` slice subscribes and
+  runs `loadWp`. `sessionClosed { sessionId }` fires after `disconnect`'s update.
+- `src/state/selectors.ts`: the selectors; `src/state/requests.ts`: `fail` and the request tokens.
+- Slices import each other's reset helpers (`resetSelection`, `resetMode`, `resetWpNav`,
+  `resetWpForDatabase`) and pure helpers (`activate`, `remembered`, `nextActiveSessionId`), never the store
+  object, except where a module-level helper needs it (`fail`, the `wp` event subscription).
 
 | Key | Meaning |
 |---|---|
@@ -63,8 +82,10 @@ Dialogs · CommandPalette · Toasts
 Conventions:
 - Components subscribe with narrow selectors (`useStore((s) => s.x)`), and `useShallow` for derived arrays.
 - Event handlers call actions through `useStore.getState()`.
-- Selectors live at the bottom of the file: `selectActiveSession`, `selectActiveTab`, `selectWp`,
-  `selectWpRoute`. For `selectWp`, `undefined` means not probed yet and `null` means not WordPress.
+- Selectors live in `selectors.ts`: `selectActiveSession`, `selectActiveTab`, `selectStructure`,
+  `selectActivePending`, `selectCanUndo`, `selectVisibleDatabases` (the active session's databases without
+  system schemas unless shown or current; use with `useShallow`), `selectWp`, `selectWpRoute`. For
+  `selectWp`, `undefined` means not probed yet and `null` means not WordPress.
 - Store actions wrap API errors in `fail(e, context)`, which shows an error toast and writes the message to
   the Rust log. Components that call `api` directly use the exported `fail` too, and update the UI only
   after the call succeeded (removing a recent connection, clearing history).
@@ -89,9 +110,11 @@ Conventions:
   to WordPress mode only while that session and database are still active.
 - Selection: `selectCell` tags the cell with the active tab. `clearSelectionFor(state, tabId)` drops it when
   its tab closes or is left (`activate`); a `dataVersion` bump (`bumpData`) clears it outright.
-- `disconnect(sessionId)` purges in one `set`: the session, its tabs, schema, `queryCounter`, `pending` and
-  `applied` entries, every `wp` and `structures` key `<session>/…`, the selection if its tab was closed, and `wpNav` and
-  `entityMeta` when the session was active.
+- `disconnect(sessionId)` closes the session in Rust, then applies one `set` that merges every registered
+  slice's `sessionClosed` result: the session and the next active session (`session`), its schema and
+  `structures` keys (`session`), its tabs, `queryCounter` and the selection if its tab was closed (`tabs`),
+  its `pending` and `applied` entries (`changes`), its `wp` keys, and `wpNav` and `entityMeta` when it was
+  active (`wp`). A slice that keys data by session implements `sessionClosed`.
 - `switchDatabase` resets `wpNav`, the selection and `entityMeta`; unless the target is known WordPress it
   also resets `mode` to `db` and `modeChosen`. `connect` resets `wpNav`, `mode` and the selection and reuses
   the session's query tab on reconnect.

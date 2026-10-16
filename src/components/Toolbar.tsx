@@ -1,17 +1,14 @@
 import { Database, FilePlus2, LayoutDashboard, PlugZap, Settings as SettingsIcon, Unplug } from "lucide-react";
-import { selectActiveSession, selectWp, useStore } from "../state/store";
+import { useShallow } from "zustand/react/shallow";
+import { selectActiveSession, selectVisibleDatabases, selectWp, useStore } from "../state/store";
 
 export function Toolbar() {
   const sessions = useStore((s) => s.sessions);
   const session = useStore(selectActiveSession);
-  const schema = useStore((s) => (session ? s.schema[session.id] : undefined));
-  const settings = useStore((s) => s.settings);
+  const databases = useStore(useShallow(selectVisibleDatabases));
   const wp = useStore(selectWp);
   const mode = useStore((s) => s.mode);
   const { setActiveSession, switchDatabase, disconnect, openQueryTab, openDialog, setMode } = useStore.getState();
-
-  const showSystem = settings?.showSystemSchemas ?? false;
-  const databases = (schema?.databases ?? []).filter((d) => showSystem || !d.isSystem || d.name === session?.database);
 
   return (
     <header className="toolbar" data-tauri-drag-region data-stage="toolbar" data-stage-label="Toolbar">
