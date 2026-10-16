@@ -8,6 +8,7 @@ import {
   type ChangeRequest,
   type PlannedChange,
   type WpChangeRequest,
+  type WpList,
   type Cell,
   type ColumnInfo,
   type ColumnMeta,
@@ -55,15 +56,7 @@ export interface TableTab {
 
 export type Tab = QueryTab | TableTab;
 
-export type WpList =
-  | "orders"
-  | "subscriptions"
-  | "users"
-  | "products"
-  | "actions"
-  | "sessions"
-  | "content"
-  | "settings";
+export type { WpList };
 
 export type WpRoute =
   | { screen: "dashboard" }
@@ -855,7 +848,7 @@ export const useStore = create<Store>()((set, get) => {
             dialog: {
               type: "confirm",
               title: "Run destructive statement?",
-              message: error.message.replace(/^This statement needs confirmation: /, ""),
+              message: error.reason ?? error.message,
               confirmLabel: "Run anyway",
               onConfirm: () => void get().runQuery(tabId, sql, true),
             },

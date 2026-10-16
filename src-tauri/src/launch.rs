@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
+use ts_rs::TS;
 
 use crate::connection::{ConnectionSpec, Secret};
 use crate::ipc::IpcMessage;
@@ -19,7 +20,8 @@ const PASSWORD_TTL: Duration = Duration::from_secs(5 * 60);
 
 /// Something the UI should act on after a (CLI) launch. Passwords stay in Rust;
 /// the UI only learns whether one is available for the request.
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LaunchEvent {
     #[serde(rename_all = "camelCase")]

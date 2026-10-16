@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
+use ts_rs::TS;
 
 use super::json_store::JsonStore;
 use crate::error::AppResult;
@@ -21,7 +22,8 @@ where
     }))
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
     #[default]
@@ -30,7 +32,8 @@ pub enum Theme {
     Dark,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum Density {
     #[default]
@@ -38,7 +41,10 @@ pub enum Density {
     Compact,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum)]
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum, TS,
+)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     Error,
@@ -62,7 +68,8 @@ impl From<LogLevel> for log::LevelFilter {
 }
 
 /// Where the value inspector and the WordPress detail pane sit next to the content.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum Dock {
     #[default]
@@ -71,7 +78,8 @@ pub enum Dock {
 }
 
 /// The local HTTP API through which Stage presents DataBee (docs/stage.md).
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
 pub struct StageSettings {
     pub enabled: bool,
@@ -106,7 +114,8 @@ impl std::fmt::Debug for StageSettings {
 /// Green and orange are status colors in the UI, so they are not offered as accents.
 pub const ACCENTS: &[&str] = &["blue", "purple", "pink", "graphite"];
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     #[serde(deserialize_with = "lenient")]

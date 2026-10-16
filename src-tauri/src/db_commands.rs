@@ -126,7 +126,7 @@ pub async fn run_query(
         }
         Err(e) => {
             // The message may quote the SQL, which stays out of the log by default.
-            log::info!("Query failed: kind={} code={:?}", e.kind(), e.code());
+            log::info!("Query failed: kind={:?} code={:?}", e.kind(), e.code());
             log::debug!("Query error: {e}");
             started.elapsed().as_millis() as u64
         }
@@ -221,6 +221,7 @@ mod tests {
     use super::*;
     use crate::connection::ConnectionSpec;
     use crate::db::{FakeDatabase, ResultSet};
+    use crate::error::ErrorKind;
     use crate::secrets::MemoryStore;
     use crate::session::Session;
 
@@ -252,7 +253,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_eq!(err.kind(), "confirmation_required");
+        assert_eq!(err.kind(), ErrorKind::ConfirmationRequired);
         assert!(state.history.list(&spec().account()).is_empty());
     }
 
@@ -276,7 +277,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_eq!(err.kind(), "session_not_found");
+        assert_eq!(err.kind(), ErrorKind::SessionNotFound);
     }
 
     #[tokio::test]
@@ -306,7 +307,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         let history = state.history.list(&spec().account());
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].sql, "SELECT 1");

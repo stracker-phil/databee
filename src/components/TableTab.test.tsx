@@ -13,10 +13,11 @@ const mocked = vi.mocked(api, true);
 
 const structure: TableStructure = {
   columns: [
-    { name: "ID", columnType: "bigint unsigned", nullable: false, default: null, key: "PRI", extra: "auto_increment", comment: "" },
-    { name: "post_title", columnType: "text", nullable: false, default: null, key: "", extra: "", comment: "" },
+    { name: "ID", columnType: "bigint unsigned", nullable: false, default: null, key: "PRI", extra: "auto_increment", comment: "", autoIncrement: true, generated: false },
+    { name: "post_title", columnType: "text", nullable: false, default: null, key: "", extra: "", comment: "", autoIncrement: false, generated: false },
   ],
   indexes: [{ name: "PRIMARY", unique: true, columns: ["ID"] }],
+  primaryKey: ["ID"],
   ddl: "CREATE TABLE wp_posts (...)",
 };
 

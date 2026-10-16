@@ -6,7 +6,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { useStore } from "../../state/store";
-import { wpStore } from "../../test/wpFixtures";
+import { field, wpStore } from "../../test/wpFixtures";
 import { SettingsScreen } from "./Settings";
 
 const mocked = vi.mocked(api, true);
@@ -35,5 +35,28 @@ describe("SettingsScreen", () => {
     await userEvent.click(await screen.findByRole("button", { name: /woocommerce-ppcp-data-common/ }));
     expect(useStore.getState().mode).toBe("db");
     expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "table", table: "wp_options", filter: "`option_name` = 'woocommerce-ppcp-data-common'" });
+  });
+
+  describe("option group", () => {
+    beforeEach(() => {
+      mocked.wpOptionsGroup.mockResolvedValue([
+        field("woocommerce_currency", "EUR", { autoload: { value: "yes", on: true } }),
+        field("woocommerce_cache", "x", { autoload: { value: "off", on: false } }),
+        field("woocommerce_plain", "y"),
+      ]);
+    });
+
+    it("shows each option's autoload state from the server", async () => {
+      render(<SettingsScreen params={{ prefix: "woocommerce" }} />);
+      expect(await screen.findByRole("button", { name: "woocommerce_currency" })).toHaveAttribute("title", "Queue autoload off for woocommerce_currency");
+      expect(screen.getByRole("button", { name: "woocommerce_cache" })).toHaveAttribute("title", "Queue autoload on for woocommerce_cache");
+      expect(screen.getByRole("button", { name: "woocommerce_plain" })).toHaveAttribute("title", "Queue autoload on for woocommerce_plain");
+    });
+
+    it("queues the opposite autoload state when a pill is clicked", async () => {
+      render(<SettingsScreen params={{ prefix: "woocommerce" }} />);
+      await userEvent.click(await screen.findByRole("button", { name: "woocommerce_currency" }));
+      expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", { type: "setAutoload", database: "db", option: "woocommerce_currency", on: false });
+    });
   });
 });

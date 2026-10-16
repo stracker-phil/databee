@@ -3,6 +3,7 @@
 //! every meta table, Action Scheduler args and the WooCommerce log.
 
 use serde::Serialize;
+use ts_rs::TS;
 
 use super::context::WpContext;
 use super::entity::{Catalog, EntityDoc, cell_str};
@@ -12,13 +13,24 @@ use super::{fetch, load_docs};
 use crate::db::Database;
 use crate::error::AppResult;
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+/// How a fact's value renders; `Time` values are unix timestamps.
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum FactKind {
+    Text,
+    Status,
+    Money,
+    Time,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct PeekFact {
     pub label: String,
     pub value: String,
-    /// text, status, money, time (value is a unix timestamp)
-    pub kind: &'static str,
+    pub kind: FactKind,
 }
 
 /// (label, candidate field or meta names)
@@ -88,10 +100,10 @@ fn fact_from(doc: &EntityDoc, label: &str, names: &[&str]) -> Option<PeekFact> {
         return None;
     }
     let (value, kind) = match &field.hint {
-        Some(Hint::Money { text }) => (text.clone(), "money"),
-        Some(Hint::Time { unix, .. }) => (unix.to_string(), "time"),
-        _ if label == "Status" => (raw, "status"),
-        _ => (raw, "text"),
+        Some(Hint::Money { text }) => (text.clone(), FactKind::Money),
+        Some(Hint::Time { unix, .. }) => (unix.to_string(), FactKind::Time),
+        _ if label == "Status" => (raw, FactKind::Status),
+        _ => (raw, FactKind::Text),
     };
     Some(PeekFact {
         label: label.into(),
@@ -129,7 +141,7 @@ pub async fn peek(
         facts.push(PeekFact {
             label: doc.label.clone(),
             value: title.clone(),
-            kind: "text",
+            kind: FactKind::Text,
         });
     }
     if entity == "user" && ctx.hpos() {
@@ -167,7 +179,7 @@ async fn customer_order_facts(
     let mut facts = vec![PeekFact {
         label: "Orders".into(),
         value: num(&r[0]).unwrap_or(0).to_string(),
-        kind: "text",
+        kind: FactKind::Text,
     }];
     if let Some(spent) =
         text(&r[1]).and_then(|s| money(&s, ctx.site.currency.as_deref(), ctx.site.price_decimals))
@@ -175,7 +187,7 @@ async fn customer_order_facts(
         facts.push(PeekFact {
             label: "Spent".into(),
             value: spent,
-            kind: "money",
+            kind: FactKind::Money,
         });
     }
     Ok(facts)
@@ -183,7 +195,8 @@ async fn customer_order_facts(
 
 // ---------- find everywhere ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct FindHit {
     /// Row key in `table`.
@@ -196,7 +209,8 @@ pub struct FindHit {
     pub column: String,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct FindGroup {
     /// Human source name, e.g. "Post meta".

@@ -100,7 +100,10 @@ session lookup, history entry for failed queries too).
 1. Write a `#[tauri::command]` function that returns `AppResult<T>`. `T` must be `Serialize` with
    `#[serde(rename_all = "camelCase")]`.
 2. Register it in `lib.rs`.
-3. Add a wrapper to `api` in `src/api/index.ts`, and the types to `src/api/types.ts`.
+3. Derive `ts_rs::TS` with `#[ts(export, export_to = "src/api/types.gen.ts")]` on every argument and result
+   type (and the types they contain), run `bun run types` and commit the regenerated file. 64-bit integers
+   map to `number` (`TS_RS_LARGE_INT` in `.cargo/config.toml`). Then add a wrapper to `api` in
+   `src/api/index.ts`.
 4. Add a mock to `src/test/apiMock.ts`. TypeScript requires it, because the mock is typed as `typeof api`.
 
 ## Events to the page

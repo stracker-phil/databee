@@ -2,15 +2,16 @@
 //! Each view embeds the generic `EntityDoc` so nothing is hidden; the extra structure is
 //! derived from it plus a few batched queries.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::Serialize;
+use ts_rs::TS;
 
 use super::context::WpContext;
 use super::entity::{Catalog, EntityDoc, EntityLink, cell_str};
 use super::hints::{DEFAULT_PRICE_DECIMALS, Hint, money};
 use super::lists::{self, ListQuery, OrderSummary, epoch, int, num, roles_of, text};
-use super::{fetch, load_docs, post_images, titles};
+use super::{WpList, fetch, load_docs, post_images, titles};
 use crate::db::Database;
 use crate::db::{Dialect, ResultSet};
 use crate::decode::php::{self, PhpValue};
@@ -50,7 +51,8 @@ fn link(entity: &str, id: impl Into<String>) -> EntityLink {
 
 // ---------- shared pieces ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Debug, Clone, PartialEq, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Address {
     pub name: Option<String>,
@@ -119,16 +121,39 @@ pub fn address_mismatches(billing: &Address, shipping: &Address) -> Vec<String> 
     out
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "snake_case")]
+pub enum EventKind {
+    Created,
+    Paid,
+    Completed,
+    Note,
+    CustomerNote,
+    Action,
+    Log,
+    Session,
+    Refund,
+}
+
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum EventLevel {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct TimelineEvent {
     pub at: i64,
-    /// created, paid, completed, modified, note, customer_note, action, log, session, refund
-    pub kind: &'static str,
+    pub kind: EventKind,
     pub title: String,
     pub detail: Option<String>,
-    /// info, warning, error
-    pub level: &'static str,
+    pub level: EventLevel,
     pub link: Option<EntityLink>,
     /// The full original text when `title` is a summary (log lines).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -138,7 +163,8 @@ pub struct TimelineEvent {
     pub row: Option<RowRef>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct RowRef {
     pub table: String,
@@ -146,20 +172,42 @@ pub struct RowRef {
     pub id: String,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct RelatedChip {
     pub label: String,
     pub link: Option<EntityLink>,
     /// For counts without a single target (e.g. "3 notes").
     pub count: Option<u64>,
-    /// Route hint for the UI: entity, list:<name>
-    pub target: Option<String>,
+    /// Where the chip leads when it has no single `link`.
+    pub target: Option<ChipTarget>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ChipTarget {
+    /// A list screen with its filter params (as in `ListQuery`).
+    List {
+        list: WpList,
+        params: BTreeMap<String, String>,
+    },
+    /// The view's own timeline.
+    Timeline,
+}
+
+fn orders_search(search: &str) -> ChipTarget {
+    ChipTarget::List {
+        list: WpList::Orders,
+        params: BTreeMap::from([("search".to_string(), search.to_string())]),
+    }
 }
 
 // ---------- order ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct LineItem {
     pub id: String,
@@ -174,7 +222,8 @@ pub struct LineItem {
     pub meta: Vec<(String, String)>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Fees {
     pub gross: String,
@@ -184,7 +233,8 @@ pub struct Fees {
     pub fee_ratio: f64,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct PaymentPanel {
     pub gateway: Option<String>,
@@ -198,7 +248,8 @@ pub struct PaymentPanel {
     pub fees: Option<Fees>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Attribution {
     pub source: Option<String>,
@@ -213,7 +264,8 @@ pub struct Attribution {
     pub utm: Vec<(String, String)>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct OrderView {
     pub doc: EntityDoc,
@@ -281,11 +333,11 @@ pub fn paypal_fees(raw: &str) -> Option<Fees> {
 
 /// WooCommerce log levels (`WC_Log_Levels`): 100 debug, 200 info, 300 notice, 400 warning,
 /// 500 and up error, critical, alert, emergency. Debug and notice show as info.
-fn log_level(level: Option<u64>) -> &'static str {
+fn log_level(level: Option<u64>) -> EventLevel {
     match level.unwrap_or(0) {
-        0..=300 => "info",
-        301..=400 => "warning",
-        _ => "error",
+        0..=300 => EventLevel::Info,
+        301..=400 => EventLevel::Warning,
+        _ => EventLevel::Error,
     }
 }
 
@@ -713,44 +765,44 @@ pub async fn order_view(
     if let Some(a) = &attribution {
         event(
             a.session_start,
-            "session",
+            EventKind::Session,
             "Shopping session started".into(),
             a.entry.clone(),
-            "info",
+            EventLevel::Info,
             None,
         );
     }
     event(
         created,
-        "created",
+        EventKind::Created,
         "Order created".into(),
         pick(&doc, &["created_via"]),
-        "info",
+        EventLevel::Info,
         None,
     );
     event(
         paid,
-        "paid",
+        EventKind::Paid,
         "Payment received".into(),
         payment.as_ref().and_then(|p| p.transaction_id.clone()),
-        "info",
+        EventLevel::Info,
         None,
     );
     event(
         completed,
-        "completed",
+        EventKind::Completed,
         "Order completed".into(),
         None,
-        "info",
+        EventLevel::Info,
         None,
     );
     for (rid, at, amount) in &refunds {
         event(
             *at,
-            "refund",
+            EventKind::Refund,
             format!("Refund #{rid}"),
             amount.as_deref().and_then(fmt_money),
-            "warning",
+            EventLevel::Warning,
             Some(link("order", rid.clone())),
         );
     }
@@ -774,16 +826,16 @@ pub async fn order_view(
         let level = if content.to_lowercase().contains("fail")
             || content.to_lowercase().contains("error")
         {
-            "error"
+            EventLevel::Error
         } else {
-            "info"
+            EventLevel::Info
         };
         event(
             int(&r[1]),
             if customer_note {
-                "customer_note"
+                EventKind::CustomerNote
             } else {
-                "note"
+                EventKind::Note
             },
             content,
             text(&r[3])
@@ -817,10 +869,14 @@ pub async fn order_view(
             let at = int(&r[4]).or(int(&r[3]));
             event(
                 at,
-                "action",
+                EventKind::Action,
                 text(&r[1]).unwrap_or_default(),
                 Some(status.clone()),
-                if status == "failed" { "error" } else { "info" },
+                if status == "failed" {
+                    EventLevel::Error
+                } else {
+                    EventLevel::Info
+                },
                 text(&r[0]).map(|a| link("action", a)),
             );
         }
@@ -881,7 +937,7 @@ pub async fn order_view(
             label: "Notes".into(),
             link: None,
             count: Some(note_count),
-            target: Some("timeline".into()),
+            target: Some(ChipTarget::Timeline),
         });
     }
     if action_count > 0 {
@@ -889,7 +945,7 @@ pub async fn order_view(
             label: "Scheduled actions".into(),
             link: None,
             count: Some(action_count),
-            target: Some("timeline".into()),
+            target: Some(ChipTarget::Timeline),
         });
     }
 
@@ -1012,7 +1068,7 @@ pub async fn order_logs(
             let summary = super::logs::humanize(source.as_deref(), &message);
             Some(TimelineEvent {
                 at: int(&r[1])?,
-                kind: "log",
+                kind: EventKind::Log,
                 title: summary.title,
                 detail: source,
                 level: log_level(num(&r[2])),
@@ -1030,7 +1086,8 @@ pub async fn order_logs(
 
 // ---------- customer ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct PaymentToken {
     pub id: String,
@@ -1040,7 +1097,8 @@ pub struct PaymentToken {
     pub summary: String,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct CustomerView {
     pub doc: EntityDoc,
@@ -1153,7 +1211,7 @@ pub async fn guest_view(
         label: "Orders".into(),
         link: None,
         count: Some(summary.order_count),
-        target: Some(format!("list:orders:search={email}")),
+        target: Some(orders_search(email)),
     }];
     if let Some(s) = &session_link {
         related.push(RelatedChip {
@@ -1344,7 +1402,7 @@ pub async fn customer_view(
             label: "Orders".into(),
             link: None,
             count: Some(order_count),
-            target: Some(format!("list:orders:customer={id}")),
+            target: Some(orders_search(email.as_deref().unwrap_or(id))),
         });
     }
     if !subscriptions.is_empty() {
@@ -1432,7 +1490,8 @@ async fn customer_orders(
 
 // ---------- product ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Variation {
     pub id: String,
@@ -1444,7 +1503,8 @@ pub struct Variation {
     pub image: Option<String>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ProductView {
     pub doc: EntityDoc,
@@ -1676,14 +1736,16 @@ pub async fn product_view(
 
 // ---------- action & session ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct LogLine {
     pub at: Option<i64>,
     pub message: String,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ActionView {
     pub doc: EntityDoc,
@@ -1752,7 +1814,8 @@ pub async fn action_view(
     })
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct SessionView {
     pub doc: EntityDoc,
@@ -1815,7 +1878,9 @@ pub async fn session_view(
 
 // ---------- dispatch ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "EntityViewData")]
 #[serde(tag = "view", rename_all = "camelCase")]
 pub enum EntityView {
     Order(Box<OrderView>),
@@ -1892,7 +1957,8 @@ pub async fn entity_view(
 
 // ---------- omnisearch ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct SearchHit {
     pub entity: String,
@@ -2097,18 +2163,64 @@ mod tests {
     #[test]
     fn log_levels_fold_into_info_warning_and_error() {
         for (level, expected) in [
-            (Some(100), "info"),
-            (Some(200), "info"),
-            (Some(250), "info"),
-            (Some(300), "info"),
-            (Some(301), "warning"),
-            (Some(400), "warning"),
-            (Some(500), "error"),
-            (Some(600), "error"),
-            (None, "info"),
+            (Some(100), EventLevel::Info),
+            (Some(200), EventLevel::Info),
+            (Some(250), EventLevel::Info),
+            (Some(300), EventLevel::Info),
+            (Some(301), EventLevel::Warning),
+            (Some(400), EventLevel::Warning),
+            (Some(500), EventLevel::Error),
+            (Some(600), EventLevel::Error),
+            (None, EventLevel::Info),
         ] {
             assert_eq!(log_level(level), expected, "{level:?}");
         }
+    }
+
+    #[test]
+    fn event_kinds_and_levels_serialize_to_their_wire_strings() {
+        for (kind, wire) in [
+            (EventKind::Created, "created"),
+            (EventKind::Paid, "paid"),
+            (EventKind::Completed, "completed"),
+            (EventKind::Note, "note"),
+            (EventKind::CustomerNote, "customer_note"),
+            (EventKind::Action, "action"),
+            (EventKind::Log, "log"),
+            (EventKind::Session, "session"),
+            (EventKind::Refund, "refund"),
+        ] {
+            assert_eq!(serde_json::to_value(kind).unwrap(), wire);
+        }
+        for (level, wire) in [
+            (EventLevel::Info, "info"),
+            (EventLevel::Warning, "warning"),
+            (EventLevel::Error, "error"),
+        ] {
+            assert_eq!(serde_json::to_value(level).unwrap(), wire);
+        }
+    }
+
+    #[test]
+    fn list_chip_target_serializes_its_list_and_params() {
+        let target = orders_search("jane");
+
+        assert_eq!(
+            serde_json::to_value(&target).unwrap(),
+            serde_json::json!({
+                "kind": "list",
+                "list": "orders",
+                "params": { "search": "jane" }
+            })
+        );
+    }
+
+    #[test]
+    fn timeline_chip_target_serializes_as_a_bare_kind() {
+        assert_eq!(
+            serde_json::to_value(ChipTarget::Timeline).unwrap(),
+            serde_json::json!({ "kind": "timeline" })
+        );
     }
 
     #[test]

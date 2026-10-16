@@ -140,6 +140,7 @@ impl Database for FakeDatabase {
         Ok(TableStructure {
             columns: Vec::new(),
             indexes: Vec::new(),
+            primary_key: Vec::new(),
             ddl: None,
         })
     }
@@ -236,6 +237,7 @@ impl Database for Arc<FakeDatabase> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
 
     const TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -272,7 +274,7 @@ mod tests {
 
         let err = db.fetch("SELECT 1", TIMEOUT).await.unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
     #[tokio::test]

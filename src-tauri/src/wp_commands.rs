@@ -7,7 +7,7 @@ use crate::state::AppState;
 use crate::wp::cache::WpCache;
 use crate::wp::changes::{self, WpChangeRequest};
 use crate::wp::context::WpContext;
-use crate::wp::dashboard::{self, BrowserSection, Dashboard, DayBucket};
+use crate::wp::dashboard::{self, ActionHistogram, BrowserSection, Dashboard};
 use crate::wp::detail::{self, EntityView, SearchHit};
 use crate::wp::entity::DocField;
 use crate::wp::entity::{self, Catalog};
@@ -194,7 +194,7 @@ pub async fn wp_action_histogram(
     session_id: String,
     database: String,
     hook: Option<String>,
-) -> AppResult<Vec<DayBucket>> {
+) -> AppResult<ActionHistogram> {
     let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
     dashboard::action_histogram(s.db.as_ref(), &ctx, &database, hook.as_deref()).await
 }

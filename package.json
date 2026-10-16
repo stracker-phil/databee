@@ -12,10 +12,11 @@
     "test": "bun run test:ui && bun run test:rust",
     "test:ui": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "lint": "tsc --noEmit && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "lint": "bun run types && git diff --exit-code -- src/api/types.gen.ts && tsc --noEmit && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "app": "tauri build --debug --bundles app && open src-tauri/target/debug/bundle/macos/DataBee.app",
     "test:db": "docker compose -f dev/docker-compose.yml down -v && docker compose -f dev/docker-compose.yml up -d --wait && cargo test --manifest-path src-tauri/Cargo.toml -- --ignored",
-    "build:app": "tauri build --debug --bundles app"
+    "build:app": "tauri build --debug --bundles app",
+    "types": "PATH=/opt/homebrew/opt/rustup/bin:$PATH cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

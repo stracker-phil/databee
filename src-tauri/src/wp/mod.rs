@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
 use serde::Serialize;
+use ts_rs::TS;
 
 use self::context::WpContext;
 use self::entity::{Catalog, EntityDoc, TableEntity};
@@ -29,12 +30,35 @@ use crate::error::{AppError, AppResult};
 const TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_RELATED: u32 = 100;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct EntitySummary {
+    pub name: String,
+    pub label: String,
+}
+
+/// The list screens of WordPress mode.
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum WpList {
+    Orders,
+    Subscriptions,
+    Users,
+    Products,
+    Actions,
+    Sessions,
+    Content,
+    Settings,
+}
+
+#[derive(Serialize, Debug, Clone, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct WpInfo {
     pub context: WpContext,
-    /// (name, label) of entities that can be opened by ID.
-    pub entities: Vec<(String, String)>,
+    /// Entities that can be opened by ID.
+    pub entities: Vec<EntitySummary>,
     pub table_entities: BTreeMap<String, TableEntity>,
 }
 
@@ -447,10 +471,110 @@ pub async fn options_group(
         .filter_map(|r| {
             let name = text(&r[0])?;
             let mut f = entity::field(catalog, &hints, name, r[1].clone(), None);
-            f.label = text(&r[2])
-                .filter(|a| options::is_autoloaded(a))
-                .map(|_| format!("{} · autoload", f.name));
+            f.autoload = text(&r[2]).map(|value| entity::Autoload {
+                on: options::is_autoloaded(&value),
+                value,
+            });
             Some(f)
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{ColumnMeta, FakeDatabase};
+    use crate::wp::entity::definitions;
+
+    fn ctx() -> WpContext {
+        WpContext {
+            prefix: "wp_".into(),
+            version: None,
+            sites: vec![],
+            wc: None,
+            site: Default::default(),
+            tables: ["wp_options".to_string(), "wp_users".to_string()].into(),
+        }
+    }
+
+    #[test]
+    fn wp_lists_serialize_to_lowercase_wire_strings() {
+        for (list, wire) in [
+            (WpList::Orders, "orders"),
+            (WpList::Subscriptions, "subscriptions"),
+            (WpList::Users, "users"),
+            (WpList::Products, "products"),
+            (WpList::Actions, "actions"),
+            (WpList::Sessions, "sessions"),
+            (WpList::Content, "content"),
+            (WpList::Settings, "settings"),
+        ] {
+            assert_eq!(serde_json::to_value(list).unwrap(), wire);
+        }
+    }
+
+    #[test]
+    fn wp_info_lists_openable_entities_with_name_and_label() {
+        let ctx = ctx();
+        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+
+        let info = serde_json::to_value(WpInfo::new(ctx, &catalog)).unwrap();
+
+        assert!(
+            info["entities"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!({ "name": "user", "label": "User" })),
+            "{info}"
+        );
+    }
+
+    #[tokio::test]
+    async fn options_group_reports_each_options_stored_autoload_and_whether_it_is_on() {
+        let ctx = ctx();
+        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+        let cell = |s: &str| Cell::Text(s.into());
+        let db = FakeDatabase::new().on(
+            "SELECT option_name, option_value, autoload FROM",
+            ResultSet {
+                columns: ["option_name", "option_value", "autoload"]
+                    .iter()
+                    .map(|name| ColumnMeta {
+                        name: name.to_string(),
+                        type_name: "TEXT".into(),
+                    })
+                    .collect(),
+                rows: vec![
+                    vec![cell("woocommerce_a"), cell("1"), cell("yes")],
+                    vec![cell("woocommerce_b"), cell("2"), cell("auto-off")],
+                    vec![cell("woocommerce_c"), cell("3"), cell("on")],
+                ],
+                returns_rows: true,
+                ..Default::default()
+            },
+        );
+
+        let fields = options_group(&db, &ctx, &catalog, "wp", "woocommerce")
+            .await
+            .unwrap();
+
+        let autoloads: Vec<_> = fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.autoload.clone()))
+            .collect();
+        let autoload = |value: &str, on: bool| {
+            Some(entity::Autoload {
+                value: value.into(),
+                on,
+            })
+        };
+        assert_eq!(
+            autoloads,
+            [
+                ("woocommerce_a", autoload("yes", true)),
+                ("woocommerce_b", autoload("auto-off", false)),
+                ("woocommerce_c", autoload("on", true)),
+            ]
+        );
+    }
 }

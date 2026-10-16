@@ -141,7 +141,7 @@ function InsertRowDialog({ database, table, columns }: { database: string; table
   const close = useStore((s) => s.closeDialog);
   const queueChange = useStore((s) => s.queueChange);
   const [fields, setFields] = useState<Record<string, { mode: InsertMode; value: string }>>({});
-  const editable = columns.filter((c) => !c.extra.includes("auto_increment") && !c.extra.includes("GENERATED"));
+  const editable = columns.filter((c) => !c.autoIncrement && !c.generated);
   const fieldOf = (name: string) => fields[name] ?? { mode: "default" as const, value: "" };
   return (
     <Modal onClose={close} className="wide" labelledBy="insert-title">

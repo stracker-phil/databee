@@ -31,8 +31,8 @@ function useTableStructure(sessionId: string, database: string, table: string) {
 }
 
 function singleColumnPrimaryKey(structure: TableStructure | null): string | null {
-  const pk = structure?.indexes.find((i) => i.name === "PRIMARY");
-  return pk?.columns.length === 1 ? pk.columns[0] : null;
+  const pk = structure?.primaryKey ?? [];
+  return pk.length === 1 ? pk[0] : null;
 }
 
 /** MySQL column names are case-insensitive, so the result header may differ in case from the schema. */

@@ -167,6 +167,7 @@ async fn recover_empty_columns(conn: &mut MySqlConnection, sql: &str, results: &
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
 
     fn column() -> Vec<ColumnMeta> {
         vec![ColumnMeta {
@@ -253,7 +254,7 @@ mod tests {
         let err = results
             .row(column, |_| Err(AppError::InvalidInput("bad cell".into())))
             .unwrap_err();
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
     #[test]

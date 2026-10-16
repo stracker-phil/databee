@@ -2,11 +2,12 @@
 
 use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
 use serde::Serialize;
+use ts_rs::TS;
 
 use super::changes::WpChangeRequest;
 use super::context::{HposMode, SiteZone, WpContext};
-use super::fetch;
 use super::lists::{self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary, num, text};
+use super::{WpList, fetch};
 use crate::db::Database;
 use crate::db::{Dialect, TableInfo};
 use crate::error::{AppError, AppResult};
@@ -14,7 +15,8 @@ use crate::error::{AppError, AppResult};
 pub const AUTOLOAD_HEALTHY_BYTES: u64 = 800 * 1024;
 const DAYS: i64 = 14;
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct TableTile {
     pub name: String,
@@ -24,7 +26,8 @@ pub struct TableTile {
     pub category: &'static str,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct DayBucket {
     pub date: String,
@@ -34,7 +37,16 @@ pub struct DayBucket {
     pub other: u64,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum Granularity {
+    Day,
+    Hour,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct OrderStats {
     pub total: u64,
@@ -42,10 +54,11 @@ pub struct OrderStats {
     pub by_status: Vec<Facet>,
     pub days: Vec<DayBucket>,
     /// `day` (14 days) or `hour` (last 24 h, used when fewer than 3 days have orders).
-    pub granularity: &'static str,
+    pub granularity: Granularity,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ActionStats {
     pub total: u64,
@@ -57,30 +70,47 @@ pub struct ActionStats {
 }
 
 /// One button per alert: open a filtered list, or queue a reviewed change.
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum ActionKind {
+    Navigate,
+    Change,
+}
+
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum InsightLevel {
+    Info,
+    Warning,
+    Danger,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct InsightAction {
     pub label: String,
-    /// `navigate` or `change`
-    pub kind: &'static str,
-    pub list: Option<&'static str>,
+    pub kind: ActionKind,
+    pub list: Option<WpList>,
     pub status: Option<&'static str>,
     pub change: Option<WpChangeRequest>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Insight {
-    /// info, warning, danger
-    pub level: &'static str,
+    pub level: InsightLevel,
     pub text: String,
     pub action: Option<InsightAction>,
 }
 
-fn go(label: &str, list: &'static str, status: Option<&'static str>) -> Option<InsightAction> {
+fn go(label: &str, list: WpList, status: Option<&'static str>) -> Option<InsightAction> {
     Some(InsightAction {
         label: label.into(),
-        kind: "navigate",
+        kind: ActionKind::Navigate,
         list: Some(list),
         status,
         change: None,
@@ -90,7 +120,7 @@ fn go(label: &str, list: &'static str, status: Option<&'static str>) -> Option<I
 fn change(label: &str, change: WpChangeRequest) -> Option<InsightAction> {
     Some(InsightAction {
         label: label.into(),
-        kind: "change",
+        kind: ActionKind::Change,
         list: None,
         status: None,
         change: Some(change),
@@ -216,7 +246,8 @@ pub fn hour_buckets(
         .collect()
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Dashboard {
     pub orders: Option<OrderStats>,
@@ -319,7 +350,7 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
                 ""
             };
             out.push(Insight {
-                level: "warning",
+                level: InsightLevel::Warning,
                 text: format!("{} holds {share}% of all rows.{hint}", top.name),
                 action: if top.category == "logs" && top.name.ends_with("woocommerce_log") {
                     change(
@@ -338,12 +369,12 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
     }
     if !d.autoload_healthy {
         out.push(Insight {
-            level: "warning",
+            level: InsightLevel::Warning,
             text: format!(
                 "Autoloaded options weigh {} KB; every request loads them.",
                 d.autoload_bytes / 1024
             ),
-            action: go("Review", "settings", None),
+            action: go("Review", WpList::Settings, None),
         });
     }
     if let Some(a) = &d.actions {
@@ -354,32 +385,32 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
             .map_or(0, |f| f.count);
         if failed > 0 {
             out.push(Insight {
-                level: "danger",
+                level: InsightLevel::Danger,
                 text: format!("{failed} scheduled actions failed."),
-                action: go("Review", "actions", Some("failed")),
+                action: go("Review", WpList::Actions, Some("failed")),
             });
         }
         if a.overdue > 0 {
             out.push(Insight {
-                level: "warning",
+                level: InsightLevel::Warning,
                 text: format!(
                     "{} pending actions are overdue by more than 10 minutes.",
                     a.overdue
                 ),
-                action: go("Review", "actions", Some("pending")),
+                action: go("Review", WpList::Actions, Some("pending")),
             });
         }
     }
     if let Some(drift) = d.hpos_drift.filter(|n| *n > 0) {
         out.push(Insight {
-            level: "danger",
+            level: InsightLevel::Danger,
             text: format!("{drift} orders differ between wc_orders and their posts copy."),
             action: None,
         });
     }
     if d.transients_expired > 0 {
         out.push(Insight {
-            level: "info",
+            level: InsightLevel::Info,
             text: format!(
                 "{} expired transients can be cleaned up.",
                 d.transients_expired
@@ -462,7 +493,7 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
                 .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, num(&r[2])?)))
                 .collect();
             let mut buckets = day_buckets(&day_rows, today);
-            let mut granularity = "day";
+            let mut granularity = Granularity::Day;
             let active_days = buckets
                 .iter()
                 .filter(|b| b.completed + b.processing + b.failed + b.other > 0)
@@ -494,9 +525,9 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
                     failed: 0,
                     other: 0,
                 });
-                granularity = "hour";
+                granularity = Granularity::Hour;
             }
-            let today_count = if granularity == "hour" {
+            let today_count = if granularity == Granularity::Hour {
                 buckets.pop().map_or(0, |b| b.completed)
             } else {
                 buckets
@@ -629,11 +660,11 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
 
 // ---------- entity browser counts ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserSection {
-    /// orders, subscriptions, users, products, actions, sessions, content, settings
-    pub list: &'static str,
+    pub list: WpList,
     pub label: &'static str,
     pub count: u64,
     pub breakdown: Vec<Facet>,
@@ -675,8 +706,8 @@ pub async fn browser(
             (t(dialect, db, ctx, "posts"), "post_status", "post_type")
         };
         for (order_type, list, label) in [
-            ("shop_order", "orders", "Orders"),
-            ("shop_subscription", "subscriptions", "Subscriptions"),
+            ("shop_order", WpList::Orders, "Orders"),
+            ("shop_subscription", WpList::Subscriptions, "Subscriptions"),
         ] {
             let rs = fetch(
                 session,
@@ -687,7 +718,7 @@ pub async fn browser(
             )
             .await?;
             let s = section(list, label, facet_rows(&rs));
-            if list == "orders" || s.count > 0 {
+            if list == WpList::Orders || s.count > 0 {
                 out.push(s);
             }
         }
@@ -698,7 +729,7 @@ pub async fn browser(
     )
     .await?;
     out.push(BrowserSection {
-        list: "users",
+        list: WpList::Users,
         label: "Users",
         count: users.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
         breakdown: Vec::new(),
@@ -712,7 +743,7 @@ pub async fn browser(
             ),
         )
         .await?;
-        out.push(section("products", "Products", facet_rows(&rs)));
+        out.push(section(WpList::Products, "Products", facet_rows(&rs)));
     }
     if ctx.has_table("actionscheduler_actions") {
         let rs = fetch(
@@ -723,7 +754,11 @@ pub async fn browser(
             ),
         )
         .await?;
-        out.push(section("actions", "Scheduled actions", facet_rows(&rs)));
+        out.push(section(
+            WpList::Actions,
+            "Scheduled actions",
+            facet_rows(&rs),
+        ));
     }
     if ctx.has_table("woocommerce_sessions") {
         let rs = fetch(
@@ -734,7 +769,7 @@ pub async fn browser(
             ),
         )
         .await?;
-        out.push(section("sessions", "Sessions", facet_rows(&rs)));
+        out.push(section(WpList::Sessions, "Sessions", facet_rows(&rs)));
     }
     let hidden = lists::HIDDEN_POST_TYPES
         .iter()
@@ -749,14 +784,14 @@ pub async fn browser(
         ),
     )
     .await?;
-    out.push(section("content", "Content", facet_rows(&rs)));
+    out.push(section(WpList::Content, "Content", facet_rows(&rs)));
     let rs = fetch(
         session,
         &format!("SELECT COUNT(*) FROM {}", t(dialect, db, ctx, "options")),
     )
     .await?;
     out.push(BrowserSection {
-        list: "settings",
+        list: WpList::Settings,
         label: "Options",
         count: rs.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
         breakdown: Vec::new(),
@@ -764,13 +799,30 @@ pub async fn browser(
     Ok(out)
 }
 
-/// Pending/complete/failed per day for the Action Scheduler histogram.
+/// Action Scheduler statuses per day, folded into the `DayBucket` series; `labels` names the
+/// stored statuses behind each series.
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct ActionHistogram {
+    pub days: Vec<DayBucket>,
+    pub labels: SeriesLabels,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct SeriesLabels {
+    pub completed: String,
+    pub processing: String,
+    pub failed: String,
+    pub other: String,
+}
+
 pub async fn action_histogram(
     session: &dyn Database,
     ctx: &WpContext,
     db: &str,
     hook: Option<&str>,
-) -> AppResult<Vec<DayBucket>> {
+) -> AppResult<ActionHistogram> {
     let dialect = session.dialect();
     let hook_filter = hook
         .map(|h| format!(" AND hook = {}", dialect.sql_string(h)))
@@ -785,20 +837,40 @@ pub async fn action_histogram(
         ),
     )
     .await?;
+    let mut others: Vec<String> = Vec::new();
     let rows: Vec<(String, String, u64)> = rs
         .rows
         .iter()
         .filter_map(|r| {
-            let status = match text(&r[1])?.as_str() {
-                "complete" => "completed".to_string(),
-                "pending" | "in-progress" => "processing".to_string(),
-                "failed" => "failed".to_string(),
-                other => other.to_string(),
+            let stored = text(&r[1])?;
+            let series = match stored.as_str() {
+                "complete" => "completed",
+                "pending" | "in-progress" => "processing",
+                "failed" => "failed",
+                _ => {
+                    if !others.contains(&stored) {
+                        others.push(stored.clone());
+                    }
+                    "other"
+                }
             };
-            Some((text(&r[0])?, status, num(&r[2])?))
+            Some((text(&r[0])?, series.to_string(), num(&r[2])?))
         })
         .collect();
-    Ok(day_buckets(&rows, today))
+    others.sort();
+    Ok(ActionHistogram {
+        days: day_buckets(&rows, today),
+        labels: SeriesLabels {
+            completed: "complete".into(),
+            processing: "pending, in-progress".into(),
+            failed: "failed".into(),
+            other: if others.is_empty() {
+                "other".into()
+            } else {
+                others.join(", ")
+            },
+        },
+    })
 }
 
 #[cfg(test)]
@@ -905,7 +977,7 @@ mod tests {
         let retention = d.insights[0].action.as_ref().unwrap();
         assert_eq!(
             (retention.label.as_str(), retention.kind),
-            ("Set retention", "change")
+            ("Set retention", ActionKind::Change)
         );
         assert!(matches!(
             retention.change,
@@ -919,7 +991,7 @@ mod tests {
         let a = failed.action.as_ref().unwrap();
         assert_eq!(
             (a.kind, a.list, a.status),
-            ("navigate", Some("actions"), Some("failed"))
+            (ActionKind::Navigate, Some(WpList::Actions), Some("failed"))
         );
         let cleanup = d
             .insights
@@ -930,6 +1002,23 @@ mod tests {
             cleanup.action.as_ref().unwrap().change,
             Some(WpChangeRequest::DeleteExpiredTransients { .. })
         ));
+    }
+
+    #[test]
+    fn insight_actions_and_levels_serialize_to_their_wire_strings() {
+        for (kind, wire) in [
+            (ActionKind::Navigate, "navigate"),
+            (ActionKind::Change, "change"),
+        ] {
+            assert_eq!(serde_json::to_value(kind).unwrap(), wire);
+        }
+        for (level, wire) in [
+            (InsightLevel::Info, "info"),
+            (InsightLevel::Warning, "warning"),
+            (InsightLevel::Danger, "danger"),
+        ] {
+            assert_eq!(serde_json::to_value(level).unwrap(), wire);
+        }
     }
 
     #[test]

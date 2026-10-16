@@ -9,7 +9,7 @@ import { api, type Dashboard, type OrderSummary } from "../../api";
 import { installCommands } from "../../commands";
 import { selectWpRoute, useStore } from "../../state/store";
 import { session } from "../../test/fixtures";
-import { NOW, orderView, wpInfo, wpStore } from "../../test/wpFixtures";
+import { NOW, doc, orderView, wpInfo, wpStore } from "../../test/wpFixtures";
 import { CommandPalette } from "../CommandPalette";
 import { Dialogs } from "../Dialogs";
 import { Toasts } from "../Toasts";
@@ -73,6 +73,7 @@ describe("WordPress mode", () => {
     mocked.wpOrders.mockResolvedValue({
       items: [order("3229"), order("3227", "wc-failed")],
       hasMore: false,
+      limit: 50,
       facets: [
         { value: "wc-processing", label: "Processing", count: 1 },
         { value: "wc-failed", label: "Failed", count: 1 },
@@ -134,7 +135,7 @@ describe("WordPress mode", () => {
   });
 
   it("groups failed actions by hook and expands them with their last log line", async () => {
-    mocked.wpActions.mockResolvedValue({ items: [{ id: "77", hook: "woocommerce_paypal_payments_check_pui_payment_captured", status: "failed", scheduled: now - 3 * 86400, lastAttempt: now - 3 * 86400, attempts: 1, args: null, group: null, message: "PayPal API returned 500" }], hasMore: false, facets: [], kinds: [] });
+    mocked.wpActions.mockResolvedValue({ items: [{ id: "77", hook: "woocommerce_paypal_payments_check_pui_payment_captured", status: "failed", scheduled: now - 3 * 86400, lastAttempt: now - 3 * 86400, attempts: 1, args: null, group: null, message: "PayPal API returned 500" }], hasMore: false, limit: 50, facets: [], kinds: [] });
     render(<App />);
     const group = await screen.findByRole("button", { name: /check_pui_payment_captured/ });
     expect(group).toHaveTextContent("×38");
@@ -229,6 +230,7 @@ describe("WordPress mode", () => {
     mocked.wpUsers.mockResolvedValue({
       items: [{ id: "12", login: "jane", email: "jane@shop.test", name: "Jane Doe", registered: now - 86400, roles: ["customer"], orderCount: 1, totalSpent: "€49.90", lastOrder: now - 3600, avatar: null }],
       hasMore: false,
+      limit: 50,
       facets: [],
       kinds: [{ value: "customer", label: "customer", count: 1 }],
     });
@@ -312,6 +314,7 @@ describe("List filters in the route", () => {
   const page = (patch: object = {}) => ({
     items: [order("3229"), order("3227", "wc-failed")],
     hasMore: false,
+    limit: 50,
     facets: [
       { value: "wc-processing", label: "Processing", count: 1 },
       { value: "wc-failed", label: "Failed", count: 1 },
@@ -377,6 +380,7 @@ describe("List filters in the route", () => {
     mocked.wpContent.mockResolvedValue({
       items: [],
       hasMore: false,
+      limit: 50,
       facets: [],
       kinds: [
         { value: "post", label: "Post", count: 5 },
@@ -600,5 +604,54 @@ describe("Snapshots and compare", () => {
     expect(screen.queryByText("field/currency")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox"));
     expect(screen.getByText("field/currency")).toBeInTheDocument();
+  });
+});
+
+describe("Rust-provided labels and targets", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    wpStore();
+    mocked.wpBrowser.mockResolvedValue([]);
+  });
+
+  it("opens the orders list with the search of a customer's related chip", async () => {
+    mocked.wpView.mockResolvedValue({
+      view: "customer",
+      doc: doc({ entity: "user", label: "User", id: "12", table: "wp_users", idColumn: "ID" }),
+      name: "Jane Doe",
+      login: "jane",
+      email: "jane@x",
+      avatar: null,
+      roles: ["customer"],
+      registered: now - 86400,
+      lastActive: null,
+      billing: null,
+      shipping: null,
+      orderCount: 2,
+      totalSpent: null,
+      averageOrder: null,
+      orders: [],
+      subscriptions: [],
+      tokens: [],
+      session: null,
+      related: [{ label: "Orders by email", link: null, count: 2, target: { kind: "list", list: "orders", params: { search: "jane@x" } } }],
+    });
+    useStore.getState().openEntity("user", "12");
+    render(<WpWorkspace />);
+    await userEvent.click(await screen.findByRole("button", { name: /Orders by email/ }));
+    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "orders", params: { search: "jane@x" } });
+    await vi.waitFor(() => expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ search: "jane@x" })));
+  });
+
+  it("labels the action histogram legend with the status names from Rust", async () => {
+    mocked.wpActionHistogram.mockResolvedValue({
+      days: [{ date: "2026-10-15", completed: 3, processing: 1, failed: 1, other: 0 }],
+      labels: { completed: "complete", processing: "in-progress", failed: "failed", other: "pending" },
+    });
+    useStore.getState().navigate({ screen: "list", list: "actions" });
+    render(<WpWorkspace />);
+    expect(await screen.findByText("in-progress")).toBeInTheDocument();
+    expect(screen.getByText("pending")).toBeInTheDocument();
+    expect(screen.queryByText("processing")).not.toBeInTheDocument();
   });
 });

@@ -1,18 +1,21 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::json_store::JsonStore;
 use crate::error::{AppError, AppResult};
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum FavoriteTarget {
     Table { database: String, table: String },
     Query { sql: String },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Favorite {
     pub id: String,
@@ -23,11 +26,13 @@ pub struct Favorite {
     pub target: FavoriteTarget,
 }
 
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct NewFavorite {
     pub name: String,
     #[serde(default)]
+    #[ts(optional = nullable)]
     pub scope: Option<String>,
     pub target: FavoriteTarget,
 }
@@ -122,6 +127,7 @@ fn reject_duplicate(items: &[Favorite], favorite: &Favorite) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
 
     fn query(name: &str, scope: Option<&str>) -> NewFavorite {
         NewFavorite {
@@ -188,7 +194,7 @@ mod tests {
         let store = FavoritesStore::open(dir.path());
         store.create(query("posts", Some("a@h:1"))).unwrap();
         let err = store.create(query("posts", Some("a@h:1"))).unwrap_err();
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(store.list("a@h:1").len(), 1);
     }
 
@@ -204,7 +210,10 @@ mod tests {
                 sql: "SELECT 1".into(),
             },
         };
-        assert_eq!(store.update(ghost).unwrap_err().kind(), "invalid_input");
+        assert_eq!(
+            store.update(ghost).unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
     }
 
     #[test]
@@ -257,7 +266,7 @@ mod tests {
                 ..b
             })
             .unwrap_err();
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
     #[test]

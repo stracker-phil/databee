@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::connection::{ConnectionSpec, Secret};
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
@@ -52,7 +53,8 @@ impl Extensions {
     }
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub id: String,
@@ -182,16 +184,20 @@ impl Session {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct OpenArgs {
     pub spec: ConnectionSpec,
     #[serde(default)]
+    #[ts(as = "Option<String>", optional)]
     pub password: Option<Secret>,
     /// A CLI launch request whose password should be used.
     #[serde(default)]
+    #[ts(optional)]
     pub request_id: Option<String>,
     #[serde(default)]
+    #[ts(as = "Option<bool>", optional)]
     pub save_password: bool,
 }
 
@@ -327,6 +333,7 @@ mod tests {
     use super::*;
     use crate::db::FakeDatabase;
     use crate::db::changes::Plan;
+    use crate::error::ErrorKind;
 
     fn session(id: &str) -> Session {
         Session::new(
@@ -419,7 +426,7 @@ mod tests {
                 .await
                 .unwrap_err()
                 .kind(),
-            "invalid_input"
+            ErrorKind::InvalidInput
         );
     }
 
@@ -434,7 +441,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert!(db.applied().is_empty());
         assert_eq!(session.writes("wp"), 0);
         assert!(session.apply_plans(&[known.id], TIMEOUT).await.is_ok());
@@ -455,7 +462,7 @@ mod tests {
                 .await
                 .unwrap_err()
                 .kind(),
-            "invalid_input"
+            ErrorKind::InvalidInput
         );
         assert_eq!(db.applied().len(), 1);
     }
@@ -549,7 +556,7 @@ mod tests {
 
         let err = session.apply_plans(&[999], TIMEOUT).await.unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(session.writes("wp_write"), 0);
     }
 
@@ -557,7 +564,7 @@ mod tests {
     fn unknown_session_id_is_a_session_not_found_error() {
         let err = Sessions::default().get("missing").err().unwrap();
 
-        assert_eq!(err.kind(), "session_not_found");
+        assert_eq!(err.kind(), ErrorKind::SessionNotFound);
     }
 
     #[test]
@@ -577,7 +584,10 @@ mod tests {
 
         assert!(sessions.remove("a").is_some());
         assert!(sessions.remove("a").is_none());
-        assert_eq!(sessions.get("a").err().unwrap().kind(), "session_not_found");
+        assert_eq!(
+            sessions.get("a").err().unwrap().kind(),
+            ErrorKind::SessionNotFound
+        );
     }
 
     #[test]
@@ -647,7 +657,7 @@ mod tests {
 
         assert_eq!(
             state.sessions.get("a").err().unwrap().kind(),
-            "session_not_found"
+            ErrorKind::SessionNotFound
         );
     }
 
@@ -732,7 +742,7 @@ mod tests {
     #[test]
     fn missing_password_asks_for_one() {
         let err = auth_error(&PasswordSource::None, "wp@h:1".into(), "denied".into());
-        assert_eq!(err.kind(), "password_required");
+        assert_eq!(err.kind(), ErrorKind::PasswordRequired);
         assert_eq!(err.to_string(), "A password is required for wp@h:1");
     }
 
@@ -740,7 +750,7 @@ mod tests {
     fn keychain_failure_is_explained_in_the_message() {
         let source = PasswordSource::Unavailable("Keychain locked".into());
         let err = auth_error(&source, "a".into(), "denied".into());
-        assert_eq!(err.kind(), "auth_failed");
+        assert_eq!(err.kind(), ErrorKind::AuthFailed);
         assert_eq!(err.to_string(), "No password was sent (Keychain locked)");
     }
 
@@ -748,7 +758,7 @@ mod tests {
     fn rejected_stored_password_mentions_the_keychain() {
         let source = PasswordSource::Stored(Secret::new("old"));
         let err = auth_error(&source, "a".into(), "Access denied".into());
-        assert_eq!(err.kind(), "auth_failed");
+        assert_eq!(err.kind(), ErrorKind::AuthFailed);
         assert_eq!(
             err.to_string(),
             "The password stored in the Keychain was rejected (Access denied)"
@@ -759,7 +769,7 @@ mod tests {
     fn rejected_provided_password_passes_the_server_message_through() {
         let source = PasswordSource::Provided(Secret::new("typed"));
         let err = auth_error(&source, "a".into(), "Access denied".into());
-        assert_eq!(err.kind(), "auth_failed");
+        assert_eq!(err.kind(), ErrorKind::AuthFailed);
         assert_eq!(err.to_string(), "Access denied");
         assert_eq!(err.account(), Some("a"));
     }

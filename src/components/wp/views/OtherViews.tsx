@@ -43,7 +43,7 @@ export function CustomerView({ c, changed }: { c: CustomerData; changed: Set<str
         <div className="spacer" />
         <span className="muted">registered <Ago unix={c.registered} /></span>
       </div>
-      <RelationStrip items={c.related} onTarget={(t) => t.startsWith("list:orders") && navigate({ screen: "list", list: "orders", params: { search: c.email ?? c.doc.id } })} />
+      <RelationStrip items={c.related} onTarget={(t) => t.kind === "list" && navigate({ screen: "list", list: t.list, params: t.params })} />
       <div className="stat-grid">
         <Stat label="Orders" value={c.orderCount} />
         <Stat label="Total spent" value={c.totalSpent ?? "—"} />

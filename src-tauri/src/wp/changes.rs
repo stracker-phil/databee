@@ -3,6 +3,7 @@
 //! a `Plan` with the statements that undo it.
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::context::WpContext;
 use super::entity::{Catalog, MetaDef, cell_str};
@@ -12,7 +13,8 @@ use crate::db::changes::{Plan, reinsert_note, reinsert_sql, restore_undo, sql_va
 use crate::db::{Database, Dialect, ResultSet};
 use crate::error::{AppError, AppResult};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum WpChangeRequest {
     /// WordPress meta of an entity (insert or update).
@@ -51,6 +53,7 @@ pub enum WpChangeRequest {
         database: String,
         days: u32,
         #[serde(default)]
+        #[ts(optional = nullable)]
         source: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
@@ -605,6 +608,7 @@ pub fn build_action(
 mod tests {
     use super::*;
     use crate::db::{Cell, ColumnMeta, FakeDatabase};
+    use crate::error::ErrorKind;
     use crate::wp::context::WcContext;
     use crate::wp::entity::definitions;
 
@@ -818,7 +822,7 @@ mod tests {
 
         let err = build_set_meta(D, "wp", &postmeta(), META, "v", &rows).unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(
             err.to_string(),
             "post #5 has 2 rows of meta k; edit them in the Database view"
@@ -857,7 +861,7 @@ mod tests {
         let err =
             build_delete_meta(D, "wp", &postmeta(), META, &rs(&["meta_id"], vec![])).unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(err.to_string(), "post #5 has no meta k");
     }
 
@@ -945,7 +949,7 @@ mod tests {
     fn order_status_of_an_order_in_no_store_is_refused() {
         let err = build_set_order_status(D, "wp", 4711, "completed", None, None).unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(err.to_string(), "Order #4711 was not found");
     }
 
@@ -1022,7 +1026,7 @@ mod tests {
     fn log_retention_without_matching_entries_is_refused() {
         let err = build_delete_logs_before("wp", "t", "f", 30, None, 0).unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(err.to_string(), "No log entries are older than 30 days");
     }
 
@@ -1146,7 +1150,7 @@ mod tests {
 
         let err = plan(&db, &ctx, &catalog, &request).await.unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(err.to_string(), "Option foo not found");
     }
 
@@ -1179,7 +1183,7 @@ mod tests {
 
         let err = plan(&db, &ctx, &catalog, &request).await.unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(err.to_string(), "This site has no woocommerce_log table");
     }
 }

@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::context::WpContext;
 use super::detail::args_reference;
@@ -77,7 +78,8 @@ pub fn flatten_doc(prefix: &str, doc: &EntityDoc, out: &mut Paths) {
     }
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct DiffEntry {
     pub path: String,
@@ -100,7 +102,9 @@ pub fn diff(before: &Paths, after: &Paths) -> Vec<DiffEntry> {
 }
 
 /// What a snapshot watches.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "SnapshotScope")]
 #[serde(rename_all = "camelCase")]
 pub struct Scope {
     pub entity: Option<String>,
@@ -205,7 +209,8 @@ pub async fn capture(
     Ok(out)
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct CompareRow {
     pub path: String,

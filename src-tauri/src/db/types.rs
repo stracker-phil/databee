@@ -1,15 +1,18 @@
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::Cell;
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnMeta {
     pub name: String,
     pub type_name: String,
 }
 
-#[derive(Serialize, Debug, Clone, Default, PartialEq)]
+#[derive(Serialize, Debug, Clone, Default, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ResultSet {
     pub columns: Vec<ColumnMeta>,
@@ -22,7 +25,8 @@ pub struct ResultSet {
     pub returns_rows: bool,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ExecuteResponse {
     pub results: Vec<ResultSet>,
@@ -31,14 +35,16 @@ pub struct ExecuteResponse {
     pub database: Option<String>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct DatabaseInfo {
     pub name: String,
     pub is_system: bool,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct TableInfo {
     pub name: String,
@@ -48,7 +54,8 @@ pub struct TableInfo {
     pub comment: String,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {
     pub name: String,
@@ -58,9 +65,13 @@ pub struct ColumnInfo {
     pub key: String,
     pub extra: String,
     pub comment: String,
+    pub auto_increment: bool,
+    /// Computed by the server (virtual or stored); inserting a value fails.
+    pub generated: bool,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct IndexInfo {
     pub name: String,
@@ -68,16 +79,21 @@ pub struct IndexInfo {
     pub columns: Vec<String>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct TableStructure {
     pub columns: Vec<ColumnInfo>,
     pub indexes: Vec<IndexInfo>,
+    /// Columns of the `PRIMARY` index in key order; empty without one.
+    pub primary_key: Vec<String>,
     /// `None` when `SHOW CREATE TABLE` returned no row.
     pub ddl: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Default)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(optional_fields = nullable)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowseRequest {
     pub database: String,
@@ -88,6 +104,7 @@ pub struct BrowseRequest {
     #[serde(default)]
     pub order_by: Option<String>,
     #[serde(default)]
+    #[ts(as = "Option<bool>", optional)]
     pub descending: bool,
     /// Raw SQL condition typed by the user, e.g. `post_type = 'page'`, or ID shorthand
     /// (`3229`, `3220-3229,3200`) when `primary_key` names a single-column key.
@@ -97,7 +114,8 @@ pub struct BrowseRequest {
     pub primary_key: Option<String>,
 }
 
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub enum FilterKind {
     /// Primary-key shorthand such as `3220-3229`.
@@ -107,7 +125,8 @@ pub enum FilterKind {
 }
 
 /// The condition that actually ran, so the UI can show its interpretation.
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct AppliedFilter {
     pub kind: FilterKind,
@@ -116,7 +135,8 @@ pub struct AppliedFilter {
     pub label: String,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct BrowsePage {
     pub result: ResultSet,
@@ -124,4 +144,62 @@ pub struct BrowsePage {
     /// Page size after the clamp; the next page starts at `offset + limit`.
     pub limit: u32,
     pub filter: Option<AppliedFilter>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn column(name: &str) -> ColumnInfo {
+        ColumnInfo {
+            name: name.into(),
+            column_type: "bigint".into(),
+            nullable: false,
+            default: None,
+            key: "PRI".into(),
+            extra: "auto_increment".into(),
+            comment: String::new(),
+            auto_increment: true,
+            generated: false,
+        }
+    }
+
+    #[test]
+    fn column_info_serializes_auto_increment_and_generated_flags() {
+        assert_eq!(
+            serde_json::to_value(column("id")).unwrap(),
+            json!({
+                "name": "id",
+                "columnType": "bigint",
+                "nullable": false,
+                "default": null,
+                "key": "PRI",
+                "extra": "auto_increment",
+                "comment": "",
+                "autoIncrement": true,
+                "generated": false
+            })
+        );
+    }
+
+    #[test]
+    fn table_structure_serializes_its_primary_key_columns() {
+        let structure = TableStructure {
+            columns: Vec::new(),
+            indexes: Vec::new(),
+            primary_key: vec!["post_id".into(), "meta_key".into()],
+            ddl: None,
+        };
+
+        assert_eq!(
+            serde_json::to_value(structure).unwrap(),
+            json!({
+                "columns": [],
+                "indexes": [],
+                "primaryKey": ["post_id", "meta_key"],
+                "ddl": null
+            })
+        );
+    }
 }

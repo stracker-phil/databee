@@ -84,7 +84,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   tests/                   integration tests (Docker, #[ignore])
   tauri.conf.json          window, bundle and identifier config
 src/                       React app
-  api/                     the IPC boundary + TS mirrors of Rust types
+  api/                     the IPC boundary + types generated from Rust (ts-rs)
   state/store.ts           zustand store (all app state and actions)
   commands/                command registry, scopes, default shortcuts
   components/              UI; components/wp/ is WordPress mode

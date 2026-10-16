@@ -3,11 +3,13 @@
 //! string `"1"`) stay distinct.
 
 use serde::Deserialize;
+use ts_rs::TS;
 
 use super::php::{self, PhpValue, is_php_float};
 use crate::error::{AppError, AppResult};
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "kind", content = "text", rename_all = "camelCase")]
 pub enum NewValue {
     String(String),
@@ -156,6 +158,7 @@ fn edit_json(raw: &str, path: &[usize], new: &NewValue) -> AppResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
 
     #[test]
     fn edits_php_values_with_correct_lengths() {
@@ -180,7 +183,7 @@ mod tests {
         let out = edit_serialized(raw, &[0, 0], &NewValue::Float("100.5".into())).unwrap();
         assert!(out.contains("d:100.5;"));
         let err = edit_serialized(raw, &[0, 0], &NewValue::Int("x".into())).unwrap_err();
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
     #[test]
@@ -195,7 +198,7 @@ mod tests {
         ];
         for (raw, path) in cases {
             let err = edit_serialized(raw, path, &NewValue::Null).expect_err(raw);
-            assert_eq!(err.kind(), "invalid_input", "{raw} {path:?}");
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{raw} {path:?}");
         }
     }
 
@@ -248,7 +251,7 @@ mod tests {
         }
         for text in ["inf", "nan", "infinity"] {
             let err = edit_serialized(raw, &[0], &NewValue::Float(text.into())).expect_err(text);
-            assert_eq!(err.kind(), "invalid_input", "{text}");
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{text}");
         }
     }
 
@@ -265,7 +268,7 @@ mod tests {
         for index in [0, 1] {
             let err =
                 edit_serialized(ref_after, &[index], &NewValue::Int("5".into())).expect_err("ref");
-            assert_eq!(err.kind(), "invalid_input", "{index}");
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{index}");
         }
         let ref_before = r#"a:2:{s:1:"a";r:1;s:1:"b";i:1;}"#;
         let out = edit_serialized(ref_before, &[1], &NewValue::Int("5".into())).unwrap();

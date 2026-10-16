@@ -8,11 +8,11 @@ use databee_lib::connection::{ConnectionSpec, Secret};
 use databee_lib::db::Database;
 use databee_lib::db::mysql::MySqlSession;
 use databee_lib::wp::context::{HposMode, SiteZone};
-use databee_lib::wp::dashboard::{action_histogram, browser, dashboard};
-use databee_lib::wp::detail::{EntityView, entity_view, search};
+use databee_lib::wp::dashboard::{Granularity, action_histogram, browser, dashboard};
+use databee_lib::wp::detail::{EntityView, EventKind, EventLevel, entity_view, search};
 use databee_lib::wp::entity::{Catalog, definitions};
 use databee_lib::wp::lists::{self, ListQuery};
-use databee_lib::wp::{detect, expand, load_docs, options_overview};
+use databee_lib::wp::{WpList, detect, expand, load_docs, options_overview};
 
 fn servers() -> Vec<(String, u16)> {
     let servers = std::env::var("DATABEE_TEST_SERVERS")
@@ -197,7 +197,7 @@ async fn dashboard_summarizes_orders_actions_and_health() {
         let orders = d.orders.unwrap();
         assert_eq!(orders.total, 2, "subscriptions and refunds are not orders");
         // The fixture has orders on fewer than 3 days, so the chart falls back to 24 hourly buckets.
-        assert_eq!(orders.granularity, "hour");
+        assert_eq!(orders.granularity, Granularity::Hour);
         assert_eq!(orders.days.len(), 24);
         assert_eq!(d.recent_orders[0].id, "4711");
         assert_eq!(d.recent_orders[0].total.as_deref(), Some("€49.90"));
@@ -237,9 +237,9 @@ async fn action_histogram_covers_fourteen_days_ending_today_in_the_site_zone() {
             .format("%Y-%m-%d")
             .to_string();
 
-        let buckets = action_histogram(&db, &ctx, "wp_test", None).await.unwrap();
-        assert_eq!(buckets.len(), 14);
-        assert_eq!(buckets.last().unwrap().date, today);
+        let histogram = action_histogram(&db, &ctx, "wp_test", None).await.unwrap();
+        assert_eq!(histogram.days.len(), 14);
+        assert_eq!(histogram.days.last().unwrap().date, today);
     }
 }
 
@@ -337,7 +337,10 @@ async fn peek_summarizes_an_entity_in_a_few_facts() {
         );
         assert!(facts.len() <= 5);
         let total = facts.iter().find(|f| f.label == "Total").unwrap();
-        assert_eq!((total.kind, total.value.as_str()), ("money", "€49.90"));
+        assert_eq!(
+            (total.kind, total.value.as_str()),
+            (databee_lib::wp::peek::FactKind::Money, "€49.90")
+        );
         let user = databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "user", "1")
             .await
             .unwrap();
@@ -410,14 +413,14 @@ async fn failed_actions_group_by_hook_with_last_message() {
 async fn entity_browser_counts_sections() {
     for (db, ctx, _) in env().await {
         let sections = browser(&db, &ctx, "wp_test").await.unwrap();
-        let count = |list: &str| sections.iter().find(|s| s.list == list).map(|s| s.count);
-        assert_eq!(count("orders"), Some(2));
-        assert_eq!(count("subscriptions"), Some(1));
-        assert_eq!(count("users"), Some(2));
-        assert_eq!(count("products"), Some(2));
-        assert_eq!(count("actions"), Some(4));
-        assert_eq!(count("sessions"), Some(2));
-        let content = sections.iter().find(|s| s.list == "content").unwrap();
+        let count = |list: WpList| sections.iter().find(|s| s.list == list).map(|s| s.count);
+        assert_eq!(count(WpList::Orders), Some(2));
+        assert_eq!(count(WpList::Subscriptions), Some(1));
+        assert_eq!(count(WpList::Users), Some(2));
+        assert_eq!(count(WpList::Products), Some(2));
+        assert_eq!(count(WpList::Actions), Some(4));
+        assert_eq!(count(WpList::Sessions), Some(2));
+        let content = sections.iter().find(|s| s.list == WpList::Content).unwrap();
         assert!(content.breakdown.iter().any(|f| f.value == "post"));
         assert!(
             content
@@ -633,7 +636,7 @@ async fn order_view_tells_the_story_of_a_checkout() {
             "the stored user agent, not a summary"
         );
 
-        let kinds: Vec<&str> = o.timeline.iter().map(|e| e.kind).collect();
+        let kinds: Vec<EventKind> = o.timeline.iter().map(|e| e.kind).collect();
         let logs = databee_lib::wp::detail::order_logs(&db, &ctx, &catalog, "wp_test", "4711")
             .await
             .unwrap();
@@ -659,7 +662,7 @@ async fn order_view_tells_the_story_of_a_checkout() {
             .iter()
             .find(|l| l.detail.as_deref() == Some("woocommerce-paypal-payments"))
             .unwrap();
-        assert_eq!(paypal.level, "info");
+        assert_eq!(paypal.level, EventLevel::Info);
         assert_eq!(paypal.title, "PayPal API · PATCH order");
         assert!(paypal.raw.as_deref().unwrap().contains("66M12696JX411763D"));
         let row = paypal.row.as_ref().unwrap();
@@ -667,16 +670,27 @@ async fn order_view_tells_the_story_of_a_checkout() {
             (row.table.as_str(), row.id_column.as_str()),
             ("wp_woocommerce_log", "log_id")
         );
-        for k in ["session", "created", "paid", "note", "action", "refund"] {
-            assert!(kinds.contains(&k), "timeline lacks {k}: {kinds:?}");
+        for k in [
+            EventKind::Session,
+            EventKind::Created,
+            EventKind::Paid,
+            EventKind::Note,
+            EventKind::Action,
+            EventKind::Refund,
+        ] {
+            assert!(kinds.contains(&k), "timeline lacks {k:?}: {kinds:?}");
         }
         assert!(o.timeline.windows(2).all(|w| w[0].at <= w[1].at));
         assert!(
             o.timeline.iter().all(|e| !e.title.contains("14711")),
             "unrelated IDs must not match"
         );
-        let failed = o.timeline.iter().find(|e| e.kind == "action").unwrap();
-        assert_eq!(failed.level, "error");
+        let failed = o
+            .timeline
+            .iter()
+            .find(|e| e.kind == EventKind::Action)
+            .unwrap();
+        assert_eq!(failed.level, EventLevel::Error);
         assert!(o.related.iter().any(|r| r.label == "Subscription #4714"));
         assert!(o.related.iter().any(|r| r.label == "Refund #4712"));
     }

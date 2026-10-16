@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Database, Lock, Table2 } from "lucide-react";
-import type { Address, DocField, EntityDoc, RelatedChip, TimelineEvent } from "../../../api";
+import type { Address, ChipTarget, DocField, EntityDoc, RelatedChip, TimelineEvent } from "../../../api";
 import { cellText } from "../../../lib/format";
 import { whereEquals } from "../../../lib/sql";
 import { flagEmoji } from "../../../lib/wpFormat";
@@ -17,7 +17,7 @@ export function flattenDoc(doc: EntityDoc): Record<string, string> {
   return out;
 }
 
-export function RelationStrip({ items, onTarget }: { items: RelatedChip[]; onTarget?: (target: string) => void }) {
+export function RelationStrip({ items, onTarget }: { items: RelatedChip[]; onTarget?: (target: ChipTarget) => void }) {
   if (items.length === 0) return null;
   return (
     <div className="relation-strip" aria-label="Related">

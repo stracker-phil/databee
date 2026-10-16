@@ -73,6 +73,7 @@ pub fn browse_sql(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
 
     fn req() -> BrowseRequest {
         BrowseRequest {
@@ -161,7 +162,7 @@ mod tests {
     fn unterminated_comment_or_quote_in_filter_is_rejected() {
         for filter in ["ID > 0 /* x", "post_title = 'x"] {
             let err = sql_for(filter, None).unwrap_err();
-            assert_eq!(err.kind(), "invalid_input", "{filter}");
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{filter}");
         }
     }
 
@@ -235,7 +236,7 @@ mod tests {
             Dialect::MYSQL,
         )
         .unwrap_err();
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
     #[test]

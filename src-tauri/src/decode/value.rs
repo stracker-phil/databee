@@ -1,10 +1,12 @@
 //! Turns stored text (PHP-serialized or JSON) into a generic tree the UI renders as-is.
 
 use serde::Serialize;
+use ts_rs::TS;
 
 use super::php::{self, PhpKey, PhpValue};
 
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum NodeKind {
     Null,
@@ -37,7 +39,8 @@ impl NodeKind {
 }
 
 /// How a child is keyed: array keys, or the visibility of an object property.
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum KeyKind {
     Int,
@@ -47,30 +50,38 @@ pub enum KeyKind {
     Private,
 }
 
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
     Php,
     Json,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ValueNode {
     pub kind: NodeKind,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub class: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional = nullable)]
     pub children: Vec<ChildNode>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub note: Option<String>,
 }
 
 /// Children are addressed by their position (edits send index paths), so equal display keys
 /// stay distinct.
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "ValueChild")]
 #[serde(rename_all = "camelCase")]
 pub struct ChildNode {
     /// The display key: a property name without its visibility mangling.
@@ -78,14 +89,17 @@ pub struct ChildNode {
     pub key_kind: KeyKind,
     /// The class that declares a private property.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub declaring_class: Option<String>,
     /// The stored key bytes as hex when they are not valid UTF-8.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub raw_hex: Option<String>,
     pub node: ValueNode,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct DecodedValue {
     pub format: Format,

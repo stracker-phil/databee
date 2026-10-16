@@ -21,7 +21,7 @@ function OptionGroup({ prefix }: { prefix: string }) {
     <Card title={`Options: ${prefix}`} aside={`${data.length} options · click a pencil to edit, “autoload” to toggle`}>
       <div className="option-autoload">
         {data.map((f) => {
-          const on = f.label?.endsWith("· autoload") ?? false;
+          const on = f.autoload?.on ?? false;
           return (
             <button
               key={f.name}

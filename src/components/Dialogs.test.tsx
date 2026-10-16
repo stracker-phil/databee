@@ -19,15 +19,17 @@ const column = (name: string, patch: Partial<ColumnInfo> = {}): ColumnInfo => ({
   key: "",
   extra: "",
   comment: "",
+  autoIncrement: false,
+  generated: false,
   ...patch,
 });
 
 const columns = [
-  column("ID", { columnType: "bigint unsigned", key: "PRI", extra: "auto_increment" }),
+  column("ID", { columnType: "bigint unsigned", key: "PRI", extra: "auto_increment", autoIncrement: true }),
   column("post_title"),
   column("post_excerpt", { nullable: true }),
   column("post_status", { columnType: "varchar(20)", default: "draft" }),
-  column("slug_hash", { columnType: "char(32)", extra: "STORED GENERATED" }),
+  column("slug_hash", { columnType: "char(32)", extra: "STORED GENERATED", generated: true }),
 ];
 
 const planned = (values: [string, string | null][]) => ({ type: "insertRow", database: "db", table: "wp_posts", values });

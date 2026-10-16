@@ -129,8 +129,6 @@ export function valueMenu(
   return items;
 }
 
-const FLAG_OPPOSITE: Record<string, string> = { yes: "no", no: "yes", true: "false", false: "true", on: "off", off: "on", "1": "0", "0": "1" };
-
 /** Renders one field according to its render hint; raw text is always one toggle away. */
 /** The table row a field is stored in, as a WHERE filter for the Database view. */
 export type RowSource = { table: string; where: string };
@@ -194,13 +192,12 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
         body = note(relativeTime(hint.unix), `${absoluteFromUnix(hint.unix)}${hint.utc ? "" : " (site time)"}`);
         break;
       case "flag": {
-        const opposite = FLAG_OPPOSITE[text.toLowerCase()];
         body = (
           <button
             className={`flag-pill ${hint.on ? "on" : "off"}`}
-            disabled={!save || !opposite}
-            title={save && opposite ? `Click to queue “${opposite}”` : undefined}
-            onClick={() => save && opposite && void save(opposite)}
+            disabled={!save}
+            title={save ? `Click to queue “${hint.opposite}”` : undefined}
+            onClick={() => save && void save(hint.opposite)}
           >
             {hint.on ? <Check size="0.769rem" /> : <Minus size="0.769rem" />} {text}
           </button>

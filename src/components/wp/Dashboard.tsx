@@ -23,7 +23,7 @@ function InsightRow({ insight }: { insight: Insight }) {
           className="btn tiny"
           onClick={() => {
             if (a.kind === "change" && a.change) void queueChange(a.change);
-            else if (a.kind === "navigate" && a.list) navigate({ screen: "list", list: a.list as never, params: a.status ? { status: a.status } : undefined });
+            else if (a.kind === "navigate" && a.list) navigate({ screen: "list", list: a.list, params: a.status ? { status: a.status } : undefined });
           }}
         >
           {a.label}

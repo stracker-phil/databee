@@ -104,9 +104,12 @@ Conventions:
 ## API boundary
 
 `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic, plus the event
-subscriptions `onLaunch`, `onCommand` and `onStage*`. `src/api/types.ts` mirrors the serialized Rust types.
-Keep both in sync with Rust by hand; the roadmap mentions generating them. `toAppError(e)` normalizes
-rejections to `AppError`. Derived connection facts come from Rust and are never recomputed in the page: the
+subscriptions `onLaunch`, `onCommand` and `onStage*`. The IPC types are generated from Rust with `ts-rs`
+([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts`; never edit it. `bun run types`
+regenerates it (it runs the `export_bindings_*` tests), and `bun run lint` fails when the committed file is
+stale. `src/api/types.ts` re-exports the generated types plus the few frontend-only ones (`Keybindings`,
+`StageWindow`, `StageActRequest`, `PaneSize`, `EMPTY_UI_STATE`, `TEXT_SIZES`, `ACCENTS`). Command signatures in
+`api` stay hand-written. `toAppError(e)` normalizes rejections to `AppError` and accepts only a known `kind`. Derived connection facts come from Rust and are never recomputed in the page: the
 Keychain `account` (which also scopes favorites and history) is on `SessionInfo`, `RecentConnection` and login
 errors (`AppError.account`).
 

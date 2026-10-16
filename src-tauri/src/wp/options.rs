@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use serde::Serialize;
+use ts_rs::TS;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptionRow {
@@ -12,7 +13,8 @@ pub struct OptionRow {
     pub autoload: String,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct OptionGroup {
     pub prefix: String,
@@ -24,7 +26,8 @@ pub struct OptionGroup {
     pub autoload_bytes: u64,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct TransientInfo {
     pub name: String,
@@ -35,7 +38,8 @@ pub struct TransientInfo {
     pub expired: bool,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct OptionsOverview {
     pub table: String,
@@ -47,7 +51,8 @@ pub struct OptionsOverview {
     pub transients: Vec<TransientInfo>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct OptionSize {
     pub name: String,

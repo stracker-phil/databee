@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::context::WpContext;
 use super::entity::cell_str;
@@ -15,14 +16,18 @@ use crate::error::AppResult;
 
 pub const PAGE_MAX: u32 = 200;
 
-#[derive(Deserialize, Debug, Clone, Default, PartialEq)]
+#[derive(Deserialize, Debug, Clone, Default, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(optional_fields = nullable)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ListQuery {
     pub status: Option<String>,
     /// Orders: gateway id; products: product type; users: role; content: post type.
     pub kind: Option<String>,
     pub search: Option<String>,
+    #[ts(as = "Option<u64>", optional)]
     pub offset: u64,
+    #[ts(as = "Option<u32>", optional)]
     pub limit: u32,
     /// Sort key from the list's whitelist (see `order_by`); unknown keys use the default.
     pub sort: Option<String>,
@@ -126,7 +131,8 @@ impl ListQuery {
     }
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Facet {
     pub value: String,
@@ -134,11 +140,14 @@ pub struct Facet {
     pub count: u64,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Page<T> {
     pub items: Vec<T>,
     pub has_more: bool,
+    /// Page size after the clamp to `PAGE_MAX`; the next page starts at `offset + limit`.
+    pub limit: u32,
     /// Status (or kind) counts for filter chips, independent of the current filter.
     pub facets: Vec<Facet>,
     pub kinds: Vec<Facet>,
@@ -194,7 +203,8 @@ fn t(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
 
 // ---------- orders & subscriptions ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct OrderSummary {
     pub id: String,
@@ -394,6 +404,7 @@ pub async fn orders(
     let statuses = fetch(session, &status_sql).await?;
     let gateways = fetch(session, &gateway_sql).await?;
     Ok(Page {
+        limit: q.limit(),
         items,
         has_more,
         facets: facets(&statuses, str::to_string),
@@ -403,7 +414,8 @@ pub async fn orders(
 
 // ---------- users ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct UserSummary {
     pub id: String,
@@ -628,6 +640,7 @@ pub async fn users(
         }
     }
     Ok(Page {
+        limit: q.limit(),
         items,
         has_more,
         facets: Vec::new(),
@@ -667,7 +680,8 @@ async fn role_facets(session: &dyn Database, ctx: &WpContext, db: &str) -> AppRe
 
 // ---------- products ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ProductSummary {
     pub id: String,
@@ -819,6 +833,7 @@ pub async fn products(
     )
     .await?;
     Ok(Page {
+        limit: q.limit(),
         items,
         has_more,
         facets: facets(&statuses, str::to_string),
@@ -828,7 +843,8 @@ pub async fn products(
 
 // ---------- scheduled actions ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ActionSummary {
     pub id: String,
@@ -920,6 +936,7 @@ pub async fn actions(
     )
     .await?;
     Ok(Page {
+        limit: q.limit(),
         items,
         has_more,
         facets: facets(&statuses, str::to_string),
@@ -928,7 +945,8 @@ pub async fn actions(
 }
 
 /// Failed actions grouped by hook, newest failure first.
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct HookFailures {
     pub hook: String,
@@ -989,7 +1007,8 @@ pub async fn failed_by_hook(
 
 // ---------- sessions ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
     pub key: String,
@@ -1074,6 +1093,7 @@ pub async fn sessions(
         .collect();
     let (items, has_more) = page_split(rows, q.limit());
     Ok(Page {
+        limit: q.limit(),
         items,
         has_more,
         facets: Vec::new(),
@@ -1083,7 +1103,8 @@ pub async fn sessions(
 
 // ---------- content ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct PostSummary {
     pub id: String,
@@ -1191,6 +1212,7 @@ pub async fn content(
     )
     .await?;
     Ok(Page {
+        limit: q.limit(),
         items,
         has_more,
         facets: facets(&statuses, str::to_string),
@@ -1231,6 +1253,24 @@ mod tests {
             "ORDER BY id DESC, id DESC"
         );
     }
+
+    #[test]
+    fn page_size_defaults_to_fifty_and_is_clamped_to_the_maximum() {
+        for (requested, expected) in [
+            (0, 50),
+            (1, 1),
+            (PAGE_MAX, PAGE_MAX),
+            (PAGE_MAX + 1, PAGE_MAX),
+            (u32::MAX, PAGE_MAX),
+        ] {
+            let q = ListQuery {
+                limit: requested,
+                ..Default::default()
+            };
+            assert_eq!(q.limit(), expected, "{requested}");
+        }
+    }
+
     use crate::db::ColumnMeta;
     use crate::wp::context::{HposMode, WcContext};
 

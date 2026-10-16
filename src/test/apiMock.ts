@@ -1,13 +1,13 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type SnapshotInfo, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type SnapshotInfo, type TableStructure, type UiState } from "../api/types";
 import { NOW } from "./now";
 import { session } from "./session";
 import { settings } from "./settings";
 
 function emptyPage(): Page<never> {
-  return { items: [], hasMore: false, facets: [], kinds: [] };
+  return { items: [], hasMore: false, limit: 50, facets: [], kinds: [] };
 }
 
 const emptyDashboard: Dashboard = {
@@ -39,7 +39,7 @@ export function createApiMock(): typeof realApi {
     disconnect: vi.fn().mockResolvedValue(undefined),
     listDatabases: vi.fn().mockResolvedValue([]),
     listTables: vi.fn().mockResolvedValue([]),
-    describeTable: vi.fn().mockResolvedValue({ columns: [], indexes: [], ddl: null } satisfies TableStructure),
+    describeTable: vi.fn().mockResolvedValue({ columns: [], indexes: [], primaryKey: [], ddl: null } satisfies TableStructure),
     completionSchema: vi.fn().mockResolvedValue({}),
     useDatabase: vi.fn().mockResolvedValue(undefined),
     execute: vi.fn().mockResolvedValue({ results: [], elapsedMs: 0, database: "db" }),
@@ -68,7 +68,7 @@ export function createApiMock(): typeof realApi {
     wpUsers: vi.fn(async () => emptyPage()),
     wpProducts: vi.fn(async () => emptyPage()),
     wpActions: vi.fn(async () => emptyPage()),
-    wpActionHistogram: vi.fn().mockResolvedValue([]),
+    wpActionHistogram: vi.fn().mockResolvedValue({ days: [], labels: { completed: "complete", processing: "in-progress", failed: "failed", other: "other" } } satisfies ActionHistogram),
     wpSessions: vi.fn(async () => emptyPage()),
     wpContent: vi.fn(async () => emptyPage()),
     wpView: vi.fn(

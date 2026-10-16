@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
+use ts_rs::TS;
 
 pub type AppResult<T> = Result<T, AppError>;
 
@@ -40,26 +40,33 @@ pub enum AppError {
 }
 
 impl AppError {
-    pub fn kind(&self) -> &'static str {
+    pub fn kind(&self) -> ErrorKind {
         match self {
-            AppError::Database { .. } => "database",
-            AppError::Connection(_) => "connection",
-            AppError::AuthFailed(_) => "auth_failed",
-            AppError::PasswordRequired(_) => "password_required",
-            AppError::LoginFailed { .. } => "auth_failed",
-            AppError::Timeout(_) => "timeout",
-            AppError::Cancelled => "cancelled",
-            AppError::ConfirmationRequired(_) => "confirmation_required",
-            AppError::SessionNotFound(_) => "session_not_found",
-            AppError::InvalidInput(_) => "invalid_input",
-            AppError::Keychain(_) => "keychain",
-            AppError::Io(_) => "io",
+            AppError::Database { .. } => ErrorKind::Database,
+            AppError::Connection(_) => ErrorKind::Connection,
+            AppError::AuthFailed(_) => ErrorKind::AuthFailed,
+            AppError::PasswordRequired(_) => ErrorKind::PasswordRequired,
+            AppError::LoginFailed { .. } => ErrorKind::AuthFailed,
+            AppError::Timeout(_) => ErrorKind::Timeout,
+            AppError::Cancelled => ErrorKind::Cancelled,
+            AppError::ConfirmationRequired(_) => ErrorKind::ConfirmationRequired,
+            AppError::SessionNotFound(_) => ErrorKind::SessionNotFound,
+            AppError::InvalidInput(_) => ErrorKind::InvalidInput,
+            AppError::Keychain(_) => ErrorKind::Keychain,
+            AppError::Io(_) => ErrorKind::Io,
         }
     }
 
     pub fn code(&self) -> Option<&str> {
         match self {
             AppError::Database { code, .. } => code.as_deref(),
+            _ => None,
+        }
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            AppError::ConfirmationRequired(reason) => Some(reason),
             _ => None,
         }
     }
@@ -77,13 +84,46 @@ impl AppError {
 
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut s = serializer.serialize_struct("AppError", 4)?;
-        s.serialize_field("kind", self.kind())?;
-        s.serialize_field("message", &self.to_string())?;
-        s.serialize_field("code", &self.code())?;
-        s.serialize_field("account", &self.account())?;
-        s.end()
+        ErrorJson {
+            kind: self.kind(),
+            message: self.to_string(),
+            code: self.code(),
+            account: self.account(),
+            reason: self.reason(),
+        }
+        .serialize(serializer)
     }
+}
+
+/// The JSON shape of an `AppError`.
+#[derive(Serialize, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts", rename = "AppError")]
+struct ErrorJson<'a> {
+    kind: ErrorKind,
+    message: String,
+    code: Option<&'a str>,
+    account: Option<&'a str>,
+    /// Why a statement needs confirmation (`confirmation_required` only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    reason: Option<&'a str>,
+}
+
+#[derive(Serialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorKind {
+    Database,
+    Connection,
+    AuthFailed,
+    PasswordRequired,
+    Timeout,
+    Cancelled,
+    ConfirmationRequired,
+    SessionNotFound,
+    InvalidInput,
+    Keychain,
+    Io,
 }
 
 /// `500 ms` below one second, whole seconds (`30 s`) otherwise.
@@ -172,12 +212,12 @@ mod tests {
                     account: "root@127.0.0.1:3306".into(),
                     message: "Access denied".into(),
                 },
-                "auth_failed",
+                ErrorKind::AuthFailed,
                 "Access denied",
             ),
             (
                 AppError::PasswordRequired("root@127.0.0.1:3306".into()),
-                "password_required",
+                ErrorKind::PasswordRequired,
                 "A password is required for root@127.0.0.1:3306",
             ),
         ] {
@@ -189,7 +229,7 @@ mod tests {
                     "code": null,
                     "account": "root@127.0.0.1:3306"
                 }),
-                "{kind}"
+                "{kind:?}"
             );
         }
     }
@@ -204,10 +244,45 @@ mod tests {
     }
 
     #[test]
+    fn confirmation_required_serializes_its_reason() {
+        let err = AppError::ConfirmationRequired("DELETE without WHERE".into());
+
+        assert_eq!(err.reason(), Some("DELETE without WHERE"));
+        assert_eq!(
+            serde_json::to_value(&err).unwrap(),
+            json!({
+                "kind": "confirmation_required",
+                "message": "This statement needs confirmation: DELETE without WHERE",
+                "code": null,
+                "account": null,
+                "reason": "DELETE without WHERE"
+            })
+        );
+    }
+
+    #[test]
+    fn errors_other_than_confirmation_required_have_no_reason_key() {
+        for err in [
+            AppError::Cancelled,
+            AppError::InvalidInput("bad".into()),
+            AppError::Connection("down".into()),
+            AppError::Timeout(Duration::from_secs(1)),
+        ] {
+            let value = serde_json::to_value(&err).unwrap();
+
+            assert_eq!(err.reason(), None, "{err:?}");
+            assert!(
+                !value.as_object().unwrap().contains_key("reason"),
+                "{err:?}"
+            );
+        }
+    }
+
+    #[test]
     fn io_failures_map_to_connection_errors() {
         let io = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
         let err = AppError::from(sqlx::Error::Io(io));
-        assert_eq!(err.kind(), "connection");
+        assert_eq!(err.kind(), ErrorKind::Connection);
     }
 
     #[derive(Debug, thiserror::Error)]
@@ -253,14 +328,14 @@ mod tests {
     #[test]
     fn server_codes_map_to_error_kinds() {
         for (code, kind) in [
-            ("42S02", "database"),
-            ("1045", "auth_failed"),
-            ("1317", "cancelled"),
-            ("1053", "connection"),
-            ("2006", "connection"),
-            ("2013", "connection"),
-            ("1927", "connection"),
-            ("4031", "connection"),
+            ("42S02", ErrorKind::Database),
+            ("1045", ErrorKind::AuthFailed),
+            ("1317", ErrorKind::Cancelled),
+            ("1053", ErrorKind::Connection),
+            ("2006", ErrorKind::Connection),
+            ("2013", ErrorKind::Connection),
+            ("1927", ErrorKind::Connection),
+            ("4031", ErrorKind::Connection),
         ] {
             assert_eq!(database_error(code).kind(), kind, "{code}");
         }
@@ -285,14 +360,14 @@ mod tests {
             sqlx::Error::Protocol("bad packet".into()),
         ] {
             let label = format!("{err:?}");
-            assert_eq!(AppError::from(err).kind(), "connection", "{label}");
+            assert_eq!(AppError::from(err).kind(), ErrorKind::Connection, "{label}");
         }
     }
 
     #[test]
     fn std_io_errors_map_to_io() {
         let err = AppError::from(std::io::Error::other("disk full"));
-        assert_eq!(err.kind(), "io");
+        assert_eq!(err.kind(), ErrorKind::Io);
         assert_eq!(err.to_string(), "File error: disk full");
     }
 

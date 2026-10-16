@@ -8,6 +8,7 @@ use databee_lib::connection::{ConnectionSpec, Secret};
 use databee_lib::db::Database;
 use databee_lib::db::mysql::MySqlSession;
 use databee_lib::db::{BrowseRequest, Cell};
+use databee_lib::error::ErrorKind;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -86,7 +87,7 @@ async fn wrong_password_is_an_auth_error() {
         .await
         .err()
         .unwrap();
-        assert_eq!(err.kind(), "auth_failed", "{host}:{port}: {err:?}");
+        assert_eq!(err.kind(), ErrorKind::AuthFailed, "{host}:{port}: {err:?}");
     }
 }
 
@@ -97,7 +98,7 @@ async fn unreachable_server_is_a_connection_error() {
         .await
         .err()
         .unwrap();
-    assert_eq!(err.kind(), "connection");
+    assert_eq!(err.kind(), ErrorKind::Connection);
 }
 
 #[tokio::test]
@@ -232,7 +233,7 @@ async fn sql_errors_carry_the_server_code() {
             .execute("SELECT * FROM missing_table", 10, TIMEOUT)
             .await
             .unwrap_err();
-        assert_eq!(err.kind(), "database");
+        assert_eq!(err.kind(), ErrorKind::Database);
         let json = serde_json::to_value(&err).unwrap();
         assert_eq!(json["code"], "1146");
     }
@@ -260,7 +261,7 @@ async fn timeout_aborts_and_session_recovers() {
             .execute("SELECT SLEEP(5)", 10, Duration::from_secs(1))
             .await
             .unwrap_err();
-        assert_eq!(err.kind(), "timeout");
+        assert_eq!(err.kind(), ErrorKind::Timeout);
         let r = s.execute("SELECT DATABASE()", 10, TIMEOUT).await.unwrap();
         assert_eq!(text(&r.results[0].rows[0][0]), "databee_test");
     }
@@ -279,7 +280,7 @@ async fn cancel_interrupts_a_running_query() {
         s.cancel().await.unwrap();
         // MySQL reports an interrupted SLEEP as a result row (1); MariaDB as error 1317.
         match runner.await.unwrap() {
-            Err(e) => assert_eq!(e.kind(), "cancelled"),
+            Err(e) => assert_eq!(e.kind(), ErrorKind::Cancelled),
             Ok(r) => assert_eq!(text(&r.results[0].rows[0][0]), "1"),
         }
         assert!(s.execute("SELECT 1", 10, TIMEOUT).await.is_ok());
@@ -372,7 +373,7 @@ async fn cancel_reaches_the_editor_while_every_pool_connection_is_busy() {
             .await
             .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
         match runner.await.unwrap() {
-            Err(e) => assert_eq!(e.kind(), "cancelled", "{host}:{port}"),
+            Err(e) => assert_eq!(e.kind(), ErrorKind::Cancelled, "{host}:{port}"),
             Ok(r) => assert_eq!(text(&r.results[0].rows[0][0]), "1", "{host}:{port}"),
         }
         assert!(
@@ -426,7 +427,7 @@ async fn close_ends_a_running_query_and_later_executes_fail_with_a_connection_er
         assert_eq!(text(&running.results[0].rows[0][0]), "0", "{host}:{port}");
 
         let err = s.execute("SELECT 1", 10, TIMEOUT).await.unwrap_err();
-        assert_eq!(err.kind(), "connection", "{host}:{port}: {err:?}");
+        assert_eq!(err.kind(), ErrorKind::Connection, "{host}:{port}: {err:?}");
     }
 }
 
@@ -448,7 +449,7 @@ async fn killed_editor_connection_fails_once_then_reconnects() {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         let err = s.execute("SELECT 1", 10, TIMEOUT).await.unwrap_err();
-        assert_eq!(err.kind(), "connection", "{host}:{port}: {err:?}");
+        assert_eq!(err.kind(), ErrorKind::Connection, "{host}:{port}: {err:?}");
         let r = s
             .execute("SELECT 1", 10, TIMEOUT)
             .await

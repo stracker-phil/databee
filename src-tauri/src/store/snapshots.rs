@@ -2,6 +2,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::json_store::JsonStore;
 use crate::error::{AppError, AppResult};
@@ -22,7 +23,8 @@ pub struct Snapshot {
 }
 
 /// A snapshot without its values, for lists.
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotInfo {
     pub id: String,
@@ -98,6 +100,7 @@ impl SnapshotStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
 
     fn snap(account: &str, label: &str) -> Snapshot {
         Snapshot {
@@ -154,7 +157,10 @@ mod tests {
     fn unknown_snapshot_id_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let store = SnapshotStore::open(dir.path());
-        assert_eq!(store.get("unknown").unwrap_err().kind(), "invalid_input");
+        assert_eq!(
+            store.get("unknown").unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
     }
 
     #[test]

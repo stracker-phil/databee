@@ -1,0 +1,5 @@
+# ts-rs: generated TypeScript lands under the repo root (export_to paths are relative to it),
+# and 64-bit integers become `number` (ids, counts and sizes stay far below 2^53).
+[env]
+TS_RS_EXPORT_DIR = { value = ".", relative = true }
+TS_RS_LARGE_INT = "number"

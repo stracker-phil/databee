@@ -2,6 +2,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::json_store::JsonStore;
 use crate::connection::ConnectionSpec;
@@ -9,7 +10,8 @@ use crate::error::AppResult;
 
 const MAX_RECENTS: usize = 20;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct RecentConnection {
     pub identity: String,

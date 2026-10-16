@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 use chrono::{DateTime, NaiveDateTime};
 use rust_decimal::{Decimal, RoundingStrategy};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::context::SiteZone;
 use crate::decode::php::{self, PhpValue};
@@ -27,7 +28,8 @@ pub enum Render {
     Text,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "snake_case")]
 pub enum Sensitive {
     /// Masked until clicked.
@@ -91,7 +93,8 @@ fn rule_for(key: &str) -> KeyRule {
     merged
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Hint {
     Money {
@@ -102,8 +105,10 @@ pub enum Hint {
         unix: i64,
         utc: bool,
     },
+    /// `opposite` is the stored value that means the other state, in the same spelling.
     Flag {
         on: bool,
+        opposite: String,
     },
     Url {
         href: String,
@@ -256,14 +261,24 @@ fn time(key: &str, raw: &str, ctx: &HintContext) -> Option<Hint> {
 }
 
 fn flag(raw: &str, numeric: bool) -> Option<Hint> {
-    let on = match raw.to_ascii_lowercase().as_str() {
-        "yes" | "true" | "on" => true,
-        "no" | "false" | "off" => false,
-        "1" if numeric => true,
-        "0" | "" if numeric => false,
+    let (on, opposite) = match raw.to_ascii_lowercase().as_str() {
+        "yes" => (true, "no"),
+        "no" => (false, "yes"),
+        "true" => (true, "false"),
+        "false" => (false, "true"),
+        "on" => (true, "off"),
+        "off" => (false, "on"),
+        "1" if numeric => (true, "0"),
+        "0" | "" if numeric => (false, "1"),
         _ => return None,
     };
-    Some(Hint::Flag { on })
+    let upper = !raw.is_empty() && raw.chars().all(|c| !c.is_ascii_lowercase());
+    let opposite = if upper {
+        opposite.to_ascii_uppercase()
+    } else {
+        opposite.to_string()
+    };
+    Some(Hint::Flag { on, opposite })
 }
 
 fn url(raw: &str) -> Option<Hint> {
@@ -570,13 +585,54 @@ mod tests {
 
     #[test]
     fn flags_from_yes_no_and_registry_numbers() {
-        assert_eq!(hint("anything", "yes"), Some(Hint::Flag { on: true }));
+        assert_eq!(
+            hint("anything", "yes"),
+            Some(Hint::Flag {
+                on: true,
+                opposite: "no".into()
+            })
+        );
         assert_eq!(
             hint("rich_editing", "false"),
-            Some(Hint::Flag { on: false })
+            Some(Hint::Flag {
+                on: false,
+                opposite: "true".into()
+            })
         );
-        assert_eq!(hint("paying_customer", "1"), Some(Hint::Flag { on: true }));
+        assert_eq!(
+            hint("paying_customer", "1"),
+            Some(Hint::Flag {
+                on: true,
+                opposite: "0".into()
+            })
+        );
         assert_eq!(hint("some_count", "1"), None);
+    }
+
+    #[test]
+    fn flag_opposite_keeps_the_stored_spelling() {
+        for (raw, numeric, on, opposite) in [
+            ("yes", false, true, "no"),
+            ("no", false, false, "yes"),
+            ("true", false, true, "false"),
+            ("false", false, false, "true"),
+            ("on", false, true, "off"),
+            ("off", false, false, "on"),
+            ("YES", false, true, "NO"),
+            ("False", false, false, "true"),
+            ("1", true, true, "0"),
+            ("0", true, false, "1"),
+            ("", true, false, "1"),
+        ] {
+            assert_eq!(
+                flag(raw, numeric),
+                Some(Hint::Flag {
+                    on,
+                    opposite: opposite.into()
+                }),
+                "{raw:?}"
+            );
+        }
     }
 
     #[test]

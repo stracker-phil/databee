@@ -5,11 +5,13 @@
 use std::time::Duration;
 
 use serde::Deserialize;
+use ts_rs::TS;
 
 use super::{Cell, ColumnInfo, Database, Dialect, ResultSet};
 use crate::error::{AppError, AppResult};
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ChangeRequest {
     /// Any table cell, addressed by a unique key column.
@@ -153,20 +155,11 @@ pub fn restore_undo(
     (Vec::new(), format!(" (no undo: {reason})"))
 }
 
-fn extra_has(column: &ColumnInfo, word: &str) -> bool {
-    column.extra.to_ascii_uppercase().contains(word)
-}
-
-/// Columns the server computes; inserting a value into them fails. `DEFAULT_GENERATED`
-/// (MySQL's mark for expression defaults) is an ordinary writable column.
+/// Columns the server computes; inserting a value into them fails.
 pub fn generated_columns(columns: &[ColumnInfo]) -> Vec<String> {
     columns
         .iter()
-        .filter(|c| {
-            ["VIRTUAL", "STORED", "PERSISTENT"]
-                .iter()
-                .any(|w| extra_has(c, w))
-        })
+        .filter(|c| c.generated)
         .map(|c| c.name.clone())
         .collect()
 }
@@ -374,10 +367,9 @@ pub fn build_duplicate_row(
             "{key_column} = {key} matches {matches} rows; duplicating needs a unique key"
         )));
     }
-    let generated = generated_columns(columns);
     let cols = columns
         .iter()
-        .filter(|c| !extra_has(c, "AUTO_INCREMENT") && !generated.contains(&c.name))
+        .filter(|c| !c.auto_increment && !c.generated)
         .map(|c| dialect.quote_ident(&c.name))
         .collect::<Vec<_>>()
         .join(", ");
@@ -424,6 +416,7 @@ pub fn build_insert_row(
 mod tests {
     use super::*;
     use crate::db::{ColumnMeta, FakeDatabase};
+    use crate::error::ErrorKind;
 
     const TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -448,15 +441,31 @@ mod tests {
         }
     }
 
-    fn column(name: &str, extra: &str) -> ColumnInfo {
+    fn column(name: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.into(),
             column_type: "text".into(),
             nullable: true,
             default: None,
             key: String::new(),
-            extra: extra.into(),
+            extra: String::new(),
             comment: String::new(),
+            auto_increment: false,
+            generated: false,
+        }
+    }
+
+    fn auto_increment_column(name: &str) -> ColumnInfo {
+        ColumnInfo {
+            auto_increment: true,
+            ..column(name)
+        }
+    }
+
+    fn generated_column(name: &str) -> ColumnInfo {
+        ColumnInfo {
+            generated: true,
+            ..column(name)
         }
     }
 
@@ -588,7 +597,7 @@ mod tests {
 
             let err = build_set_cell(Dialect::MYSQL, ROW, "name", Some("x"), &old).unwrap_err();
 
-            assert_eq!(err.kind(), "invalid_input", "{count} rows");
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{count} rows");
             assert_eq!(
                 err.to_string(),
                 format!("id = 7 matches {count} rows; edits need a unique key")
@@ -627,7 +636,7 @@ mod tests {
 
             let err = build_delete_row(Dialect::MYSQL, ROW, &rows, &[]).unwrap_err();
 
-            assert_eq!(err.kind(), "invalid_input", "{count} rows");
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{count} rows");
             assert_eq!(err.to_string(), format!("id = 7 matches {count} rows"));
         }
     }
@@ -672,11 +681,11 @@ mod tests {
     #[test]
     fn duplicate_row_copies_all_but_auto_increment_and_generated_columns() {
         let columns = [
-            column("id", "auto_increment"),
-            column("name", ""),
-            column("slug", ""),
-            column("upper_name", "VIRTUAL GENERATED"),
-            column("stored_name", "STORED GENERATED"),
+            auto_increment_column("id"),
+            column("name"),
+            column("slug"),
+            generated_column("upper_name"),
+            generated_column("stored_name"),
         ];
 
         let plan = build_duplicate_row(Dialect::MYSQL, ROW, 1, &columns).unwrap();
@@ -698,10 +707,10 @@ mod tests {
     #[test]
     fn duplicate_row_refuses_a_key_that_does_not_match_exactly_one_row() {
         for matches in [0, 2] {
-            let err = build_duplicate_row(Dialect::MYSQL, ROW, matches, &[column("name", "")])
-                .unwrap_err();
+            let err =
+                build_duplicate_row(Dialect::MYSQL, ROW, matches, &[column("name")]).unwrap_err();
 
-            assert_eq!(err.kind(), "invalid_input", "{matches} rows");
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{matches} rows");
             assert_eq!(
                 err.to_string(),
                 format!("id = 7 matches {matches} rows; duplicating needs a unique key")
@@ -823,36 +832,24 @@ mod tests {
     }
 
     #[test]
-    fn generated_columns_are_the_virtual_and_stored_ones() {
+    fn generated_columns_are_the_ones_flagged_generated() {
         let columns = [
-            column("id", "auto_increment"),
-            column("name", ""),
-            column("a", "VIRTUAL GENERATED"),
-            column("b", "STORED GENERATED"),
+            auto_increment_column("id"),
+            column("name"),
+            generated_column("a"),
+            generated_column("b"),
         ];
 
         assert_eq!(generated_columns(&columns), ["a", "b"]);
     }
 
     #[test]
-    fn default_generated_columns_are_writable_and_persistent_ones_are_not() {
+    fn duplicate_row_keeps_writable_columns_and_skips_generated_ones() {
         let columns = [
-            column("created", "DEFAULT_GENERATED"),
-            column("updated", "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"),
-            column("maria", "PERSISTENT GENERATED"),
-            column("lower", "virtual generated"),
-        ];
-
-        assert_eq!(generated_columns(&columns), ["maria", "lower"]);
-    }
-
-    #[test]
-    fn duplicate_row_keeps_default_generated_columns_and_skips_persistent_ones() {
-        let columns = [
-            column("ID", "AUTO_INCREMENT"),
-            column("created", "DEFAULT_GENERATED"),
-            column("updated", "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"),
-            column("maria", "PERSISTENT GENERATED"),
+            auto_increment_column("ID"),
+            column("created"),
+            column("updated"),
+            generated_column("maria"),
         ];
 
         let plan = build_duplicate_row(Dialect::MYSQL, ROW, 1, &columns).unwrap();
@@ -866,12 +863,12 @@ mod tests {
     }
 
     #[test]
-    fn delete_row_undo_restores_default_generated_columns() {
+    fn delete_row_undo_restores_writable_columns() {
         let columns = [
-            column("id", ""),
-            column("created", "DEFAULT_GENERATED"),
-            column("updated", "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"),
-            column("maria", "PERSISTENT GENERATED"),
+            column("id"),
+            column("created"),
+            column("updated"),
+            generated_column("maria"),
         ];
         let rows = result(
             &["id", "created", "updated", "maria"],
@@ -1009,7 +1006,7 @@ mod tests {
 
         let err = plan(&db, &set_cell_request(), TIMEOUT).await.unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
     #[tokio::test]
@@ -1045,7 +1042,7 @@ mod tests {
 
         let err = plan(&db, &request, TIMEOUT).await.unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
     #[tokio::test]

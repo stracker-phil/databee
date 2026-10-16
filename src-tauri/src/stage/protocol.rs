@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use ts_rs::TS;
 
 pub const PROTOCOL: u32 = 1;
 /// The protocol's name for DataBee's only window.
@@ -45,7 +46,9 @@ pub fn required<'a>(params: &'a Params, key: &str) -> StageResult<&'a str> {
 }
 
 /// CSS pixels from the page's top-left, as a page measures them.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "StageRect")]
 pub struct PageRect {
     pub x: f64,
     pub y: f64,
@@ -124,7 +127,8 @@ pub fn parse_bounds(params: &Params) -> StageResult<Bounds> {
 }
 
 /// A key combination as a page dispatches it (`KeyboardEvent` names).
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct StageKeys {
     pub key: String,
     /// "KeyK", "Digit2", "Enter", "F2"; empty when unknown.
@@ -329,7 +333,9 @@ fn enabled() -> bool {
 }
 
 /// An element marked `data-stage="<id>"`, as the page measures it.
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(optional_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct PageAnchor {
     pub id: String,
@@ -338,6 +344,7 @@ pub struct PageAnchor {
     pub in_view: bool,
     /// The part that shows through its scroll areas and the window; None when nothing does.
     #[serde(default)]
+    #[ts(optional = false)]
     pub visible: Option<PageRect>,
     #[serde(default = "main_window")]
     pub window: String,
@@ -356,7 +363,8 @@ pub struct PageAnchor {
 }
 
 /// The page's answer to `stage:collect`.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct AnchorsReply {
     pub request: String,
     pub page: String,
@@ -387,7 +395,9 @@ impl AnchorsReply {
 }
 
 /// The page's answer to `stage:act`; `handled` is false when the anchor isn't on that page.
-#[derive(Deserialize, Clone, Debug, PartialEq, Default)]
+#[derive(Deserialize, Clone, Debug, PartialEq, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "StageActReply", optional_fields = nullable)]
 pub struct ActReply {
     pub request: String,
     pub page: String,
@@ -411,14 +421,18 @@ pub struct ActReply {
     pub command: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "StageChoice")]
 pub struct Choice {
     pub id: String,
     pub title: String,
 }
 
 /// One command: the registry's, or a family (`arg` + `choices`) whose members append an argument.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "StageCommand")]
 pub struct PageCommand {
     pub id: String,
     pub help: String,
@@ -444,7 +458,9 @@ impl PageCommand {
 }
 
 /// A window the page draws inside the main one (settings, palette); `rect` None while closed.
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "StageSurface", optional_fields = nullable)]
 pub struct Surface {
     pub id: String,
     pub title: String,
@@ -457,17 +473,21 @@ pub struct Surface {
 }
 
 /// The page's answer to `stage:info`: what it shows and can do.
-#[derive(Deserialize, Clone, Debug, Default)]
+#[derive(Deserialize, Clone, Debug, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "StageInfoReply")]
 pub struct InfoReply {
     pub request: String,
     pub page: String,
     #[serde(default)]
+    #[ts(type = "Record<string, string | number | boolean | null>")]
     pub state: serde_json::Map<String, Value>,
     /// What the main window shows.
     #[serde(default)]
     pub view: Option<String>,
     /// The main window's toggleable panels: `{ "inspector": "open" }`.
     #[serde(default)]
+    #[ts(type = "Record<string, \"open\" | \"closed\">")]
     pub ui: serde_json::Map<String, Value>,
     #[serde(default)]
     pub surfaces: Vec<Surface>,

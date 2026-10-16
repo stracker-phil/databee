@@ -291,7 +291,7 @@ function ActionHistogram({ hook }: { hook: string | null }) {
   if (!data) return null;
   return (
     <Card title={`Scheduled actions per day${hook ? ` · ${hook}` : ""}`}>
-      <StackedBars days={data} labels={{ completed: "complete", processing: "pending", failed: "failed", other: "canceled" }} />
+      <StackedBars days={data.days} labels={data.labels} />
     </Card>
   );
 }

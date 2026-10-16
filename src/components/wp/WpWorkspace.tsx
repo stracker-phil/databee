@@ -75,7 +75,7 @@ function NavItem({ section, active }: { section: BrowserSection; active: boolean
   // Only the most severe badge fits the row; the rest are in the tooltip.
   const badges = attentionBadges(section);
   return (
-    <button data-stage={`wp:nav:${section.list}`} data-stage-list="wp-nav" aria-current={active ? "page" : undefined} className={`nav-item${active ? " active" : ""}`} onClick={() => navigate({ screen: "list", list: section.list as WpList })}>
+    <button data-stage={`wp:nav:${section.list}`} data-stage-list="wp-nav" aria-current={active ? "page" : undefined} className={`nav-item${active ? " active" : ""}`} onClick={() => navigate({ screen: "list", list: section.list })}>
       <span className="nav-row">
         <Icon size="1.077rem" />
         <span className="nav-label" data-stage-label={section.label}>{section.label}</span>

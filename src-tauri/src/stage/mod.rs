@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
+use ts_rs::TS;
 
 use crate::lock::MutexExt;
 use crate::store::settings::StageSettings;
@@ -99,7 +100,8 @@ impl StageHost for TauriHost {
     }
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct StageStatus {
     pub enabled: bool,

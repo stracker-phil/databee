@@ -51,6 +51,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
     use crate::secrets::MemoryStore;
     use crate::store::settings::Settings;
 
@@ -65,7 +66,7 @@ mod tests {
         assert!(state.log_override.is_none());
         assert_eq!(
             state.sessions.get("any").err().unwrap().kind(),
-            "session_not_found"
+            ErrorKind::SessionNotFound
         );
     }
 

@@ -111,10 +111,13 @@ describe("FieldValue editing", () => {
     expect(mocked.planChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setCell", table: "wp_wc_orders", keyColumn: "id", key: "4711", column: "status" }));
   });
 
-  it("toggles flags with one click", async () => {
-    render(<FieldValue field={field("is_vat_exempt", "no", { hint: { type: "flag", on: false } })} target={{ kind: "meta", entity: "order", id: "4711" }} />);
-    await userEvent.click(screen.getByRole("button", { name: /no/ }));
-    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", key: "is_vat_exempt", value: "yes" }));
+  it.each([
+    { stored: "no", on: false, opposite: "yes" },
+    { stored: "1", on: true, opposite: "0" },
+  ])("queues the hint's opposite when the $stored flag is clicked", async ({ stored, on, opposite }) => {
+    render(<FieldValue field={field("is_vat_exempt", stored, { hint: { type: "flag", on, opposite } })} target={{ kind: "meta", entity: "order", id: "4711" }} />);
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(stored) }));
+    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", key: "is_vat_exempt", value: opposite }));
   });
 
   it("edits a serialized value node by its index path", async () => {

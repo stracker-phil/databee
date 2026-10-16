@@ -14,7 +14,8 @@ import type {
   BrowserSection,
   UserSummary,
   Dashboard,
-  DayBucket,
+  ActionHistogram,
+  ErrorKind,
   DocField,
   EntityViewData,
   FindGroup,
@@ -34,7 +35,7 @@ import type {
   WpInfo,
   BrowsePage,
   BrowseRequest,
-  ConnectionSpec,
+  OpenArgs,
   DatabaseInfo,
   ExecuteResponse,
   Favorite,
@@ -73,12 +74,7 @@ export const api = {
   listRecents: () => invoke<RecentConnection[]>("list_recents"),
   removeRecent: (identity: string) => invoke<void>("remove_recent", { identity }),
 
-  connect: (args: {
-    spec: ConnectionSpec;
-    password?: string;
-    requestId?: string;
-    savePassword?: boolean;
-  }) => invoke<SessionInfo>("connect", { args }),
+  connect: (args: OpenArgs) => invoke<SessionInfo>("connect", { args }),
   disconnect: (sessionId: string) => invoke<void>("disconnect", { sessionId }),
   listDatabases: (sessionId: string) => invoke<DatabaseInfo[]>("list_databases", { sessionId }),
   listTables: (sessionId: string, database: string) =>
@@ -120,7 +116,7 @@ export const api = {
     invoke<Page<ActionSummary>>("wp_actions", { sessionId, database, query }),
   wpFailedByHook: (sessionId: string, database: string) => invoke<HookFailures[]>("wp_failed_by_hook", { sessionId, database }),
   wpActionHistogram: (sessionId: string, database: string, hook: string | null) =>
-    invoke<DayBucket[]>("wp_action_histogram", { sessionId, database, hook }),
+    invoke<ActionHistogram>("wp_action_histogram", { sessionId, database, hook }),
   wpSessions: (sessionId: string, database: string, query: ListQuery) =>
     invoke<Page<SessionSummary>>("wp_sessions", { sessionId, database, query }),
   wpContent: (sessionId: string, database: string, query: ListQuery) =>
@@ -172,9 +168,25 @@ export const api = {
     listen<string>("command", (e) => handler(e.payload)),
 };
 
+/** Every `ErrorKind` Rust sends; the `Record` makes the compiler check the list is complete. */
+const ERROR_KINDS: Record<ErrorKind, true> = {
+  database: true,
+  connection: true,
+  auth_failed: true,
+  password_required: true,
+  timeout: true,
+  cancelled: true,
+  confirmation_required: true,
+  session_not_found: true,
+  invalid_input: true,
+  keychain: true,
+  io: true,
+};
+
 export function toAppError(e: unknown): AppError {
-  if (e && typeof e === "object" && "kind" in e && "message" in e) {
+  if (e && typeof e === "object" && "kind" in e && "message" in e && Object.hasOwn(ERROR_KINDS, String(e.kind))) {
     return e as AppError;
   }
-  return { kind: "io", message: e instanceof Error ? e.message : String(e), code: null };
+  const message = e && typeof e === "object" && "message" in e ? String(e.message) : String(e);
+  return { kind: "io", message, code: null, account: null };
 }

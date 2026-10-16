@@ -1,10 +1,13 @@
 use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use ts_rs::TS;
 use zeroize::Zeroizing;
 
 /// Everything needed to reach a database, except the password.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(optional_fields = nullable)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionSpec {
     #[serde(default)]

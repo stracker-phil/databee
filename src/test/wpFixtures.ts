@@ -15,8 +15,8 @@ export const wpInfo: WpInfo = {
     site: { name: "Shop", url: "https://shop.test", currency: "EUR", zone: "+00:00", zoneSource: "gmt_offset", theme: "storefront", activePlugins: ["woocommerce"], uploadsUrl: null, priceDecimals: 2 },
   },
   entities: [
-    ["order", "Order"],
-    ["user", "User"],
+    { name: "order", label: "Order" },
+    { name: "user", label: "User" },
   ],
   tableEntities: { wp_wc_orders: { entity: "order", idColumn: "id" } },
 };
@@ -36,6 +36,7 @@ export function field(name: string, value: string | null, patch: Partial<DocFiel
     link: null,
     hint: null,
     sensitive: null,
+    autoload: null,
     ...patch,
   };
 }
@@ -58,7 +59,7 @@ export function doc(patch: Partial<EntityDoc> = {}): EntityDoc {
   };
 }
 
-export const orderView: OrderView = {
+export const orderView: { view: "order" } & OrderView = {
   view: "order",
   doc: doc(),
   kind: "shop_order",
@@ -92,5 +93,5 @@ export const orderView: OrderView = {
   },
   attribution: null,
   timeline: [{ at: NOW_SECS - 3600, kind: "created", title: "Order created", detail: null, level: "info", link: null }],
-  related: [{ label: "Notes", link: null, count: 1, target: "timeline" }],
+  related: [{ label: "Notes", link: null, count: 1, target: { kind: "timeline" } }],
 };

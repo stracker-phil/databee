@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::context::WpContext;
 use super::hints::{Hint, HintContext, Sensitive, annotate};
@@ -131,7 +132,8 @@ pub struct Catalog {
     defs: Vec<EntityDef>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct TableEntity {
     pub entity: String,
@@ -180,10 +182,13 @@ impl Catalog {
         map
     }
 
-    pub fn entity_names(&self) -> Vec<(String, String)> {
+    pub fn entity_names(&self) -> Vec<super::EntitySummary> {
         self.defs
             .iter()
-            .map(|d| (d.name.clone(), d.label.clone()))
+            .map(|d| super::EntitySummary {
+                name: d.name.clone(),
+                label: d.label.clone(),
+            })
             .collect()
     }
 }
@@ -294,7 +299,8 @@ pub fn relation_ids_sql(
 
 // ---------- documents ----------
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct EntityLink {
     pub entity: String,
@@ -304,7 +310,8 @@ pub struct EntityLink {
     pub image: Option<String>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct DocField {
     pub name: String,
@@ -314,9 +321,20 @@ pub struct DocField {
     pub link: Option<EntityLink>,
     pub hint: Option<Hint>,
     pub sensitive: Option<Sensitive>,
+    /// An option's stored `autoload` value; `None` for other fields.
+    pub autoload: Option<Autoload>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct Autoload {
+    /// As stored: `yes`/`no`, or since WordPress 6.6 `on`/`off`/`auto`/`auto-on`/`auto-off`.
+    pub value: String,
+    pub on: bool,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct MetaGroup {
     pub name: String,
@@ -325,7 +343,8 @@ pub struct MetaGroup {
     pub entries: Vec<DocField>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct RelationInfo {
     pub name: String,
@@ -334,7 +353,8 @@ pub struct RelationInfo {
     pub count: u64,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct EntityDoc {
     pub entity: String,
@@ -354,7 +374,8 @@ pub struct EntityDoc {
     pub relations: Vec<RelationInfo>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct MetaSource {
     pub table: String,
@@ -421,6 +442,7 @@ pub(crate) fn field(
         label: None,
         hint: a.hint,
         sensitive: a.sensitive,
+        autoload: None,
         name,
         value,
     }

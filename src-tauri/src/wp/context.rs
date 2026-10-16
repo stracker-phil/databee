@@ -6,6 +6,7 @@ use std::collections::{BTreeSet, HashMap};
 use chrono::{DateTime, Duration, FixedOffset, NaiveDateTime, Offset, TimeZone, Utc};
 use chrono_tz::Tz;
 use serde::{Serialize, Serializer};
+use ts_rs::TS;
 
 use super::hints::DEFAULT_PRICE_DECIMALS;
 
@@ -73,7 +74,8 @@ fn site_zone(timezone_string: Option<&str>, gmt_offset: Option<&str>) -> (SiteZo
     (zone, "gmt_offset")
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct SiteInfo {
     pub blog_id: u64,
@@ -83,14 +85,17 @@ pub struct SiteInfo {
 }
 
 /// Site-level facts read from `wp_options`.
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct SiteMeta {
     pub name: Option<String>,
     pub url: Option<String>,
     pub currency: Option<String>,
+    #[ts(type = "string")]
     pub zone: SiteZone,
     /// The option `zone` was read from: `timezone_string` or `gmt_offset`.
+    #[ts(type = "\"timezone_string\" | \"gmt_offset\"")]
     pub zone_source: &'static str,
     pub theme: Option<String>,
     /// Plugin slugs from `active_plugins`, e.g. `woocommerce`.
@@ -117,7 +122,8 @@ impl Default for SiteMeta {
     }
 }
 
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "snake_case")]
 pub enum HposMode {
     Off,
@@ -125,7 +131,8 @@ pub enum HposMode {
     OnWithSync,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct WcContext {
     pub version: Option<String>,
@@ -133,7 +140,8 @@ pub struct WcContext {
     pub has_action_scheduler: bool,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct WpContext {
     pub prefix: String,

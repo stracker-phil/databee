@@ -3,6 +3,7 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use ts_rs::TS;
 
 use super::json_store::JsonStore;
 use crate::error::AppResult;
@@ -11,7 +12,8 @@ use crate::error::AppResult;
 const MAX_ENTRIES: usize = 500;
 const MAX_SQL_BYTES: usize = 64 * 1024;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryEntry {
     pub account: String,

@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
+use ts_rs::TS;
 
 use super::changes::Plan;
 use crate::error::{AppError, AppResult};
@@ -18,7 +19,8 @@ pub type BatchId = u64;
 const MAX_BATCHES: usize = 20;
 
 /// What the page renders for review; `statements` are for display only.
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct PlannedChange {
     pub id: PlanId,
@@ -28,7 +30,9 @@ pub struct PlannedChange {
 }
 
 /// What the page learns about an applied batch.
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(rename = "AppliedBatch")]
 #[serde(rename_all = "camelCase")]
 pub struct AppliedBatchInfo {
     pub batch_id: BatchId,
@@ -151,6 +155,7 @@ impl Plans {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
 
     fn plan(name: &str, undo: &[&str]) -> Plan {
         Plan {
@@ -193,7 +198,7 @@ mod tests {
 
         let err = plans.take(&[a.id, unknown]).unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(taken_ids(&plans.take(&[a.id]).unwrap()), [a.id]);
     }
 
@@ -208,8 +213,14 @@ mod tests {
 
         assert_eq!(taken_ids(&taken), [c.id, a.id]);
         assert_eq!(taken[0].1, plan("c", &[]));
-        assert_eq!(plans.take(&[a.id]).unwrap_err().kind(), "invalid_input");
-        assert_eq!(plans.take(&[c.id]).unwrap_err().kind(), "invalid_input");
+        assert_eq!(
+            plans.take(&[a.id]).unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(
+            plans.take(&[c.id]).unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
         assert_eq!(taken_ids(&plans.take(&[b.id]).unwrap()), [b.id]);
     }
 
@@ -221,7 +232,10 @@ mod tests {
 
         plans.discard(a.id);
 
-        assert_eq!(plans.take(&[a.id]).unwrap_err().kind(), "invalid_input");
+        assert_eq!(
+            plans.take(&[a.id]).unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
         assert_eq!(taken_ids(&plans.take(&[b.id]).unwrap()), [b.id]);
     }
 
@@ -288,7 +302,7 @@ mod tests {
 
         let err = plans.take_undo(batch.id).unwrap_err();
 
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
     #[test]
@@ -313,7 +327,7 @@ mod tests {
         let err = plans.take_undo(batch.id).unwrap_err();
 
         assert!(!batch.can_undo);
-        assert_eq!(err.kind(), "invalid_input");
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 
     #[test]
@@ -328,7 +342,7 @@ mod tests {
 
         assert_eq!(
             plans.take_undo(batches[0]).unwrap_err().kind(),
-            "invalid_input"
+            ErrorKind::InvalidInput
         );
         assert!(plans.take_undo(batches[1]).is_ok());
         assert!(plans.take_undo(batches[20]).is_ok());

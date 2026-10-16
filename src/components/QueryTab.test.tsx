@@ -101,6 +101,15 @@ describe("QueryTab", () => {
     expect(mocked.execute).toHaveBeenLastCalledWith("s1", "TRUNCATE wp_actionscheduler_logs", true);
   });
 
+  it("shows the server's reason in the confirmation dialog", async () => {
+    mocked.execute.mockRejectedValueOnce({ kind: "confirmation_required", message: "This statement needs confirmation: DROP TABLE", code: null, account: null, reason: "DROP TABLE" });
+    renderTab("DROP TABLE x");
+    await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("DROP TABLE");
+    expect(dialog).not.toHaveTextContent("needs confirmation");
+  });
+
   it("does not run destructive statements when the confirmation is cancelled", async () => {
     mocked.execute.mockRejectedValueOnce({ kind: "confirmation_required", message: "DROP TABLE permanently removes data", code: null });
     const { container } = renderTab("DROP TABLE x");

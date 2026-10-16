@@ -125,22 +125,44 @@ pub async fn structure(
     let columns = column_rows
         .iter()
         .map(|row| {
+            let extra = text_or_empty(row, "extra")?;
             Ok(ColumnInfo {
                 name: text_or_empty(row, "name")?,
                 column_type: text_or_empty(row, "column_type")?,
                 nullable: text(row, "nullable")?.as_deref() == Some("YES"),
                 default: text(row, "default_value")?,
                 key: text_or_empty(row, "column_key")?,
-                extra: text_or_empty(row, "extra")?,
+                auto_increment: extra_has(&extra, "AUTO_INCREMENT"),
+                generated: is_generated(&extra),
+                extra,
                 comment: text_or_empty(row, "comment")?,
             })
         })
         .collect::<AppResult<_>>()?;
+    let indexes = group_indexes(&index_rows)?;
+    let primary_key = indexes
+        .iter()
+        .find(|i| i.name == "PRIMARY")
+        .map(|i| i.columns.clone())
+        .unwrap_or_default();
     Ok(TableStructure {
         columns,
-        indexes: group_indexes(&index_rows)?,
+        indexes,
+        primary_key,
         ddl,
     })
+}
+
+fn extra_has(extra: &str, word: &str) -> bool {
+    extra.to_ascii_uppercase().contains(word)
+}
+
+/// `EXTRA` marks computed columns `VIRTUAL GENERATED` / `STORED GENERATED` (MariaDB also
+/// `PERSISTENT`); MySQL's `DEFAULT_GENERATED` is an ordinary column with an expression default.
+fn is_generated(extra: &str) -> bool {
+    ["VIRTUAL", "STORED", "PERSISTENT"]
+        .iter()
+        .any(|word| extra_has(extra, word))
 }
 
 /// The `SHOW CREATE TABLE` text, or `None` when the server returns no row.
@@ -200,4 +222,25 @@ pub async fn completion(
         }
     }
     Ok(map)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn computed_columns_are_generated_and_expression_defaults_are_not() {
+        for (extra, generated) in [
+            ("VIRTUAL GENERATED", true),
+            ("STORED GENERATED", true),
+            ("PERSISTENT GENERATED", true),
+            ("virtual generated", true),
+            ("DEFAULT_GENERATED", false),
+            ("DEFAULT_GENERATED on update CURRENT_TIMESTAMP", false),
+            ("auto_increment", false),
+            ("", false),
+        ] {
+            assert_eq!(is_generated(extra), generated, "{extra}");
+        }
+    }
 }
