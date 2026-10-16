@@ -1,8 +1,10 @@
 import { TEXT_SIZES } from "../api";
-import { selectActivePending, selectActiveTab, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
+import { isWpView, selectActivePending, selectActiveTab, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
+import { activeScopes, registerScope } from "./scopes";
 
 export * from "./registry";
+export * from "./scopes";
 
 /** Window events for commands whose target lives inside a component. */
 export const EVENTS = {
@@ -11,18 +13,21 @@ export const EVENTS = {
   runQuery: "databee:run-query",
 } as const;
 
-export function activeScopes(s: Store): Scope[] {
-  const scopes: Scope[] = ["global"];
-  if (s.mode === "wp" && selectWp(s)) {
-    scopes.push("wp");
-    if (selectWpRoute(s).screen === "entity") scopes.push("document");
-  } else {
-    scopes.push("db");
-    const tab = selectActiveTab(s);
-    if (tab?.kind === "table") scopes.push("table");
-    if (tab?.kind === "query") scopes.push("editor");
-  }
-  return scopes;
+function dbViewActive(s: Store): boolean {
+  return !isWpView(s);
+}
+
+function activeTabIs(kind: "table" | "query"): boolean {
+  const s = useStore.getState();
+  return dbViewActive(s) && selectActiveTab(s)?.kind === kind;
+}
+
+/** Registers the core scopes; safe to call again (tests and re-installs do). */
+export function registerCoreScopes() {
+  registerScope({ id: "global", parent: null, label: "Everywhere", isActive: () => true });
+  registerScope({ id: "db", parent: "global", label: "Database", isActive: () => dbViewActive(useStore.getState()) });
+  registerScope({ id: "table", parent: "db", label: "Table", isActive: () => activeTabIs("table") });
+  registerScope({ id: "editor", parent: "db", label: "Editor", isActive: () => activeTabIs("query") });
 }
 
 /** Rust's `Settings::sanitized` clamps the sizes, so zooming past a bound is a no-op. */
@@ -36,7 +41,7 @@ function zoom(step: number | null) {
   void s.saveSettings({ ...s.settings, ...next });
 }
 
-const inScope = (scope: Scope) => () => activeScopes(useStore.getState()).includes(scope);
+const inScope = (scope: Scope) => () => activeScopes().includes(scope);
 const inDb = inScope("db");
 const inWp = inScope("wp");
 const onEntity = inScope("document");
@@ -170,8 +175,12 @@ export const LIST_LABELS: Record<WpList, string> = {
   settings: "Options",
 };
 
-/** Registers the app's commands (again after `clearCommands`) and syncs user overrides from the store. */
+/**
+ * Registers the core scopes and the app's commands (again after `clearCommands`) and syncs user overrides
+ * from the store. Module scopes (WordPress) must be registered first, or their commands throw.
+ */
 export function installCommands() {
+  registerCoreScopes();
   if (allCommands().length === 0) registerCommands(APP_COMMANDS);
   setOverrides(useStore.getState().keybindings);
 }
@@ -209,7 +218,7 @@ export function runMenuCommand(id: string): boolean {
 /** Capture-phase keydown handler for the window. */
 export function handleKeydown(e: KeyboardEvent) {
   if (isRecordingTarget(e.target)) return;
-  const c = resolveKeydown(e, activeScopes(useStore.getState()));
+  const c = resolveKeydown(e, activeScopes());
   if (!c || blockedByOverlay(c.id)) return;
   e.preventDefault();
   e.stopPropagation();

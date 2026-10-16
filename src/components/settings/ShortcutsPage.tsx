@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { RotateCcw } from "lucide-react";
-import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, type Command } from "../../commands";
+import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, scopeLabel } from "../../commands";
 import { useStore } from "../../state/store";
 import { Group, Row } from "./controls";
-
-const SCOPE_LABEL: Record<Command["scope"], string> = { global: "Everywhere", wp: "WordPress", db: "Database", table: "Table", editor: "Editor", document: "Document" };
 
 function ShortcutField({ value, onChange }: { value: string | null; onChange: (binding: string | null) => void }) {
   const [recording, setRecording] = useState(false);
@@ -65,7 +63,7 @@ export function ShortcutsPage() {
         {list.map((c) => {
           const overridden = Object.prototype.hasOwnProperty.call(bindings, c.id);
           return (
-            <Row key={c.id} label={c.title} description={c.menu && overridden ? `${SCOPE_LABEL[c.scope]} · menu shortcut applies after restart` : SCOPE_LABEL[c.scope]}>
+            <Row key={c.id} label={c.title} description={c.menu && overridden ? `${scopeLabel(c.scope)} · menu shortcut applies after restart` : scopeLabel(c.scope)}>
               <div className="shortcut-control">
                 {overridden && (
                   <button type="button" className="icon-btn tiny" aria-label={`Reset ${c.title}`} title="Reset to default" onClick={() => reset(c.id)}>

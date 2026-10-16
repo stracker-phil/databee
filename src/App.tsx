@@ -15,6 +15,7 @@ import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { PendingTray } from "./components/PendingTray";
 import { registerCoreSettingsPages } from "./components/settings/pages";
 import { installStage } from "./stage/install";
+import { installWp } from "./components/wp/install";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
 import { applyAppearance } from "./lib/theme";
 import { flushUiState, selectWp, useStore } from "./state/store";
@@ -28,6 +29,7 @@ function useBackendEvents() {
       api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     registerCoreSettingsPages();
+    installWp();
     installCommands();
     void loadSettings().then(() => (installCommands(), drainLaunches()));
     const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), ...installStage()];

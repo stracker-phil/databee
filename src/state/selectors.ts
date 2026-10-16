@@ -36,3 +36,6 @@ export const selectWp = (s: Store): WpInfo | null | undefined => {
   const session = selectActiveSession(s);
   return session?.database ? s.wp[`${session.id}/${session.database}`] : null;
 };
+
+/** The WordPress view replaces the database view only while a WordPress install is detected. */
+export const isWpView = (s: Store) => s.mode === "wp" && !!selectWp(s);

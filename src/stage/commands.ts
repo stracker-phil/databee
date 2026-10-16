@@ -124,5 +124,5 @@ export function runStageCommand(id: string): { error: string; status: 404 | 409 
 
 /** The command a key press would run in the current view (like a menu accelerator). */
 export function commandForKeys(keys: KeyLike & { target: EventTarget | null }) {
-  return resolveKeydown(keys, activeScopes(useStore.getState()));
+  return resolveKeydown(keys, activeScopes());
 }

@@ -18,6 +18,7 @@ export {
   selectStructure,
   selectVisibleDatabases,
   selectWp,
+  isWpView,
   selectWpRoute,
 } from "./selectors";
 export type { SchemaState, StructureEntry } from "./slices/session";

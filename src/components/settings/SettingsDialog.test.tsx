@@ -10,7 +10,7 @@ import { api, LOG_LEVELS } from "../../api";
 import { registerSettingsPage } from "../../registry/settingsPages";
 import { resetStore, useStore } from "../../state/store";
 import { connectedStore, settings } from "../../test/fixtures";
-import { installCommands } from "../../commands";
+import { clearCommands, installCommands, registerCommands, registerScope } from "../../commands";
 import { registerCoreSettingsPages } from "./pages";
 import { SettingsDialog } from "./SettingsDialog";
 
@@ -161,6 +161,29 @@ describe("SettingsDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
     await userEvent.type(screen.getByLabelText("Search shortcuts"), "zzzz");
     expect(screen.getByText("No matching commands.")).toBeInTheDocument();
+  });
+
+  it("shows each command's scope label", async () => {
+    registerScope({ id: "labelled", parent: "global", label: "Labelled scope", isActive: () => false });
+    clearCommands();
+    registerCommands([{ id: "test.labelled", title: "Labelled command", scope: "labelled", run: () => {} }]);
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
+    expect(screen.getByText("Labelled scope")).toBeInTheDocument();
+    clearCommands();
+  });
+
+  it.each([
+    ["Zoom in", "Everywhere"],
+    ["Run statement at cursor", "Editor"],
+    ["Value filter", "Table"],
+    ["Take snapshot", "Document"],
+  ])("shows the scope label of %s", async (title, label) => {
+    installCommands();
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
+    await userEvent.type(screen.getByLabelText("Search shortcuts"), title);
+    expect(screen.getByText(label)).toBeInTheDocument();
   });
 
   it("warns when two commands in overlapping scopes share a binding", async () => {

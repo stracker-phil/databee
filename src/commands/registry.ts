@@ -1,6 +1,9 @@
 /** Command registry, bindings and key resolution; see docs/frontend.md "Commands, shortcuts, palette, menu". */
 
-export type Scope = "global" | "wp" | "db" | "table" | "editor" | "document";
+import { isAncestor, scopeDef, specificity } from "./scopes";
+
+/** The id of a registered scope (`scopes.ts`). */
+export type Scope = string;
 
 export interface Command {
   id: string;
@@ -15,17 +18,6 @@ export interface Command {
 }
 
 export type Overrides = Record<string, string | null>;
-
-const PARENT: Record<Scope, Scope | null> = {
-  global: null,
-  wp: "global",
-  db: "global",
-  table: "db",
-  editor: "db",
-  document: "wp",
-};
-
-const SPECIFICITY: Record<Scope, number> = { global: 0, wp: 1, db: 1, table: 2, editor: 2, document: 2 };
 
 const MODIFIERS = ["Mod", "Ctrl", "Alt", "Shift"] as const;
 const KEY_LABELS: Record<string, string> = {
@@ -45,7 +37,11 @@ const MOD_LABELS: Record<(typeof MODIFIERS)[number], string> = { Mod: "⌘", Ctr
 const commands = new Map<string, Command>();
 let overrides: Overrides = {};
 
+/** Throws on a command whose scope is not registered, which catches scope typos at install time. */
 export function registerCommands(list: Command[]) {
+  for (const c of list) {
+    if (!scopeDef(c.scope)) throw new Error(`Command "${c.id}" has unknown scope "${c.scope}"`);
+  }
   for (const c of list) commands.set(c.id, c);
 }
 
@@ -188,15 +184,6 @@ export function isRecordingTarget(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest("[data-recording]");
 }
 
-function isAncestor(ancestor: Scope, scope: Scope): boolean {
-  let s: Scope | null = PARENT[scope];
-  while (s) {
-    if (s === ancestor) return true;
-    s = PARENT[s];
-  }
-  return false;
-}
-
 export function scopesOverlap(a: Scope, b: Scope): boolean {
   return a === b || isAncestor(a, b) || isAncestor(b, a);
 }
@@ -211,7 +198,7 @@ export function resolveKeydown(e: KeyLike & { target?: EventTarget | null }, act
   if (isTextInput(e.target ?? null) && !binding.includes("Mod+") && !binding.includes("Ctrl+") && binding !== "Escape") return null;
   const matches = allCommands()
     .filter((c) => bindingFor(c.id) === binding && activeScopes.includes(c.scope) && (c.when?.() ?? true))
-    .sort((a, b) => SPECIFICITY[b.scope] - SPECIFICITY[a.scope]);
+    .sort((a, b) => specificity(b.scope) - specificity(a.scope));
   return matches[0] ?? null;
 }
 

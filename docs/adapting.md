@@ -103,9 +103,10 @@ WordPress mode is mostly additive, with one catch: the edit pipeline (`ChangeReq
 2. Delete `src-tauri/src/wp/`, `wp_commands.rs`, the `wp_*` registrations and the
    `wordpress` settings page.
 3. In the frontend:
-   - delete `src/components/wp/` and `src/lib/wpFormat.ts`;
+   - delete `src/components/wp/` (its `install.ts` registers the `wp` and `document` scopes) and
+     `src/lib/wpFormat.ts`, and drop the `installWp()` line in `App.tsx`;
    - delete the `wp`, `wpNav`, `mode` and `entityMeta` store slices;
-   - delete the `go.*` commands, the `wp` and `document` scopes and the WordPress palette search;
+   - delete the `go.*`, `document.*` and `wp.*` commands and the WordPress palette search;
    - remove the mode toggle in `Toolbar`, and render `DbWorkspace` directly in `App.tsx`.
 4. Delete `tests/wp.rs`, `tests/php_roundtrip.rs` and the `wp_test`/`wp_write`/`wp_legacy` parts of the fixture.
 

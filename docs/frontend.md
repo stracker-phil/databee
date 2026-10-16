@@ -149,9 +149,19 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 
 - **Bindings** are strings like `Mod+Shift+K`, where `Mod` means ⌘. They are normalized to the order
   `Mod, Ctrl, Alt, Shift` and shown as `⌘⇧K`. A trailing `++` is the `+` key (`Mod+Shift++`).
-- **Scopes** form a tree: `global` → `wp` → `document`, and `global` → `db` → `table` / `editor`.
-  `activeScopes()` derives the current ones from the store. When several commands match a key, the most
-  specific active scope wins.
+- **Scopes** are registered (`src/commands/scopes.ts`) and form a tree through their `parent`:
+  ```ts
+  interface ScopeDef { id, parent, label, isActive() }
+  registerScope(def)          // replaces a scope with the same id; throws on an unknown parent
+  activeScopes()              // every registered scope whose isActive() is true
+  isAncestor(a, scope), specificity(scope), scopeLabel(id)
+  ```
+  The core registers `global` → `db` → `table` / `editor` (`registerCoreScopes()`, called by
+  `installCommands`); the WordPress lens registers `global` → `wp` → `document` from
+  `components/wp/install.ts` (`installWp()`, called in `App.tsx` before `installCommands`). Registering a
+  command with an unregistered scope throws, which catches typos. When several commands match a key, the
+  most specific active scope wins; specificity is the depth in the parent chain (`global` is 0). The
+  `label` names the scope in Settings → Shortcuts.
 - **Keys.** `handleKeydown` runs in the capture phase, so app shortcuts beat CodeMirror and inputs. Inside text
   inputs, only `Mod`/`Ctrl` combinations and Escape fire. While a dialog or the palette is open, only the
   commands in `MODAL_ALLOWED` (Settings toggle, zoom) run; other keys reach the overlay. Native menu items

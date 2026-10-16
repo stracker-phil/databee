@@ -1,8 +1,17 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
 afterEach(() => cleanup());
+
+// Commands need their scopes registered first. Imported lazily so a test file's `vi.mock("../api")`
+// is already in place when the store loads.
+beforeEach(async () => {
+  const { registerCoreScopes } = await import("./commands");
+  const { installWp } = await import("./components/wp/install");
+  registerCoreScopes();
+  installWp();
+});
 
 // jsdom lacks these browser APIs; CodeMirror and the virtualized grid touch them.
 class ResizeObserverStub {
