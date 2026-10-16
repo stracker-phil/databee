@@ -1,8 +1,8 @@
 # DataBee
 
 Minimalistic SQL client for senior WordPress developers working on local sites: MySQL/MariaDB
-(often DDEV/Docker, dummy data), SQLite later. Not for site admins or shop owners; the WordPress
-layer follows `.claude/rules/wp-layer.md`. See README.md for features and CLI, docs/roadmap.md for ideas.
+(often DDEV/Docker, dummy data), SQLite later. Not for site admins or shop owners; presets and
+projects follow `.claude/rules/presets.md`. See README.md for features and CLI, docs/roadmap.md for ideas.
 
 ## Docs
 Technical docs live in `docs/` (index: `docs/README.md`). Read `docs/architecture.md` and the page of the
@@ -19,7 +19,7 @@ commands, files or extension points change. Document by file and symbol, never b
 - Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen`, one per module
   (`src/<module>/api.ts`; the core's is `src/api/index.ts`). Tests mock them.
 - `src-tauri/src/`: `cli.rs` (argv), `ipc.rs` (single-instance socket), `db/` (lexer, safety, cell decoding,
-  `mysql/` session: dedicated editor connection + metadata pool), `store/` (JSON files), `wp/` (WordPress lens:
+  `mysql/` session: dedicated editor connection + metadata pool), `store/` (JSON files), `wp/` (WordPress lens, being replaced by `rules/` presets, see docs/plan/ux:
   `context` detection, lossless `php` serialize parser, `value` trees, TOML `entities` + resolver, `options`), `stage/` (Stage presentation hook: local HTTP API,
   registered with `stage register`; the page side is `src/stage/`, anchors are `data-stage` attributes; see docs/stage.md).
 - Frontend state: zustand store in `src/state/store.ts`; components in `src/components/`.

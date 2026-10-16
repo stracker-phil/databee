@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted
+Accepted, amended by [0020](0020-everything-is-rows.md) (2026-10-17).
+
+The registries stay. The WordPress/Database mode toggle is removed, so the planned mode registry
+(`registerMode`) and slot registries (status bar, table row actions, palette sources) are not coming: rules
+replace those contributions. WordPress becomes a preset
+([0022](0022-presets-and-projects.md)), and its store slice, commands and workspace leave the core with
+`src/components/wp/` instead of moving into a module.
 
 ## Context
 

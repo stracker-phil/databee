@@ -986,7 +986,7 @@ src/
 
 **Remove Stage**: `git rm -r src-tauri/src/stage src/stage src-tauri/capabilities/stage.json docs/stage.md`; delete `pub mod stage;` and `.plugin(stage::init(&config_dir))` in `lib.rs`; delete the `.plugin("stage", …)` line and `STAGE_COMMANDS` in `build.rs`; delete the `installStage` import and call in `src/modules.ts`; optionally strip `data-stage*` attributes; run `bun run lint && bun run test`.
 
-**Remove WordPress**: `git rm -r src-tauri/src/wp src/wp src-tauri/capabilities/wp.json docs/wordpress.md .claude/rules/wp-layer.md`; delete the two `lib.rs` lines, the `build.rs` line and `WP_COMMANDS`, the `modules.ts` lines; delete the `wp_test`/`wp_write`/`wp_legacy` sections of `dev/fixture.sql`; run tests. The Inspector keeps decoding (core `decode/`); grid edits keep working (core `db/changes.rs`); the Toolbar shows no mode toggle.
+**Remove WordPress**: `git rm -r src-tauri/src/wp src/wp src-tauri/capabilities/wp.json docs/wordpress.md`; delete the two `lib.rs` lines, the `build.rs` line and `WP_COMMANDS`, the `modules.ts` lines; delete the `wp_test`/`wp_write`/`wp_legacy` sections of `dev/fixture.sql`; run tests. The Inspector keeps decoding (core `decode/`); grid edits keep working (core `db/changes.rs`); the Toolbar shows no mode toggle.
 
 **Swap the secret store**: add `src-tauri/src/secrets/<impl>.rs` implementing `SecretStore` (`get`, `set`, `delete`); `pub mod` it in `secrets/mod.rs`; change the one `Box::new(secrets::Keychain)` line in `lib.rs`; optionally delete `keychain.rs` and `security-framework`.
 

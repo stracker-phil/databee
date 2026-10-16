@@ -2,7 +2,7 @@
 
 WordPress mode is a lens over a WordPress (and WooCommerce) database. It is built for developers who inspect
 their own local sites. It complements wp-admin and the code; it doesn't replace them. The rules in
-[`.claude/rules/wp-layer.md`](../.claude/rules/wp-layer.md) govern every screen:
+[`.claude/rules/presets.md`](../.claude/rules/presets.md) govern every screen:
 
 - **Real names.** Show the stored names: columns, meta keys, option names, status slugs. A human label may sit
   next to a raw value, never in place of it.

@@ -56,7 +56,7 @@ If the caller names a file without a mode, default to `CHANGES in`.
 - Components subscribing to the whole store (`useStore()` with no selector) or deriving arrays without
   `useShallow`.
 - WordPress code that labels values instead of showing the stored name next to them, or attributes data to
-  a plugin by naming heuristics (`.claude/rules/wp-layer.md`).
+  a plugin by naming heuristics (`.claude/rules/presets.md`).
 
 ### 4. Over-engineering (bias toward the simpler shape)
 Flag speculative structure without a present payoff:

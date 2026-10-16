@@ -24,7 +24,7 @@ These rules hold everywhere in the code. Keep them when you change things.
    request id.
 5. **Show what is stored.** Values travel losslessly: numbers and dates as strings, binary values as a hex
    preview, PHP-serialized data byte for byte. Labels may be shown next to a raw value, never instead of it.
-   The WordPress layer has extra rules in [`.claude/rules/wp-layer.md`](../.claude/rules/wp-layer.md).
+   Presets, projects and the WordPress layer follow [`.claude/rules/presets.md`](../.claude/rules/presets.md).
 6. **No silent writes.** Grid edits, WordPress edits and maintenance actions all go through the same
    *plan → review → apply in one transaction → undo* pipeline. Destructive SQL typed in the editor asks
    for confirmation first.

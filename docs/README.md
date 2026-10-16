@@ -10,6 +10,7 @@ use it, see the [project README](../README.md).
 | [database.md](database.md) | MySQL driver: connection model, query execution, cell decoding, browsing, edits, adding an engine |
 | [decode.md](decode.md) | Decoding and editing stored values: PHP serialize, JSON, value trees |
 | [wordpress.md](wordpress.md) | WordPress lens: detection, entities (TOML), screens, writes, extending |
+| [ux.md](ux.md) | Design language: surfaces, color schemes and tokens, type, rows, inputs, overlays, value grammar, keys, palette |
 | [frontend.md](frontend.md) | React app: boot, store, API boundary, command registry, components, styling, tests |
 | [stage.md](stage.md) | Optional local HTTP API for the Stage presenter app |
 | [testing.md](testing.md) | Unit and integration tests, Docker fixtures, scripts that drive the app in the background |
@@ -23,4 +24,4 @@ Suggested reading order: architecture, then the layer you are changing, then ada
 The rules in [`.claude/rules/`](../.claude/rules/) are binding for changes:
 - [`testing.md`](../.claude/rules/testing.md)
 - [`commits.md`](../.claude/rules/commits.md)
-- [`wp-layer.md`](../.claude/rules/wp-layer.md)
+- [`presets.md`](../.claude/rules/presets.md)
