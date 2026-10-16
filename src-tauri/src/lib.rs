@@ -27,6 +27,7 @@ use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 use crate::cli::CliOutcome;
 use crate::ipc::{Forward, IpcMessage};
 use crate::state::AppState;
+use crate::store::json_file::create_private_dir;
 use crate::store::settings::{LogLevel, Settings};
 
 const IDENTIFIER: &str = "com.philippstracker.databee";
@@ -41,19 +42,6 @@ fn config_dir() -> PathBuf {
         fail("Cannot locate the home directory for DataBee's settings");
     };
     home.join("Library/Application Support").join(IDENTIFIER)
-}
-
-/// Holds the IPC socket and the Stage token, so only the user may enter it.
-fn create_private_dir(dir: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)?;
-    if std::fs::metadata(dir)?.permissions().mode() & 0o077 != 0 {
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-    }
-    Ok(())
 }
 
 /// Held for the app's lifetime, so two launches that both find no listener can't both start.
@@ -184,7 +172,7 @@ fn start_app(
             let mut settings = state.settings.get();
             if settings.stage.token.is_empty() {
                 settings.stage.token = stage::new_token();
-                settings = state.settings.update(settings)?;
+                settings = state.settings.update(settings)?.1;
             }
             let presenter = stage::Stage::new(app.handle(), IDENTIFIER);
             presenter.start(&settings.stage);

@@ -3,11 +3,10 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use super::json_file::JsonFile;
+use super::json_store::JsonStore;
 use crate::error::AppResult;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -32,31 +31,27 @@ pub struct UiState {
 }
 
 pub struct UiStateStore {
-    file: JsonFile,
-    items: Mutex<BTreeMap<String, UiState>>,
+    store: JsonStore<BTreeMap<String, UiState>>,
 }
 
 impl UiStateStore {
     pub fn open(dir: &Path) -> Self {
-        let file = JsonFile::new(dir.join("ui_state.json"));
-        let items = Mutex::new(file.load());
-        Self { file, items }
+        Self {
+            store: JsonStore::open(dir.join("ui_state.json")),
+        }
     }
 
     pub fn get(&self, identity: &str) -> UiState {
-        self.items
-            .lock()
-            .unwrap()
-            .get(identity)
-            .cloned()
+        self.store
+            .read(|items| items.get(identity).cloned())
             .unwrap_or_default()
     }
 
     pub fn set(&self, identity: &str, state: UiState) -> AppResult<UiState> {
-        let mut items = self.items.lock().unwrap();
-        items.insert(identity.to_string(), state.clone());
-        self.file.save(&*items)?;
-        Ok(state)
+        self.store.update(|items| {
+            items.insert(identity.to_string(), state.clone());
+            state
+        })
     }
 }
 

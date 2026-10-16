@@ -1,6 +1,7 @@
 pub mod favorites;
 pub mod history;
 pub mod json_file;
+pub mod json_store;
 pub mod keybindings;
 pub mod recents;
 pub mod settings;

@@ -1,9 +1,8 @@
 use std::path::Path;
-use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use super::json_file::JsonFile;
+use super::json_store::JsonStore;
 use crate::error::{AppError, AppResult};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -27,26 +26,25 @@ pub struct Favorite {
 }
 
 pub struct FavoritesStore {
-    file: JsonFile,
-    items: Mutex<Vec<Favorite>>,
+    store: JsonStore<Vec<Favorite>>,
 }
 
 impl FavoritesStore {
     pub fn open(dir: &Path) -> Self {
-        let file = JsonFile::new(dir.join("favorites.json"));
-        let items = Mutex::new(file.load());
-        Self { file, items }
+        Self {
+            store: JsonStore::open(dir.join("favorites.json")),
+        }
     }
 
     /// Favorites visible for a server account: its own plus global ones, in bar order.
     pub fn list(&self, account: &str) -> Vec<Favorite> {
-        self.items
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|f| f.scope.as_deref().is_none_or(|s| s == account))
-            .cloned()
-            .collect()
+        self.store.read(|items| {
+            items
+                .iter()
+                .filter(|f| f.scope.as_deref().is_none_or(|s| s == account))
+                .cloned()
+                .collect()
+        })
     }
 
     /// Inserts a new favorite (appended) or updates an existing one in place. A new favorite
@@ -55,39 +53,34 @@ impl FavoritesStore {
         if favorite.name.trim().is_empty() {
             return Err(AppError::InvalidInput("A favorite needs a name".into()));
         }
-        let mut items = self.items.lock().unwrap();
-        match items
-            .iter_mut()
-            .find(|f| f.id == favorite.id && !f.id.is_empty())
-        {
-            Some(existing) => *existing = favorite.clone(),
-            None => {
-                if let Some(existing) = items
-                    .iter()
-                    .find(|f| f.target == favorite.target && f.scope == favorite.scope)
-                {
-                    return Ok(existing.clone());
-                }
-                favorite.id = uuid::Uuid::new_v4().to_string();
-                items.push(favorite.clone());
+        self.store.update(|items| {
+            if let Some(existing) = items
+                .iter_mut()
+                .find(|f| f.id == favorite.id && !f.id.is_empty())
+            {
+                *existing = favorite.clone();
+                return favorite;
             }
-        }
-        self.file.save(&*items)?;
-        Ok(favorite)
+            if let Some(existing) = items
+                .iter()
+                .find(|f| f.target == favorite.target && f.scope == favorite.scope)
+            {
+                return existing.clone();
+            }
+            favorite.id = uuid::Uuid::new_v4().to_string();
+            items.push(favorite.clone());
+            favorite
+        })
     }
 
     pub fn remove(&self, id: &str) -> AppResult<()> {
-        let mut items = self.items.lock().unwrap();
-        items.retain(|f| f.id != id);
-        self.file.save(&*items)
+        self.store.update(|items| items.retain(|f| f.id != id))
     }
 
     /// Puts the given ids first, in that order; everything else keeps its relative order.
     pub fn reorder(&self, ids: &[String]) -> AppResult<()> {
-        let mut items = self.items.lock().unwrap();
         let rank = |f: &Favorite| ids.iter().position(|id| *id == f.id).unwrap_or(usize::MAX);
-        items.sort_by_key(rank);
-        self.file.save(&*items)
+        self.store.update(|items| items.sort_by_key(rank))
     }
 }
 

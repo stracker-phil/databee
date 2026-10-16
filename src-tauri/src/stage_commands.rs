@@ -33,7 +33,7 @@ pub fn stage_status(stage: State<'_, Stage>) -> StageStatus {
 pub fn stage_new_token(state: State<'_, AppState>, stage: State<'_, Stage>) -> AppResult<Settings> {
     let mut settings = state.settings.get();
     settings.stage.token = new_token();
-    let saved = state.settings.update(settings)?;
+    let (_, saved) = state.settings.update(settings)?;
     stage.start(&saved.stage);
     log::info!("Stage API token replaced");
     Ok(saved)

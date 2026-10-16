@@ -1,10 +1,24 @@
 use std::path::Path;
-use std::sync::Mutex;
 
-use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Deserializer, Serialize};
 
-use super::json_file::JsonFile;
+use super::json_store::JsonStore;
 use crate::error::AppResult;
+
+/// Falls back to the default for a value the field doesn't know (a typo, a retired variant),
+/// so one bad field doesn't quarantine the whole file and lose every other setting.
+fn lenient<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned + Default,
+{
+    let raw = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(raw.clone()).unwrap_or_else(|_| {
+        log::warn!("Ignoring unknown setting value {raw}; using the default");
+        T::default()
+    }))
+}
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -94,6 +108,7 @@ pub const ACCENTS: &[&str] = &["blue", "purple", "pink", "graphite"];
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(deserialize_with = "lenient")]
     pub theme: Theme,
     pub accent: String,
     /// Chrome: sidebar, tabs, labels, buttons (also scales rem).
@@ -101,6 +116,7 @@ pub struct Settings {
     /// Data: grid cells, document values, trees, SQL editor. Reads the old `editorFontSize` key.
     #[serde(alias = "editorFontSize")]
     pub data_font_size: u8,
+    #[serde(deserialize_with = "lenient")]
     pub density: Density,
     pub row_limit: u32,
     pub query_timeout_secs: u32,
@@ -110,9 +126,11 @@ pub struct Settings {
     pub connect_timeout_secs: u32,
     pub default_port: u16,
     pub show_system_schemas: bool,
+    #[serde(deserialize_with = "lenient")]
     pub log_level: LogLevel,
     /// Loads avatars from Gravatar (sends hashed emails to gravatar.com).
     pub gravatar: bool,
+    #[serde(deserialize_with = "lenient")]
     pub inspector_dock: Dock,
     pub stage: StageSettings,
 }
@@ -178,29 +196,26 @@ impl Settings {
 const FILE_NAME: &str = "settings.json";
 
 pub struct SettingsStore {
-    file: JsonFile,
-    current: Mutex<Settings>,
+    store: JsonStore<Settings>,
 }
 
 impl SettingsStore {
     pub fn open(dir: &Path) -> Self {
-        let file = JsonFile::new(dir.join(FILE_NAME));
-        let current = file.load::<Settings>().sanitized();
         Self {
-            file,
-            current: Mutex::new(current),
+            store: JsonStore::open_with(dir.join(FILE_NAME), Settings::sanitized),
         }
     }
 
     pub fn get(&self) -> Settings {
-        self.current.lock().unwrap().clone()
+        self.store.read(Settings::clone)
     }
 
-    pub fn update(&self, settings: Settings) -> AppResult<Settings> {
-        let settings = settings.sanitized();
-        self.file.save(&settings)?;
-        *self.current.lock().unwrap() = settings.clone();
-        Ok(settings)
+    /// Returns `(previous, saved)`, both read under the same lock.
+    pub fn update(&self, settings: Settings) -> AppResult<(Settings, Settings)> {
+        self.store.update(|current| {
+            let previous = std::mem::replace(current, settings.sanitized());
+            (previous, current.clone())
+        })
     }
 }
 
@@ -292,11 +307,90 @@ mod tests {
                 accent: "neon".into(),
                 ..Settings::default()
             })
-            .unwrap();
+            .unwrap()
+            .1;
         assert_eq!(saved.row_limit, 10);
         assert_eq!(saved.data_font_size, 28);
         assert_eq!(saved.ui_font_size, 10);
         assert_eq!(saved.accent, "blue");
+    }
+
+    fn open_with_json(json: &str) -> (tempfile::TempDir, SettingsStore) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("settings.json"), json).unwrap();
+        let store = SettingsStore::open(dir.path());
+        (dir, store)
+    }
+
+    #[test]
+    fn zero_default_port_loads_as_3306() {
+        let (_dir, store) = open_with_json(r#"{"defaultPort": 0}"#);
+        assert_eq!(store.get().default_port, 3306);
+    }
+
+    #[test]
+    fn timeouts_are_clamped_on_load() {
+        for (json, query, connect) in [
+            (r#"{"queryTimeoutSecs": 0, "connectTimeoutSecs": 0}"#, 1, 1),
+            (
+                r#"{"queryTimeoutSecs": 99999, "connectTimeoutSecs": 999}"#,
+                3600,
+                120,
+            ),
+        ] {
+            let (_dir, store) = open_with_json(json);
+            let settings = store.get();
+            assert_eq!(settings.query_timeout_secs, query, "{json}");
+            assert_eq!(settings.connect_timeout_secs, connect, "{json}");
+        }
+    }
+
+    #[test]
+    fn unknown_enum_values_fall_back_without_quarantining_the_file() {
+        let json = r#"{"theme": "neon", "rowLimit": 42, "density": "compact", "logLevel": "loud", "inspectorDock": 5}"#;
+        let (dir, store) = open_with_json(json);
+
+        let settings = store.get();
+        assert_eq!(settings.theme, Theme::System);
+        assert_eq!(settings.row_limit, 42);
+        assert_eq!(settings.density, Density::Compact);
+        assert_eq!(settings.log_level, LogLevel::Info);
+        assert_eq!(settings.inspector_dock, Dock::Right);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("settings.json")).unwrap(),
+            json
+        );
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("settings.json")]);
+    }
+
+    #[test]
+    fn update_returns_previous_and_sanitized_saved_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::open(dir.path());
+        let before = store.get();
+
+        let (previous, saved) = store
+            .update(Settings {
+                theme: Theme::Dark,
+                row_limit: 0,
+                ..Settings::default()
+            })
+            .unwrap();
+
+        assert_eq!(previous, before);
+        assert_eq!(
+            saved,
+            Settings {
+                theme: Theme::Dark,
+                row_limit: 10,
+                ..Settings::default()
+            }
+        );
+        assert_eq!(store.get(), saved);
     }
 
     #[test]

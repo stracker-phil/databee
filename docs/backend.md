@@ -8,7 +8,7 @@ Stage hook each have their own page.
 `main.rs` calls `databee_lib::run()` (`lib.rs`):
 
 1. **Config dir.** `config_dir()` resolves `~/Library/Application Support/<identifier>` (no home dir: exit 2)
-   and `create_private_dir` makes it mode 0700. This happens before Tauri starts, because the CLI and the
+   and `create_private_dir` (`store/json_file.rs`) makes it mode 0700. This happens before Tauri starts, because the CLI and the
    socket need the path first. The CLI reads `default_port` with `Settings::peek`, which never quarantines a
    corrupt file.
 2. **CLI.** `cli::parse` returns one of three outcomes:
@@ -134,16 +134,24 @@ password up.
 
 ## Persistence
 
-Everything lives in the config dir, `~/Library/Application Support/com.philippstracker.databee/`. All JSON
-stores go through `store/json_file.rs`, which:
+Everything lives in the config dir, `~/Library/Application Support/com.philippstracker.databee/`. Every JSON
+store wraps a `JsonStore<T>` (`store/json_store.rs`): the parsed value behind one lock, with `read(|t| ..)`
+and `update(|t| ..) -> AppResult<R>`. `update` applies the closure to a clone, saves the clone and only then
+replaces the value, holding the lock throughout, so a failed save leaves memory unchanged instead of
+showing a change that vanishes on restart. `JsonStore::open_with` normalizes the loaded value (settings
+use it for `Settings::sanitized`). The file itself is `JsonFile` (`store/json_file.rs`), which:
 
-- writes pretty-printed JSON atomically, to a `.tmp` file and then a rename;
+- writes pretty-printed JSON to `<name>.tmp` (mode 0600), `sync_all`s it and renames it over the target;
+  on error the temp file is removed. The parent dir is created 0700 with `create_private_dir`;
 - loads defaults when a file is missing;
-- moves an unparseable file aside to `<name>.corrupt`, so a bad edit never blocks startup.
+- moves any other file it cannot read or parse (permission denied, invalid UTF-8, invalid JSON) aside to
+  `<name>.<UTC yyyymmddTHHMMSS>.corrupt` (with a `-<n>` counter when taken, so earlier backups survive) and
+  logs a warning, so a bad edit never blocks startup. If that rename fails it logs an error and marks
+  the file poisoned: `save` then refuses with `AppError::Io` instead of overwriting the user's file.
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`). `sanitize()` clamps values on load and on update: font sizes, row limit, timeouts, ports. Renamed fields use serde aliases. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`). `sanitized()` clamps values on load and on update: font sizes, row limit, timeouts, ports. Renamed fields use serde aliases. Enum fields (`theme`, `density`, `logLevel`, `inspectorDock`) use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `SettingsStore::update` returns `(previous, saved)` from one lock. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds |
 | `connections.json` | recent connections by identity (`user@host:port/db`) |
 | `favorites.json` | tables and saved queries, global or scoped to one server account |
@@ -158,7 +166,7 @@ Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.d
 
 **Adding a setting:**
 1. Add the field to `Settings` in `store/settings.rs`, with a default.
-2. Clamp it in `sanitize`.
+2. Clamp it in `sanitized`; give an enum field `#[serde(deserialize_with = "lenient")]`.
 3. Mirror it in `src/api/types.ts` and `src/test/settings.ts`.
 4. Render it in `SettingsDialog.tsx`.
 

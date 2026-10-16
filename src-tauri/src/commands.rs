@@ -36,8 +36,7 @@ pub fn update_settings(
     state: State<'_, AppState>,
     settings: Settings,
 ) -> AppResult<Settings> {
-    let previous = state.settings.get();
-    let saved = state.settings.update(settings)?;
+    let (previous, saved) = state.settings.update(settings)?;
     if saved.stage != previous.stage {
         app.state::<Stage>().start(&saved.stage);
     }

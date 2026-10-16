@@ -1,10 +1,9 @@
 use std::path::Path;
-use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::json_file::JsonFile;
+use super::json_store::JsonStore;
 use crate::error::AppResult;
 
 const MAX_ENTRIES: usize = 500;
@@ -21,40 +20,38 @@ pub struct HistoryEntry {
 }
 
 pub struct HistoryStore {
-    file: JsonFile,
-    items: Mutex<Vec<HistoryEntry>>,
+    store: JsonStore<Vec<HistoryEntry>>,
 }
 
 impl HistoryStore {
     pub fn open(dir: &Path) -> Self {
-        let file = JsonFile::new(dir.join("history.json"));
-        let items = Mutex::new(file.load());
-        Self { file, items }
+        Self {
+            store: JsonStore::open(dir.join("history.json")),
+        }
     }
 
     /// Newest first. Re-running the same SQL replaces its previous entry.
     pub fn record(&self, entry: HistoryEntry) -> AppResult<()> {
-        let mut items = self.items.lock().unwrap();
-        items.retain(|e| !(e.account == entry.account && e.sql == entry.sql));
-        items.insert(0, entry);
-        items.truncate(MAX_ENTRIES);
-        self.file.save(&*items)
+        self.store.update(|items| {
+            items.retain(|e| !(e.account == entry.account && e.sql == entry.sql));
+            items.insert(0, entry);
+            items.truncate(MAX_ENTRIES);
+        })
     }
 
     pub fn list(&self, account: &str) -> Vec<HistoryEntry> {
-        self.items
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|e| e.account == account)
-            .cloned()
-            .collect()
+        self.store.read(|items| {
+            items
+                .iter()
+                .filter(|e| e.account == account)
+                .cloned()
+                .collect()
+        })
     }
 
     pub fn clear(&self, account: &str) -> AppResult<()> {
-        let mut items = self.items.lock().unwrap();
-        items.retain(|e| e.account != account);
-        self.file.save(&*items)
+        self.store
+            .update(|items| items.retain(|e| e.account != account))
     }
 }
 

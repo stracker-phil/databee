@@ -2,12 +2,10 @@
 //! The webview resolves most shortcuts; the native menu reads the same file for its
 //! accelerators so the two never disagree.
 
+use super::json_store::JsonStore;
+use crate::error::AppResult;
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::Mutex;
-
-use super::json_file::JsonFile;
-use crate::error::AppResult;
 
 /// `None` means the user unbound the command.
 pub type Keybindings = BTreeMap<String, Option<String>>;
@@ -27,41 +25,37 @@ pub const MENU_DEFAULTS: &[(&str, &str)] = &[
 ];
 
 pub struct KeybindingsStore {
-    file: JsonFile,
-    current: Mutex<Keybindings>,
+    store: JsonStore<Keybindings>,
 }
 
 impl KeybindingsStore {
     pub fn open(dir: &Path) -> Self {
-        let file = JsonFile::new(dir.join("keybindings.json"));
-        let current = file.load::<Keybindings>();
         Self {
-            file,
-            current: Mutex::new(current),
+            store: JsonStore::open(dir.join("keybindings.json")),
         }
     }
 
     pub fn get(&self) -> Keybindings {
-        self.current.lock().unwrap().clone()
+        self.store.read(Keybindings::clone)
     }
 
     pub fn update(&self, bindings: Keybindings) -> AppResult<Keybindings> {
-        self.file.save(&bindings)?;
-        *self.current.lock().unwrap() = bindings.clone();
-        Ok(bindings)
+        self.store.update(|current| {
+            *current = bindings.clone();
+            bindings
+        })
     }
 
     /// The binding a menu item should show: the user's override, else the default.
     pub fn menu_binding(&self, id: &str) -> Option<String> {
-        let current = self.current.lock().unwrap();
-        match current.get(id) {
-            Some(custom) => custom.clone(),
-            None => MENU_DEFAULTS
-                .iter()
-                .find(|(i, _)| *i == id)
-                .map(|(_, b)| b.to_string())
-                .filter(|b| !b.is_empty()),
+        if let Some(custom) = self.store.read(|current| current.get(id).cloned()) {
+            return custom;
         }
+        MENU_DEFAULTS
+            .iter()
+            .find(|(i, _)| *i == id)
+            .map(|(_, b)| b.to_string())
+            .filter(|b| !b.is_empty())
     }
 }
 

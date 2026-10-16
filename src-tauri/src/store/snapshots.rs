@@ -1,10 +1,9 @@
 use std::path::Path;
-use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::json_file::JsonFile;
+use super::json_store::JsonStore;
 use crate::error::{AppError, AppResult};
 use crate::wp::snapshot::{Paths, Scope};
 
@@ -46,60 +45,53 @@ impl From<&Snapshot> for SnapshotInfo {
 }
 
 pub struct SnapshotStore {
-    file: JsonFile,
-    items: Mutex<Vec<Snapshot>>,
+    store: JsonStore<Vec<Snapshot>>,
 }
 
 impl SnapshotStore {
     pub fn open(dir: &Path) -> Self {
-        let file = JsonFile::new(dir.join("snapshots.json"));
-        let items = Mutex::new(file.load());
-        Self { file, items }
+        Self {
+            store: JsonStore::open(dir.join("snapshots.json")),
+        }
     }
 
     /// Newest first, for one server and database.
     pub fn list(&self, account: &str, database: &str) -> Vec<SnapshotInfo> {
-        self.items
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|s| s.account == account && s.database == database)
-            .map(SnapshotInfo::from)
-            .collect()
+        self.store.read(|items| {
+            items
+                .iter()
+                .filter(|s| s.account == account && s.database == database)
+                .map(SnapshotInfo::from)
+                .collect()
+        })
     }
 
     pub fn get(&self, id: &str) -> AppResult<Snapshot> {
-        self.items
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|s| s.id == id)
-            .cloned()
+        self.store
+            .read(|items| items.iter().find(|s| s.id == id).cloned())
             .ok_or_else(|| AppError::InvalidInput(format!("Snapshot {id} not found")))
     }
 
     pub fn add(&self, mut snapshot: Snapshot) -> AppResult<SnapshotInfo> {
         snapshot.id = uuid::Uuid::new_v4().to_string();
         let info = SnapshotInfo::from(&snapshot);
-        let mut items = self.items.lock().unwrap();
-        items.insert(0, snapshot);
-        let account = items[0].account.clone();
-        let mut kept = 0;
-        items.retain(|s| {
-            if s.account != account {
-                return true;
-            }
-            kept += 1;
-            kept <= MAX_PER_SERVER
-        });
-        self.file.save(&*items)?;
+        let account = snapshot.account.clone();
+        self.store.update(|items| {
+            items.insert(0, snapshot);
+            let mut kept = 0;
+            items.retain(|s| {
+                if s.account != account {
+                    return true;
+                }
+                kept += 1;
+                kept <= MAX_PER_SERVER
+            });
+        })?;
         Ok(info)
     }
 
     pub fn delete(&self, id: &str) -> AppResult<()> {
-        let mut items = self.items.lock().unwrap();
-        items.retain(|s| s.id != id);
-        self.file.save(&*items)
+        self.store.update(|items| items.retain(|s| s.id != id))
     }
 }
 

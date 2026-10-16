@@ -1,10 +1,9 @@
 use std::path::Path;
-use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::json_file::JsonFile;
+use super::json_store::JsonStore;
 use crate::connection::ConnectionSpec;
 use crate::error::AppResult;
 
@@ -19,42 +18,40 @@ pub struct RecentConnection {
 }
 
 pub struct RecentsStore {
-    file: JsonFile,
-    items: Mutex<Vec<RecentConnection>>,
+    store: JsonStore<Vec<RecentConnection>>,
 }
 
 impl RecentsStore {
     pub fn open(dir: &Path) -> Self {
-        let file = JsonFile::new(dir.join("connections.json"));
-        let items = Mutex::new(file.load());
-        Self { file, items }
+        Self {
+            store: JsonStore::open(dir.join("connections.json")),
+        }
     }
 
     /// Most recently used first.
     pub fn list(&self) -> Vec<RecentConnection> {
-        self.items.lock().unwrap().clone()
+        self.store.read(Vec::clone)
     }
 
     pub fn touch(&self, spec: &ConnectionSpec) -> AppResult<()> {
-        let mut items = self.items.lock().unwrap();
         let identity = spec.identity();
-        items.retain(|r| r.identity != identity);
-        items.insert(
-            0,
-            RecentConnection {
-                identity,
-                spec: spec.clone(),
-                last_used: Utc::now(),
-            },
-        );
-        items.truncate(MAX_RECENTS);
-        self.file.save(&*items)
+        self.store.update(|items| {
+            items.retain(|r| r.identity != identity);
+            items.insert(
+                0,
+                RecentConnection {
+                    identity,
+                    spec: spec.clone(),
+                    last_used: Utc::now(),
+                },
+            );
+            items.truncate(MAX_RECENTS);
+        })
     }
 
     pub fn remove(&self, identity: &str) -> AppResult<()> {
-        let mut items = self.items.lock().unwrap();
-        items.retain(|r| r.identity != identity);
-        self.file.save(&*items)
+        self.store
+            .update(|items| items.retain(|r| r.identity != identity))
     }
 }
 
