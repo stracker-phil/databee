@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { KeyRound } from "lucide-react";
-import { accountOf } from "../api";
+import { accountOf, type ColumnInfo } from "../api";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
 import { ConnectForm } from "./ConnectScreen";
@@ -99,7 +99,7 @@ export function PasswordDialog({ spec, error, savePassword }: { spec: Parameters
   );
 }
 
-function InsertRowDialog({ database, table, columns }: { database: string; table: string; columns: import("../api").ColumnInfo[] }) {
+function InsertRowDialog({ database, table, columns }: { database: string; table: string; columns: ColumnInfo[] }) {
   const close = useStore((s) => s.closeDialog);
   const queueChange = useStore((s) => s.queueChange);
   const [values, setValues] = useState<Record<string, string>>({});

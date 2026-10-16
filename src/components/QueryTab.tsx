@@ -41,7 +41,7 @@ function useCompletionSchema(sessionId: string, database: string | null) {
 export function QueryTab({ tab }: { tab: QueryTabState }) {
   const database = useStore((s) => s.sessions.find((x) => x.id === tab.sessionId)?.database ?? null);
   const theme = useResolvedTheme(useStore((s) => s.settings?.theme));
-  const { updateTab, runQuery, cancelQuery } = useStore.getState();
+  const { updateQueryTab, runQuery, cancelQuery } = useStore.getState();
   const schema = useCompletionSchema(tab.sessionId, database);
   const viewRef = useRef<EditorView | null>(null);
 
@@ -66,7 +66,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
     <div className="query" style={{ gridTemplateRows: `${editor.size}px auto auto minmax(0, 1fr)` }}>
       <QueryEditor
         value={tab.sql}
-        onChange={(sql) => updateTab(tab.id, { sql })}
+        onChange={(sql) => updateQueryTab(tab.id, { sql })}
         schema={schema}
         theme={theme}
         onView={(v) => (viewRef.current = v)}
@@ -97,7 +97,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
         {results.length > 1 && (
           <div className="segmented" aria-label="Results" data-stage="query:results-picker">
             {results.map((_, i) => (
-              <button key={i} aria-pressed={i === tab.activeResult} onClick={() => updateTab(tab.id, { activeResult: i })}>
+              <button key={i} aria-pressed={i === tab.activeResult} onClick={() => updateQueryTab(tab.id, { activeResult: i })}>
                 {i + 1}
               </button>
             ))}

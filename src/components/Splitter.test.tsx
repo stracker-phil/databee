@@ -10,7 +10,7 @@ import { connectedStore, session, text } from "../test/fixtures";
 
 const mocked = vi.mocked(api, true);
 
-const inspect = () => useStore.setState({ selectedCell: { column: { name: "option_value", typeName: "LONGTEXT" }, cell: text('a:1:{s:1:"k";s:1:"v";}') } });
+const inspect = () => useStore.setState({ selectedCell: { tabId: "q1", row: 0, col: 0, column: { name: "option_value", typeName: "LONGTEXT" }, cell: text('a:1:{s:1:"k";s:1:"v";}') } });
 
 function drag(handle: HTMLElement, from: { x?: number; y?: number }, to: { x?: number; y?: number }) {
   fireEvent.mouseDown(handle, { button: 0, clientX: from.x ?? 0, clientY: from.y ?? 0 });

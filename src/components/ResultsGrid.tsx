@@ -112,7 +112,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
 
   const select = (row: number, col: number) => {
     setSelected({ row, col });
-    selectCell({ column: columns[col], cell: rows[row][col] });
+    selectCell({ row, col, column: columns[col], cell: rows[row][col] });
   };
 
   const openMenu = (e: React.MouseEvent, row: number, col: number) => {

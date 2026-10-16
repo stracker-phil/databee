@@ -51,8 +51,9 @@ Dialogs · CommandPalette · Toasts
 | `mode`, `modeChosen` | `"wp" \| "db"`. A WordPress database switches to `wp` until the user picks a mode |
 | `wp`, `wpNav` | detection results per `session/db`; navigation stack (max 100) |
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow) |
-| `pending`, `applied` | planned changes; last 20 applied batches, for undo |
-| `selectedCell` | opens the Inspector |
+| `pending`, `applied`, `applying` | planned changes; last 20 applied batches, for undo; an apply or undo is in flight |
+| `selectedCell` | `{ tabId, row, col, column, cell }`; opens the Inspector |
+| `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
 | `dataVersion` | bumped by ⌘R and after apply or undo; views re-fetch when it changes |
 | `paletteOpen`, `keybindings`, `favorites`, `toasts`, `uiState`, `recentNav`, `entityMeta` | as named |
 
@@ -63,6 +64,23 @@ Conventions:
   `selectWpRoute`. For `selectWp`, `undefined` means not probed yet and `null` means not WordPress.
 - Store actions wrap API errors in `fail(e, context)`, which shows an error toast and writes the message to
   the Rust log.
+- In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
+  the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
+  refuses a tab that is already `running`.
+- Request tokens (`beginRequest(key)` / `isLatest(key, token)`): only the newest request per key writes its
+  reply. `loadFavorites` uses one key for all sessions; `loadWp` uses `wp:<session>/<database>` and switches
+  to WordPress mode only while that session and database are still active.
+- Selection: `selectCell` tags the cell with the active tab. `clearSelectionFor(state, tabId)` drops it when
+  its tab closes or is left (`activate`); a `dataVersion` bump (`bumpData`) clears it outright.
+- `disconnect(sessionId)` purges in one `set`: the session, its tabs, schema, `queryCounter`, `pending` and
+  `applied` entries, every `wp` key `<session>/…`, the selection if its tab was closed, and `wpNav` and
+  `entityMeta` when the session was active.
+- `switchDatabase` resets `wpNav`, the selection and `entityMeta`; unless the target is known WordPress it
+  also resets `mode` to `db` and `modeChosen`. `connect` resets `wpNav`, `mode` and the selection and reuses
+  the session's query tab on reconnect.
+- Tab updates are typed: `updateQueryTab` and `updateTableTab` only patch tabs of their kind.
+- UI state (`setTableWidths`, `setPaneSize`) is written debounced; `flushUiState` writes it on
+  `beforeunload` (registered in `App.tsx`).
 - Some errors become state instead: a password dialog, a tab's `ErrorPanel`, a confirm dialog for
   `confirmation_required`.
 

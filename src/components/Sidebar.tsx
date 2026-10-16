@@ -111,7 +111,7 @@ function TablesPanel() {
                         className={`tree-row${active ? " active" : ""}`}
                         title={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}
                         onClick={(e) => openTableTab(d.name, t.name, "data", undefined, { preview: !e.metaKey })}
-                        onDoubleClick={() => openTableTab(d.name, t.name)}
+                        onDoubleClick={() => openTableTab(d.name, t.name, undefined, undefined, { preview: false })}
                         onContextMenu={(e) => tableMenu(d.name, t, e)}
                       >
                         {t.isView ? <Eye size="1rem" /> : <Table2 size="1rem" />}
@@ -190,9 +190,8 @@ function HistoryPanel() {
 }
 
 export function Sidebar() {
-  const storedPanel = useStore((s) => s.sidebarPanel);
+  const panel = useStore((s) => s.sidebarPanel);
   const setPanel = useStore((s) => s.setSidebarPanel);
-  const panel = storedPanel === "wordpress" ? "tables" : storedPanel;
   return (
     <aside className="sidebar" data-stage="sidebar" data-stage-label="Sidebar">
       <div style={{ padding: "8px 8px 0" }}>

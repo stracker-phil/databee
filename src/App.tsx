@@ -16,7 +16,7 @@ import { PendingTray } from "./components/PendingTray";
 import { installStageHooks } from "./stage/hooks";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
 import { applyAppearance } from "./lib/theme";
-import { selectWp, useStore } from "./state/store";
+import { flushUiState, selectWp, useStore } from "./state/store";
 import "./styles/theme.css";
 import "./styles/app.css";
 
@@ -36,11 +36,13 @@ function useBackendEvents() {
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
+    window.addEventListener("beforeunload", flushUiState);
     return () => {
       unlisten.forEach((p) => void p.then((fn) => fn()).catch(() => {}));
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onRejection);
+      window.removeEventListener("beforeunload", flushUiState);
     };
   }, []);
 }

@@ -300,7 +300,7 @@ function Ddl({ ddl }: { ddl: string }) {
 }
 
 export function TableTab({ tab }: { tab: TableTabState }) {
-  const updateTab = useStore((s) => s.updateTab);
+  const updateTableTab = useStore((s) => s.updateTableTab);
   return (
     <>
       <div className="table-head" style={{ borderBottom: "none", paddingBottom: 0 }}>
@@ -308,8 +308,8 @@ export function TableTab({ tab }: { tab: TableTabState }) {
         <span className="muted">{tab.database}</span>
         <div className="spacer" />
         <div className="segmented" data-stage="table:view" data-stage-label="Data / Structure">
-          <button data-stage="table:data" aria-pressed={tab.view === "data"} onClick={() => updateTab(tab.id, { view: "data" })}>Data</button>
-          <button data-stage="table:structure" aria-pressed={tab.view === "structure"} onClick={() => updateTab(tab.id, { view: "structure" })}>Structure</button>
+          <button data-stage="table:data" aria-pressed={tab.view === "data"} onClick={() => updateTableTab(tab.id, { view: "data" })}>Data</button>
+          <button data-stage="table:structure" aria-pressed={tab.view === "structure"} onClick={() => updateTableTab(tab.id, { view: "structure" })}>Structure</button>
         </div>
       </div>
       {tab.view === "data" ? <DataView tab={tab} /> : <StructureView tab={tab} />}

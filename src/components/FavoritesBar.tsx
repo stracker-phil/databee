@@ -70,7 +70,7 @@ export function FavoritesBar() {
             },
             {
               label: menu.favorite.scope ? "Show for all connections" : "Show only for this server",
-              action: () => void useStore.getState().saveFavoriteScope(menu.favorite),
+              action: () => void useStore.getState().toggleFavoriteScope(menu.favorite),
             },
             "separator",
             { label: "Remove", action: () => void removeFavorite(menu.favorite.id) },
