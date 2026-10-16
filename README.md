@@ -72,6 +72,7 @@ Password sources, in order: `--password` / `--password-stdin` / `--password-env`
 URL, then the Keychain (account `user@host:port`), then a prompt in the app.
 
 To install the `databee` command, run `scripts/install-cli.sh`. It links `~/.local/bin/databee` to the built app.
+To open the app from Spotlight/Launchpad, run `scripts/install-app.sh`. It links `~/Applications/databee.app` to the build output, so rebuilds are picked up automatically.
 
 ## Development
 
