@@ -1,7 +1,8 @@
 # databee
 
-A minimalistic SQL client for macOS (Apple Silicon), built for MySQL/MariaDB in
-WordPress & WooCommerce development. Tauri 2 + Rust + React.
+A minimalistic SQL client for macOS (Apple Silicon), built for senior WordPress & WooCommerce
+developers inspecting their local MySQL/MariaDB databases (DDEV, Docker). It shows what is stored,
+not a friendlier version of it: it is not a tool for site admins or shop owners. Tauri 2 + Rust + React.
 
 ## Features
 

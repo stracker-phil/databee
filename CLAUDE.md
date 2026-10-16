@@ -1,7 +1,8 @@
 # databee
 
-Minimalistic SQL client for personal use: MySQL/MariaDB for WordPress/WooCommerce dev
-(often DDEV/Docker), SQLite later. See README.md for features and CLI, docs/roadmap.md for ideas.
+Minimalistic SQL client for senior WordPress developers working on local sites: MySQL/MariaDB
+(often DDEV/Docker, dummy data), SQLite later. Not for site admins or shop owners; the WordPress
+layer follows `.claude/rules/wp-layer.md`. See README.md for features and CLI, docs/roadmap.md for ideas.
 
 ## Stack
 - Rust backend in `src-tauri/` (rustup stable; Homebrew rustup is keg-only: `/opt/homebrew/opt/rustup/bin`)
