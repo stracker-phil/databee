@@ -156,6 +156,7 @@ impl Database for MySqlSession {
     }
 
     async fn close(&self) {
+        self.editor.close().await;
         self.meta.close().await;
     }
 
@@ -166,7 +167,7 @@ impl Database for MySqlSession {
         timeout: Duration,
     ) -> AppResult<ExecuteResponse> {
         let started = Instant::now();
-        let mut conn = self.editor.lock().await;
+        let mut conn = self.editor.lock().await?;
         let run = async {
             let results = run_script(&mut conn, sql, row_limit).await?;
             let database = scalar(&mut conn, "SELECT DATABASE()").await;
@@ -194,7 +195,7 @@ impl Database for MySqlSession {
 
     async fn use_database(&self, database: &str) -> AppResult<()> {
         let sql = format!("USE {}", self.dialect().quote_ident(database));
-        let mut conn = self.editor.lock().await;
+        let mut conn = self.editor.lock().await?;
         query_within(self.query_timeout, async {
             sqlx::raw_sql(AssertSqlSafe(sql))
                 .execute(&mut *conn)

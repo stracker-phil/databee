@@ -174,6 +174,7 @@ export interface SessionInfo {
   id: string;
   spec: ConnectionSpec;
   identity: string;
+  account: string;
   displayName: string;
   serverVersion: string;
   database: string | null;
@@ -181,6 +182,7 @@ export interface SessionInfo {
 
 export interface RecentConnection {
   identity: string;
+  account: string;
   spec: ConnectionSpec;
   lastUsed: string;
 }
@@ -206,6 +208,8 @@ export interface AppError {
   kind: ErrorKind;
   message: string;
   code: string | null;
+  /** The Keychain account a login error is about (`password_required`, `auth_failed` on connect); Rust sends `null` otherwise. */
+  account?: string | null;
 }
 
 export type Cell =

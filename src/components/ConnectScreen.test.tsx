@@ -48,7 +48,7 @@ describe("ConnectScreen", () => {
   });
 
   it("asks for a password when the server requires one", async () => {
-    mocked.connect.mockRejectedValueOnce({ kind: "password_required", message: "needed", code: null });
+    mocked.connect.mockRejectedValueOnce({ kind: "password_required", message: "needed", code: null, account: "wp@db.test:3307" });
     render(
       <>
         <ConnectScreen />
@@ -57,7 +57,7 @@ describe("ConnectScreen", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Connect" }));
     const dialog = await screen.findByRole("dialog");
-    expect(dialog).toHaveTextContent("Password for root@127.0.0.1:3306");
+    expect(dialog).toHaveTextContent("Password for wp@db.test:3307");
 
     mocked.connect.mockResolvedValue(session);
     await userEvent.type(within(dialog).getByLabelText("Password"), "secret");
@@ -73,7 +73,9 @@ describe("ConnectScreen", () => {
   });
 
   it("fills the form from a recent connection and connects on double-click", async () => {
-    mocked.listRecents.mockResolvedValue([{ identity: session.identity, spec: session.spec, lastUsed: new Date().toISOString() }]);
+    mocked.listRecents.mockResolvedValue([
+      { identity: session.identity, account: session.account, spec: session.spec, lastUsed: new Date().toISOString() },
+    ]);
     mocked.connect.mockResolvedValue(session);
     render(<ConnectScreen />);
     const recent = await screen.findByRole("button", { name: "Connect to Shop" });
@@ -83,6 +85,23 @@ describe("ConnectScreen", () => {
     expect(mocked.connect).toHaveBeenCalledWith(expect.objectContaining({ spec: session.spec }));
   });
 
+  it("describes a recent connection by the account Rust sent", async () => {
+    mocked.listRecents.mockResolvedValue([
+      { identity: session.identity, account: "wp@db.test:3307", spec: session.spec, lastUsed: new Date().toISOString() },
+    ]);
+    render(<ConnectScreen />);
+    const recent = await screen.findByRole("button", { name: "Connect to Shop" });
+    expect(recent).toHaveTextContent("wp@db.test:3307 / db");
+  });
+
+  it("loads favorites for the account of the connected session", async () => {
+    mocked.connect.mockResolvedValue({ ...session, account: "wp@db.test:3307" });
+    mocked.listFavorites.mockResolvedValue([]);
+    render(<ConnectScreen />);
+    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
+    await vi.waitFor(() => expect(mocked.listFavorites).toHaveBeenCalledWith("wp@db.test:3307"));
+  });
+
   it("shows the configured default port in the Port field", () => {
     resetStore({ settings: settings({ defaultPort: 3307 }) });
     render(<ConnectScreen />);
@@ -90,7 +109,7 @@ describe("ConnectScreen", () => {
   });
 
   describe("removing a recent connection", () => {
-    const recent = { identity: session.identity, spec: session.spec, lastUsed: new Date().toISOString() };
+    const recent = { identity: session.identity, account: session.account, spec: session.spec, lastUsed: new Date().toISOString() };
 
     beforeEach(() => mocked.listRecents.mockResolvedValue([recent]));
 

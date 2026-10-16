@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { setOverrides } from "../commands/registry";
 import {
-  accountOf,
   EMPTY_UI_STATE,
   api,
   toAppError,
@@ -87,7 +86,7 @@ export type Dialog =
   /** `page`: the Settings page shown (SETTINGS_PAGES ids); the first one when absent. */
   | { type: "settings"; page?: string }
   | { type: "connect"; spec?: ConnectionSpec; error?: AppError }
-  | { type: "password"; spec: ConnectionSpec; error?: string; savePassword: boolean }
+  | { type: "password"; spec: ConnectionSpec; account: string | null; error?: string; savePassword: boolean }
   | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }
   | { type: "prompt"; title: string; value: string; onSubmit: (value: string) => void }
   | { type: "insertRow"; database: string; table: string; columns: ColumnInfo[] };
@@ -404,6 +403,7 @@ export const useStore = create<Store>()((set, get) => {
             dialog: {
               type: "password",
               spec: args.spec,
+              account: error.account ?? null,
               error: error.kind === "auth_failed" ? error.message : undefined,
               savePassword: args.savePassword ?? true,
             },
@@ -876,7 +876,7 @@ export const useStore = create<Store>()((set, get) => {
         return;
       }
       try {
-        const favorites = await api.listFavorites(accountOf(session.spec));
+        const favorites = await api.listFavorites(session.account);
         if (isLatest("favorites", token)) set({ favorites });
       } catch (e) {
         if (isLatest("favorites", token)) fail(e, "Could not load favorites");
@@ -887,7 +887,7 @@ export const useStore = create<Store>()((set, get) => {
       const session = selectActiveSession(get());
       if (!session) return;
       try {
-        await api.createFavorite({ name, scope: global ? null : accountOf(session.spec), target });
+        await api.createFavorite({ name, scope: global ? null : session.account, target });
         await get().loadFavorites();
       } catch (e) {
         const error = toAppError(e);
@@ -935,7 +935,7 @@ export const useStore = create<Store>()((set, get) => {
       const session = selectActiveSession(get());
       if (!session) return;
       try {
-        await api.updateFavorite({ ...favorite, scope: favorite.scope ? null : accountOf(session.spec) });
+        await api.updateFavorite({ ...favorite, scope: favorite.scope ? null : session.account });
         await get().loadFavorites();
       } catch (e) {
         fail(e, "Could not update favorite");

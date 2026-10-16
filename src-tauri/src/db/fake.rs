@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -20,6 +21,7 @@ pub struct FakeDatabase {
     responses: Vec<(String, AppResult<ResultSet>)>,
     queries: Mutex<Vec<String>>,
     applied: Mutex<Vec<Vec<String>>>,
+    closed: AtomicBool,
 }
 
 impl Default for FakeDatabase {
@@ -35,6 +37,7 @@ impl FakeDatabase {
             responses: Vec::new(),
             queries: Mutex::default(),
             applied: Mutex::default(),
+            closed: AtomicBool::new(false),
         }
     }
 
@@ -64,6 +67,10 @@ impl FakeDatabase {
         self.applied.lock_unpoisoned().clone()
     }
 
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
+    }
+
     fn respond(&self, sql: &str) -> AppResult<ResultSet> {
         self.queries.lock_unpoisoned().push(sql.to_string());
         self.responses
@@ -88,7 +95,9 @@ impl Database for FakeDatabase {
         self.database.lock_unpoisoned().clone()
     }
 
-    async fn close(&self) {}
+    async fn close(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+    }
 
     async fn execute(
         &self,

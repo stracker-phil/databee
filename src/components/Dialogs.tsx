@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { KeyRound } from "lucide-react";
-import { accountOf, type ColumnInfo, type ConnectionSpec } from "../api";
+import { type ColumnInfo, type ConnectionSpec } from "../api";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
 import { CONNECT_TITLE_ID, ConnectForm } from "./ConnectScreen";
@@ -55,7 +55,17 @@ function PromptDialog({ title, value, onSubmit }: { title: string; value: string
   );
 }
 
-export function PasswordDialog({ spec, error, savePassword }: { spec: ConnectionSpec; error?: string; savePassword: boolean }) {
+export function PasswordDialog({
+  spec,
+  account,
+  error,
+  savePassword,
+}: {
+  spec: ConnectionSpec;
+  account: string | null;
+  error?: string;
+  savePassword: boolean;
+}) {
   const close = useStore((s) => s.closeDialog);
   const connect = useStore((s) => s.connect);
   const [password, setPassword] = useState("");
@@ -73,7 +83,7 @@ export function PasswordDialog({ spec, error, savePassword }: { spec: Connection
         }}
       >
         <h2 id="pw-title" style={{ display: "flex", gap: "0.615rem", alignItems: "center" }}>
-          <KeyRound size="1.231rem" /> Password for {accountOf(spec)}
+          <KeyRound size="1.231rem" /> {account ? `Password for ${account}` : "Password"}
         </h2>
         {error && <div className="form-error">{error}</div>}
         <input
@@ -178,7 +188,7 @@ export function Dialogs() {
     case "prompt":
       return <PromptDialog {...dialog} />;
     case "password":
-      return <PasswordDialog key={accountOf(dialog.spec)} {...dialog} />;
+      return <PasswordDialog key={dialog.account ?? ""} {...dialog} />;
     case "settings":
       return <SettingsDialog />;
     case "insertRow":

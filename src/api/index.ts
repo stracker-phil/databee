@@ -71,7 +71,6 @@ export const api = {
   takeLaunchEvents: () => invoke<LaunchEvent[]>("take_launch_events"),
   listRecents: () => invoke<RecentConnection[]>("list_recents"),
   removeRecent: (identity: string) => invoke<void>("remove_recent", { identity }),
-  forgetPassword: (spec: ConnectionSpec) => invoke<void>("forget_password", { spec }),
 
   connect: (args: {
     spec: ConnectionSpec;
@@ -180,9 +179,4 @@ export function toAppError(e: unknown): AppError {
     return e as AppError;
   }
   return { kind: "io", message: e instanceof Error ? e.message : String(e), code: null };
-}
-
-/** `user@host:port` — matches `ConnectionSpec::account` in Rust. */
-export function accountOf(spec: ConnectionSpec): string {
-  return spec.socket ? `${spec.user}@${spec.socket}` : `${spec.user}@${spec.host}:${spec.port}`;
 }

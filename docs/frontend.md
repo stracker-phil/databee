@@ -103,7 +103,9 @@ Conventions:
 `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic, plus the event
 subscriptions `onLaunch`, `onCommand` and `onStage*`. `src/api/types.ts` mirrors the serialized Rust types.
 Keep both in sync with Rust by hand; the roadmap mentions generating them. `toAppError(e)` normalizes
-rejections to `AppError`.
+rejections to `AppError`. Derived connection facts come from Rust and are never recomputed in the page: the
+Keychain `account` (which also scopes favorites and history) is on `SessionInfo`, `RecentConnection` and login
+errors (`AppError.account`).
 
 ## Commands, shortcuts, palette, menu
 

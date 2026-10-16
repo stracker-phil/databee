@@ -53,9 +53,8 @@ export function validate(form: FormState, defaultPort: number): ConnectionSpec |
 /** The recent's title; its label for Stage and screen readers uses the same text. */
 const recentTitle = (spec: ConnectionSpec) => spec.name ?? spec.database ?? spec.host;
 
-function describe(spec: ConnectionSpec) {
-  const where = spec.socket ?? `${spec.host}:${spec.port}`;
-  return `${spec.user}@${where}${spec.database ? ` / ${spec.database}` : ""}`;
+function recentSubtitle(recent: RecentConnection) {
+  return `${recent.account}${recent.spec.database ? ` / ${recent.spec.database}` : ""}`;
 }
 
 export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; error?: AppError }) {
@@ -176,7 +175,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
               <div className="info">
                 <div className="title">{recentTitle(r.spec)}</div>
                 <div className="sub">
-                  {describe(r.spec)} · {relativeTime(r.lastUsed)}
+                  {recentSubtitle(r)} · {relativeTime(r.lastUsed)}
                 </div>
               </div>
             </button>

@@ -388,6 +388,50 @@ async fn cancel_reaches_the_editor_while_every_pool_connection_is_busy() {
 
 #[tokio::test]
 #[ignore]
+async fn close_ends_a_running_query_and_later_executes_fail_with_a_connection_error() {
+    for (host, port) in servers() {
+        let s = Arc::new(connect(&host, port).await);
+        let observer = connect(&host, port).await;
+        let runner = {
+            let s = s.clone();
+            tokio::spawn(async move {
+                s.execute(
+                    "SELECT SLEEP(30) /* close_probe */",
+                    10,
+                    Duration::from_secs(60),
+                )
+                .await
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+
+        let started = std::time::Instant::now();
+        s.close().await;
+        runner.await.unwrap().ok();
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{host}:{port}: close took {:?}",
+            started.elapsed()
+        );
+
+        let running = observer
+            .execute(
+                "SELECT COUNT(*) FROM information_schema.PROCESSLIST \
+                 WHERE INFO LIKE 'SELECT SLEEP(30) /* close_probe */%'",
+                10,
+                TIMEOUT,
+            )
+            .await
+            .unwrap();
+        assert_eq!(text(&running.results[0].rows[0][0]), "0", "{host}:{port}");
+
+        let err = s.execute("SELECT 1", 10, TIMEOUT).await.unwrap_err();
+        assert_eq!(err.kind(), "connection", "{host}:{port}: {err:?}");
+    }
+}
+
+#[tokio::test]
+#[ignore]
 async fn killed_editor_connection_fails_once_then_reconnects() {
     for (host, port) in servers() {
         let s = connect(&host, port).await;

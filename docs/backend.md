@@ -65,7 +65,7 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `snapshots` | `SnapshotStore` | `snapshots.json` (WordPress snapshots) |
 | `ui_state` | `UiStateStore` | `ui_state.json` (column widths, pane sizes per connection) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
-| `secrets` | `Box<dyn SecretStore>` | `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
+| `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
 | `wp_cache` | `Mutex<HashMap<"session/db", WpContext>>` | WordPress detection results; cleared per session by `invalidate_wp` |
 | `config_dir` | `PathBuf` | used to read the optional `entities.toml` |
@@ -80,10 +80,19 @@ The TypeScript wrappers in `src/api/index.ts` use the same names in camelCase.
 
 | Module | Commands |
 |---|---|
-| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `forget_password`, `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
-| `db_commands.rs` | `connect`, `disconnect`, `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table` (see [database.md](database.md)) |
+| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
+| `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table` (see [database.md](database.md)) |
 | `wp_commands.rs` | `wp_detect`, `wp_dashboard`, `wp_browser`, the list commands (`wp_orders`, `wp_users`, `wp_products`, `wp_actions`, `wp_sessions`, `wp_content`), `wp_view`, `wp_search`, `wp_peek`, `wp_find_value`, options and snapshots, `plan_change`, `apply_changes`, `edit_serialized`, `decode_value` (see [wordpress.md](wordpress.md)) |
 | `stage_commands.rs` | `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_new_token` |
+
+`session::open` is the connect service: it peeks the launch password, resolves the password
+(`resolve_password`, in `spawn_blocking` because the Keychain may block on a dialog), calls `db::open`, maps a
+rejected login through the pure `auth_error`, saves a typed password to the Keychain when asked, touches
+recents and registers the session. `SessionInfo::new` is pure and carries `identity`, `account` (the Keychain
+account that also scopes favorites) and `displayName`, so the page never derives them. `session::close`
+removes the session and calls `Database::close`, which interrupts a running query and closes the editor
+connection and the pool. `db_commands::run_query` holds `execute`'s logic (confirmation gate before the
+session lookup, history entry for failed queries too).
 
 **Adding a command:**
 1. Write a `#[tauri::command]` function that returns `AppResult<T>`. `T` must be `Serialize` with
@@ -201,7 +210,7 @@ implementation has its own file:
   itself with `test-util` as a dev-dependency, so integration tests in `tests/` can use it
   ([ADR 0019](adr/0019-test-doubles-behind-test-util.md)); release builds never contain it.
 
-The implementation is chosen in exactly one line, `Box::new(secrets::Keychain)` where `run` builds `AppState`
+The implementation is chosen in exactly one line, `Arc::new(secrets::Keychain)` where `run` builds `AppState`
 in `lib.rs`. To use another store, see [adapting.md](adapting.md#swap-the-secret-store).
 
 `resolve_password` returns a `PasswordSource`: `Provided` (the page's password, else the CLI password for the
@@ -221,13 +230,14 @@ gives up its value only through `expose()`.
 
 ## Errors
 
-`error.rs`: `AppError` serializes as `{ kind, message, code }`, where `message` is the `Display` text.
+`error.rs`: `AppError` serializes as `{ kind, message, code, account }`, where `message` is the `Display` text and
+`account` names the Keychain account of a login error (`null` otherwise), so the password prompt never derives it.
 
 | kind | Raised for |
 |---|---|
 | `database` | server errors; `code` is the MySQL error number, or the SQLSTATE when there is none |
 | `connection` | IO/TLS/protocol failures, a crashed connection worker, pool timeouts or a closed pool, connect timeouts, and MySQL errors 1053, 1927, 2006, 2013, 4031 (the connection is gone, so `execute` reconnects) |
-| `auth_failed` | MySQL error 1045 (the message is the server's) |
+| `auth_failed` | MySQL error 1045 (the message is the server's); on connect `LoginFailed`, explained by the password source |
 | `password_required` | no password was available |
 | `timeout` | the query exceeded the timeout; the message shows `500 ms` below one second, else whole seconds |
 | `cancelled` | MySQL error 1317, or the user cancelled |

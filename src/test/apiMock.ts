@@ -33,7 +33,6 @@ export function createApiMock(): typeof realApi {
     takeLaunchEvents: vi.fn().mockResolvedValue([]),
     listRecents: vi.fn().mockResolvedValue([]),
     removeRecent: vi.fn().mockResolvedValue(undefined),
-    forgetPassword: vi.fn().mockResolvedValue(undefined),
     connect: vi.fn().mockResolvedValue(session),
     disconnect: vi.fn().mockResolvedValue(undefined),
     listDatabases: vi.fn().mockResolvedValue([]),

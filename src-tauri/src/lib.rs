@@ -22,6 +22,7 @@ mod wp_commands;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
@@ -201,7 +202,7 @@ pub fn run() {
         }
     };
 
-    let mut state = AppState::open(&config_dir, Box::new(secrets::Keychain));
+    let mut state = AppState::open(&config_dir, Arc::new(secrets::Keychain));
     state.log_override = log_override;
     start_app(
         state,
@@ -243,7 +244,6 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             commands::take_launch_events,
             commands::list_recents,
             commands::remove_recent,
-            commands::forget_password,
             commands::list_favorites,
             commands::create_favorite,
             commands::update_favorite,

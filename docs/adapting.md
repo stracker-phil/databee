@@ -90,7 +90,7 @@ on `ConnectionSpec`; one arm in `db::open`. Nothing in `wp/` changes. Details:
 ### Swap the secret store
 
 Add `src-tauri/src/secrets/<impl>.rs` implementing `SecretStore` (`get`, `set`, `delete`); `pub mod` it in
-`secrets/mod.rs`; change the one `Box::new(secrets::Keychain)` line in `lib.rs`; optionally delete
+`secrets/mod.rs`; change the one `Arc::new(secrets::Keychain)` line in `lib.rs`; optionally delete
 `keychain.rs` and `security-framework`.
 
 ### Removing the WordPress layer

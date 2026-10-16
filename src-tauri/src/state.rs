@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::launch::LaunchQueue;
 use crate::lock::MutexExt;
@@ -24,7 +24,8 @@ pub struct AppState {
     pub snapshots: SnapshotStore,
     pub ui_state: UiStateStore,
     pub launches: LaunchQueue,
-    pub secrets: Box<dyn SecretStore>,
+    /// Shared so Keychain calls can run in blocking tasks.
+    pub secrets: Arc<dyn SecretStore>,
     pub sessions: Sessions,
     pub config_dir: PathBuf,
     /// `--log-level` from the CLI; wins over the stored level until the app quits.
@@ -35,7 +36,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn open(config_dir: &Path, secrets: Box<dyn SecretStore>) -> Self {
+    pub fn open(config_dir: &Path, secrets: Arc<dyn SecretStore>) -> Self {
         Self {
             settings: SettingsStore::open(config_dir),
             keybindings: KeybindingsStore::open(config_dir),
@@ -85,7 +86,7 @@ mod tests {
     #[test]
     fn invalidating_a_session_keeps_the_contexts_of_other_sessions() {
         let dir = tempfile::tempdir().unwrap();
-        let state = AppState::open(dir.path(), Box::new(MemoryStore::default()));
+        let state = AppState::open(dir.path(), Arc::new(MemoryStore::default()));
         let keys = [
             wp_cache_key("s1", "wp_a"),
             wp_cache_key("s1", "wp_b"),

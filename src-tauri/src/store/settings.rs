@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -160,6 +161,14 @@ impl Default for Settings {
 }
 
 impl Settings {
+    pub fn query_timeout(&self) -> Duration {
+        Duration::from_secs(self.query_timeout_secs.into())
+    }
+
+    pub fn connect_timeout(&self) -> Duration {
+        Duration::from_secs(self.connect_timeout_secs.into())
+    }
+
     /// Clamps every value into a usable range, so a hand-edited file can't break the app.
     pub fn sanitized(mut self) -> Self {
         let d = Settings::default();
@@ -342,6 +351,35 @@ mod tests {
             let settings = store.get();
             assert_eq!(settings.query_timeout_secs, query, "{json}");
             assert_eq!(settings.connect_timeout_secs, connect, "{json}");
+        }
+    }
+
+    #[test]
+    fn timeouts_are_the_clamped_seconds_as_durations() {
+        for (settings, query, connect) in [
+            (Settings::default(), 30, 10),
+            (
+                Settings {
+                    query_timeout_secs: 0,
+                    connect_timeout_secs: 0,
+                    ..Settings::default()
+                },
+                1,
+                1,
+            ),
+            (
+                Settings {
+                    query_timeout_secs: 99_999,
+                    connect_timeout_secs: 999,
+                    ..Settings::default()
+                },
+                3600,
+                120,
+            ),
+        ] {
+            let settings = settings.sanitized();
+            assert_eq!(settings.query_timeout(), Duration::from_secs(query));
+            assert_eq!(settings.connect_timeout(), Duration::from_secs(connect));
         }
     }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { ChevronDown, ChevronRight, Database, Eye, History, RefreshCw, Search, Table2, Trash2 } from "lucide-react";
-import { accountOf, api, type HistoryEntry, type TableInfo } from "../api";
+import { api, type HistoryEntry, type TableInfo } from "../api";
 import { EVENTS } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { compactCount, formatBytes, formatCount, relativeTime } from "../lib/format";
@@ -225,7 +225,7 @@ function HistoryPanel() {
   const historyVersion = useStore((s) => s.historyVersion);
   const openQueryTab = useStore((s) => s.openQueryTab);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const account = session ? accountOf(session.spec) : null;
+  const account = session?.account ?? null;
 
   useEffect(() => {
     if (!account) return;

@@ -6,7 +6,7 @@ use serde::{Serialize, Serializer};
 pub type AppResult<T> = Result<T, AppError>;
 
 /// Every error that crosses the Tauri boundary. Serialized as
-/// `{ kind, message, code: string | null }` so the UI can decide how to present it.
+/// `{ kind, message, code: string | null, account: string | null }` so the UI can decide how to present it.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     #[error("{message}")]
@@ -20,6 +20,9 @@ pub enum AppError {
     AuthFailed(String),
     #[error("A password is required for {0}")]
     PasswordRequired(String),
+    /// The server rejected a connect; `account` lets the UI prompt for that Keychain entry.
+    #[error("{message}")]
+    LoginFailed { account: String, message: String },
     #[error("Query timed out after {}", human_duration(*.0))]
     Timeout(Duration),
     #[error("Query was cancelled")]
@@ -43,6 +46,7 @@ impl AppError {
             AppError::Connection(_) => "connection",
             AppError::AuthFailed(_) => "auth_failed",
             AppError::PasswordRequired(_) => "password_required",
+            AppError::LoginFailed { .. } => "auth_failed",
             AppError::Timeout(_) => "timeout",
             AppError::Cancelled => "cancelled",
             AppError::ConfirmationRequired(_) => "confirmation_required",
@@ -59,14 +63,25 @@ impl AppError {
             _ => None,
         }
     }
+
+    /// The Keychain account a login error is about.
+    pub fn account(&self) -> Option<&str> {
+        match self {
+            AppError::PasswordRequired(account) | AppError::LoginFailed { account, .. } => {
+                Some(account)
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut s = serializer.serialize_struct("AppError", 3)?;
+        let mut s = serializer.serialize_struct("AppError", 4)?;
         s.serialize_field("kind", self.kind())?;
         s.serialize_field("message", &self.to_string())?;
         s.serialize_field("code", &self.code())?;
+        s.serialize_field("account", &self.account())?;
         s.end()
     }
 }
@@ -140,8 +155,43 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_value(&err).unwrap(),
-            json!({"kind": "database", "message": "Table 'wp.x' doesn't exist", "code": "1146"})
+            json!({
+                "kind": "database",
+                "message": "Table 'wp.x' doesn't exist",
+                "code": "1146",
+                "account": null
+            })
         );
+    }
+
+    #[test]
+    fn login_errors_serialize_their_account() {
+        for (err, kind, message) in [
+            (
+                AppError::LoginFailed {
+                    account: "root@127.0.0.1:3306".into(),
+                    message: "Access denied".into(),
+                },
+                "auth_failed",
+                "Access denied",
+            ),
+            (
+                AppError::PasswordRequired("root@127.0.0.1:3306".into()),
+                "password_required",
+                "A password is required for root@127.0.0.1:3306",
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(&err).unwrap(),
+                json!({
+                    "kind": kind,
+                    "message": message,
+                    "code": null,
+                    "account": "root@127.0.0.1:3306"
+                }),
+                "{kind}"
+            );
+        }
     }
 
     #[test]
@@ -150,6 +200,7 @@ mod tests {
         assert_eq!(value["kind"], "timeout");
         assert_eq!(value["message"], "Query timed out after 30 s");
         assert!(value["code"].is_null());
+        assert!(value["account"].is_null());
     }
 
     #[test]

@@ -466,7 +466,7 @@ pub async fn apply_changes(
     statements: Vec<String>,
 ) -> AppResult<u64> {
     let session = state.sessions.get(&session_id)?;
-    let timeout = std::time::Duration::from_secs(state.settings.get().query_timeout_secs.into());
+    let timeout = state.settings.get().query_timeout();
     log::info!(
         "Applying {} statements on {}",
         statements.len(),

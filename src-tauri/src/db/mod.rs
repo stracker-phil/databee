@@ -31,6 +31,7 @@ pub trait Database: Send + Sync {
     fn dialect(&self) -> Dialect;
     fn server_version(&self) -> &str;
     fn current_database(&self) -> Option<String>;
+    /// Ends a running query and closes every connection; later calls fail.
     async fn close(&self);
     /// Runs a user script on the editor connection, which keeps session state.
     async fn execute(

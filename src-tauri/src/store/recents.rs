@@ -13,6 +13,9 @@ const MAX_RECENTS: usize = 20;
 #[serde(rename_all = "camelCase")]
 pub struct RecentConnection {
     pub identity: String,
+    /// Derived from `spec` when listed; older files lack it.
+    #[serde(default)]
+    pub account: String,
     pub spec: ConnectionSpec,
     pub last_used: DateTime<Utc>,
 }
@@ -30,7 +33,11 @@ impl RecentsStore {
 
     /// Most recently used first.
     pub fn list(&self) -> Vec<RecentConnection> {
-        self.store.read(Vec::clone)
+        let mut recents = self.store.read(Vec::clone);
+        for recent in &mut recents {
+            recent.account = recent.spec.account();
+        }
+        recents
     }
 
     pub fn touch(&self, spec: &ConnectionSpec) -> AppResult<()> {
@@ -41,6 +48,7 @@ impl RecentsStore {
                 0,
                 RecentConnection {
                     identity,
+                    account: spec.account(),
                     spec: spec.clone(),
                     last_used: Utc::now(),
                 },
@@ -97,6 +105,34 @@ mod tests {
         }
         assert_eq!(store.list().len(), 20);
         assert_eq!(dbs(&store)[0], "db24");
+    }
+
+    #[test]
+    fn list_fills_the_account_from_the_spec() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RecentsStore::open(dir.path());
+        store.touch(&spec("a")).unwrap();
+
+        assert_eq!(store.list()[0].account, "root@127.0.0.1:3306");
+    }
+
+    #[test]
+    fn list_fills_the_account_for_entries_written_without_one() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("connections.json"),
+            r#"[{
+                "identity": "root@127.0.0.1:3306/a",
+                "spec": {"host": "127.0.0.1", "port": 3306, "user": "root", "database": "a"},
+                "lastUsed": "2024-01-01T00:00:00Z"
+            }]"#,
+        )
+        .unwrap();
+
+        let recents = RecentsStore::open(dir.path()).list();
+
+        assert_eq!(recents.len(), 1);
+        assert_eq!(recents[0].account, "root@127.0.0.1:3306");
     }
 
     #[test]

@@ -1,7 +1,6 @@
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
-use crate::connection::ConnectionSpec;
 use crate::error::{AppError, AppResult};
 use crate::launch::LaunchEvent;
 use crate::menu;
@@ -149,13 +148,6 @@ pub fn list_recents(state: State<'_, AppState>) -> Vec<RecentConnection> {
 pub fn remove_recent(state: State<'_, AppState>, identity: String) -> AppResult<()> {
     state.recents.remove(&identity)?;
     state.ui_state.forget(&identity)
-}
-
-#[tauri::command]
-pub fn forget_password(state: State<'_, AppState>, spec: ConnectionSpec) -> AppResult<()> {
-    state.secrets.delete(&spec.account())?;
-    log::info!("Removed stored password for {}", spec.account());
-    Ok(())
 }
 
 #[tauri::command]
