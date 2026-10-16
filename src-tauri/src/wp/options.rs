@@ -18,7 +18,7 @@ pub struct OptionRow {
 #[serde(rename_all = "camelCase")]
 pub struct OptionGroup {
     pub prefix: String,
-    /// Human owner name from the plugin registry, e.g. `PayPal Payments`; the prefix otherwise.
+    /// The literal name pattern the group covers, e.g. `woocommerce*`.
     pub label: String,
     pub count: u64,
     pub bytes: u64,
@@ -44,7 +44,27 @@ pub struct OptionsOverview {
     pub total_count: u64,
     pub autoload_bytes: u64,
     pub groups: Vec<OptionGroup>,
+    /// The heaviest autoloaded options, largest first.
+    pub largest_autoload: Vec<OptionSize>,
     pub transients: Vec<TransientInfo>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OptionSize {
+    pub name: String,
+    pub bytes: u64,
+}
+
+const LARGEST_AUTOLOAD: usize = 15;
+
+/// `woocommerce` → `woocommerce*` (the group also holds `_woocommerce*`).
+fn prefix_label(prefix: &str) -> String {
+    match prefix {
+        "transients" => "_transient_* / _site_transient_*".into(),
+        "(single)" => "(no prefix)".into(),
+        p => format!("{p}*"),
+    }
 }
 
 /// WordPress 6.6+ uses on/auto/auto-on; older versions yes.
@@ -92,7 +112,7 @@ pub fn overview(
         }
         let prefix = option_prefix(&row.name);
         let g = groups.entry(prefix.clone()).or_insert_with(|| OptionGroup {
-            label: super::plugins::option_prefix_label(&prefix),
+            label: prefix_label(&prefix),
             prefix,
             count: 0,
             bytes: 0,
@@ -130,12 +150,23 @@ pub fn overview(
             .then(b.bytes.cmp(&a.bytes))
     });
     transients.sort_by(|a, b| b.expired.cmp(&a.expired).then(b.bytes.cmp(&a.bytes)));
+    let mut largest_autoload: Vec<OptionSize> = rows
+        .iter()
+        .filter(|r| is_autoloaded(&r.autoload))
+        .map(|r| OptionSize {
+            name: r.name.clone(),
+            bytes: r.bytes,
+        })
+        .collect();
+    largest_autoload.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.name.cmp(&b.name)));
+    largest_autoload.truncate(LARGEST_AUTOLOAD);
 
     OptionsOverview {
         table: table.to_string(),
         total_count: rows.len() as u64,
         autoload_bytes,
         groups,
+        largest_autoload,
         transients,
     }
 }
@@ -227,8 +258,11 @@ mod tests {
         );
         assert_eq!(o.autoload_bytes, 1000);
         assert_eq!(o.groups[0].prefix, "wpseo");
+        assert_eq!(o.groups[0].label, "wpseo*");
         assert_eq!(o.groups[1].count, 2);
         assert_eq!(o.groups[1].autoload_bytes, 100);
+        let largest: Vec<&str> = o.largest_autoload.iter().map(|x| x.name.as_str()).collect();
+        assert_eq!(largest, ["wpseo_titles", "woocommerce_a"]);
     }
 
     #[test]

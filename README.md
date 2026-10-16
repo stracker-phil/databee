@@ -21,7 +21,7 @@ not a friendlier version of it: it is not a tool for site admins or shop owners.
 - **Value inspector:** decodes **PHP-serialized** and **JSON** values into a tree, including serialized data nested inside strings. Values with broken string lengths are decoded leniently, with a warning.
 - **Favorites bar** (⌘D) for tables and saved queries, and **query history** per server.
 - **WordPress mode** (the default for WordPress databases; switch to **Database** mode for tables and SQL any time):
-  - **Dashboard:** orders, autoload weight, failed actions and expired transients at a glance; a donut of autoload by plugin or table rows; order bars (hourly when only a few days have orders); failed actions grouped by hook; recent orders; alerts with one action each (set a log retention, clean up transients, review failures).
+  - **Dashboard:** orders, autoload weight, failed actions and expired transients at a glance; a donut of autoload by option name prefix or table rows; order bars (hourly when only a few days have orders); failed actions grouped by hook; recent orders; alerts with one action each (set a log retention, clean up transients, review failures).
   - **Browse:** orders, subscriptions, customers (including guest checkouts grouped by email), products, scheduled actions, sessions and content. Lists have sortable headers, status chips, filters and search; on wide windows a row opens in a side pane (↑/↓ moves, ↵ opens the page). The sidebar shows counts and only flags what needs attention (failed, on hold, expired).
   - **Purpose-built pages:**
     - Orders: addresses side by side with mismatch hints, line items with thumbnails, totals, a PayPal panel with a fee waterfall, attribution, and a timeline rail merging notes, actions, logs, refunds and the shopping session. PayPal log lines are summarized ("PayPal API · capture order → 201") with the raw entry and its source row one click away.
@@ -32,7 +32,6 @@ not a friendlier version of it: it is not a tool for site admins or shop owners.
   - **Readable values:** money, relative times, flags, links, user agents, countries, roles and guest badges; secrets stay masked; long values collapse; meta is grouped by a key registry (Profile, Billing, PayPal, Attribution, Admin UI, …).
   - **⌘K command palette** (both modes): commands with their shortcuts, tables, entities (paste an order ID, email, PayPal order or transaction ID, or SKU) and recent items. Prefixes: `>` commands, `t:` tables, `#` IDs, `@` emails. Breadcrumbs show where you are; ⌘[ / ⌘] move through history.
   - **Exploration:** hover a customer, product, order or action chip for a peek card; every value has a menu to copy it, filter the matching list by it, or find it everywhere (options, all meta tables, action args, the WooCommerce log).
-  - **Plugins lens:** which plugin owns which options, transients, meta keys, hooks, log sources and tables (registry → prefix clustering → gateway values → your manual assignments); storage per plugin; leftover data of inactive plugins with a reviewed cleanup.
   - **Editing without silent writes:** inline field edits, serialized values edited as a tree (re-serialized with correct byte lengths), order status, autoload toggles, retrying or cancelling actions, transient cleanup, and grid editing in Database mode. Every change goes into a pending tray with its SQL, applies in one transaction (⌘S) and can be undone.
   - **Debugging:** live mode highlights fields as they change; snapshot an order (with related records and actions) or an options pattern, then diff it; compare two entities side by side.
 - **Settings:** theme, accent, UI and data text sizes (⌘= / ⌘- / ⌘0 zoom both), density, row limit, timeouts, NULL label, log level, and every shortcut (rebind or unbind; conflicts are flagged).
@@ -99,7 +98,7 @@ The round-trip check against a real WordPress DB (read-only) runs with:
 
 **Files:** config and data live in `~/Library/Application Support/com.philippstracker.databee/`
 (`settings.json`, `keybindings.json`, `ui_state.json`, `favorites.json`, `connections.json`, `history.json`,
-`attributions.json` for manual plugin assignments, and the optional `entities.toml` / `plugins.toml`). Logs are in `~/Library/Logs/com.philippstracker.databee/`.
+and the optional `entities.toml`). Logs are in `~/Library/Logs/com.philippstracker.databee/`.
 
 ### Custom entities
 
@@ -113,21 +112,4 @@ table = "ppcp_vault_tokens"     # without prefix
 id = "id"
 title = "customer_id"
 links = { user_id = "user" }
-```
-
-### Plugin registry
-
-The plugins lens knows WordPress core, WooCommerce, Subscriptions, PayPal Payments, Jetpack, Action Scheduler,
-WooPay, Payoneer, WooPayments and Stripe out of the box (`src-tauri/src/wp/plugins.toml`). Add `plugins.toml`
-to the config directory to teach it more; user entries win over built-in ones.
-```toml
-[[plugin]]
-slug = "acme-widgets"
-name = "Acme Widgets"
-option_prefixes = ["acme"]
-meta_prefixes = ["_acme"]
-hook_prefixes = ["acme"]
-log_sources = ["acme-widgets"]
-tables = ["acme_"]
-gateways = ["acme-pay"]
 ```

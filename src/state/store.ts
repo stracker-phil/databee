@@ -60,8 +60,7 @@ export type WpList =
   | "actions"
   | "sessions"
   | "content"
-  | "settings"
-  | "plugins";
+  | "settings";
 
 export type WpRoute =
   | { screen: "dashboard" }
@@ -162,6 +161,8 @@ interface Actions {
   loadTables(sessionId: string, database: string): Promise<void>;
   openQueryTab(sql?: string): void;
   openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean }): void;
+  /** Switches to the Database view and opens `table` of the active database filtered by `where`. */
+  openInDatabase(table: string, where?: string): void;
   pinTab(id: string): void;
   setMode(mode: Mode): void;
   navigate(route: WpRoute): void;
@@ -412,6 +413,13 @@ export const useStore = create<Store>()((set, get) => {
         activeResult: 0,
       };
       set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id, selectedCell: null }));
+    },
+
+    openInDatabase(table, where) {
+      const database = activeSession()?.database;
+      if (!database) return;
+      get().setMode("db");
+      get().openTableTab(database, table, "data", where);
     },
 
     openTableTab(database, table, view = "data", filter, opts = {}) {

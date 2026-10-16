@@ -960,8 +960,6 @@ pub struct HookFailures {
     pub count: u64,
     pub last_failure: Option<i64>,
     pub last_message: Option<String>,
-    /// Owning plugin from the registry, when known.
-    pub owner: Option<String>,
 }
 
 pub async fn failed_by_hook(
@@ -1004,7 +1002,6 @@ pub async fn failed_by_hook(
         .map(|r| {
             let hook = text(&r[0]).unwrap_or_default();
             HookFailures {
-                owner: super::plugins::for_hook(&hook).map(|p| p.name.clone()),
                 count: num(&r[1]).unwrap_or(0),
                 last_failure: int(&r[2]),
                 last_message: text(&r[3]).and_then(|id| messages.get(&id).cloned()),

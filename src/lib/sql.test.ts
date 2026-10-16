@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { statementAt, statementRanges } from "./sql";
+import { statementAt, statementRanges, whereEquals } from "./sql";
 
 const text = (sql: string, r: { from: number; to: number } | null) => (r ? sql.slice(r.from, r.to) : null);
 
@@ -38,5 +38,13 @@ describe("statementAt", () => {
 
   it("returns null for empty input", () => {
     expect(statementAt("  ", 0)).toBeNull();
+  });
+});
+
+describe("whereEquals", () => {
+  it("quotes identifiers and strings, keeps integers bare", () => {
+    expect(whereEquals([["order_id", "3229"], ["meta_key", "_ppcp_paypal_order_id"]])).toBe("`order_id` = 3229 AND `meta_key` = '_ppcp_paypal_order_id'");
+    expect(whereEquals([["option_name", "it's\\"]])).toBe("`option_name` = 'it\\'s\\\\'");
+    expect(whereEquals([["sku", "007"]])).toBe("`sku` = '007'");
   });
 });

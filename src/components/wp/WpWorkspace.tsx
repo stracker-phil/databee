@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Boxes, CalendarClock, ChevronRight, FileText, LayoutDashboard, Puzzle, Repeat, Search, Settings2, ShoppingBag, ShoppingCart, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Boxes, CalendarClock, ChevronRight, FileText, LayoutDashboard, Repeat, Search, Settings2, ShoppingBag, ShoppingCart, Users } from "lucide-react";
 import { api, type BrowserSection } from "../../api";
 import { routeCrumbs } from "../../lib/crumbs";
 import { selectWp, selectWpRoute, useStore, type WpList, type WpRoute } from "../../state/store";
@@ -7,7 +7,6 @@ import { DashboardScreen } from "./Dashboard";
 import { ListScreen } from "./Lists";
 import { EntityScreen } from "./views/EntityScreen";
 import { SettingsScreen } from "./Settings";
-import { PluginsScreen } from "./PluginsScreen";
 import { CompareScreen, SnapshotsScreen } from "./Debugging";
 import { FindScreen } from "./FindScreen";
 import { useWpData } from "./useWpData";
@@ -21,7 +20,6 @@ const ICONS: Record<string, typeof ShoppingCart> = {
   sessions: Boxes,
   content: FileText,
   settings: Settings2,
-  plugins: Puzzle,
 };
 
 /** Statuses that need a look; everything else is just a number. */
@@ -155,7 +153,7 @@ export function WpWorkspace() {
         <Header />
         <div className="wp-content">
           {route.screen === "dashboard" && <DashboardScreen />}
-          {route.screen === "list" && (route.list === "settings" ? <SettingsScreen key={JSON.stringify(route.params ?? {})} params={route.params} /> : route.list === "plugins" ? <PluginsScreen params={route.params} /> : <ListScreen key={route.list} list={route.list} params={route.params} />)}
+          {route.screen === "list" && (route.list === "settings" ? <SettingsScreen key={JSON.stringify(route.params ?? {})} params={route.params} /> : <ListScreen key={route.list} list={route.list} params={route.params} />)}
           {route.screen === "entity" && <EntityScreen key={`${route.entity}:${route.id}`} entity={route.entity} id={route.id} />}
           {route.screen === "compare" && <CompareScreen entity={route.entity} a={route.a} b={route.b} />}
           {route.screen === "snapshots" && <SnapshotsScreen />}

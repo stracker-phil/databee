@@ -41,13 +41,13 @@ const dashboard: Dashboard = {
     total: 2611,
     byStatus: [{ value: "failed", label: "Failed", count: 3 }],
     recentFailed: [],
-    byHook: [{ hook: "woocommerce_paypal_payments_check_pui_payment_captured", count: 38, lastFailure: now - 3 * 86400, lastMessage: "PayPal API returned 500", owner: "PayPal Payments" }],
+    byHook: [{ hook: "woocommerce_paypal_payments_check_pui_payment_captured", count: 38, lastFailure: now - 3 * 86400, lastMessage: "PayPal API returned 500" }],
     overdue: 0,
   },
   hposDrift: 0,
   tables: [
-    { name: "wp_woocommerce_log", rows: 44_000, bytes: 1, category: "logs", owner: "WooCommerce" },
-    { name: "wp_wc_orders_meta", rows: 9_500, bytes: 1, category: "woocommerce", owner: "WooCommerce" },
+    { name: "wp_woocommerce_log", rows: 44_000, bytes: 1, category: "logs" },
+    { name: "wp_wc_orders_meta", rows: 9_500, bytes: 1, category: "woocommerce" },
   ],
   insights: [
     { level: "warning", text: "wp_woocommerce_log holds 54% of all rows. Consider a retention rule.", action: { label: "Set retention", kind: "change", list: null, status: null, change: { type: "deleteLogsBefore", database: "db", days: 30, source: null } } },

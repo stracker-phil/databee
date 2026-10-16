@@ -19,15 +19,18 @@ Ideas collected during the MVP. Not ordered by priority.
 - Integrity scanner: orphaned meta, dangling term relationships, items pointing to deleted products, overdue actions, HPOS sync drift.
 - Multisite: switch the lens between sub-site prefixes.
 
-## Plugin lens
+## Plugin attribution
+The prefix-based plugins lens was removed: naming heuristics can't tell which plugin owns a key
+(`woocommerce-ppcp-*` belongs to PayPal Payments, not WooCommerce). Only exact sources qualify:
 - PHP code scanning (tree-sitter) of installed plugins to learn their option/meta keys exactly.
 - Runtime attribution via a mu-plugin that records which plugin writes which key.
-- Attribute Action Scheduler groups and log sources that use generic names.
+
+## Other
 - Rebuild the native menu live when a menu-bound shortcut changes (today: after restart).
 - Split view for entity pages opened from the palette (open in a new tab).
 
 ## Done (WordPress mode)
 Dashboard with actionable alerts, list screens with split view and sorting, purpose-built pages, humanized order
 timeline, global ⌘K palette with a command registry and rebindable shortcuts, peek cards, value pivots and
-find-everywhere, guest customers, plugins lens with leftover cleanup, edits with a pending tray and undo,
+find-everywhere, guest customers, edits with a pending tray and undo,
 serialized-value tree editing, live mode, snapshots and diffs, side-by-side comparison.

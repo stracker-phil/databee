@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Eraser } from "lucide-react";
 import { api } from "../../api";
 import { formatBytes, formatCount } from "../../lib/format";
+import { whereEquals } from "../../lib/sql";
 import { selectActiveSession, selectWp, useStore } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
 import { BreakdownChart } from "./BreakdownChart";
@@ -44,6 +45,7 @@ function OptionGroup({ prefix }: { prefix: string }) {
 export function SettingsScreen({ params }: { params?: Record<string, string> }) {
   const session = useStore(selectActiveSession);
   const queueChange = useStore((s) => s.queueChange);
+  const openInDatabase = useStore((s) => s.openInDatabase);
   const [prefix, setPrefix] = useState<string | null>(params?.prefix ?? null);
   const { data, error } = useWpData(api.wpOptions, []);
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
@@ -67,8 +69,18 @@ export function SettingsScreen({ params }: { params?: Record<string, string> }) 
         <Stat label="Transients" value={formatCount(data.transients.length)} />
         <Stat label="Expired" value={formatCount(expired.length)} tone={expired.length ? "orange" : undefined} sub={expired.length ? "cleanup ready" : undefined} />
       </div>
-      <Card title="Who bloats autoload?" aside="click an owner to list its options">
+      <Card title="Autoload by name prefix" aside="click a prefix to list its options">
         <BreakdownChart items={owners} format={formatBytes} totalLabel="autoloaded" />
+      </Card>
+      <Card title="Largest autoloaded options" aside="click to open the row">
+        <div className="rows">
+          {data.largestAutoload.map((o) => (
+            <button key={o.name} className="row-link" onClick={() => openInDatabase(data.table, whereEquals([["option_name", o.name]]))}>
+              <span className="grow-text mono">{o.name}</span>
+              <span className="muted">{formatBytes(o.bytes)}</span>
+            </button>
+          ))}
+        </div>
       </Card>
       {prefix && <OptionGroup key={prefix} prefix={prefix} />}
       <Card

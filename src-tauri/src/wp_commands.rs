@@ -292,57 +292,6 @@ pub async fn wp_view(
     .await
 }
 
-fn plugin_lookup(state: &AppState) -> AppResult<Vec<crate::wp::plugins::Plugin>> {
-    let path = state.config_dir.join("plugins.toml");
-    let user = std::fs::read_to_string(&path).ok();
-    crate::wp::plugins::merged(user.as_deref())
-        .map_err(|e| AppError::InvalidInput(format!("{}: {e}", path.display())))
-}
-
-#[tauri::command]
-pub async fn wp_lens(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-) -> AppResult<crate::wp::lens::LensReport> {
-    let (ctx, _, s) = wp_env(&state, &session_id, &database).await?;
-    let plugins = plugin_lookup(&state)?;
-    let manual: crate::wp::lens::Assignments =
-        crate::wp::lens::assignments_file(&state.config_dir).load();
-    crate::wp::lens::lens(
-        &s.db,
-        &ctx,
-        &database,
-        &crate::wp::plugins::Lookup(&plugins),
-        &manual,
-    )
-    .await
-}
-
-/// Manual attribution: `slug = None` removes the override.
-#[tauri::command]
-pub fn wp_plugin_assign(
-    state: State<'_, AppState>,
-    key: String,
-    slug: Option<String>,
-) -> AppResult<crate::wp::lens::Assignments> {
-    if crate::wp::lens::KeyRef::parse(&key).is_none() {
-        return Err(AppError::InvalidInput(format!("'{key}' is not a key id")));
-    }
-    let file = crate::wp::lens::assignments_file(&state.config_dir);
-    let mut manual: crate::wp::lens::Assignments = file.load();
-    match slug.filter(|s| !s.trim().is_empty()) {
-        Some(s) => {
-            manual.insert(key, s);
-        }
-        None => {
-            manual.remove(&key);
-        }
-    }
-    file.save(&manual)?;
-    Ok(manual)
-}
-
 #[tauri::command]
 pub async fn wp_peek(
     state: State<'_, AppState>,
@@ -481,7 +430,6 @@ pub async fn plan_change(
         | C::SetAutoload { database, .. }
         | C::DeleteExpiredTransients { database }
         | C::DeleteLogsBefore { database, .. }
-        | C::DeletePluginData { database, .. }
         | C::RetryAction { database, .. }
         | C::CancelAction { database, .. } => database.clone(),
     };

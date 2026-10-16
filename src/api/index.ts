@@ -17,7 +17,6 @@ import type {
   EntityViewData,
   FindGroup,
   HookFailures,
-  LensReport,
   PeekFact,
   ListQuery,
   OrderSummary,
@@ -129,8 +128,6 @@ export const api = {
     invoke<EntityViewData>("wp_view", { sessionId, database, entity, id }),
   wpOrderLogs: (sessionId: string, database: string, id: string) =>
     invoke<TimelineEvent[]>("wp_order_logs", { sessionId, database, id }),
-  wpLens: (sessionId: string, database: string) => invoke<LensReport>("wp_lens", { sessionId, database }),
-  wpPluginAssign: (key: string, slug: string | null) => invoke<Record<string, string>>("wp_plugin_assign", { key, slug }),
   wpPeek: (sessionId: string, database: string, entity: string, id: string) =>
     invoke<PeekFact[]>("wp_peek", { sessionId, database, entity, id }),
   wpFindValue: (sessionId: string, database: string, value: string) =>

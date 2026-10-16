@@ -303,67 +303,6 @@ async fn guest_checkouts_appear_as_virtual_customers() {
 
 #[tokio::test]
 #[ignore]
-async fn plugin_lens_attributes_keys_and_reports_leftovers() {
-    use databee_lib::wp::lens::{self, Confidence, KeyKind};
-    use databee_lib::wp::plugins::Lookup;
-    for (db, ctx, _) in env().await {
-        let r = lens::lens(
-            &db,
-            &ctx,
-            "wp_test",
-            &Lookup::default(),
-            &Default::default(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(r.active_plugins, ["woocommerce"]);
-        let ppcp = r
-            .plugins
-            .iter()
-            .find(|p| p.slug == "woocommerce-paypal-payments")
-            .expect("PayPal data is attributed");
-        assert!(!ppcp.active, "PayPal is not active → leftover data");
-        assert!(
-            ppcp.keys
-                .iter()
-                .any(|k| k.stat.key.name == "_ppcp_paypal_order_id"
-                    && k.confidence == Some(Confidence::Exact))
-        );
-        assert_eq!(
-            ppcp.orders, 2,
-            "orders paid via ppcp-gateway count as value attribution"
-        );
-        let wc = r.plugins.iter().find(|p| p.slug == "woocommerce").unwrap();
-        assert!(wc.active);
-        assert!(wc.option_count >= 5);
-        assert!(wc.tables.iter().any(|t| t.key.name == "wc_orders"));
-        assert!(r.unattributed.iter().any(
-            |k| k.stat.key.name == "zzz_mystery_setting" && k.stat.key.kind == KeyKind::Option
-        ));
-        let core = r.plugins.iter().find(|p| p.slug == "core").unwrap();
-        assert!(core.tables.iter().any(|t| t.key.name == "posts"));
-
-        // Manual assignment wins and the leftover cleanup only touches options and meta.
-        let mut manual = lens::Assignments::new();
-        manual.insert("option:zzz_mystery_setting".into(), "woocommerce".into());
-        let r2 = lens::lens(&db, &ctx, "wp_test", &Lookup::default(), &manual)
-            .await
-            .unwrap();
-        assert!(
-            !r2.unattributed
-                .iter()
-                .any(|k| k.stat.key.name == "zzz_mystery_setting")
-        );
-        let ids: Vec<String> = ppcp.keys.iter().map(|k| k.stat.key.id()).collect();
-        let sql = lens::cleanup_statements("wp_test", &ctx, &ids);
-        assert!(sql.iter().all(|s| s.starts_with("DELETE FROM")));
-        assert!(sql.iter().any(|s| s.contains("_ppcp_paypal_order_id")));
-        assert!(!sql.iter().any(|s| s.contains("DROP")));
-    }
-}
-
-#[tokio::test]
-#[ignore]
 async fn peek_summarizes_an_entity_in_a_few_facts() {
     for (db, ctx, catalog) in env().await {
         let facts = databee_lib::wp::peek::peek(&db, &ctx, &catalog, "wp_test", "order", "4711")
@@ -427,7 +366,6 @@ async fn failed_actions_group_by_hook_with_last_message() {
             groups[0].last_message.as_deref(),
             Some("action failed via WP Cron: PayPal API returned 500")
         );
-        assert_eq!(groups[0].owner.as_deref(), Some("PayPal Payments"));
         assert!(groups[0].last_failure.is_some());
     }
 }
@@ -444,7 +382,6 @@ async fn entity_browser_counts_sections() {
         assert_eq!(count("products"), Some(2));
         assert_eq!(count("actions"), Some(4));
         assert_eq!(count("sessions"), Some(2));
-        assert_eq!(count("plugins"), Some(1), "active plugins");
         let content = sections.iter().find(|s| s.list == "content").unwrap();
         assert!(content.breakdown.iter().any(|f| f.value == "post"));
         assert!(

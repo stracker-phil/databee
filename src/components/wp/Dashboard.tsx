@@ -83,7 +83,6 @@ export function DashboardScreen() {
     id: t.name,
     label: t.name.replace(ctx.prefix, ""),
     value: t.rows,
-    sublabel: t.owner ?? undefined,
     onOpen: () => {
       if (!session.database) return;
       setMode("db");
@@ -130,7 +129,7 @@ export function DashboardScreen() {
 
       <div className="stat-grid">
         <Stat label="Orders" value={formatCount(data.orders?.total ?? 0)} sub={data.orders ? `+${data.orders.today} today` : "no WooCommerce"} tone={data.orders?.today ? "green" : undefined} />
-        <Stat label="Autoload" value={formatBytes(data.autoloadBytes)} sub={data.autoloadHealthy ? "healthy < 800 KB" : "heavy, check plugins"} tone={data.autoloadHealthy ? undefined : "orange"} />
+        <Stat label="Autoload" value={formatBytes(data.autoloadBytes)} sub={data.autoloadHealthy ? "healthy < 800 KB" : "heavy"} tone={data.autoloadHealthy ? undefined : "orange"} />
         <Stat label="Failed actions" value={formatCount(failed)} sub={failed ? "needs a look" : "all good"} tone={failed ? "red" : "green"} />
         <Stat label="Expired transients" value={formatCount(data.transientsExpired)} sub={data.transientsExpired ? "cleanup ready" : "none"} tone={data.transientsExpired ? "orange" : undefined} />
       </div>
@@ -143,7 +142,7 @@ export function DashboardScreen() {
         </div>
       )}
 
-      <Card title={breakdown === "autoload" ? "Who bloats autoload?" : "Table sizes by rows"} aside="click a row to open it">
+      <Card title={breakdown === "autoload" ? "Autoload by option name prefix" : "Table sizes by rows"} aside="click a row to open it">
         <BreakdownChart
           items={breakdown === "autoload" ? autoloadItems : rowItems}
           format={breakdown === "autoload" ? formatBytes : (v) => `${compact(v)} rows`}

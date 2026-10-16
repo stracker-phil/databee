@@ -84,14 +84,6 @@ pub enum ChangeRequest {
         #[serde(default)]
         source: Option<String>,
     },
-    /// Leftover data of an inactive plugin: options, transients and meta keys the lens listed.
-    #[serde(rename_all = "camelCase")]
-    DeletePluginData {
-        database: String,
-        slug: String,
-        /// Key ids as shown in the lens (`option:…`, `transient:…`, `meta:<table>:…`).
-        keys: Vec<String>,
-    },
     #[serde(rename_all = "camelCase")]
     RetryAction { database: String, id: String },
     #[serde(rename_all = "camelCase")]
@@ -539,37 +531,6 @@ pub async fn plan(
                         .unwrap_or_default()
                 ),
                 statements: vec![format!("DELETE FROM {t} WHERE {filter}")],
-                undo: vec![],
-            }
-        }
-        ChangeRequest::DeletePluginData {
-            database,
-            slug,
-            keys,
-        } => {
-            let ctx = need_wp()?;
-            let statements = super::lens::cleanup_statements(database, ctx, keys);
-            if statements.is_empty() {
-                return Err(AppError::InvalidInput(
-                    "Nothing deletable was selected (tables and logs are never dropped)".into(),
-                ));
-            }
-            let mut rows = 0u64;
-            for s in &statements {
-                let count_sql = format!("SELECT COUNT(*) {}", &s[s.find(" FROM ").unwrap_or(0)..]);
-                let rs = fetch(session, &count_sql).await?;
-                rows += rs
-                    .rows
-                    .first()
-                    .and_then(|r| super::lists::num(&r[0]))
-                    .unwrap_or(0);
-            }
-            let name = super::plugins::by_slug(slug)
-                .map(|p| p.name.clone())
-                .unwrap_or_else(|| slug.clone());
-            PlannedChange {
-                description: format!("Delete {rows} rows left behind by {name} (no undo)"),
-                statements,
                 undo: vec![],
             }
         }

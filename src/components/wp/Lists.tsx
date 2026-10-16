@@ -30,7 +30,7 @@ const DEFAULT_SPLIT = 560;
 
 type Loader = (sessionId: string, database: string, q: ListQuery) => Promise<Page<unknown>>;
 
-const LOADERS: Record<Exclude<WpList, "settings" | "plugins">, Loader> = {
+const LOADERS: Record<Exclude<WpList, "settings">, Loader> = {
   orders: (s, d, q) => api.wpOrders(s, d, "shop_order", q),
   subscriptions: (s, d, q) => api.wpOrders(s, d, "shop_subscription", q),
   customers: api.wpCustomers,
@@ -57,7 +57,7 @@ interface Column {
 }
 
 /** Header columns mirror the row layout classes so labels line up with values. */
-const COLUMNS: Record<Exclude<WpList, "settings" | "plugins">, Column[]> = {
+const COLUMNS: Record<Exclude<WpList, "settings">, Column[]> = {
   orders: [
     { label: "Order", className: "row-id", sort: "id" },
     { label: "Customer", className: "grow-text" },
@@ -309,7 +309,7 @@ function FailedByHook({ onPick }: { onPick: (hook: string) => void }) {
     id: h.hook,
     label: h.hook,
     value: h.count,
-    sublabel: [h.owner, h.lastFailure ? `last ${relativeFromUnix(h.lastFailure)}` : null].filter(Boolean).join(" · "),
+    sublabel: [h.lastFailure ? `last ${relativeFromUnix(h.lastFailure)}` : null].filter(Boolean).join(" · "),
     onOpen: () => onPick(h.hook),
   }));
   return (
@@ -319,7 +319,7 @@ function FailedByHook({ onPick }: { onPick: (hook: string) => void }) {
   );
 }
 
-export function ListScreen({ list, params }: { list: Exclude<WpList, "settings" | "plugins">; params?: Record<string, string> }) {
+export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">; params?: Record<string, string> }) {
   const [status, setStatus] = useState<string | null>(params?.status ?? null);
   const [kind, setKind] = useState<string | null>(params?.kind ?? null);
   const [searchInput, setSearchInput] = useState(params?.search ?? "");
