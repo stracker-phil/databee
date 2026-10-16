@@ -13,8 +13,10 @@ These rules hold everywhere in the code. Keep them when you change things.
 1. **Rust owns the logic; React only renders.** SQL is built in Rust, and so are planned edits, WordPress
    parsing and safety checks. The frontend never assembles a write statement on its own. It asks Rust to
    *plan* a change, shows the planned SQL, and sends it back to be applied.
-2. **One IPC boundary.** `src/api/index.ts` is the only module that calls `invoke` or `listen`. The rest of the
-   frontend imports `api` from there, which is also what UI tests mock.
+2. **IPC only in `api.ts` files, one per module.** Only a module's API file imports `@tauri-apps/api` or a
+   `@tauri-apps/plugin-*` package and calls `invoke` or `listen`. The core's file is `src/api/index.ts`;
+   a module's is `src/<module>/api.ts`. The rest of the frontend imports `api` from there, which is also
+   what UI tests mock. (Stage's wrappers still live in `src/api/index.ts` until it moves to its own file.)
 3. **Errors are data.** Every command returns `Result<T, AppError>`, which serializes as `{ kind, message, code, account }`.
    The UI branches on `kind` (e.g. `password_required`, `confirmation_required`).
 4. **Passwords never touch files, logs or the webview.** They live in the `Secret` type. It redacts in
@@ -37,7 +39,7 @@ These rules hold everywhere in the code. Keep them when you change things.
 │  │ components/          │ ──────────▶ │ #[tauri::command]s        │  │
 │  │ state/store.ts       │             │  commands.rs  db_commands │  │
 │  │ commands/ (registry) │ ◀────────── │  wp_commands  stage_cmds  │  │
-│  │ api/index.ts ◀── only│   events    ├───────────────────────────┤  │
+│  │ api/index.ts, api.ts │   events    ├───────────────────────────┤  │
 │  └──────────────────────┘ launch,     │ AppState: stores, sessions│  │
 │                           command,    │ db/ (dyn Database)       │  │
 │                           stage:*     │ wp/ (lens)  store/ (JSON) │  │
@@ -84,7 +86,8 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   tests/                   integration tests (Docker, #[ignore])
   tauri.conf.json          window, bundle and identifier config
 src/                       React app
-  api/                     the IPC boundary + types generated from Rust (ts-rs)
+  main.tsx modules.ts       boot; the install list (core, then one line per module)
+  api/                     the core's IPC file (index.ts) + types generated from Rust (ts-rs)
   state/                   zustand store: store.ts (composition root), slices/, selectors, session events
   commands/                command registry, scopes, default shortcuts
   registry/                extension points modules register into (settingsPages.ts)
@@ -97,6 +100,27 @@ dev/                       Docker fixtures for integration tests
 scripts/                   install links; dev/ drives the app headlessly
 .claude/                   rules and the ship-step skill for Claude Code
 ```
+
+## Modules
+
+A module is an optional capability (Stage, the WordPress lens) that the core works without. It keeps its
+code in its own folder and contributes to the core only through registries, so removing it is deleting the
+folder and its install line. The core never imports a module; modules import the core.
+
+- **Frontend.** `src/modules.ts` is the install list: `installModules()` runs the core's install, then one
+  call per module (`installStage()` from `src/stage/install.ts`, `installWp()` from
+  `src/components/wp/install.ts`), then `installCommands()`. `main.tsx` calls it once before the first
+  render. The registries a module can add to:
+  - store slices: `registerSlice(slice)` in `src/state/store.ts`, typed by augmenting `Store`;
+  - Settings pages: `registerSettingsPage(page)` in `src/registry/settingsPages.ts`;
+  - command scopes: `registerScope(def)` in `src/commands/scopes.ts`.
+- **Backend.** A module is an inline Tauri plugin with one install line in `lib.rs`
+  ([ADR 0010](adr/0010-inline-tauri-plugins.md), [backend](backend.md)); Stage is one, the WordPress
+  commands are still registered by the core.
+
+Not yet separated: the `wp` store slice and the WordPress commands live in the core (`src/state/slices/wp.ts`,
+`src/commands/index.ts`), `App.tsx` renders `WpWorkspace`, and the Stage wrappers are in `src/api/index.ts`.
+See [ADR 0015](adr/0015-frontend-registries.md).
 
 ## A request, end to end
 

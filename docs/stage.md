@@ -12,8 +12,8 @@ off under Settings → Presentations.
 1. `git rm -r src-tauri/src/stage src-tauri/capabilities/stage.json`.
 2. Delete `pub mod stage;` and `.plugin(stage::init(&config_dir))` in `lib.rs`, and the `.plugin("stage", …)`
    attribute and `STAGE_COMMANDS` in `build.rs`.
-3. Frontend (until 2.C2 makes it a module): delete `src/stage/`, `src/lib/stage.ts`, its registration in
-   `App.tsx`, the `stage*` wrappers in `src/api/index.ts` and the Presentations settings page.
+3. Frontend (until 2.C2 makes it a module): delete `src/stage/`, `src/lib/stage.ts`, its `installStage()` line in
+   `src/modules.ts`, the `stage*` wrappers in `src/api/index.ts` and the Presentations settings page.
 4. Optionally strip the `data-stage*` attributes (they are inert without the hook); run `bun run lint && bun run test`.
 
 ## Transport
@@ -54,7 +54,7 @@ The page side lives in `src/stage/`:
 
 | File | Responsibility |
 |---|---|
-| `install.ts` | `installStage()`, called once from `App.tsx`: registers the Presentations Settings page (`registerStageSettingsPage`) and starts the hooks (`installStageHooks`) |
+| `install.ts` | `installStage()`, called once from `installModules()` (`src/modules.ts`): registers the Presentations Settings page (`registerStageSettingsPage`) and starts the hooks (`installStageHooks`) |
 | `PresentationsPage.tsx` | Settings → Presentations: the switch, status, port, token and register command. It loads and saves `StageSettings` itself (`stageSettings`, `stageUpdateSettings`, `stageNewToken`) and polls `stageStatus` while open |
 | `hooks.ts` | Answers `stage:collect`: anchors, read from the `data-stage*` attributes, with their rects, visibility, role, list and states. Answers `stage:act` with reveal, click, type (replace or append; CodeMirror too), keys, scroll and wait, then replies with `stage_anchors` or `stage_done`. |
 | `state.ts` | `stageView()` (`connect`, `db`, `wp:<screen>`), `stageSurfaces()` (the settings window's sections are `settingsSections()`, from the settings page registry), `stageUi()` and the flat `stageState()`. `stageState()` never includes SQL text or passwords. |

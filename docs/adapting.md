@@ -104,7 +104,7 @@ WordPress mode is mostly additive, with one catch: the edit pipeline (`ChangeReq
    `wordpress` settings page.
 3. In the frontend:
    - delete `src/components/wp/` (its `install.ts` registers the `wp` and `document` scopes) and
-     `src/lib/wpFormat.ts`, and drop the `installWp()` line in `App.tsx`;
+     `src/lib/wpFormat.ts`, and drop the `installWp()` line in `src/modules.ts`;
    - delete the `wp`, `wpNav`, `mode` and `entityMeta` store slices;
    - delete the `go.*`, `document.*` and `wp.*` commands and the WordPress palette search;
    - remove the mode toggle in `Toolbar`, and render `DbWorkspace` directly in `App.tsx`.
@@ -116,7 +116,7 @@ stays.
 ## Conventions to keep
 
 - **Rust owns the logic.** The frontend doesn't build SQL.
-- **One IPC boundary.** Only `src/api/index.ts` calls Tauri.
+- **IPC only in `api.ts` files.** Only the core's `src/api/index.ts` and a module's `src/<module>/api.ts` call Tauri.
 - **Typed errors** cross the boundary as `{kind, message, code}`.
 - **No secrets in files, logs or the webview.**
 - **No silent writes.** Every write is planned, previewed, applied in a transaction, and undoable where

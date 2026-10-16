@@ -6,17 +6,22 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 ## Boot
 
 1. `index.html` loads `main.tsx`.
-2. `main.tsx` exposes the store as `window.databee` for the dev scripts. It renders
-   `<ErrorBoundary><App/></ErrorBoundary>`.
-3. `App.tsx` loads the two stylesheets and calls `useBackendEvents()` once:
-   1. `registerCoreSettingsPages()` registers the core Settings pages, then `installCommands()` registers the
-      command registry.
-   2. `loadSettings()` loads settings and keybindings. Commands are re-installed with the user's bindings,
-      then `drainLaunches()` pulls the queued launch requests (`take_launch_events`).
-   3. It subscribes to `launch` (drain again) and `command` (menu clicks → `runCommand`), and installs Stage
-      (`installStage()` in `src/stage/install.ts`: its Settings page and the Stage events).
-   4. It adds a capture-phase `keydown` → `handleKeydown`, plus `error` / `unhandledrejection` → error toast.
-4. `applyAppearance(settings)` runs whenever settings change.
+2. `main.tsx` calls `installModules()` (`src/modules.ts`, see [Modules](architecture.md#modules)) before the
+   first render:
+   1. `installCore()`: `registerCoreSettingsPages()` and `registerCoreScopes()`.
+   2. `installStage()` (`src/stage/install.ts`): the Presentations Settings page and the Stage event
+      listeners, which stay subscribed for the app's lifetime.
+   3. `installWp()` (`src/components/wp/install.ts`): the `wp` and `document` scopes.
+   4. `installCommands()`: the command registry. It runs last because some core commands use WordPress scopes.
+3. `main.tsx` assigns the store to `window.databee` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`, which
+   `bun run build:app` and `bun run app` set for the debug bundle the dev scripts drive; `bun run build`
+   (release) leaves it out. It renders `<ErrorBoundary><App/></ErrorBoundary>`.
+4. `App.tsx` loads the two stylesheets and calls `useBackendEvents()` once:
+   1. `loadSettings()` loads settings and keybindings. `installCommands()` runs again to apply the user's
+      bindings, then `drainLaunches()` pulls the queued launch requests (`take_launch_events`).
+   2. It subscribes to `launch` (drain again) and `command` (menu clicks → `runCommand`).
+   3. It adds a capture-phase `keydown` → `handleKeydown`, plus `error` / `unhandledrejection` → error toast.
+5. `applyAppearance(settings)` runs whenever settings change.
 
 Layout:
 - Without a session, the window shows `ConnectScreen`.
@@ -127,7 +132,8 @@ Conventions:
 
 ## API boundary
 
-`src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic, plus the event
+Only `api.ts` files import `@tauri-apps/api` or `@tauri-apps/plugin-*`: the core's is `src/api/index.ts`, a
+module's will be `src/<module>/api.ts` ([ADR 0002](adr/0002-ipc-in-api-files.md)). `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic, plus the event
 subscriptions `onLaunch`, `onCommand` and `onStage*`. The IPC types are generated from Rust with `ts-rs`
 ([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts`; never edit it. `bun run types`
 regenerates it (it runs the `export_bindings_*` tests), and `bun run lint` fails when the committed file is
@@ -158,7 +164,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   ```
   The core registers `global` → `db` → `table` / `editor` (`registerCoreScopes()`, called by
   `installCommands`); the WordPress lens registers `global` → `wp` → `document` from
-  `components/wp/install.ts` (`installWp()`, called in `App.tsx` before `installCommands`). Registering a
+  `components/wp/install.ts` (`installWp()`, called by `installModules()` before `installCommands`). Registering a
   command with an unregistered scope throws, which catches typos. When several commands match a key, the
   most specific active scope wins; specificity is the depth in the parent chain (`global` is 0). The
   `label` names the scope in Settings → Shortcuts.

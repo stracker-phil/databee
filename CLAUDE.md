@@ -16,7 +16,8 @@ commands, files or extension points change. Document by file and symbol, never b
 - macOS 27, Apple Silicon only
 
 ## Architecture
-- Rust owns all logic; React only renders. `src/api/index.ts` is the only `invoke` caller (tests mock it).
+- Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen`, one per module
+  (`src/<module>/api.ts`; the core's is `src/api/index.ts`). Tests mock them.
 - `src-tauri/src/`: `cli.rs` (argv), `ipc.rs` (single-instance socket), `db/` (lexer, safety, cell decoding,
   `mysql/` session: dedicated editor connection + metadata pool), `store/` (JSON files), `wp/` (WordPress lens:
   `context` detection, lossless `php` serialize parser, `value` trees, TOML `entities` + resolver, `options`), `stage/` (Stage presentation hook: local HTTP API,

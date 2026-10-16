@@ -77,7 +77,9 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`).
 | `scripts/dev/screenshot.sh out.png` | captures the DataBee window, also while it is in the background |
 | `bun run app` | builds and `open`s the app; this takes focus |
 
-The store is available as `window.databee`:
+The store is available as `window.databee` in the debug bundle: `bun run build:app` (and `bun run app`) set
+`VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build (`bun run build`)
+has no `window.databee`.
 
 ```sh
 scripts/dev/js.sh 'databee.getState().openDialog({type:"settings", page:"shortcuts"})'

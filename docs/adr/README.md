@@ -5,11 +5,21 @@ the docs pages explain how. An accepted decision is never edited: a new record s
 
 | No. | Title | Status |
 |---|---|---|
+| [0001](0001-rust-owns-the-logic.md) | Rust owns the logic, React only renders | Accepted |
+| [0002](0002-ipc-in-api-files.md) | IPC only through `api.ts` files, one per module | Accepted |
+| [0003](0003-errors-as-kinds.md) | Errors cross IPC as `{kind, message, code}` | Accepted |
+| [0004](0004-passwords-in-secret.md) | Passwords live in `Secret` | Accepted |
+| [0005](0005-own-single-instance-socket.md) | Own Unix-socket single-instance handoff | Accepted |
+| [0006](0006-two-channels-per-connection.md) | Two channels per connection | Accepted |
+| [0007](0007-plan-review-apply-undo.md) | Plan, review, apply in one transaction, undo | Accepted |
+| [0008](0008-wp-layer-shows-stored-data.md) | The WordPress layer shows stored data, no naming heuristics | Accepted |
+| [0009](0009-script-as-one-call.md) | A script runs as one multi-statement call | Accepted |
 | [0010](0010-inline-tauri-plugins.md) | Optional features are inline Tauri plugins with one install line | Accepted |
 | [0011](0011-database-trait-object.md) | Driver seam is a `Database` trait object with a `Dialect` value | Accepted |
 | [0012](0012-plans-applied-by-id.md) | Planned changes are stored server-side and applied by id | Accepted |
 | [0013](0013-session-extensions.md) | Per-session module data lives in `Session.ext` | Accepted |
 | [0014](0014-generated-ipc-types.md) | TypeScript IPC types are generated from Rust with ts-rs | Accepted |
+| [0015](0015-frontend-registries.md) | Frontend modules contribute through registries | Accepted |
 | [0016](0016-module-settings-files.md) | Module settings live in the module's own JSON file | Accepted |
 | [0017](0017-panic-unwind.md) | Keep `panic = "unwind"` so a panic in one command does not take the app down | Accepted |
 | [0018](0018-escaping-follows-sql-mode.md) | Value escaping follows the server's `sql_mode` | Accepted |

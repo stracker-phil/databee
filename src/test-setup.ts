@@ -4,12 +4,15 @@ import { cleanup } from "@testing-library/react";
 
 afterEach(() => cleanup());
 
-// Commands need their scopes registered first. Imported lazily so a test file's `vi.mock("../api")`
-// is already in place when the store loads.
+// The core install (scopes and settings pages) plus the WordPress module, whose scopes commands depend on.
+// Stage is not installed here; its tests call `installStage()`. Imported lazily so a test file's
+// `vi.mock("../api")` is already in place when the store loads.
 beforeEach(async () => {
   const { registerCoreScopes } = await import("./commands");
+  const { registerCoreSettingsPages } = await import("./components/settings/pages");
   const { installWp } = await import("./components/wp/install");
   registerCoreScopes();
+  registerCoreSettingsPages();
   installWp();
 });
 
