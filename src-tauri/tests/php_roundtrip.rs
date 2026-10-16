@@ -28,9 +28,14 @@ async fn every_serialized_value_round_trips() {
         database: Some(database.clone()),
     };
     let password = url.password().map(Secret::new);
-    let db = MySqlSession::connect(&spec, password.as_ref(), Duration::from_secs(10))
-        .await
-        .unwrap();
+    let db = MySqlSession::connect(
+        &spec,
+        password.as_ref(),
+        Duration::from_secs(10),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
     let ctx = detect(&db, &database)
         .await
         .unwrap()
@@ -106,9 +111,14 @@ async fn wordpress_mode_queries_work_on_real_data() {
         database: Some(database.clone()),
     };
     let password = url.password().map(Secret::new);
-    let db = MySqlSession::connect(&spec, password.as_ref(), Duration::from_secs(10))
-        .await
-        .unwrap();
+    let db = MySqlSession::connect(
+        &spec,
+        password.as_ref(),
+        Duration::from_secs(10),
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
     let ctx = detect(&db, &database)
         .await
         .unwrap()

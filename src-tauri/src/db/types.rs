@@ -73,7 +73,8 @@ pub struct IndexInfo {
 pub struct TableStructure {
     pub columns: Vec<ColumnInfo>,
     pub indexes: Vec<IndexInfo>,
-    pub ddl: String,
+    /// `None` when `SHOW CREATE TABLE` returned no row.
+    pub ddl: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Default)]

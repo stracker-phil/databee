@@ -31,22 +31,36 @@ Every connection opens **two channels**:
   `USE` runs on it, so session state survives between runs: `USE`, `@vars`, `SET`, open transactions and
   temporary tables all persist. Its server thread id comes from `CONNECTION_ID()` and is kept for cancelling.
 - **The metadata pool.** This is a `MySqlPool` of 3 connections. It serves schema introspection, table
-  browsing, WordPress reads, applying planned changes and `KILL`. Pool connections don't share the editor's
+  browsing, WordPress reads and applying planned changes. Pool connections don't share the editor's
   `USE`, so these queries always use qualified `` `db`.`table` `` names.
 
+`connect` opens the pool and the editor connection concurrently (`tokio::try_join!`) under one
+`connect_timeout`. The editor connection has no statement cache (`statement_cache_capacity(0)`), so the
+statements that column recovery prepares are closed right away instead of staying open on the server.
+
 Other details:
-- **Connect options** are built from `ConnectionSpec`: socket or host and port, user, optional password and
-  database. Server defaults are left alone on purpose: sqlx is told not to change `sql_mode`, `time_zone` or
+- **Connect options** are built from `ConnectionSpec`: socket or host and port, user and optional password
+  (`connect_options`). The database is added per connection (`with_database`): the spec's database for the
+  pool and the first editor connection, the current database on reconnect, none for `KILL`. Server defaults are left alone on purpose: sqlx is told not to change `sql_mode`, `time_zone` or
   `PIPES_AS_CONCAT`.
-- **Timeouts:**
-  - `connect_timeout_secs` covers connecting.
-  - `query_timeout_secs` covers `execute`, `browse` and `fetch`. When an `execute` times out, DataBee kills the
-    whole editor connection, reconnects it, and returns `timeout`.
-- **Cancel** runs `KILL QUERY <editor thread id>` on the pool. Cancel doesn't need the editor lock, which the
-  running query holds. A cancelled query on MariaDB returns error 1317, which maps to `cancelled`. MySQL
-  instead reports an interrupted `SLEEP` as a result row.
-- **Reconnects:** when `execute` fails with a connection error, the editor connection is rebuilt with the
-  current database. The query itself is not retried.
+- **Timeouts:** every server call is bounded, so a half-dead connection can't hang a command.
+  - `connect_timeout_secs` covers connecting, reconnecting the editor and the one-off `KILL` connection
+    (`connect_within`; a timeout is a `connection` error).
+  - `query_timeout_secs` covers `execute`, `browse`, `fetch` and `apply` (read per call) and the metadata
+    calls `use_database`, `databases`, `tables`, `structure` and `completion` (`query_within`, using the value
+    stored on `MySqlSession` at connect time). A timeout is a `timeout` error.
+  - When an `execute` times out, DataBee kills the whole editor connection, reconnects it, and returns
+    `timeout`. A timed-out `browse`, `fetch` or `apply` closes its pool connection instead of returning it.
+    If `apply` times out after `COMMIT` was sent, it returns a `database` error saying the outcome is
+    unknown.
+- **Cancel** runs `KILL QUERY <editor thread id>` on a one-off connection, so it works while the running query
+  holds the editor lock and every pool connection is busy. `cancel_query` returns the `KILL` error, if any. A
+  cancelled query on MariaDB returns error 1317, which maps to `cancelled`. MySQL instead reports an
+  interrupted `SLEEP` as a result row.
+- **Reconnects:** when `execute` fails with a `connection` error (including a server-side kill or
+  `wait_timeout`, see the error mapping in [backend.md](backend.md#errors)), the editor connection is rebuilt
+  with the current database. The query itself is not retried. A failed reconnect is logged; the next run
+  tries again.
 - **TLS:** none. sqlx is compiled without a TLS backend. `mysql-rsa` handles `caching_sha2_password` over
   plaintext connections. To add TLS:
   1. Enable `tls-rustls` in `Cargo.toml`.
@@ -77,9 +91,11 @@ Other details:
    `affectedRows` and `lastInsertId`.
 4. **Row limit.** Rows beyond `row_limit` are counted but not decoded: `totalRows` stays exact and
    `truncated` is set. The query editor has no paging.
-5. **Empty results.** The text protocol sends no column metadata for an empty result. When the lexer's split
-   matches the result count, statements that `classify::returns_rows` accepts are `PREPARE`d to recover their
-   column names. It accepts `SELECT` (also in parentheses), `SHOW`, `DESC`/`DESCRIBE`, `EXPLAIN`, `VALUES`,
+5. **Empty results.** `run_script` collects the stream into one `ResultSet` per statement (`ScriptResults`).
+   The text protocol sends no column metadata for an empty result. When the lexer's split matches the result
+   count, a result without columns and with 0 affected rows whose statement `classify::returns_rows` accepts
+   is `PREPARE`d to recover its column names (`needs_column_recovery`). A failed `PREPARE` is logged at debug
+   level. It accepts `SELECT` (also in parentheses), `SHOW`, `DESC`/`DESCRIBE`, `EXPLAIN`, `VALUES`,
    `TABLE`, `CALL`, `CHECK`, `ANALYZE`, `OPTIMIZE`, `REPAIR`, `CHECKSUM`, `HANDLER`, and `WITH …` when the
    statement after the CTEs is `SELECT`, `TABLE` or `VALUES`.
 
@@ -87,8 +103,9 @@ Other details:
    quotes a string (`ANSI_QUOTES` is ignored), and there is no `DELIMITER` support. Where they apply, the
    count can differ and the column recovery is skipped.
 6. **History.** A history entry is written for every run, including failed ones.
-7. **Current database.** `SELECT DATABASE()` refreshes the session's current database after every run. The
-   UI follows a `USE` this way.
+7. **Current database.** `SELECT DATABASE()` refreshes the session's current database after every run,
+   inside the same timeout. The UI follows a `USE` this way. If this probe fails, the results are still
+   returned and the current database stays as it was.
 
 ### Cell decoding
 
@@ -133,7 +150,8 @@ Introspection uses `information_schema`:
 - `SCHEMATA` for databases;
 - `TABLES` for row estimates, sizes and views;
 - `COLUMNS` and `STATISTICS` for structure and indexes;
-- `SHOW CREATE TABLE` for the DDL;
+- `SHOW CREATE TABLE` for the DDL (`TableStructure.ddl` is `null` when it returns no row; the UI then shows
+  no DDL block). `structure` runs these three queries concurrently;
 - `COLUMNS` again for editor autocompletion.
 
 ## Editing rows

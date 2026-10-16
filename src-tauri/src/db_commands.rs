@@ -37,18 +37,22 @@ pub async fn connect(state: State<'_, AppState>, args: ConnectArgs) -> AppResult
             .and_then(|id| state.launches.take_password(id))
     });
     let source = resolve_password(explicit, state.secrets.as_ref(), &args.spec);
-    let timeout = Duration::from_secs(state.settings.get().connect_timeout_secs.into());
+    let settings = state.settings.get();
+    let connect_timeout = Duration::from_secs(settings.connect_timeout_secs.into());
+    let query_timeout = Duration::from_secs(settings.query_timeout_secs.into());
     let identity = args.spec.identity();
     log::info!("Connecting to {identity}");
 
-    let db = match MySqlSession::connect(&args.spec, source.secret(), timeout).await {
+    let connecting =
+        MySqlSession::connect(&args.spec, source.secret(), connect_timeout, query_timeout).await;
+    let db = match connecting {
         Ok(db) => db,
         Err(AppError::AuthFailed(message)) => {
             log::warn!("Authentication failed for {identity}");
             return Err(match source {
                 PasswordSource::None => AppError::PasswordRequired(args.spec.account()),
                 PasswordSource::Stored(_) => AppError::AuthFailed(format!(
-                    "the password stored in the Keychain was rejected ({message})"
+                    "The password stored in the Keychain was rejected ({message})"
                 )),
                 PasswordSource::Provided(_) => AppError::AuthFailed(message),
             });
@@ -191,7 +195,7 @@ pub async fn execute(
 
 #[tauri::command]
 pub async fn cancel_query(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
-    state.sessions.get(&session_id)?.db.cancel().await;
+    state.sessions.get(&session_id)?.db.cancel().await?;
     log::info!("Cancel requested");
     Ok(())
 }

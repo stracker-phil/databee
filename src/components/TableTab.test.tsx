@@ -80,4 +80,23 @@ describe("TableTab", () => {
     expect(fitted).toBeLessThan(300);
     expect(fitted).toBeGreaterThanOrEqual(39);
   });
+
+  describe("structure view", () => {
+    const structureTab: TableTabState = { ...tab, view: "structure" };
+
+    it("shows the DDL with a copy button when the table has a DDL", async () => {
+      render(<TableTab tab={structureTab} />);
+      expect(await screen.findByRole("heading", { name: /DDL/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Copy DDL" })).toBeInTheDocument();
+      expect(screen.getByText("CREATE TABLE wp_posts (...)")).toBeInTheDocument();
+    });
+
+    it("hides the DDL heading and copy button when the DDL is null", async () => {
+      mocked.describeTable.mockResolvedValue({ ...structure, ddl: null });
+      render(<TableTab tab={structureTab} />);
+      expect(await screen.findByRole("heading", { name: "Columns" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /DDL/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Copy DDL" })).not.toBeInTheDocument();
+    });
+  });
 });

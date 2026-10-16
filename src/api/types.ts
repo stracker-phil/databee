@@ -263,7 +263,7 @@ export interface IndexInfo {
 export interface TableStructure {
   columns: ColumnInfo[];
   indexes: IndexInfo[];
-  ddl: string;
+  ddl: string | null;
 }
 
 export interface BrowseRequest {

@@ -35,9 +35,14 @@ fn spec(host: &str, port: u16) -> ConnectionSpec {
 async fn sessions() -> Vec<MySqlSession> {
     let mut out = Vec::new();
     for (host, port) in servers() {
-        let s = MySqlSession::connect(&spec(&host, port), Some(&Secret::new("root")), TIMEOUT)
-            .await
-            .unwrap_or_else(|e| panic!("{host}:{port}: {e}"));
+        let s = MySqlSession::connect(
+            &spec(&host, port),
+            Some(&Secret::new("root")),
+            TIMEOUT,
+            TIMEOUT,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{host}:{port}: {e}"));
         out.push(s);
     }
     out
@@ -63,10 +68,15 @@ async fn connects_and_reports_server_version_and_database() {
 #[ignore]
 async fn wrong_password_is_an_auth_error() {
     for (host, port) in servers() {
-        let err = MySqlSession::connect(&spec(&host, port), Some(&Secret::new("nope")), TIMEOUT)
-            .await
-            .err()
-            .unwrap();
+        let err = MySqlSession::connect(
+            &spec(&host, port),
+            Some(&Secret::new("nope")),
+            TIMEOUT,
+            TIMEOUT,
+        )
+        .await
+        .err()
+        .unwrap();
         assert_eq!(err.kind(), "auth_failed", "{host}:{port}: {err:?}");
     }
 }
@@ -74,7 +84,7 @@ async fn wrong_password_is_an_auth_error() {
 #[tokio::test]
 #[ignore]
 async fn unreachable_server_is_a_connection_error() {
-    let err = MySqlSession::connect(&spec("127.0.0.1", 1), None, TIMEOUT)
+    let err = MySqlSession::connect(&spec("127.0.0.1", 1), None, TIMEOUT, TIMEOUT)
         .await
         .err()
         .unwrap();
@@ -111,7 +121,12 @@ async fn describes_columns_indexes_and_ddl() {
             st.indexes[1].columns,
             ["post_type", "post_status", "post_date", "ID"]
         );
-        assert!(st.ddl.starts_with("CREATE TABLE `wp_posts`"));
+        assert!(
+            st.ddl
+                .as_deref()
+                .unwrap()
+                .starts_with("CREATE TABLE `wp_posts`")
+        );
     }
 }
 
@@ -252,13 +267,140 @@ async fn cancel_interrupts_a_running_query() {
             tokio::spawn(async move { s.execute("SELECT SLEEP(10)", 10, TIMEOUT).await })
         };
         tokio::time::sleep(Duration::from_millis(500)).await;
-        s.cancel().await;
+        s.cancel().await.unwrap();
         // MySQL reports an interrupted SLEEP as a result row (1); MariaDB as error 1317.
         match runner.await.unwrap() {
             Err(e) => assert_eq!(e.kind(), "cancelled"),
             Ok(r) => assert_eq!(text(&r.results[0].rows[0][0]), "1"),
         }
         assert!(s.execute("SELECT 1", 10, TIMEOUT).await.is_ok());
+    }
+}
+
+async fn connect(host: &str, port: u16) -> MySqlSession {
+    MySqlSession::connect(
+        &spec(host, port),
+        Some(&Secret::new("root")),
+        TIMEOUT,
+        TIMEOUT,
+    )
+    .await
+    .unwrap_or_else(|e| panic!("{host}:{port}: {e}"))
+}
+
+#[tokio::test]
+#[ignore]
+async fn with_delete_keeps_its_affected_rows() {
+    for s in sessions().await {
+        s.execute("DROP TABLE IF EXISTS cte_delete", 10, TIMEOUT)
+            .await
+            .unwrap();
+        if s.server_version.contains("MariaDB") {
+            continue;
+        }
+        let r = s
+            .execute(
+                "DROP TABLE IF EXISTS cte_delete; \
+                 CREATE TABLE cte_delete (id int PRIMARY KEY); \
+                 INSERT INTO cte_delete VALUES (1), (2), (3); \
+                 WITH c AS (SELECT 1) DELETE FROM cte_delete; \
+                 DROP TABLE cte_delete",
+                10,
+                TIMEOUT,
+            )
+            .await
+            .unwrap();
+        let delete = &r.results[3];
+        assert_eq!(delete.affected_rows, 3);
+        assert!(!delete.returns_rows);
+        assert!(delete.columns.is_empty());
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn structure_of_a_created_table_includes_its_ddl() {
+    for s in sessions().await {
+        s.execute(
+            "DROP TABLE IF EXISTS ddl_probe; CREATE TABLE ddl_probe (id int PRIMARY KEY)",
+            10,
+            TIMEOUT,
+        )
+        .await
+        .unwrap();
+        let st = s.structure("databee_test", "ddl_probe").await;
+        s.execute("DROP TABLE ddl_probe", 10, TIMEOUT)
+            .await
+            .unwrap();
+        let ddl = st.unwrap().ddl;
+        assert!(
+            ddl.as_deref()
+                .is_some_and(|d| d.starts_with("CREATE TABLE")),
+            "{ddl:?}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn cancel_reaches_the_editor_while_every_pool_connection_is_busy() {
+    for (host, port) in servers() {
+        let s = Arc::new(connect(&host, port).await);
+        let busy: Vec<_> = (0..3)
+            .map(|_| {
+                let s = s.clone();
+                tokio::spawn(async move { s.fetch("SELECT SLEEP(5)", TIMEOUT).await })
+            })
+            .collect();
+        let runner = {
+            let s = s.clone();
+            tokio::spawn(async move { s.execute("SELECT SLEEP(10)", 10, TIMEOUT).await })
+        };
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+
+        let started = std::time::Instant::now();
+        s.cancel()
+            .await
+            .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
+        match runner.await.unwrap() {
+            Err(e) => assert_eq!(e.kind(), "cancelled", "{host}:{port}"),
+            Ok(r) => assert_eq!(text(&r.results[0].rows[0][0]), "1", "{host}:{port}"),
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "{host}:{port}: cancel took {:?}",
+            started.elapsed()
+        );
+        for task in busy {
+            task.await.unwrap().unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn killed_editor_connection_fails_once_then_reconnects() {
+    for (host, port) in servers() {
+        let s = connect(&host, port).await;
+        let other = connect(&host, port).await;
+        let id = s
+            .execute("SELECT CONNECTION_ID()", 10, TIMEOUT)
+            .await
+            .unwrap();
+        let id = text(&id.results[0].rows[0][0]).to_string();
+        other
+            .execute(&format!("KILL {id}"), 10, TIMEOUT)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        let err = s.execute("SELECT 1", 10, TIMEOUT).await.unwrap_err();
+        assert_eq!(err.kind(), "connection", "{host}:{port}: {err:?}");
+        let r = s
+            .execute("SELECT 1", 10, TIMEOUT)
+            .await
+            .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
+        assert_eq!(text(&r.results[0].rows[0][0]), "1", "{host}:{port}");
     }
 }
 

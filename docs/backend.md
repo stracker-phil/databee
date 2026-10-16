@@ -191,11 +191,11 @@ and `Secret`. `Secret` prints as `Secret(***)`, cannot be serialized, and gives 
 
 | kind | Raised for |
 |---|---|
-| `database` | server errors; `code` is the MySQL error number |
-| `connection` | IO/TLS failures, pool timeouts, connect timeouts |
-| `auth_failed` | MySQL error 1045 |
+| `database` | server errors; `code` is the MySQL error number, or the SQLSTATE when there is none |
+| `connection` | IO/TLS/protocol failures, a crashed connection worker, pool timeouts or a closed pool, connect timeouts, and MySQL errors 1053, 1927, 2006, 2013, 4031 (the connection is gone, so `execute` reconnects) |
+| `auth_failed` | MySQL error 1045 (the message is the server's) |
 | `password_required` | no password was available |
-| `timeout` | the query exceeded the timeout |
+| `timeout` | the query exceeded the timeout; the message shows `500 ms` below one second, else whole seconds |
 | `cancelled` | MySQL error 1317, or the user cancelled |
 | `confirmation_required` | a destructive statement without `confirmed` |
 | `session_not_found` | a stale session id |

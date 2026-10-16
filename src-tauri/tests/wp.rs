@@ -28,9 +28,14 @@ async fn sessions() -> Vec<MySqlSession> {
             database: Some("wp_test".into()),
         };
         out.push(
-            MySqlSession::connect(&spec, Some(&Secret::new("root")), Duration::from_secs(10))
-                .await
-                .unwrap(),
+            MySqlSession::connect(
+                &spec,
+                Some(&Secret::new("root")),
+                Duration::from_secs(10),
+                Duration::from_secs(10),
+            )
+            .await
+            .unwrap(),
         );
     }
     out

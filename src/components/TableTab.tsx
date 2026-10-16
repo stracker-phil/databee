@@ -218,7 +218,6 @@ function DataView({ tab }: { tab: TableTabState }) {
 }
 
 function StructureView({ tab }: { tab: TableTabState }) {
-  const toast = useStore((s) => s.toast);
   const [structure, setStructure] = useState<TableStructure | null>(null);
   const [error, setError] = useState<AppError | null>(null);
 
@@ -276,19 +275,26 @@ function StructureView({ tab }: { tab: TableTabState }) {
           </tbody>
         </table>
       </div>
-      <div>
-        <h3 style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          DDL
-          <button
-            className="icon-btn"
-            aria-label="Copy DDL"
-            onClick={() => void navigator.clipboard.writeText(structure.ddl).then(() => toast("success", "Copied DDL"))}
-          >
-            <Copy size="0.923rem" />
-          </button>
-        </h3>
-        <pre className="ddl">{structure.ddl}</pre>
-      </div>
+      {structure.ddl !== null && <Ddl ddl={structure.ddl} />}
+    </div>
+  );
+}
+
+function Ddl({ ddl }: { ddl: string }) {
+  const toast = useStore((s) => s.toast);
+  return (
+    <div>
+      <h3 style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        DDL
+        <button
+          className="icon-btn"
+          aria-label="Copy DDL"
+          onClick={() => void navigator.clipboard.writeText(ddl).then(() => toast("success", "Copied DDL"))}
+        >
+          <Copy size="0.923rem" />
+        </button>
+      </h3>
+      <pre className="ddl">{ddl}</pre>
     </div>
   );
 }
