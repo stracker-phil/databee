@@ -33,6 +33,19 @@ describe("bindings", () => {
     expect(normalizeBinding("Mod+")).toBeNull();
   });
 
+  it("treats a trailing ++ as the plus key", () => {
+    expect(normalizeBinding("Mod++")).toBe("Mod++");
+    expect(normalizeBinding("shift+mod++")).toBe("Mod+Shift++");
+    expect(bindingLabel("Mod+Shift++")).toBe("⌘⇧+");
+  });
+
+  it("returns an override that binds the plus key", () => {
+    registerCommands([cmd("x", "global")]);
+    setOverrides({ x: "Mod+Shift++" });
+    expect(bindingFor("x")).toBe("Mod+Shift++");
+    clearCommands();
+  });
+
   it("reads bindings from keyboard events and labels them with macOS glyphs", () => {
     expect(bindingFromEvent(key("k", { meta: true, shift: true }))).toBe("Mod+Shift+K");
     expect(bindingFromEvent(key("Tab", { ctrl: true }))).toBe("Ctrl+Tab");

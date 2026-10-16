@@ -293,15 +293,15 @@ export interface BrowsePage {
 /** Per-connection UI state, keyed by connection identity on the Rust side. */
 export interface UiState {
   tables: Record<string, { widths: Record<string, number> }>;
-  splitWidth: number | null;
+  detailPaneWidth: number | null;
   inspectorWidth: number | null;
-  paneHeight: number | null;
-  editorHeight: number | null;
+  bottomPaneHeight: number | null;
+  sqlEditorHeight: number | null;
 }
 
-export type PaneSize = "splitWidth" | "inspectorWidth" | "paneHeight" | "editorHeight";
+export type PaneSize = "detailPaneWidth" | "inspectorWidth" | "bottomPaneHeight" | "sqlEditorHeight";
 
-export const EMPTY_UI_STATE: UiState = { tables: {}, splitWidth: null, inspectorWidth: null, paneHeight: null, editorHeight: null };
+export const EMPTY_UI_STATE: UiState = { tables: {}, detailPaneWidth: null, inspectorWidth: null, bottomPaneHeight: null, sqlEditorHeight: null };
 
 export type FavoriteTarget =
   | { kind: "table"; database: string; table: string }
@@ -314,10 +314,14 @@ export interface Favorite {
   target: FavoriteTarget;
 }
 
+export type NewFavorite = Omit<Favorite, "id">;
+
 export interface HistoryEntry {
   account: string;
   database: string | null;
   sql: string;
+  /** The stored SQL was cut to 64 KiB. */
+  truncated: boolean;
   executedAt: string;
   elapsedMs: number;
   error: string | null;

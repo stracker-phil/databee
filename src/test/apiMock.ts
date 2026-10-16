@@ -26,7 +26,8 @@ export function createApiMock(): typeof realApi {
     cancelQuery: vi.fn().mockResolvedValue(undefined),
     browseTable: vi.fn(),
     listFavorites: vi.fn().mockResolvedValue([]),
-    saveFavorite: vi.fn(async (f) => ({ ...f, id: f.id || "new-id" })),
+    createFavorite: vi.fn(async (f) => ({ ...f, id: "new-id" })),
+    updateFavorite: vi.fn(async (f) => f),
     removeFavorite: vi.fn().mockResolvedValue(undefined),
     reorderFavorites: vi.fn().mockResolvedValue(undefined),
     listHistory: vi.fn().mockResolvedValue([]),
@@ -72,7 +73,7 @@ export function createApiMock(): typeof realApi {
     onLaunch: vi.fn().mockResolvedValue(() => {}),
     onCommand: vi.fn().mockResolvedValue(() => {}),
     getKeybindings: vi.fn().mockResolvedValue({}),
-    getUiState: vi.fn().mockResolvedValue({ tables: {}, splitWidth: null, inspectorWidth: null, paneHeight: null, editorHeight: null } satisfies UiState),
+    getUiState: vi.fn().mockResolvedValue({ tables: {}, detailPaneWidth: null, inspectorWidth: null, bottomPaneHeight: null, sqlEditorHeight: null } satisfies UiState),
     setUiState: vi.fn().mockImplementation(async (_i: string, ui: UiState) => ui),
     setKeybindings: vi.fn().mockImplementation(async (b: Keybindings) => b),
   };

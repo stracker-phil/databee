@@ -46,7 +46,7 @@ describe("resizable panes", () => {
     const handle = screen.getByRole("separator", { name: "Resize inspector" });
     expect(handle).toHaveAttribute("aria-orientation", "horizontal");
     drag(handle, { y: 600 }, { y: 400 });
-    await vi.waitFor(() => expect(mocked.setUiState).toHaveBeenLastCalledWith(session.identity, expect.objectContaining({ paneHeight: 520 })), { timeout: 1500 });
+    await vi.waitFor(() => expect(mocked.setUiState).toHaveBeenLastCalledWith(session.identity, expect.objectContaining({ bottomPaneHeight: 520 })), { timeout: 1500 });
   });
 
   it("resizes the SQL editor against the results, also with the keyboard", async () => {
@@ -57,7 +57,7 @@ describe("resizable panes", () => {
     drag(handle, { y: 300 }, { y: 220 });
     expect(handle).toHaveAttribute("aria-valuenow", "60");
     fireEvent.keyDown(handle, { key: "ArrowDown" });
-    await vi.waitFor(() => expect(mocked.setUiState).toHaveBeenLastCalledWith(session.identity, expect.objectContaining({ editorHeight: 76 })), { timeout: 1500 });
+    await vi.waitFor(() => expect(mocked.setUiState).toHaveBeenLastCalledWith(session.identity, expect.objectContaining({ sqlEditorHeight: 76 })), { timeout: 1500 });
   });
 
   it("toggles the dock from the View menu command", async () => {

@@ -336,8 +336,8 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
   const { replaceRoute, openEntity } = useStore.getState();
   const bottom = useStore((s) => s.settings?.inspectorDock === "bottom");
   const { width, height } = useWindowSize();
-  const side = usePaneSize("splitWidth", DEFAULT_SPLIT, 360, width - 480);
-  const below = usePaneSize("paneHeight", DEFAULT_PANE_HEIGHT, 160, height - 260);
+  const side = usePaneSize("detailPaneWidth", DEFAULT_SPLIT, 360, width - 480);
+  const below = usePaneSize("bottomPaneHeight", DEFAULT_PANE_HEIGHT, 160, height - 260);
   const pane = bottom ? below : side;
   const split = bottom || width >= SPLIT_MIN_WIDTH;
   const selected = route.screen === "list" && route.list === list ? (route.selected ?? null) : null;

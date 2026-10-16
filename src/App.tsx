@@ -51,7 +51,7 @@ function DbWorkspace() {
   const bottom = useStore((s) => s.settings?.inspectorDock === "bottom");
   const { width, height } = useWindowSize();
   const side = usePaneSize("inspectorWidth", 360, 240, width - 700);
-  const below = usePaneSize("paneHeight", DEFAULT_PANE_HEIGHT, 160, height - 260);
+  const below = usePaneSize("bottomPaneHeight", DEFAULT_PANE_HEIGHT, 160, height - 260);
   const main = (
     <main className="main">
       <TabBar />

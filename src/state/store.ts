@@ -741,9 +741,12 @@ export const useStore = create<Store>()((set, get) => {
       const session = activeSession();
       if (!session) return;
       try {
-        await api.saveFavorite({ id: "", name, scope: global ? null : accountOf(session.spec), target });
+        await api.createFavorite({ name, scope: global ? null : accountOf(session.spec), target });
         await get().loadFavorites();
       } catch (e) {
+        const error = toAppError(e);
+        // Rust refuses a duplicate target; that is a notice, not a failure.
+        if (error.kind === "invalid_input") return get().toast("info", error.message);
         fail(e, "Could not add favorite");
       }
     },
@@ -775,7 +778,7 @@ export const useStore = create<Store>()((set, get) => {
 
     async renameFavorite(favorite, name) {
       try {
-        await api.saveFavorite({ ...favorite, name });
+        await api.updateFavorite({ ...favorite, name });
         await get().loadFavorites();
       } catch (e) {
         fail(e, "Could not rename favorite");
@@ -786,7 +789,7 @@ export const useStore = create<Store>()((set, get) => {
       const session = activeSession();
       if (!session) return;
       try {
-        await api.saveFavorite({ ...favorite, scope: favorite.scope ? null : accountOf(session.spec) });
+        await api.updateFavorite({ ...favorite, scope: favorite.scope ? null : accountOf(session.spec) });
         await get().loadFavorites();
       } catch (e) {
         fail(e, "Could not update favorite");

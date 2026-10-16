@@ -58,7 +58,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, tab.id, tab.sql]);
   const { height } = useWindowSize();
-  const editor = usePaneSize("editorHeight", 140, 48, height - 320);
+  const editor = usePaneSize("sqlEditorHeight", 140, 48, height - 320);
   const results = tab.response?.results ?? [];
   const result = results[tab.activeResult];
 

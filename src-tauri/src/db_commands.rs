@@ -178,6 +178,7 @@ pub async fn execute(
         account: session.spec.account(),
         database,
         sql,
+        truncated: false,
         executed_at: chrono::Utc::now(),
         elapsed_ms: started.elapsed().as_millis() as u64,
         error: response.as_ref().err().map(ToString::to_string),

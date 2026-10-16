@@ -68,7 +68,7 @@ describe("Sidebar", () => {
 
   it("shows query history for the server and reopens an entry", async () => {
     mocked.listHistory.mockResolvedValue([
-      { account: "root@127.0.0.1:52958", database: "db", sql: "SELECT 42", executedAt: new Date().toISOString(), elapsedMs: 3, error: null },
+      { account: "root@127.0.0.1:52958", database: "db", sql: "SELECT 42", truncated: false, executedAt: new Date().toISOString(), elapsedMs: 3, error: null },
     ]);
     render(<Sidebar />);
     await userEvent.click(screen.getByRole("button", { name: /History/ }));

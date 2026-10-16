@@ -6,7 +6,7 @@ use crate::error::{AppError, AppResult};
 use crate::launch::LaunchEvent;
 use crate::stage::Stage;
 use crate::state::AppState;
-use crate::store::favorites::Favorite;
+use crate::store::favorites::{Favorite, NewFavorite};
 use crate::store::history::HistoryEntry;
 use crate::store::keybindings::Keybindings;
 use crate::store::recents::RecentConnection;
@@ -111,7 +111,8 @@ pub fn list_recents(state: State<'_, AppState>) -> Vec<RecentConnection> {
 
 #[tauri::command]
 pub fn remove_recent(state: State<'_, AppState>, identity: String) -> AppResult<()> {
-    state.recents.remove(&identity)
+    state.recents.remove(&identity)?;
+    state.ui_state.forget(&identity)
 }
 
 #[tauri::command]
@@ -127,8 +128,13 @@ pub fn list_favorites(state: State<'_, AppState>, account: String) -> Vec<Favori
 }
 
 #[tauri::command]
-pub fn save_favorite(state: State<'_, AppState>, favorite: Favorite) -> AppResult<Favorite> {
-    state.favorites.save(favorite)
+pub fn create_favorite(state: State<'_, AppState>, favorite: NewFavorite) -> AppResult<Favorite> {
+    state.favorites.create(favorite)
+}
+
+#[tauri::command]
+pub fn update_favorite(state: State<'_, AppState>, favorite: Favorite) -> AppResult<Favorite> {
+    state.favorites.update(favorite)
 }
 
 #[tauri::command]

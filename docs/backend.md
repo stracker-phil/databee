@@ -66,7 +66,7 @@ The TypeScript wrappers in `src/api/index.ts` use the same names in camelCase.
 
 | Module | Commands |
 |---|---|
-| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only), `take_launch_events`, `log_frontend_error`, `list_recents`, `remove_recent`, `forget_password`, `list_favorites`, `save_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
+| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only), `take_launch_events`, `log_frontend_error`, `list_recents`, `remove_recent` (also forgets that connection's UI state), `forget_password`, `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
 | `db_commands.rs` | `connect`, `disconnect`, `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table` (see [database.md](database.md)) |
 | `wp_commands.rs` | `wp_detect`, `wp_dashboard`, `wp_browser`, the list commands (`wp_orders`, `wp_users`, `wp_products`, `wp_actions`, `wp_sessions`, `wp_content`), `wp_view`, `wp_search`, `wp_peek`, `wp_find_value`, options and snapshots, `plan_change`, `apply_changes`, `edit_serialized`, `decode_value` (see [wordpress.md](wordpress.md)) |
 | `stage_commands.rs` | `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_new_token` |
@@ -152,12 +152,12 @@ use it for `Settings::sanitized`). The file itself is `JsonFile` (`store/json_fi
 | File | Contents |
 |---|---|
 | `settings.json` | `Settings` (camelCase, `#[serde(default)]`). `sanitized()` clamps values on load and on update: font sizes, row limit, timeouts, ports. Renamed fields use serde aliases. Enum fields (`theme`, `density`, `logLevel`, `inspectorDock`) use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `SettingsStore::update` returns `(previous, saved)` from one lock. |
-| `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds |
+| `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` runs on load and in `KeybindingsStore::update`: it drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed (unknown modifier, missing or multi-part key). A trailing `++` is the `+` key (`Mod+Shift++`) |
 | `connections.json` | recent connections by identity (`user@host:port/db`) |
-| `favorites.json` | tables and saved queries, global or scoped to one server account |
-| `history.json` | executed queries per account, with time, duration and error |
-| `snapshots.json` | WordPress snapshots, 30 per account |
-| `ui_state.json` | per connection: column widths, split and pane sizes |
+| `favorites.json` | tables and saved queries, global or scoped to one server account. `FavoritesStore::create(NewFavorite)` assigns the id; `update(Favorite)` replaces by id and refuses an unknown id. Both refuse a blank name and a second favorite with the same `(scope, target)` (`invalid_input`) |
+| `history.json` | executed queries per account, with time, duration and error. At most 500 entries across all accounts. SQL over 64 KiB is stored cut on a char boundary with `truncated: true`. Each entry stores an FNV-1a `hash` of the full SQL (computed on load for older files); rerunning the same SQL on the same account replaces its entry |
+| `snapshots.json` | WordPress snapshots, 30 per account and database (`MAX_PER_DATABASE`); adding one evicts the oldest of that database only |
+| `ui_state.json` | per connection: column widths, `detailPaneWidth`, `inspectorWidth`, `bottomPaneHeight`, `sqlEditorHeight` (older names load via serde aliases). `UiStateStore::forget` drops a connection's entry |
 | `entities.toml` | optional user entity definitions ([wordpress.md](wordpress.md#entities)) |
 | `databee.sock` | the IPC socket |
 | `databee.lock` | the instance lock |
@@ -211,7 +211,10 @@ The frontend mirrors this type as `AppError` in `src/api/types.ts`.
 app commands use the ids listed in `LABELS`. Their accelerators come from
 `KeybindingsStore::menu_binding`: the user override, else `MENU_DEFAULTS` in `store/keybindings.rs`. Those
 defaults mirror the `defaultBinding` of the TypeScript commands marked `menu: true`. A click emits `command`
-with the id.
+with the id. `keybindings::accelerator` converts a binding to Tauri's form (`Mod` → `CmdOrCtrl`, `-` →
+`Minus`, `=` → `Equal`). Tauri accelerators name physical keys and have none for `+`, so `+` becomes
+`Shift+Equal` (its US-layout key); a key without an accelerator name (e.g. `Ä`) gets no menu accelerator,
+while the webview still handles it.
 
 To add a menu item:
 1. Set `menu: true` on the TypeScript command.

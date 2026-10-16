@@ -7,7 +7,7 @@ use super::json_store::JsonStore;
 use crate::error::{AppError, AppResult};
 use crate::wp::snapshot::{Paths, Scope};
 
-const MAX_PER_SERVER: usize = 30;
+const MAX_PER_DATABASE: usize = 30;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -75,16 +75,16 @@ impl SnapshotStore {
     pub fn add(&self, mut snapshot: Snapshot) -> AppResult<SnapshotInfo> {
         snapshot.id = uuid::Uuid::new_v4().to_string();
         let info = SnapshotInfo::from(&snapshot);
-        let account = snapshot.account.clone();
+        let (account, database) = (snapshot.account.clone(), snapshot.database.clone());
         self.store.update(|items| {
             items.insert(0, snapshot);
             let mut kept = 0;
             items.retain(|s| {
-                if s.account != account {
+                if s.account != account || s.database != database {
                     return true;
                 }
                 kept += 1;
-                kept <= MAX_PER_SERVER
+                kept <= MAX_PER_DATABASE
             });
         })?;
         Ok(info)
@@ -148,5 +148,41 @@ mod tests {
         }
         assert_eq!(store.list("a", "db").len(), 30);
         assert_eq!(store.list("a", "db")[0].label, "34");
+    }
+
+    #[test]
+    fn unknown_snapshot_id_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SnapshotStore::open(dir.path());
+        assert_eq!(store.get("unknown").unwrap_err().kind(), "invalid_input");
+    }
+
+    #[test]
+    fn eviction_only_affects_the_database_that_overflowed() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SnapshotStore::open(dir.path());
+        for i in 0..35 {
+            store.add(snap("a", &i.to_string())).unwrap();
+        }
+        store
+            .add(Snapshot {
+                database: "db2".into(),
+                ..snap("a", "other db")
+            })
+            .unwrap();
+        assert_eq!(store.list("a", "db").len(), MAX_PER_DATABASE);
+        assert_eq!(store.list("a", "db2").len(), 1);
+    }
+
+    #[test]
+    fn eviction_leaves_other_accounts_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SnapshotStore::open(dir.path());
+        store.add(snap("b", "keep")).unwrap();
+        for i in 0..35 {
+            store.add(snap("a", &i.to_string())).unwrap();
+        }
+        assert_eq!(store.list("b", "db").len(), 1);
+        assert_eq!(store.list("a", "db").len(), MAX_PER_DATABASE);
     }
 }

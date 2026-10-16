@@ -88,9 +88,16 @@ function canonicalKey(key: string): string | null {
   return key;
 }
 
+/** Splits on `+`; a trailing `++` (or a bare `+`) is the `+` key, as in `Mod+Shift++`. */
+function splitBinding(binding: string): string[] {
+  if (binding === "+") return ["+"];
+  if (binding.endsWith("++")) return [...binding.slice(0, -2).split("+"), "+"];
+  return binding.split("+");
+}
+
 /** Normalizes `shift+mod+k` to `Mod+Shift+K`; returns null for an unparsable string. */
 export function normalizeBinding(binding: string): string | null {
-  const parts = binding.split("+").map((p) => p.trim());
+  const parts = splitBinding(binding).map((p) => p.trim());
   if (parts.length === 0) return null;
   const mods = new Set<string>();
   let key: string | null = null;
@@ -128,7 +135,7 @@ export function bindingFromEvent(e: KeyLike, mac = true): string | null {
 /** `Mod+Shift+K` → `⌘⇧K`. */
 export function bindingLabel(binding: string | null): string {
   if (!binding) return "";
-  const parts = binding.split("+");
+  const parts = splitBinding(binding);
   const key = parts[parts.length - 1];
   const mods = parts.slice(0, -1) as (typeof MODIFIERS)[number][];
   return mods.map((m) => MOD_LABELS[m] ?? m).join("") + (KEY_LABELS[key] ?? key);

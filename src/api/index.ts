@@ -37,6 +37,7 @@ import type {
   DatabaseInfo,
   ExecuteResponse,
   Favorite,
+  NewFavorite,
   HistoryEntry,
   Keybindings,
   LaunchEvent,
@@ -95,7 +96,8 @@ export const api = {
     invoke<BrowsePage>("browse_table", { sessionId, request }),
 
   listFavorites: (account: string) => invoke<Favorite[]>("list_favorites", { account }),
-  saveFavorite: (favorite: Favorite) => invoke<Favorite>("save_favorite", { favorite }),
+  createFavorite: (favorite: NewFavorite) => invoke<Favorite>("create_favorite", { favorite }),
+  updateFavorite: (favorite: Favorite) => invoke<Favorite>("update_favorite", { favorite }),
   removeFavorite: (id: string) => invoke<void>("remove_favorite", { id }),
   reorderFavorites: (ids: string[]) => invoke<void>("reorder_favorites", { ids }),
 

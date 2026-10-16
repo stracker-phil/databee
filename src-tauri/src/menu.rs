@@ -22,8 +22,8 @@ pub fn build(app: &App, bindings: &KeybindingsStore) -> tauri::Result<Menu<Wry>>
     let item = |id: &str| {
         let (id, label) = LABELS.iter().find(|i| i.0 == id).unwrap();
         let mut builder = MenuItemBuilder::with_id(*id, *label);
-        if let Some(binding) = bindings.menu_binding(id) {
-            builder = builder.accelerator(accelerator(&binding));
+        if let Some(accel) = bindings.menu_binding(id).as_deref().and_then(accelerator) {
+            builder = builder.accelerator(accel);
         }
         builder.build(app)
     };

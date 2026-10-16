@@ -82,7 +82,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 ```
 
 - **Bindings** are strings like `Mod+Shift+K`, where `Mod` means ⌘. They are normalized to the order
-  `Mod, Ctrl, Alt, Shift` and shown as `⌘⇧K`.
+  `Mod, Ctrl, Alt, Shift` and shown as `⌘⇧K`. A trailing `++` is the `+` key (`Mod+Shift++`).
 - **Scopes** form a tree: `global` → `wp` → `document`, and `global` → `db` → `table` / `editor`.
   `activeScopes()` derives the current ones from the store. When several commands match a key, the most
   specific active scope wins.
