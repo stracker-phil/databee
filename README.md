@@ -81,6 +81,46 @@ Two symlinks point at the debug build, so every `bun run build:app` is picked up
 
 Both scripts take an optional path to another `databee.app` (e.g. a release build).
 
+## Presentations (Stage)
+
+Stage, a separate app, presents databee: it spotlights parts of
+the window, shows captions, and clicks, types and runs commands. databee serves the Stage hook
+(protocol 1) on `http://127.0.0.1:27184/v1/stage/{describe,window,act,state}`. You can turn it off and
+change the port and token in Settings → Presentations. Port 27184 is databee's fixed default,
+since 27180–27183 belong to other apps and Stage uses 27190.
+
+While the API listens, `~/Library/Application Support/stage/apps/com.philippstracker.databee.json`
+(mode 0600) holds the URL and token. It is removed when the API stops or the app quits.
+
+```sh
+F="$HOME/Library/Application Support/stage/apps/com.philippstracker.databee.json"
+URL=$(plutil -extract url raw "$F") TOKEN=$(plutil -extract token raw "$F")
+api() { curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$URL/$1" ${2:+-d "$2"}; echo; }
+api describe
+api act '{"kind":"click","anchor":"toolbar:settings"}'
+api act '{"kind":"type","anchor":"editor","text":"SELECT 1"}'
+api act '{"kind":"command","command":"view.wp"}'
+```
+
+- **One window.** `window` only knows `main`. Settings, the palette and other dialogs are modals inside
+  it: open them with commands (`settings.open`, `palette.open`) or by clicking anchors. `view` and
+  `state.view` name what shows (`connect`, `db`, `wp:orders`, `settings:shortcuts`, `palette`).
+- **Commands** come from the in-app registry. Each one has `available: false` when it can't run in the
+  current view, and running it then returns 409.
+- **`hotkeys` is empty.** databee has no global shortcuts. `keys` reaches the in-app ones (⌘K, ⌘↵, Esc) when the
+  window has focus, and Enter in a field submits its form. Native-only actions (⌘Q, Edit-menu copy and
+  paste) don't happen.
+- **Native `<select>` menus** (toolbar connection and database pickers, order status) can't be opened by
+  synthetic clicks; use the palette or commands instead.
+- **Coordinates** are exact on one display or several with the same scale; with mixed scaling the
+  window's own factor is used.
+- **Anchors** are `data-stage` attributes. Some ids follow data:
+  - `table:<db>.<table>` and `database:<db>`
+  - `tab:table:<db>.<table>`
+  - `<entity>:<id>` for WordPress list rows (`order:4711`)
+  - `wp:nav:<list>`
+  - `settings:nav:<page>`
+
 ## Development
 
 Requires rustup (stable), bun and Xcode. Docker is needed for the database tests.

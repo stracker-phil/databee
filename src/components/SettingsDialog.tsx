@@ -1,13 +1,13 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { Blocks, FolderOpen, Keyboard, Palette, Plug, RotateCcw, ScrollText, SquareTerminal, Table2, X, type LucideIcon } from "lucide-react";
-import { ACCENTS, api, type Settings } from "../api";
+import { Blocks, Copy, FolderOpen, Keyboard, Palette, Plug, Presentation, RefreshCw, RotateCcw, ScrollText, SquareTerminal, Table2, X, type LucideIcon } from "lucide-react";
+import { ACCENTS, api, type Settings, type StageStatus } from "../api";
 import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, type Command } from "../commands";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
 
 const SCOPE_LABEL: Record<Command["scope"], string> = { global: "Everywhere", wp: "WordPress", db: "Database", table: "Table", editor: "Editor", document: "Document" };
 
-type Page = "appearance" | "shortcuts" | "queries" | "display" | "connections" | "wordpress" | "logging";
+type Page = "appearance" | "shortcuts" | "queries" | "display" | "connections" | "wordpress" | "presentations" | "logging";
 
 const NAV: { group: string; pages: { id: Page; label: string; icon: LucideIcon }[] }[] = [
   { group: "Interface", pages: [{ id: "appearance", label: "Appearance", icon: Palette }, { id: "shortcuts", label: "Shortcuts", icon: Keyboard }] },
@@ -20,7 +20,13 @@ const NAV: { group: string; pages: { id: Page; label: string; icon: LucideIcon }
     ],
   },
   { group: "WordPress", pages: [{ id: "wordpress", label: "WordPress", icon: Blocks }] },
-  { group: "System", pages: [{ id: "logging", label: "Logging", icon: ScrollText }] },
+  {
+    group: "System",
+    pages: [
+      { id: "presentations", label: "Presentations", icon: Presentation },
+      { id: "logging", label: "Logging", icon: ScrollText },
+    ],
+  },
 ];
 
 const PAGE_LABEL = Object.fromEntries(NAV.flatMap((g) => g.pages.map((p) => [p.id, p.label]))) as Record<Page, string>;
@@ -211,8 +217,59 @@ const INTRO: Record<Page, string> = {
   display: "How values and schemas show up in grids, documents and the sidebar.",
   connections: "Defaults for new connections.",
   wordpress: "The WordPress lens for WooCommerce and WordPress databases.",
+  presentations: "Stage, a separate app, can present databee: spotlight parts of the window, show captions and click through it for you. It finds databee through a file that exists while the local API runs.",
   logging: "What databee writes to its log file.",
 };
+
+/** The local API Stage drives databee through, and whether Stage can find it. */
+function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Settings>) => void }) {
+  const [status, setStatus] = useState<StageStatus | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const { toast, newStageToken } = useStore.getState();
+  useEffect(() => {
+    let alive = true;
+    api.stageStatus().then((next) => alive && setStatus(next), () => alive && setStatus(null));
+    return () => {
+      alive = false;
+    };
+  }, [s.stage.enabled, s.stage.port, s.stage.token]);
+  const stage = (patch: Partial<Settings["stage"]>) => set({ stage: { ...s.stage, ...patch } });
+  return (
+    <>
+      <Group title="Local API">
+        <Switch label="Enable the API" description="Listens on 127.0.0.1 only; requests from web pages are refused." checked={s.stage.enabled} onChange={(enabled) => stage({ enabled })} />
+        <NumberField label="Port" description="27184 unless another app needs it." value={s.stage.port} min={1024} max={65535} onCommit={(port) => stage({ port })} />
+        <Row label="Token" description="Stage reads it from the discovery file. A new token disconnects running presentations.">
+          <button type="button" className="btn mono" title={revealed ? "Hide" : "Show the token"} onClick={() => setRevealed((r) => !r)}>
+            {revealed ? s.stage.token : "••••••••••••"}
+          </button>
+          <button type="button" className="icon-btn" aria-label="Copy token" title="Copy token" onClick={() => void navigator.clipboard.writeText(s.stage.token).then(() => toast("success", "Copied token"))}>
+            <Copy size="1rem" />
+          </button>
+          <button type="button" className="btn" onClick={() => void newStageToken()}>
+            <RefreshCw size="1rem" /> New
+          </button>
+        </Row>
+      </Group>
+      <Group title="Presentations">
+        <Row label="Stage" description={status?.error ?? (status?.running ? status.url : undefined)}>
+          {status?.discoveryFile ? (
+            <span className="pill tone-green">Discoverable</span>
+          ) : status?.error ? (
+            <span className="pill tone-orange">Not running</span>
+          ) : (
+            <span className="badge">Off (needs the local API)</span>
+          )}
+        </Row>
+        {status?.discoveryFile && (
+          <Row label="Discovery file" stacked>
+            <code className="mono small">{status.discoveryFile}</code>
+          </Row>
+        )}
+      </Group>
+    </>
+  );
+}
 
 function PageBody({ page, s, set }: { page: Page; s: Settings; set: (patch: Partial<Settings>) => void }) {
   switch (page) {
@@ -268,6 +325,8 @@ function PageBody({ page, s, set }: { page: Page; s: Settings; set: (patch: Part
           <Switch label="Gravatar avatars" description="Loads customer avatars from gravatar.com, which sends a hash of each email address." checked={s.gravatar} onChange={(gravatar) => set({ gravatar })} />
         </Group>
       );
+    case "presentations":
+      return <PresentationsPage s={s} set={set} />;
     case "logging":
       return (
         <Group>

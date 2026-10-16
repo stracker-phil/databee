@@ -13,7 +13,8 @@ layer follows `.claude/rules/wp-layer.md`. See README.md for features and CLI, d
 - Rust owns all logic; React only renders. `src/api/index.ts` is the only `invoke` caller (tests mock it).
 - `src-tauri/src/`: `cli.rs` (argv), `ipc.rs` (single-instance socket), `db/` (lexer, safety, cell decoding,
   `mysql.rs` session: dedicated editor connection + metadata pool), `store/` (JSON files), `wp/` (WordPress lens:
-  `context` detection, lossless `php` serialize parser, `value` trees, TOML `entities` + resolver, `options`).
+  `context` detection, lossless `php` serialize parser, `value` trees, TOML `entities` + resolver, `options`), `stage/` (Stage presentation hook: local HTTP API +
+  discovery file; the page side is `src/stage/`, anchors are `data-stage` attributes; see README).
 - Frontend state: zustand store in `src/state/store.ts`; components in `src/components/`.
 - Errors cross the boundary as `{ kind, message, code }` (`error.rs`); passwords use the redacting `Secret` type.
 

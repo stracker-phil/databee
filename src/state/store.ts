@@ -150,6 +150,8 @@ interface State {
 
 interface Actions {
   loadSettings(): Promise<void>;
+  /** Replaces the Stage API token (Rust saves it and restarts the API). */
+  newStageToken(): Promise<void>;
   /** `quiet` skips the toast, for settings that apply as they change. */
   saveSettings(settings: Settings, opts?: { quiet?: boolean }): Promise<void>;
   handleLaunchEvents(events: LaunchEvent[]): Promise<void>;
@@ -262,6 +264,15 @@ export const useStore = create<Store>()((set, get) => {
         set({ settings, keybindings });
       } catch (e) {
         fail(e, "Could not load settings");
+      }
+    },
+
+    async newStageToken() {
+      try {
+        set({ settings: await api.stageNewToken() });
+        get().toast("success", "New token; Stage picks it up from the discovery file");
+      } catch (e) {
+        fail(e, "Could not replace the token");
       }
     },
 

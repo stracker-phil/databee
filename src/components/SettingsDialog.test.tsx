@@ -97,4 +97,31 @@ describe("SettingsDialog", () => {
     await userEvent.selectOptions(screen.getByLabelText("Log level"), "trace");
     expect(screen.getByText(/include the SQL text/)).toBeInTheDocument();
   });
+
+  it("shows whether Stage can find databee and manages the API token", async () => {
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
+    expect(await screen.findByText("Discoverable")).toBeInTheDocument();
+    expect(screen.getByText("/apps/databee.json")).toBeInTheDocument();
+    expect(screen.queryByText("token-123")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "••••••••••••" }));
+    expect(screen.getByText("token-123")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(mocked.stageNewToken).toHaveBeenCalled();
+    expect(await screen.findByText("token-new")).toBeInTheDocument();
+
+    mocked.stageStatus.mockResolvedValue({ enabled: false, running: false, error: null, url: "http://127.0.0.1:27184/v1/stage", discoveryFile: null });
+    await userEvent.click(screen.getByLabelText("Enable the API"));
+    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ stage: { enabled: false, port: 27184, token: "token-new" } }));
+    expect(await screen.findByText("Off (needs the local API)")).toBeInTheDocument();
+  });
+
+  it("names the port conflict when the API can't start", async () => {
+    mocked.stageStatus.mockResolvedValue({ enabled: true, running: false, error: "Port 27184 is already used by another app.", url: "http://127.0.0.1:27184/v1/stage", discoveryFile: null });
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Presentations" }));
+    expect(await screen.findByText("Port 27184 is already used by another app.")).toBeInTheDocument();
+    expect(screen.getByText("Not running")).toBeInTheDocument();
+  });
 });
