@@ -9,6 +9,8 @@ use ts_rs::TS;
 
 use super::context::WpContext;
 use super::hints::{Hint, HintContext, Sensitive, annotate};
+use super::rows::{cell_str, column_index};
+use super::sql::table_ref;
 use crate::db::{Cell, Dialect, ResultSet};
 use crate::decode::value::{self, DecodedValue};
 use crate::error::{AppError, AppResult};
@@ -213,14 +215,6 @@ fn id_list(ids: &[u64]) -> String {
         .join(", ")
 }
 
-fn table_ref(dialect: Dialect, database: &str, ctx: &WpContext, table: &str) -> String {
-    format!(
-        "{}.{}",
-        dialect.quote_ident(database),
-        dialect.quote_ident(&ctx.table(table))
-    )
-}
-
 fn and_filters(filters: &[&Option<String>]) -> String {
     filters
         .iter()
@@ -410,13 +404,6 @@ impl EntityDoc {
     }
 }
 
-pub fn cell_str(cell: &Cell) -> Option<&str> {
-    match cell {
-        Cell::Number(s) | Cell::Text(s) | Cell::Temporal(s) | Cell::Json(s) => Some(s),
-        _ => None,
-    }
-}
-
 fn link_for(catalog: &Catalog, entity: Option<&String>, cell: &Cell) -> Option<EntityLink> {
     let entity = entity?;
     let id = cell_str(cell)?.trim();
@@ -500,12 +487,6 @@ pub fn group_meta(entries: Vec<DocField>) -> Vec<MetaGroup> {
             .then_with(|| a.name.cmp(&b.name))
     });
     groups
-}
-
-fn column_index(rs: &ResultSet, name: &str) -> Option<usize> {
-    rs.columns
-        .iter()
-        .position(|c| c.name.eq_ignore_ascii_case(name))
 }
 
 /// Builds documents from the entity rows, their meta rows (fk, key, value) and relation

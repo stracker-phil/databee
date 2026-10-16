@@ -8,7 +8,8 @@ use databee_lib::db::Database;
 use databee_lib::db::mysql::MySqlSession;
 use databee_lib::wp::changes::{WpChangeRequest, plan};
 use databee_lib::wp::detect;
-use databee_lib::wp::entity::{Catalog, cell_str, definitions};
+use databee_lib::wp::entity::{Catalog, definitions};
+use databee_lib::wp::rows::cell_str;
 
 mod common;
 

@@ -15,10 +15,12 @@ pub mod logs;
 pub mod media;
 pub mod options;
 pub mod peek;
+pub mod rows;
 #[cfg(test)]
 mod server_tests;
 pub mod snapshot;
 pub mod snapshots_store;
+pub mod sql;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -32,8 +34,9 @@ use ts_rs::TS;
 use self::catalog_cache::CatalogCache;
 use self::context::WpContext;
 use self::entity::{Catalog, EntityDoc, TableEntity};
+use self::rows::{string, text};
 use crate::db::Database;
-use crate::db::{Cell, ResultSet, escape_like};
+use crate::db::{ResultSet, escape_like};
 use crate::error::{AppError, AppResult};
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -163,13 +166,6 @@ impl WpInfo {
     }
 }
 
-fn text(cell: &Cell) -> Option<String> {
-    match cell {
-        Cell::Number(s) | Cell::Text(s) | Cell::Temporal(s) | Cell::Json(s) => Some(s.clone()),
-        _ => None,
-    }
-}
-
 pub(crate) async fn fetch(db: &dyn Database, sql: &str) -> AppResult<ResultSet> {
     db.fetch(sql, TIMEOUT).await
 }
@@ -203,7 +199,7 @@ pub async fn detect(db: &dyn Database, database: &str) -> AppResult<Option<WpCon
     let options: HashMap<String, String> = rs
         .rows
         .iter()
-        .filter_map(|r| Some((text(&r[0])?, text(&r[1])?)))
+        .filter_map(|r| Some((string(&r[0])?, string(&r[1])?)))
         .collect();
 
     let mut blogs = HashMap::new();
@@ -218,7 +214,8 @@ pub async fn detect(db: &dyn Database, database: &str) -> AppResult<Option<WpCon
         )
         .await?;
         for r in &rs.rows {
-            if let (Some(id), Some(domain), Some(path)) = (text(&r[0]), text(&r[1]), text(&r[2]))
+            if let (Some(id), Some(domain), Some(path)) =
+                (string(&r[0]), string(&r[1]), string(&r[2]))
                 && let Ok(id) = id.parse()
             {
                 blogs.insert(id, (domain, path));
@@ -264,7 +261,7 @@ pub async fn load_docs(
         let by_id: HashMap<String, u64> = rs
             .rows
             .iter()
-            .filter_map(|r| Some((text(&r[0])?, text(&r[1])?.parse().ok()?)))
+            .filter_map(|r| Some((string(&r[0])?, string(&r[1])?.parse().ok()?)))
             .collect();
         counts.insert(rel.name.clone(), by_id);
     }
@@ -317,7 +314,7 @@ pub async fn titles(
     Ok(rs
         .rows
         .iter()
-        .filter_map(|r| Some((text(&r[0])?, text(&r[1]).filter(|t| !t.is_empty())?)))
+        .filter_map(|r| Some((string(&r[0])?, text(&r[1])?)))
         .collect())
 }
 
@@ -357,7 +354,7 @@ pub async fn post_images(
     let thumb_of: HashMap<String, u64> = thumbs
         .rows
         .iter()
-        .filter_map(|r| Some((text(&r[0])?, text(&r[1])?.parse().ok()?)))
+        .filter_map(|r| Some((string(&r[0])?, string(&r[1])?.parse().ok()?)))
         .collect();
     let attachment_ids: Vec<u64> = thumb_of.values().copied().collect();
     if attachment_ids.is_empty() {
@@ -374,14 +371,14 @@ pub async fn post_images(
     .await?;
     let mut attached: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
     for r in &files.rows {
-        let (Some(id), Some(key)) = (text(&r[0]), text(&r[1])) else {
+        let (Some(id), Some(key)) = (string(&r[0]), string(&r[1])) else {
             continue;
         };
         let slot = attached.entry(id).or_default();
         if key == "_wp_attached_file" {
-            slot.0 = text(&r[2]);
+            slot.0 = string(&r[2]);
         } else {
-            slot.1 = text(&r[2]);
+            slot.1 = string(&r[2]);
         }
     }
     Ok(thumb_of
@@ -460,7 +457,7 @@ pub async fn expand(
         &entity::relation_ids_sql(dialect, database, ctx, rel, target, id, MAX_RELATED),
     )
     .await?;
-    let ids: Vec<String> = rs.rows.iter().filter_map(|r| text(&r[0])).collect();
+    let ids: Vec<String> = rs.rows.iter().filter_map(|r| string(&r[0])).collect();
     load_docs(db, ctx, catalog, database, &rel.entity, &ids).await
 }
 
@@ -486,9 +483,9 @@ pub async fn options_overview(
         .iter()
         .filter_map(|r| {
             Some(options::OptionRow {
-                name: text(&r[0])?,
-                bytes: text(&r[1]).and_then(|b| b.parse().ok()).unwrap_or(0),
-                autoload: text(&r[2]).unwrap_or_default(),
+                name: string(&r[0])?,
+                bytes: string(&r[1]).and_then(|b| b.parse().ok()).unwrap_or(0),
+                autoload: string(&r[2]).unwrap_or_default(),
             })
         })
         .collect();
@@ -504,7 +501,7 @@ pub async fn options_overview(
     let timeouts: HashMap<String, i64> = timeouts
         .rows
         .iter()
-        .filter_map(|r| Some((text(&r[0])?, text(&r[1])?.trim().parse().ok()?)))
+        .filter_map(|r| Some((string(&r[0])?, string(&r[1])?.trim().parse().ok()?)))
         .collect();
     Ok(options::overview(
         &table,
@@ -560,9 +557,9 @@ pub async fn options_group(
         .rows
         .iter()
         .filter_map(|r| {
-            let name = text(&r[0])?;
+            let name = string(&r[0])?;
             let mut f = entity::field(catalog, &hints, name, r[1].clone(), None);
-            f.autoload = text(&r[2]).map(|value| entity::Autoload {
+            f.autoload = string(&r[2]).map(|value| entity::Autoload {
                 on: options::is_autoloaded(&value),
                 value,
             });
@@ -574,7 +571,7 @@ pub async fn options_group(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{ColumnMeta, FakeDatabase};
+    use crate::db::{Cell, ColumnMeta, FakeDatabase};
     use crate::wp::entity::definitions;
 
     fn ctx() -> WpContext {

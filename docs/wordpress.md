@@ -29,6 +29,8 @@ store and the `entities.toml` cache) and its integration tests. The page calls t
 | `cache.rs` | `WpCache`: detected contexts per session (`Session.ext`), stale once the session wrote to that database; `cache::detect` reads it or detects and fills it |
 | `catalog_cache.rs` | `CatalogCache`: built-in plus user entity definitions, reparsed only when `entities.toml`'s mtime changes |
 | `context.rs` | Detection logic with no I/O: prefix, versions, WooCommerce, HPOS mode, multisite, site facts |
+| `sql.rs` | Shared SQL fragments: `table_ref`, `PAID_STATUSES` / `paid_statuses_sql`, `AUTOLOAD_ON` / `autoload_on_sql`, and the `Filter` builder for list `WHERE` clauses (conditions plus one search group led by an ID match). LIKE escaping lives in `db::Dialect` |
+| `rows.rs` | Cell readers for query results: `cell_str` (keeps `""` apart from NULL; undo uses it), `string`, `text` (blank is `None`), `count` (`u64`), `num` (`f64`), `int` (exact `i64`), `column_index`, and `facets` for `(value, count)` chips |
 | `entity.rs` + `entities.toml` | Entity definitions as data, plus the resolver that turns them into SQL and documents |
 | `hints.rs` + `meta_keys.toml` | Render hints (money, time, flag, URL, user agent, email, roles, country, guest) and secret masking, keyed by glob rules |
 | `lists.rs` | List screens: orders and subscriptions (`OrderType` is the order list's post type), users (including guests), products, actions, sessions, content. One query per page, plus one batched query for extras and facets |

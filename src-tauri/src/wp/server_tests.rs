@@ -814,11 +814,7 @@ async fn scalar(db: &MySqlSession, sql: &str) -> Option<String> {
     let rs = db.fetch(sql, TIMEOUT).await.unwrap();
     rs.rows.first().and_then(|r| match &r[0] {
         crate::db::Cell::Null => None,
-        c => Some(
-            crate::wp::entity::cell_str(c)
-                .unwrap_or_default()
-                .to_string(),
-        ),
+        c => Some(crate::wp::rows::cell_str(c).unwrap_or_default().to_string()),
     })
 }
 

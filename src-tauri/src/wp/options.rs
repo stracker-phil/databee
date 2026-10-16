@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use serde::Serialize;
 use ts_rs::TS;
 
+use super::sql::AUTOLOAD_ON;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptionRow {
     pub name: String,
@@ -72,7 +74,7 @@ fn prefix_label(prefix: &str) -> String {
 
 /// WordPress 6.6+ uses on/auto/auto-on; older versions yes.
 pub fn is_autoloaded(flag: &str) -> bool {
-    matches!(flag, "yes" | "on" | "auto" | "auto-on")
+    AUTOLOAD_ON.contains(&flag)
 }
 
 /// `woocommerce_ppcp-gateway_settings` → `woocommerce`; `_transient_x` → `transients`.

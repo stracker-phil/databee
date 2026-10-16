@@ -8,23 +8,17 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::context::WpContext;
-use super::entity::{Catalog, EntityDoc, EntityLink, cell_str};
+use super::entity::{Catalog, EntityDoc, EntityLink};
 use super::hints::{DEFAULT_PRICE_DECIMALS, Hint, money};
-use super::lists::{self, ListQuery, OrderSummary, epoch, int, num, roles_of, text};
+use super::lists::{self, ListQuery, OrderSummary, epoch, roles_of};
+use super::rows::{cell_str, count, int, num, text};
+use super::sql::table_ref;
 use super::{WpList, fetch, load_docs, post_images, titles};
 use crate::db::Database;
 use crate::db::{Dialect, ResultSet};
 use crate::decode::php::{self, PhpValue};
 use crate::decode::value;
 use crate::error::{AppError, AppResult};
-
-fn t(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
-    format!(
-        "{}.{}",
-        dialect.quote_ident(db),
-        dialect.quote_ident(&ctx.table(table))
-    )
-}
 
 /// First non-empty value among field/meta names.
 fn pick(doc: &EntityDoc, names: &[&str]) -> Option<String> {
@@ -368,7 +362,7 @@ async fn order_items(
         session,
         &format!(
             "SELECT order_item_id, order_item_name, order_item_type FROM {} WHERE order_id = {order_id} ORDER BY order_item_id",
-            t(dialect, db, ctx, "woocommerce_order_items")
+            table_ref(dialect, db, ctx, "woocommerce_order_items")
         ),
     )
     .await?;
@@ -379,7 +373,7 @@ async fn order_items(
             session,
             &format!(
                 "SELECT order_item_id, meta_key, meta_value FROM {} WHERE order_item_id IN ({}) ORDER BY meta_id",
-                t(dialect, db, ctx, "woocommerce_order_itemmeta"),
+                table_ref(dialect, db, ctx, "woocommerce_order_itemmeta"),
                 ids.join(", ")
             ),
         )
@@ -464,7 +458,7 @@ async fn order_items(
             session,
             &format!(
                 "SELECT ID, post_parent FROM {} WHERE ID IN ({}) AND post_type = 'product_variation'",
-                t(dialect, db, ctx, "posts"),
+                table_ref(dialect, db, ctx, "posts"),
                 product_ids.join(", ")
             ),
         )
@@ -489,7 +483,7 @@ async fn order_items(
             session,
             &format!(
                 "SELECT post_id, meta_value FROM {} WHERE meta_key = '_sku' AND post_id IN ({})",
-                t(dialect, db, ctx, "postmeta"),
+                table_ref(dialect, db, ctx, "postmeta"),
                 product_ids.join(", ")
             ),
         )
@@ -538,7 +532,7 @@ pub async fn order_view(
             &format!(
                 "SELECT address_type, first_name, last_name, company, address_1, address_2, city, state, postcode, country, email, phone \
                  FROM {} WHERE order_id = {order_id}",
-                t(dialect, db, ctx, "wc_order_addresses")
+                table_ref(dialect, db, ctx, "wc_order_addresses")
             ),
         )
         .await?;
@@ -585,7 +579,7 @@ pub async fn order_view(
                 "SELECT {}, {} FROM {} WHERE order_id = {order_id}",
                 epoch("date_paid_gmt"),
                 epoch("date_completed_gmt"),
-                t(dialect, db, ctx, "wc_order_operational_data")
+                table_ref(dialect, db, ctx, "wc_order_operational_data")
             ),
         )
         .await?;
@@ -619,7 +613,7 @@ pub async fn order_view(
             format!(
                 "SELECT id, type, total_amount, {} FROM {} WHERE parent_order_id = {order_id} ORDER BY id",
                 epoch("date_created_gmt"),
-                t(dialect, db, ctx, "wc_orders")
+                table_ref(dialect, db, ctx, "wc_orders")
             ),
             pick(&doc, &["parent_order_id"]).filter(|p| p != "0"),
         )
@@ -629,8 +623,8 @@ pub async fn order_view(
                 "SELECT p.ID, p.post_type, m.meta_value, {} FROM {} p LEFT JOIN {} m ON m.post_id = p.ID AND m.meta_key = '_order_total' \
                  WHERE p.post_parent = {order_id} AND p.post_type IN ('shop_order_refund', 'shop_subscription') ORDER BY p.ID",
                 epoch("p.post_date_gmt"),
-                t(dialect, db, ctx, "posts"),
-                t(dialect, db, ctx, "postmeta")
+                table_ref(dialect, db, ctx, "posts"),
+                table_ref(dialect, db, ctx, "postmeta")
             ),
             pick(&doc, &["post_parent"]).filter(|p| p != "0"),
         )
@@ -644,10 +638,7 @@ pub async fn order_view(
             continue;
         };
         if kind == "shop_order_refund" {
-            refunded += text(&r[2])
-                .and_then(|v| v.parse::<f64>().ok())
-                .unwrap_or(0.0)
-                .abs();
+            refunded += num(&r[2]).unwrap_or(0.0).abs();
             refunds.push((cid, int(&r[3]), text(&r[2])));
         } else if kind == "shop_subscription" {
             subscriptions.push(cid);
@@ -814,8 +805,8 @@ pub async fn order_view(
              (SELECT meta_value FROM {cm} WHERE comment_id = c.comment_ID AND meta_key = 'is_customer_note' LIMIT 1) \
              FROM {} c WHERE c.comment_post_ID = {order_id} AND c.comment_type = 'order_note' ORDER BY c.comment_date_gmt, c.comment_ID",
             epoch("c.comment_date_gmt"),
-            t(dialect, db, ctx, "comments"),
-            cm = t(dialect, db, ctx, "commentmeta"),
+            table_ref(dialect, db, ctx, "comments"),
+            cm = table_ref(dialect, db, ctx, "commentmeta"),
         ),
     )
     .await?;
@@ -854,7 +845,7 @@ pub async fn order_view(
                 "SELECT action_id, hook, status, {}, {}, args FROM {} WHERE args LIKE {} ORDER BY scheduled_date_gmt LIMIT 200",
                 epoch("scheduled_date_gmt"),
                 epoch("IF(last_attempt_gmt < '1000-01-01', NULL, last_attempt_gmt)"),
-                t(dialect, db, ctx, "actionscheduler_actions"),
+                table_ref(dialect, db, ctx, "actionscheduler_actions"),
                 dialect.like(&format!("%{order_id}%"))
             ),
         )
@@ -1054,7 +1045,7 @@ pub async fn order_logs(
         &format!(
             "SELECT log_id, {}, level, source, message FROM {} WHERE ({}){window} ORDER BY timestamp LIMIT 100",
             epoch("timestamp"),
-            t(dialect, db, ctx, "woocommerce_log"),
+            table_ref(dialect, db, ctx, "woocommerce_log"),
             patterns.join(" OR ")
         ),
     )
@@ -1071,7 +1062,7 @@ pub async fn order_logs(
                 kind: EventKind::Log,
                 title: summary.title,
                 detail: source,
-                level: log_level(num(&r[2])),
+                level: log_level(count(&r[2])),
                 link: None,
                 raw: Some(message),
                 row: text(&r[0]).map(|id| RowRef {
@@ -1178,7 +1169,7 @@ pub async fn guest_view(
             session,
             &format!(
                 "SELECT session_id FROM {} WHERE session_value LIKE {} ORDER BY session_expiry DESC LIMIT 1",
-                t(dialect, db, ctx, "woocommerce_sessions"),
+                table_ref(dialect, db, ctx, "woocommerce_sessions"),
                 dialect.like_contains(email)
             ),
         )
@@ -1191,13 +1182,7 @@ pub async fn guest_view(
         None
     };
     let average = (summary.order_count > 0)
-        .then(|| {
-            stats
-                .rows
-                .first()
-                .and_then(|r| text(&r[2]))
-                .and_then(|v| v.parse::<f64>().ok())
-        })
+        .then(|| stats.rows.first().and_then(|r| num(&r[2])))
         .flatten()
         .and_then(|spent| {
             money(
@@ -1304,8 +1289,8 @@ pub async fn customer_view(
         if let Some(sql) = lists::customer_stats_sql(dialect, db, ctx, &[id.to_string()]) {
             let rs = fetch(session, &sql).await?;
             if let Some(r) = rs.rows.first() {
-                order_count = num(&r[1]).unwrap_or(0);
-                let spent: f64 = text(&r[2]).and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                order_count = count(&r[1]).unwrap_or(0);
+                let spent = num(&r[2]).unwrap_or(0.0);
                 total_spent = money(
                     &spent.to_string(),
                     ctx.site.currency.as_deref(),
@@ -1326,7 +1311,7 @@ pub async fn customer_view(
     if ctx.has_table("woocommerce_payment_tokens") {
         let rs = fetch(
             session,
-            &format!("SELECT token_id, gateway_id, type, is_default FROM {} WHERE user_id = {user_id} ORDER BY token_id", t(dialect, db, ctx, "woocommerce_payment_tokens")),
+            &format!("SELECT token_id, gateway_id, type, is_default FROM {} WHERE user_id = {user_id} ORDER BY token_id", table_ref(dialect, db, ctx, "woocommerce_payment_tokens")),
         )
         .await?;
         let ids: Vec<String> = rs.rows.iter().filter_map(|r| text(&r[0])).collect();
@@ -1336,7 +1321,7 @@ pub async fn customer_view(
                 session,
                 &format!(
                     "SELECT payment_token_id, meta_key, meta_value FROM {} WHERE payment_token_id IN ({})",
-                    t(dialect, db, ctx, "woocommerce_payment_tokenmeta"),
+                    table_ref(dialect, db, ctx, "woocommerce_payment_tokenmeta"),
                     ids.join(", ")
                 ),
             )
@@ -1369,7 +1354,7 @@ pub async fn customer_view(
             session,
             &format!(
                 "SELECT session_id FROM {} WHERE session_key = {}",
-                t(dialect, db, ctx, "woocommerce_sessions"),
+                table_ref(dialect, db, ctx, "woocommerce_sessions"),
                 dialect.sql_string(id)
             ),
         )
@@ -1477,7 +1462,7 @@ async fn customer_orders(
             "WHERE p.post_type",
             &format!(
                 "WHERE p.ID IN (SELECT post_id FROM {} WHERE meta_key = '_customer_user' AND meta_value = '{user_id}') AND p.post_type",
-                t(dialect, db, ctx, "postmeta")
+                table_ref(dialect, db, ctx, "postmeta")
             ),
             1,
         )
@@ -1568,9 +1553,9 @@ pub async fn product_view(
         &format!(
             "SELECT tt.taxonomy, te.name FROM {tr} tr JOIN {tt} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id \
              JOIN {terms} te ON te.term_id = tt.term_id WHERE tr.object_id = {pid} ORDER BY tt.taxonomy, te.name",
-            tr = t(dialect, db, ctx, "term_relationships"),
-            tt = t(dialect, db, ctx, "term_taxonomy"),
-            terms = t(dialect, db, ctx, "terms"),
+            tr = table_ref(dialect, db, ctx, "term_relationships"),
+            tt = table_ref(dialect, db, ctx, "term_taxonomy"),
+            terms = table_ref(dialect, db, ctx, "terms"),
         ),
     )
     .await?;
@@ -1622,7 +1607,7 @@ pub async fn product_view(
         session,
         &format!(
             "SELECT ID FROM {} WHERE post_parent = {pid} AND post_type = 'product_variation' AND post_status <> 'trash' ORDER BY menu_order, ID",
-            t(dialect, db, ctx, "posts")
+            table_ref(dialect, db, ctx, "posts")
         ),
     )
     .await?;
@@ -1634,7 +1619,7 @@ pub async fn product_view(
             &format!(
                 "SELECT post_id, meta_key, meta_value FROM {} WHERE post_id IN ({}) AND (meta_key LIKE {} \
                  OR meta_key IN ('_sku', '_price', '_stock_status', '_stock'))",
-                t(dialect, db, ctx, "postmeta"),
+                table_ref(dialect, db, ctx, "postmeta"),
                 var_ids.join(", "),
                 session.dialect().like(r"attribute\_%")
             ),
@@ -1689,11 +1674,16 @@ pub async fn product_view(
             session,
             &format!(
                 "SELECT COUNT(DISTINCT order_id) FROM {} WHERE product_id = {pid} OR variation_id = {pid}",
-                t(dialect, db, ctx, "wc_order_product_lookup")
+                table_ref(dialect, db, ctx, "wc_order_product_lookup")
             ),
         )
         .await?;
-        if let Some(n) = rs.rows.first().and_then(|r| num(&r[0])).filter(|n| *n > 0) {
+        if let Some(n) = rs
+            .rows
+            .first()
+            .and_then(|r| count(&r[0]))
+            .filter(|n| *n > 0)
+        {
             related.push(RelatedChip {
                 label: "Orders".into(),
                 link: None,
@@ -1777,7 +1767,7 @@ pub async fn action_view(
         &format!(
             "SELECT {}, message FROM {} WHERE action_id = {aid} ORDER BY log_id",
             epoch("log_date_gmt"),
-            t(dialect, db, ctx, "actionscheduler_logs")
+            table_ref(dialect, db, ctx, "actionscheduler_logs")
         ),
     )
     .await?;
@@ -1787,7 +1777,7 @@ pub async fn action_view(
                 session,
                 &format!(
                     "SELECT slug FROM {} WHERE group_id = {}",
-                    t(dialect, db, ctx, "actionscheduler_groups"),
+                    table_ref(dialect, db, ctx, "actionscheduler_groups"),
                     dialect.sql_string(&g)
                 ),
             )
@@ -2000,12 +1990,12 @@ pub async fn search(
     let exact = dialect.sql_string(q);
     let like = dialect.like_contains(q);
     let mut out = Vec::new();
-    let posts = t(dialect, db, ctx, "posts");
-    let users = t(dialect, db, ctx, "users");
+    let posts = table_ref(dialect, db, ctx, "posts");
+    let users = table_ref(dialect, db, ctx, "users");
 
     if let Ok(n) = q.parse::<u64>() {
         if ctx.hpos() {
-            let rs = fetch(session, &format!("SELECT id, CONCAT('Order #', id), CONCAT(status, ' · ', COALESCE(billing_email, '')), 'id' FROM {} WHERE id = {n}", t(dialect, db, ctx, "wc_orders"))).await?;
+            let rs = fetch(session, &format!("SELECT id, CONCAT('Order #', id), CONCAT(status, ' · ', COALESCE(billing_email, '')), 'id' FROM {} WHERE id = {n}", table_ref(dialect, db, ctx, "wc_orders"))).await?;
             out.extend(hits(&rs, "order", "id"));
         }
         let rs = fetch(session, &format!("SELECT ID, COALESCE(NULLIF(post_title, ''), CONCAT(post_type, ' #', ID)), post_type, 'id' FROM {posts} WHERE ID = {n}")).await?;
@@ -2032,7 +2022,7 @@ pub async fn search(
                 session,
                 &format!(
                     "SELECT action_id, hook, status, 'action id' FROM {} WHERE action_id = {n}",
-                    t(dialect, db, ctx, "actionscheduler_actions")
+                    table_ref(dialect, db, ctx, "actionscheduler_actions")
                 ),
             )
             .await?;
@@ -2049,7 +2039,7 @@ pub async fn search(
                     "SELECT CONCAT('{prefix}', billing_email), billing_email, CONCAT('Guest · ', COUNT(*), ' orders'), 'billing_email' \
                      FROM {orders} WHERE type = 'shop_order' AND customer_id = 0 AND billing_email LIKE {like} GROUP BY billing_email LIMIT 5",
                     prefix = lists::GUEST_PREFIX,
-                    orders = t(dialect, db, ctx, "wc_orders"),
+                    orders = table_ref(dialect, db, ctx, "wc_orders"),
                 )
             } else {
                 format!(
@@ -2059,7 +2049,7 @@ pub async fn search(
                      WHERE p.post_type = 'shop_order' AND COALESCE(c.meta_value, '0') = '0' AND e.meta_value LIKE {like} GROUP BY e.meta_value LIMIT 5",
                     prefix = lists::GUEST_PREFIX,
                     posts = posts,
-                    pm = t(dialect, db, ctx, "postmeta"),
+                    pm = table_ref(dialect, db, ctx, "postmeta"),
                 )
             };
             let rs = fetch(session, &guests).await?;
@@ -2068,7 +2058,7 @@ pub async fn search(
         if ctx.hpos() {
             let rs = fetch(
                 session,
-                &format!("SELECT id, CONCAT('Order #', id), CONCAT(status, ' · ', billing_email), 'billing_email' FROM {} WHERE billing_email LIKE {like} ORDER BY id DESC LIMIT 8", t(dialect, db, ctx, "wc_orders")),
+                &format!("SELECT id, CONCAT('Order #', id), CONCAT(status, ' · ', billing_email), 'billing_email' FROM {} WHERE billing_email LIKE {like} ORDER BY id DESC LIMIT 8", table_ref(dialect, db, ctx, "wc_orders")),
             )
             .await?;
             out.extend(hits(&rs, "order", "billing_email"));
@@ -2080,13 +2070,13 @@ pub async fn search(
         if ctx.hpos() {
             let rs = fetch(
                 session,
-                &format!("SELECT id, CONCAT('Order #', id), CONCAT(status, ' · ', COALESCE(billing_email, '')), 'transaction_id' FROM {} WHERE transaction_id = {exact} LIMIT 5", t(dialect, db, ctx, "wc_orders")),
+                &format!("SELECT id, CONCAT('Order #', id), CONCAT(status, ' · ', COALESCE(billing_email, '')), 'transaction_id' FROM {} WHERE transaction_id = {exact} LIMIT 5", table_ref(dialect, db, ctx, "wc_orders")),
             )
             .await?;
             out.extend(hits(&rs, "order", "transaction_id"));
             let rs = fetch(
                 session,
-                &format!("SELECT order_id, CONCAT('Order #', order_id), NULL, meta_key FROM {} WHERE meta_value = {exact} LIMIT 10", t(dialect, db, ctx, "wc_orders_meta")),
+                &format!("SELECT order_id, CONCAT('Order #', order_id), NULL, meta_key FROM {} WHERE meta_value = {exact} LIMIT 10", table_ref(dialect, db, ctx, "wc_orders_meta")),
             )
             .await?;
             out.extend(hits(&rs, "order", "meta"));
@@ -2096,7 +2086,7 @@ pub async fn search(
             &format!(
                 "SELECT p.ID, COALESCE(NULLIF(p.post_title, ''), CONCAT(p.post_type, ' #', p.ID)), p.post_type, m.meta_key FROM {pm} m \
                  JOIN {posts} p ON p.ID = m.post_id WHERE m.meta_value = {exact} AND p.post_type <> 'shop_order_placehold' LIMIT 10",
-                pm = t(dialect, db, ctx, "postmeta")
+                pm = table_ref(dialect, db, ctx, "postmeta")
             ),
         )
         .await?;
@@ -2113,7 +2103,7 @@ pub async fn search(
             session,
             &format!(
                 "SELECT u.ID, u.display_name, u.user_email, m.meta_key FROM {um} m JOIN {users} u ON u.ID = m.user_id WHERE m.meta_value = {exact} LIMIT 5",
-                um = t(dialect, db, ctx, "usermeta")
+                um = table_ref(dialect, db, ctx, "usermeta")
             ),
         )
         .await?;
@@ -2135,7 +2125,7 @@ pub async fn search(
             session,
             &format!(
                 "SELECT p.ID, p.post_title, CONCAT('SKU ', l.sku), 'sku' FROM {} l JOIN {posts} p ON p.ID = l.product_id WHERE l.sku LIKE {like} LIMIT 8",
-                t(dialect, db, ctx, "wc_product_meta_lookup")
+                table_ref(dialect, db, ctx, "wc_product_meta_lookup")
             ),
         )
         .await?;
@@ -2147,7 +2137,7 @@ pub async fn search(
     )
     .await?;
     out.extend(hits(&rs, "user", "name"));
-    let rs = fetch(session, &format!("SELECT option_id, option_name, autoload, 'option' FROM {} WHERE option_name LIKE {like} LIMIT 6", t(dialect, db, ctx, "options"))).await?;
+    let rs = fetch(session, &format!("SELECT option_id, option_name, autoload, 'option' FROM {} WHERE option_name LIKE {like} LIMIT 6", table_ref(dialect, db, ctx, "options"))).await?;
     out.extend(hits(&rs, "option", "option"));
 
     let mut seen = std::collections::HashSet::new();

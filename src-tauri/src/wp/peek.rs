@@ -6,9 +6,10 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::context::WpContext;
-use super::entity::{Catalog, EntityDoc, cell_str};
+use super::entity::{Catalog, EntityDoc};
 use super::hints::{Hint, money};
-use super::lists::{num, text};
+use super::rows::{self, cell_str, text};
+use super::sql::{paid_statuses_sql, table_ref};
 use super::{fetch, load_docs};
 use crate::db::Database;
 use crate::error::AppResult;
@@ -166,10 +167,10 @@ async fn customer_order_facts(
     let rs = fetch(
         session,
         &format!(
-            "SELECT COUNT(*), COALESCE(SUM(total_amount), 0) FROM {}.{} WHERE type = 'shop_order' AND customer_id = {} AND status IN ('wc-completed', 'wc-processing')",
-            dialect.quote_ident(db),
-            dialect.quote_ident(&ctx.table("wc_orders")),
-            id.parse::<u64>().unwrap_or(0)
+            "SELECT COUNT(*), COALESCE(SUM(total_amount), 0) FROM {} WHERE type = 'shop_order' AND customer_id = {} AND {}",
+            table_ref(dialect, db, ctx, "wc_orders"),
+            id.parse::<u64>().unwrap_or(0),
+            paid_statuses_sql("status")
         ),
     )
     .await?;
@@ -178,7 +179,7 @@ async fn customer_order_facts(
     };
     let mut facts = vec![PeekFact {
         label: "Orders".into(),
-        value: num(&r[0]).unwrap_or(0).to_string(),
+        value: rows::count(&r[0]).unwrap_or(0).to_string(),
         kind: FactKind::Text,
     }];
     if let Some(spent) =
@@ -370,7 +371,11 @@ pub async fn find_value(
             &format!("SELECT COUNT(*) FROM {table} WHERE {filter}"),
         )
         .await?;
-        let count = count.rows.first().and_then(|r| num(&r[0])).unwrap_or(0);
+        let count = count
+            .rows
+            .first()
+            .and_then(|r| rows::count(&r[0]))
+            .unwrap_or(0);
         if count == 0 {
             continue;
         }

@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::context::WpContext;
-use super::entity::{Catalog, MetaDef, cell_str};
+use super::entity::{Catalog, MetaDef};
 use super::fetch;
-use super::lists::text;
+use super::rows::{self, cell_str, text};
+use super::sql::table_ref;
 use crate::db::changes::{Plan, reinsert_note, reinsert_sql, restore_undo, sql_value};
 use crate::db::{Database, Dialect, ResultSet};
 use crate::error::{AppError, AppResult};
@@ -75,10 +76,6 @@ impl WpChangeRequest {
             | WpChangeRequest::CancelAction { database, .. } => database,
         }
     }
-}
-
-fn wp_table(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
-    dialect.table_ref(db, &ctx.table(table))
 }
 
 /// `cutoff` is a literal fixed at plan time, so the applied DELETE removes exactly the
@@ -163,7 +160,7 @@ pub fn meta_target(
         .meta
         .as_ref()
         .ok_or_else(|| AppError::InvalidInput(format!("{entity} has no meta")))?;
-    let table = wp_table(dialect, database, ctx, &meta.table);
+    let table = table_ref(dialect, database, ctx, &meta.table);
     Ok(MetaTarget::new(table, meta))
 }
 
@@ -219,7 +216,7 @@ pub async fn plan(
             option,
             on,
         } => {
-            let t = wp_table(dialect, database, ctx, "options");
+            let t = table_ref(dialect, database, ctx, "options");
             let sql = format!(
                 "SELECT autoload FROM {t} WHERE option_name = {}",
                 dialect.sql_string(option)
@@ -232,7 +229,7 @@ pub async fn plan(
             ))
         }
         WpChangeRequest::DeleteExpiredTransients { database } => {
-            let t = wp_table(dialect, database, ctx, "options");
+            let t = table_ref(dialect, database, ctx, "options");
             let overview = super::options_overview(session, ctx, database).await?;
             let names = expired_transient_rows(&overview);
             if names.is_empty() {
@@ -256,14 +253,14 @@ pub async fn plan(
                     "This site has no woocommerce_log table".into(),
                 ));
             }
-            let t = wp_table(dialect, database, ctx, "woocommerce_log");
+            let t = table_ref(dialect, database, ctx, "woocommerce_log");
             let cutoff = log_cutoff(session, *days).await?;
             let filter = logs_before_filter(dialect, &cutoff, source.as_deref());
             let count = fetch(session, &format!("SELECT COUNT(*) FROM {t} WHERE {filter}")).await?;
             let n = count
                 .rows
                 .first()
-                .and_then(|r| super::lists::num(&r[0]))
+                .and_then(|r| rows::count(&r[0]))
                 .unwrap_or(0);
             build_delete_logs_before(database, &t, &filter, *days, source.as_deref(), n)
         }
@@ -285,7 +282,7 @@ async fn plan_action(
     retry: bool,
 ) -> AppResult<Plan> {
     let n = parse_id(id)?;
-    let t = wp_table(dialect, database, ctx, "actionscheduler_actions");
+    let t = table_ref(dialect, database, ctx, "actionscheduler_actions");
     let sql = format!("SELECT status, scheduled_date_gmt FROM {t} WHERE action_id = {n}");
     let rows = fetch(session, &sql).await?;
     let row = rows
@@ -384,7 +381,7 @@ async fn plan_set_order_status(
     status: &str,
 ) -> AppResult<Plan> {
     let n = parse_id(id)?;
-    let posts = wp_table(dialect, database, ctx, "posts");
+    let posts = table_ref(dialect, database, ctx, "posts");
     let post_status = fetch(
         session,
         &format!(
@@ -394,7 +391,7 @@ async fn plan_set_order_status(
     )
     .await?;
     let hpos = if ctx.hpos() {
-        let orders = wp_table(dialect, database, ctx, "wc_orders");
+        let orders = table_ref(dialect, database, ctx, "wc_orders");
         let old = fetch(
             session,
             &format!("SELECT status FROM {orders} WHERE id = {n}"),

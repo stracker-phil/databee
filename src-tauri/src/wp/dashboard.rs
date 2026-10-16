@@ -6,10 +6,12 @@ use ts_rs::TS;
 
 use super::changes::WpChangeRequest;
 use super::context::{HposMode, SiteZone, WpContext};
-use super::lists::{self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary, num, text};
+use super::lists::{self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary};
+use super::rows::{count, facets, text};
+use super::sql::{autoload_on_sql, table_ref};
 use super::{WpList, fetch};
 use crate::db::Database;
-use crate::db::{Dialect, TableInfo};
+use crate::db::TableInfo;
 use crate::error::{AppError, AppResult};
 
 pub const AUTOLOAD_HEALTHY_BYTES: u64 = 800 * 1024;
@@ -426,23 +428,22 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
     out
 }
 
-fn t(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
-    format!(
-        "{}.{}",
-        dialect.quote_ident(db),
-        dialect.quote_ident(&ctx.table(table))
-    )
-}
-
 pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> AppResult<Dashboard> {
     let dialect = session.dialect();
-    let options = t(dialect, db, ctx, "options");
+    let options = table_ref(dialect, db, ctx, "options");
     let autoload = fetch(
         session,
-        &format!("SELECT SUM(LENGTH(option_value)) FROM {options} WHERE autoload IN ('yes', 'on', 'auto', 'auto-on')"),
+        &format!(
+            "SELECT SUM(LENGTH(option_value)) FROM {options} WHERE {}",
+            autoload_on_sql("autoload")
+        ),
     )
     .await?;
-    let autoload_bytes = autoload.rows.first().and_then(|r| num(&r[0])).unwrap_or(0);
+    let autoload_bytes = autoload
+        .rows
+        .first()
+        .and_then(|r| count(&r[0]))
+        .unwrap_or(0);
     let expired = fetch(
         session,
         &format!(
@@ -460,14 +461,14 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
             let today = ctx.site.zone.to_local(now).date();
             let (table, status_col, date_col, type_filter) = if ctx.hpos() {
                 (
-                    t(dialect, db, ctx, "wc_orders"),
+                    table_ref(dialect, db, ctx, "wc_orders"),
                     "status",
                     "date_created_gmt",
                     "type = 'shop_order'",
                 )
             } else {
                 (
-                    t(dialect, db, ctx, "posts"),
+                    table_ref(dialect, db, ctx, "posts"),
                     "post_status",
                     "post_date_gmt",
                     "post_type = 'shop_order'",
@@ -490,7 +491,7 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
             let day_rows: Vec<(String, String, u64)> = days
                 .rows
                 .iter()
-                .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, num(&r[2])?)))
+                .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, count(&r[2])?)))
                 .collect();
             let mut buckets = day_buckets(&day_rows, today);
             let mut granularity = Granularity::Day;
@@ -511,7 +512,7 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
                 let hour_rows: Vec<(String, String, u64)> = hours
                     .rows
                     .iter()
-                    .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, num(&r[2])?)))
+                    .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, count(&r[2])?)))
                     .collect();
                 let today_total = buckets
                     .last()
@@ -534,27 +535,15 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
                     .last()
                     .map_or(0, |b| b.completed + b.processing + b.failed + b.other)
             };
-            let mut facets: Vec<Facet> = by_status
-                .rows
-                .iter()
-                .filter_map(|r| {
-                    let v = text(&r[0])?;
-                    Some(Facet {
-                        label: v.clone(),
-                        count: num(&r[1]).unwrap_or(0),
-                        value: v,
-                    })
-                })
-                .collect();
-            facets.sort_by_key(|a| std::cmp::Reverse(a.count));
+            let status_facets = facets(&by_status, 0, 1);
             let stats = OrderStats {
-                total: facets
+                total: status_facets
                     .iter()
                     .filter(|f| f.value != "trash")
                     .map(|f| f.count)
                     .sum(),
                 today: today_count,
-                by_status: facets,
+                by_status: status_facets,
                 days: buckets,
                 granularity,
             };
@@ -575,12 +564,12 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
                     &format!(
                         "SELECT COUNT(*) FROM {o} o LEFT JOIN {p} p ON p.ID = o.id WHERE o.type IN ('shop_order', 'shop_order_refund') \
                          AND (p.ID IS NULL OR p.post_type <> o.type OR p.post_modified_gmt <> o.date_updated_gmt)",
-                        o = t(dialect, db, ctx, "wc_orders"),
-                        p = t(dialect, db, ctx, "posts"),
+                        o = table_ref(dialect, db, ctx, "wc_orders"),
+                        p = table_ref(dialect, db, ctx, "posts"),
                     ),
                 )
                 .await?;
-                rs.rows.first().and_then(|r| num(&r[0]))
+                rs.rows.first().and_then(|r| count(&r[0]))
             } else {
                 None
             };
@@ -590,25 +579,13 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
     };
 
     let actions = if ctx.has_table("actionscheduler_actions") {
-        let table = t(dialect, db, ctx, "actionscheduler_actions");
+        let table = table_ref(dialect, db, ctx, "actionscheduler_actions");
         let by_status = fetch(
             session,
             &format!("SELECT status, COUNT(*) FROM {table} GROUP BY status"),
         )
         .await?;
-        let mut facets: Vec<Facet> = by_status
-            .rows
-            .iter()
-            .filter_map(|r| {
-                let v = text(&r[0])?;
-                Some(Facet {
-                    label: v.clone(),
-                    count: num(&r[1]).unwrap_or(0),
-                    value: v,
-                })
-            })
-            .collect();
-        facets.sort_by_key(|a| std::cmp::Reverse(a.count));
+        let status_facets = facets(&by_status, 0, 1);
         let failed = lists::actions(
             session,
             ctx,
@@ -629,15 +606,15 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
         )
         .await?;
         Some(ActionStats {
-            total: facets.iter().map(|f| f.count).sum(),
-            by_status: facets,
+            total: status_facets.iter().map(|f| f.count).sum(),
+            by_status: status_facets,
             recent_failed: failed.items,
             by_hook: lists::failed_by_hook(session, ctx, db)
                 .await?
                 .into_iter()
                 .take(6)
                 .collect(),
-            overdue: overdue.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
+            overdue: overdue.rows.first().and_then(|r| count(&r[0])).unwrap_or(0),
         })
     } else {
         None
@@ -648,7 +625,7 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
         recent_orders,
         autoload_bytes,
         autoload_healthy: autoload_bytes < AUTOLOAD_HEALTHY_BYTES,
-        transients_expired: expired.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
+        transients_expired: expired.rows.first().and_then(|r| count(&r[0])).unwrap_or(0),
         actions,
         hpos_drift,
         tables: tiles(ctx, &session.tables(db).await?),
@@ -676,22 +653,6 @@ pub async fn browser(
     db: &str,
 ) -> AppResult<Vec<BrowserSection>> {
     let dialect = session.dialect();
-    let facet_rows = |rs: &crate::db::ResultSet| -> Vec<Facet> {
-        let mut f: Vec<Facet> = rs
-            .rows
-            .iter()
-            .filter_map(|r| {
-                let v = text(&r[0])?;
-                Some(Facet {
-                    label: v.clone(),
-                    count: num(&r[1]).unwrap_or(0),
-                    value: v,
-                })
-            })
-            .collect();
-        f.sort_by_key(|a| std::cmp::Reverse(a.count));
-        f
-    };
     let section = |list, label, breakdown: Vec<Facet>| BrowserSection {
         list,
         label,
@@ -701,9 +662,13 @@ pub async fn browser(
     let mut out = Vec::new();
     if ctx.wc.is_some() {
         let (table, status, ty) = if ctx.hpos() {
-            (t(dialect, db, ctx, "wc_orders"), "status", "type")
+            (table_ref(dialect, db, ctx, "wc_orders"), "status", "type")
         } else {
-            (t(dialect, db, ctx, "posts"), "post_status", "post_type")
+            (
+                table_ref(dialect, db, ctx, "posts"),
+                "post_status",
+                "post_type",
+            )
         };
         for (order_type, list, label) in [
             ("shop_order", WpList::Orders, "Orders"),
@@ -717,7 +682,7 @@ pub async fn browser(
                 ),
             )
             .await?;
-            let s = section(list, label, facet_rows(&rs));
+            let s = section(list, label, facets(&rs, 0, 1));
             if list == WpList::Orders || s.count > 0 {
                 out.push(s);
             }
@@ -725,13 +690,16 @@ pub async fn browser(
     }
     let users = fetch(
         session,
-        &format!("SELECT COUNT(*) FROM {}", t(dialect, db, ctx, "users")),
+        &format!(
+            "SELECT COUNT(*) FROM {}",
+            table_ref(dialect, db, ctx, "users")
+        ),
     )
     .await?;
     out.push(BrowserSection {
         list: WpList::Users,
         label: "Users",
-        count: users.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
+        count: users.rows.first().and_then(|r| count(&r[0])).unwrap_or(0),
         breakdown: Vec::new(),
     });
     if ctx.wc.is_some() {
@@ -739,25 +707,25 @@ pub async fn browser(
             session,
             &format!(
                 "SELECT post_status, COUNT(*) FROM {} WHERE post_type = 'product' AND post_status NOT IN ('trash', 'auto-draft') GROUP BY post_status",
-                t(dialect, db, ctx, "posts")
+                table_ref(dialect, db, ctx, "posts")
             ),
         )
         .await?;
-        out.push(section(WpList::Products, "Products", facet_rows(&rs)));
+        out.push(section(WpList::Products, "Products", facets(&rs, 0, 1)));
     }
     if ctx.has_table("actionscheduler_actions") {
         let rs = fetch(
             session,
             &format!(
                 "SELECT status, COUNT(*) FROM {} GROUP BY status",
-                t(dialect, db, ctx, "actionscheduler_actions")
+                table_ref(dialect, db, ctx, "actionscheduler_actions")
             ),
         )
         .await?;
         out.push(section(
             WpList::Actions,
             "Scheduled actions",
-            facet_rows(&rs),
+            facets(&rs, 0, 1),
         ));
     }
     if ctx.has_table("woocommerce_sessions") {
@@ -765,11 +733,11 @@ pub async fn browser(
             session,
             &format!(
                 "SELECT IF(session_expiry < UNIX_TIMESTAMP(), 'expired', 'active'), COUNT(*) FROM {} GROUP BY 1",
-                t(dialect, db, ctx, "woocommerce_sessions")
+                table_ref(dialect, db, ctx, "woocommerce_sessions")
             ),
         )
         .await?;
-        out.push(section(WpList::Sessions, "Sessions", facet_rows(&rs)));
+        out.push(section(WpList::Sessions, "Sessions", facets(&rs, 0, 1)));
     }
     let hidden = lists::HIDDEN_POST_TYPES
         .iter()
@@ -780,20 +748,23 @@ pub async fn browser(
         session,
         &format!(
             "SELECT post_type, COUNT(*) FROM {} WHERE post_type NOT IN ({hidden}) AND post_status <> 'auto-draft' GROUP BY post_type",
-            t(dialect, db, ctx, "posts")
+            table_ref(dialect, db, ctx, "posts")
         ),
     )
     .await?;
-    out.push(section(WpList::Content, "Content", facet_rows(&rs)));
+    out.push(section(WpList::Content, "Content", facets(&rs, 0, 1)));
     let rs = fetch(
         session,
-        &format!("SELECT COUNT(*) FROM {}", t(dialect, db, ctx, "options")),
+        &format!(
+            "SELECT COUNT(*) FROM {}",
+            table_ref(dialect, db, ctx, "options")
+        ),
     )
     .await?;
     out.push(BrowserSection {
         list: WpList::Settings,
         label: "Options",
-        count: rs.rows.first().and_then(|r| num(&r[0])).unwrap_or(0),
+        count: rs.rows.first().and_then(|r| count(&r[0])).unwrap_or(0),
         breakdown: Vec::new(),
     });
     Ok(out)
@@ -833,7 +804,7 @@ pub async fn action_histogram(
         session,
         &format!(
             "SELECT {day_case}, status, COUNT(*) FROM {} WHERE {day_range}{hook_filter} GROUP BY 1, 2",
-            t(dialect, db, ctx, "actionscheduler_actions"),
+            table_ref(dialect, db, ctx, "actionscheduler_actions"),
         ),
     )
     .await?;
@@ -854,7 +825,7 @@ pub async fn action_histogram(
                     "other"
                 }
             };
-            Some((text(&r[0])?, series.to_string(), num(&r[2])?))
+            Some((text(&r[0])?, series.to_string(), count(&r[2])?))
         })
         .collect();
     others.sort();

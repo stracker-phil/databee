@@ -8,8 +8,9 @@ use ts_rs::TS;
 
 use super::context::WpContext;
 use super::detail::args_reference;
-use super::entity::{Catalog, EntityDoc, cell_str};
-use super::lists::{epoch, text};
+use super::entity::{Catalog, EntityDoc};
+use super::lists::epoch;
+use super::rows::{cell_str, text};
 use super::snapshots_store::Snapshot;
 use super::{expand, fetch, load_docs};
 use crate::db::Database;

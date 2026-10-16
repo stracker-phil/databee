@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::context::WpContext;
-use super::entity::cell_str;
 use super::hints::money;
+use super::rows::{count, facets, int, text};
+use super::sql::{Filter, id_match, paid_statuses_sql, table_ref};
 use super::{fetch, post_images};
 use crate::db::Database;
 use crate::db::{Cell, Dialect, ResultSet};
@@ -153,18 +154,6 @@ pub struct Page<T> {
     pub kinds: Vec<Facet>,
 }
 
-pub(crate) fn text(cell: &Cell) -> Option<String> {
-    cell_str(cell).map(String::from).filter(|s| !s.is_empty())
-}
-
-pub(crate) fn num(cell: &Cell) -> Option<u64> {
-    cell_str(cell)?.trim().parse().ok()
-}
-
-pub(crate) fn int(cell: &Cell) -> Option<i64> {
-    cell_str(cell)?.trim().parse::<f64>().ok().map(|f| f as i64)
-}
-
 /// Seconds since epoch of a UTC DATETIME column, independent of the session time zone.
 pub(crate) fn epoch(col: &str) -> String {
     format!("TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', {col})")
@@ -174,31 +163,6 @@ fn page_split<T>(mut items: Vec<T>, limit: u32) -> (Vec<T>, bool) {
     let has_more = items.len() > limit as usize;
     items.truncate(limit as usize);
     (items, has_more)
-}
-
-fn facets(rs: &ResultSet, label: impl Fn(&str) -> String) -> Vec<Facet> {
-    let mut out: Vec<Facet> = rs
-        .rows
-        .iter()
-        .filter_map(|r| {
-            let value = text(&r[0])?;
-            Some(Facet {
-                label: label(&value),
-                count: num(&r[1]).unwrap_or(0),
-                value,
-            })
-        })
-        .collect();
-    out.sort_by_key(|a| std::cmp::Reverse(a.count));
-    out
-}
-
-fn t(dialect: Dialect, db: &str, ctx: &WpContext, table: &str) -> String {
-    format!(
-        "{}.{}",
-        dialect.quote_ident(db),
-        dialect.quote_ident(&ctx.table(table))
-    )
 }
 
 // ---------- orders & subscriptions ----------
@@ -239,13 +203,9 @@ pub fn orders_sql(
             filter += &format!(" AND o.payment_method = {}", dialect.sql_string(g));
         }
         if let Some(s) = q.search() {
-            let id = s.trim_start_matches('#');
-            let id_match = id
-                .parse::<u64>()
-                .map(|n| format!("o.id = {n} OR "))
-                .unwrap_or_default();
+            let id_clause = id_match("o.id", s.trim_start_matches('#'));
             filter += &format!(
-                " AND ({id_match}o.billing_email LIKE {l} OR o.transaction_id = {e} OR a.first_name LIKE {l} OR a.last_name LIKE {l})",
+                " AND ({id_clause}o.billing_email LIKE {l} OR o.transaction_id = {e} OR a.first_name LIKE {l} OR a.last_name LIKE {l})",
                 l = dialect.like_contains(s),
                 e = dialect.sql_string(s)
             );
@@ -258,9 +218,9 @@ pub fn orders_sql(
              WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
             order = order_by("orders_hpos", q, "o.id"),
             created = epoch("o.date_created_gmt"),
-            items = t(dialect, db, ctx, "woocommerce_order_items"),
-            orders = t(dialect, db, ctx, "wc_orders"),
-            addr = t(dialect, db, ctx, "wc_order_addresses"),
+            items = table_ref(dialect, db, ctx, "woocommerce_order_items"),
+            orders = table_ref(dialect, db, ctx, "wc_orders"),
+            addr = table_ref(dialect, db, ctx, "wc_order_addresses"),
             offset = q.offset,
         )
     } else {
@@ -278,13 +238,9 @@ pub fn orders_sql(
             ));
         }
         if let Some(s) = q.search() {
-            let id = s.trim_start_matches('#');
-            let id_match = id
-                .parse::<u64>()
-                .map(|n| format!("p.ID = {n} OR "))
-                .unwrap_or_default();
+            let id_clause = id_match("p.ID", s.trim_start_matches('#'));
             having.push(format!(
-                "({id_match}{email} LIKE {l} OR {tx} = {e} OR {first} LIKE {l} OR {last} LIKE {l})",
+                "({id_clause}{email} LIKE {l} OR {tx} = {e} OR {first} LIKE {l} OR {last} LIKE {l})",
                 email = meta("_billing_email"),
                 tx = meta("_transaction_id"),
                 first = meta("_billing_first_name"),
@@ -316,9 +272,9 @@ pub fn orders_sql(
             last = meta("_billing_last_name"),
             customer = meta("_customer_user"),
             created = epoch("p.post_date_gmt"),
-            items = t(dialect, db, ctx, "woocommerce_order_items"),
-            posts = t(dialect, db, ctx, "posts"),
-            postmeta = t(dialect, db, ctx, "postmeta"),
+            items = table_ref(dialect, db, ctx, "woocommerce_order_items"),
+            posts = table_ref(dialect, db, ctx, "posts"),
+            postmeta = table_ref(dialect, db, ctx, "postmeta"),
             offset = q.offset,
         )
     }
@@ -345,7 +301,7 @@ pub fn order_rows(
                 name: text(&r[8]),
                 customer_id: text(&r[9]).filter(|c| c != "0"),
                 created: int(&r[10]),
-                item_count: num(&r[11]).unwrap_or(0),
+                item_count: count(&r[11]).unwrap_or(0),
             }
         })
         .collect()
@@ -360,7 +316,7 @@ fn order_facets_sql(
     if ctx.hpos() {
         let from = format!(
             "{} WHERE type = {}",
-            t(dialect, db, ctx, "wc_orders"),
+            table_ref(dialect, db, ctx, "wc_orders"),
             dialect.sql_string(order_type)
         );
         (
@@ -373,14 +329,14 @@ fn order_facets_sql(
         (
             format!(
                 "SELECT post_status, COUNT(*) FROM {} WHERE post_type = {} GROUP BY post_status",
-                t(dialect, db, ctx, "posts"),
+                table_ref(dialect, db, ctx, "posts"),
                 dialect.sql_string(order_type)
             ),
             format!(
                 "SELECT m.meta_value, COUNT(*) FROM {posts} p JOIN {pm} m ON m.post_id = p.ID AND m.meta_key = '_payment_method' \
                  WHERE p.post_type = {ty} AND m.meta_value <> '' GROUP BY m.meta_value",
-                posts = t(dialect, db, ctx, "posts"),
-                pm = t(dialect, db, ctx, "postmeta"),
+                posts = table_ref(dialect, db, ctx, "posts"),
+                pm = table_ref(dialect, db, ctx, "postmeta"),
                 ty = dialect.sql_string(order_type)
             ),
         )
@@ -425,8 +381,8 @@ pub async fn orders(
         limit: q.limit(),
         items,
         has_more,
-        facets: facets(&statuses, str::to_string),
-        kinds: facets(&gateways, str::to_string),
+        facets: facets(&statuses, 0, 1),
+        kinds: facets(&gateways, 0, 1),
     })
 }
 
@@ -450,31 +406,27 @@ pub struct UserSummary {
 
 pub fn users_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) -> String {
     let caps = dialect.sql_string(&format!("{}capabilities", ctx.prefix));
-    let mut filter = "1 = 1".to_string();
+    let mut filter = Filter::new(dialect).and("1 = 1");
     if let Some(role) = &q.kind {
-        filter += &format!(
-            " AND c.meta_value LIKE {}",
+        filter = filter.and(format!(
+            "c.meta_value LIKE {}",
             dialect.like_contains(&format!("\"{role}\""))
-        );
+        ));
     }
     if let Some(s) = q.search() {
-        let id_match = s
-            .parse::<u64>()
-            .map(|n| format!("u.ID = {n} OR "))
-            .unwrap_or_default();
-        filter += &format!(
-            " AND ({id_match}u.user_login LIKE {l} OR u.user_email LIKE {l} OR u.display_name LIKE {l})",
-            l = dialect.like_contains(s)
-        );
+        filter = filter
+            .id_or("u.ID", s)
+            .search_any(&["u.user_login", "u.user_email", "u.display_name"], s);
     }
     format!(
         "SELECT u.ID, u.user_login, u.user_email, u.display_name, {registered}, c.meta_value \
-         FROM {users} u LEFT JOIN {usermeta} c ON c.user_id = u.ID AND c.meta_key = {caps} \
-         WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
+         FROM {users} u LEFT JOIN {usermeta} c ON c.user_id = u.ID AND c.meta_key = {caps}{filter} \
+         {order} LIMIT {limit} OFFSET {offset}",
+        filter = filter.sql(),
         order = order_by("users", q, "u.ID"),
         registered = epoch("u.user_registered"),
-        users = t(dialect, db, ctx, "users"),
-        usermeta = t(dialect, db, ctx, "usermeta"),
+        users = table_ref(dialect, db, ctx, "users"),
+        usermeta = table_ref(dialect, db, ctx, "usermeta"),
         limit = q.limit() + 1,
         offset = q.offset,
     )
@@ -494,7 +446,7 @@ pub fn guests_sql(
     limit: u32,
     offset: u64,
 ) -> String {
-    let users = t(dialect, db, ctx, "users");
+    let users = table_ref(dialect, db, ctx, "users");
     let mut extra = String::new();
     if let Some(s) = search {
         extra += &format!(" AND {{email}} LIKE {}", dialect.like_contains(s));
@@ -505,20 +457,21 @@ pub fn guests_sql(
     if ctx.hpos() {
         let extra = extra.replace("{email}", "o.billing_email");
         format!(
-            "SELECT o.billing_email, COUNT(*), SUM(CASE WHEN o.status IN ('wc-completed', 'wc-processing') THEN o.total_amount ELSE 0 END), \
+            "SELECT o.billing_email, COUNT(*), SUM(CASE WHEN {paid} THEN o.total_amount ELSE 0 END), \
              MAX({created}), MIN({created}), MAX(TRIM(CONCAT(COALESCE(a.first_name, ''), ' ', COALESCE(a.last_name, '')))) \
              FROM {orders} o LEFT JOIN {addr} a ON a.order_id = o.id AND a.address_type = 'billing' \
              WHERE o.type = 'shop_order' AND o.customer_id = 0 AND o.billing_email <> '' \
              AND o.billing_email NOT IN (SELECT user_email FROM {users}){extra} \
              GROUP BY o.billing_email ORDER BY MAX(o.date_created_gmt) DESC LIMIT {limit} OFFSET {offset}",
+            paid = paid_statuses_sql("o.status"),
             created = epoch("o.date_created_gmt"),
-            orders = t(dialect, db, ctx, "wc_orders"),
-            addr = t(dialect, db, ctx, "wc_order_addresses"),
+            orders = table_ref(dialect, db, ctx, "wc_orders"),
+            addr = table_ref(dialect, db, ctx, "wc_order_addresses"),
         )
     } else {
         let extra = extra.replace("{email}", "e.meta_value");
         format!(
-            "SELECT e.meta_value, COUNT(*), SUM(CASE WHEN p.post_status IN ('wc-completed', 'wc-processing') THEN tot.meta_value ELSE 0 END), \
+            "SELECT e.meta_value, COUNT(*), SUM(CASE WHEN {paid} THEN tot.meta_value ELSE 0 END), \
              MAX({created}), MIN({created}), MAX(TRIM(CONCAT(COALESCE(f.meta_value, ''), ' ', COALESCE(l.meta_value, '')))) \
              FROM {posts} p JOIN {pm} e ON e.post_id = p.ID AND e.meta_key = '_billing_email' \
              LEFT JOIN {pm} c ON c.post_id = p.ID AND c.meta_key = '_customer_user' \
@@ -528,9 +481,10 @@ pub fn guests_sql(
              WHERE p.post_type = 'shop_order' AND COALESCE(c.meta_value, '0') = '0' AND e.meta_value <> '' \
              AND e.meta_value NOT IN (SELECT user_email FROM {users}){extra} \
              GROUP BY e.meta_value ORDER BY MAX(p.post_date_gmt) DESC LIMIT {limit} OFFSET {offset}",
+            paid = paid_statuses_sql("p.post_status"),
             created = epoch("p.post_date_gmt"),
-            posts = t(dialect, db, ctx, "posts"),
-            pm = t(dialect, db, ctx, "postmeta"),
+            posts = table_ref(dialect, db, ctx, "posts"),
+            pm = table_ref(dialect, db, ctx, "postmeta"),
         )
     }
 }
@@ -546,7 +500,7 @@ pub fn guest_rows(rs: &ResultSet, currency: Option<&str>, decimals: u32) -> Vec<
                 name: text(&r[5]).filter(|n| !n.trim().is_empty()),
                 registered: int(&r[4]),
                 roles: vec!["Guest".into()],
-                order_count: num(&r[1]).unwrap_or(0),
+                order_count: count(&r[1]).unwrap_or(0),
                 total_spent: text(&r[2]).and_then(|v| money(&v, currency, decimals)),
                 last_order: int(&r[3]),
                 avatar: None,
@@ -574,20 +528,22 @@ pub fn customer_stats_sql(
     }
     Some(if ctx.hpos() {
         format!(
-            "SELECT customer_id, COUNT(*), SUM(CASE WHEN status IN ('wc-completed', 'wc-processing') THEN total_amount ELSE 0 END), \
+            "SELECT customer_id, COUNT(*), SUM(CASE WHEN {paid} THEN total_amount ELSE 0 END), \
              MAX({created}) FROM {orders} WHERE type = 'shop_order' AND customer_id IN ({list}) GROUP BY customer_id",
+            paid = paid_statuses_sql("status"),
             created = epoch("date_created_gmt"),
-            orders = t(dialect, db, ctx, "wc_orders"),
+            orders = table_ref(dialect, db, ctx, "wc_orders"),
         )
     } else {
         format!(
-            "SELECT c.meta_value, COUNT(*), SUM(CASE WHEN p.post_status IN ('wc-completed', 'wc-processing') THEN tot.meta_value ELSE 0 END), \
+            "SELECT c.meta_value, COUNT(*), SUM(CASE WHEN {paid} THEN tot.meta_value ELSE 0 END), \
              MAX({created}) FROM {posts} p JOIN {pm} c ON c.post_id = p.ID AND c.meta_key = '_customer_user' \
              LEFT JOIN {pm} tot ON tot.post_id = p.ID AND tot.meta_key = '_order_total' \
              WHERE p.post_type = 'shop_order' AND c.meta_value IN ({list}) GROUP BY c.meta_value",
+            paid = paid_statuses_sql("p.post_status"),
             created = epoch("p.post_date_gmt"),
-            posts = t(dialect, db, ctx, "posts"),
-            pm = t(dialect, db, ctx, "postmeta"),
+            posts = table_ref(dialect, db, ctx, "posts"),
+            pm = table_ref(dialect, db, ctx, "postmeta"),
         )
     })
 }
@@ -650,7 +606,7 @@ pub async fn users(
             .collect();
         for c in &mut items {
             if let Some(r) = by_id.get(&c.id) {
-                c.order_count = num(&r[1]).unwrap_or(0);
+                c.order_count = count(&r[1]).unwrap_or(0);
                 c.total_spent = text(&r[2])
                     .and_then(|v| money(&v, ctx.site.currency.as_deref(), ctx.site.price_decimals));
                 c.last_order = int(&r[3]);
@@ -673,7 +629,7 @@ async fn role_facets(session: &dyn Database, ctx: &WpContext, db: &str) -> AppRe
         session,
         &format!(
             "SELECT meta_value, COUNT(*) FROM {} WHERE meta_key = {} GROUP BY meta_value",
-            t(dialect, db, ctx, "usermeta"),
+            table_ref(dialect, db, ctx, "usermeta"),
             dialect.sql_string(&format!("{}capabilities", ctx.prefix))
         ),
     )
@@ -681,7 +637,7 @@ async fn role_facets(session: &dyn Database, ctx: &WpContext, db: &str) -> AppRe
     let mut role_counts: HashMap<String, u64> = HashMap::new();
     for r in &roles.rows {
         for role in roles_of(text(&r[0]).as_deref()) {
-            *role_counts.entry(role).or_default() += num(&r[1]).unwrap_or(0);
+            *role_counts.entry(role).or_default() += count(&r[1]).unwrap_or(0);
         }
     }
     let mut kinds: Vec<Facet> = role_counts
@@ -717,35 +673,29 @@ pub struct ProductSummary {
 
 pub fn products_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) -> String {
     let lookup = ctx.has_table("wc_product_meta_lookup");
-    let mut filter =
-        "p.post_type = 'product' AND p.post_status NOT IN ('trash', 'auto-draft')".to_string();
+    let mut filter = Filter::new(dialect)
+        .and("p.post_type = 'product'")
+        .and("p.post_status NOT IN ('trash', 'auto-draft')");
     if let Some(s) = &q.status {
-        filter += &format!(" AND p.post_status = {}", dialect.sql_string(s));
+        filter = filter.and(format!("p.post_status = {}", dialect.sql_string(s)));
     }
     if let Some(k) = &q.kind {
-        filter += &format!(" AND pt.slug = {}", dialect.sql_string(k));
+        filter = filter.and(format!("pt.slug = {}", dialect.sql_string(k)));
     }
     if let Some(s) = q.search() {
-        let id_match = s
-            .parse::<u64>()
-            .map(|n| format!("p.ID = {n} OR "))
-            .unwrap_or_default();
-        let sku = if lookup {
-            format!(" OR l.sku LIKE {}", dialect.like_contains(s))
+        let cols: &[&str] = if lookup {
+            &["p.post_title", "l.sku"]
         } else {
-            String::new()
+            &["p.post_title"]
         };
-        filter += &format!(
-            " AND ({id_match}p.post_title LIKE {l}{sku})",
-            l = dialect.like_contains(s)
-        );
+        filter = filter.id_or("p.ID", s).search_any(cols, s);
     }
     let (cols, join) = if lookup {
         (
             "l.sku, CASE WHEN l.min_price = l.max_price THEN l.min_price ELSE CONCAT(l.min_price, '–', l.max_price) END, l.stock_status, l.stock_quantity, l.total_sales",
             format!(
                 " LEFT JOIN {} l ON l.product_id = p.ID",
-                t(dialect, db, ctx, "wc_product_meta_lookup")
+                table_ref(dialect, db, ctx, "wc_product_meta_lookup")
             ),
         )
     } else {
@@ -756,8 +706,9 @@ pub fn products_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) 
          (SELECT COUNT(*) FROM {posts} v WHERE v.post_parent = p.ID AND v.post_type = 'product_variation') \
          FROM {posts} p{join} \
          LEFT JOIN (SELECT tr.object_id, te.slug FROM {tr} tr JOIN {tt} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_type' \
-         JOIN {terms} te ON te.term_id = tt.term_id) pt ON pt.object_id = p.ID \
-         WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
+         JOIN {terms} te ON te.term_id = tt.term_id) pt ON pt.object_id = p.ID{filter} \
+         {order} LIMIT {limit} OFFSET {offset}",
+        filter = filter.sql(),
         order = if lookup {
             order_by("products", q, "p.ID")
         } else {
@@ -774,10 +725,10 @@ pub fn products_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) 
                 "p.ID",
             )
         },
-        posts = t(dialect, db, ctx, "posts"),
-        tr = t(dialect, db, ctx, "term_relationships"),
-        tt = t(dialect, db, ctx, "term_taxonomy"),
-        terms = t(dialect, db, ctx, "terms"),
+        posts = table_ref(dialect, db, ctx, "posts"),
+        tr = table_ref(dialect, db, ctx, "term_relationships"),
+        tt = table_ref(dialect, db, ctx, "term_taxonomy"),
+        terms = table_ref(dialect, db, ctx, "terms"),
         limit = q.limit() + 1,
         offset = q.offset,
     )
@@ -815,8 +766,8 @@ pub async fn products(
             price: text(&r[5]).map(|p| price_text(&p, currency, ctx.site.price_decimals)),
             stock_status: text(&r[6]),
             stock: text(&r[7]),
-            total_sales: num(&r[8]).unwrap_or(0),
-            variations: num(&r[9]).unwrap_or(0),
+            total_sales: count(&r[8]).unwrap_or(0),
+            variations: count(&r[9]).unwrap_or(0),
             image: None,
         })
         .collect();
@@ -835,7 +786,7 @@ pub async fn products(
         session,
         &format!(
             "SELECT post_status, COUNT(*) FROM {} WHERE post_type = 'product' AND post_status NOT IN ('trash', 'auto-draft') GROUP BY post_status",
-            t(dialect, db, ctx, "posts")
+            table_ref(dialect, db, ctx, "posts")
         ),
     )
     .await?;
@@ -844,9 +795,9 @@ pub async fn products(
         &format!(
             "SELECT te.slug, COUNT(*) FROM {tr} tr JOIN {tt} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_type' \
              JOIN {terms} te ON te.term_id = tt.term_id GROUP BY te.slug",
-            tr = t(dialect, db, ctx, "term_relationships"),
-            tt = t(dialect, db, ctx, "term_taxonomy"),
-            terms = t(dialect, db, ctx, "terms"),
+            tr = table_ref(dialect, db, ctx, "term_relationships"),
+            tt = table_ref(dialect, db, ctx, "term_taxonomy"),
+            terms = table_ref(dialect, db, ctx, "terms"),
         ),
     )
     .await?;
@@ -854,8 +805,8 @@ pub async fn products(
         limit: q.limit(),
         items,
         has_more,
-        facets: facets(&statuses, str::to_string),
-        kinds: facets(&kinds, str::to_string),
+        facets: facets(&statuses, 0, 1),
+        kinds: facets(&kinds, 0, 1),
     })
 }
 
@@ -878,34 +829,30 @@ pub struct ActionSummary {
 }
 
 pub fn actions_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) -> String {
-    let mut filter = "1 = 1".to_string();
+    let mut filter = Filter::new(dialect).and("1 = 1");
     if let Some(s) = &q.status {
-        filter += &format!(" AND a.status = {}", dialect.sql_string(s));
+        filter = filter.and(format!("a.status = {}", dialect.sql_string(s)));
     }
     if let Some(h) = &q.kind {
-        filter += &format!(" AND a.hook = {}", dialect.sql_string(h));
+        filter = filter.and(format!("a.hook = {}", dialect.sql_string(h)));
     }
     if let Some(s) = q.search() {
-        let id_match = s
-            .parse::<u64>()
-            .map(|n| format!("a.action_id = {n} OR "))
-            .unwrap_or_default();
-        filter += &format!(
-            " AND ({id_match}a.hook LIKE {l} OR a.args LIKE {l})",
-            l = dialect.like_contains(s)
-        );
+        filter = filter
+            .id_or("a.action_id", s)
+            .search_any(&["a.hook", "a.args"], s);
     }
     format!(
         "SELECT a.action_id, a.hook, a.status, {sched}, {last}, a.attempts, a.args, g.slug, \
          (SELECT l.message FROM {logs} l WHERE l.action_id = a.action_id ORDER BY l.log_id DESC LIMIT 1) \
-         FROM {actions} a LEFT JOIN {groups} g ON g.group_id = a.group_id \
-         WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
+         FROM {actions} a LEFT JOIN {groups} g ON g.group_id = a.group_id{filter} \
+         {order} LIMIT {limit} OFFSET {offset}",
+        filter = filter.sql(),
         order = order_by("actions", q, "a.action_id"),
         sched = epoch("a.scheduled_date_gmt"),
         last = epoch("IF(a.last_attempt_gmt < '1000-01-01', NULL, a.last_attempt_gmt)"),
-        logs = t(dialect, db, ctx, "actionscheduler_logs"),
-        actions = t(dialect, db, ctx, "actionscheduler_actions"),
-        groups = t(dialect, db, ctx, "actionscheduler_groups"),
+        logs = table_ref(dialect, db, ctx, "actionscheduler_logs"),
+        actions = table_ref(dialect, db, ctx, "actionscheduler_actions"),
+        groups = table_ref(dialect, db, ctx, "actionscheduler_groups"),
         limit = q.limit() + 1,
         offset = q.offset,
     )
@@ -920,7 +867,7 @@ pub fn action_rows(rs: &ResultSet) -> Vec<ActionSummary> {
             status: text(&r[2]).unwrap_or_default(),
             scheduled: int(&r[3]),
             last_attempt: int(&r[4]),
-            attempts: num(&r[5]).unwrap_or(0),
+            attempts: count(&r[5]).unwrap_or(0),
             args: text(&r[6]).filter(|a| a != "[]"),
             group: text(&r[7]),
             message: text(&r[8]),
@@ -937,7 +884,7 @@ pub async fn actions(
     let dialect = session.dialect();
     let rs = fetch(session, &actions_sql(dialect, db, ctx, q)).await?;
     let (items, has_more) = page_split(action_rows(&rs), q.limit());
-    let table = t(dialect, db, ctx, "actionscheduler_actions");
+    let table = table_ref(dialect, db, ctx, "actionscheduler_actions");
     let statuses = fetch(
         session,
         &format!("SELECT status, COUNT(*) FROM {table} GROUP BY status"),
@@ -957,8 +904,8 @@ pub async fn actions(
         limit: q.limit(),
         items,
         has_more,
-        facets: facets(&statuses, str::to_string),
-        kinds: facets(&hooks, |h| h.to_string()),
+        facets: facets(&statuses, 0, 1),
+        kinds: facets(&hooks, 0, 1),
     })
 }
 
@@ -979,8 +926,8 @@ pub async fn failed_by_hook(
     db: &str,
 ) -> AppResult<Vec<HookFailures>> {
     let dialect = session.dialect();
-    let actions = t(dialect, db, ctx, "actionscheduler_actions");
-    let logs = t(dialect, db, ctx, "actionscheduler_logs");
+    let actions = table_ref(dialect, db, ctx, "actionscheduler_actions");
+    let logs = table_ref(dialect, db, ctx, "actionscheduler_logs");
     let rs = fetch(
         session,
         &format!(
@@ -1014,7 +961,7 @@ pub async fn failed_by_hook(
         .map(|r| {
             let hook = text(&r[0]).unwrap_or_default();
             HookFailures {
-                count: num(&r[1]).unwrap_or(0),
+                count: count(&r[1]).unwrap_or(0),
                 last_failure: int(&r[2]),
                 last_message: text(&r[3]).and_then(|id| messages.get(&id).cloned()),
                 hook,
@@ -1085,7 +1032,7 @@ pub async fn sessions(
         session,
         &format!(
             "SELECT session_key, session_expiry, session_value FROM {} ORDER BY session_expiry DESC LIMIT {} OFFSET {}",
-            t(dialect, db, ctx, "woocommerce_sessions"),
+            table_ref(dialect, db, ctx, "woocommerce_sessions"),
             q.limit() + 1,
             q.offset
         ),
@@ -1165,7 +1112,7 @@ pub async fn content(
     q: &ListQuery,
 ) -> AppResult<Page<PostSummary>> {
     let dialect = session.dialect();
-    let posts = t(dialect, db, ctx, "posts");
+    let posts = table_ref(dialect, db, ctx, "posts");
     let hidden = HIDDEN_POST_TYPES
         .iter()
         .map(|h| dialect.sql_string(h))
@@ -1176,35 +1123,33 @@ pub async fn content(
         &format!("SELECT post_type, COUNT(*) FROM {posts} WHERE post_type NOT IN ({hidden}) AND post_status <> 'auto-draft' GROUP BY post_type"),
     )
     .await?;
-    let kinds = facets(&kinds, str::to_string);
+    let kinds = facets(&kinds, 0, 1);
     // No kind lists every visible type, so the "All" chip shows what was fetched.
     let type_filter = match &q.kind {
         Some(kind) => format!("p.post_type = {}", dialect.sql_string(kind)),
         None => format!("p.post_type NOT IN ({hidden})"),
     };
-    let mut filter = format!("{type_filter} AND p.post_status <> 'auto-draft'");
+    let mut filter = Filter::new(dialect)
+        .and(type_filter.as_str())
+        .and("p.post_status <> 'auto-draft'");
     if let Some(s) = &q.status {
-        filter += &format!(" AND p.post_status = {}", dialect.sql_string(s));
+        filter = filter.and(format!("p.post_status = {}", dialect.sql_string(s)));
     }
     if let Some(s) = q.search() {
-        let id_match = s
-            .parse::<u64>()
-            .map(|n| format!("p.ID = {n} OR "))
-            .unwrap_or_default();
-        filter += &format!(
-            " AND ({id_match}p.post_title LIKE {l} OR p.post_name LIKE {l})",
-            l = dialect.like_contains(s)
-        );
+        filter = filter
+            .id_or("p.ID", s)
+            .search_any(&["p.post_title", "p.post_name"], s);
     }
     let rs = fetch(
         session,
         &format!(
             "SELECT p.ID, p.post_title, p.post_type, p.post_status, u.display_name, {date}, {modified} FROM {posts} p \
-             LEFT JOIN {users} u ON u.ID = p.post_author WHERE {filter} {order} LIMIT {limit} OFFSET {offset}",
+             LEFT JOIN {users} u ON u.ID = p.post_author{filter} {order} LIMIT {limit} OFFSET {offset}",
+            filter = filter.sql(),
             order = order_by("content", q, "p.ID"),
             date = epoch("IF(p.post_date_gmt < '1000-01-01', NULL, p.post_date_gmt)"),
             modified = epoch("IF(p.post_modified_gmt < '1000-01-01', NULL, p.post_modified_gmt)"),
-            users = t(dialect, db, ctx, "users"),
+            users = table_ref(dialect, db, ctx, "users"),
             limit = q.limit() + 1,
             offset = q.offset,
         ),
@@ -1233,7 +1178,7 @@ pub async fn content(
         limit: q.limit(),
         items,
         has_more,
-        facets: facets(&statuses, str::to_string),
+        facets: facets(&statuses, 0, 1),
         kinds,
     })
 }
