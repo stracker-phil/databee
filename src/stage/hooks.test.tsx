@@ -10,8 +10,9 @@ import { resetStore, useStore } from "../state/store";
 import { connectedStore } from "../test/fixtures";
 import { registerCoreSettingsPages } from "../components/settings/pages";
 import { stageApi } from "./api";
+import { perform } from "./hooks";
 import { installStage } from "./install";
-import type { StageActRequest, StageKeys } from "./types";
+import type { StageAct, StageActRequest, StageKeys } from "./types";
 
 const mocked = vi.mocked(stageApi, true);
 
@@ -31,7 +32,7 @@ const key = (k: string, code: string, mods: Partial<StageKeys> = {}): StageKeys 
 function hooks() {
   installStage();
   const handler = <T,>(on: { mock: { calls: unknown[][] } }) => on.mock.calls.at(-1)![0] as (arg: T) => void;
-  const act = async (request: Omit<StageActRequest, "request">) => {
+  const act = async (request: StageAct) => {
     mocked.done.mockClear();
     handler<StageActRequest>(mocked.onAct)({ request: "r1", ...request });
     await vi.waitFor(() => expect(mocked.done).toHaveBeenCalled());
@@ -125,14 +126,14 @@ describe("Stage page hooks", () => {
     expect(await act({ kind: "type", anchor: "palette:search", text: "Hel", mode: "replace" })).toMatchObject({ ok: true });
     await act({ kind: "type", anchor: "palette:search", text: "lo", mode: "append" });
     expect(screen.getByRole("status")).toHaveTextContent("Hello");
-    await act({ kind: "type", anchor: "palette:search", text: "wp_options" });
+    await act({ kind: "type", anchor: "palette:search", text: "wp_options", mode: "replace" });
     expect(screen.getByRole("status")).toHaveTextContent(/^wp_options$/);
     expect(screen.getByLabelText("Search")).toHaveFocus();
   });
 
   it("fails to type into something that isn't a field", async () => {
     render(<button data-stage="toolbar:settings" data-rect="0,0,24,24">S</button>);
-    expect(await hooks().act({ kind: "type", anchor: "toolbar:settings", text: "x" })).toMatchObject({ ok: false, error: "“toolbar:settings” isn't a text field" });
+    expect(await hooks().act({ kind: "type", anchor: "toolbar:settings", text: "x", mode: "replace" })).toMatchObject({ ok: false, error: "“toolbar:settings” isn't a text field" });
   });
 
   it("scrolls the scroll area at the anchor and refuses one that can't scroll", async () => {
@@ -159,7 +160,7 @@ describe("Stage page hooks", () => {
     connectedStore();
     installCommands();
     vi.mocked(document.hasFocus).mockReturnValue(false);
-    const reply = await hooks().act({ kind: "keys", keys: key(",", "", { meta: true }) });
+    const reply = await hooks().act({ kind: "keys", keys: key(",", "", { meta: true }), focused: false });
     expect(reply).toMatchObject({ handled: true, ok: true, command: "app:settings" });
     expect(useStore.getState().dialog).toEqual({ type: "settings" });
   });
@@ -173,13 +174,13 @@ describe("Stage page hooks", () => {
       </form>,
     );
     const { act } = hooks();
-    expect(await act({ kind: "keys", keys: key("ArrowDown", "ArrowDown") })).toMatchObject({ handled: true, ok: true, window: "main" });
+    expect(await act({ kind: "keys", keys: key("ArrowDown", "ArrowDown"), focused: false })).toMatchObject({ handled: true, ok: true, window: "main" });
     expect(onKey).toHaveBeenLastCalledWith("ArrowDown");
-    await act({ kind: "keys", keys: key("Enter", "Enter") });
+    await act({ kind: "keys", keys: key("Enter", "Enter"), focused: false });
     expect(onSubmit).toHaveBeenCalledTimes(1);
 
     vi.mocked(document.hasFocus).mockReturnValue(false);
-    expect(await act({ kind: "keys", keys: key("Escape", "Escape") })).toMatchObject({ handled: false });
+    expect(await act({ kind: "keys", keys: key("Escape", "Escape"), focused: false })).toMatchObject({ handled: false });
     // Rust focused the window for this request (keys with window=…).
     expect(await act({ kind: "keys", keys: key("Escape", "Escape"), focused: true })).toMatchObject({ handled: true, ok: true });
     expect(onKey).toHaveBeenLastCalledWith("Escape");
@@ -210,6 +211,59 @@ describe("Stage page hooks", () => {
     expect(useStore.getState().paletteOpen).toBe(true);
     await act({ kind: "window", window: "palette", action: "hide" });
     expect(useStore.getState().paletteOpen).toBe(false);
+  });
+
+  describe("perform", () => {
+    it("replies to a window request after opening the sheet", async () => {
+      connectedStore();
+      expect(await perform({ request: "r9", kind: "window", window: "palette", action: "show" })).toEqual({ request: "r9", page: "main", handled: true, ok: true });
+      expect(useStore.getState().paletteOpen).toBe(true);
+    });
+
+    it("replies to a command request with the command's failure", async () => {
+      connectedStore();
+      installCommands();
+      expect(await perform({ request: "r9", kind: "command", command: "view:palette" })).toMatchObject({ handled: true, ok: true });
+      expect(useStore.getState().paletteOpen).toBe(true);
+      expect(await perform({ request: "r9", kind: "command", command: "nope" })).toMatchObject({ handled: true, ok: false, status: 404 });
+    });
+
+    it("replies to a keys request with the window that had the keys", async () => {
+      const onKey = vi.fn();
+      render(<input aria-label="Field" onKeyDown={(e) => onKey(e.key)} autoFocus />);
+      expect(await perform({ request: "r9", kind: "keys", keys: key("a", "KeyA"), focused: false })).toMatchObject({ handled: true, ok: true, window: "main" });
+      expect(onKey).toHaveBeenCalledWith("a");
+    });
+
+    it("clicks the anchor and replies with its rect", async () => {
+      const onClick = vi.fn();
+      render(<button data-stage="tray:apply" data-rect="1,2,30,40" onClick={onClick}>Apply</button>);
+      expect(await perform({ request: "r9", kind: "click", anchor: "tray:apply" })).toMatchObject({ handled: true, ok: true, rect: { x: 1, y: 2, width: 30, height: 40 } });
+      expect(onClick).toHaveBeenCalled();
+    });
+
+    it("appends typed text to the field's current value in append mode", async () => {
+      render(<input data-stage="palette:search" data-rect="0,0,200,24" aria-label="Search" defaultValue="wp_" />);
+      expect(await perform({ request: "r9", kind: "type", anchor: "palette:search", text: "posts", mode: "append" })).toMatchObject({ handled: true, ok: true });
+      expect(screen.getByLabelText("Search")).toHaveValue("wp_posts");
+    });
+
+    it("reveals an anchor without acting on it", async () => {
+      const onClick = vi.fn();
+      render(<button data-stage="tray:apply" data-rect="1,2,30,40" onClick={onClick}>Apply</button>);
+      expect(await perform({ request: "r9", kind: "reveal", anchor: "tray:apply" })).toMatchObject({ handled: true, ok: true, window: "main" });
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it("scrolls the anchor's scroll area and replies done", async () => {
+      render(<div data-stage="results" data-rect="0,0,400,300" style={{ overflowY: "auto" }} />);
+      const area = document.querySelector<HTMLElement>("[data-stage]")!;
+      Object.defineProperty(area, "scrollHeight", { value: 2000 });
+      Object.defineProperty(area, "clientHeight", { value: 300 });
+      area.scrollTo = vi.fn() as typeof area.scrollTo;
+      expect(await perform({ request: "r9", kind: "scroll", anchor: "results", to: "top" })).toMatchObject({ handled: true, ok: true });
+      expect(area.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+    });
   });
 
   it("describes the view, panels, sheets and commands with shortcuts and families", () => {

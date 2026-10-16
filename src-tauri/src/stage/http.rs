@@ -1,4 +1,4 @@
-//! The Stage hook's transport (docs/stage.md, protocol §4): `GET|POST
+//! The Stage hook's transport (docs/stage.md): `GET|POST
 //! http://127.0.0.1:<port>/v1/stage/<verb>` with `Authorization: Bearer <token>`. One request per
 //! connection; only local tools may use it (no Origin header, a loopback Host).
 
@@ -9,12 +9,13 @@ use serde_json::{Map, Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use super::hooks::Hub;
+use super::hub::Hub;
 use super::protocol::{Params, StageError, StageResult};
 
 pub const MAX_BODY_BYTES: usize = 16 * 1024;
 const MAX_HEAD_BYTES: usize = 8 * 1024;
 const READ_TIMEOUT: Duration = Duration::from_secs(10);
+const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
 /// A request line and its headers (names lowercased).
 #[derive(Debug, Clone, PartialEq)]
@@ -92,7 +93,8 @@ fn token_matches(given: Option<&str>, expected: &str) -> bool {
         == 0
 }
 
-/// The verb, once the request passed the checks that need no body.
+/// The verb, once the request passed the checks that need no body. Only `127.0.0.1` and
+/// `localhost` are accepted as Host, with or without a port; an IPv6 literal (`[::1]`) is refused.
 pub fn check(head: &Head, token: &str) -> StageResult<String> {
     // Only local tools: a browser page (Origin) or a foreign Host (DNS rebinding) is refused.
     let host = head.header("host").unwrap_or_default();
@@ -192,7 +194,7 @@ fn reason(status: u16) -> &'static str {
     }
 }
 
-pub fn response(result: StageResult<Map<String, Value>>) -> (u16, Vec<u8>) {
+pub fn response(result: StageResult<Map<String, Value>>) -> Vec<u8> {
     let (status, body) = match result {
         Ok(mut out) => {
             let mut body = Map::new();
@@ -208,7 +210,7 @@ pub fn response(result: StageResult<Map<String, Value>>) -> (u16, Vec<u8>) {
         reason(status),
         body.len()
     );
-    (status, raw.into_bytes())
+    raw.into_bytes()
 }
 
 async fn read_request(stream: &mut TcpStream, token: &str) -> StageResult<(String, Head, Vec<u8>)> {
@@ -265,7 +267,7 @@ async fn handle(mut stream: TcpStream, token: Arc<str>, hub: Arc<Hub>) {
     {
         log::warn!("Stage request failed: {}", e.message);
     }
-    let (_, raw) = response(result);
+    let raw = response(result);
     let _ = stream.write_all(&raw).await;
     let _ = stream.shutdown().await;
 }
@@ -276,7 +278,11 @@ pub async fn serve(listener: TcpListener, token: Arc<str>, hub: Arc<Hub>) {
             Ok((stream, _)) => {
                 tokio::spawn(handle(stream, token.clone(), hub.clone()));
             }
-            Err(e) => log::warn!("Stage API accept failed: {e}"),
+            Err(e) => {
+                log::warn!("Stage API accept failed: {e}");
+                // Errors like EMFILE persist for a moment; retrying at once would spin.
+                tokio::time::sleep(ACCEPT_BACKOFF).await;
+            }
         }
     }
 }
@@ -387,23 +393,17 @@ mod tests {
     fn responses_are_json_with_ok() {
         let mut out = Map::new();
         out.insert("state".into(), json!({}));
-        let (status, raw) = response(Ok(out));
-        let raw = String::from_utf8(raw).unwrap();
-        assert_eq!(status, 200);
+        let raw = String::from_utf8(response(Ok(out))).unwrap();
         assert!(raw.starts_with("HTTP/1.1 200 OK\r\n"));
         assert!(raw.ends_with("\r\n\r\n{\"ok\":true,\"state\":{}}\n"));
-        let (status, raw) = response(Err(StageError::new(409, "busy")));
-        assert_eq!(status, 409);
-        assert!(
-            String::from_utf8(raw)
-                .unwrap()
-                .ends_with("{\"ok\":false,\"error\":\"busy\"}\n")
-        );
+        let raw = String::from_utf8(response(Err(StageError::new(409, "busy")))).unwrap();
+        assert!(raw.starts_with("HTTP/1.1 409 Conflict\r\n"));
+        assert!(raw.ends_with("{\"ok\":false,\"error\":\"busy\"}\n"));
     }
 
     #[tokio::test]
     async fn serves_requests_over_tcp() {
-        use crate::stage::hooks::tests::{FakePage, hub_with};
+        use crate::stage::test_host::{FakePage, hub_with};
         let (hub, _) = hub_with(FakePage::default());
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();

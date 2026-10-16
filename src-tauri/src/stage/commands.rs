@@ -2,7 +2,7 @@
 
 use tauri::State;
 
-use super::protocol::{ActReply, AnchorsReply, InfoReply};
+use super::page::{ActReply, AnchorsReply, InfoReply};
 use super::settings::StageSettings;
 use super::{Stage, StageStatus};
 use crate::error::AppResult;

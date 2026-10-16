@@ -57,7 +57,7 @@ Read `.claude/rules/testing.md`, `docs/testing.md` and the docs page of the laye
 
 - **Async** with `#[tokio::test]`.
 - **No real side effects**: stores use `tempfile::tempdir()`; secrets use `MemoryStore`; the Stage hub uses
-  the `FakePage` host in `stage/hooks.rs`. Never touch the real config dir, the Keychain or the network
+  the `FakePage` host in `stage/test_host.rs`. Never touch the real config dir, the Keychain or the network
   beyond `127.0.0.1` with an OS-assigned port.
 - **Helpers** for repeated setup live inside `mod tests` (e.g. a `spec()` or `ctx()` builder with overrides).
   Reuse existing helpers before adding new ones.

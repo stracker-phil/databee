@@ -37,9 +37,14 @@ api act '{"kind":"keys","keys":"Enter","window":"palette"}'
 
 | Rust (`src-tauri/src/stage/`) | Responsibility |
 |---|---|
-| `protocol.rs` | Pure protocol types and helpers: key parsing and canonical form, bounds, screen rects, the register command, page reply types (`PageAnchor`, `ActReply`, `InfoReply`, `PageCommand`, `Surface`) |
-| `http.rs` | The HTTP server: `parse_request` and `respond`, testable without sockets; size limits; Origin, Host and token checks |
-| `hooks.rs` | The hub. It answers each verb, keeping the protocol's status codes (400, 404, 409, 500) and messages. It forwards page work as Tauri events and waits for the reply under a timeout. `StageHost` abstracts the native window, so tests use a fake host. |
+| `protocol.rs` | Pure protocol types and helpers: key parsing (`split_modifiers`, `parse_last`, `parse_keys`) and canonical form, bounds, screen rects, the register command, `FEATURES` |
+| `page.rs` | The messages between the hub and the page: `ActRequest` (a union on `kind`, sent as `ActEvent` with the request id; ts-rs `StageAct` and `StageActRequest`) and the replies `PageAnchor`, `AnchorsReply`, `ActReply`, `InfoReply`, `PageCommand`, `Surface` |
+| `http.rs` | The HTTP server: `parse_head`, `check`, `params` and `response`, testable without sockets; size limits; Origin, Host and token checks (Host is `127.0.0.1` or `localhost` only; an IPv6 literal is refused); a 100 ms pause after a failed accept |
+| `hub.rs` | `Hub`: request/reply correlation. It emits page work as Tauri events with a fresh request id and waits for the matching reply under `Timeouts`; a reply whose request timed out is dropped. `StageHost` abstracts the native window, so tests use a fake host. |
+| `windows.rs` | The window model: `Frame`, `enum Window { Main, Settings, Palette }` (ts-rs `StageWindow`), `is_shown`, and the serialized `WindowInfo` and `AnchorInfo` in screen points |
+| `requests.rs` | The verbs' requests, parsed before anything reaches the page: `ActKind`, `WindowRequest` (`window`, `WindowAction`, bounds, section), `type_payload`, `scroll_payload`, `wait_timeout` |
+| `verbs.rs` | The verbs (`run`): `describe`, `state`, `window` (`main_window_action` or `sheet_action`) and `act` (by `ActKind`: anchor acts, `wait`, `keys`, `command`), keeping the protocol's status codes (400, 404, 409, 500) and messages. Answers are `Serialize` structs (`Describe`, `ActResult`). |
+| `test_host.rs` | Tests only: `FakePage`, a host whose page answers like `hooks.ts`, and `hub_with` |
 | `mod.rs` | `init(config_dir)`, the inline Tauri plugin ([ADR 0010](adr/0010-inline-tauri-plugins.md)): commands, managed `Stage`, start on setup, stop on exit. `Stage`: start, stop and restart from its settings, `update_settings`, `rotate_token`, status for the settings page (including the register command), last request time |
 | `settings.rs` | `StageSettings` (enabled, port, token; `Debug` redacts the token) in `<config>/stage.json` through `StageStore` ([ADR 0016](adr/0016-module-settings-files.md)). `sanitized()` clamps the port and generates a token when it is empty (`new_token`: 32 random bytes as hex). `StageStore::open` takes the `stage` object of a legacy `settings.json` once, so a registered token survives the upgrade; it never writes `settings.json`. |
 | `commands.rs` | The plugin's commands (`plugin:stage|…`): `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_settings`, `stage_update_settings`, `stage_new_token`. `COMMANDS` must match `STAGE_COMMANDS` in `build.rs` (a test checks it); `capabilities/stage.json` grants them to the main window. |
@@ -52,17 +57,19 @@ The page side lives in `src/stage/`:
 | `api.ts` | `stageApi`, the module's only `invoke`/`listen` caller: `status`, `settings`, `updateSettings`, `newToken` (`plugin:stage|…`), the `stage:collect`, `stage:info` and `stage:act` subscriptions (`onCollect`, `onInfo`, `onAct`) and the replies `anchors` (the caller passes the page id), `done`, `info` |
 | `apiMock.ts` | `createStageApiMock()` for tests that mock `./api` (status running, settings with `token-123`) |
 | `types.gen.ts` | ts-rs output for the Stage types in `src-tauri/src/stage/` (`#[ts(export_to = "src/stage/types.gen.ts")]`); regenerate with `bun run types`, never edit |
-| `types.ts` | Re-exports `types.gen.ts` plus the hand-written `StageWindow` and `StageActRequest` (built as JSON in `stage::hooks`) |
+| `types.ts` | Re-exports `types.gen.ts`, including `StageWindow` and `StageActRequest` (a union on `kind`, from `stage::page`) |
 | `PresentationsPage.tsx` | Settings → Presentations: the switch, status, port, token and register command. It loads and saves `StageSettings` itself (`stageApi.settings`, `updateSettings`, `newToken`) and polls `stageApi.status` while open |
-| `hooks.ts` | Answers `stage:collect`: anchors, read from the `data-stage*` attributes, with their rects, visibility, role, list and states. Answers `stage:act` with reveal, click, type (replace or append; CodeMirror too), keys, scroll and wait, then replies with `stage_anchors` or `stage_done`. |
+| `anchors.ts` | The anchors, read from the `data-stage*` attributes: `collectAnchors` (rects, visibility, role, list and states), `findAnchor`, `labelOf`, `roleOf`, `detailsOf`, `clipsOf`. `MAX_LABEL` (80) is the hook's only label limit; Rust passes labels through. |
+| `actions.ts` | What an act does to the page: `reveal`, `click`, `typeInto` (replace or append; CodeMirror too), `scroll`, `press` (keys), `sheet` (open or close settings and the palette), `nextFrame` |
+| `hooks.ts` | Dispatch only: answers `stage:collect` (`stage_anchors`), `stage:info` (`stage_info`) and `stage:act` with `perform`, an exhaustive `switch` on `kind` with one handler per kind, then `stage_done` |
 | `state.ts` | `stageView()` (`connect`, `db`, `wp:<screen>`), `stageSurfaces()` (the settings window's sections are `settingsSections()`, from the settings page registry), `stageUi()` and the flat `stageState()`. `stageState()` never includes SQL text or passwords. |
 | `commands.ts` | The registry's commands in Stage form, with shortcuts in Stage notation. Conventional ids: `app:settings`, `view:palette`. Families: `settings:open:<page>`, `table:open:<table>`, `wp:open:<entity>:<id>` |
 | `rect.ts` | Rectangle math (`intersectRect`, `visiblePart`, `isInView`, `centerOf`) |
 
 One verb, for example `act kind=click anchor=toolbar:settings`:
 1. `http.rs` authenticates the request and parses it.
-2. `hooks.rs` emits `stage:act {request, …}` to the `main` window.
-3. The page acts and invokes `stage_done({request, ok, …})`.
+2. `verbs.rs` validates it into an `ActRequest`; `hub.rs` emits `stage:act {request, kind, …}` to the `main` window.
+3. `hooks.ts` acts (`actions.ts`) and invokes `stage_done({request, ok, …})`.
 4. The hub matches the request id and returns the JSON.
 
 ## Model

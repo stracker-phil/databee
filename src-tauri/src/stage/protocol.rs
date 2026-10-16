@@ -1,16 +1,14 @@
-//! The Stage hook protocol's pure parts (docs/stage.md): rectangles in screen
-//! points, request bounds, key combinations, the register command and the pages' replies.
+//! The Stage hook protocol's pure parts (docs/stage.md): rectangles in screen points, request
+//! bounds, key combinations and the register command. The page's messages are in `page.rs`.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use ts_rs::TS;
 
 pub const PROTOCOL: u32 = 1;
-/// The protocol's name for DataBee's only window.
+/// The Tauri label of DataBee's only native window, and the id its page answers with.
 pub const MAIN: &str = "main";
-const MAX_LABEL: usize = 200;
 
 /// Flat request parameters: query string, JSON primitives or a form body.
 pub type Params = HashMap<String, String>;
@@ -198,13 +196,13 @@ fn named_key(name: &str) -> Option<(&'static str, &'static str)> {
     })
 }
 
-/// "⌘⇧K", "cmd+shift+k", "Enter" or "⌃⌥⌘J" as a key combination; None when it isn't one.
-pub fn parse_keys(text: &str) -> Option<StageKeys> {
+/// The modifiers before the key and the key's text: leading glyphs need no separator (⌘⇧K),
+/// words are joined with `+` (cmd+shift+k). None when a modifier is unknown or no key is left.
+fn split_modifiers(text: &str) -> Option<(StageKeys, &str)> {
     let mut keys = StageKeys::default();
     let mut rest = text.trim();
-    // Leading glyphs need no separator: ⌘⇧K.
     while rest.chars().count() > 1 {
-        let first = rest.chars().next().unwrap();
+        let first = rest.chars().next()?;
         let Some(modifier) = modifier_glyph(first.encode_utf8(&mut [0; 4])) else {
             break;
         };
@@ -216,51 +214,57 @@ pub fn parse_keys(text: &str) -> Option<StageKeys> {
         .map(str::trim)
         .filter(|p| !p.is_empty())
         .collect();
-    if parts.is_empty() {
-        if !rest.contains('+') {
-            return None;
-        }
-        parts.push("+");
-    }
-    let last = parts.pop().unwrap_or_default();
+    // A lone "+" is the plus key, not a separator.
+    let last = match parts.pop() {
+        Some(last) => last,
+        None if rest.contains('+') => "+",
+        None => return None,
+    };
     for part in parts {
         keys.set(modifier_word(&part.to_lowercase()).or_else(|| modifier_glyph(part))?);
     }
+    Some((keys, last))
+}
+
+fn function_key(lower: &str) -> Option<u8> {
+    let digits = lower.strip_prefix('f')?;
+    if digits.starts_with('0') {
+        return None;
+    }
+    digits.parse().ok().filter(|n| (1..=20).contains(n))
+}
+
+/// The key's `KeyboardEvent` `key` and `code`; letters are upper case with Shift.
+fn parse_last(last: &str, shift: bool) -> Option<(String, String)> {
     let lower = last.to_lowercase();
     if let Some((key, code)) = named_key(&lower) {
-        return Some(StageKeys {
-            key: key.into(),
-            code: code.into(),
-            ..keys
-        });
+        return Some((key.into(), code.into()));
     }
-    if let Some(n) = lower.strip_prefix('f').and_then(|n| n.parse::<u8>().ok())
-        && (1..=20).contains(&n)
-        && !lower[1..].starts_with('0')
-    {
-        return Some(StageKeys {
-            key: format!("F{n}"),
-            code: format!("F{n}"),
-            ..keys
-        });
+    if let Some(n) = function_key(&lower) {
+        return Some((format!("F{n}"), format!("F{n}")));
     }
     let mut chars = last.chars();
     let (Some(c), None) = (chars.next(), chars.next()) else {
         return None;
     };
-    let (key, code) = if c.is_ascii_alphabetic() {
-        let lower = c.to_ascii_lowercase();
-        let key = if keys.shift {
+    if c.is_ascii_alphabetic() {
+        let key = if shift {
             c.to_ascii_uppercase()
         } else {
-            lower
+            c.to_ascii_lowercase()
         };
-        (key.to_string(), format!("Key{}", c.to_ascii_uppercase()))
-    } else if c.is_ascii_digit() {
-        (c.to_string(), format!("Digit{c}"))
-    } else {
-        (c.to_string(), String::new())
-    };
+        return Some((key.to_string(), format!("Key{}", c.to_ascii_uppercase())));
+    }
+    if c.is_ascii_digit() {
+        return Some((c.to_string(), format!("Digit{c}")));
+    }
+    Some((c.to_string(), String::new()))
+}
+
+/// "⌘⇧K", "cmd+shift+k", "Enter" or "⌃⌥⌘J" as a key combination; None when it isn't one.
+pub fn parse_keys(text: &str) -> Option<StageKeys> {
+    let (keys, last) = split_modifiers(text)?;
+    let (key, code) = parse_last(last, keys.shift)?;
     Some(StageKeys { key, code, ..keys })
 }
 
@@ -292,27 +296,13 @@ pub fn stage_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}/v1/stage")
 }
 
-/// The terminal command that registers this hook with Stage (protocol §3.1); Stage reads the
-/// app's name and id from `describe`. Tokens are hex, so nothing needs quoting.
+/// The terminal command that registers this hook with Stage; Stage reads the app's name and id
+/// from `describe`. Tokens are hex, so nothing needs quoting.
 pub fn register_command(port: u16, token: &str) -> String {
     format!("stage register {} --token {token}", stage_url(port))
 }
 
-// The pages' replies -------------------------------------------------------------------------
-
-fn short(text: String) -> String {
-    if text.chars().count() <= MAX_LABEL {
-        text
-    } else {
-        text.chars().take(MAX_LABEL).collect()
-    }
-}
-
-/// The windows DataBee exposes, in `describe` order. Settings and the palette are sheets inside
-/// the main window; the page measures them.
-pub const WINDOWS: [&str; 3] = [MAIN, "settings", "palette"];
-
-/// Optional protocol capabilities (Stage protocol 1, revision 2026-10-16, §5.1).
+/// Optional protocol capabilities that DataBee implements, listed by `describe`.
 pub const FEATURES: [&str; 8] = [
     "reveal",
     "visible",
@@ -323,183 +313,6 @@ pub const FEATURES: [&str; 8] = [
     "scroll",
     "wait",
 ];
-
-fn main_window() -> String {
-    MAIN.into()
-}
-
-fn enabled() -> bool {
-    true
-}
-
-/// An element marked `data-stage="<id>"`, as the page measures it.
-#[derive(Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/stage/types.gen.ts")]
-#[ts(optional_fields)]
-#[serde(rename_all = "camelCase")]
-pub struct PageAnchor {
-    pub id: String,
-    pub label: String,
-    pub rect: PageRect,
-    pub in_view: bool,
-    /// The part that shows through its scroll areas and the window; None when nothing does.
-    #[serde(default)]
-    #[ts(optional = false)]
-    pub visible: Option<PageRect>,
-    #[serde(default = "main_window")]
-    pub window: String,
-    #[serde(default)]
-    pub role: Option<String>,
-    #[serde(default)]
-    pub list: Option<String>,
-    #[serde(default)]
-    pub selected: Option<bool>,
-    #[serde(default)]
-    pub checked: Option<bool>,
-    #[serde(default)]
-    pub expanded: Option<bool>,
-    #[serde(default)]
-    pub disabled: Option<bool>,
-}
-
-/// The page's answer to `stage:collect`.
-#[derive(Deserialize, Clone, Debug, TS)]
-#[ts(export, export_to = "src/stage/types.gen.ts")]
-pub struct AnchorsReply {
-    pub request: String,
-    pub page: String,
-    pub anchors: Vec<PageAnchor>,
-}
-
-impl AnchorsReply {
-    /// Ids and labels cut to a sane length; anchors without an id or a size dropped; unknown
-    /// windows count as the main one.
-    pub fn cleaned(mut self) -> Self {
-        self.anchors = self
-            .anchors
-            .into_iter()
-            .filter(|a| !a.id.trim().is_empty() && a.rect.width > 0.0 && a.rect.height > 0.0)
-            .map(|a| PageAnchor {
-                id: short(a.id),
-                label: short(a.label),
-                window: if WINDOWS.contains(&a.window.as_str()) {
-                    a.window
-                } else {
-                    MAIN.into()
-                },
-                ..a
-            })
-            .collect();
-        self
-    }
-}
-
-/// The page's answer to `stage:act`; `handled` is false when the anchor isn't on that page.
-#[derive(Deserialize, Clone, Debug, PartialEq, Default, TS)]
-#[ts(export, export_to = "src/stage/types.gen.ts")]
-#[ts(rename = "StageActReply", optional_fields = nullable)]
-pub struct ActReply {
-    pub request: String,
-    pub page: String,
-    pub handled: bool,
-    pub ok: bool,
-    #[serde(default)]
-    pub error: Option<String>,
-    /// The HTTP status for a failure when it isn't 500 (e.g. 409: not scrollable).
-    #[serde(default)]
-    pub status: Option<u16>,
-    /// The window the anchor is in, or the one that got the keys.
-    #[serde(default)]
-    pub window: Option<String>,
-    /// The anchor's rectangle once in view, before acting.
-    #[serde(default)]
-    pub rect: Option<PageRect>,
-    #[serde(default)]
-    pub visible: Option<PageRect>,
-    /// `keys` that ran a command (its shortcut) instead of reaching an element.
-    #[serde(default)]
-    pub command: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/stage/types.gen.ts")]
-#[ts(rename = "StageChoice")]
-pub struct Choice {
-    pub id: String,
-    pub title: String,
-}
-
-/// One command: the registry's, or a family (`arg` + `choices`) whose members append an argument.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/stage/types.gen.ts")]
-#[ts(rename = "StageCommand")]
-pub struct PageCommand {
-    pub id: String,
-    pub help: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shortcut: Option<String>,
-    #[serde(default = "enabled")]
-    pub enabled: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub arg: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub choices: Option<Vec<Choice>>,
-}
-
-impl PageCommand {
-    /// The command id is this command, or a member of this family.
-    pub fn runs(&self, id: &str) -> bool {
-        if self.arg.is_some() {
-            id.len() > self.id.len() && id.starts_with(&self.id)
-        } else {
-            id == self.id
-        }
-    }
-}
-
-/// A window the page draws inside the main one (settings, palette); `rect` None while closed.
-#[derive(Deserialize, Clone, Debug, PartialEq, TS)]
-#[ts(export, export_to = "src/stage/types.gen.ts")]
-#[ts(rename = "StageSurface", optional_fields = nullable)]
-pub struct Surface {
-    pub id: String,
-    pub title: String,
-    #[serde(default)]
-    pub rect: Option<PageRect>,
-    #[serde(default)]
-    pub sections: Option<Vec<Choice>>,
-    #[serde(default)]
-    pub section: Option<String>,
-}
-
-/// The page's answer to `stage:info`: what it shows and can do.
-#[derive(Deserialize, Clone, Debug, Default, TS)]
-#[ts(export, export_to = "src/stage/types.gen.ts")]
-#[ts(rename = "StageInfoReply")]
-pub struct InfoReply {
-    pub request: String,
-    pub page: String,
-    #[serde(default)]
-    #[ts(type = "Record<string, string | number | boolean | null>")]
-    pub state: serde_json::Map<String, Value>,
-    /// What the main window shows.
-    #[serde(default)]
-    pub view: Option<String>,
-    /// The main window's toggleable panels: `{ "inspector": "open" }`.
-    #[serde(default)]
-    #[ts(type = "Record<string, \"open\" | \"closed\">")]
-    pub ui: serde_json::Map<String, Value>,
-    #[serde(default)]
-    pub surfaces: Vec<Surface>,
-    #[serde(default)]
-    pub commands: Vec<PageCommand>,
-}
-
-impl InfoReply {
-    pub fn surface(&self, id: &str) -> Option<&Surface> {
-        self.surfaces.iter().find(|s| s.id == id)
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -620,6 +433,63 @@ mod tests {
     }
 
     #[test]
+    fn splits_known_modifiers_from_the_key_text() {
+        let mods = |meta, shift, alt, ctrl| StageKeys {
+            meta,
+            shift,
+            alt,
+            ctrl,
+            ..StageKeys::default()
+        };
+        for (text, expected, last) in [
+            ("⌘⇧K", mods(true, true, false, false), "K"),
+            ("cmd+shift+k", mods(true, true, false, false), "k"),
+            ("Ctrl+Alt+J", mods(false, false, true, true), "J"),
+            ("⌃⌥⌘J", mods(true, false, true, true), "J"),
+            ("option+Enter", mods(false, false, true, false), "Enter"),
+            ("Enter", mods(false, false, false, false), "Enter"),
+            ("+", mods(false, false, false, false), "+"),
+        ] {
+            assert_eq!(split_modifiers(text), Some((expected, last)), "{text}");
+        }
+    }
+
+    #[test]
+    fn unknown_modifiers_or_no_key_split_to_nothing() {
+        for text in ["", "  ", "hyper+k", "cmd+hyper+k"] {
+            assert_eq!(split_modifiers(text), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn last_key_names_letters_digits_named_and_function_keys() {
+        for (last, shift, expected) in [
+            ("k", false, Some(("k", "KeyK"))),
+            ("K", false, Some(("k", "KeyK"))),
+            ("k", true, Some(("K", "KeyK"))),
+            ("2", false, Some(("2", "Digit2"))),
+            ("2", true, Some(("2", "Digit2"))),
+            ("Return", false, Some(("Enter", "Enter"))),
+            ("space", false, Some((" ", "Space"))),
+            ("Left", true, Some(("ArrowLeft", "ArrowLeft"))),
+            ("f2", false, Some(("F2", "F2"))),
+            ("F12", true, Some(("F12", "F12"))),
+            ("F20", false, Some(("F20", "F20"))),
+            ("=", false, Some(("=", ""))),
+            ("F21", false, None),
+            ("F0", false, None),
+            ("ab", false, None),
+            ("", false, None),
+        ] {
+            assert_eq!(
+                parse_last(last, shift),
+                expected.map(|(k, c)| (k.to_string(), c.to_string())),
+                "{last} shift={shift}"
+            );
+        }
+    }
+
+    #[test]
     fn rejects_what_isnt_a_combination() {
         for text in ["", "  ", "hyper+k", "F21", "F0", "cmd+ab", "cmd+"] {
             assert_eq!(parse_keys(text), None, "{text}");
@@ -643,20 +513,5 @@ mod tests {
             register_command(27184, "abc123"),
             "stage register http://127.0.0.1:27184/v1/stage --token abc123"
         );
-    }
-
-    #[test]
-    fn anchor_replies_drop_empty_ids_and_sizes() {
-        let reply: AnchorsReply = serde_json::from_value(serde_json::json!({
-            "request": "r", "page": "main",
-            "anchors": [
-                { "id": "toolbar", "label": "Toolbar", "rect": { "x": 0, "y": 0, "width": 10, "height": 10 }, "inView": true },
-                { "id": " ", "label": "", "rect": { "x": 0, "y": 0, "width": 10, "height": 10 }, "inView": true },
-                { "id": "gone", "label": "", "rect": { "x": 0, "y": 0, "width": 0, "height": 10 }, "inView": false }
-            ]
-        }))
-        .unwrap();
-        let ids: Vec<_> = reply.cleaned().anchors.into_iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["toolbar"]);
     }
 }

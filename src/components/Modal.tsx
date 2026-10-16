@@ -6,7 +6,7 @@ interface Props {
   className?: string;
   labelledBy?: string;
   label?: string;
-  /** Exposes the sheet as its own window to Stage (src/stage/hooks.ts). */
+  /** Exposes the sheet as its own window to Stage (src/stage/anchors.ts). */
   stageWindow?: string;
   children: ReactNode;
 }

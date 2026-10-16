@@ -8,11 +8,24 @@ export type AnchorsReply = { request: string, page: string, anchors: Array<PageA
 /**
  * An element marked `data-stage="<id>"`, as the page measures it.
  */
-export type PageAnchor = { id: string, label: string, rect: StageRect, inView: boolean, 
+export type PageAnchor = { id: string, 
+/**
+ * Already cut to a sane length by the page.
+ */
+label: string, rect: StageRect, inView: boolean, 
 /**
  * The part that shows through its scroll areas and the window; None when nothing does.
  */
-visible: StageRect | null, window: string, role?: string, list?: string, selected?: boolean, checked?: boolean, expanded?: boolean, disabled?: boolean, };
+visible: StageRect | null, window: StageWindow, role?: string, list?: string, selected?: boolean, checked?: boolean, expanded?: boolean, disabled?: boolean, };
+
+/**
+ * One act for the page, already validated by the hub.
+ */
+export type StageAct = { "kind": "click", anchor: string, } | { "kind": "type", anchor: string, text: string, mode: StageTypeMode, } | { "kind": "reveal", anchor: string, } | { "kind": "scroll", anchor: string, by?: number, to?: StageScrollTo, } | { "kind": "keys", keys: StageKeys, 
+/**
+ * The hub focused the window for these keys.
+ */
+focused: boolean, } | { "kind": "command", command: string, } | { "kind": "window", window: StageWindow, action: StageSheetAction, section?: string, };
 
 /**
  * The page's answer to `stage:act`; `handled` is false when the anchor isn't on that page.
@@ -25,7 +38,7 @@ status?: number | null,
 /**
  * The window the anchor is in, or the one that got the keys.
  */
-window?: string | null, 
+window?: StageWindow | null, 
 /**
  * The anchor's rectangle once in view, before acting.
  */
@@ -34,6 +47,15 @@ rect?: StageRect | null, visible?: StageRect | null,
  * `keys` that ran a command (its shortcut) instead of reaching an element.
  */
 command?: string | null, };
+
+/**
+ * The `stage:act` event: an act and the id its reply must carry.
+ */
+export type StageActRequest = { request: string, } & ({ "kind": "click", anchor: string, } | { "kind": "type", anchor: string, text: string, mode: StageTypeMode, } | { "kind": "reveal", anchor: string, } | { "kind": "scroll", anchor: string, by?: number, to?: StageScrollTo, } | { "kind": "keys", keys: StageKeys, 
+/**
+ * The hub focused the window for these keys.
+ */
+focused: boolean, } | { "kind": "command", command: string, } | { "kind": "window", window: StageWindow, action: StageSheetAction, section?: string, });
 
 export type StageChoice = { id: string, title: string, };
 
@@ -69,6 +91,8 @@ code: string, meta: boolean, shift: boolean, alt: boolean, ctrl: boolean, };
  */
 export type StageRect = { x: number, y: number, width: number, height: number, };
 
+export type StageScrollTo = "top" | "bottom";
+
 /**
  * The local HTTP API through which Stage presents DataBee (docs/stage.md).
  */
@@ -77,6 +101,11 @@ export type StageSettings = { enabled: boolean, port: number,
  * Registered with Stage by the user, never in the log.
  */
 token: string, };
+
+/**
+ * What the page does with a sheet (settings, palette).
+ */
+export type StageSheetAction = "show" | "hide";
 
 export type StageStatus = { enabled: boolean, running: boolean, error: string | null, url: string, 
 /**
@@ -91,4 +120,15 @@ lastRequest: string | null, };
 /**
  * A window the page draws inside the main one (settings, palette); `rect` None while closed.
  */
-export type StageSurface = { id: string, title: string, rect?: StageRect | null, sections?: Array<StageChoice> | null, section?: string | null, };
+export type StageSurface = { id: StageWindow, title: string, rect?: StageRect | null, sections?: Array<StageChoice> | null, section?: string | null, };
+
+/**
+ * How `type` puts its text into the field.
+ */
+export type StageTypeMode = "replace" | "append";
+
+/**
+ * The windows the Stage hook exposes; settings and the palette are sheets in the main one.
+ * Declared in describe order, which `Ord` follows.
+ */
+export type StageWindow = "main" | "settings" | "palette";

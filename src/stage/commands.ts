@@ -1,6 +1,7 @@
 /**
  * DataBee's commands as the Stage hook lists them: the registry's (with their shortcut in Stage
- * notation), conventional ids where the protocol has one (§7), and families that take an argument.
+ * notation), the conventional ids Stage knows (`app:settings`, `view:palette`), and families that
+ * take an argument.
  */
 import type { StageCommand } from "./types";
 import { activeScopes, allCommands, bindingFor, getCommand, resolveKeydown, runCommand, type KeyLike } from "../commands";
@@ -9,7 +10,7 @@ import { settingsSections } from "./state";
 
 const MAX_CHOICES = 30;
 
-/** Conventional ids (Stage protocol §7) for registry commands. */
+/** Stage's conventional ids for registry commands, which every hooked app uses for the same action. */
 const ALIASES: Record<string, string> = { "app:settings": "settings.open", "view:palette": "palette.open" };
 const STAGE_ID = Object.fromEntries(Object.entries(ALIASES).map(([stage, id]) => [id, stage]));
 
@@ -51,7 +52,11 @@ const FAMILIES: Family[] = [
     arg: "<section>",
     enabled: () => true,
     choices: () => settingsSections().map((p) => ({ argument: p.id, title: p.title })),
-    run: (page) => settingsSections().some((p) => p.id === page) && (useStore.getState().openDialog({ type: "settings", page }), true),
+    run: (page) => {
+      if (!settingsSections().some((p) => p.id === page)) return false;
+      useStore.getState().openDialog({ type: "settings", page });
+      return true;
+    },
   },
   {
     id: "table:open:",

@@ -4,10 +4,16 @@
 //! (`settings.rs`).
 
 pub mod commands;
-pub mod hooks;
 pub mod http;
+pub mod hub;
+pub mod page;
 pub mod protocol;
+pub mod requests;
 pub mod settings;
+#[cfg(test)]
+mod test_host;
+pub mod verbs;
+pub mod windows;
 
 use std::sync::{Arc, Mutex};
 
@@ -18,9 +24,10 @@ use ts_rs::TS;
 
 use crate::error::AppResult;
 use crate::lock::MutexExt;
-use hooks::{Frame, Hub, StageHost, Timeouts};
+use hub::{Hub, StageHost, Timeouts};
 use protocol::{MAIN, ScreenRect, register_command, stage_url};
 use settings::{StageSettings, StageStore};
+use windows::Frame;
 
 pub const NAME: &str = "DataBee";
 
