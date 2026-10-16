@@ -284,14 +284,15 @@ const CORE_TABLES: &[&str] = &[
 
 pub fn table_category(ctx: &WpContext, table: &str) -> &'static str {
     let name = table.strip_prefix(&ctx.prefix).unwrap_or(table);
-    if name.starts_with("actionscheduler_") {
+    // Core first: `blogs` contains "log".
+    if CORE_TABLES.contains(&name) {
+        "core"
+    } else if name.starts_with("actionscheduler_") {
         "action_scheduler"
     } else if name.contains("log") {
         "logs"
     } else if name.starts_with("wc_") || name.starts_with("woocommerce_") {
         "woocommerce"
-    } else if CORE_TABLES.contains(&name) {
-        "core"
     } else {
         "plugins"
     }

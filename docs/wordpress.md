@@ -298,11 +298,12 @@ backslash. LIKE patterns go through `Dialect::like` / `like_contains` (with `db:
   module. They run with `bun run test:db`, or alone with `cargo test --lib -- --ignored wp::`, and use the
   fixture helpers in `src/test_support.rs`:
   - against the Docker fixture `wp_test`: WordPress plus WooCommerce with HPOS and sync. Reads go against
-    `wp_test`, and every write goes into its copy `wp_write`, so read and write tests never race. `wp_legacy`
+    `wp_test`, and every write goes into its copy `wp_write`, and each write test owns its rows there, so tests never share one. `wp_legacy`
     covers a posts-based (HPOS off) store;
-  - `every_serialized_value_round_trips` and `wordpress_mode_queries_work_on_real_data` read a real database
-    of your own, named by a connection URL (parsed with `cli::parse`):
-    `DATABEE_WP_TEST=mysql://user:pass@host:port/db`. Without it they skip.
+  - `every_serialized_value_round_trips` and `wordpress_mode_queries_work_on_real_data` (module `real_data`)
+    read a real database of your own, named by a connection URL (parsed with `cli::parse`):
+    `DATABEE_WP_TEST=mysql://user:pass@host:port/db`. They panic without it, so `bun run test:db` skips them
+    (`--skip real_data`).
 - **`src-tauri/tests/sql_mode.rs`** changes the servers' global `sql_mode`, so it stays its own test binary
   (Cargo runs binaries one after another). It belongs to this layer and is deleted with it.
 - **Frontend:** `src/components/wp/WpMode.test.tsx` plus tests per component.

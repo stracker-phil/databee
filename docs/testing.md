@@ -9,7 +9,7 @@ out of the main context ([`.claude/rules/testing.md`](../.claude/rules/testing.m
 | Command | Runs |
 |---|---|
 | `bun run test` | Vitest UI tests (`test:ui`), then the Rust unit tests (`test:rust`) |
-| `bun run test:db` | recreates the Docker fixtures, then `cargo test -- --ignored` (integration tests only, in `tests/` and in modules) |
+| `bun run test:db` | recreates the Docker fixtures, then `cargo test -- --ignored --skip real_data` (integration tests only, in `tests/` and in modules; the real-data tests are left out) |
 | `bun run lint` | `tsc --noEmit` and `cargo clippy --all-targets -- -D warnings` |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | Rust formatting (run before lint) |
 
@@ -32,7 +32,15 @@ The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules
   |---|---|---|
   | `tests/mysql.rs` | the Docker fixtures; checks the driver on MariaDB and MySQL | `cargo test --test mysql -- --ignored` |
   | `tests/sql_mode.rs` | the Docker fixtures (`wp_write`); changes the global `sql_mode`, so it is its own binary | `cargo test --test sql_mode -- --ignored` |
-  | `src/wp/server_tests.rs` | the Docker fixtures (`wp_test` and `wp_legacy` read-only, `wp_write` for edits); two tests read `DATABEE_WP_TEST=mysql://user:pass@host:port/db`, a real WordPress database of your own, read-only, and skip when it is unset | `cargo test --lib -- --ignored wp::` |
+  | `src/wp/server_tests.rs` | the Docker fixtures (`wp_test`, `wp_legacy`, `wp_custom` and `wp_multi` read-only, `wp_write` for edits; every write test owns its rows there, ids from 9100 up); the two tests in `mod real_data` read `DATABEE_WP_TEST=mysql://user:pass@host:port/db`, a real WordPress database of your own, read-only | `cargo test --lib -- --ignored wp::` |
+
+  The `real_data` tests panic when `DATABEE_WP_TEST` is unset. `test:db` never runs them: its `cargo test` call
+  ends in `--skip real_data` (a name filter on the module path), so CI without the variable stays green. Run them
+  by name against a site you own:
+
+  ```sh
+  DATABEE_WP_TEST=mysql://root:root@127.0.0.1:52958/db cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored --nocapture real_data
+  ```
 
 ## Docker fixtures
 
@@ -49,7 +57,7 @@ every run, because the fixture uses `UTC_TIMESTAMP()` for relative dates.
 |---|---|
 | `databee_test` | not WordPress: posts-like table, one column per decoder family, a view |
 | `wp_test` | WordPress plus WooCommerce (HPOS with sync) schema and seed data for the lens tests |
-| `wp_write` | `CREATE TABLE … LIKE` copies for edit and undo tests |
+| `wp_write` | `CREATE TABLE … LIKE` copies for edit and undo tests, plus rows (ids from 9100 up: orders 9101 to 9403, actions 9201 and 9202, postmeta 9301 and 9302, user 9501, post 9601, address 9602, `zz_*` options and `zz-retention` log entries) that single write tests change and put back |
 | `wp_legacy` | WooCommerce with HPOS off: orders in `wp_posts` (a customer with two orders, a guest order, a refund, order notes), no `wc_orders` tables |
 | `wp_custom` | WordPress with table prefix `xy_` (core tables only), for prefix detection |
 | `wp_multi` | multisite network: main-site `wp_` tables, `wp_blogs`, `wp_sitemeta` (`active_sitewide_plugins`), sub-site 2 (`wp_2_options`, `wp_2_posts`, no `wp_2_users`) |

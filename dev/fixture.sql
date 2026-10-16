@@ -131,6 +131,8 @@ INSERT INTO wp_wc_orders VALUES
   (4712, 'wc-refunded', 'shop_order_refund', 'EUR', -10.00, 0, NULL, UTC_TIMESTAMP() - INTERVAL 2 HOUR, UTC_TIMESTAMP() - INTERVAL 2 HOUR, 4711, '', '', ''),
   (4713, 'wc-failed', 'shop_order', 'EUR', 18.90, 0, 'guest@shop.test', UTC_TIMESTAMP() - INTERVAL 3 DAY, UTC_TIMESTAMP() - INTERVAL 3 DAY, 0, 'ppcp-gateway', 'PayPal', ''),
   (4714, 'wc-active', 'shop_subscription', 'EUR', 9.90, 12, 'jane@shop.test', UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() - INTERVAL 1 DAY, 4711, 'ppcp-gateway', 'PayPal', '');
+-- Both timestamps came from separate UTC_TIMESTAMP() calls; align them so only 4712 and 4713 (no posts copy) drift.
+UPDATE wp_posts p JOIN wp_wc_orders o ON o.id = p.ID SET p.post_modified_gmt = o.date_updated_gmt;
 INSERT INTO wp_wc_orders_meta (order_id, meta_key, meta_value) VALUES
   (4711, '_ppcp_paypal_order_id', '66M12696JX411763D'),
   (4711, '_ppcp_paypal_intent', 'CAPTURE'),
@@ -229,6 +231,48 @@ CREATE TABLE wp_write.wp_woocommerce_payment_tokens LIKE wp_test.wp_woocommerce_
 INSERT INTO wp_write.wp_woocommerce_payment_tokens SELECT * FROM wp_test.wp_woocommerce_payment_tokens;
 CREATE TABLE wp_write.wp_woocommerce_payment_tokenmeta LIKE wp_test.wp_woocommerce_payment_tokenmeta;
 INSERT INTO wp_write.wp_woocommerce_payment_tokenmeta SELECT * FROM wp_test.wp_woocommerce_payment_tokenmeta;
+
+-- Rows each owned by one write test (ids from 9100 up), so no two tests share a row.
+-- Orders: 9101 status change (HPOS row plus posts copy), 9102 new meta, 9103 meta delete, 9105 rollback,
+-- 9401 and 9403 comparison, 9402 snapshot, 9602 NULL address email.
+INSERT INTO wp_write.wp_wc_orders (id, status, type, currency, total_amount, customer_id, billing_email, date_created_gmt, date_updated_gmt, parent_order_id, payment_method, payment_method_title, transaction_id) VALUES
+  (9101, 'wc-processing', 'shop_order', 'EUR', 10.00, 0, 'status@shop.test', '2026-01-01 10:00:00', '2026-01-01 10:00:00', 0, 'bacs', 'Bank transfer', ''),
+  (9102, 'wc-processing', 'shop_order', 'EUR', 10.00, 0, 'setmeta@shop.test', '2026-01-01 10:00:00', '2026-01-01 10:00:00', 0, 'bacs', 'Bank transfer', ''),
+  (9103, 'wc-processing', 'shop_order', 'EUR', 10.00, 0, 'deletemeta@shop.test', '2026-01-01 10:00:00', '2026-01-01 10:00:00', 0, 'bacs', 'Bank transfer', ''),
+  (9105, 'wc-failed', 'shop_order', 'EUR', 10.00, 0, 'rollback@shop.test', '2026-01-01 10:00:00', '2026-01-01 10:00:00', 0, 'bacs', 'Bank transfer', ''),
+  (9401, 'wc-processing', 'shop_order', 'EUR', 49.90, 0, 'compare-a@shop.test', '2026-01-01 10:00:00', '2026-01-01 10:00:00', 0, 'bacs', 'Bank transfer', ''),
+  (9402, 'wc-failed', 'shop_order', 'EUR', 18.90, 0, 'snapshot@shop.test', '2026-01-01 10:00:00', '2026-01-01 10:00:00', 0, 'bacs', 'Bank transfer', ''),
+  (9403, 'wc-failed', 'shop_order', 'EUR', 18.90, 0, 'compare-b@shop.test', '2026-01-01 10:00:00', '2026-01-01 10:00:00', 0, 'bacs', 'Bank transfer', ''),
+  (9602, 'wc-processing', 'shop_order', 'EUR', 10.00, 0, 'address@shop.test', '2026-01-01 10:00:00', '2026-01-01 10:00:00', 0, 'bacs', 'Bank transfer', '');
+INSERT INTO wp_write.wp_posts (ID, post_author, post_date_gmt, post_modified_gmt, post_modified, post_title, post_name, post_status, post_type, post_parent) VALUES
+  (9101, 0, '2026-01-01 10:00:00', '2026-01-01 10:00:00', '2026-01-01 11:00:00', '', '', 'wc-processing', 'shop_order', 0),
+  (9601, 1, '2026-01-01 10:00:00', '2026-01-01 10:00:00', '2026-01-01 11:00:00', 'Empty slug', '', 'publish', 'post', 0);
+INSERT INTO wp_write.wp_wc_orders_meta (order_id, meta_key, meta_value) VALUES
+  (9103, '_keep', 'k'),
+  (9103, '_to_delete', 'bye'),
+  (9401, '_ppcp_paypal_fees', 'a:3:{s:12:"gross_amount";a:2:{s:13:"currency_code";s:3:"EUR";s:5:"value";s:5:"49.90";}s:10:"paypal_fee";a:2:{s:13:"currency_code";s:3:"EUR";s:5:"value";s:4:"2.04";}s:10:"net_amount";a:2:{s:13:"currency_code";s:3:"EUR";s:5:"value";s:5:"47.86";}}');
+INSERT INTO wp_write.wp_wc_order_addresses (id, order_id, address_type, first_name, last_name, address_1, city, postcode, country, email) VALUES
+  (9602, 9602, 'shipping', 'Ship', 'Target', 'Marktstraße 1', 'Dornbirn', '6850', 'AT', NULL);
+INSERT INTO wp_write.wp_woocommerce_order_items (order_item_id, order_item_name, order_item_type, order_id) VALUES (9402, 'Snapshot item', 'line_item', 9402);
+INSERT INTO wp_write.wp_woocommerce_order_itemmeta (order_item_id, meta_key, meta_value) VALUES (9402, '_qty', '3');
+INSERT INTO wp_write.wp_options (option_name, option_value, autoload) VALUES
+  ('zz_serialized_edit', 'a:2:{s:7:"enabled";s:3:"yes";s:5:"title";s:6:"PayPal";}', 'yes'),
+  ('zz_autoload_probe', 'x', 'yes'),
+  ('zz_rename_me', 'x', 'no'),
+  ('zz_snapshot_probe', 'before', 'no');
+INSERT INTO wp_write.wp_actionscheduler_actions (action_id, hook, status, scheduled_date_gmt, args, group_id, attempts) VALUES
+  (9201, 'zz_retry_hook', 'failed', '2026-01-01 00:00:00', '[]', 0, 1),
+  (9202, 'zz_cancel_hook', 'pending', '2030-01-01 00:00:00', '[]', 0, 0);
+INSERT INTO wp_write.wp_postmeta (meta_id, post_id, meta_key, meta_value) VALUES
+  (9301, 123, 'zz_null_meta', NULL),
+  (9302, 123, 'zz_duplicate_me', 'v');
+INSERT INTO wp_write.wp_usermeta (user_id, meta_key, meta_value) VALUES
+  (9501, 'dup_key', 'a'),
+  (9501, 'dup_key', 'b');
+INSERT INTO wp_write.wp_woocommerce_log (timestamp, level, source, message, context) VALUES
+  (UTC_TIMESTAMP() - INTERVAL 400 DAY, 200, 'zz-retention', 'old entry one', NULL),
+  (UTC_TIMESTAMP() - INTERVAL 400 DAY, 200, 'zz-retention', 'old entry two', NULL),
+  (UTC_TIMESTAMP() - INTERVAL 1 DAY, 200, 'zz-retention', 'recent entry', NULL);
 
 -- Legacy WooCommerce install (orders in wp_posts, HPOS off, no wc_orders tables).
 CREATE DATABASE wp_legacy CHARACTER SET utf8mb4;
