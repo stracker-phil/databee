@@ -12,8 +12,16 @@ export function formatBytes(bytes: number | null): string {
   return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
 }
 
+/** `12,345`: one grouping style everywhere, whatever the system locale. */
 export function formatCount(n: number): string {
   return n.toLocaleString("en-US");
+}
+
+/** `950`, `1.2k`, `12k`, `3.4M` for tight spots (table sizes, chart labels). */
+export function compactCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
 /** Full text of a cell, as copied to the clipboard. NULL copies as an empty string. */
@@ -48,13 +56,21 @@ export function rowsToJson(columns: string[], rows: Cell[][]): string {
   return JSON.stringify(objects, null, 2);
 }
 
-/** "3 hours ago"-style relative time for history and recents. */
-export function relativeTime(iso: string, now = Date.now()): string {
-  const seconds = Math.round((now - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} d ago`;
+const MINUTE = 60;
+const HOUR = 3600;
+const DAY = 86400;
+
+/** "2 h ago" or "in 3 d" for an ISO date or a unix timestamp in seconds. */
+export function relativeTime(when: string | number, now = Date.now()): string {
+  const ms = typeof when === "number" ? when * 1000 : new Date(when).getTime();
+  const diff = Math.round((ms - now) / 1000);
+  const abs = Math.abs(diff);
+  if (abs < 45) return "just now";
+  let text: string;
+  if (abs < HOUR) text = `${Math.round(abs / MINUTE)} min`;
+  else if (abs < DAY) text = `${Math.round(abs / HOUR)} h`;
+  else if (abs < DAY * 45) text = `${Math.round(abs / DAY)} d`;
+  else if (abs < DAY * 365) text = `${Math.round(abs / (DAY * 30))} mo`;
+  else text = `${(abs / (DAY * 365)).toFixed(1).replace(/\.0$/, "")} y`;
+  return diff > 0 ? `in ${text}` : `${text} ago`;
 }

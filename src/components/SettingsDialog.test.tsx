@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -32,13 +32,55 @@ describe("SettingsDialog", () => {
     expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ nullLabel: "∅", theme: "dark" }));
   });
 
-  it("previews in-range sizes while typing", async () => {
-    render(<SettingsDialog />);
-    const uiSize = screen.getByLabelText("UI size");
-    await userEvent.clear(uiSize);
-    await userEvent.type(uiSize, "16");
-    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ uiFontSize: 16 }));
-    expect(mocked.updateSettings).not.toHaveBeenCalledWith(expect.objectContaining({ uiFontSize: 1 }));
+  describe("number fields", () => {
+    it("commit a typed size once on blur, not per keystroke", async () => {
+      render(<SettingsDialog />);
+      const uiSize = screen.getByLabelText("UI size");
+      await userEvent.clear(uiSize);
+      await userEvent.type(uiSize, "16");
+      expect(mocked.updateSettings).not.toHaveBeenCalled();
+      await userEvent.tab();
+      expect(mocked.updateSettings).toHaveBeenCalledTimes(1);
+      expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ uiFontSize: 16 }));
+    });
+
+    it.each([
+      ["on blur", "{Tab}"],
+      ["on Enter", "{Enter}"],
+    ])("commit a typed six-digit value once %s", async (_when, key) => {
+      render(<SettingsDialog />);
+      await userEvent.click(screen.getByRole("button", { name: "Queries" }));
+      const rowLimit = screen.getByLabelText("Row limit");
+      await userEvent.clear(rowLimit);
+      await userEvent.type(rowLimit, `100000${key}`);
+      expect(mocked.updateSettings).toHaveBeenCalledTimes(1);
+      expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ rowLimit: 100000 }));
+    });
+
+    it("restore the saved value instead of committing an out-of-range one", async () => {
+      render(<SettingsDialog />);
+      const uiSize = screen.getByLabelText("UI size");
+      await userEvent.clear(uiSize);
+      await userEvent.type(uiSize, "99");
+      await userEvent.tab();
+      expect(mocked.updateSettings).not.toHaveBeenCalled();
+      expect(uiSize).toHaveValue(13);
+    });
+
+    it("preview a spinner step after a short pause", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        render(<SettingsDialog />);
+        fireEvent.change(screen.getByLabelText("UI size"), { target: { value: "14" } });
+        expect(mocked.updateSettings).not.toHaveBeenCalled();
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(300);
+        });
+        expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ uiFontSize: 14 }));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("switches pages from the sidebar", async () => {
@@ -90,6 +132,23 @@ describe("SettingsDialog", () => {
     expect(mocked.setKeybindings).toHaveBeenCalledWith({ "palette.open": "Mod+T" });
     expect(screen.queryByRole("tab", { name: /Query 2/ })).not.toBeInTheDocument();
     expect(useStore.getState().tabs).toHaveLength(1);
+  });
+
+  it("finds a command by its id in the shortcut search", async () => {
+    installCommands();
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
+    await userEvent.type(screen.getByLabelText("Search shortcuts"), "inspectordock");
+    expect(screen.getByText("Toggle inspector position (right / bottom)")).toBeInTheDocument();
+    expect(screen.queryByText("Zoom in")).not.toBeInTheDocument();
+  });
+
+  it("says so when no command matches the shortcut search", async () => {
+    installCommands();
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
+    await userEvent.type(screen.getByLabelText("Search shortcuts"), "zzzz");
+    expect(screen.getByText("No matching commands.")).toBeInTheDocument();
   });
 
   it("warns when two commands in overlapping scopes share a binding", async () => {

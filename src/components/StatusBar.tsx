@@ -1,8 +1,9 @@
 import { Monitor, Moon, PanelBottom, PanelRight, Sun } from "lucide-react";
 import { api, type Settings } from "../api";
-import { runCommand } from "../commands";
+import { runCommand, useBindingLabel } from "../commands";
+import { copyText } from "../lib/clipboard";
 import { formatCount } from "../lib/format";
-import { selectActiveSession, selectActiveTab, selectWp, useStore } from "../state/store";
+import { selectActivePending, selectActiveSession, selectActiveTab, selectWp, useStore } from "../state/store";
 
 const NEXT_THEME: Record<Settings["theme"], Settings["theme"]> = { system: "light", light: "dark", dark: "system" };
 const THEME_ICON = { system: Monitor, light: Sun, dark: Moon };
@@ -13,8 +14,9 @@ export function StatusBar() {
   const settings = useStore((s) => s.settings);
   const wp = useStore(selectWp);
   const wpMode = useStore((s) => s.mode === "wp");
-  const pending = useStore((s) => s.pending.length);
-  const { saveSettings, toast } = useStore.getState();
+  const pending = useStore((s) => selectActivePending(s).length);
+  const applyKey = useBindingLabel("changes.apply");
+  const { saveSettings, focusPendingTray } = useStore.getState();
   const rowLimit = settings?.rowLimit ?? 0;
 
   let left: React.ReactNode = null;
@@ -58,7 +60,7 @@ export function StatusBar() {
       {left}
       <div className="spacer" />
       {pending > 0 && (
-        <button data-stage="statusbar:pending" className="status-chip warn" title="Review and apply in the tray (⌘S)" onClick={() => document.querySelector<HTMLElement>(".tray .btn-primary")?.focus()}>
+        <button data-stage="statusbar:pending" className="status-chip warn" title={`Review and apply in the tray${applyKey ? ` (${applyKey})` : ""}`} onClick={focusPendingTray}>
           {pending} pending {pending === 1 ? "change" : "changes"}
         </button>
       )}
@@ -78,7 +80,7 @@ export function StatusBar() {
           data-stage-label={session.identity}
           className="status-chip"
           title={`${session.serverVersion} · click to copy ${session.identity}`}
-          onClick={() => void navigator.clipboard.writeText(session.identity).then(() => toast("success", "Copied connection"))}
+          onClick={() => void copyText(session.identity, "connection")}
         >
           <span className="dot" /> {session.identity}
         </button>

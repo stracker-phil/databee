@@ -39,4 +39,22 @@ describe("StatusBar", () => {
     render(<StatusBar />);
     expect(screen.getByRole("button", { name: "1 pending change" })).toBeInTheDocument();
   });
+
+  it("counts only the active session's pending changes", () => {
+    useStore.setState({
+      pending: [
+        { id: 1, sessionId: "s1" },
+        { id: 2, sessionId: "s2" },
+        { id: 3, sessionId: "s2" },
+      ] as never,
+    });
+    render(<StatusBar />);
+    expect(screen.getByRole("button", { name: "1 pending change" })).toBeInTheDocument();
+  });
+
+  it("shows no pending chip when only another session has changes", () => {
+    useStore.setState({ pending: [{ id: 1, sessionId: "s2" }] as never });
+    render(<StatusBar />);
+    expect(screen.queryByRole("button", { name: /pending/ })).not.toBeInTheDocument();
+  });
 });

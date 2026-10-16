@@ -20,7 +20,7 @@ export function statementRanges(sql: string): Range[] {
     const c = sql[i];
     if (c === "'" || c === '"' || c === "`") {
       i = skipQuoted(sql, i, c);
-    } else if (c === "#" || (c === "-" && sql[i + 1] === "-" && /\s|$/.test(sql[i + 2] ?? ""))) {
+    } else if (c === "#" || (c === "-" && sql[i + 1] === "-" && startsDashComment(sql[i + 2]))) {
       const nl = sql.indexOf("\n", i);
       i = nl === -1 ? sql.length : nl + 1;
     } else if (c === "/" && sql[i + 1] === "*") {
@@ -36,6 +36,11 @@ export function statementRanges(sql: string): Range[] {
   }
   push(sql.length);
   return ranges;
+}
+
+/** MySQL reads `--` as a comment only before whitespace, a control character or the end of input. */
+function startsDashComment(next: string | undefined): boolean {
+  return next === undefined || next <= " ";
 }
 
 function skipQuoted(sql: string, start: number, quote: string): number {
@@ -85,7 +90,12 @@ export function sqlString(value: string): string {
   return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 }
 
+/** A MySQL identifier in backticks, inner backticks doubled. */
+export function quoteIdent(name: string): string {
+  return `\`${name.replace(/`/g, "``")}\``;
+}
+
 /** `` `col` = 'value' `` joined with AND, for WHERE filters that open rows in the Database view. */
 export function whereEquals(pairs: [column: string, value: string][]): string {
-  return pairs.map(([c, v]) => `\`${c.replace(/`/g, "``")}\` = ${/^(0|[1-9]\d*)$/.test(v) ? v : sqlString(v)}`).join(" AND ");
+  return pairs.map(([c, v]) => `${quoteIdent(c)} = ${/^(0|[1-9]\d*)$/.test(v) ? v : sqlString(v)}`).join(" AND ");
 }

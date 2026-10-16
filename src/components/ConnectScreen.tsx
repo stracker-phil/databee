@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { Database, Trash2 } from "lucide-react";
 import { api, type AppError, type ConnectionSpec, type RecentConnection } from "../api";
 import { relativeTime } from "../lib/format";
-import { useStore } from "../state/store";
+import { fail, useStore } from "../state/store";
+
+/** Heading id of the form, for the connect sheet's `aria-labelledby`. */
+export const CONNECT_TITLE_ID = "connect-title";
 
 interface FormState {
   name: string;
@@ -31,7 +34,7 @@ function toForm(spec: ConnectionSpec | undefined, defaultPort: number): FormStat
 }
 
 /** Returns the spec, or an error message describing the first invalid field. */
-export function validate(form: FormState): ConnectionSpec | string {
+export function validate(form: FormState, defaultPort: number): ConnectionSpec | string {
   const port = Number(form.port);
   if (!form.useSocket && !form.host.trim()) return "Host is required";
   if (!form.useSocket && (!Number.isInteger(port) || port < 1 || port > 65535)) return "Port must be between 1 and 65535";
@@ -40,12 +43,15 @@ export function validate(form: FormState): ConnectionSpec | string {
   return {
     name: form.name.trim() || null,
     host: form.host.trim() || "127.0.0.1",
-    port: Number.isInteger(port) && port > 0 ? port : 3306,
+    port: Number.isInteger(port) && port > 0 ? port : defaultPort,
     socket: form.useSocket ? form.socket.trim() : null,
     user: form.user.trim(),
     database: form.database.trim() || null,
   };
 }
+
+/** The recent's title; its label for Stage and screen readers uses the same text. */
+const recentTitle = (spec: ConnectionSpec) => spec.name ?? spec.database ?? spec.host;
 
 function describe(spec: ConnectionSpec) {
   const where = spec.socket ?? `${spec.host}:${spec.port}`;
@@ -74,7 +80,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const result = validate(form);
+    const result = validate(form, defaultPort);
     if (typeof result === "string") {
       setProblem(result);
       return;
@@ -84,8 +90,12 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
   };
 
   const removeRecent = async (identity: string) => {
-    await api.removeRecent(identity).catch(() => {});
-    setRecents((r) => r.filter((x) => x.identity !== identity));
+    try {
+      await api.removeRecent(identity);
+      setRecents((r) => r.filter((x) => x.identity !== identity));
+    } catch (e) {
+      fail(e, "Could not remove the recent connection");
+    }
   };
 
   const shownError = problem ?? error?.message;
@@ -93,7 +103,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
   return (
     <div className="connect-card">
       <form className="connect-form" onSubmit={onSubmit} noValidate data-stage="connect:form" data-stage-label="New connection">
-        <h1>New connection</h1>
+        <h1 id={CONNECT_TITLE_ID}>New connection</h1>
         <p className="muted" style={{ margin: "-6px 0 2px" }}>MySQL or MariaDB, local or in Docker.</p>
         {shownError && (
           <div className="form-error" role="alert">
@@ -151,33 +161,26 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
         <h2>Recent</h2>
         {recents.length === 0 && <div className="sidebar-empty">Connections you open appear here.</div>}
         {recents.map((r) => (
-          <div
-            key={r.identity}
-            className="recent"
-            role="button"
-            data-stage={`recent:${r.identity}`}
-            data-stage-list="recents"
-            data-stage-label={r.spec.name ?? describe(r.spec)}
-            aria-label={`Connect to ${r.spec.name ?? describe(r.spec)}`}
-            onDoubleClick={() => void submit(r.spec)}
-            onClick={() => setForm(toForm(r.spec, defaultPort))}
-          >
-            <Database size="1.231rem" className="muted" />
-            <div className="info">
-              <div className="title">{r.spec.name ?? r.spec.database ?? r.spec.host}</div>
-              <div className="sub">
-                {describe(r.spec)} · {relativeTime(r.lastUsed)}
-              </div>
-            </div>
+          <div key={r.identity} className="recent">
             <button
               type="button"
-              className="icon-btn"
-              aria-label={`Remove ${r.identity}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                void removeRecent(r.identity);
-              }}
+              className="recent-main"
+              data-stage={`recent:${r.identity}`}
+              data-stage-list="recents"
+              data-stage-label={recentTitle(r.spec)}
+              aria-label={`Connect to ${recentTitle(r.spec)}`}
+              onDoubleClick={() => void submit(r.spec)}
+              onClick={() => setForm(toForm(r.spec, defaultPort))}
             >
+              <Database size="1.231rem" className="muted" />
+              <div className="info">
+                <div className="title">{recentTitle(r.spec)}</div>
+                <div className="sub">
+                  {describe(r.spec)} · {relativeTime(r.lastUsed)}
+                </div>
+              </div>
+            </button>
+            <button type="button" className="icon-btn" aria-label={`Remove ${r.identity}`} onClick={() => void removeRecent(r.identity)}>
               <Trash2 size="1rem" />
             </button>
           </div>
@@ -190,11 +193,13 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
 
 export function ConnectScreen() {
   const dialog = useStore((s) => s.dialog);
+  const defaultPort = useStore((s) => s.settings?.defaultPort ?? 3306);
   const state = dialog?.type === "connect" ? dialog : undefined;
   return (
     <div className="connect-screen">
       <div className="drag-strip" data-tauri-drag-region />
-      <ConnectForm key={state?.spec ? JSON.stringify(state.spec) : "empty"} initial={state?.spec} error={state?.error} />
+      {/* The form reads the default port once; the key remounts it when the configured one loads. */}
+      <ConnectForm key={`${defaultPort}:${state?.spec ? JSON.stringify(state.spec) : "empty"}`} initial={state?.spec} error={state?.error} />
     </div>
   );
 }

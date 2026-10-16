@@ -1,10 +1,81 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { ChevronDown, ChevronRight, Database, Eye, History, RefreshCw, Search, Table2, Trash2 } from "lucide-react";
 import { accountOf, api, type HistoryEntry, type TableInfo } from "../api";
 import { EVENTS } from "../commands";
-import { formatBytes, formatCount, relativeTime } from "../lib/format";
-import { selectActiveSession, selectActiveTab, useStore } from "../state/store";
+import { copyText } from "../lib/clipboard";
+import { compactCount, formatBytes, formatCount, relativeTime } from "../lib/format";
+import { quoteIdent } from "../lib/sql";
+import { fail, selectActiveSession, selectActiveTab, useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
+
+const dbKey = (name: string) => `db:${name}`;
+const tableKey = (db: string, name: string) => `table:${db}.${name}`;
+
+/** One focusable row of the tables tree: a database, or a table inside it. */
+type TreeRow = { key: string; db: string; table?: undefined; open: boolean } | TableRow;
+
+interface TableRow {
+  key: string;
+  db: string;
+  table: TableInfo;
+}
+
+interface TreeActions {
+  toggle: (db: string) => void;
+  openTable: (row: TableRow) => void;
+}
+
+/** Roving tabIndex over the visible rows: one row is tabbable, arrows move focus and expand or collapse. */
+function useTreeFocus(rows: TreeRow[], { toggle, openTable }: TreeActions) {
+  const [focused, setFocused] = useState<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const tabStop = rows.some((r) => r.key === focused) ? focused : rows[0]?.key;
+
+  const focusRow = (key: string | undefined) => {
+    if (!key) return;
+    setFocused(key);
+    rowRefs.current.get(key)?.focus();
+  };
+
+  const onRowKey = (e: KeyboardEvent, row: TreeRow) => {
+    const i = rows.findIndex((r) => r.key === row.key);
+    switch (e.key) {
+      case "ArrowDown":
+        focusRow(rows[i + 1]?.key);
+        break;
+      case "ArrowUp":
+        focusRow(rows[i - 1]?.key);
+        break;
+      case "ArrowRight":
+        if (row.table) return;
+        if (!row.open) toggle(row.db);
+        else if (rows[i + 1]?.table) focusRow(rows[i + 1].key);
+        break;
+      case "ArrowLeft":
+        if (row.table) focusRow(dbKey(row.db));
+        else if (row.open) toggle(row.db);
+        break;
+      case "Enter":
+        if (row.table) openTable(row);
+        else toggle(row.db);
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+  };
+
+  return (row: TreeRow) => ({
+    ref: (el: HTMLDivElement | null) => {
+      if (el) rowRefs.current.set(row.key, el);
+      else rowRefs.current.delete(row.key);
+    },
+    role: "treeitem",
+    tabIndex: row.key === tabStop ? 0 : -1,
+    onFocus: () => setFocused(row.key),
+    onKeyDown: (e: KeyboardEvent) => onRowKey(e, row),
+  });
+}
 
 function TablesPanel() {
   const session = useStore(selectActiveSession);
@@ -32,15 +103,27 @@ function TablesPanel() {
     [schema, showSystem, current],
   );
 
-  if (!session) return null;
-
   const toggle = (db: string) => {
     const open = !isOpen(db);
     setExpanded((e) => ({ ...e, [db]: open }));
-    if (open && !schema?.tables[db]) void loadTables(session.id, db);
+    if (open && session && !schema?.tables[db]) void loadTables(session.id, db);
   };
 
-  const tableMenu = (db: string, t: TableInfo, e: React.MouseEvent) => {
+  const openPreview = (db: string, table: string, preview = true) => openTableTab(db, table, "data", undefined, { preview });
+
+  const tree = databases.map((d) => {
+    const tableRows = (schema?.tables[d.name] ?? [])
+      .filter((t) => !needle || t.name.toLowerCase().includes(needle))
+      .map((t): TableRow => ({ key: tableKey(d.name, t.name), db: d.name, table: t }));
+    const open = isOpen(d.name) || (!!needle && tableRows.length > 0);
+    return { d, row: { key: dbKey(d.name), db: d.name, open }, tableRows };
+  });
+  const rows: TreeRow[] = tree.flatMap(({ row, tableRows }) => [row, ...(row.open ? tableRows : [])]);
+  const rowProps = useTreeFocus(rows, { toggle, openTable: (row) => openPreview(row.db, row.table.name) });
+
+  if (!session) return null;
+
+  const tableMenu = (db: string, t: TableInfo, e: MouseEvent) => {
     e.preventDefault();
     setMenu({
       x: e.clientX,
@@ -48,16 +131,13 @@ function TablesPanel() {
       items: [
         { label: "Open data", action: () => openTableTab(db, t.name, "data") },
         { label: "Show structure", action: () => openTableTab(db, t.name, "structure") },
-        { label: "New query: SELECT …", action: () => openQueryTab(`SELECT *\nFROM \`${db}\`.\`${t.name}\`\nLIMIT 100;`) },
+        { label: "New query: SELECT …", action: () => openQueryTab(`SELECT *\nFROM ${quoteIdent(db)}.${quoteIdent(t.name)}\nLIMIT 100;`) },
         "separator",
         { label: "Add to favorites", action: () => void addFavorite(t.name, { kind: "table", database: db, table: t.name }) },
-        { label: "Copy name", action: () => void navigator.clipboard.writeText(t.name) },
+        { label: "Copy name", action: () => void copyText(t.name, "name") },
       ],
     });
   };
-
-  const visibleTables = (db: string) =>
-    (schema?.tables[db] ?? []).filter((t) => !needle || t.name.toLowerCase().includes(needle));
 
   return (
     <>
@@ -73,7 +153,9 @@ function TablesPanel() {
             data-stage="sidebar:filter"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && setFilter("")}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setFilter("");
+            }}
           />
         </div>
         <button data-stage="sidebar:refresh" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => void loadDatabases(session.id)}>
@@ -81,97 +163,112 @@ function TablesPanel() {
         </button>
       </div>
       <div className="sidebar-body" role="tree" aria-label="Databases">
-        {databases.map((d) => {
-          const open = isOpen(d.name) || (!!needle && visibleTables(d.name).length > 0);
-          const tables = visibleTables(d.name);
-          return (
-            <div key={d.name} role="treeitem" aria-expanded={open}>
-              <div className={`tree-row${d.isSystem ? " system" : ""}`} data-stage={`database:${d.name}`} data-stage-list="databases" data-stage-label={d.name} onClick={() => toggle(d.name)}>
-                {open ? <ChevronDown size="0.923rem" /> : <ChevronRight size="0.923rem" />}
-                <Database size="1rem" />
-                <span className="label" style={{ fontWeight: d.name === current ? 600 : 400 }}>{d.name}</span>
-                {schema?.tables[d.name] && <span className="meta">{schema.tables[d.name].length}</span>}
-              </div>
-              {open && (
-                <div className="tree-children" role="group">
-                  {!schema?.tables[d.name] && <div className="sidebar-empty">Loading…</div>}
-                  {schema?.tables[d.name] && tables.length === 0 && (
-                    <div className="sidebar-empty">{needle ? "No matching tables" : "No tables"}</div>
-                  )}
-                  {tables.map((t) => {
-                    const active = activeTab?.kind === "table" && activeTab.database === d.name && activeTab.table === t.name;
-                    return (
-                      <div
-                        key={t.name}
-                        role="treeitem"
-                        data-stage={`table:${d.name}.${t.name}`}
-                        data-stage-list="tables"
-                        aria-selected={active}
-                        data-stage-label={t.name}
-                        className={`tree-row${active ? " active" : ""}`}
-                        title={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}
-                        onClick={(e) => openTableTab(d.name, t.name, "data", undefined, { preview: !e.metaKey })}
-                        onDoubleClick={() => openTableTab(d.name, t.name, undefined, undefined, { preview: false })}
-                        onContextMenu={(e) => tableMenu(d.name, t, e)}
-                      >
-                        {t.isView ? <Eye size="1rem" /> : <Table2 size="1rem" />}
-                        <span className="label">{t.name}</span>
-                        {t.rowsEstimate != null && !t.isView && <span className="meta">{compact(t.rowsEstimate)}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+        {tree.map(({ d, row, tableRows }) => (
+          <div key={d.name} role="none">
+            <div
+              {...rowProps(row)}
+              aria-level={1}
+              aria-expanded={row.open}
+              className={`tree-row${d.isSystem ? " system" : ""}`}
+              data-stage={`database:${d.name}`}
+              data-stage-list="databases"
+              data-stage-label={d.name}
+              onClick={() => toggle(d.name)}
+            >
+              {row.open ? <ChevronDown size="0.923rem" /> : <ChevronRight size="0.923rem" />}
+              <Database size="1rem" />
+              <span className="label" style={{ fontWeight: d.name === current ? 600 : 400 }}>{d.name}</span>
+              {schema?.tables[d.name] && <span className="meta">{schema.tables[d.name].length}</span>}
             </div>
-          );
-        })}
+            {row.open && (
+              <div className="tree-children" role="group">
+                {!schema?.tables[d.name] && <div className="sidebar-empty">Loading…</div>}
+                {schema?.tables[d.name] && tableRows.length === 0 && (
+                  <div className="sidebar-empty">{needle ? "No matching tables" : "No tables"}</div>
+                )}
+                {tableRows.map((tr) => {
+                  const t = tr.table;
+                  const active = activeTab?.kind === "table" && activeTab.database === d.name && activeTab.table === t.name;
+                  return (
+                    <div
+                      key={t.name}
+                      {...rowProps(tr)}
+                      aria-level={2}
+                      data-stage={`table:${d.name}.${t.name}`}
+                      data-stage-list="tables"
+                      aria-selected={active}
+                      data-stage-label={t.name}
+                      className={`tree-row${active ? " active" : ""}`}
+                      title={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}
+                      onClick={(e) => openPreview(d.name, t.name, !e.metaKey)}
+                      onDoubleClick={() => openTableTab(d.name, t.name, undefined, undefined, { preview: false })}
+                      onContextMenu={(e) => tableMenu(d.name, t, e)}
+                    >
+                      {t.isView ? <Eye size="1rem" /> : <Table2 size="1rem" />}
+                      <span className="label">{t.name}</span>
+                      {t.rowsEstimate != null && !t.isView && <span className="meta">{compactCount(t.rowsEstimate)}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
     </>
   );
 }
 
-function compact(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
-  return `${(n / 1_000_000).toFixed(1)}M`;
-}
-
 function HistoryPanel() {
   const session = useStore(selectActiveSession);
-  const runningCount = useStore((s) => s.tabs.filter((t) => t.kind === "query" && t.running).length);
+  const historyVersion = useStore((s) => s.historyVersion);
   const openQueryTab = useStore((s) => s.openQueryTab);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const account = session ? accountOf(session.spec) : null;
 
   useEffect(() => {
     if (!account) return;
-    api.listHistory(account).then(setEntries, () => setEntries([]));
-  }, [account, runningCount]);
+    // Only the newest request writes: a slow reply for another server or an earlier run is dropped.
+    let latest = true;
+    api.listHistory(account).then(
+      (list) => {
+        if (latest) setEntries(list);
+      },
+      () => {
+        if (latest) setEntries([]);
+      },
+    );
+    return () => {
+      latest = false;
+    };
+  }, [account, historyVersion]);
 
   if (!account) return null;
+
+  const clear = async () => {
+    try {
+      await api.clearHistory(account);
+      setEntries([]);
+    } catch (e) {
+      fail(e, "Could not clear history");
+    }
+  };
+
   return (
     <>
       <div className="sidebar-head">
         <span className="muted" style={{ flex: 1, paddingLeft: 4 }}>{entries.length} queries</span>
-        <button
-          className="icon-btn"
-          aria-label="Clear history"
-          title="Clear history"
-          disabled={entries.length === 0}
-          onClick={async () => {
-            await api.clearHistory(account).catch(() => {});
-            setEntries([]);
-          }}
-        >
+        <button className="icon-btn" aria-label="Clear history" title="Clear history" disabled={entries.length === 0} onClick={() => void clear()}>
           <Trash2 size="1rem" />
         </button>
       </div>
       <div className="sidebar-body" data-stage="sidebar:history-list" data-stage-label="Query history">
         {entries.length === 0 && <div className="sidebar-empty">Queries you run on this server appear here.</div>}
-        {entries.map((e) => (
+        {entries.map((e, i) => (
           <div
-            key={e.executedAt + e.sql}
+            // Entries carry no id, and executedAt + sql can repeat.
+            key={i}
             className={`history-item${e.error ? " failed" : ""}`}
             title="Double-click to open in a new tab"
             onDoubleClick={() => openQueryTab(e.sql)}

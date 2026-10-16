@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PaneSize } from "../api";
 import { selectActiveSession, useStore } from "../state/store";
 
@@ -54,17 +54,26 @@ interface Props {
 /** Drag handle between two panes; arrow keys resize in steps. */
 export function Splitter({ axis, paneAfter, size, min, max, onResize, onCommit, label, gap = false }: Props) {
   const sign = paneAfter ? -1 : 1;
+  // Removes the window listeners and the body cursor class of a drag in progress.
+  const stopDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopDrag.current?.(), []);
+
   const start = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    stopDrag.current?.();
     const origin = axis === "x" ? e.clientX : e.clientY;
     const next = (ev: MouseEvent) => clamp(size + sign * ((axis === "x" ? ev.clientX : ev.clientY) - origin), min, max);
     const move = (ev: MouseEvent) => onResize(next(ev));
     const up = (ev: MouseEvent) => {
+      stopDrag.current?.();
+      onCommit(next(ev));
+    };
+    stopDrag.current = () => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       document.body.classList.remove(`resizing-${axis}`);
-      onCommit(next(ev));
+      stopDrag.current = null;
     };
     document.body.classList.add(`resizing-${axis}`);
     window.addEventListener("mousemove", move);

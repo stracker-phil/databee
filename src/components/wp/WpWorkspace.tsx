@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, Boxes, CalendarClock, Camera, ChevronRight, FileText, LayoutDashboard, Repeat, Search, Settings2, ShoppingBag, ShoppingCart, Users } from "lucide-react";
 import { api, type BrowserSection } from "../../api";
 import { routeCrumbs } from "../../lib/crumbs";
+import { formatCount } from "../../lib/format";
 import { selectWp, selectWpRoute, useStore, type WpList, type WpRoute } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
 import { DashboardScreen } from "./Dashboard";
@@ -79,12 +80,12 @@ function NavItem({ section, active }: { section: BrowserSection; active: boolean
         <Icon size="1.077rem" />
         <span className="nav-label" data-stage-label={section.label}>{section.label}</span>
         {badges.length > 0 && (
-          <span className={`nav-badge tone-${badges[0].tone}`} title={badges.map((b) => `${b.count.toLocaleString("en-US")} ${b.label}`).join(" · ")}>
-            {badges[0].count.toLocaleString("en-US")} {badges[0].label}
+          <span className={`nav-badge tone-${badges[0].tone}`} title={badges.map((b) => `${formatCount(b.count)} ${b.label}`).join(" · ")}>
+            {formatCount(badges[0].count)} {badges[0].label}
             {badges.length > 1 && ` +${badges.length - 1}`}
           </span>
         )}
-        <span className="nav-count">{section.count.toLocaleString("en-US")}</span>
+        <span className="nav-count">{formatCount(section.count)}</span>
       </span>
     </button>
   );

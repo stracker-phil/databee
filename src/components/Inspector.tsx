@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Copy, X } from "lucide-react";
 import { api, type DecodedValue } from "../api";
-import { cellText } from "../lib/format";
-import { useStore } from "../state/store";
+import { copyText } from "../lib/clipboard";
+import { cellText, formatCount } from "../lib/format";
+import { useStore, type SelectedCell } from "../state/store";
 import { ValueTree } from "./ValueTree";
 
 const MAX_DECODE_CHARS = 2_000_000;
@@ -27,14 +28,18 @@ function useDecoded(text: string | null): DecodedValue | null {
 
 export function Inspector() {
   const selected = useStore((s) => s.selectedCell);
-  const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
-  const { selectCell, toast } = useStore.getState();
-  const [showRaw, setShowRaw] = useState(false);
-  const textual = selected && (selected.cell.t === "text" || selected.cell.t === "json") ? cellText(selected.cell) : null;
-  const decoded = useDecoded(textual);
   if (!selected) return null;
+  // A new cell starts in the decoded view again.
+  return <CellInspector key={`${selected.tabId}:${selected.row}:${selected.col}`} selected={selected} />;
+}
+
+function CellInspector({ selected }: { selected: SelectedCell }) {
+  const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
+  const { selectCell } = useStore.getState();
+  const [showRaw, setShowRaw] = useState(false);
   const { cell, column } = selected;
   const raw = cellText(cell);
+  const decoded = useDecoded(cell.t === "text" || cell.t === "json" ? raw : null);
 
   return (
     <aside className="inspector" aria-label="Value inspector" data-stage="inspector">
@@ -51,7 +56,7 @@ export function Inspector() {
         <button
           className="icon-btn"
           aria-label="Copy value"
-          onClick={() => void navigator.clipboard.writeText(raw).then(() => toast("success", "Copied value"))}
+          onClick={() => void copyText(raw, "value")}
         >
           <Copy size="1rem" />
         </button>
@@ -63,13 +68,13 @@ export function Inspector() {
         {cell.t === "null" ? (
           <span className="muted" style={{ fontStyle: "italic" }}>{nullLabel}</span>
         ) : cell.t === "bytes" ? (
-          <pre>{`${cell.v.len} bytes\n0x${cell.v.hexPreview}${cell.v.len > 16 ? "…" : ""}`}</pre>
+          <pre>{`${cell.v.len} bytes\n${raw}`}</pre>
         ) : decoded && !showRaw ? (
           <ValueTree value={decoded} />
         ) : (
           <>
             <pre>{raw}</pre>
-            <div className="hint" style={{ marginTop: 8 }}>{raw.length.toLocaleString("en-US")} characters</div>
+            <div className="hint" style={{ marginTop: 8 }}>{formatCount(raw.length)} characters</div>
           </>
         )}
       </div>

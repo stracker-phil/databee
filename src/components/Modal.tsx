@@ -1,26 +1,87 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { isRecordingTarget } from "../commands/registry";
 
 interface Props {
   onClose: () => void;
   className?: string;
   labelledBy?: string;
+  label?: string;
   /** Exposes the sheet as its own window to Stage (src/stage/hooks.ts). */
   stageWindow?: string;
   children: ReactNode;
 }
 
-export function Modal({ onClose, className = "", labelledBy, stageWindow, children }: Props) {
+const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+function focusables(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.hidden);
+}
+
+/** Keeps Tab inside the sheet and returns focus to the element that opened it. */
+export function Modal({ onClose, className = "", labelledBy, label, stageWindow, children }: Props) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  // Read during the first render: children with autoFocus take focus before any effect runs.
+  const [opener] = useState(() => document.activeElement as HTMLElement | null);
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    const sheet = sheetRef.current;
+    if (sheet && !sheet.contains(document.activeElement)) (focusables(sheet)[0] ?? sheet).focus();
+    return () => {
+      // An action run on close may have focused its own target (a new tab, the WHERE field); keep that.
+      const active = document.activeElement;
+      const focusLost = !active || active === document.body || !!sheet?.contains(active);
+      if (focusLost && opener?.isConnected) opener.focus();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [opener]);
+
+  useEffect(() => {
+    // Capture phase, stopped here: controls inside the sheet and bubbling listeners never also act on Escape.
+    // The app's shortcut handler already ignores keys while an overlay is open, except settings and zoom.
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (isRecordingTarget(e.target)) return;
+      e.stopPropagation();
+      onCloseRef.current();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  const trapTab = (e: KeyboardEvent) => {
+    if (e.key !== "Tab" || !sheetRef.current) return;
+    const items = focusables(sheetRef.current);
+    if (items.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === sheetRef.current)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`dialog ${className}`} data-stage={stageWindow ? `${stageWindow}:sheet` : "dialog"} data-stage-window={stageWindow} role="dialog" aria-modal="true" aria-labelledby={labelledBy}>
+      <div
+        ref={sheetRef}
+        className={`dialog ${className}`}
+        data-stage={stageWindow ? `${stageWindow}:sheet` : "dialog"}
+        data-stage-window={stageWindow}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy}
+        aria-label={label}
+        tabIndex={-1}
+        onKeyDown={trapTab}
+      >
         {children}
       </div>
     </div>

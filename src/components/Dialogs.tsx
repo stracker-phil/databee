@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { KeyRound } from "lucide-react";
-import { accountOf, type ColumnInfo } from "../api";
+import { accountOf, type ColumnInfo, type ConnectionSpec } from "../api";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
-import { ConnectForm } from "./ConnectScreen";
+import { CONNECT_TITLE_ID, ConnectForm } from "./ConnectScreen";
 import { SettingsDialog } from "./SettingsDialog";
 
 function ConfirmDialog({ title, message, confirmLabel, onConfirm }: { title: string; message: string; confirmLabel: string; onConfirm: () => void }) {
@@ -36,7 +36,7 @@ function PromptDialog({ title, value, onSubmit }: { title: string; value: string
   return (
     <Modal onClose={close} labelledBy="prompt-title">
       <form
-        style={{ display: "contents" }}
+        className="form-contents"
         onSubmit={(e) => {
           e.preventDefault();
           if (!text.trim()) return;
@@ -55,7 +55,7 @@ function PromptDialog({ title, value, onSubmit }: { title: string; value: string
   );
 }
 
-export function PasswordDialog({ spec, error, savePassword }: { spec: Parameters<typeof accountOf>[0]; error?: string; savePassword: boolean }) {
+export function PasswordDialog({ spec, error, savePassword }: { spec: ConnectionSpec; error?: string; savePassword: boolean }) {
   const close = useStore((s) => s.closeDialog);
   const connect = useStore((s) => s.connect);
   const [password, setPassword] = useState("");
@@ -64,7 +64,7 @@ export function PasswordDialog({ spec, error, savePassword }: { spec: Parameters
   return (
     <Modal onClose={close} labelledBy="pw-title">
       <form
-        style={{ display: "contents" }}
+        className="form-contents"
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
@@ -99,31 +99,63 @@ export function PasswordDialog({ spec, error, savePassword }: { spec: Parameters
   );
 }
 
+/** How a column is inserted: a typed value (the string "NULL" too), SQL NULL, or left to its default. */
+type InsertMode = "value" | "null" | "default";
+
+function InsertField({ column, mode, value, onChange }: { column: ColumnInfo; mode: InsertMode; value: string; onChange: (mode: InsertMode, value: string) => void }) {
+  const id = useId();
+  return (
+    <div className="field">
+      <label htmlFor={id}>
+        {column.name} <span className="muted">{column.columnType}{column.nullable ? "" : " · required"}</span>
+      </label>
+      <div className="insert-field">
+        <input
+          id={id}
+          className="input mono"
+          placeholder={mode === "null" ? "NULL" : mode === "default" ? (column.default ?? "default") : ""}
+          value={mode === "value" ? value : ""}
+          onChange={(e) => onChange("value", e.target.value)}
+        />
+        <select className="input" aria-label={`${column.name} mode`} value={mode} onChange={(e) => onChange(e.target.value as InsertMode, value)}>
+          <option value="value">Value</option>
+          {column.nullable && <option value="null">NULL</option>}
+          <option value="default">Default</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function InsertRowDialog({ database, table, columns }: { database: string; table: string; columns: ColumnInfo[] }) {
   const close = useStore((s) => s.closeDialog);
   const queueChange = useStore((s) => s.queueChange);
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [fields, setFields] = useState<Record<string, { mode: InsertMode; value: string }>>({});
   const editable = columns.filter((c) => !c.extra.includes("auto_increment") && !c.extra.includes("GENERATED"));
+  const fieldOf = (name: string) => fields[name] ?? { mode: "default" as const, value: "" };
   return (
     <Modal onClose={close} className="wide" labelledBy="insert-title">
       <form
-        style={{ display: "contents" }}
+        className="form-contents"
         onSubmit={async (e) => {
           e.preventDefault();
-          const entries = Object.entries(values).filter(([, v]) => v !== "");
-          if (await queueChange({ type: "insertRow", database, table, values: entries.map(([k, v]) => [k, v === "NULL" ? null : v]) })) close();
+          const values: [string, string | null][] = editable
+            .map((c) => [c.name, fieldOf(c.name)] as const)
+            .filter(([, f]) => f.mode !== "default")
+            .map(([name, f]) => [name, f.mode === "null" ? null : f.value]);
+          if (await queueChange({ type: "insertRow", database, table, values })) close();
         }}
       >
         <h2 id="insert-title">Insert into {table}</h2>
-        <p className="hint" style={{ margin: 0 }}>Empty fields use the column default; type NULL for NULL.</p>
+        <p className="hint" style={{ margin: 0 }}>Typing sets a value; Default leaves the column out of the INSERT.</p>
         <div className="insert-grid">
           {editable.map((c) => (
-            <label key={c.name} className="field">
-              <span>
-                {c.name} <span className="muted">{c.columnType}{c.nullable ? "" : " · required"}</span>
-              </span>
-              <input className="input mono" placeholder={c.default ?? ""} value={values[c.name] ?? ""} onChange={(e) => setValues({ ...values, [c.name]: e.target.value })} />
-            </label>
+            <InsertField
+              key={c.name}
+              column={c}
+              {...fieldOf(c.name)}
+              onChange={(mode, value) => setFields((f) => ({ ...f, [c.name]: { mode, value } }))}
+            />
           ))}
         </div>
         <div className="actions">
@@ -155,7 +187,7 @@ export function Dialogs() {
       // Without sessions the connect screen is the main view and shows this state itself.
       if (!hasSessions) return null;
       return (
-        <Modal onClose={close} className="connect-dialog">
+        <Modal onClose={close} className="connect-dialog" labelledBy={CONNECT_TITLE_ID}>
           <ConnectForm initial={dialog.spec} error={dialog.error} />
         </Modal>
       );

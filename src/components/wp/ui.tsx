@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { initials, relativeFromUnix, absoluteFromUnix } from "../../lib/wpFormat";
+import { relativeTime } from "../../lib/format";
+import { initials, absoluteFromUnix } from "../../lib/wpFormat";
 
 const STATUS_TONES: Record<string, string> = {
   completed: "green",
@@ -35,7 +36,7 @@ export function StatusPill({ status, label }: { status: string; label?: string }
 
 export function Ago({ unix }: { unix: number | null | undefined }) {
   if (unix == null) return <span className="muted">—</span>;
-  return <span title={absoluteFromUnix(unix)}>{relativeFromUnix(unix)}</span>;
+  return <span title={absoluteFromUnix(unix)}>{relativeTime(unix)}</span>;
 }
 
 export function Avatar({ name, src, size = "2.154rem" }: { name: string; src?: string | null; size?: string }) {

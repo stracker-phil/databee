@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, RotateCcw, X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { selectActivePending, selectActiveSession, selectCanUndo, useStore } from "../state/store";
@@ -11,6 +11,11 @@ export function PendingTray() {
   const applying = useStore((s) => s.applying);
   const { discardChange, discardAll, applyChanges, undoLast } = useStore.getState();
   const [open, setOpen] = useState<Record<number, boolean>>({});
+  const focusRequest = useStore((s) => s.trayFocusRequest);
+  const applyRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (focusRequest) applyRef.current?.focus();
+  }, [focusRequest]);
   if (!session || (pending.length === 0 && !canUndo)) return null;
 
   return (
@@ -27,7 +32,7 @@ export function PendingTray() {
         {pending.length > 0 && (
           <>
             <button data-stage="tray:discard" className="btn" onClick={discardAll}>Discard all</button>
-            <button data-stage="tray:apply" className="btn btn-primary" disabled={applying} aria-busy={applying} onClick={() => void applyChanges()}>
+            <button ref={applyRef} data-stage="tray:apply" className="btn btn-primary" disabled={applying} aria-busy={applying} onClick={() => void applyChanges()}>
               {applying && <Loader2 size="0.923rem" className="spin" />} Apply (⌘S)
             </button>
           </>

@@ -77,6 +77,29 @@ describe("FavoritesBar", () => {
     expect(useStore.getState().favorites.map((f) => f.id)).toEqual(["f2", "f1"]);
   });
 
+  it("moves a favorite to the end when it is dropped on the bar outside any favorite", () => {
+    render(<FavoritesBar />);
+    fireEvent.dragStart(screen.getByRole("button", { name: "wp_options" }));
+    fireEvent.dragOver(screen.getByRole("navigation", { name: "Favorites" }));
+    fireEvent.drop(screen.getByRole("navigation", { name: "Favorites" }));
+    expect(mocked.reorderFavorites).toHaveBeenCalledWith(["f2", "f1"]);
+    expect(useStore.getState().favorites.map((f) => f.id)).toEqual(["f2", "f1"]);
+  });
+
+  it("keeps the order when the last favorite is dropped on the bar", () => {
+    render(<FavoritesBar />);
+    fireEvent.dragStart(screen.getByRole("button", { name: "PPCP settings" }));
+    fireEvent.dragOver(screen.getByRole("navigation", { name: "Favorites" }));
+    fireEvent.drop(screen.getByRole("navigation", { name: "Favorites" }));
+    expect(useStore.getState().favorites.map((f) => f.id)).toEqual(["f1", "f2"]);
+  });
+
+  it("ignores a drop on the bar when no favorite is being dragged", () => {
+    render(<FavoritesBar />);
+    fireEvent.drop(screen.getByRole("navigation", { name: "Favorites" }));
+    expect(mocked.reorderFavorites).not.toHaveBeenCalled();
+  });
+
   it("renames a favorite through updateFavorite with the full favorite and shows the new name", async () => {
     mocked.listFavorites.mockResolvedValue([{ ...favorites[0], name: "Options" }, favorites[1]]);
     render(

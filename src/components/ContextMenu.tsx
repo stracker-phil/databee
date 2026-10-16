@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export interface MenuItem {
   label: string;
@@ -15,31 +15,60 @@ interface Props {
   onClose: () => void;
 }
 
+const EDGE = 4;
+
 export function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [pos, setPos] = useState({ left: x, top: y });
+
+  // Measured after render, so separators and long labels keep the menu inside the window.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    setPos({
+      left: Math.max(EDGE, Math.min(x, window.innerWidth - width - EDGE)),
+      top: Math.max(EDGE, Math.min(y, window.innerHeight - height - EDGE)),
+    });
+  }, [x, y]);
+
   useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose();
+    const opener = document.activeElement as HTMLElement | null;
+    menuButtons(ref.current)[0]?.focus();
+    const closeOutside = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onCloseRef.current();
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("mousedown", close);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCloseRef.current();
+    window.addEventListener("mousedown", closeOutside);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("mousedown", close);
+      window.removeEventListener("mousedown", closeOutside);
       window.removeEventListener("keydown", onKey);
+      const active = document.activeElement;
+      if ((!active || active === document.body) && opener?.isConnected) opener.focus();
     };
-  }, [onClose]);
+  }, []);
 
-  const left = Math.min(x, window.innerWidth - 200);
-  const top = Math.min(y, window.innerHeight - items.length * 26 - 12);
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const buttons = menuButtons(ref.current);
+    if (buttons.length === 0) return;
+    const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const step = e.key === "ArrowDown" ? 1 : -1;
+    buttons[(i + step + buttons.length) % buttons.length].focus();
+  };
+
   return (
-    <div className="menu" role="menu" ref={ref} style={{ left, top }}>
+    <div className="menu" role="menu" ref={ref} style={pos} onKeyDown={onKeyDown}>
       {items.map((item, i) =>
         item === "separator" ? (
-          <hr key={i} />
+          <hr key={`separator-${i}`} />
         ) : (
           <button
-            key={item.label}
+            key={`${i}-${item.label}`}
             role="menuitem"
             disabled={item.disabled}
             onClick={() => {
@@ -53,4 +82,8 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
       )}
     </div>
   );
+}
+
+function menuButtons(menu: HTMLElement | null): HTMLButtonElement[] {
+  return menu ? [...menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")] : [];
 }

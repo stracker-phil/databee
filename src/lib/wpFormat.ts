@@ -1,18 +1,3 @@
-/** "in 3 days" / "2 h ago" for a unix timestamp. */
-export function relativeFromUnix(unix: number, now = Date.now()): string {
-  const diff = Math.round(unix - now / 1000);
-  const abs = Math.abs(diff);
-  let text: string;
-  if (abs < 45) text = "now";
-  else if (abs < 3600) text = `${Math.round(abs / 60)} min`;
-  else if (abs < 86400) text = `${Math.round(abs / 3600)} h`;
-  else if (abs < 86400 * 45) text = `${Math.round(abs / 86400)} d`;
-  else if (abs < 86400 * 365) text = `${Math.round(abs / (86400 * 30))} mo`;
-  else text = `${(abs / (86400 * 365)).toFixed(1).replace(/\.0$/, "")} y`;
-  if (text === "now") return "just now";
-  return diff > 0 ? `in ${text}` : `${text} ago`;
-}
-
 export function absoluteFromUnix(unix: number): string {
   return new Date(unix * 1000).toLocaleString();
 }

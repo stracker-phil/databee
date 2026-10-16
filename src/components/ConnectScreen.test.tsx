@@ -9,6 +9,7 @@ import { resetStore, useStore } from "../state/store";
 import { session, settings } from "../test/fixtures";
 import { ConnectScreen } from "./ConnectScreen";
 import { Dialogs } from "./Dialogs";
+import { Toasts } from "./Toasts";
 
 const mocked = vi.mocked(api, true);
 
@@ -80,5 +81,37 @@ describe("ConnectScreen", () => {
     expect(screen.getByLabelText("Port")).toHaveValue("52958");
     await userEvent.dblClick(recent);
     expect(mocked.connect).toHaveBeenCalledWith(expect.objectContaining({ spec: session.spec }));
+  });
+
+  it("shows the configured default port in the Port field", () => {
+    resetStore({ settings: settings({ defaultPort: 3307 }) });
+    render(<ConnectScreen />);
+    expect(screen.getByLabelText("Port")).toHaveValue("3307");
+  });
+
+  describe("removing a recent connection", () => {
+    const recent = { identity: session.identity, spec: session.spec, lastUsed: new Date().toISOString() };
+
+    beforeEach(() => mocked.listRecents.mockResolvedValue([recent]));
+
+    it("drops it from the list after the backend forgot it", async () => {
+      render(<ConnectScreen />);
+      await userEvent.click(await screen.findByRole("button", { name: `Remove ${session.identity}` }));
+      expect(mocked.removeRecent).toHaveBeenCalledWith(session.identity);
+      expect(screen.queryByRole("button", { name: "Connect to Shop" })).not.toBeInTheDocument();
+    });
+
+    it("keeps it and shows an error toast when the backend fails", async () => {
+      mocked.removeRecent.mockRejectedValueOnce({ kind: "io", message: "disk full", code: null });
+      render(
+        <>
+          <ConnectScreen />
+          <Toasts />
+        </>,
+      );
+      await userEvent.click(await screen.findByRole("button", { name: `Remove ${session.identity}` }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not remove the recent connection: disk full");
+      expect(screen.getByRole("button", { name: "Connect to Shop" })).toBeInTheDocument();
+    });
   });
 });

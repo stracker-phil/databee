@@ -56,6 +56,8 @@ Dialogs · CommandPalette · Toasts
 | `selectedCell` | `{ tabId, row, col, column, cell }`; opens the Inspector |
 | `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
 | `dataVersion` | bumped by ⌘R and after apply or undo; views re-fetch when it changes |
+| `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
+| `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar chip uses it) |
 | `paletteOpen`, `keybindings`, `favorites`, `toasts`, `uiState`, `recentNav`, `entityMeta` | as named |
 
 Conventions:
@@ -64,7 +66,18 @@ Conventions:
 - Selectors live at the bottom of the file: `selectActiveSession`, `selectActiveTab`, `selectWp`,
   `selectWpRoute`. For `selectWp`, `undefined` means not probed yet and `null` means not WordPress.
 - Store actions wrap API errors in `fail(e, context)`, which shows an error toast and writes the message to
-  the Rust log.
+  the Rust log. Components that call `api` directly use the exported `fail` too, and update the UI only
+  after the call succeeded (removing a recent connection, clearing history).
+- Clipboard: `copyText(text, what)` (`lib/clipboard.ts`) is the only clipboard writer. It toasts
+  "Copied {what}" or that the clipboard is not available.
+- Formatting (`lib/format.ts`): `formatCount` for every count shown in full (`12,345`), `compactCount`
+  for tight spots (`1.2k`, `3.4M`), `relativeTime(isoOrUnixSeconds)` for past and future times
+  ("2 h ago", "in 3 d").
+- Overlays: `Modal` traps Tab inside the sheet, focuses the first control unless a child has `autoFocus`,
+  and returns focus to the opener on close unless the closing action focused something else. It handles
+  Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]`
+  pass through). The palette renders inside `Modal` too. `ContextMenu` focuses its first item, moves
+  with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
 - In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
   refuses a tab that is already `running`.
@@ -117,7 +130,9 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 - **Overrides** come from `keybindings.json` (`null` unbinds). Settings → Shortcuts records new bindings and
   flags conflicts in overlapping scopes.
 - **Palette** (`CommandPalette.tsx`) lists the commands whose `when()` passes, plus tables, entities and
-  recent items. The prefixes `>`, `t:`, `#` and `@` narrow the search.
+  recent items. The prefixes `>`, `t:`, `#` and `@` narrow the search. `usePaletteItems(query)` builds
+  the results and runs the entity search; `PaletteList` renders them and scrolls the active one into
+  view. Enter opens a table in the preview tab, ⌘↵ (`goAlt`) opens it pinned.
 - **Menu.** Native menu items emit `command` events. See [backend.md](backend.md#native-menu) for the Rust side
   of `menu: true`.
 
@@ -151,8 +166,8 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 |---|---|
 | Shell | `Toolbar`, `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary` |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter, history), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, structure view), `Inspector` + `ValueTree` (PHP/JSON decode) |
-| Overlays | `Modal`, `Dialogs`, `SettingsDialog` (pages: Appearance, Shortcuts, Queries, Display, Connections, WordPress, Presentations, Logging), `CommandPalette`, `ContextMenu`, `Toasts` |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, structure view), `Inspector` + `ValueTree` (PHP/JSON decode) |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (pages: Appearance, Shortcuts, Queries, Display, Connections, WordPress, Presentations, Logging), `CommandPalette`, `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens) |
 
 ### Workspace layout
@@ -189,11 +204,12 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 
 | File | Contents |
 |---|---|
-| `format.ts` | bytes, counts, cell text, TSV/JSON export, relative time |
-| `sql.ts` | statement ranges and the statement at the cursor |
-| `theme.ts` | appearance, row height |
+| `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text, TSV/JSON export, `relativeTime` |
+| `clipboard.ts` | `copyText` with a success or error toast |
+| `sql.ts` | statement ranges and the statement at the cursor, `quoteIdent`, `sqlString`, `whereEquals` |
+| `theme.ts` | appearance, row height, `useResolvedTheme` (one shared `prefers-color-scheme` query) |
 | `crumbs.ts` | WordPress breadcrumbs |
-| `wpFormat.ts` | WordPress formatting |
+| `wpFormat.ts` | WordPress formatting (absolute times, flags, initials, `shorten`) |
 | `stage.ts` | rectangle math |
 
 ## Styling

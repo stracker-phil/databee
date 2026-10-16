@@ -3,6 +3,7 @@ import { CornerDownLeft, Search } from "lucide-react";
 import { api, type SearchHit } from "../api";
 import { allCommands, bindingFor, bindingLabel, type Command } from "../commands";
 import { selectActiveSession, selectWp, useStore, type RecentNav } from "../state/store";
+import { Modal } from "./Modal";
 
 interface Item {
   key: string;
@@ -12,7 +13,7 @@ interface Item {
   badge?: string;
   binding?: string;
   go: () => void;
-  /** ⌘↵: open the table in a new tab, or an entity's source row. */
+  /** ⌘↵: tables open pinned instead of in the preview tab. */
   goAlt?: () => void;
 }
 
@@ -38,38 +39,28 @@ function score(title: string, needle: string): number {
 
 const recentTitle = (r: RecentNav) => (r.kind === "entity" ? r.title : `${r.database}.${r.table}`);
 
-/** ⌘K: commands, tables, entities (IDs, emails, PayPal IDs…) and recent items in one place. */
-export function CommandPalette() {
-  const open = useStore((s) => s.paletteOpen);
-  const seed = useStore((s) => s.paletteSeed);
+/** The palette's results for `query`, plus whether an entity search is in flight. */
+function usePaletteItems(query: string) {
   const session = useStore(selectActiveSession);
   const wp = useStore(selectWp);
   const mode = useStore((s) => s.mode);
   const tables = useStore((s) => (session?.database ? s.schema[session.id]?.tables[session.database] : undefined));
   const recent = useStore((s) => s.recentNav);
   const { setPaletteOpen, openEntity, openTableTab, setMode, loadTables } = useStore.getState();
-  const [query, setQuery] = useState("");
+
+  // Once per opening: the palette is remounted each time it opens.
+  useEffect(() => {
+    if (session?.database && !tables) void loadTables(session.id, session.database);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
-  const [index, setIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (open) {
-      setQuery(seed);
-      setHits([]);
-      setIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 0);
-      if (session?.database && !tables) void loadTables(session.id, session.database);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
 
   const { prefix, needle } = parsePrefix(query);
   const wantEntities = !!wp && (prefix === null || prefix === "#" || prefix === "@");
 
   useEffect(() => {
-    if (!open || !session?.database || !wantEntities || needle.length < 2) {
+    if (!session?.database || !wantEntities || needle.length < 2) {
       setHits([]);
       return;
     }
@@ -82,10 +73,12 @@ export function CommandPalette() {
       );
     }, 200);
     return () => {
+      // A newer query (or closing) supersedes this search; its reply is dropped.
       alive = false;
       clearTimeout(t);
+      setSearching(false);
     };
-  }, [needle, wantEntities, open, session?.id, session?.database]);
+  }, [needle, wantEntities, session?.id, session?.database]);
 
   const items: Item[] = useMemo(() => {
     const close = () => setPaletteOpen(false);
@@ -109,8 +102,12 @@ export function CommandPalette() {
       .sort((a, b) => b.s - a.s)
       .slice(0, 40)
       .map(({ t }): Item => {
-        const openIt = () => (close(), setMode("db"), db && openTableTab(db, t.name));
-        return { key: `table:${t.name}`, section: "Tables", title: t.name, badge: t.isView ? "view" : "table", go: openIt, goAlt: openIt };
+        const open = ({ preview }: { preview: boolean }) => {
+          close();
+          setMode("db");
+          if (db) openTableTab(db, t.name, undefined, undefined, { preview });
+        };
+        return { key: `table:${t.name}`, section: "Tables", title: t.name, badge: t.isView ? "view" : "table", go: () => open({ preview: true }), goAlt: () => open({ preview: false }) };
       });
     const entityItems = hits.map(
       (h): Item => ({
@@ -144,53 +141,104 @@ export function CommandPalette() {
     return ordered.flat().slice(0, 60);
   }, [hits, needle, prefix, tables, recent, mode, session?.database, setPaletteOpen, openEntity, openTableTab, setMode]);
 
-  if (!open) return null;
-  const choose = (i: number, alt = false) => (alt ? (items[i]?.goAlt ?? items[i]?.go) : items[i]?.go)?.();
+  return { items, searching, wantEntities, needle };
+}
+
+interface PaletteListProps {
+  items: Item[];
+  active: number;
+  wantEntities: boolean;
+  needle: string;
+  onHover: (i: number) => void;
+  onChoose: (i: number) => void;
+}
+
+function PaletteList({ items, active, wantEntities, needle, onHover, onChoose }: PaletteListProps) {
+  const activeRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [active, items]);
+
   let lastSection: Item["section"] | null = null;
   return (
-    <div className="overlay palette-overlay" onMouseDown={(e) => e.target === e.currentTarget && setPaletteOpen(false)}>
-      <div className="palette" role="dialog" aria-label="Command palette" data-stage="palette" data-stage-window="palette">
-        <div className="palette-input">
-          <Search size="1.154rem" />
-          <input
-            ref={inputRef}
-            aria-label="Search everything"
-            data-stage="palette:search"
-            placeholder={wp ? "Order ID, email, PayPal ID, table, command…   > commands · t: tables · # IDs · @ emails" : "Table or command…   > commands · t: tables"}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setIndex(0);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setPaletteOpen(false);
-              if (e.key === "ArrowDown") (e.preventDefault(), setIndex((i) => Math.min(items.length - 1, i + 1)));
-              if (e.key === "ArrowUp") (e.preventDefault(), setIndex((i) => Math.max(0, i - 1)));
-              if (e.key === "Enter") (e.preventDefault(), choose(index, e.metaKey));
-            }}
-          />
-          {searching && <span className="muted small">searching…</span>}
-        </div>
-        <ul className="palette-list" role="listbox">
-          {items.map((it, i) => {
-            const header = it.section !== lastSection ? it.section : null;
-            lastSection = it.section;
-            return (
-              <li key={it.key} data-stage={`palette:item:${it.key}`} data-stage-list="palette:results" data-stage-label={it.title} role="option" aria-selected={i === index} className={i === index ? "active" : ""} onMouseEnter={() => setIndex(i)} onClick={() => choose(i)}>
-                {header && <span className="palette-section">{header}</span>}
-                {it.badge && <span className="badge">{it.badge}</span>}
-                <span className="grow-text">
-                  {it.title}
-                  {it.subtitle && <span className="muted"> · {it.subtitle}</span>}
-                </span>
-                {it.binding && <kbd className="kbd-chip">{it.binding}</kbd>}
-                {i === index && <CornerDownLeft size="0.923rem" className="muted" />}
-              </li>
-            );
-          })}
-          {items.length === 0 && <li className="muted">{needle.length < 2 && wantEntities ? "Type to search…" : "Nothing found."}</li>}
-        </ul>
+    <ul className="palette-list" role="listbox">
+      {items.map((it, i) => {
+        const header = it.section !== lastSection ? it.section : null;
+        lastSection = it.section;
+        return (
+          <li
+            key={it.key}
+            ref={i === active ? activeRef : undefined}
+            data-stage={`palette:item:${it.key}`}
+            data-stage-list="palette:results"
+            data-stage-label={it.title}
+            role="option"
+            aria-selected={i === active}
+            className={i === active ? "active" : ""}
+            onMouseEnter={() => onHover(i)}
+            onClick={() => onChoose(i)}
+          >
+            {header && <span className="palette-section">{header}</span>}
+            {it.badge && <span className="badge">{it.badge}</span>}
+            <span className="grow-text">
+              {it.title}
+              {it.subtitle && <span className="muted"> · {it.subtitle}</span>}
+            </span>
+            {it.binding && <kbd className="kbd-chip">{it.binding}</kbd>}
+            {i === active && <CornerDownLeft size="0.923rem" className="muted" />}
+          </li>
+        );
+      })}
+      {items.length === 0 && <li className="muted">{wantEntities && needle.length < 2 ? "Type to search…" : "Nothing found."}</li>}
+    </ul>
+  );
+}
+
+/** ⌘K: commands, tables, entities (IDs, emails, PayPal IDs…) and recent items in one place. */
+export function CommandPalette() {
+  const open = useStore((s) => s.paletteOpen);
+  // Mounted per opening, so the query, results and selection start fresh each time.
+  return open ? <PaletteSheet /> : null;
+}
+
+function PaletteSheet() {
+  const seed = useStore((s) => s.paletteSeed);
+  const wp = useStore(selectWp);
+  const { setPaletteOpen } = useStore.getState();
+  const [query, setQuery] = useState(seed);
+  const [index, setIndex] = useState(0);
+  const { items, searching, wantEntities, needle } = usePaletteItems(query);
+  // Results can shrink under the selection (a search reply, a narrower query).
+  const active = Math.max(0, Math.min(index, items.length - 1));
+
+  const choose = (i: number, alt = false) => {
+    const item = items[i];
+    (alt ? (item?.goAlt ?? item?.go) : item?.go)?.();
+  };
+
+  return (
+    <Modal onClose={() => setPaletteOpen(false)} className="palette" label="Command palette" stageWindow="palette">
+      <div className="palette-input">
+        <Search size="1.154rem" />
+        <input
+          autoFocus
+          aria-label="Search everything"
+          data-stage="palette:search"
+          placeholder={wp ? "Order ID, email, PayPal ID, table, command…   > commands · t: tables · # IDs · @ emails" : "Table or command…   > commands · t: tables"}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIndex(0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") (e.preventDefault(), setIndex(Math.min(items.length - 1, active + 1)));
+            if (e.key === "ArrowUp") (e.preventDefault(), setIndex(Math.max(0, active - 1)));
+            if (e.key === "Enter") (e.preventDefault(), choose(active, e.metaKey));
+          }}
+        />
+        {searching && <span className="muted small">searching…</span>}
       </div>
-    </div>
+      <PaletteList items={items} active={active} wantEntities={wantEntities} needle={needle} onHover={setIndex} onChoose={choose} />
+    </Modal>
   );
 }

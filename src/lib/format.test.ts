@@ -55,4 +55,27 @@ describe("relativeTime", () => {
     expect(relativeTime("2026-10-15T11:00:00Z", now)).toBe("1 h ago");
     expect(relativeTime("2026-10-13T12:00:00Z", now)).toBe("2 d ago");
   });
+
+  describe("for a time in the future", () => {
+    const now = Date.parse("2026-10-15T12:00:00Z");
+
+    it("reads 'in …' for an ISO string", () => {
+      expect(relativeTime("2026-10-15T14:00:00Z", now)).toBe("in 2 h");
+      expect(relativeTime("2026-10-18T12:00:00Z", now)).toBe("in 3 d");
+    });
+
+    it("reads 'in …' for unix seconds", () => {
+      expect(relativeTime(now / 1000 + 3 * 3600, now)).toBe("in 3 h");
+      expect(relativeTime(now / 1000 + 10 * 60, now)).toBe("in 10 min");
+    });
+
+    it("reads 'just now' when the time is seconds away", () => {
+      expect(relativeTime(now / 1000 + 20, now)).toBe("just now");
+    });
+  });
+
+  it("reads the same past time alike for an ISO string and for unix seconds", () => {
+    const now = Date.parse("2026-10-15T12:00:00Z");
+    expect(relativeTime((now - 2 * 86400_000) / 1000, now)).toBe(relativeTime("2026-10-13T12:00:00Z", now));
+  });
 });

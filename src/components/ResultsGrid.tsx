@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { Cell, ColumnMeta } from "../api";
+import { copyText } from "../lib/clipboard";
 import { cellDisplay, cellText, rowsToJson, rowsToTsv } from "../lib/format";
 import { rowHeightFor } from "../lib/theme";
 import { useStore } from "../state/store";
@@ -75,7 +76,6 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
   const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
   const density = useStore((s) => s.settings?.density ?? "comfortable");
   const selectCell = useStore((s) => s.selectCell);
-  const toast = useStore((s) => s.toast);
   const rowHeight = rowHeightFor({ dataFontSize, density });
   const scrollRef = useRef<HTMLDivElement>(null);
   const stopDrag = useRef<(() => void) | null>(null);
@@ -148,12 +148,6 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
     commitWidths({ ...manual, [columns[index].name]: Math.max(MIN_WIDTH_REM * remPx(), width) });
   };
 
-  const copy = (text: string, what: string) => {
-    void navigator.clipboard.writeText(text).then(
-      () => toast("success", `Copied ${what}`),
-      () => toast("error", "Clipboard is not available"),
-    );
-  };
 
   const select = (row: number, col: number) => {
     setSelected({ row, col });
@@ -168,7 +162,7 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
     if (cell && canEdit(cell)) setEditing({ row, col, text: cellText(cell) });
   };
 
-  const copyCell = ({ row, col }: CellPos) => copy(cellText(rows[row][col]), "value");
+  const copyCell = ({ row, col }: CellPos) => void copyText(cellText(rows[row][col]), "value");
 
   const openMenu = (e: React.MouseEvent, row: number, col: number) => {
     e.preventDefault();
@@ -184,11 +178,11 @@ export function ResultsGrid({ columns, rows, rowOffset = 0, sort, onSort, rowAct
               { label: "Set to NULL", action: () => onEditCell(row, col, null) },
             ] as MenuEntry[])
           : []),
-        { label: "Copy row as TSV", action: () => copy(rowsToTsv(names, [rows[row]]), "row") },
-        { label: "Copy row as JSON", action: () => copy(rowsToJson(names, [rows[row]]), "row as JSON") },
+        { label: "Copy row as TSV", action: () => void copyText(rowsToTsv(names, [rows[row]]), "row") },
+        { label: "Copy row as JSON", action: () => void copyText(rowsToJson(names, [rows[row]]), "row as JSON") },
         "separator",
-        { label: `Copy all ${rows.length} rows as TSV`, action: () => copy(rowsToTsv(names, rows), `${rows.length} rows`) },
-        { label: `Copy all ${rows.length} rows as JSON`, action: () => copy(rowsToJson(names, rows), `${rows.length} rows as JSON`) },
+        { label: `Copy all ${rows.length} rows as TSV`, action: () => void copyText(rowsToTsv(names, rows), `${rows.length} rows`) },
+        { label: `Copy all ${rows.length} rows as JSON`, action: () => void copyText(rowsToJson(names, rows), `${rows.length} rows as JSON`) },
         ...(rowActions ? (["separator", ...rowActions(row)] as MenuEntry[]) : []),
       ],
     });

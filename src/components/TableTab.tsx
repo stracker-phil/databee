@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Copy, FileText, Filter, Hash, Loader2, Plus, RefreshCw } from "lucide-react";
 import { api, toAppError, type AppError, type BrowsePage, type ColumnMeta, type TableStructure } from "../api";
 import { EVENTS } from "../commands";
+import { copyText } from "../lib/clipboard";
 import { cellText } from "../lib/format";
 import { selectStructure, selectWp, useStore, type TableTab as TableTabState } from "../state/store";
 import type { MenuEntry } from "./ContextMenu";
@@ -325,7 +326,6 @@ function StructureView({ tab }: { tab: TableTabState }) {
 }
 
 function Ddl({ ddl }: { ddl: string }) {
-  const toast = useStore((s) => s.toast);
   return (
     <div>
       <h3 style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -333,7 +333,7 @@ function Ddl({ ddl }: { ddl: string }) {
         <button
           className="icon-btn"
           aria-label="Copy DDL"
-          onClick={() => void navigator.clipboard.writeText(ddl).then(() => toast("success", "Copied DDL"))}
+          onClick={() => void copyText(ddl, "DDL")}
         >
           <Copy size="0.923rem" />
         </button>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock, Info, RefreshCw } from "lucide-react";
 import { api, type HookFailures, type Insight } from "../../api";
-import { formatBytes, formatCount } from "../../lib/format";
+import { compactCount, formatBytes, formatCount } from "../../lib/format";
 import { selectActiveSession, selectWp, useStore } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
 import { BreakdownChart } from "./BreakdownChart";
@@ -9,10 +9,6 @@ import { Segments, StackedBars } from "./charts";
 import { Ago, Card, Loading, Stat, StatusPill } from "./ui";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useWpData } from "./useWpData";
-
-function compact(n: number) {
-  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
-}
 
 /** One alert with its action; writes always go through the pending tray. */
 function InsightRow({ insight }: { insight: Insight }) {
@@ -145,7 +141,7 @@ export function DashboardScreen() {
       <Card title={breakdown === "autoload" ? "Autoload by option name prefix" : "Table sizes by rows"} aside="click a row to open it">
         <BreakdownChart
           items={breakdown === "autoload" ? autoloadItems : rowItems}
-          format={breakdown === "autoload" ? formatBytes : (v) => `${compact(v)} rows`}
+          format={breakdown === "autoload" ? formatBytes : (v) => `${compactCount(v)} rows`}
           totalLabel={breakdown === "autoload" ? "autoloaded" : "rows"}
           modes={[
             { id: "autoload", label: "Autoload" },

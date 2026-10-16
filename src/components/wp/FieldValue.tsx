@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Check, Copy, Eye, Maximize2, Minimize2, Minus, MonitorSmartphone, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { api, type DocField, type NewValue } from "../../api";
-import { cellText } from "../../lib/format";
-import { absoluteFromUnix, flagEmoji, relativeFromUnix, shorten } from "../../lib/wpFormat";
+import { copyText } from "../../lib/clipboard";
+import { cellText, relativeTime } from "../../lib/format";
+import { absoluteFromUnix, flagEmoji, shorten } from "../../lib/wpFormat";
 import { selectActiveSession, useStore, type WpList } from "../../state/store";
 import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { ValueTree } from "../ValueTree";
@@ -32,7 +33,6 @@ function Secret({ text }: { text: string }) {
 
 function LongText({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
-  const toast = useStore((s) => s.toast);
   return (
     <span className="long">
       <span className={open ? "long-full" : "mono"}>{open ? text : shorten(text, 32, 6)}</span>
@@ -43,7 +43,7 @@ function LongText({ text }: { text: string }) {
       <button
         className="icon-btn tiny"
         aria-label="Copy value"
-        onClick={() => void navigator.clipboard.writeText(text).then(() => toast("success", "Copied value"))}
+        onClick={() => void copyText(text, "value")}
       >
         <Copy size="0.846rem" />
       </button>
@@ -191,7 +191,7 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
         body = note(hint.text);
         break;
       case "time":
-        body = note(relativeFromUnix(hint.unix), `${absoluteFromUnix(hint.unix)}${hint.utc ? "" : " (site time)"}`);
+        body = note(relativeTime(hint.unix), `${absoluteFromUnix(hint.unix)}${hint.utc ? "" : " (site time)"}`);
         break;
       case "flag": {
         const opposite = FLAG_OPPOSITE[text.toLowerCase()];
@@ -243,7 +243,7 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
   const canToggle = !!decoded && sensitive !== "secret" && !link;
   const menuItems = () =>
     valueMenu(field.name, text, {
-      copy: () => void navigator.clipboard.writeText(text).then(() => toast("success", "Copied value")),
+      copy: () => void copyText(text, "value"),
       navigate: (route) => useStore.getState().navigate(route),
       openRow: source && (() => useStore.getState().openInDatabase(source.table, source.where)),
     });

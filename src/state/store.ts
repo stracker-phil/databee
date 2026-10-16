@@ -166,6 +166,10 @@ interface State {
   applying: boolean;
   /** Query tabs opened per session, for unique default titles. */
   queryCounter: Record<string, number>;
+  /** Bumped when a query finishes, so the history panel reloads. */
+  historyVersion: number;
+  /** Bumped to move focus to the pending tray's Apply button. */
+  trayFocusRequest: number;
 }
 
 interface Actions {
@@ -234,6 +238,7 @@ interface Actions {
   /** Selects a cell of the active tab's grid. */
   selectCell(selected: Omit<SelectedCell, "tabId"> | null): void;
   setSidebarPanel(panel: State["sidebarPanel"]): void;
+  focusPendingTray(): void;
 }
 
 export type Store = State & Actions;
@@ -266,6 +271,8 @@ const initialState: State = {
   applied: [],
   applying: false,
   queryCounter: {},
+  historyVersion: 0,
+  trayFocusRequest: 0,
 };
 
 const HOME_NAV: State["wpNav"] = { stack: [{ screen: "dashboard" }], index: 0 };
@@ -275,7 +282,7 @@ let nextPendingId = 1;
 let nextToastId = 1;
 
 /** Shows an error toast (which also logs it) and returns the error. */
-function fail(e: unknown, context: string) {
+export function fail(e: unknown, context: string) {
   const err = toAppError(e);
   useStore.getState().toast("error", `${context}: ${err.message}`);
   return err;
@@ -845,6 +852,8 @@ export const useStore = create<Store>()((set, get) => {
         } else {
           get().updateQueryTab(tabId, { running: false, error });
         }
+      } finally {
+        set((s) => ({ historyVersion: s.historyVersion + 1 }));
       }
     },
 
@@ -991,6 +1000,10 @@ export const useStore = create<Store>()((set, get) => {
 
     setSidebarPanel(sidebarPanel) {
       set({ sidebarPanel });
+    },
+
+    focusPendingTray() {
+      set((s) => ({ trayFocusRequest: s.trayFocusRequest + 1 }));
     },
   };
 });

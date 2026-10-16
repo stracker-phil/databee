@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type PeekFact } from "../../api";
-import { relativeFromUnix } from "../../lib/wpFormat";
+import { relativeTime } from "../../lib/format";
 import { selectActiveSession, useStore } from "../../state/store";
 import { StatusPill } from "./ui";
 
@@ -58,7 +58,7 @@ export function PeekCard({ entity, id }: { entity: string; id: string }) {
             <div key={f.label} className="peek-row">
               <dt>{f.label}</dt>
               <dd className={f.kind === "money" ? "money" : undefined}>
-                {f.kind === "status" ? <StatusPill status={f.value} /> : f.kind === "time" ? relativeFromUnix(Number(f.value)) : f.value}
+                {f.kind === "status" ? <StatusPill status={f.value} /> : f.kind === "time" ? relativeTime(Number(f.value)) : f.value}
               </dd>
             </div>
           ))}

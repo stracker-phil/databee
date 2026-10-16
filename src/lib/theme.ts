@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import type { Settings } from "../api";
 
 /** Grid row height in px for the data size and density. CSS reads it as `--row-height`. */
@@ -19,16 +19,19 @@ export function applyAppearance(settings: Settings) {
   root.style.setProperty("--row-height", `${rowHeightFor(settings)}px`);
 }
 
+// One query for the whole app; matchMedia is missing in some test environments.
+const darkQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+function subscribeToSystemTheme(onChange: () => void) {
+  darkQuery?.addEventListener("change", onChange);
+  return () => darkQuery?.removeEventListener("change", onChange);
+}
+
+const systemIsDark = () => darkQuery?.matches ?? false;
+
 /** "light" or "dark", following the setting or the OS when set to system. */
 export function useResolvedTheme(theme: Settings["theme"] | undefined): "light" | "dark" {
-  const query = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
-  const [systemDark, setSystemDark] = useState(query?.matches ?? false);
-  useEffect(() => {
-    if (!query) return;
-    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, [query]);
+  const systemDark = useSyncExternalStore(subscribeToSystemTheme, systemIsDark);
   if (theme === "light" || theme === "dark") return theme;
   return systemDark ? "dark" : "light";
 }

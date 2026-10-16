@@ -1,7 +1,8 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Blocks, Copy, FolderOpen, Keyboard, Palette, Plug, Presentation, RefreshCw, RotateCcw, ScrollText, SquareTerminal, Table2, X, type LucideIcon } from "lucide-react";
 import { ACCENTS, api, TEXT_SIZES, type Settings, type StageStatus } from "../api";
 import { allCommands, bindingFor, bindingFromEvent, bindingLabel, conflicts, type Command } from "../commands";
+import { copyText } from "../lib/clipboard";
 import { relativeTime } from "../lib/format";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
@@ -87,7 +88,7 @@ function Segmented<T extends string>({ label, description, options, value, onCha
 }
 
 /** Text input that commits on blur or Enter, so half-typed values never reach the backend.
- *  Numbers within [min, max] commit as they change, so spinner clicks preview right away. */
+ *  Number spinner steps (input without typing) also commit, debounced, so they preview right away. */
 function TextField({ label, description, value, onCommit, type = "text", min, max, suffix }: {
   label: string;
   description?: ReactNode;
@@ -100,8 +101,22 @@ function TextField({ label, description, value, onCommit, type = "text", min, ma
 }) {
   const id = useId();
   const [text, setText] = useState(value);
+  const stepTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => setText(value), [value]);
-  const commit = () => text !== value && onCommit(text);
+  useEffect(() => () => clearTimeout(stepTimer.current), []);
+
+  const inRange = (draft: string) => {
+    if (type !== "number") return true;
+    const n = Number(draft);
+    return draft.trim() !== "" && n >= (min ?? -Infinity) && n <= (max ?? Infinity);
+  };
+  const commit = (draft: string) => {
+    clearTimeout(stepTimer.current);
+    if (draft === value) return;
+    if (inRange(draft)) onCommit(draft);
+    else setText(value);
+  };
+
   return (
     <Row label={label} description={description} htmlFor={id}>
       <div className="settings-input">
@@ -115,11 +130,14 @@ function TextField({ label, description, value, onCommit, type = "text", min, ma
           onChange={(e) => {
             const next = e.target.value;
             setText(next);
-            const n = Number(next);
-            if (type === "number" && next.trim() !== "" && n >= (min ?? -Infinity) && n <= (max ?? Infinity) && next !== value) onCommit(next);
+            // Typing reports an inputType; spinner clicks and arrow-key steps do not.
+            const typed = !!(e.nativeEvent as InputEvent).inputType;
+            if (type !== "number" || typed || !inRange(next)) return;
+            clearTimeout(stepTimer.current);
+            stepTimer.current = setTimeout(() => commit(next), 300);
           }}
-          onBlur={commit}
-          onKeyDown={(e) => e.key === "Enter" && commit()}
+          onBlur={() => commit(text)}
+          onKeyDown={(e) => e.key === "Enter" && commit(text)}
         />
         {suffix && <span className="muted">{suffix}</span>}
       </div>
@@ -176,7 +194,7 @@ function ShortcutsPage() {
   const save = useStore((s) => s.saveKeybindings);
   const [search, setSearch] = useState("");
   const needle = search.trim().toLowerCase();
-  const list = allCommands().filter((c) => !needle || c.title.toLowerCase().includes(needle) || c.id.includes(needle));
+  const list = allCommands().filter((c) => !needle || c.title.toLowerCase().includes(needle) || c.id.toLowerCase().includes(needle));
   const clashes = conflicts(bindings);
   const set = (id: string, binding: string | null) => void save({ ...bindings, [id]: binding });
   const reset = (id: string) => {
@@ -232,7 +250,7 @@ const INTRO: Record<Page, string> = {
 function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Settings>) => void }) {
   const [status, setStatus] = useState<StageStatus | null>(null);
   const [revealed, setRevealed] = useState(false);
-  const { toast, newStageToken } = useStore.getState();
+  const { newStageToken } = useStore.getState();
   useEffect(() => {
     let alive = true;
     const load = () => api.stageStatus().then((next) => alive && setStatus(next), () => alive && setStatus(null));
@@ -262,7 +280,7 @@ function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Setti
         <button type="button" className="btn mono" title={revealed ? "Hide" : "Show the token"} onClick={() => setRevealed((r) => !r)}>
           {revealed ? s.stage.token : "••••••••••••"}
         </button>
-        <button type="button" className="icon-btn" aria-label="Copy token" title="Copy token" onClick={() => void navigator.clipboard.writeText(s.stage.token).then(() => toast("success", "Copied token"))}>
+        <button type="button" className="icon-btn" aria-label="Copy token" title="Copy token" onClick={() => void copyText(s.stage.token, "token")}>
           <Copy size="1rem" />
         </button>
         <button type="button" className="btn" onClick={() => void newStageToken()}>
@@ -271,7 +289,7 @@ function PresentationsPage({ s, set }: { s: Settings; set: (patch: Partial<Setti
       </Row>
       {status && (
         <Row label="Register with Stage" description={<code className="mono small selectable">{status.registerCommand}</code>}>
-          <button type="button" className="btn" onClick={() => void navigator.clipboard.writeText(status.registerCommand).then(() => toast("success", "Copied the register command"))}>
+          <button type="button" className="btn" onClick={() => void copyText(status.registerCommand, "the register command")}>
             <Copy size="1rem" /> Copy
           </button>
         </Row>

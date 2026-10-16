@@ -13,8 +13,6 @@ function LeafEditor({ node, onSave, onCancel }: { node: ValueNode; onSave: (v: N
         return onSave({ kind: "int", text });
       case "float":
         return onSave({ kind: "float", text });
-      case "bool":
-        return onSave({ kind: "bool", text: text === "true" || text === "1" });
       default:
         return onSave({ kind: "string", text });
     }

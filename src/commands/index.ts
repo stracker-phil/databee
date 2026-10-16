@@ -1,6 +1,6 @@
 import { TEXT_SIZES } from "../api";
 import { selectActivePending, selectActiveTab, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
-import { allCommands, bindingFor, bindingLabel, getCommand, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
+import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 
 export * from "./registry";
 
@@ -208,7 +208,7 @@ export function runMenuCommand(id: string): boolean {
 
 /** Capture-phase keydown handler for the window. */
 export function handleKeydown(e: KeyboardEvent) {
-  if (e.target instanceof Element && e.target.closest("[data-recording]")) return;
+  if (isRecordingTarget(e.target)) return;
   const c = resolveKeydown(e, activeScopes(useStore.getState()));
   if (!c || blockedByOverlay(c.id)) return;
   e.preventDefault();

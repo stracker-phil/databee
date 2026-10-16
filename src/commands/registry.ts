@@ -183,6 +183,11 @@ export function isTextInput(target: EventTarget | null): boolean {
   return false;
 }
 
+/** A shortcut field in Settings is recording: its keys, Escape included, are the new binding. */
+export function isRecordingTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest("[data-recording]");
+}
+
 function isAncestor(ancestor: Scope, scope: Scope): boolean {
   let s: Scope | null = PARENT[scope];
   while (s) {

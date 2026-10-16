@@ -12,8 +12,8 @@ import {
   type ProductSummary,
   type SessionSummary,
 } from "../../api";
-import { formatCount } from "../../lib/format";
-import { relativeFromUnix, shorten } from "../../lib/wpFormat";
+import { formatCount, relativeTime } from "../../lib/format";
+import { shorten } from "../../lib/wpFormat";
 import { selectWpRoute, useStore, type WpList } from "../../state/store";
 import { ErrorPanel } from "../QueryTab";
 import { DEFAULT_PANE_HEIGHT, Splitter, usePaneSize, useWindowSize } from "../Splitter";
@@ -303,7 +303,7 @@ function FailedByHook({ onPick }: { onPick: (hook: string) => void }) {
     id: h.hook,
     label: h.hook,
     value: h.count,
-    sublabel: [h.lastFailure ? `last ${relativeFromUnix(h.lastFailure)}` : null].filter(Boolean).join(" · "),
+    sublabel: [h.lastFailure ? `last ${relativeTime(h.lastFailure)}` : null].filter(Boolean).join(" · "),
     onOpen: () => onPick(h.hook),
   }));
   return (
