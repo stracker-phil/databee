@@ -65,6 +65,16 @@ describe("SettingsDialog", () => {
       expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ rowLimit: 100000 }));
     });
 
+    it("save the live interval from the Queries page", async () => {
+      render(<SettingsDialog />);
+      await userEvent.click(screen.getByRole("button", { name: "Queries" }));
+      const interval = screen.getByLabelText("Live interval");
+      expect(interval).toHaveValue(2);
+      await userEvent.clear(interval);
+      await userEvent.type(interval, "5{Tab}");
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ liveIntervalSecs: 5 }));
+    });
+
     it("restore the saved value instead of committing an out-of-range one", async () => {
       render(<SettingsDialog />);
       const uiSize = screen.getByLabelText("UI size");

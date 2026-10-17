@@ -57,7 +57,7 @@ root: it creates the store, keeps the slice registry and re-exports the selector
 and the state types, so components import everything from `state/store`.
 
 - `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs`, `changes`, `data`,
-  `saved`, `ui`, `nav`, `objects`, `columns`, `project`, `readout`). Each exports its
+  `saved`, `ui`, `nav`, `objects`, `columns`, `project`, `readout`, `live`). Each exports its
   member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
   the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
 - `Store` is an interface extending every core slice's interface. A module adds its members with
@@ -78,10 +78,11 @@ and the state types, so components import everything from `state/store`.
 | `sessions`, `activeSessionId` | open connections (`SessionInfo`, with the connection `slug`) |
 | `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error, `valueColumn?`), `TableTab` (database, table, data/structure view, filter, structured `where`, preview, `valueColumn?`) `ObjectTab` (the column stack `columns`, the `active` index, the recorded `stacks`, preview; [Column stack](#column-stack)) `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)) or `ReadoutTab` (database; one per session, [Readout](#readout)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
 | `documents` | `document` replies by `session/<address or shorthand>`, tagged with their `dataVersion` (`loadDocument`, `keepDocument`, `selectDocument`) |
+| `live`, `changeMarks` | live object columns by document key (`{ sessionId, address, id }`, `id` the Rust watch) and change marks by document key or `<session>/q:<tab id>` (a saved query's tab); see [Live mode, snapshots, compare](#live-mode-snapshots-compare) |
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
 | `readouts` | `readout` replies by `session/database`, tagged with their `dataVersion` (`loadReadout`, `openReadout`) |
-| `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow) |
+| `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow, pin, shortcuts, snapshots) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
 | `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`, the selected grid cell of a tab (in an object tab: of its active column). `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets a value column and the value commands fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
 | `hover` | `{ src, table, linked }` under the pointer (`setHover`, from `useValueHover`): a value's provenance, or a table link (`linked`: a sidebar row, a section band); the status bar shows `src`, the linked table highlight reads `table` |
@@ -125,7 +126,7 @@ Conventions:
   slice's `sessionClosed` result: the session and the next active session (`session`), its schema and
   `structures` keys (`session`), its tabs, `queryCounter` and the selection if its tab was closed (`tabs`),
   its `pending` and `applied` entries (`changes`), its `documents` (`objects`), its `savedQueries` (`saved`), its `projectRules` and `rulesInfo` (`project`)
-  and its `readouts` (`readout`). A slice that keys data by session implements `sessionClosed`.
+  and its `readouts` (`readout`), its `live` columns and `changeMarks` (`live`). A slice that keys data by session implements `sessionClosed`.
 - `switchDatabase` resets the selection and moves the session's readout tab, if it has one, to the new database
   without activating it. `connect` resets the selection, reuses the session's query tab on reconnect (else
   opens one) and then opens the readout of the session's database ([Readout](#readout)).
@@ -499,6 +500,39 @@ the [readout](#readout) lists.
   click or key in the view ends `useViewScroll`'s offset restore, so collapsing does not jump back.
 - **Linked table highlight:** a section band takes `lit` while `hover` is a table link to its table; sidebar
   rows take `lit` for a link and `lit-value` (lighter) for a hovered value of that table.
+
+### Live mode, snapshots, compare
+
+Rust diffs; the page keeps the marks and draws them ([backend](backend.md#watches-and-snapshots), look in
+[ux.md](ux.md#live-mode-snapshots-compare)).
+
+- **`live` slice** (`state/slices/live.ts`): `selectChangeTarget(s)` is what the commands act on: the active
+  object column (key `documentKey(session, documentText(address))`) or a query tab of a saved query (key
+  `queryMarksKey(session, tab)`, address `…/q/<id>`). `toggleLive()` (`w`, `object.live`) starts a watch
+  (`api.watchStart`) or stops it; while any column is live, one timer (`setTimeout`, Settings
+  `liveIntervalSecs`) runs `pollLive()`, which stops the watches of documents no object tab shows any more and
+  polls the others (`api.watchPoll`, one request per watch at a time), keeps a changed document with
+  `keepDocument` and merges the delta into `changeMarks`. A failed poll (an ended watch, a lost connection)
+  stops live mode for that column with an error toast. `dismissMarks()` (`x`, `object.dismissChanges`,
+  `query.dismissChanges`) drops the target's marks; live mode stays on. `takeSnapshot()` (`s`,
+  `object.snapshot`, `query.snapshot`) prompts for a label and calls `api.snapshotTake`; `chooseSnapshot()`
+  (`object.sinceSnapshot`, `query.sinceSnapshot`) opens the `snapshots` dialog (`SnapshotsDialog.tsx`: pick,
+  delete), and `showSnapshotDiff(target, id)` replaces the target's marks with those against the snapshot.
+  `selectActiveLive` feeds the status bar's `● live 2 s` (`statusbar:live`, a click stops it).
+- **Marks** (`lib/diff.ts`, pure): `ChangeMarks { since, changed, added, removed, lines }`; `withDelta(marks,
+  delta, at)` adds one poll (a row that comes back leaves `removed`, a removed row drops its value marks);
+  `documentMarks(marks)` and `compareMarks(delta, side)` give the `DocumentMarks` a `DocumentView` draws
+  (`diff` prop), `withRemovedRows(groups, removed)` puts removed rows back into their groups.
+- **Drawing** (`object/groups.tsx`, `fields.tsx`): a row with a changed or new value gets `chg`, a removed row
+  `removed`; a `Field` with a change seen in the last `FLASH_MS` (1.6 s) wraps its value in `.flash` (keyed by
+  the change time, so a new change flashes again) and shows the old value in `.old` (`no row` for a new
+  value). `ChangeList` (`object/ChangeList.tsx`) renders the `changes` band and its lines under the column
+  (and under a saved query's results in `QueryTab`); a line focuses its value in the Document view
+  (`setObjectView(…, "document", source)`), in a query tab it opens the row as an object.
+- **Compare:** `objectColumn(address)` keeps `compare` on a document column, so the tab's address and history
+  carry `?compare=<key>`. `ObjectColumnView` renders `CompareView` for it: `api.compare` once per
+  `dataVersion`, both documents side by side with `compareMarks`, the left one kept with `keepDocument` so the
+  value commands act on it. `object.compare` ("Compare with another row…") prompts for the key.
 
 ### Column stack
 

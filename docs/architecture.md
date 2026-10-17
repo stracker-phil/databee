@@ -291,6 +291,11 @@ meta table's primary key is the key), deleting a meta row is `deleteRow`, and ad
 of `(fk, key, value)` into the meta table (`GroupLink::Meta`), all through `plan_change` like grid edits
 ([database.md](database.md#editing-rows)).
 
+**Live mode, snapshots and compare** (`diff.rs`, `watch.rs`, `snapshot.rs`): a document reduced to its stored
+cells (`FlatDocument`), diffed by provenance into a `DocDelta` of changed values and added and removed rows;
+watches keep the last one per row in `Session.ext`, snapshots store it on disk (`store/snapshots.rs`), compare
+aligns two rows of one table ([backend.md](backend.md#watches-and-snapshots)).
+
 **Actions** (`actions/`): `actions` lists the table's row-scope `[[action]]` rules whose `when` holds on the
 row, as `ObjectAction { name, preset, kind: update | delete | sql, undo, params }`; each `ActionParam` carries
 the `choices` its `choices_sql` returns (one query per listed param). `table_actions(session_id, database,

@@ -12,6 +12,7 @@ use crate::store::keybindings::KeybindingsStore;
 use crate::store::recent_objects::RecentObjectsStore;
 use crate::store::recents::RecentsStore;
 use crate::store::settings::{LogLevel, SettingsStore};
+use crate::store::snapshots::SnapshotStore;
 use crate::store::ui_state::UiStateStore;
 
 pub struct AppState {
@@ -23,6 +24,7 @@ pub struct AppState {
     pub presets: PresetCatalog,
     pub projects: ProjectsStore,
     pub recent_objects: RecentObjectsStore,
+    pub snapshots: SnapshotStore,
     pub launches: LaunchQueue,
     /// Shared so Keychain calls can run in blocking tasks.
     pub secrets: Arc<dyn SecretStore>,
@@ -46,6 +48,7 @@ impl AppState {
             presets: PresetCatalog::open(config_dir),
             projects: ProjectsStore::open(config_dir),
             recent_objects: RecentObjectsStore::open(config_dir),
+            snapshots: SnapshotStore::open(config_dir),
             launches: LaunchQueue::default(),
             secrets,
             sessions: Sessions::default(),

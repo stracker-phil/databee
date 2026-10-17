@@ -13,6 +13,7 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     fontMono: null,
     rowLimit: 1000,
     queryTimeoutSecs: 30,
+    liveIntervalSecs: 2,
     confirmDestructive: true,
     nullLabel: "NULL",
     maxCellChars: 500,

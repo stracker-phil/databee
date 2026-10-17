@@ -219,6 +219,15 @@ export type ColumnRef = string;
 export type ColumnsRef = { table: string, columns: Array<string>, };
 
 /**
+ * Two rows of one table side by side: the row of `address` and the one its `compare` names.
+ */
+export type Comparison = { left: Document, right: Document, 
+/**
+ * `left` as the old side, `right` as the new.
+ */
+delta: DocDelta, };
+
+/**
  * Everything needed to reach a database, except the password.
  */
 export type ConnectionSpec = { name?: string | null, host: string, port: number, socket?: string | null, user: string, database?: string | null, };
@@ -254,6 +263,24 @@ export type DecodedValue = { format: Format, root: ValueNode | null, warning: st
  * Rows are selected first and deleted by primary key, so undo can re-insert them.
  */
 export type DeleteSpec = { where?: string | null, };
+
+/**
+ * What changed from one document to another, as marks on the newer one.
+ */
+export type DocDelta = { 
+/**
+ * Values of rows in both documents whose stored value differs, in key order: by table, row
+ * key, then column order. Changes within one poll have no order of their own.
+ */
+changed: Array<ValueChange>, 
+/**
+ * Rows only in the newer document (in compare: only in the compared row's).
+ */
+added: Array<RowMark>, 
+/**
+ * Rows only in the older document, with their old cells.
+ */
+removed: Array<RowMark>, };
 
 export type Document = { 
 /**
@@ -768,6 +795,20 @@ styles: Array<CellStyle>, };
  */
 export type RowKey = Array<KeyPart>;
 
+export type RowMark = { group: string, table: string, key: RowKey | null, 
+/**
+ * The meta key of a meta row, else the row's key as `column value`.
+ */
+label: string, 
+/**
+ * The value of a meta row; `None` for other rows.
+ */
+value: Cell | null, 
+/**
+ * The row's fields as its group shows them, from the stored cells.
+ */
+fields: Array<[string, Value]>, };
+
 export type RuleDraft = { 
 /**
  * The value's column, its table without prefix (`wc_orders_meta.meta_value`).
@@ -861,7 +902,11 @@ fontUi: string | null,
 /**
  * An installed font family; `None` uses the bundled JetBrains Mono.
  */
-fontMono: string | null, rowLimit: number, queryTimeoutSecs: number, confirmDestructive: boolean, nullLabel: string, 
+fontMono: string | null, rowLimit: number, queryTimeoutSecs: number, 
+/**
+ * How often a live object column reads its row again.
+ */
+liveIntervalSecs: number, confirmDestructive: boolean, nullLabel: string, 
 /**
  * Longer text cells cross IPC as a preview; `fetch_cell` returns the full value.
  */
@@ -870,6 +915,33 @@ maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSyste
  * Loads avatars from Gravatar (sends hashed emails to gravatar.com).
  */
 gravatar: boolean, };
+
+/**
+ * What changed since snapshot `id`: its address read now against the stored cells.
+ */
+export type SnapshotDiff = { snapshot: SnapshotInfo, delta: DocDelta, 
+/**
+ * The row's document now; `None` for a saved query.
+ */
+document: Document | null, };
+
+export type SnapshotInfo = { id: string, label: string, 
+/**
+ * The connection slug and database the snapshot belongs to.
+ */
+connection: string, database: string, 
+/**
+ * The row or saved query (`databee://…/q/<id>`) the snapshot was taken of.
+ */
+address: string, 
+/**
+ * Unix seconds.
+ */
+created: number, 
+/**
+ * Stored values.
+ */
+values: number, };
 
 /**
  * The statement of a script that failed, after the earlier ones succeeded.
@@ -969,6 +1041,20 @@ source: Provenance | null,
  */
 style: string | null, secondary: Secondary | null, };
 
+export type ValueChange = { group: string, 
+/**
+ * The column, or the meta key of a meta value.
+ */
+label: string, 
+/**
+ * Where the new value is stored.
+ */
+source: Provenance, 
+/**
+ * Where the old value was stored; another row than `source` only in compare.
+ */
+oldSource: Provenance, old: Cell, new: Cell, };
+
 /**
  * Children are addressed by their position (edits send index paths), so equal display keys
  * stay distinct.
@@ -1005,6 +1091,11 @@ exists: boolean | null, } | { "kind": "noReference" } | { "kind": "enum" } | { "
 export type ValueNode = { kind: NodeKind, text?: string, class?: string, children?: Array<ValueChild>, note?: string, };
 
 export type View = "document" | "rows";
+
+/**
+ * What one poll found: the delta, and the new document when anything changed.
+ */
+export type WatchPoll = { delta: DocDelta, document: Document | null, };
 
 /**
  * Which zone a timestamp is stored in. `local` is the site's zone, which is not stored, so such

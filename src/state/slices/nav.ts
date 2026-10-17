@@ -7,8 +7,8 @@ import { AddressError, formatAddress, parseAddress, sameAddress } from "../../li
 import { fail } from "../requests";
 import { selectActiveTab, selectStructure } from "../selectors";
 import type { Slice, Store } from "../store";
-import { objectColumnAt, type ColumnStack, type StackColumn } from "../../lib/columns";
-import { documentText, objectAddress, objectTitle } from "../../lib/document";
+import { objectColumn, objectColumnAt, type ColumnStack, type StackColumn } from "../../lib/columns";
+import { documentText, objectTitle } from "../../lib/document";
 import type { ObjectTab, Tab, TableTab } from "./tabs";
 
 /** Entries kept per direction and tab. */
@@ -137,10 +137,9 @@ export function restacked(tab: ObjectTab, stack: ColumnStack, { record = true } 
 
 /** Without a recorded stack, the active column moves to `target`; its focus stays on the same row. */
 function movedActive(tab: ObjectTab, target: Address): ColumnStack {
-  const view = target.view === "rows" ? "rows" : "document";
   const current = tab.columns[tab.active];
   const focus = current?.kind === "object" && documentText(current.address) === documentText(target) ? current.focus : null;
-  const column: StackColumn = { kind: "object", address: objectAddress(target, view), view, focus };
+  const column: StackColumn = { ...objectColumn(target), focus };
   return { columns: [...tab.columns.slice(0, tab.active), column], active: tab.active };
 }
 

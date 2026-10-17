@@ -1,27 +1,49 @@
 /** Group bodies of the Document view: key/value rows for fields and meta, a small table for row groups. */
 import { memo, useMemo } from "react";
 import type { Group, GroupRow, Value as StoredValue } from "../../api";
+import type { DocumentMarks } from "../../lib/diff";
 import { fieldOf, moreText, provenanceKey } from "../../lib/document";
 import { cellText } from "../../lib/format";
-import { Field, isNumeric } from "./fields";
+import { Field, isNumeric, type FieldChange } from "./fields";
 
-/** The focused and edited values, as provenance keys. */
+/** The focused and edited values, as provenance keys, and the change marks of live mode, a snapshot or compare. */
 export interface Marks {
   focus: string | null;
   editing: string | null;
+  diff?: DocumentMarks | null;
 }
 
 const keyOf = (value: StoredValue | null) => (value?.source ? provenanceKey(value.source) : null);
 
-/** Whether `value` is the focused or the edited one. */
-function marksFor(value: StoredValue | null, marks: Marks): { focused: boolean; editing: boolean } {
+/** The old value as the change list writes it. */
+export const oldText = (cell: StoredValue["raw"]) => (cell.t === "null" ? "NULL" : cellText(cell));
+
+function changeOf(key: string | null, diff: DocumentMarks | null | undefined): FieldChange | undefined {
+  if (!key || !diff) return undefined;
+  const changed = diff.changed.get(key);
+  if (changed) return { old: changed.old && oldText(changed.old), at: changed.at };
+  if (diff.added.has(key)) return { old: "no row", at: diff.added.get(key) ?? null };
+  return undefined;
+}
+
+/** Whether `value` is the focused or the edited one, and how it changed. */
+function marksFor(value: StoredValue | null, marks: Marks): { focused: boolean; editing: boolean; change?: FieldChange } {
   const key = keyOf(value);
-  return { focused: !!key && key === marks.focus, editing: !!key && key === marks.editing };
+  return { focused: !!key && key === marks.focus, editing: !!key && key === marks.editing, change: changeOf(key, marks.diff) };
+}
+
+/** `chg` for a row with a changed or new value (a 3px accent mark), `removed` for a row that is gone. */
+function rowClass(values: (StoredValue | null)[], diff: DocumentMarks | null | undefined): string {
+  if (!diff) return "";
+  const keys = values.map(keyOf).filter((key): key is string => !!key);
+  if (keys.some((key) => diff.removed.has(key))) return " removed";
+  if (keys.some((key) => diff.changed.has(key) || diff.added.has(key))) return " chg";
+  return "";
 }
 
 function KvRow({ name, value, table, marks }: { name: string; value: StoredValue | null; table: string; marks: Marks }) {
   return (
-    <div className="row kv" data-row-table={table || undefined}>
+    <div className={`row kv${rowClass([value], marks.diff)}`} data-row-table={table || undefined}>
       <span title={name}>{name}</span>
       <Field value={value} {...marksFor(value, marks)} />
     </div>
@@ -84,7 +106,7 @@ interface TableRowProps {
 
 const TableRow = memo(function TableRow({ row, columns, table, style, marks }: TableRowProps) {
   return (
-    <div className="row" style={style} data-row-table={table || undefined}>
+    <div className={`row${rowClass(row.fields.map(([, value]) => value), marks.diff)}`} style={style} data-row-table={table || undefined}>
       {columns.map((column, i) => {
         const value = fieldOf(row, column, i);
         return <Field key={column} value={value} {...marksFor(value, marks)} numeric={isNumeric(value)} />;

@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { Address, Document, Group, Provenance, Value as StoredValue } from "../../api";
 import { EDIT_VALUE_EVENT, RULE_MENU } from "../../commands";
+import { withRemovedRows, type DocumentMarks } from "../../lib/diff";
 import { groupAnchors, isEmpty, provenanceKey } from "../../lib/document";
 import { useStore } from "../../state/store";
 import { ContextMenu } from "../ContextMenu";
@@ -21,6 +22,8 @@ interface Props {
   onMore(groupId: string): void;
   /** Whether `e` (`value.edit`) edits the focused value here: the tab is active and shows this view. */
   editable: boolean;
+  /** Change marks of live mode, a snapshot or compare; removed rows show in their groups. */
+  diff?: DocumentMarks | null;
 }
 
 function GroupBody({ group, marks }: { group: Group; marks: Marks }) {
@@ -59,7 +62,7 @@ function useRevealFocus(focus: Provenance | null) {
   return ref;
 }
 
-export function DocumentView({ document, owner, focus, onFocus, onMore, editable }: Props) {
+export function DocumentView({ document, owner, focus, onFocus, onMore, editable, diff = null }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const ref = useRevealFocus(focus);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -80,9 +83,10 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
     }),
     [openValue, onFocus, owner],
   );
-  const marks: Marks = { focus: focus ? provenanceKey(focus) : null, editing };
-  const anchors = groupAnchors(document.groups);
-  const shown = document.groups.filter((g) => !isEmpty(g));
+  const marks: Marks = { focus: focus ? provenanceKey(focus) : null, editing, diff };
+  const groups = useMemo(() => withRemovedRows(document.groups, diff?.removedRows ?? []), [document.groups, diff]);
+  const anchors = groupAnchors(groups);
+  const shown = groups.filter((g) => !isEmpty(g));
 
   return (
     <DocumentContext.Provider value={actions}>
@@ -97,7 +101,7 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
             </Fragment>
           );
         })}
-        <AlsoLinked groups={document.groups} database={owner.database} />
+        <AlsoLinked groups={groups} database={owner.database} />
       </div>
       {targetMenu}
       {menu && <ContextMenu {...menu} items={RULE_MENU} onClose={() => setMenu(null)} />}

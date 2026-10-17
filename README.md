@@ -40,6 +40,10 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
 - **Documents:** any row with a primary key opens as a document: its columns, its meta rows, every row that
   references it, rows matched by preset patterns (logs, scheduled actions) and its timestamps as events.
   References open as a stack of columns; ⌥ peeks.
+- **Live mode** (`w`): the row is read again every 2 s; a changed value flashes and keeps its old value struck
+  through, new and removed rows are marked, and a change list under the document says what changed when.
+  Snapshots (`s`) of a row or a saved query's rows show the same marks later ("Changes since snapshot…"), and
+  `?compare=<key>` shows two rows side by side with their differences.
 - **Pinned queries** from the presets replace the old lists: orders, subscriptions, users, customers, guests,
   products, sessions, scheduled actions, content and the options queries open as query tabs with their SQL
   (`q:` in the palette); value counts replace the facets.

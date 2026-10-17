@@ -1,4 +1,4 @@
-import { EMPTY_UI_STATE, api, type AppError, type ColumnInfo, type ConnectionSpec, type Home, type PaneSize, type UiState } from "../../api";
+import { EMPTY_UI_STATE, api, type AppError, type ColumnInfo, type ConnectionSpec, type Home, type PaneSize, type SnapshotInfo, type UiState } from "../../api";
 import { fail } from "../requests";
 import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
@@ -22,7 +22,9 @@ export type Dialog =
   /** How a saved query shows on the readout; `null` is not pinned. */
   | { type: "pin"; title: string; pin: Home | null; onSubmit: (pin: Home | null) => void }
   /** The shortcut overview of the scopes that were active when it opened. */
-  | { type: "shortcuts"; scopes: string[] };
+  | { type: "shortcuts"; scopes: string[] }
+  /** The snapshots of a row or saved query, newest first; picking one marks what changed since. */
+  | { type: "snapshots"; title: string; snapshots: SnapshotInfo[]; onPick: (id: string) => void };
 
 export type RecentNav =
   | { kind: "entity"; entity: string; id: string; title: string }

@@ -6,4 +6,5 @@ pub mod recent_objects;
 pub mod recents;
 pub mod settings;
 pub mod slug;
+pub mod snapshots;
 pub mod ui_state;

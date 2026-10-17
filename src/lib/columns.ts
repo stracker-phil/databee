@@ -34,9 +34,11 @@ export const STRIP_WIDTH = 34;
 /** How much of a value without provenance names its column. */
 const UNSOURCED_NAME_CHARS = 20;
 
+/** An object column of a row address; a document keeps the address's `compare`. */
 export function objectColumn(address: Address): ObjectColumn {
   const view: ObjectView = address.view === "rows" ? "rows" : "document";
-  return { kind: "object", address: objectAddress(address, view), view, focus: null };
+  const compare = view === "document" ? address.compare : null;
+  return { kind: "object", address: { ...objectAddress(address, view), compare }, view, focus: null };
 }
 
 /** The object column at `index`, or the nearest one to its left: a value column belongs to the row it came from. */

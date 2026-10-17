@@ -91,7 +91,7 @@ export const objectsSlice: Slice<ObjectsSlice> = {
       const root = objectColumn(address);
       const existing = get().tabs.find((t): t is ObjectTab => t.kind === "object" && t.sessionId === session.id && t.columns[0]?.kind === "object" && sameRow(t.columns[0].address, address));
       if (existing) {
-        const columns = address.view ? replaced(existing, 0, { ...(existing.columns[0] as ObjectColumn), view: root.view, address: root.address }) : existing.columns;
+        const columns = address.view || address.compare ? replaced(existing, 0, { ...(existing.columns[0] as ObjectColumn), view: root.view, address: root.address }) : existing.columns;
         const updated = restacked({ ...existing, preview: existing.preview && opts.preview !== false }, { columns, active: 0 }, { record: false });
         set((s) => ({ ...withObjectTab(s, updated), ...activate(s, existing.id) }));
         return;
@@ -131,8 +131,9 @@ export const objectsSlice: Slice<ObjectsSlice> = {
       set((s) => {
         const tab = findObjectTab(s, tabId);
         const found = tab && columnOf(tab, index);
-        if (!tab || !found || found.column.view === view) return {};
+        if (!tab || !found) return {};
         const { column, at } = found;
+        if (column.view === view) return focus === undefined ? {} : withObjectTab(s, { ...tab, columns: replaced(tab, at, { ...column, focus }) });
         const shown: ObjectColumn = { ...column, view, address: objectAddress(column.address, view), focus: focus === undefined ? column.focus : focus };
         const updated = restacked(tab, { columns: replaced(tab, at, shown), active: at });
         // The grids of the view being left unmount, so their selection goes too.

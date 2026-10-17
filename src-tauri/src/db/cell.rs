@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// A value as the UI displays it. Numbers stay strings so 64-bit IDs and decimals
 /// survive the trip to JavaScript unchanged.
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "t", content = "v", rename_all = "camelCase")]
 pub enum Cell {

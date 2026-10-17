@@ -834,3 +834,34 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 /* ---------- stored values: the raw value first, readable notes after it ---------- */
 
 .meta-head { display: flex; align-items: center; gap: 0.462rem; margin: 0.769rem 0 0.308rem; font-size: 0.923rem; }
+
+/* ---------- live mode, snapshots, compare ---------- */
+/* mock Main: a changed value flashes once (--cell to transparent), then keeps its old value struck through; changed
+   and new rows carry a 3px accent mark, removed rows stay struck through until dismissed. */
+.object .row.chg { box-shadow: inset 3px 0 0 var(--accent); }
+.object .row.removed { color: var(--o3); text-decoration: line-through; }
+.object .row.removed .val { color: inherit; }
+.object .flash { border-radius: 3px; animation: change-flash 1.6s ease-out; }
+@keyframes change-flash { from { background: var(--cell); } to { background: transparent; } }
+.object .old { margin-left: 0.8em; color: var(--o3); text-decoration: line-through; }
+.changes { display: flex; flex-direction: column; }
+.object button.row.change-line {
+  width: 100%; border: none; border-bottom: 1px solid var(--line); background: none; color: inherit; text-align: left; cursor: default;
+}
+.object button.row.change-line:hover:not(:disabled) { background: var(--row-hover); }
+.object button.row.change-line:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
+.object.query-changes { flex: 0 1 auto; max-height: 40%; padding-bottom: 0.923rem; border-top: 1px solid var(--line); }
+.statusbar .status-text.live { color: var(--accent); }
+.compare { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.compare-summary { padding: 0.615rem 1.846rem; font-size: var(--fs-small); border-bottom: 1px solid var(--line); }
+.compare-sides { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.compare-side { padding: 0 0.923rem 3.692rem; }
+.compare-side + .compare-side { border-left: 1px solid var(--line); }
+.snapshot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.snapshot-item { display: flex; align-items: center; gap: 0.615rem; border-bottom: 1px solid var(--line); }
+.snapshot-pick {
+  flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 0.923rem; padding: var(--pad) 0.462rem; line-height: 20px;
+  border: none; background: none; color: inherit; text-align: left; font-size: var(--fs-small);
+}
+.snapshot-pick:hover { background: var(--row-hover); }
+.snapshot-label { font-family: var(--font-mono); font-size: var(--data-font-size); color: var(--text); }

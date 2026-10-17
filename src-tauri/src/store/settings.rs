@@ -118,6 +118,8 @@ pub struct Settings {
     pub font_mono: Option<String>,
     pub row_limit: u32,
     pub query_timeout_secs: u32,
+    /// How often a live object column reads its row again.
+    pub live_interval_secs: u32,
     pub confirm_destructive: bool,
     pub null_label: String,
     /// Longer text cells cross IPC as a preview; `fetch_cell` returns the full value.
@@ -145,6 +147,7 @@ impl Default for Settings {
             font_mono: None,
             row_limit: 1000,
             query_timeout_secs: 30,
+            live_interval_secs: 2,
             confirm_destructive: true,
             null_label: "NULL".into(),
             max_cell_chars: 500,
@@ -190,6 +193,7 @@ impl Settings {
         self.data_font_size = self.data_font_size.clamp(9, 28);
         self.row_limit = self.row_limit.clamp(10, 100_000);
         self.query_timeout_secs = self.query_timeout_secs.clamp(1, 3600);
+        self.live_interval_secs = self.live_interval_secs.clamp(1, 60);
         self.max_cell_chars = self.max_cell_chars.clamp(20, 100_000);
         self.connect_timeout_secs = self.connect_timeout_secs.clamp(1, 120);
         if self.default_port == 0 {
@@ -287,6 +291,28 @@ mod tests {
         let settings = Settings::peek(dir.path());
         assert_eq!(settings.default_port, 3307);
         assert_eq!(settings.row_limit, 10);
+    }
+
+    #[test]
+    fn live_interval_defaults_to_two_seconds_and_is_clamped_to_one_to_sixty() {
+        assert_eq!(Settings::default().live_interval_secs, 2);
+        for (stored, expected) in [
+            (r#"{}"#, 2),
+            (r#"{"liveIntervalSecs": 0}"#, 1),
+            (r#"{"liveIntervalSecs": 1}"#, 1),
+            (r#"{"liveIntervalSecs": 5}"#, 5),
+            (r#"{"liveIntervalSecs": 60}"#, 60),
+            (r#"{"liveIntervalSecs": 600}"#, 60),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("settings.json"), stored).unwrap();
+
+            assert_eq!(
+                Settings::peek(dir.path()).live_interval_secs,
+                expected,
+                "{stored}"
+            );
+        }
     }
 
     #[test]

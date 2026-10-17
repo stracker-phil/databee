@@ -32,6 +32,10 @@ import type {
   RulesInfo,
   Coverage,
   Document,
+  Comparison,
+  SnapshotDiff,
+  SnapshotInfo,
+  WatchPoll,
   ObjectAction,
   ResolvedReference,
   Project,
@@ -127,6 +131,21 @@ export const api = {
     invoke<Document>("document", { sessionId, address, database }),
   /** What a peek shows of a row address: its entity's summary, else its first columns. */
   peek: (sessionId: string, address: string) => invoke<Peek>("peek", { sessionId, address }),
+  /** Starts live mode on a row address; returns the watch id (at most 8 per session, the oldest ends). */
+  watchStart: (sessionId: string, address: string) => invoke<string>("watch_start", { sessionId, address }),
+  /** Reads the watched row again: what changed since the last poll, and the new document when anything did. */
+  watchPoll: (sessionId: string, id: string) => invoke<WatchPoll>("watch_poll", { sessionId, id }),
+  watchStop: (sessionId: string, id: string) => invoke<void>("watch_stop", { sessionId, id }),
+  /** Both documents of a row address with `?compare=<key>` and their differences. */
+  compare: (sessionId: string, address: string) => invoke<Comparison>("compare", { sessionId, address }),
+  /** Stores the row or saved query (`…/q/<id>`) at `address` as it is now. */
+  snapshotTake: (sessionId: string, address: string, label: string) => invoke<SnapshotInfo>("snapshot_take", { sessionId, address, label }),
+  /** Snapshots of `database`, newest first; only those of `address` when given. */
+  snapshotList: (sessionId: string, database: string, address: string | null) =>
+    invoke<SnapshotInfo[]>("snapshot_list", { sessionId, database, address }),
+  /** What changed since a snapshot, read now. */
+  snapshotDiff: (sessionId: string, id: string) => invoke<SnapshotDiff>("snapshot_diff", { sessionId, id }),
+  snapshotDelete: (id: string) => invoke<void>("snapshot_delete", { id }),
   /** The palette's row hits for `#id`, `@name`, `=value` or free text of 6+ characters. */
   paletteSearch: (sessionId: string, database: string, query: string) =>
     invoke<PaletteHit[]>("palette_search", { sessionId, database, query }),

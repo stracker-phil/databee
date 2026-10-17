@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { CheckCircle2, Copy, Loader2, Pin, Play, PlayCircle, Save, Square } from "lucide-react";
-import { api, toAppError, type ResultSet } from "../api";
+import { api, toAppError, type Provenance, type ResultSet } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { formatCount } from "../lib/format";
 import { pinLabel } from "../lib/pins";
 import { resultValueAt } from "../lib/values";
 import { useResolvedScheme } from "../lib/theme";
 import { isPreset, originText } from "../state/slices/saved";
-import { fail, useStore, type QueryTab as QueryTabState } from "../state/store";
+import { fail, queryMarksKey, useStore, type QueryTab as QueryTabState } from "../state/store";
 import type { MenuEntry } from "./ContextMenu";
 import { ErrorPanel } from "./ErrorPanel";
+import { ChangeList } from "./object/ChangeList";
 import { currentStatement, QueryEditor } from "./QueryEditor";
 import { ResultsGrid } from "./ResultsGrid";
 import { Splitter, usePaneSize, useWindowSize } from "./Splitter";
@@ -118,6 +119,26 @@ function ResultView({ tab }: { tab: QueryTabState }) {
   );
 }
 
+/** A changed value's row, opened as an object; only a single-column key makes an address. */
+function openSource(tab: QueryTabState, source: Provenance) {
+  const s = useStore.getState();
+  const connection = s.sessions.find((x) => x.id === tab.sessionId)?.slug;
+  const [part, ...rest] = source.row;
+  if (!connection || !tab.saved || !part || rest.length > 0) return;
+  s.openObject({ connection, database: tab.saved.database, target: { kind: "row", table: source.table, key: part.value }, view: null, compare: null });
+}
+
+/** What changed in a saved query's rows since a snapshot ("Changes since snapshot…"). */
+function QueryChanges({ tab }: { tab: QueryTabState }) {
+  const marks = useStore((s) => s.changeMarks[queryMarksKey(tab.sessionId, tab.id)]);
+  if (!marks) return null;
+  return (
+    <div className="object query-changes">
+      <ChangeList marks={marks} dismissCommand="query.dismissChanges" onJump={(source) => openSource(tab, source)} />
+    </div>
+  );
+}
+
 /** Save and Pin, or for a preset query its origin and "Copy to project". */
 function SavedActions({ tab }: { tab: QueryTabState }) {
   const { saveQueryTab, pinQueryTab, copyPresetQuery } = useStore.getState();
@@ -210,6 +231,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
       </div>
       <div className="results">
         <ResultsPane tab={tab} />
+        <QueryChanges tab={tab} />
       </div>
     </div>
   );

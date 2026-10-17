@@ -814,3 +814,70 @@ mod real_data {
         assert!(checked > 0);
     }
 }
+
+#[tokio::test]
+#[ignore]
+async fn a_watch_reports_exactly_the_value_changed_in_wp_write() {
+    use super::snapshot::capture;
+    use super::watch::Watches;
+
+    let rig = Rig::new();
+    for (host, port) in servers() {
+        let server = format!("{host}:{port}");
+        let session = session_on(&host, port, "wp_write").await;
+        let address = row_address(&slug(port), "wp_write", "wp_posts", "201");
+        let original = session
+            .db
+            .fetch(
+                "SELECT post_title FROM wp_write.wp_posts WHERE ID = 201",
+                TIMEOUT,
+            )
+            .await
+            .unwrap()
+            .rows[0][0]
+            .as_text()
+            .unwrap()
+            .to_string();
+        let set = |title: &str| {
+            format!(
+                "UPDATE wp_write.wp_posts SET post_title = '{}' WHERE ID = 201",
+                title.replace('\'', "''")
+            )
+        };
+        let changed = format!("{original} (watched)");
+        let (before, _) = capture(&session, &address, rig.sources(), TIMEOUT)
+            .await
+            .unwrap_or_else(|e| panic!("{server}: {e:?}"));
+        let watches = Watches::default();
+        let id = watches.start(address.to_string(), before);
+
+        let polled = match session.db.apply(&[set(&changed)], TIMEOUT).await {
+            Ok(_) => match capture(&session, &address, rig.sources(), TIMEOUT).await {
+                Ok((now, _)) => watches.advance(&id, now),
+                Err(e) => Err(e),
+            },
+            Err(e) => Err(e),
+        };
+        session
+            .db
+            .apply(&[set(&original)], TIMEOUT)
+            .await
+            .unwrap_or_else(|e| panic!("{server}: restoring the title failed: {e:?}"));
+
+        let delta = polled.unwrap_or_else(|e| panic!("{server}: {e:?}"));
+        assert!(
+            delta.added.is_empty() && delta.removed.is_empty(),
+            "{server}: {delta:?}"
+        );
+        assert_eq!(delta.changed.len(), 1, "{server}: {delta:?}");
+        let change = &delta.changed[0];
+        assert_eq!(change.label, "post_title", "{server}");
+        assert_eq!(
+            change.source,
+            provenance("wp_posts", "post_title", "ID", "201"),
+            "{server}"
+        );
+        assert_eq!(change.old.as_text(), Some(original.as_str()), "{server}");
+        assert_eq!(change.new.as_text(), Some(changed.as_str()), "{server}");
+    }
+}

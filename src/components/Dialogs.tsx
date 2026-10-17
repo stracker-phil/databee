@@ -7,6 +7,7 @@ import { Modal } from "./Modal";
 import { CONNECT_TITLE_ID, ConnectForm } from "./ConnectScreen";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
+import { SnapshotsDialog } from "./SnapshotsDialog";
 
 function ConfirmDialog({ title, message, confirmLabel, onConfirm }: { title: string; message: string; confirmLabel: string; onConfirm: () => void }) {
   const close = useStore((s) => s.closeDialog);
@@ -249,6 +250,8 @@ export function Dialogs() {
       return <InsertRowDialog {...dialog} />;
     case "shortcuts":
       return <ShortcutsDialog scopes={dialog.scopes} />;
+    case "snapshots":
+      return <SnapshotsDialog {...dialog} />;
     case "connect":
       // Without sessions the connect screen is the main view and shows this state itself.
       if (!hasSessions) return null;

@@ -2,6 +2,7 @@ import { create, type StoreApi } from "zustand";
 import { changesSlice, type ChangesSlice } from "./slices/changes";
 import { columnsSlice, type ColumnsSlice } from "./slices/columns";
 import { dataSlice, type DataSlice } from "./slices/data";
+import { liveSlice, type LiveSlice } from "./slices/live";
 import { navSlice, type NavSlice } from "./slices/nav";
 import { objectsSlice, type ObjectsSlice } from "./slices/objects";
 import { projectSlice, type ProjectSlice } from "./slices/project";
@@ -36,9 +37,11 @@ export type { ObjectTab, ProjectTab, QueryTab, ReadoutTab, SelectedCell, Tab, Ta
 export type { ProjectRulesEntry } from "./slices/project";
 export type { Dialog, RecentNav, Toast, ValueHover } from "./slices/ui";
 export type { ReadoutEntry } from "./slices/readout";
+export type { ChangeTarget, LiveWatch } from "./slices/live";
+export { queryMarksKey, selectActiveLive, selectActiveMarks, selectCanDismissMarks, selectChangeTarget } from "./slices/live";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
-export interface Store extends SettingsSlice, SessionSlice, TabsSlice, ChangesSlice, DataSlice, SavedSlice, UiSlice, NavSlice, ObjectsSlice, ColumnsSlice, ProjectSlice, ReadoutSlice {}
+export interface Store extends SettingsSlice, SessionSlice, TabsSlice, ChangesSlice, DataSlice, SavedSlice, UiSlice, NavSlice, ObjectsSlice, ColumnsSlice, ProjectSlice, ReadoutSlice, LiveSlice {}
 
 type SetStore = StoreApi<Store>["setState"];
 type GetStore = StoreApi<Store>["getState"];
@@ -84,3 +87,4 @@ registerSlice(objectsSlice);
 registerSlice(columnsSlice);
 registerSlice(projectSlice);
 registerSlice(readoutSlice);
+registerSlice(liveSlice);

@@ -180,7 +180,8 @@ pub async fn rename_connection_slug(
     let old = state.recents.rename_slug(&identity, &slug).await?;
     state.sessions.rename_slug(&identity, &slug);
     state.projects.rename_connection(&old, &slug).await?;
-    state.recent_objects.rename_connection(&old, &slug).await
+    state.recent_objects.rename_connection(&old, &slug).await?;
+    state.snapshots.rename_connection(&old, &slug).await
 }
 
 #[tauri::command]

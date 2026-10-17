@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type BrowsePage, type Coverage, type Document, type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Readout, type Resolved, type RuleDraft, type RulesInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type BrowsePage, type Comparison, type Coverage, type Document, type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Readout, type Resolved, type RuleDraft, type RulesInfo, type SnapshotDiff, type SnapshotInfo, type TableReferences, type TableStructure, type UiState, type WatchPoll } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { session } from "./session";
 import { settings } from "./settings";
@@ -56,6 +56,19 @@ export function createApiMock(): typeof realApi {
     referenceCoverage: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
     document: vi.fn(async (_s, text): Promise<Document> => ({ address: parseAddress(text), entity: null, header: [], groups: [], alternatives: [], actions: [] })),
     peek: vi.fn().mockResolvedValue({ keyColumn: null, values: [] } satisfies Peek),
+    watchStart: vi.fn().mockResolvedValue("w1"),
+    watchPoll: vi.fn().mockResolvedValue({ delta: { changed: [], added: [], removed: [] }, document: null } satisfies WatchPoll),
+    watchStop: vi.fn().mockResolvedValue(undefined),
+    compare: vi.fn(async (_s, text): Promise<Comparison> => {
+      const address = parseAddress(text);
+      const right = address.target.kind === "row" && address.compare ? { ...address, target: { ...address.target, key: address.compare }, compare: null } : address;
+      const empty = (a: typeof address): Document => ({ address: { ...a, compare: null }, entity: null, header: [], groups: [], alternatives: [], actions: [] });
+      return { left: empty(address), right: empty(right), delta: { changed: [], added: [], removed: [] } };
+    }),
+    snapshotTake: vi.fn(async (_s, address, label): Promise<SnapshotInfo> => ({ id: "snap-1", label, connection: session.slug, database: parseAddress(address).database, address, created: 0, values: 0 })),
+    snapshotList: vi.fn().mockResolvedValue([]),
+    snapshotDiff: vi.fn(async (): Promise<SnapshotDiff> => ({ snapshot: { id: "snap-1", label: "before", connection: session.slug, database: "db", address: "", created: 0, values: 0 }, delta: { changed: [], added: [], removed: [] }, document: null })),
+    snapshotDelete: vi.fn().mockResolvedValue(undefined),
     tableActions: vi.fn().mockResolvedValue([]),
     planAction: vi.fn(async (_s, _address, action) => planned(action)),
     rulesInfo: vi.fn().mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [], tableEntities: {} } satisfies RulesInfo),

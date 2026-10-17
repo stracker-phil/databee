@@ -74,6 +74,7 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `ui_state` | `UiStateStore` | `ui_state.json` (column widths, pane sizes, sidebar hidden, collapsed object groups per connection) |
 | `presets` | `PresetCatalog` | built-in and user presets, reread when `presets/*.toml` change ([presets.md](presets.md)) |
 | `projects` | `ProjectsStore` | `projects.json` (rules per connection slug and database, [presets.md](presets.md#projects)) |
+| `snapshots` | `SnapshotStore` | `snapshots/v2/` (snapshots of rows and saved queries, see [Watches and snapshots](#watches-and-snapshots)) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
@@ -112,6 +113,7 @@ use the same names in camelCase.
 | `value_counts.rs` | `value_counts(sessionId, database, table, column, equals, limit)`: the most frequent values of one column among the rows a structured filter selects, as `ValueCount { value, count }` (the value with the column's kind, no provenance); `limit` is capped at `MAX_LIMIT` (500); runs with the query timeout, at most 5 s |
 | `readout/commands.rs` | `readout(sessionId, database)`: the home page of a database (status line, anomalies, new objects, pinned queries, recent objects; each part with its own timeout and error, see [presets.md](presets.md#the-readout)); `remember_object(sessionId, address)`: a row address becomes the newest of the project's recent objects (at most 20) |
 | `search/commands.rs` | `palette_search(sessionId, database, query)`: the palette's row hits for `#id`, `@name`, `=value` or free text (see [Palette search](architecture.md#palette-search)) |
+| `document/commands.rs` | `document`, `peek`, `table_actions`, `plan_action` ([Documents](architecture.md#documents)); `watch_start(sessionId, address)` (a watch id), `watch_poll(sessionId, id)` (`WatchPoll { delta, document }`, the document only when something changed), `watch_stop(sessionId, id)`, `compare(sessionId, address)` (`Comparison { left, right, delta }` of a row address with `?compare=`), `snapshot_take(sessionId, address, label)`, `snapshot_list(sessionId, database, address?)`, `snapshot_diff(sessionId, id)` (`SnapshotDiff { snapshot, delta, document }`), `snapshot_delete(id)`; see [Watches and snapshots](#watches-and-snapshots) |
 | `rules/commands.rs` | `presets_list` (every known preset with its source and, for a file that does not load, the error; see [presets.md](presets.md)), `project_get` (the project of the session's slug and a database; an empty one when none is stored), `project_update` (applies one `ProjectChange` after checking it against the schema cache, returns the project), `project_export` (the project as preset TOML), `project_export_to(sessionId, database, path)` (writes it to a chosen path); see [presets.md](presets.md#projects); `project_rules`, `rule_draft(sessionId, database, provenance)` and `coverage_preview(sessionId, database, reference, replacing)` for the Project page ([presets.md](presets.md#the-project-page)); `rules_info` (prefixes, applied presets, entities); `reference_coverage(sessionId, database, reference)` (counts for a `ResolvedReference` as `table_references` returned it: total, resolved, NULL or `0`, a sample of unresolved values, `timedOut`; read-only, bounded by the query timeout; see [presets.md](presets.md#coverage)) |
 
 `session::open` is the connect service: it peeks the launch password, resolves the password
@@ -334,13 +336,14 @@ favorites migration). Store methods that write are `async` and the commands call
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`). `sanitized()` clamps values on load and on update: font sizes, row limit, timeouts, ports. Renamed fields use serde aliases. Enum and free-text fields (`theme`, `lightScheme`, `darkScheme`, `fontUi`, `fontMono`, `logLevel`) use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` also resets unknown accents (including the retired `pink`) to `orange` and unknown scheme ids to the defaults (`ayu-light`, `ayu-mirage`), clamps `rowPadding` to 1..4 and turns blank font names into `null`. `rowPadding` reads the retired `density` key: `compact` becomes 1, anything else 2. Retired keys without a successor (`inspectorDock`) are ignored on load and dropped on the next save. `SettingsStore::update` returns `(previous, saved)` from one lock. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`). `sanitized()` clamps values on load and on update: font sizes, row limit, timeouts, the live interval (1 to 60 s), ports. Renamed fields use serde aliases. Enum and free-text fields (`theme`, `lightScheme`, `darkScheme`, `fontUi`, `fontMono`, `logLevel`) use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` also resets unknown accents (including the retired `pink`) to `orange` and unknown scheme ids to the defaults (`ayu-light`, `ayu-mirage`), clamps `rowPadding` to 1..4 and turns blank font names into `null`. `rowPadding` reads the retired `density` key: `compact` becomes 1, anything else 2. Retired keys without a successor (`inspectorDock`) are ignored on load and dropped on the next save. `SettingsStore::update` returns `(previous, saved)` from one lock. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` runs on load and in `KeybindingsStore::update`: it drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed (unknown modifier, missing or multi-part key). A trailing `++` is the `+` key (`Mod+Shift++`) |
 | `connections.json` | recent connections by identity (`user@host:port/db`), each with its `slug` ([Addresses](#addresses)). `RecentsStore::open` fills a missing slug on load (`open_with`), saved with the next change; `touch` keeps a known connection's slug and gives a new one its default, unique within the file; `rename_slug` validates and refuses a slug another connection has |
 | `favorites.json` | retired. On startup `AppState::open` runs `saved::migrate::migrate_favorites(config_dir)` once: a query favorite scoped to a server account goes to the project of the most recent saved connection of that account that names a database; a table favorite to the project of its database (a connection to that database first, else any of the account) as `SELECT * FROM <table>`; global favorites and those without a matching saved connection to the global saved queries of `projects.json` (table favorites qualified with their database). The file is then renamed to `favorites.migrated.json`, so the move happens once |
 | `history.json` | executed queries per account, with time, duration and error. At most 500 entries across all accounts. SQL over 64 KiB is stored cut on a char boundary with `truncated: true`. Each entry stores a `hash` of the full SQL (first 8 bytes of SHA-256, computed on load for older files); rerunning the same SQL on the same account replaces its entry. Written behind, see below |
 | `stage.json` | Stage's own settings (`stage::settings::StageStore`, see [stage.md](stage.md)); not part of `settings.json` |
-| `snapshots.json`, `snapshots/<id>.json` | snapshots of the removed WordPress mode; no code reads or deletes them since U12, U13 decides their migration |
+| `snapshots/v2/index.json`, `snapshots/v2/<id>.json` | snapshots ([Watches and snapshots](#watches-and-snapshots)): the index (`SnapshotInfo`: id, label, connection slug, database, address, `created` in Unix seconds, number of values), newest first, at most 30 per connection and database (`MAX_PER_DATABASE`; the oldest are evicted with their files); each snapshot's cells in its own file, written before the index entry. `rename_connection` moves them with a slug rename |
+| `snapshots.json`, `snapshots/<id>.json` | snapshots of the removed WordPress mode. Never read, moved or deleted; `SnapshotStore::open` logs one line when `snapshots.json` exists |
 | `ui_state.json` | per connection: column widths, `detailPaneWidth`, `sqlEditorHeight`, `sidebarHidden`, `collapsedGroups` (by database: `<document table>::<group id>` keys) (older names load via serde aliases; missing fields take their defaults; the retired `inspectorWidth` and `bottomPaneHeight` are ignored). `UiStateStore::forget` drops a connection's entry |
 | `entities.toml` | not read; user presets replace it ([presets.md](presets.md#built-in-presets)) |
 | `projects.json` | `{ "projects": { "<slug>/<database>": Project }, "global": [SavedQuery] }`, snake_case like the rule types ([presets.md](presets.md#projects)); `global` holds saved queries offered in every project. `ProjectsStore::update` runs the change inside the store's update, so a failed check stores nothing (`update_global` likewise for the global list); `rename_connection` moves every `<old>/…` key to the new slug; `import_saved` appends migrated favorites in one save |
@@ -363,6 +366,40 @@ Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.d
 3. Regenerate `src/api/types.gen.ts` (`bun run types`), mirror a numeric clamp in `SETTINGS_LIMITS`
    (`src/api/types.ts`), and add the default to `src/test/settings.ts`.
 4. Render it on its page in `src/components/settings/pages.tsx`.
+
+## Watches and snapshots
+
+Live mode, snapshots and compare share one model (`document/diff.rs`): a document reduced to its stored cells,
+`FlatDocument { groups: [FlatGroup { id, table, shape, capped, rows: [FlatRow { key, fields: [FlatField { name,
+source, cell }] }] }] }`, keyed by provenance. `FlatDocument::of(document)` leaves out `events` (it repeats
+other groups' values) and failed groups. Two of them give a `DocDelta { changed, added, removed }`:
+
+- `diff_documents(old, new)` (live, snapshots; pure): groups match by id (a group in only one of them is
+  skipped), rows by their key, values by column. `changed` holds `ValueChange { group, label, source,
+  oldSource, old, new }` (`label` is the meta key of a meta value, else the column); `added` and `removed` hold
+  `RowMark { group, table, key, label, value, fields }` (`label` the meta key or `column value` of the key,
+  `value` a meta row's value, `fields` the row as its group shows it, built from the stored cells). A row
+  missing from a capped group proves nothing, so a capped old group reports no added rows and a capped new
+  group no removed ones. Changes are sorted by table, row key (numbers as numbers) and column order: one poll
+  has no order of its own.
+- `compare_documents(left, right)` (compare): groups by id, the own row column by column, meta rows by key
+  (the n-th row of a key with the n-th), other rows by position; `left` is the old side, so `oldSource` names
+  the left row and `source` the right one.
+
+**Watches** (`document/watch.rs`): `Watches` lives in `Session.ext` and keeps, per watch, its row address and
+last `FlatDocument`; at most `MAX_WATCHES` (8) per session, starting another ends the oldest. `watch_start`
+builds the document once; `watch_poll` builds it again with `document::open` (the metadata pool, never the
+editor connection, with the query timeout), diffs it against the last one and keeps the new one
+(`Watches::advance`). An ended watch answers `invalid_input` ("No watch …; it ended"). Watches go with the
+session.
+
+**Snapshots** (`document/snapshot.rs`, `store/snapshots.rs`): `snapshot::capture(session, address, …)` reads
+a row address as its document, or a saved query (`…/q/<id>`, project, global or preset) as its first
+`QUERY_ROWS` (1,000) rows: one statement, refused unless `db::classify::is_read_only`, run on the metadata pool
+in the snapshot's database, annotated like query results. Its rows are one group `result`; a value is sourced
+when its result column has an origin column in this database and that table's whole primary key is in the
+result, and a row is keyed by its first sourced value's row. `SnapshotStore` (`AppState.snapshots`) stores
+the cells; `snapshot_diff` captures the address again and diffs the stored cells against it.
 
 ## Secrets
 

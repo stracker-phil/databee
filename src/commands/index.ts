@@ -3,6 +3,7 @@ import { selectActivePending, selectActiveSession, selectActiveTab, selectCanNav
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
 import { COLUMN_COMMANDS } from "./columns";
+import { LIVE_COMMANDS } from "./live";
 import { OBJECT_VALUE_COMMANDS, VALUE_COMMANDS } from "./values";
 
 export * from "./registry";
@@ -152,6 +153,7 @@ export const APP_COMMANDS: Command[] = [
   ...VALUE_COMMANDS,
   ...OBJECT_VALUE_COMMANDS,
   ...COLUMN_COMMANDS,
+  ...LIVE_COMMANDS,
 ];
 
 /**

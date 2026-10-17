@@ -222,8 +222,8 @@ cell says otherwise.
   part shows.
 - **Secondary text** (`Value.secondary`, a relative time, a currency, a formatted amount) follows the raw
   value in `--o2`, never instead of it.
-- **Change marks (from U13):** a changed value flashes (`--cell` fading out over 1.6s), then shows the old
-  value tertiary and struck through, with a 3px accent bar on the row.
+- **Change marks:** a changed value flashes (`--cell` fading out over 1.6s), then shows the old
+  value tertiary and struck through, with a 3px accent bar on the row ([Live mode](#live-mode-snapshots-compare)).
 
 ## Layout
 
@@ -241,8 +241,8 @@ cell says otherwise.
   filter applies, which no address holds; replaced by the provenance of the hovered or selected value), for a
   query tab its result summary after it,
   spacer, `presets wordpress · woocommerce` (the presets that apply to the current database; a click opens its
-  Project page), `pending n` (a button to the tray when n > 0), `● live 2 s` in the accent while live
-  (from U13). Plain text, no chips; the theme lives in Settings and the palette.
+  Project page), `pending n` (a button to the tray when n > 0), `● live 2 s` in the accent while the
+  active column is live (a click ends it). Plain text, no chips; the theme lives in Settings and the palette.
 - **Column stack:** an object tab is a stack of columns. Enter or a click on a reference (or on another row's
   key) opens its target as a new column right of the column it is in, closing any columns to the right of
   it. Columns are at least 420px wide; when they don't fit, the oldest collapse to 34px strips with a
@@ -308,6 +308,32 @@ every part is an aligned grid with the row anatomy of the object view:
 Every line opens its address; counts refresh after every apply. A failed part or line shows its error in
 `--style-red` in its place; the rest stands.
 
+## Live mode, snapshots, compare
+
+Changes show in the object itself (mock `Main`: `.chg`, `.flash`, `.old`, the `changes` band), never in a
+separate tool.
+
+- **Live mode** (`w`) reads the active column's row again every few seconds (Settings → Queries → Live
+  interval, default 2 s); the status bar shows `● live 2 s` in the accent at its right end.
+- **A changed value** flashes once (`--cell` fading to transparent over 1.6 s), then keeps its old value next
+  to it in `--o3`, struck through; its row gets a 3px accent mark on the left. A new row gets the same mark,
+  and a new meta value shows `no row` struck through. A removed row stays where it was, in `--o3` and struck
+  through, until `x` dismisses the marks of the column.
+- **The change list** is a section band `changes` at the bottom of the column (`since live started` or
+  `since snapshot <label> (2 h ago)`, `in key order within one poll`, the `x` key, the count), then rows of
+  time, table, column or meta key (a row's key for a new or removed row) and `old → new` (old in `--o3`;
+  `NULL`, `no row`). Lines are in the order they were seen; changes found by one poll have no order of their
+  own, so they are listed by table, primary key and column. A line jumps to the value (the Document view, the
+  value focused).
+- **Snapshots:** `s` stores the active column's row (palette: "Snapshot saved query results…" stores the first
+  1,000 rows of a saved query's tab, keyed by primary key). "Changes since snapshot…" (palette) lists the
+  snapshots of the row or query, newest first, and draws the same marks and list against the one picked; in a
+  saved query's tab the list sits under the results, and a line opens its row.
+- **Compare** (`databee://…/<table>/<key>?compare=<key2>`, palette "Compare with another row…"): the column
+  shows both rows side by side, each with its header, and marks every value and row that differs on both
+  sides; nothing is struck through. A line on top says how many differences there are and how they align:
+  groups by rule, meta rows by key, other rows by position.
+
 ## Keys
 
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys fire only in
@@ -327,9 +353,9 @@ rebindable.
 | `⌥` (held) | object, grid | peek the hovered or focused reference; ↵ opens it |
 | `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (grid: the `table` scope; documents and Rows grids: the `object` scope) |
 | `r` | object, grid | add a reference from this column or meta key: opens the Project page with the form prefilled (context menu: "Add reference…", "Kind…", "Style…") |
-| `w` | object | live mode on/off (from U13) |
-| `s` | object | snapshot (from U13) |
-| `x` | object | dismiss change marks in the focused column (from U13) |
+| `w` | object | live mode on/off for the active column (`object.live`) |
+| `s` | object | take a snapshot of the active column's row, after a label prompt (`object.snapshot`) |
+| `x` | object | dismiss the change marks of the active column (`object.dismissChanges`) |
 | `p` | query (focus in the results) | pin the tab's saved query: Not pinned, Count, Value or Rows(n) (`query.pin`) |
 | ⌘S | global, query | `changes.apply` applies pending changes; with nothing pending, `query.save` (its fallback) saves the query tab |
 | ⌘\ | global | toggle the sidebar |

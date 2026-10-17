@@ -1,6 +1,7 @@
 /** One value of a document row: focusable, editable in place, drawn by `Value`. */
 import { createContext, memo, useContext, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { Provenance, Value as StoredValue } from "../../api";
+import { FLASH_MS } from "../../lib/diff";
 import { cellText } from "../../lib/format";
 import { Value, type OpenValue } from "../value/Value";
 
@@ -32,16 +33,24 @@ function ValueEditor({ value }: { value: StoredValue }) {
   return <input className="cell-input" autoFocus aria-label="Edit value" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} onBlur={cancelEdit} />;
 }
 
+/** A changed value: the old value struck through next to it (null: only the row mark), and when it changed. */
+export interface FieldChange {
+  old: string | null;
+  /** A change seen in the last `FLASH_MS` flashes; null never flashes (compare). */
+  at: number | null;
+}
+
 interface FieldProps {
   value: StoredValue | null;
   focused: boolean;
   editing?: boolean;
   /** Right-aligned, as numbers are in grids. */
   numeric?: boolean;
+  change?: FieldChange;
 }
 
 /** A value cell; a mousedown focuses its provenance, so value commands and a following click act on it. */
-export const Field = memo(function Field({ value, focused, editing = false, numeric = false }: FieldProps) {
+export const Field = memo(function Field({ value, focused, editing = false, numeric = false, change }: FieldProps) {
   const { onOpen, focus, menu } = useContext(DocumentContext);
   if (!value) return <span />;
   if (editing) return <ValueEditor value={value} />;
@@ -54,7 +63,14 @@ export const Field = memo(function Field({ value, focused, editing = false, nume
   };
   return (
     <span className={classes || undefined} onMouseDown={() => focus(value.source)} onContextMenu={onContextMenu}>
-      <Value value={value} onOpen={onOpen} />
+      {change?.at != null && Date.now() - change.at < FLASH_MS ? (
+        <span key={change.at} className="flash">
+          <Value value={value} onOpen={onOpen} />
+        </span>
+      ) : (
+        <Value value={value} onOpen={onOpen} />
+      )}
+      {change?.old != null && <span className="old">{change.old}</span>}
     </span>
   );
 });

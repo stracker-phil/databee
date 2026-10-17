@@ -88,7 +88,11 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `view-toggle` with `view-toggle:document` and `view-toggle:rows`, `group-<table>` on each section band's
     table name (list `groups`; a second band of the same table is `group-<table>:<group id>`), `collapse:<group id>` (the band's
     collapse chevron), `more:<group id>`
-    (`+n rows`), `also:<group id>` (the "Also linked" tables), `alternative:<row address>`
+    (`+n rows`), `also:<group id>` (the "Also linked" tables), `alternative:<row address>`; live mode and
+    snapshots: `changes` (the change list at the bottom of a column or a saved query's tab) with its lines
+    `change:<index>` (list `changes`, oldest first, label `<table> <column or key>`), `compare` (two rows side
+    by side, `?compare=`); the snapshot list (`object.sinceSnapshot`, `query.sinceSnapshot`):
+    `snapshot:<id>` (list `snapshots`, newest first, label: the snapshot's label) and `snapshot:delete:<id>`
   - the column stack: `column:<index>` on each column shown in full (list `columns`, label `table #key`),
     `strip:<index>` on each strip (list `strips`), `toolbar:path` with the crumbs `path:<index>` (list `path`;
     the last crumb is no button), `peek` on the peek card while ⌥ is held
@@ -118,6 +122,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `saved:<origin>:<id>` (a saved query), `cmd:<id>`
     and `recent:<title>`; holding ⌥ shows the selected hit's `peek`
   - `settings:<page>` and `settings-nav:<page>`
+  - `queries:live-interval` on Settings → Queries
   - `appearance:<control>` on Settings → Appearance (`theme`, `light-scheme`, `dark-scheme`, `row-padding`,
     `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are
     `appearance:accent:<id>` (list `appearance:accent`)
@@ -126,7 +131,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     serialized data, secrets) and have a provenance (list `values`; label: the raw value)
   - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:search` (opens the palette),
     `statusbar:sidebar` (the ▤ toggle), `statusbar:presets` (opens the Project page),
-    `statusbar:pending`
+    `statusbar:pending`, `statusbar:live` (`● live 2 s` while the active column is live; a click ends it)
 
   Sheets are marked with `data-stage-window`.
 

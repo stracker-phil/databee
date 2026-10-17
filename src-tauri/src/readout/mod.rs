@@ -7,7 +7,7 @@ pub mod commands;
 mod parts;
 #[cfg(test)]
 mod server_tests;
-mod sql;
+pub(crate) mod sql;
 #[cfg(test)]
 mod testing;
 

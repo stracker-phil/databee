@@ -6,7 +6,7 @@ import { copyText } from "../lib/clipboard";
 import { formatCount } from "../lib/format";
 import { provenanceText } from "../lib/provenance";
 import { projectKey } from "../state/slices/project";
-import { selectActivePending, selectActiveSession, selectActiveTab, selectFocusedValue, selectSidebarHidden, useStore, type QueryTab, type Tab } from "../state/store";
+import { selectActiveLive, selectActivePending, selectActiveSession, selectActiveTab, selectFocusedValue, selectSidebarHidden, useStore, type QueryTab, type Tab } from "../state/store";
 
 /** The tab's address as text; click copies it. A typed SQL filter is not part of it and shows as a hint. */
 function AddressText({ tab }: { tab: Tab }) {
@@ -117,7 +117,19 @@ function PresetsText() {
   );
 }
 
-/** Left to right: sidebar toggle, address, spacer, presets, pending count. */
+/** `● live 2 s` in the accent while the active object column is live; a click ends live mode. */
+function LiveText() {
+  const seconds = useStore(selectActiveLive);
+  const keys = useBindingLabel("object.live");
+  if (seconds === null) return null;
+  return (
+    <button data-stage="statusbar:live" className="status-text live" title={keys ? `Stop live mode (${keys})` : "Stop live mode"} onClick={() => void useStore.getState().toggleLive()}>
+      ● live {seconds} s
+    </button>
+  );
+}
+
+/** Left to right: sidebar toggle, address, spacer, presets, pending count, live mode. */
 export function StatusBar() {
   return (
     <footer className="statusbar" data-stage="statusbar" data-stage-label="Status bar">
@@ -126,6 +138,7 @@ export function StatusBar() {
       <div className="spacer" />
       <PresetsText />
       <PendingCount />
+      <LiveText />
     </footer>
   );
 }

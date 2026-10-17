@@ -9,6 +9,7 @@ pub mod actions;
 mod build;
 pub mod commands;
 mod context;
+pub mod diff;
 mod events;
 mod exists;
 mod incoming;
@@ -21,10 +22,12 @@ mod pivot;
 #[cfg(test)]
 mod server_tests;
 mod shorthand;
+pub mod snapshot;
+pub mod watch;
 
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::address::{Address, SCHEME};
@@ -86,7 +89,7 @@ pub struct Group {
     pub error: Option<String>,
 }
 
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub enum GroupShape {

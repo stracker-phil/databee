@@ -167,6 +167,7 @@ function QueriesPage({ s, set }: SettingsPageProps) {
     <Group>
       <NumberField label="Row limit" description="Rows fetched per query in the SQL editor." value={s.rowLimit} {...SETTINGS_LIMITS.rowLimit} onCommit={(rowLimit) => set({ rowLimit })} />
       <NumberField label="Query timeout" description="Queries running longer are stopped." suffix="s" value={s.queryTimeoutSecs} {...SETTINGS_LIMITS.queryTimeoutSecs} onCommit={(queryTimeoutSecs) => set({ queryTimeoutSecs })} />
+      <NumberField stage="queries:live-interval" label="Live interval" description="How often a live object reads its row again (w)." suffix="s" value={s.liveIntervalSecs} {...SETTINGS_LIMITS.liveIntervalSecs} onCommit={(liveIntervalSecs) => set({ liveIntervalSecs })} />
       <Switch label="Confirm destructive statements" description="Ask before DROP, TRUNCATE and DELETE/UPDATE without WHERE." checked={s.confirmDestructive} onChange={(confirmDestructive) => set({ confirmDestructive })} />
     </Group>
   );

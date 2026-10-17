@@ -13,6 +13,7 @@ export const TEXT_SIZES = {
 export const SETTINGS_LIMITS = {
   rowLimit: { min: 10, max: 100_000 },
   queryTimeoutSecs: { min: 1, max: 3600 },
+  liveIntervalSecs: { min: 1, max: 60 },
   maxCellChars: { min: 20, max: 100_000 },
   connectTimeoutSecs: { min: 1, max: 120 },
   // `default_port` is a u16; `sanitized` only replaces 0.
