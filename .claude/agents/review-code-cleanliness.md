@@ -35,6 +35,7 @@ If the caller names a file without a mode, default to `CHANGES in`.
 - Flag a file the change pushes past ~400 lines as a `Consider` (never as a fix to apply).
 
 ### 2. Comment noise
+- The default is no comment. Flag every comment or doc comment that the code makes unnecessary.
 - Comments must be evergreen: flag transactional ones (`// fixed later`, `// was broken before`).
 - Flag comments that restate the code; comments justify *why*, not *what*.
 - Flag doc comments (`///`, `/** */`) that repeat the name or signature, and ones longer than what they
