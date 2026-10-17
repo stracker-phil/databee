@@ -10,7 +10,7 @@ out of the main context ([`.claude/rules/testing.md`](../.claude/rules/testing.m
 |---|---|
 | `bun run test` | Vitest UI tests (`test:ui`), then the Rust unit tests (`test:rust`) |
 | `bun run test:db` | recreates the Docker fixtures, then `cargo test -- --ignored --skip real_data` (integration tests only, in `tests/` and in modules; the real-data tests are left out) |
-| `bun run lint` | `tsc --noEmit` and `cargo clippy --all-targets -- -D warnings` |
+| `bun run lint` | `tsc --noEmit` (app and tests) and `cargo clippy --lib --bins -- -D warnings` (production code only; test code is compiled by `cargo test` but not linted, because tests deliberately use `unwrap`, clones and odd inputs) |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | Rust formatting (run before lint) |
 
 The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules/testing.md):

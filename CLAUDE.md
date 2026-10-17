@@ -29,7 +29,7 @@ commands, files or extension points change. Document by file and symbol, never b
 Test, lint and format-check commands run through the `ci` agent, never in the main context.
 - `bun run test`: Vitest and Rust unit tests
 - `bun run test:db`: Docker fixtures (`dev/`) and integration tests (MariaDB 11.4 and MySQL 8.4)
-- `bun run lint`: tsc and clippy (warnings are errors)
+- `bun run lint`: tsc and clippy on production code (warnings are errors; Rust tests are not linted)
 - `scripts/install-cli.sh` / `scripts/install-app.sh`: symlink the `databee` command and the app launcher (README)
 - `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus
 - `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive and capture the running window in the background
