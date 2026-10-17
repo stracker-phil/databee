@@ -6,7 +6,7 @@ import { fieldError, kindRule, referenceRule, styleRule, type KindForm, type Ref
 const invalid = (message: string): AppError => ({ kind: "invalid_input", message, code: null, account: null });
 
 const invalidField = (path: string, message: string): AppError =>
-  ({ kind: "invalid_input", message: `\`${path}\`: ${message}`, code: null, account: null, field: { path, message } }) as AppError;
+  ({ kind: "invalid_input", message: `\`${path}\`: ${message}`, code: null, account: null, field: { path, message } });
 
 describe("fieldError", () => {
   it.each([

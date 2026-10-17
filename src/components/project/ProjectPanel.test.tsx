@@ -227,7 +227,7 @@ describe("ProjectPanel", () => {
     });
 
     it("shows the Rust error under the field it names", async () => {
-      mocked.projectUpdate.mockRejectedValue({ kind: "invalid_input", message: "`reference.to`: `wp_users` has no column `nope`", code: null });
+      mocked.projectUpdate.mockRejectedValue({ kind: "invalid_input", message: "`reference.to`: `wp_users` has no column `nope`", code: null, field: { path: "reference.to", message: "`wp_users` has no column `nope`" } });
       await openProjectPage({ ...form(), target: { table: "wp_users", column: "nope" } });
       const region = await screen.findByRole("region", { name: "new reference" });
       await userEvent.click(within(region).getByRole("button", { name: "Save to project" }));
