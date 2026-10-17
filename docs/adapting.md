@@ -35,6 +35,7 @@ The app's name and ids live in a few places. Change them together.
 | Keychain service `"databee"` | `secrets/keychain.rs` `SERVICE` | Changing it loses saved passwords |
 | Socket file `databee.sock` | `lib.rs`, `scripts/dev/js.sh` | |
 | Address scheme `databee://` | `src-tauri/src/address/mod.rs` `SCHEME`; `src/lib/address.ts` `SCHEME`; `src/test/fixtures/addresses.json` | Copied and saved addresses stop parsing when it changes |
+| Deep-link URL scheme `databee` | `tauri.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`) | Keep it equal to the address scheme, or links stop opening. Debug and release builds share it, like the identifier |
 | Env vars `DATABEE_*` | `dev.rs`, `scripts/dev/launch.sh`, tests | |
 | Window events `databee:*`, `window.databee` | `src/commands/index.ts`, `src/main.tsx`, the dev scripts | Internal only |
 | Icons | `src-tauri/icons/` | Regenerate with `bun tauri icon <1024px png>` |

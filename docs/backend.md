@@ -27,7 +27,8 @@ Stage hook each have their own page.
 5. **`start_app`** builds Tauri, with `.manage(state)` as the first builder call so plugins can use it:
    - plugins: log (stdout plus a rotating file, 3 × 5 MiB; `sqlx` is capped at Warn so SQL text stays out of
      the log), `init_logging` (a one-line plugin that sets the effective level right after the log plugin's
-     setup, which sets `Trace` because its dispatch level caps every later change) and opener;
+     setup, which sets `Trace` because its dispatch level caps every later change), opener, dialog and
+     deep-link;
    - `on_menu_event` → `menu::forward`.
 
    Then `setup` runs:
@@ -38,6 +39,7 @@ Stage hook each have their own page.
    - In debug builds `apply_dev_frame` applies `DATABEE_WINDOW_FRAME` (see [testing](testing.md#driving-the-app)).
    - `start_ipc` binds the IPC socket and serves it in a task; every message goes to
      `launch::on_ipc_message`. A bind error is logged and the app runs without single-instance handoff.
+   - `deep_link::listen` handles `databee://` links ([below](#deep-links)).
 
    `start_app` also manages `remote::Bridge`, the pending requests only the page can answer
    ([below](#requests-the-page-answers)).
@@ -216,6 +218,31 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
   `IpcMessage`'s derived `Debug`.
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
   bind while a listener is alive.
+
+### Deep links
+
+`tauri-plugin-deep-link` registers the `databee` scheme (`tauri.conf.json` `plugins.deep-link.desktop.schemes`;
+the bundler writes it into the app's `Info.plist`). macOS delivers a link to the running app, or starts the app
+and then delivers it, as `RunEvent::Opened`; the plugin re-emits it, and `deep_link::listen`
+(`on_open_url`) takes it. No capability is needed, because the page never calls the plugin's commands.
+
+`deep_link::link_messages(url, is_open, saved_spec)` decides what a link takes, and `open` queues the result
+with `launch::queue_launches`. The queue is used instead of `remote::Bridge`, so a link that started the app
+waits until the page has loaded:
+
+- not an address: an `error` (a toast);
+- an open session has the slug (`Sessions::has_slug`): `open {address, focus: true}`;
+- only a saved connection (`RecentsStore`) has it: `launch` with its spec and no password, then `open`. The
+  connect takes the Keychain password, else shows the password dialog; `handleLaunchEvents` drops an `open`
+  that follows a failed connect;
+- neither: an `error`, "No open or saved connection is named …".
+
+Links only reach a bundled app (`bun run build:app` or a release bundle) that LaunchServices knows, e.g. after
+it was started once or linked by `scripts/install-app.sh`. The debug build needs no scheme of its own: it has
+the release build's identifier, socket and lock, so only one of them runs at a time, and macOS hands the link
+to the running one. When the registered bundle is not the one running (two bundles on disk, one of them
+running), macOS starts the other bundle, which only activates the running app through the socket, and the
+link is lost.
 
 ### Requests the page answers
 

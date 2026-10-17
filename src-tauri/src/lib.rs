@@ -5,6 +5,7 @@ pub mod connection;
 pub mod db;
 mod db_commands;
 pub mod decode;
+mod deep_link;
 #[cfg(debug_assertions)]
 mod dev;
 pub mod document;
@@ -243,6 +244,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
         .plugin(init_logging(log_level))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(stage::init(&config_dir))
         .plugin(wp::init(&config_dir))
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
@@ -256,6 +258,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             #[cfg(debug_assertions)]
             apply_dev_frame(app);
             start_ipc(app.handle().clone(), &socket);
+            deep_link::listen(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

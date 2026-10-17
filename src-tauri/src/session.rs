@@ -420,6 +420,10 @@ impl Sessions {
         self.0.write_unpoisoned().remove(id)
     }
 
+    pub fn has_slug(&self, slug: &str) -> bool {
+        self.0.read_unpoisoned().values().any(|s| s.slug() == slug)
+    }
+
     /// Gives every open session of the connection `identity` the renamed slug.
     pub fn rename_slug(&self, identity: &str, slug: &str) {
         for session in self.0.read_unpoisoned().values() {
@@ -786,6 +790,28 @@ mod tests {
         assert_eq!(first.slug(), "renamed");
         assert_eq!(second.slug(), "renamed");
         assert_eq!(other.slug(), "socket");
+    }
+
+    #[test]
+    fn has_slug_is_true_only_for_the_slug_of_an_open_session() {
+        let sessions = Sessions::default();
+        assert!(!sessions.has_slug("local"));
+
+        sessions.insert(session("a"));
+
+        assert!(sessions.has_slug("local"));
+        assert!(!sessions.has_slug("other"));
+    }
+
+    #[test]
+    fn has_slug_follows_a_renamed_slug() {
+        let sessions = Sessions::default();
+        sessions.insert(session("a"));
+
+        sessions.rename_slug(&local_spec().identity(), "renamed");
+
+        assert!(sessions.has_slug("renamed"));
+        assert!(!sessions.has_slug("local"));
     }
 
     #[tokio::test]

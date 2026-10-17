@@ -164,15 +164,20 @@ pub async fn on_ipc_message(handle: AppHandle, message: IpcMessage) -> HandlerRe
         IpcMessage::Command { id } => RemoteRequest::Command { id },
         IpcMessage::Current => RemoteRequest::Current,
         launch => {
-            queue_launch(&handle, launch);
+            queue_launches(&handle, [launch]);
             return Ok(serde_json::Value::Null);
         }
     };
     handle.state::<Bridge>().ask(&handle, request).await
 }
 
-fn queue_launch(handle: &AppHandle, message: IpcMessage) {
-    let queued_event = handle.state::<AppState>().launches.push(message);
+/// Queues `messages` in order for the page, tells it, and brings the window to the front.
+pub fn queue_launches(handle: &AppHandle, messages: impl IntoIterator<Item = IpcMessage>) {
+    let launches = &handle.state::<AppState>().launches;
+    let mut queued_event = false;
+    for message in messages {
+        queued_event |= launches.push(message);
+    }
     if queued_event && let Err(e) = handle.emit(LAUNCH_EVENT, ()) {
         log::warn!("Couldn't notify the page of a launch request: {e}");
     }
@@ -211,6 +216,26 @@ mod tests {
         queue.push(launch_message(None));
         assert_eq!(queue.take_events().len(), 1);
         assert!(queue.take_events().is_empty());
+    }
+
+    #[test]
+    fn a_launch_pushed_before_an_open_is_taken_before_it() {
+        let queue = LaunchQueue::default();
+        queue.push(launch_message(None));
+        queue.push(IpcMessage::Open {
+            address: "databee://local/wp/".into(),
+            connection: None,
+            focus: true,
+        });
+
+        let events = queue.take_events();
+
+        assert_eq!(events.len(), 2);
+        assert!(matches!(events[0], LaunchEvent::Connect { .. }));
+        assert!(matches!(
+            &events[1],
+            LaunchEvent::Open { address, connection: None } if address == "databee://local/wp/"
+        ));
     }
 
     #[test]
