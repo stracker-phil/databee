@@ -3,8 +3,11 @@
 
 use std::time::Duration;
 
-use super::diff::{FlatDocument, FlatField, FlatGroup, FlatRow};
-use super::{Ctx, Document, GroupShape};
+use serde::Serialize;
+use ts_rs::TS;
+
+use super::diff::{DocDelta, FlatDocument, FlatField, FlatGroup, FlatRow, diff_documents};
+use super::{Ctx, Document, GroupShape, parse_address};
 use crate::address::{Address, Target};
 use crate::db::classify::is_read_only;
 use crate::db::{Cell, ExecuteResponse, ResultSet};
@@ -13,12 +16,85 @@ use crate::lens::annotate_execute;
 use crate::readout::sql::{in_database, limited, single_statement};
 use crate::rules::effective::RuleSources;
 use crate::session::Session;
+use crate::store::snapshots::{SnapshotInfo, SnapshotStore};
 use crate::value::{KeyPart, Provenance, RowKey};
 
 /// Rows of a saved query a snapshot keeps.
 pub const QUERY_ROWS: u32 = 1000;
 /// The one group of a saved query's snapshot.
 pub const RESULT_GROUP: &str = "result";
+
+/// What changed since snapshot `id`: its address read now against the stored cells.
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotDiff {
+    pub snapshot: SnapshotInfo,
+    pub delta: DocDelta,
+    /// The row's document now; `None` for a saved query.
+    pub document: Option<Document>,
+}
+
+/// Stores the row or saved query at `text` as it is now, under the trimmed `label`.
+pub async fn take(
+    session: &Session,
+    store: &SnapshotStore,
+    text: &str,
+    label: &str,
+    sources: RuleSources<'_>,
+    timeout: Duration,
+) -> AppResult<SnapshotInfo> {
+    let label = label.trim();
+    if label.is_empty() {
+        return Err(AppError::InvalidInput("A snapshot needs a label".into()));
+    }
+    let address = address(session, text)?;
+    let (cells, _) = capture(session, &address, sources, timeout).await?;
+    let created = chrono::Utc::now().timestamp();
+    store.add(label.to_string(), &address, created, cells).await
+}
+
+/// The snapshots of `database` in this connection, newest first; only those of `text` when given.
+pub fn list(
+    session: &Session,
+    store: &SnapshotStore,
+    database: &str,
+    text: Option<&str>,
+) -> AppResult<Vec<SnapshotInfo>> {
+    let address = text
+        .map(|text| address(session, text).map(|a| a.to_string()))
+        .transpose()?;
+    Ok(store.list(&session.slug(), database, address.as_deref()))
+}
+
+/// Snapshot `id` against its address read now.
+pub async fn diff(
+    session: &Session,
+    store: &SnapshotStore,
+    id: &str,
+    sources: RuleSources<'_>,
+    timeout: Duration,
+) -> AppResult<SnapshotDiff> {
+    let (snapshot, stored) = store.get(id).await?;
+    let address = address(session, &snapshot.address)?;
+    let (now, document) = capture(session, &address, sources, timeout).await?;
+    let delta = diff_documents(&stored, &now);
+    Ok(SnapshotDiff {
+        snapshot,
+        delta,
+        document,
+    })
+}
+
+/// A row or saved-query address of this session's connection, without view or compare.
+fn address(session: &Session, text: &str) -> AppResult<Address> {
+    let address = parse_address(session, text)?;
+    Ok(Address {
+        view: None,
+        compare: None,
+        ..address
+    })
+}
 
 /// The cells of `address` now, and the document when it is a row.
 pub async fn capture(
@@ -173,7 +249,7 @@ mod tests {
     use super::*;
     use crate::db::{ColumnMeta, ColumnOrigin};
     use crate::document::diff::fixtures::{key, number, prov, text};
-    use crate::document::testing::{Rig, shop};
+    use crate::document::testing::{Rig, result, shop};
     use crate::error::ErrorKind;
     use crate::rules::project::SavedQuery;
 
@@ -343,5 +419,135 @@ mod tests {
 
             assert_eq!(err.kind(), ErrorKind::InvalidInput, "{address}");
         }
+    }
+
+    fn order_rig() -> Rig {
+        let order = |id: &str, status: &str| {
+            result(
+                &["id", "status", "total", "currency", "created_gmt"],
+                vec![vec![
+                    number(id),
+                    text(status),
+                    text("10.00"),
+                    text("EUR"),
+                    Cell::Temporal("2023-11-14 22:13:20".into()),
+                ]],
+            )
+        };
+        Rig::new(
+            shop()
+                .on(
+                    "`f_ordermeta`",
+                    result(&["meta_id", "order_id", "k", "v"], Vec::new()),
+                )
+                .on("= '1' LIMIT", order("1", "paid"))
+                .on("= '2' LIMIT", order("2", "open")),
+            "",
+        )
+    }
+
+    async fn take_order(
+        rig: &Rig,
+        store: &SnapshotStore,
+        text: &str,
+        label: &str,
+    ) -> AppResult<SnapshotInfo> {
+        take(
+            &rig.session,
+            store,
+            text,
+            label,
+            rig.sources(),
+            Duration::from_secs(5),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn a_blank_label_is_invalid_input_and_stores_nothing() {
+        let rig = order_rig();
+        let dir = tempfile::tempdir().unwrap();
+        let store = SnapshotStore::open(dir.path());
+
+        for label in ["", "   "] {
+            let err = take_order(&rig, &store, "databee://local/wp/f_orders/1", label)
+                .await
+                .unwrap_err();
+
+            assert!(
+                matches!(&err, AppError::InvalidInput(m) if m == "A snapshot needs a label"),
+                "{err:?}"
+            );
+        }
+        assert_eq!(list(&rig.session, &store, "wp", None).unwrap(), []);
+        assert_eq!(rig.db.queries(), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn a_snapshot_is_stored_under_its_trimmed_label_at_the_plain_row_address() {
+        let rig = order_rig();
+        let dir = tempfile::tempdir().unwrap();
+        let store = SnapshotStore::open(dir.path());
+
+        let info = take_order(
+            &rig,
+            &store,
+            "databee://local/wp/f_orders/1?view=document&compare=2",
+            "  before  ",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            (
+                info.label.as_str(),
+                info.connection.as_str(),
+                info.database.as_str()
+            ),
+            ("before", "local", "wp")
+        );
+        assert_eq!(info.address, "databee://local/wp/f_orders/1");
+        assert_eq!(list(&rig.session, &store, "wp", None).unwrap(), [info]);
+    }
+
+    #[tokio::test]
+    async fn listing_by_address_ignores_its_view_and_compare() {
+        let rig = order_rig();
+        let dir = tempfile::tempdir().unwrap();
+        let store = SnapshotStore::open(dir.path());
+        let first = take_order(&rig, &store, "databee://local/wp/f_orders/1", "one")
+            .await
+            .unwrap();
+        take_order(&rig, &store, "databee://local/wp/f_orders/2", "two")
+            .await
+            .unwrap();
+
+        let listed = list(
+            &rig.session,
+            &store,
+            "wp",
+            Some("databee://local/wp/f_orders/1?view=rows&compare=2"),
+        )
+        .unwrap();
+
+        assert_eq!(listed, [first]);
+        assert_eq!(list(&rig.session, &store, "other", None).unwrap(), []);
+    }
+
+    #[tokio::test]
+    async fn listing_by_an_address_of_another_connection_is_invalid_input() {
+        let rig = order_rig();
+        let dir = tempfile::tempdir().unwrap();
+        let store = SnapshotStore::open(dir.path());
+
+        let err = list(
+            &rig.session,
+            &store,
+            "wp",
+            Some("databee://other/wp/f_orders/1"),
+        )
+        .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 }

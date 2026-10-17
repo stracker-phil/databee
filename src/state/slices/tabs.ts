@@ -3,7 +3,7 @@ import type { CellSource } from "../../lib/cells";
 import type { ColumnStack, StackColumn, ValueColumn } from "../../lib/columns";
 import type { ProjectForm } from "../../lib/ruleForms";
 import { fail } from "../requests";
-import { selectActiveSession, selectActiveTab } from "../selectors";
+import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
 import { EMPTY_NAV, homeAddress, pushed, tableAddress, tableTitle, type TabNav } from "./nav";
 import { nextActiveSessionId } from "./session";
@@ -136,12 +136,6 @@ export interface TabsSlice {
   openQueryTab(sql?: string, title?: string, saved?: SavedRef): void;
   /** An open tab of the same table is activated; `view` and `preview: false` (pin) apply to it only when given. */
   openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean; where?: ColumnEquals[] }): void;
-  openInDatabase(table: string, where?: ColumnEquals[]): void;
-  /**
-   * Opens the rows of `table` where `column` equals `value`: in the active table tab (back returns), else in the
-   * preview tab.
-   */
-  openRow(table: string, column: string, value: string | null): void;
   pinTab(id: string): void;
   activateTab(id: string): void;
   closeTab(id: string): void;
@@ -238,24 +232,6 @@ export const tabsSlice: Slice<TabsSlice> = {
         };
         return { tabs: placed(s.tabs, tab, replaced), ...activate(s, tab.id) };
       });
-    },
-
-    openInDatabase(table, where) {
-      const database = selectActiveSession(get())?.database;
-      if (!database) return;
-      get().openTableTab(database, table, "data", undefined, { where });
-    },
-
-    openRow(table, column, value) {
-      const s = get();
-      const database = selectActiveSession(s)?.database;
-      if (!database) return;
-      const active = selectActiveTab(s);
-      if (active?.kind === "table" && active.sessionId === s.activeSessionId) {
-        s.showRows(active.id, { database, table, where: [{ column, value }] });
-        return;
-      }
-      s.openTableTab(database, table, "data", undefined, { preview: true, where: [{ column, value }] });
     },
 
     pinTab(id) {

@@ -234,7 +234,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .grid-cell.null { color: var(--o3); font-style: italic; }
 .grid-cell.bytes { color: var(--o3); }
 .grid-cell.selected { box-shadow: inset 0 0 0 1.5px var(--accent); }
-/* Header: the column name, then its type on a second line (mock Rows). */
+/* Header: the column name, then its type on a second line. */
 .grid-hcell {
   flex: none; position: relative; display: flex; flex-direction: column; justify-content: flex-end;
   padding: var(--pad) 0.769rem; line-height: 1.3; overflow: hidden;
@@ -474,7 +474,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .val-tree { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; }
 
 /* ---------- column stack ---------- */
-/* mock Drill: columns side by side, the oldest collapsed to strips; the active one has an accent line on top. */
+/* Columns side by side, the oldest collapsed to strips; the active one has an accent line on top. */
 .stack { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
 .stack > .column { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); outline: none; }
 .stack > :first-child { border-left: none; }
@@ -532,7 +532,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .shortcut-row dd { margin: 0; }
 
 /* ---------- object view ---------- */
-/* mock Main: the header block, section bands (.sh) and rows (.row, .kv, .hdr) share the row anatomy. */
+/* The header block, section bands (.sh) and rows (.row, .kv, .hdr) share the row anatomy. */
 .object { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .object-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 1.231rem; border-bottom: 1px solid var(--line); }
 .object-title { display: flex; align-items: center; gap: 0.923rem; flex-wrap: wrap; }
@@ -585,7 +585,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); }
 
 /* ---------- project page ---------- */
-/* mock Project: section bands and rows as in the object view; read-only rows in --o2, switched off ones struck. */
+/* Section bands and rows as in the object view; read-only rows in --o2, switched off ones struck. */
 .project { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .project section { display: flex; flex-direction: column; }
 .project .act { border: none; background: none; padding: 0; font: inherit; color: var(--accent); white-space: nowrap; }
@@ -632,7 +632,7 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .icon-btn.tiny { width: 1.385rem; height: 1.385rem; }
 
 /* ---------- readout ---------- */
-/* mock Readout: a header block, then section bands as in the object view; tables align their columns with subgrid. */
+/* A header block, then section bands as in the object view; tables align their columns with subgrid. */
 .readout { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .readout-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 0.308rem; }
 .readout-title { margin: 0; font-family: var(--font-mono); font-size: var(--fs-large); font-weight: 600; color: var(--text); }
@@ -727,7 +727,7 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .link-btn.plain.small { font-size: inherit; display: inline-flex; align-items: center; gap: 0.154rem; }
 
 /* ---------- live mode, snapshots, compare ---------- */
-/* mock Main: a changed value flashes once (--cell to transparent), then keeps its old value struck through; changed
+/* A changed value flashes once (--cell to transparent), then keeps its old value struck through; changed
    and new rows carry a 3px accent mark, removed rows stay struck through until dismissed. */
 .object .row.chg { box-shadow: inset 3px 0 0 var(--accent); }
 .object .row.removed { color: var(--o3); text-decoration: line-through; }

@@ -448,12 +448,8 @@ The page never builds SQL conditions. Opening rows in the Database view passes s
 (`ColumnEquals`: `{ column, value }`, a `null` value means `IS NULL`), and Rust renders and quotes them
 ([Browsing tables](database.md#browsing-tables)):
 
-- `openRow(table, column, value)` (tabs slice): while a table tab of the active session is active, that tab
-  moves to the rows (`showRows`, so ⌘[ returns). Otherwise it opens `table` of the active database with
-  `where: [{ column, value }]` in the preview tab.
-- `openInDatabase(table, where?)`: the same with any number of matches, in a kept tab.
-
-Both have no caller in the app today; value clicks go through `useOpenValue` and `filterRows`.
+- Value clicks go through `useOpenValue` and `filterRows`; `showRows(tabId, { database, table, where })` moves
+  a table tab to other rows and records the earlier ones for ⌘[.
 - `openTableTab(database, table, view?, filter?, { preview?, where? })`: an open tab is reused only when
   its `filter` and `where` are the same. A preview tab that replaces the previous one takes over its history
   and records the replaced address, so a single click in the sidebar can be undone with ⌘[.

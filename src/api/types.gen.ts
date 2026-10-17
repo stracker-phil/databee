@@ -520,9 +520,9 @@ export type ParamType = "text" | "int";
 export type Part<T> = { items: Array<T>, error: string | null, };
 
 /**
- * Rows of `table` shown as a group on an `owner` row's document. Rules with the same `name`
- * and `owner` are one group (OR); a rule whose `{owner.…}`/`{meta.…}` value is NULL or `''`
- * is skipped.
+ * Rows of `table` shown as a group on an `owner` row's document. Rules with the same `name`,
+ * `owner` and `table` are one group (OR); a rule whose `{owner.…}`/`{meta.…}` value is NULL or
+ * `''` is skipped.
  */
 export type Pattern = { name: string, owner: string, owner_when?: { [key in string]: Match }, table: string, where: string, order?: string | null, limit?: number | null, };
 
@@ -885,11 +885,7 @@ liveIntervalSecs: number, confirmDestructive: boolean, nullLabel: string,
 /**
  * Longer text cells cross IPC as a preview; `fetch_cell` returns the full value.
  */
-maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSystemSchemas: boolean, logLevel: LogLevel, 
-/**
- * Loads avatars from Gravatar (sends hashed emails to gravatar.com).
- */
-gravatar: boolean, };
+maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSystemSchemas: boolean, logLevel: LogLevel, };
 
 /**
  * What changed since snapshot `id`: its address read now against the stored cells.

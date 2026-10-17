@@ -21,7 +21,6 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     defaultPort: 3306,
     showSystemSchemas: false,
     logLevel: "info",
-    gravatar: false,
     ...patch,
   };
 }

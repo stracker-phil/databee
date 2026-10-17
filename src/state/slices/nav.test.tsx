@@ -29,7 +29,7 @@ async function openPagesThenRow() {
   await useStore.getState().loadStructure(session.id, "db", "wp_posts");
   act(() => {
     useStore.getState().openTableTab("db", "wp_posts", "data", undefined, { where: pages });
-    useStore.getState().openRow("wp_posts", "ID", "7");
+    useStore.getState().showRows(activeTable().id, { database: "db", table: "wp_posts", where: row7 });
   });
 }
 
@@ -75,7 +75,7 @@ describe("tab history", () => {
     await openPagesThenRow();
     runCommand("nav.back");
     await waitFor(() => expect(activeTable().where).toEqual(pages));
-    act(() => useStore.getState().openRow("wp_posts", "ID", "9"));
+    act(() => useStore.getState().showRows(activeTable().id, { database: "db", table: "wp_posts", where: [{ column: "ID", value: "9" }] }));
     expect(runCommand("nav.forward")).toBe(false);
     expect(runCommand("nav.back")).toBe(true);
   });
@@ -83,7 +83,7 @@ describe("tab history", () => {
   it("records nothing when the same rows are shown again", () => {
     act(() => {
       useStore.getState().openTableTab("db", "wp_posts", "data", undefined, { where: pages });
-      useStore.getState().openRow("wp_posts", "post_type", "page");
+      useStore.getState().showRows(activeTable().id, { database: "db", table: "wp_posts", where: pages });
     });
     expect(runCommand("nav.back")).toBe(false);
   });

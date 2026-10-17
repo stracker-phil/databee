@@ -188,7 +188,7 @@ SELECT * FROM `db`.`t` [WHERE (<columns>) AND (<filter>\n)] [ORDER BY `col` ASC|
   clamped size, which the UI pages by.
 - **Sorting:** one column at a time, quoted with `Dialect::quote_ident`.
 - **Structured `where`:** `BrowseRequest.where` is a list of `ColumnEquals` (`{ column, value }`) sent by
-  `openRow` and `openInDatabase` ([frontend.md](frontend.md#opening-rows)). `browse::columns_filter` renders each as
+  `openTableTab`, `showRows` and `filterRows` ([frontend.md](frontend.md#opening-rows)). `browse::columns_filter` renders each as
   `` `col` = 'value' `` (`Dialect::quote_ident`, `Dialect::sql_string`), or `` `col` IS NULL `` for a `null`
   value, joined with `AND` into one group placed before the typed filter. Values are always quoted strings,
   never bare literals: MySQL compares them as strings for text columns and coerces them for numeric ones.

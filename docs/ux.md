@@ -85,7 +85,7 @@ Derived tokens in `src/styles/theme.css`, the same for every scheme:
 Status colors (`--success`, `--warning`, `--danger`, `--info` and their `-soft` variants), `--type-*`,
 `--chart-*`, `--category-*` and `--tile-*` are removed. Core components use only the tokens above (an error
 or warning background is a `color-mix()` of a `--style-*` color). Older rules in `app.css` still read a few old
-names (`--chart-*`, `--border`, `--text-secondary`, …); they survive as aliases onto scheme tokens in
+names (`--text-tertiary`, `--chart-green`, `--chart-orange`); they survive as aliases onto scheme tokens in
 `theme.css`. New CSS uses only the tokens above.
 
 **Fonts:** Geist (400, 500, 600) and JetBrains Mono (400, 500, 600, italic 400) are bundled (SIL OFL).

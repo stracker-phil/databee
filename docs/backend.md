@@ -402,7 +402,11 @@ a row address as its document, or a saved query (`…/q/<id>`, project, global o
 in the snapshot's database, annotated like query results. Its rows are one group `result`; a value is sourced
 when its result column has an origin column in this database and that table's whole primary key is in the
 result, and a row is keyed by its first sourced value's row. `SnapshotStore` (`AppState.snapshots`) stores
-the cells; `snapshot_diff` captures the address again and diffs the stored cells against it.
+the cells. `snapshot::take` (blank labels refused), `snapshot::list` and `snapshot::diff` (captures the address
+again and diffs the stored cells against it) back the commands; addresses lose `view` and `compare` first.
+
+**Compare** (`document/compare.rs`): `compare::compare(session, address, …)` opens the row of a row address and
+the row its `?compare=<key>` names, in parallel, and returns them with `compare_documents`.
 
 ## Secrets
 
@@ -518,8 +522,7 @@ stable in `rust-toolchain.toml` at the repo root. The crate uses edition 2024 an
 content:
 
 - `default-src 'self'`: scripts, fonts and frames come from the bundle only;
-- `img-src 'self' data: https: http:`: was for avatars and thumbnails from a site's own uploads URL; no view
-  loads a remote image any more, so it can narrow to `'self' data:`;
+- `img-src 'self' data:`: images from the bundle or inline only; no view loads a remote image;
 - `style-src 'self' 'unsafe-inline'`: React `style` attributes;
 - `connect-src ipc: http://ipc.localhost`: Tauri IPC (commands and events).
 

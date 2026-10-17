@@ -9,6 +9,7 @@
 pub mod actions;
 mod build;
 pub mod commands;
+pub mod compare;
 mod context;
 pub mod diff;
 mod events;

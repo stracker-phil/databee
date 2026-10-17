@@ -107,7 +107,7 @@ describe("TableTab", () => {
     });
   });
 
-  describe("opening a row", () => {
+  describe("a column filter", () => {
     const Active = () => {
       const active = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId));
       return active?.kind === "table" ? <TableTab tab={active} /> : null;
@@ -120,21 +120,21 @@ describe("TableTab", () => {
     });
 
     it("requests the row by column equality and shows the filter Rust reports", async () => {
-      useStore.getState().openRow("wp_posts", "ID", "7");
+      useStore.getState().openTableTab("db", "wp_posts", "data", undefined, { preview: true, where: [{ column: "ID", value: "7" }] });
       render(<Active />);
       expect(await screen.findByText("ID = 7")).toBeInTheDocument();
       expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ table: "wp_posts", where: [{ column: "ID", value: "7" }] }));
     });
 
     it("passes a null value through as null", async () => {
-      useStore.getState().openRow("wp_posts", "post_parent", null);
+      useStore.getState().openTableTab("db", "wp_posts", "data", undefined, { preview: true, where: [{ column: "post_parent", value: null }] });
       render(<Active />);
       await waitFor(() => expect(mocked.browseTable).toHaveBeenCalled());
       expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ where: [{ column: "post_parent", value: null }] }));
     });
 
     it("requests the table without the column filter once the chip is cleared", async () => {
-      useStore.getState().openRow("wp_posts", "ID", "7");
+      useStore.getState().openTableTab("db", "wp_posts", "data", undefined, { preview: true, where: [{ column: "ID", value: "7" }] });
       render(<Active />);
       await screen.findByText("ID = 7");
       mocked.browseTable.mockResolvedValue(browsePage());

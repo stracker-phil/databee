@@ -129,8 +129,6 @@ pub struct Settings {
     pub show_system_schemas: bool,
     #[serde(deserialize_with = "lenient")]
     pub log_level: LogLevel,
-    /// Loads avatars from Gravatar (sends hashed emails to gravatar.com).
-    pub gravatar: bool,
 }
 
 impl Default for Settings {
@@ -155,7 +153,6 @@ impl Default for Settings {
             default_port: 3306,
             show_system_schemas: false,
             log_level: LogLevel::Info,
-            gravatar: false,
         }
     }
 }

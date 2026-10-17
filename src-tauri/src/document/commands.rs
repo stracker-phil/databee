@@ -1,19 +1,16 @@
 use std::collections::BTreeMap;
 
-use serde::Serialize;
 use tauri::State;
-use ts_rs::TS;
 
 use super::actions::{self, ObjectAction};
+use super::compare::Comparison;
 use super::context::Ctx;
-use super::diff::{DocDelta, FlatDocument, compare_documents, diff_documents};
-use super::snapshot;
+use super::diff::FlatDocument;
+use super::snapshot::{self, SnapshotDiff};
 use super::watch::{WatchPoll, Watches};
 use super::{Document, Peek, parse_address};
-use crate::address::{Address, Target};
 use crate::db::plans::PlannedChange;
-use crate::error::{AppError, AppResult};
-use crate::session::Session;
+use crate::error::AppResult;
 use crate::state::AppState;
 use crate::store::snapshots::SnapshotInfo;
 
@@ -117,18 +114,6 @@ pub fn watch_stop(state: State<'_, AppState>, session_id: String, id: String) {
     }
 }
 
-/// Two rows of one table side by side: the row of `address` and the one its `compare` names.
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
-pub struct Comparison {
-    pub left: Document,
-    pub right: Document,
-    /// `left` as the old side, `right` as the new.
-    pub delta: DocDelta,
-}
-
-/// The documents of a row address with `?compare=<key>` and their differences.
 #[tauri::command]
 pub async fn compare(
     state: State<'_, AppState>,
@@ -137,47 +122,9 @@ pub async fn compare(
 ) -> AppResult<Comparison> {
     let session = state.sessions.get(&session_id)?;
     let timeout = state.settings.get().query_timeout();
-    let address = parse_address(&session, &address)?;
-    let (Target::Row { table, .. }, Some(other)) = (&address.target, &address.compare) else {
-        return Err(AppError::InvalidInput(format!(
-            "Not a row address with `?compare=`: {address}"
-        )));
-    };
-    let left_address = Address {
-        view: None,
-        compare: None,
-        ..address.clone()
-    };
-    let right_address = Address::new(
-        address.connection.clone(),
-        address.database.clone(),
-        Target::Row {
-            table: table.clone(),
-            key: other.clone(),
-        },
-    );
-    let (left, right) = futures_util::future::try_join(
-        super::open(
-            &session,
-            &left_address.to_string(),
-            None,
-            state.rules(),
-            timeout,
-        ),
-        super::open(
-            &session,
-            &right_address.to_string(),
-            None,
-            state.rules(),
-            timeout,
-        ),
-    )
-    .await?;
-    let delta = compare_documents(&FlatDocument::of(&left), &FlatDocument::of(&right));
-    Ok(Comparison { left, right, delta })
+    super::compare::compare(&session, &address, state.rules(), timeout).await
 }
 
-/// Stores the row or saved query at `address` as it is now.
 #[tauri::command]
 pub async fn snapshot_take(
     state: State<'_, AppState>,
@@ -185,23 +132,19 @@ pub async fn snapshot_take(
     address: String,
     label: String,
 ) -> AppResult<SnapshotInfo> {
-    let label = label.trim();
-    if label.is_empty() {
-        return Err(AppError::InvalidInput("A snapshot needs a label".into()));
-    }
     let session = state.sessions.get(&session_id)?;
     let timeout = state.settings.get().query_timeout();
-    let address = snapshot_address(&session, &address)?;
-    let (cells, _) = snapshot::capture(&session, &address, state.rules(), timeout).await?;
-    let created = chrono::Utc::now().timestamp();
-    state
-        .snapshots
-        .add(label.to_string(), &address, created, cells)
-        .await
+    snapshot::take(
+        &session,
+        &state.snapshots,
+        &address,
+        &label,
+        state.rules(),
+        timeout,
+    )
+    .await
 }
 
-/// The snapshots of `database` in this connection, newest first; only those of `address` when
-/// given.
 #[tauri::command]
 pub fn snapshot_list(
     state: State<'_, AppState>,
@@ -210,23 +153,7 @@ pub fn snapshot_list(
     address: Option<String>,
 ) -> AppResult<Vec<SnapshotInfo>> {
     let session = state.sessions.get(&session_id)?;
-    let address = address
-        .map(|text| snapshot_address(&session, &text).map(|a| a.to_string()))
-        .transpose()?;
-    Ok(state
-        .snapshots
-        .list(&session.slug(), &database, address.as_deref()))
-}
-
-/// What changed since snapshot `id`: its address read now against the stored cells.
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
-pub struct SnapshotDiff {
-    pub snapshot: SnapshotInfo,
-    pub delta: DocDelta,
-    /// The row's document now; `None` for a saved query.
-    pub document: Option<Document>,
+    snapshot::list(&session, &state.snapshots, &database, address.as_deref())
 }
 
 #[tauri::command]
@@ -237,28 +164,10 @@ pub async fn snapshot_diff(
 ) -> AppResult<SnapshotDiff> {
     let session = state.sessions.get(&session_id)?;
     let timeout = state.settings.get().query_timeout();
-    let (snapshot, stored) = state.snapshots.get(&id).await?;
-    let address = snapshot_address(&session, &snapshot.address)?;
-    let (now, document) = snapshot::capture(&session, &address, state.rules(), timeout).await?;
-    let delta = diff_documents(&stored, &now);
-    Ok(SnapshotDiff {
-        snapshot,
-        delta,
-        document,
-    })
+    snapshot::diff(&session, &state.snapshots, &id, state.rules(), timeout).await
 }
 
 #[tauri::command]
 pub async fn snapshot_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
     state.snapshots.delete(&id).await
-}
-
-/// A row or saved-query address of this session's connection, without view or compare.
-fn snapshot_address(session: &Session, text: &str) -> AppResult<Address> {
-    let address = parse_address(session, text)?;
-    Ok(Address {
-        view: None,
-        compare: None,
-        ..address
-    })
 }

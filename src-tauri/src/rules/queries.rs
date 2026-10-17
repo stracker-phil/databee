@@ -18,9 +18,9 @@ pub(super) fn checked_field(
     placeholder::check(sql, allowed).map_err(|message| FieldError::new(field, message))
 }
 
-/// Rows of `table` shown as a group on an `owner` row's document. Rules with the same `name`
-/// and `owner` are one group (OR); a rule whose `{owner.…}`/`{meta.…}` value is NULL or `''`
-/// is skipped.
+/// Rows of `table` shown as a group on an `owner` row's document. Rules with the same `name`,
+/// `owner` and `table` are one group (OR); a rule whose `{owner.…}`/`{meta.…}` value is NULL or
+/// `''` is skipped.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(deny_unknown_fields)]
