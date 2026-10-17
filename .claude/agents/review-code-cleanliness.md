@@ -49,8 +49,8 @@ If the caller names a file without a mode, default to `CHANGES in`.
 - Frontend code calling `invoke` or `listen` anywhere but `src/api/index.ts`.
 - Frontend code building SQL, deciding what is safe to write, or parsing stored values (PHP serialize, cell
   decoding). That logic belongs in Rust; the page asks for a plan and renders it.
-- A Tauri command (`*_commands.rs`) that contains logic beyond argument plumbing; it belongs in `db/`,
-  `wp/`, `store/` or `stage/`.
+- A Tauri command (`*_commands.rs`) that contains logic beyond argument plumbing; it belongs in its module
+  (`db/`, `rules/`, `document/`, `search/`, `saved/`, `readout/`, `store/`, `stage/`, …).
 - Rust types crossing to the page without `#[serde(rename_all = "camelCase")]`, or a changed shape with no
   matching change in `src/api/types.ts`.
 - Passwords or tokens in `Debug`, logs, or serialized structs (use `Secret`).

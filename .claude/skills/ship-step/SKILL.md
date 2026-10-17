@@ -7,7 +7,7 @@ description: Finish a development step in DataBee - clean up and review the code
 2. Spawn one `review-code-cleanliness` agent per changed source file (`review CHANGES in <file>`), in
    parallel. Apply the findings that hold; weigh the `Consider` questions and mention open ones in the report.
 3. Run `cargo fmt --manifest-path src-tauri/Cargo.toml`, then spawn the `ci` agent for "All unit tests" and
-   "Lint" (in parallel). If the change touches `db/` or `wp/`, also run "Integration" (needs Docker). Fix
+   "Lint" (in parallel). If the change touches `db/`, `rules/`, `document/` or another module with `server_tests`, also run "Integration" (needs Docker). Fix
    failures (test fixes go back to the `write-*-unit-test` agent) and run `ci` again until green.
 4. `bun run build:app`, then `scripts/dev/launch.sh [CLI args]`. This restarts the app on the user's terminal
    screen without taking focus; never use `bun run app` or `open` (they steal focus on the user's other screen).

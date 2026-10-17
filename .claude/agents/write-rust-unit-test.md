@@ -13,7 +13,7 @@ refactoring, document intent through their names, and verify observable behavior
 public functions: returned values, generated SQL, serialized shapes and `AppError` kinds.
 
 Read `.claude/rules/testing.md`, `docs/testing.md` and the docs page of the layer under test
-(`docs/database.md`, `docs/wordpress.md`, `docs/backend.md`, `docs/stage.md`) first.
+(`docs/database.md`, `docs/presets.md`, `docs/backend.md`, `docs/stage.md`) first.
 
 ## When invoked
 
@@ -31,15 +31,15 @@ Read `.claude/rules/testing.md`, `docs/testing.md` and the docs page of the laye
   the existing module; never a separate test file for unit tests.
 - **Pure first.** Most logic has a pure core: SQL builders, the lexer, safety rules, cell decoding, the PHP
   parser, entity resolution, key parsing, settings sanitizing. Test that core directly, without a server.
-- **Needs a real server**: integration tests in `src-tauri/tests/mysql.rs` (driver) or
-  `src-tauri/src/wp/server_tests.rs` (WordPress lens; `use crate::…`), marked `#[tokio::test]` plus `#[ignore]`.
+- **Needs a real server**: integration tests in `src-tauri/tests/` (driver, core changes) or
+  `src-tauri/src/<module>/server_tests.rs` (rules, documents, search, readout; `use crate::…`), marked `#[tokio::test]` plus `#[ignore]`.
   Reuse `sessions(database)` from `test_support` (`tests/common` in `tests/`; one session per server in
   `DATABEE_TEST_SERVERS`) so every test runs against both MariaDB and MySQL.
   - Name the server in assertion messages where the loop knows it (`"{host}:{port}: {err:?}"`).
   - Read from `databee_test` or `wp_test`. Write only into `wp_write`, so read tests never race.
   - New fixture data goes into `dev/fixture.sql`; relative dates use `UTC_TIMESTAMP()`.
-  - Never point tests at the user's own databases (DDEV sites). The `DATABEE_WP_TEST` tests in
-    `src/wp/server_tests.rs` are the only exception: it reads a database named by `DATABEE_WP_TEST` and never writes.
+  - Never point tests at the user's own databases (DDEV sites). The `real_data` tests in
+    `src/document/server_tests.rs` are the only exception: it reads a database named by `DATABEE_WP_TEST` and never writes.
 
 ## Conventions (match the existing suite)
 

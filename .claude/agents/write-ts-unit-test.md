@@ -53,7 +53,7 @@ mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 3, databas
 mocked.connect.mockRejectedValue({ kind: "password_required", message: "A password is required", code: null });
 ```
 
-- Adjust the relative path to the test's folder (`"../../api"` under `components/wp/`).
+- Adjust the relative path to the test's folder (`"../../api"` under `components/<folder>/`).
 - `vi.mock` must come before the imports it affects; import the subject after it.
 - Never mock components, the store, `@tauri-apps/api`, or `src/commands`.
 - A new `api` function needs a default in `src/test/apiMock.ts`; the mock is typed as `typeof api`, so it

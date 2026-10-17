@@ -19,8 +19,8 @@ Run from the repository root. Only run the command for the requested suite, copi
 - Rust unit: `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --lib [<test-name-filter>]`
 - Integration (Docker, MariaDB + MySQL): `PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run test:db`
   - one file or test: `docker compose -f dev/docker-compose.yml up -d --wait`, then
-    `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --test <mysql|sql_mode> -- --ignored [<filter>]`,
-    or for the WordPress tests `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored wp::server_tests::[<filter>]`
+    `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --test <mysql|sql_mode|changes> -- --ignored [<filter>]`,
+    or for the server tests inside modules `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored <module>::server_tests::[<filter>]`
 - Lint (tsc incl. tests + clippy on production code, warnings are errors): `PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run lint`
 - Format check: `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo fmt --manifest-path src-tauri/Cargo.toml --check`
 - All unit tests: `PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run test`
