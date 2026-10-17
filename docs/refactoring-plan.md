@@ -1,5 +1,10 @@
 # DataBee: full code review and refactoring plan
 
+> Historical. This review describes the code of 2026-10-16. The UX redesign
+> ([docs/plan/ux/](plan/ux/README.md)) deleted the WordPress lens, the lists, favorites and the dashboard
+> it names; its remaining steps were redone against the new code. The other pages in `docs/` describe the
+> current app.
+
 ## Context
 
 DataBee grew from a SQL client into a client plus a WordPress lens plus a Stage presentation hook.

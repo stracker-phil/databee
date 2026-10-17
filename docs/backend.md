@@ -63,7 +63,8 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 `std::sync` lock: code takes these locks with `lock::MutexExt::lock_unpoisoned` and
 `lock::RwLockExt::{read_unpoisoned, write_unpoisoned}` instead of `unwrap()`, and keeps working with the data.
 `AppState` holds no module data: per-session data of a module lives in `Session.ext`
-([ADR 0013](adr/0013-session-extensions.md)).
+([ADR 0013](adr/0013-session-extensions.md)). `AppState::rules()` bundles the preset catalog and the projects
+store as the `RuleSources` the rules lens reads.
 
 | Field | Type | Holds |
 |---|---|---|
@@ -74,6 +75,7 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `ui_state` | `UiStateStore` | `ui_state.json` (column widths, pane sizes, sidebar hidden, collapsed object groups per connection) |
 | `presets` | `PresetCatalog` | built-in and user presets, reread when `presets/*.toml` change ([presets.md](presets.md)) |
 | `projects` | `ProjectsStore` | `projects.json` (rules per connection slug and database, [presets.md](presets.md#projects)) |
+| `recent_objects` | `RecentObjectsStore` | `recent_objects.json` (rows opened per project, for the readout) |
 | `snapshots` | `SnapshotStore` | `snapshots/v2/` (snapshots of rows and saved queries, see [Watches and snapshots](#watches-and-snapshots)) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
@@ -107,7 +109,8 @@ use the same names in camelCase.
 | Module | Commands |
 |---|---|
 | `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `choose_save_path(fileName, extension)` (the native save panel through `tauri-plugin-dialog`'s Rust API; the chosen path or `null`), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `rename_connection_slug` (validates, stores, renames the slug of open sessions of that connection and moves its projects), `list_history`, `clear_history` |
-| `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `refresh_schema` (see [Schema cache](database.md#schema-cache)), `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `resolve_address` (see [Addresses](#addresses)), `table_references` (declared and inferred references from and to a table, see [database.md](database.md#references-and-kinds)), `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), `value_condition(sessionId, database, provenance, raw)` (a value as a SQL condition, `value::value_condition`; see [database.md](database.md#value-conditions)), `narrow_refusal(sql)` and `narrow_query(sessionId, sql, column, value)` (one more `column = value` on a plain single-table `SELECT`, `db::narrow`; see [database.md](database.md#narrowing-a-query)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
+| `remote.rs` | `remote_reply(id, result, error)` (the page's answer to a `remote` event, see [Requests the page answers](#requests-the-page-answers)) |
+| `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `refresh_schema` (see [Schema cache](database.md#schema-cache)), `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `table_select_sql(sessionId, database, table)` (the quoted `SELECT *` with the new-query limit that "New query" on a table starts with), `resolve_address` (see [Addresses](#addresses)), `table_references` (declared and inferred references from and to a table, see [database.md](database.md#references-and-kinds)), `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), `value_condition(sessionId, database, provenance, raw)` (a value as a SQL condition, `value::value_condition`; see [database.md](database.md#value-conditions)), `narrow_refusal(sql)` and `narrow_query(sessionId, sql, column, value)` (one more `column = value` on a plain single-table `SELECT`, `db::narrow`; see [database.md](database.md#narrowing-a-query)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
 | `saved/commands.rs` | `saved_queries(sessionId, database)` (the project's saved queries, the global ones and the applied presets' `[[pinned]]` queries as `SavedEntry { id, title, sql, pin, origin, readOnly }`, `{p}`/`{np}` replaced; `origin` is a `SavedOrigin`: `project`, `global` or `preset { preset }`; the routing between project and global lives in `saved/mod.rs`: `add_to_project`, `update`, `remove`), `save_query(sessionId, database, title, sql, pin)` (a new project query with a fresh id), `update_saved_query(sessionId, database, query)` (replaces the project or global query with that id; preset queries are refused), `remove_saved_query(sessionId, database, id)`, `copy_preset_query_to_project(sessionId, database, preset, id)` (the preset query, prefixes replaced, as a new project query); see [presets.md](presets.md#pinned-queries) |
 | `value_counts.rs` | `value_counts(sessionId, database, table, column, equals, limit)`: the most frequent values of one column among the rows a structured filter selects, as `ValueCount { value, count }` (the value with the column's kind, no provenance); `limit` is capped at `MAX_LIMIT` (500); runs with the query timeout, at most 5 s |
@@ -180,6 +183,7 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
   - `databee open <entity> <id> [-c/--connection <slug>]`: sent as the shorthand `<entity> <id>`, which the
     page resolves in that connection's session (default: the active one) through `document`;
   - `--background` on `open`: no focus change; otherwise the window comes to the front;
+  - `databee mcp`: the MCP server on stdio ([below](#mcp-server));
   - `databee command <command-id>`: runs a command of the page's registry (`runMenuCommand`, so an open
     dialog or the palette blocks it). Unknown or unavailable commands fail.
   Errors print to stderr with exit 1; a result other than `null` prints to stdout.
@@ -345,7 +349,6 @@ favorites migration). Store methods that write are `async` and the commands call
 | `snapshots/v2/index.json`, `snapshots/v2/<id>.json` | snapshots ([Watches and snapshots](#watches-and-snapshots)): the index (`SnapshotInfo`: id, label, connection slug, database, address, `created` in Unix seconds, number of values), newest first, at most 30 per connection and database (`MAX_PER_DATABASE`; the oldest are evicted with their files); each snapshot's cells in its own file, written before the index entry. `rename_connection` moves them with a slug rename |
 | `snapshots.json`, `snapshots/<id>.json` | snapshots of the removed WordPress mode. Never read, moved or deleted; `SnapshotStore::open` logs one line when `snapshots.json` exists |
 | `ui_state.json` | per connection: column widths, `detailPaneWidth`, `sqlEditorHeight`, `sidebarHidden`, `collapsedGroups` (by database: `<document table>::<group id>` keys) (older names load via serde aliases; missing fields take their defaults; the retired `inspectorWidth` and `bottomPaneHeight` are ignored). `UiStateStore::forget` drops a connection's entry |
-| `entities.toml` | not read; user presets replace it ([presets.md](presets.md#built-in-presets)) |
 | `projects.json` | `{ "projects": { "<slug>/<database>": Project }, "global": [SavedQuery] }`, snake_case like the rule types ([presets.md](presets.md#projects)); `global` holds saved queries offered in every project. `ProjectsStore::update` runs the change inside the store's update, so a failed check stores nothing (`update_global` likewise for the global list); `rename_connection` moves every `<old>/…` key to the new slug; `import_saved` appends migrated favorites in one save |
 | `recent_objects.json` | rows opened in the app per project (`<slug>/<database>` → newest first, each address once, at most 20, with the time in Unix seconds), for the readout (`store::recent_objects`); `rename_connection` moves them with a slug rename |
 | `presets/*.toml` | user presets; one with the name of a built-in replaces it ([presets.md](presets.md)) |
@@ -483,6 +486,9 @@ To add a menu item:
 | `tauri` (feature `macos-private-api`), `tauri-build` | app framework; the feature allows a transparent window |
 | `tauri-plugin-log`, `log` | logging |
 | `tauri-plugin-opener` | open URLs and the log folder |
+| `tauri-plugin-dialog` | the native save panel (`choose_save_path`) |
+| `tauri-plugin-deep-link` | `databee://` links |
+| `rmcp` | the MCP server (`databee mcp`) |
 | `sqlx` (`mysql`, `mysql-rsa`, no TLS) | MySQL/MariaDB driver |
 | `tokio` | runtime, IPC socket, Stage HTTP server |
 | `serde`, `serde_json` (`preserve_order`) | IPC, stores, JSON values in their stored key order |
@@ -492,7 +498,11 @@ To add a menu item:
 | `thiserror` | `AppError` |
 | `chrono`, `uuid`, `url`, `percent-encoding`, `futures-util` | time stamps, ids, URL parsing, result streaming |
 | `toml` | presets |
-| `sha2` | Gravatar hashes |
+| `regex` | rule conditions (`rules/condition.rs`) |
+| `ts-rs` | TypeScript types for IPC (`types.gen.ts`) |
+| `async-trait` | the `Database` trait object ([ADR 0011](adr/0011-database-trait-object.md)) |
+| `getrandom` | the Stage token |
+| `sha2` | history entry hashes |
 | `libc` | `getuid` for the IPC peer check |
 | `tempfile` (dev) | store and socket tests |
 
@@ -509,7 +519,7 @@ content:
 
 - `default-src 'self'`: scripts, fonts and frames come from the bundle only;
 - `img-src 'self' data: https: http:`: was for avatars and thumbnails from a site's own uploads URL; no view
-  loads a remote image since U12, so it can narrow to `'self' data:`;
+  loads a remote image any more, so it can narrow to `'self' data:`;
 - `style-src 'self' 'unsafe-inline'`: React `style` attributes;
 - `connect-src ipc: http://ipc.localhost`: Tauri IPC (commands and events).
 

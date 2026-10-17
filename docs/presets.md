@@ -157,7 +157,7 @@ enabled = false
 
 ```toml
 [[pattern]]
-name = "log"                        # same name and owner: one group (OR)
+name = "log"                        # same name and table on one owner: one group (OR)
 owner = "orders"
 owner_when = { type = "order" }
 table = "log"
@@ -192,7 +192,7 @@ shown. The palette's `q:` lists them; a pinned query opens as an unsaved query t
 `copy_preset_query_to_project(session_id, database, preset, id)` stores it, prefixes replaced, as a project
 query with a fresh id, which can then be changed and pinned like any saved query (`update_saved_query`;
 `save_query` adds one, `remove_saved_query` removes a project or global one). `home` is shown on the
-[readout](#the-readout). Favorites from before U11 were moved into saved queries ([backend.md](backend.md#persistence)).
+[readout](#the-readout). Favorites of older versions were moved into saved queries ([backend.md](backend.md#persistence)).
 
 ### `[[anomaly]]`
 
@@ -271,7 +271,7 @@ Preset SQL is trusted configuration in the MySQL/MariaDB dialect. Placeholders (
 | Placeholder | Renders | Allowed in |
 |---|---|---|
 | `{p}`, `{np}` | the prefix, the network prefix, as text | all SQL and titles |
-| `{id}` | the row's primary key, as a literal (a number when it parses as one) | patterns, row-scope actions |
+| `{id}` | the row's primary key, as a literal (a number when it parses as one) | patterns, row-scope actions (not `choices_sql`) |
 | `{owner.<column>}`, `{meta.<key>}` | the owner row's value, as a literal | patterns |
 | `{param.<name>}` | a declared param, as a literal (NULL when empty) | actions |
 
@@ -293,6 +293,106 @@ Each rule is read on its own, so an error names the file, the rule and the field
 ```
 
 TOML syntax errors keep the parser's line and column.
+
+## Recipes
+
+### Write a preset
+
+1. Create `<config dir>/presets/<name>.toml` (`~/Library/Application Support/com.philippstracker.databee/presets/`).
+   The catalog rereads the folder when a file is added, removed or saved; no restart.
+2. Start with the header. `name` is required; the preset applies on its own only when all `marker_tables`
+   exist under the prefix, or when a project lists it or another preset `requires` it.
+
+   ```toml
+   [preset]
+   name = "acme-forms"
+   requires = ["wordpress"]
+   marker_tables = ["acmeforms_entries"]
+   ```
+3. Add rules section by section ([Format](#format)), table names without the prefix.
+4. Check it: the Project page lists the preset with its marker tables and a switch; a file with an error is
+   listed with the message ([Errors](#errors)) and applies nowhere. Open a row of one of its tables to see
+   the document the rules build.
+
+### Add references for a plugin
+
+A plugin's tables usually point at WordPress rows by id. Same-name inference only links a column named exactly
+like another table's primary key (`action_id`), so declare the rest. Example for a form plugin with an entries table and its meta:
+
+```toml
+[preset]
+name = "acme-forms"
+requires = ["wordpress"]                # applies after it, so its tables and entities are known
+marker_tables = ["acmeforms_entries"]
+
+[[meta]]                                # one meta group per entry; declares entrymeta.entry_id → entries
+table = "acmeforms_entrymeta"
+owner = "acmeforms_entries"
+fk = "entry_id"
+key = "meta_key"
+value = "meta_value"
+
+[[reference]]
+from = "acmeforms_entries.user_id"      # 0 or NULL: no reference
+to = "users.ID"
+label = "form entries"                  # the incoming group on the user's document
+columns = ["id", "form_id", "status"]
+
+[[reference]]
+from = "acmeforms_entries.post_id"
+to = "posts.ID"
+
+[[reference]]
+from = "usermeta.meta_value"            # a key of a WordPress meta table pointing into the plugin
+when = { meta_key = "_acme_last_entry" }
+to = "acmeforms_entries.id"
+
+[[entity]]
+name = "form_entry"
+table = "acmeforms_entries"
+summary = ["form_id", "status"]
+created = "created_at"
+```
+
+Then open the Project page and press "Check coverage for all": a reference that resolves none of its
+values is probably wrong. For one database only, add the same references on the Project page (or with
+"Add reference…" on a value) instead: they are stored in the project and can be exported as a preset later.
+
+### Add a value style
+
+For one database: "Style…" on a value (context menu) opens the Project page with a style form for that
+column, or that meta key in its meta table, prefilled with the value. A preset style that ships off is
+switched on with "switch on" in the Value styles section, which copies it into the project.
+
+In a preset, a style is scoped to columns or meta keys, never global, and `enabled` defaults to `true` (the
+built-in presets set `enabled = false` so a project opts in):
+
+```toml
+[[style]]
+meta_keys = ["_acme_status"]
+in = ["acmeforms_entrymeta"]
+match = "REGEXP"                        # "=", "LIKE" or "REGEXP"
+value = "^(spam|failed)$"
+color = "red"                           # red, green, yellow, blue or purple
+```
+
+The first matching style wins, project styles before preset styles.
+
+### Remove the built-in presets
+
+- **For one database:** on the Project page, switch the presets off. The switches store an explicit
+  `presets` list; "back to auto" returns to marker-table detection.
+- **On one machine:** a user preset with the same `name` replaces the built-in. An empty one switches it
+  off everywhere:
+
+  ```toml
+  [preset]
+  name = "woocommerce"
+  ```
+
+  Without `marker_tables` it applies only where a project lists it or a preset requires it, and then
+  adds nothing.
+- **From the app:** delete the files and their `BUILT_IN` lines ([adapting.md](adapting.md#removing-the-wordpress-presets)).
 
 ## Projects
 

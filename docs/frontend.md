@@ -8,28 +8,35 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 1. `index.html` loads `main.tsx`.
 2. `main.tsx` calls `installModules()` (`src/modules.ts`, see [Modules](architecture.md#modules)) before the
    first render:
-   1. `installCore()`: `registerCoreSettingsPages()` and `registerCoreScopes()`.
+   1. `registerCoreSettingsPages()` (`components/settings/pages.tsx`).
    2. `installStage()` (`src/stage/install.ts`): the Presentations Settings page and the Stage event
       listeners, which stay subscribed for the app's lifetime.
-   3. `installCommands()`: the command registry. It runs last so module scopes exist before their commands.
-3. `main.tsx` calls `installNativeMenuGuard()` (`src/lib/nativeMenu.ts`): a right-click that no app menu
-   handled shows nothing, so the WebView's own Reload and Inspect Element never appear; text fields and the
-   SQL editor keep the native Cut/Copy/Paste menu.
-4. `main.tsx` assigns the store to `window.databee` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`, which
+   3. `installCommands()`: `registerCoreScopes()`, then the command registry. It runs last so module scopes
+      exist before their commands.
+3. `applyInitialScheme()` (`lib/theme.ts`) sets the default scheme for the OS appearance, so the first paint
+   has colors before settings load.
+4. `installNativeMenuGuard()` (`src/lib/nativeMenu.ts`): a right-click that no app menu handled shows
+   nothing, so the WebView's own Reload and Inspect Element never appear; text fields and the SQL editor keep
+   the native Cut/Copy/Paste menu.
+5. `main.tsx` assigns the store to `window.databee` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`, which
    `bun run build:app` and `bun run app` set for the debug bundle the dev scripts drive; `bun run build`
    (release) leaves it out. It renders `<ErrorBoundary><App/></ErrorBoundary>`.
-5. `App.tsx` loads the two stylesheets and calls `useBackendEvents()` once:
+6. `App.tsx` imports the stylesheets (fonts, the scheme files, `theme.css`, `app.css`) and calls
+   `useBackendEvents()` once:
    1. `loadSettings()` loads settings and keybindings. `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch requests (`take_launch_events`).
-   2. It subscribes to `launch` (drain again), `command` (menu clicks → `runCommand`) and `remote` (requests
-      from `databee open` / `databee command` → `answerRemote` in `src/commands/remote.ts`, which always
-      replies with `remoteReply`).
-   3. It adds a capture-phase `keydown` → `handleKeydown`, plus `error` / `unhandledrejection` → error toast.
-5. `applyAppearance(settings)` runs whenever settings change.
+   2. It subscribes to `launch` (drain again), `command` (menu clicks → `runMenuCommand`) and `remote`
+      (requests from `databee open` / `databee command` → `answerRemote` in `src/commands/remote.ts`, which
+      always replies with `remoteReply`).
+   3. It adds a capture-phase `keydown` → `handleKeydown`, `error` / `unhandledrejection` → error toast, and
+      `beforeunload` → `flushUiState`.
+7. `applyAppearance(settings, systemDark)` and `syncRowHeight()` run whenever settings or the OS appearance
+   change.
 
 Layout:
 - Without a session, the window shows `ConnectScreen`.
-- With sessions, it shows `Toolbar`, `Workspace`, `PendingTray` and `StatusBar`.
+- With sessions, it shows `AppShell` (`Toolbar`, `Workspace`, `PendingTray`, `StatusBar`, `PeekOverlay`;
+  `useValueHover` listens on it).
 - `Dialogs`, `CommandPalette` and `Toasts` always render on top.
 
 ```
@@ -38,14 +45,14 @@ App
 └─ .app grid
    ├─ Toolbar                          connection / database text (pickers), Path, search field (palette), icon buttons
    ├─ Workspace: [Sidebar |] TabBar + TabPanels
-   │       TabPanels → Readout (status line, anomalies, new, pinned, recent; [Readout](#readout))
+   │       TabPanels → Readout (header, anomalies, new, pinned, recent; [Readout](#readout))
    │                 → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel) [| value column]
    │                 → TableTab (filter bar + ResultsGrid | StructureView) [| value column]
    │                 → ObjectPanel: Strip | column (ObjectColumnView: ObjectHeader, DocumentView | RowsView,
    │                                or ValueColumnView) per stack column
    │                 → ProjectPanel (presets and prefix, rule form, references, value styles, kinds)
    ├─ PendingTray
-   ├─ StatusBar                        ▤ sidebar toggle, provenance or address, presets, pending n
+   ├─ StatusBar                        ▤ sidebar toggle, provenance or address, presets, pending n, live
    └─ PeekOverlay                      while ⌥ is held
 Dialogs (ShortcutsDialog among them) · CommandPalette · Toasts
 ```
@@ -234,18 +241,18 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 
 | Area | Components |
 |---|---|
-| Shell | `Toolbar`, `Path` (the column stack's crumbs), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`) |
+| Shell | `Toolbar`, `Path` (the column stack's crumbs), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; its hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
-| Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
+| Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `PresetsSection`, `ReferenceForm`, `KindStyleForms`, `ReferencesSection`, `RuleSections`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
-| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `PaletteList`), `ContextMenu`, `Toasts` |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
 | Readout | `readout/Readout.tsx`, see [Readout](#readout) |
 
 ### Saved queries
 
-Saved queries replace the favorites bar. `saved_queries` lists, for the active session's database, the
+`saved_queries` lists, for the active session's database, the
 project's queries (`origin: { kind: "project" }`), the global ones (`global`, from migrated favorites, offered in
 every project) and the `[[pinned]]` queries of the applied presets (`{ kind: "preset", preset }`, `readOnly`;
 `originText` shows `preset:<name>`), `{p}` and `{np}`
@@ -325,8 +332,10 @@ survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There 
   button styled as a field (label "Go to") that opens the palette; its key cap follows `palette.open`.
 - **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (the provenance of
   the hovered or selected value while there is one, see [Values](#values); otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
-  typed SQL filter applies; a query tab adds rows, time and statement count, with the row-limit warning), spacer, `PendingCount` (`pending n`, a button to the tray when n > 0).
-  The theme chip is gone: the theme stays in Settings and the palette.
+  typed SQL filter applies; a query tab adds rows, time and statement count, with the row-limit warning), spacer, `PresetsText` (`presets wordpress · woocommerce`, the
+  applied presets of the active database; a click opens its Project page), `PendingCount` (`pending n`, a button
+  to the tray when n > 0), `LiveText` (`● live 2 s` while the active column is live; a click ends it). There is
+  no theme control: the theme stays in Settings and the palette.
 - **Sidebar:** the Tables/History switch, the filter (`InsetField`, key cap from `sidebar.focusFilter`), a
   `db · N tables` caption, then the tree. Rows are `.si` items (`sel` for the active table). All tabs of the active session
 stay mounted; inactive panels are `hidden`. Tabs use a roving `tabIndex` with Left/Right arrows
@@ -382,7 +391,6 @@ Bare keys never fire in inputs or the editor (`resolveKeydown`).
 | `value.copyCondition` | `Y` | `api.valueCondition(sessionId, database, provenance, raw)`: Rust renders the condition from `ColumnEquals` with the session's `Dialect`; on the value column of a `[[meta]]` table it reads the row's key and returns `` `meta_key` = '…' AND `meta_value` = '…' `` |
 | `value.edit` | `e` | dispatches `EDIT_VALUE_EVENT`; the grid of the active tab that holds the selection, or the active Document view, opens its inline editor there, which queues a core `setCell` on the provenance row through the pending tray (documents: rows with a single-column key, meta rows by their own id) |
 | `value.filter` | `f` | in a table tab, `filterRows(tabId, { column, value })` (nav slice): adds the match to the table tab's structured filter, replacing one on the same column, through `showRows` (so ⌘[ returns); elsewhere it opens the value's table filtered by it in the preview tab |
-
 | `value.addReference` | `r` | `openRuleForm("reference")`: `api.ruleDraft(sessionId, database, provenance)` (the column as rules name it, the meta key on a meta value), then `openProject` with a prefilled `ReferenceForm` |
 | `value.setKind`, `value.setStyle` | | the same with a `KindForm` or a `StyleForm` (the style takes the value's text) |
 
@@ -442,16 +450,17 @@ The page never builds SQL conditions. Opening rows in the Database view passes s
 
 - `openRow(table, column, value)` (tabs slice): while a table tab of the active session is active, that tab
   moves to the rows (`showRows`, so ⌘[ returns). Otherwise it opens `table` of the active database with
-  `where: [{ column, value }]` in the preview tab. Option rows use it.
-- `openInDatabase(table, where?)`: the same with any number of matches, in a kept tab. `RowSource.where`
-  (`FieldValue.tsx`) carries the matches for a field's "Open row in Database view".
+  `where: [{ column, value }]` in the preview tab.
+- `openInDatabase(table, where?)`: the same with any number of matches, in a kept tab.
+
+Both have no caller in the app today; value clicks go through `useOpenValue` and `filterRows`.
 - `openTableTab(database, table, view?, filter?, { preview?, where? })`: an open tab is reused only when
   its `filter` and `where` are the same. A preview tab that replaces the previous one takes over its history
   and records the replaced address, so a single click in the sidebar can be undone with ⌘[.
 
 ### Object tabs
 
-An `ObjectTab` shows rows as a stack of columns (`components/object/`, mock `Main`, `Rows` and `Drill`; see
+An `ObjectTab` shows rows as a stack of columns (`components/object/`; see
 [Column stack](#column-stack)). Each object column (`ObjectColumn`, `lib/columns.ts`) has its row `address`,
 whose `view` mirrors the column's `view` (`null` for the document, `rows`), and `focus`, the provenance of its
 focused value. The tab's `address` is the active column's. `openObject(address, { preview })` (`objects` slice)
@@ -588,26 +597,6 @@ page (sourced from `page.table` and `page.keys[row]`), `resultValueAt(result, ro
 results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's `value::value_at`
 ([architecture](architecture.md#values-and-the-lens)).
 
-### Project tabs
-
-A `ProjectTab` (`components/project/`, mock `Project`) is the Project page of one database
-([presets.md](presets.md#the-project-page)); one per session and database. `openProject({ sessionId?, database?,
-form? })` (`project` slice) reuses it and replaces its `form` when one is given; `project.open` (global, no key),
-the status bar's `presets …` button (`rulesInfo`, loaded per `dataVersion`) and `openAddress` of a `?project`
-address call it. It has no history (`nav` stays empty).
-
-- **Loading:** `loadProjectRules(sessionId, database)` keeps `api.projectRules` per `dataVersion` in
-  `projectRules`; `changeProject(sessionId, database, change)` calls `api.projectUpdate`, then `bumpData`, so
-  documents and grids reload with the new rules, and returns the `AppError` instead of showing it.
-- **Sections:** `PresetsSection`, the open form (`ReferenceForm`, `KindForm`, `StyleForm`), `ReferencesSection`
-  (coverage per row in component state: `api.referenceCoverage` with the row's `reference`), `StylesSection`,
-  `KindsSection`. They share `ProjectContext` (`context.ts`) and the `:is(.object, .project)` band and row classes.
-- **Forms** (`lib/ruleForms.ts`): form state lives in the tab, so it survives switching tabs. `referenceRule`
-  maps the real tables of the pickers to rule names through `ProjectRules.tables`; `fieldError` splits Rust's
-  `` `field`: message `` and maps the field to the form field it shows under. `ReferenceForm` previews coverage
-  with `api.coveragePreview` 400 ms after the last change.
-- **Export:** `api.chooseSavePath(<slug>-<database>.toml, "toml")`, then `api.projectExportTo(…, path)`.
-
 - **Tab addresses** (`slices/nav.ts`): a `TableTab`'s `address` is derived from its table and `where` by
   `tableAddress`: one match on the table's single-column primary key (from the `structures` cache) is the
   row (`…/<table>/<key>?view=rows`), anything else the table with its filter (`…/<table>?col=val`, a `null`
@@ -631,6 +620,8 @@ address call it. It has no history (`nav` stays empty).
   and the connection part of every address of their tabs. Settings → Connections lists the saved
   connections with their slugs (`components/settings/ConnectionSlugs.tsx`, anchors `settings:slug:<identity>`).
 
+### Helpers and anchors
+
 The Sidebar's "New query: SELECT …" asks Rust for the statement (`api.tableSelectSql`), so identifier
 quoting stays in Rust too.
 
@@ -652,7 +643,30 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `theme.ts` | `applyAppearance` (scheme, accent, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `applyInitialScheme` (first paint) |
 | `codeTheme.ts` | CodeMirror theme and syntax colors from the scheme's `--code-*` tokens |
 | `document.ts` | object addresses (`objectAddress`, `documentText`, `objectTitle`), `findValue` / `provenanceKey`, group texts (`relationText`, `originText`, `countText`, `moreText`), `groupAnchors`, `collapseKey`, `focusOrder` |
+| `diff.ts` | change marks of live mode, snapshots and compare (`ChangeMarks`, `withDelta`, `documentMarks`, `compareMarks`, `withRemovedRows`, `FLASH_MS`; see [Live mode, snapshots, compare](#live-mode-snapshots-compare)) |
+| `pins.ts` | a saved query's pin and the pin dialog's choices (`pinChoice`, `pinOf`, `pinLabel`) |
+| `nativeMenu.ts` | `installNativeMenuGuard` (see [Boot](#boot)) |
 | `columns.ts` | the column stack's types (`ObjectColumn`, `ValueColumn`, `StackColumn`, `ColumnStack`), `objectColumn`, `objectColumnAt`, `columnName` / `columnLabel`, `shownColumns` (see [Column stack](#column-stack)) |
+
+### Project tabs
+
+A `ProjectTab` (`components/project/`) is the Project page of one database
+([presets.md](presets.md#the-project-page)); one per session and database. `openProject({ sessionId?, database?,
+form? })` (`project` slice) reuses it and replaces its `form` when one is given; `project.open` (global, no key),
+the status bar's `presets …` button (`rulesInfo`, loaded per `dataVersion`) and `openAddress` of a `?project`
+address call it. It has no history (`nav` stays empty).
+
+- **Loading:** `loadProjectRules(sessionId, database)` keeps `api.projectRules` per `dataVersion` in
+  `projectRules`; `changeProject(sessionId, database, change)` calls `api.projectUpdate`, then `bumpData`, so
+  documents and grids reload with the new rules, and returns the `AppError` instead of showing it.
+- **Sections:** `PresetsSection`, the open form (`ReferenceForm`, `KindForm`, `StyleForm`), `ReferencesSection`
+  (coverage per row in component state: `api.referenceCoverage` with the row's `reference`), `StylesSection`,
+  `KindsSection`. They share `ProjectContext` (`context.ts`) and the `:is(.object, .project)` band and row classes.
+- **Forms** (`lib/ruleForms.ts`): form state lives in the tab, so it survives switching tabs. `referenceRule`
+  maps the real tables of the pickers to rule names through `ProjectRules.tables`; `fieldError` splits Rust's
+  `` `field`: message `` and maps the field to the form field it shows under. `ReferenceForm` previews coverage
+  with `api.coveragePreview` 400 ms after the last change.
+- **Export:** `api.chooseSavePath(<slug>-<database>.toml, "toml")`, then `api.projectExportTo(…, path)`.
 
 ### Readout
 
@@ -664,8 +678,8 @@ through `loadReadout(sessionId, database, force?)`: once per `dataVersion`, so c
 apply, and again (`force`) whenever the tab is shown, since recent objects change without a data change. A
 failed load shows `ErrorPanel`; a failed part or line shows its error in its place.
 
-The full width of the tab (mock `Readout`); every table aligns its columns with CSS subgrid (`.readout-table`):
-- **Header** (`section` "Status"): the database as the title, a meta line (host · prefix · applied presets ·
+The tab uses its full width; every table aligns its columns with CSS subgrid (`.readout-table`):
+- **Header** (`StatusHeader`, a `section` labelled "Status"): the database as the title, a meta line (host · prefix · applied presets ·
   server version), then each value-pinned query as a key/value row: the value's source table and the query's
   title (opens the saved query) | its `Value`.
 - Then one `Section` per part: a band as in the object view (chevron, name, hint, count), collapsed and
@@ -749,7 +763,7 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
 - **Derived tokens.** `theme.css` derives the opacity levels (`--o2`, `--o3`), the accent mixes (`--cell`,
   `--sel`, `--lit`), `--accent` from `html[data-accent]` (default orange), the type sizes (`--fs-*`) and the
   row height `--row-h` from `--pad`. Old names that older rules in `app.css` still read remain as aliases
-  marked `/* alias: removed in U2b/U12 */` until the CSS pass of U15; new CSS and components use only the new names.
+  onto scheme tokens; new CSS and components use only the new names.
 - **Sizing.** Everything is in rem. `html { font-size: var(--ui-font-size) }`, so ⌘= and ⌘- scale the whole UI.
   `--data-font-size` sizes the grid, the editor and the value trees. The row-padding setting (steps 1 to 4)
   sets `--pad` (1, 3, 5 or 8px); `--row-h` is a 20px line (more for large data sizes) plus twice `--pad`.

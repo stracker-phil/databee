@@ -25,8 +25,7 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
 - **Value column:** Enter on serialized data or long text opens it as a column with a tree of PHP-serialized
   or JSON values, including serialized data nested in strings, whose leaves you can edit. Values with broken string lengths are decoded leniently, with a warning.
 - **Saved queries** (⌘S in a query tab, `q:` in the palette; pinned with Count or Rows), per-server **query
-  history**, and a **⌘K command palette** for commands, tables, records, saved queries and recent items. Older
-  favorites move into saved queries on the first start.
+  history**, and a **⌘K command palette** for commands, tables, records, saved queries and recent items.
 - **Value counts** on every grid column (right-click its header): each stored value with its count; a click
   filters the table, or adds a `WHERE` to a plain single-table query.
 - **Passwords** live in the macOS Keychain and never in files or logs.
@@ -44,9 +43,8 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
   through, new and removed rows are marked, and a change list under the document says what changed when.
   Snapshots (`s`) of a row or a saved query's rows show the same marks later ("Changes since snapshot…"), and
   `?compare=<key>` shows two rows side by side with their differences.
-- **Pinned queries** from the presets replace the old lists: orders, subscriptions, users, customers, guests,
-  products, sessions, scheduled actions, content and the options queries open as query tabs with their SQL
-  (`q:` in the palette); value counts replace the facets.
+- **Pinned queries** from the presets: orders, subscriptions, users, customers, guests, products, sessions,
+  scheduled actions, content and the options queries open as query tabs with their SQL (`q:` in the palette).
 - **Raw first:** real column names, meta keys and status slugs, with amounts and times next to them where a
   preset says what they are. Secrets stay masked until clicked.
 - **Find:** `#4711`, `@jane` and `=<value>` in the palette find rows by id, people and any stored value.
@@ -143,11 +141,22 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset | everywhere |
 | ⌘R | Refresh the current view | everywhere |
 | ⌘S | Apply pending changes; in a query tab with nothing pending, save the query | everywhere / editor |
-| P | Pin the saved query (focus in the results) | editor |
+| ⌘N / ⌘, / ⌘\ | New connection / Settings / toggle sidebar | everywhere |
+| ? | Keyboard shortcuts | everywhere |
+| ⎋ | Close the rightmost column | everywhere |
 | ⌘F / ⌘⇧F | WHERE filter / filter tables | Database |
 | ⌘T / ⌘W | New query tab / close tab | Database |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab | Database |
 | ⌘↵ / ⇧⌘↵ | Run statement / run all | editor |
+| P | Pin the saved query (focus in the results) | editor |
+| J / K, ↓ / ↑ | Next / previous value | object |
+| H / L, ← / → | Column to the left / right | object |
+| ↵ | Open the focused reference in a new column | object |
+| Tab | Switch between Document and Rows | object |
+| W / S / X | Live mode / snapshot / dismiss change marks | object |
+| ⌥ (hold) | Peek the hovered or focused reference | object, grid |
+| Y / ⇧Y | Copy the value / copy it as a SQL condition | object, grid |
+| E / F / R | Edit the value / filter rows by it / add a reference from it | object, grid |
 
 Every shortcut can be rebound or unbound in Settings → Shortcuts. Overrides are stored in `keybindings.json`.
 
@@ -162,7 +171,7 @@ recent connections, history, UI state, projects (with saved queries and recent o
 What tables mean (references, kinds, entities, queries) comes from presets. WordPress, WooCommerce and Action
 Scheduler are built in; a TOML file in `presets/` in the config directory adds a preset or replaces a built-in
 of the same name. See [docs/presets.md](docs/presets.md) for the format and
-[Built-in presets](docs/presets.md#built-in-presets) for the built-ins. The old `entities.toml` is no longer read.
+[Built-in presets](docs/presets.md#built-in-presets) for the built-ins.
 
 ```toml
 [preset]

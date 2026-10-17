@@ -52,14 +52,14 @@ Objective-C or NSWindow calls. The macOS behavior comes from dependencies, paths
 | **Config dir** hard-coded to `~/Library/Application Support/<id>` | `lib.rs` `config_dir()`, `scripts/dev/js.sh` | `dirs::config_dir()` (`~/.config/<id>`). It must resolve before Tauri starts, because the CLI and socket run first | `dirs::config_dir()` (`%APPDATA%\<id>`) |
 | **Unix socket** for the single-instance handoff (`std::os::unix`, `tokio::net::UnixListener`, mode 0600) | `ipc.rs` | Works as is. Mind the ~108-byte path limit; `$XDG_RUNTIME_DIR` is a good home | Doesn't compile. Use a named pipe (`tokio::net::windows::named_pipe`) with the same line protocol. Don't switch to `tauri-plugin-single-instance`: it passes argv, and DataBee keeps passwords out of argv on purpose |
 | **File permissions** (`PermissionsExt`, `OpenOptionsExt`, `DirBuilderExt`; 0600 files, 0700 dir) | `ipc.rs`, `store/json_file.rs` | Works | Gate with `#[cfg(unix)]` |
-| **Window chrome**: `titleBarStyle: Overlay`, `hiddenTitle`, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; the Cargo feature `macos-private-api` | Ignored by Tauri. The CSS expects transparent chrome, so give `html`/`.app` an opaque `--bg-chrome` | `windowEffects: ["mica"]` works; otherwise use an opaque background |
-| **Traffic-light space** and drag regions | `.toolbar` `padding-left` in `app.css`; `data-tauri-drag-region` in `Toolbar.tsx` and `ConnectScreen.tsx` | Remove the padding. With native decorations, drag regions are optional | Same; or set `decorations: false` and draw your own window controls |
+| **Window chrome**: `titleBarStyle: Overlay`, `hiddenTitle`, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; the Cargo feature `macos-private-api` | Ignored by Tauri. The CSS expects transparent chrome, so give `html`/`.app` an opaque `--chrome` | `windowEffects: ["mica"]` works; otherwise use an opaque background |
+| **Traffic-light space** and drag regions | the left padding of `.toolbar` in `app.css`; `data-tauri-drag-region` in `Toolbar.tsx` and `ConnectScreen.tsx` | Remove the padding. With native decorations, drag regions are optional | Same; or set `decorations: false` and draw your own window controls |
 | **Menu**: the app menu with Services, Hide and Show All | `menu.rs` | The menu bar renders inside the window. Drop the app menu and move Settings and Quit into File | Same |
-| **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs, `bindingFromEvent` assumes a Mac | `src/commands/registry.ts`; `metaKey` checks in `ResultsGrid`, `Sidebar`, `CommandPalette` and `FieldValue` | Map `Mod` to Ctrl, and render labels as `Ctrl+Shift+K` | Same |
+| **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs, `bindingFromEvent` assumes a Mac | `src/commands/registry.ts`; `metaKey` checks in `ResultsGrid`, `Sidebar`, `CommandPalette`, `palette/PaletteList.tsx`, `palette/usePeekHeld.ts` and `value/Peek.tsx` | Map `Mod` to Ctrl, and render labels as `Ctrl+Shift+K` | Same |
 | **Fonts**: bundled Geist and JetBrains Mono, with `-apple-system` and `Menlo` fallbacks | `fonts.css`, `theme.css` (`--font-*-bundled`) | Works; drop the macOS fallbacks or add `Cantarell` and `DejaVu Sans Mono` | Works; `Segoe UI`, `Cascadia Mono` as fallbacks |
 | **Bundle targets**: only `app` | `tauri.conf.json` `bundle.targets`; `package.json` scripts open `bundle/macos/DataBee.app` | `deb`, `appimage`, `rpm` | `nsis`, `msi`; `icons/icon.ico` exists but `bundle.icon` doesn't list it; `main.rs` needs the `windows_subsystem` attribute so release builds open no console |
 | **Install and dev scripts** (zsh, Swift, CoreGraphics, `screencapture`, `pkill`) | `scripts/` | Rewrite with `xdotool`/`wmctrl` plus `grim`/`import`, or drop `launch.sh` and use `bun tauri dev` | PowerShell |
-| **Wording**: "Keychain", "Finder", the `~/Library/...` socket example | `db_commands.rs`, `error.rs`, `cli.rs` help, `components/settings/pages.tsx`, `ConnectScreen.tsx`, `Dialogs.tsx` | "keyring", "file manager" | "Credential Manager", "Explorer" |
+| **Wording**: "Keychain", "Finder", the `~/Library/...` socket example | `error.rs`, `session.rs` (password prompt), `cli.rs` help, `ConnectScreen.tsx`, `Dialogs.tsx` | "keyring", "file manager" | "Credential Manager", "Explorer" |
 | **Stage hook**: the presenter app is macOS-only | `stage/`, `src/stage/` | Remove ([Removing Stage](#removing-stage)) or leave off | Same |
 | **Tests**: `navigator.platform = "MacIntel"` | `src/test-setup.ts`; tests that type `{Meta>}` | Make the platform a parameter, or drop it | Same |
 
@@ -85,8 +85,8 @@ can do all of this:
 
 ### Add a driver
 
-`src-tauri/src/db/<engine>/mod.rs` implementing `Database`; an `Engine` variant with its `Dialect`; a `kind`
-on `ConnectionSpec`; one arm in `db::open`. Nothing in `rules/` changes. Details:
+`src-tauri/src/db/<engine>/mod.rs` implementing `Database`; an engine field on `Dialect`; a `kind` on
+`ConnectionSpec`; one arm in `db::open`. Nothing in `rules/` changes. Details:
 [database.md](database.md#adding-another-database-engine).
 
 ### Swap the secret store

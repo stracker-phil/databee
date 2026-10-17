@@ -7,7 +7,7 @@ in `src-tauri/src/db_commands.rs`.
 
 | File | Responsibility |
 |---|---|
-| `db/mod.rs` | The `Database` trait every caller uses (`&dyn Database`, [ADR 0011](adr/0011-database-trait-object.md)), the `open` factory (one arm per engine) and re-exports |
+| `db/mod.rs` | The `Database` trait every caller uses (`&dyn Database`, [ADR 0011](adr/0011-database-trait-object.md)), the `open` factory (MySQL only today) and re-exports |
 | `db/types.rs` | Shared DTOs (`ColumnMeta` with its `origin`, `ResultSet` with its `id`, `kinds`, `serialized` and the IPC-skipped `full_texts`, `ExecuteResponse` with its `failure: StatementFailure`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage` with `table` and `keys`, `AppliedFilter`, `FilterKind`) |
 | `db/dialect.rs` | `Dialect { backslash_escapes }` (`Dialect::MYSQL`, or `from_sql_mode`): `quote_ident` (backticks), `sql_string`, `like` / `like_contains`, `table_ref`, `system_schemas`; `escape_like` |
 | `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
@@ -251,8 +251,9 @@ because a statement can name any database. A load stamped before DDL or a refres
 not kept. Applied plans never contain DDL and leave the cache alone. DDL made outside the app (another
 client, WP-CLI) shows after `view.refresh`.
 
-Users: `address::resolve` (table names, primary keys, filter columns) and the lens
-([References and kinds](#references-and-kinds)).
+Users: `address::resolve` (table names, primary keys, filter columns), the lens
+([References and kinds](#references-and-kinds)), documents, palette search and the rules layer
+(applied presets, the Project page, the checks in `project_update`).
 
 ## References and kinds
 
@@ -387,8 +388,8 @@ Callers only know `&dyn Database` and the `Dialect` it returns, so an engine is 
 arm; nothing in `rules/` changes:
 
 1. **Driver.** `src-tauri/src/db/<engine>/mod.rs` implementing `Database`.
-2. **Dialect.** An `Engine` variant with its `Dialect`. These are MySQL-specific today and need a per-engine
-   version: `quote_ident` and `table_ref` (backticks); `sql_string` and `like` (backslash escaping unless
+2. **Dialect.** `Dialect` only knows MySQL (`backslash_escapes`); it needs an engine field and per-engine
+   versions of: `quote_ident` and `table_ref` (backticks); `sql_string` and `like` (backslash escaping unless
    `NO_BACKSLASH_ESCAPES`); `system_schemas`. Outside the dialect: the lexer (`#` comments, backslash
    escapes), the cancel SQL (`KILL QUERY` → `pg_cancel_backend`; SQLite uses an interrupt), `DELETE … LIMIT 1`,
    and `UTC_TIMESTAMP()` and `INTERVAL` in preset SQL.

@@ -83,7 +83,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
 - **Anchors** are `data-stage` attributes, with optional `-label`, `-role` and `-list`. Ids follow the data
   where rows have stable ids:
   - `table:<db>.<table>` (list `tables`)
-  - `tab:table:<db>.<table>`, `tab:object:<row address>`, `tab:project:<db>`, `tab:readout:<db>`
+  - `tab:table:<db>.<table>`, `tab:object:<row address>`, `tab:project:<db>`, `tab:readout:<db>`,
+    `tab:query:<tab id>`
   - object tabs: `object` (the panel), `object-header`, `object-actions` (the actions menu button),
     `view-toggle` with `view-toggle:document` and `view-toggle:rows`, `group-<table>` on each section band's
     table name (list `groups`; a second band of the same table is `group-<table>:<group id>`), `collapse:<group id>` (the band's
@@ -135,27 +136,22 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
 
   Sheets are marked with `data-stage-window`.
 
-  **Removed anchors.** U2b removed `statusbar:theme` and `statusbar:dock` (use Settings → Appearance and the
-  `view.inspectorDock` command) and `statusbar:connection` (the toolbar shows the connection;
-  `toolbar:connection` carries its identity).
-  U4d removed `statusbar:site` (the site URL is no longer read; the `site_url` pinned query holds it).
-  U8 removed `settings:wordpress` and `settings-nav:wordpress` (the WordPress settings page; the gravatar
-  switch is gone).
-  U9 removed `inspector` and `inspector:close` (values open as value columns, `value-column:close`) and the
-  `view.inspectorDock` command (there is no dock); `main.ui.inspector` became `main.ui.valueColumn`.
-  U7 removed the WordPress entity pages (they had no anchors of their own) and the view `wp:<entity>`: an
-  entity opens as an object tab in the `db` view, which `stageState()` reports as `object`;
-  `wp:open:<entity>:<id>` opens that object tab.
-  U11 removed the WordPress list screens with their anchors `<entity>:<id>` (list `wp:<list>`),
-  `list:search`, `list:previous-page`, `list:next-page` and `wp:nav:<list>` (lists are pinned queries in the
-  palette's `q:`; the WordPress navigation keeps `wp:nav:dashboard` and `wp:nav:snapshots`), the options
-  screen, and the favorites bar `favorites`, `favorites:add` and `favorite:<id>` (list `favorites`; saved
-  queries replace it). The views `wp:<list>` (`wp:orders`, …) and the `go.*` list commands are gone with them.
-  U12 removed WordPress mode: the mode switch `toolbar:mode`, `toolbar:mode:wp` and `toolbar:mode:db`; the
-  WordPress shell `wp:nav`, `wp:nav:dashboard`, `wp:nav:snapshots`, `wp:header`, `wp:back`, `wp:forward`,
-  `wp:crumbs`, `wp:search` and `wp:content`; the views `wp:dashboard` and `wp:snapshots` (the view is `connect`
-  or `db`); `state.mode`; the commands `view.wp`, `view.db`, `go.dashboard` and `go.snapshots`. The command
-  family `wp:open:<entity>:<id>` is now `entity:open:<entity>:<id>`. The readout replaces the dashboard.
+  **Removed anchors.** These anchors, views and commands are gone; a presenter script that uses them needs
+  the replacement:
+  - `statusbar:theme`, `statusbar:dock`: Settings → Appearance; `statusbar:connection`: `toolbar:connection`;
+    `statusbar:site`: the `site_url` pinned query.
+  - `settings:wordpress`, `settings-nav:wordpress`: the WordPress settings page is gone.
+  - `inspector`, `inspector:close` and the `view.inspectorDock` command: values open as value columns
+    (`value-column:close`); `main.ui.inspector` is `main.ui.valueColumn`.
+  - WordPress mode with its entity pages, list screens, options screen, dashboard and snapshot screen: the
+    anchors `toolbar:mode`, `toolbar:mode:wp`, `toolbar:mode:db`, `wp:nav`, `wp:nav:<list>`,
+    `wp:nav:dashboard`, `wp:nav:snapshots`, `wp:header`, `wp:back`, `wp:forward`, `wp:crumbs`, `wp:search`,
+    `wp:content`, `<entity>:<id>` (list `wp:<list>`), `list:search`, `list:previous-page`, `list:next-page`;
+    the views `wp:<entity>`, `wp:<list>`, `wp:dashboard`, `wp:snapshots` and `state.mode`; the commands
+    `view.wp`, `view.db`, `go.dashboard`, `go.snapshots` and the `go.*` list commands. An entity opens as an
+    object tab (`entity:open:<entity>:<id>`, formerly `wp:open:…`), lists are pinned queries, the readout
+    replaces the dashboard, and the view is `connect` or `db`.
+  - The favorites bar `favorites`, `favorites:add`, `favorite:<id>` (list `favorites`): saved queries.
 - **Commands** come from the in-app registry, with `shortcut` and `enabled`.
 - **Keys.** When a key combination is a command's shortcut, that command runs in the current view, even
   without focus. So ⌘, ⌘K and ⌘T behave like their menu items. Other keys go to the focused element;
@@ -163,7 +159,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
 
 ## Limits
 
-- Synthetic clicks can't open native `<select>` menus: the connection and database pickers and the order
-  status. Use the palette or commands instead.
+- Synthetic clicks can't open native `<select>` menus: the connection and database pickers, Settings
+  controls and the Project page's rule forms. Use the palette, commands or `type` instead.
 - Tauri reports physical pixels, and the hook divides them by the window's scale factor. Coordinates are
   exact on one display, or on several displays that share a scale.

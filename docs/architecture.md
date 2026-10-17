@@ -84,6 +84,8 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/search/              the palette's search: ids, people, external ids, find everywhere
   src/saved/               saved queries: project, global and preset pinned ones; the favorites migration
   src/value_counts.rs      value counts of one column
+  src/statement_counts.rs  test-only: statements per object view, palette, readout and coverage (database.md)
+  src/dev.rs               debug builds only: window frame, background launch, eval for scripts/dev
   src/commands.rs          settings, keybindings, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
@@ -98,7 +100,8 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
   src/lock.rs              poison-tolerant std lock access
   presets/                 built-in presets: wordpress, woocommerce, action-scheduler (docs/presets.md)
-  tests/                   integration tests of the database layer (Docker, #[ignore]); the others sit next to their module
+  tests/                   integration tests of the database layer (Docker, #[ignore]): mysql.rs, changes.rs,
+                           sql_mode.rs; the others sit next to their module
   tauri.conf.json          window, bundle and identifier config
 src/                       React app
   main.tsx modules.ts       boot; the install list (core, then one line per module)
@@ -111,7 +114,7 @@ src/                       React app
   lib/                     pure helpers (formatting, SQL ranges, theme, addresses, values)
   styles/                  schemes/ (one file per color scheme), theme.css (derived tokens), fonts.css, app.css
   assets/fonts/            bundled Geist and JetBrains Mono (OFL)
-  test/                    api mock, fixtures
+  test/                    api mock (apiMock.ts), fixtures, the IPC boundary test
 dev/                       Docker fixtures for integration tests
 scripts/                   install links; dev/ drives the app headlessly
 .claude/                   rules and the ship-step skill for Claude Code
@@ -137,7 +140,7 @@ See [ADR 0015](adr/0015-frontend-registries.md). WordPress is no module: it is t
 ## Addresses
 
 Every view has one address ([ADR 0021](adr/0021-addresses.md)), a URL-like name that the status bar shows and copies
-and that back/forward, and later deep links, the CLI and MCP, pass around:
+and that back/forward, deep links (`databee://` URLs from other apps), the CLI (`databee open`) and MCP pass around:
 
 ```
 databee://<connection>/<database>/                       home

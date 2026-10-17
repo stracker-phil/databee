@@ -10,7 +10,7 @@ out of the main context ([`.claude/rules/testing.md`](../.claude/rules/testing.m
 |---|---|
 | `bun run test` | Vitest UI tests (`test:ui`), then the Rust unit tests (`test:rust`) |
 | `bun run test:db` | recreates the Docker fixtures, then `cargo test -- --ignored --skip real_data` (integration tests only, in `tests/` and in modules; the real-data tests are left out) |
-| `bun run lint` | `tsc --noEmit` (app and tests) and `cargo clippy --lib --bins -- -D warnings` (production code only; test code is compiled by `cargo test` but not linted, because tests deliberately use `unwrap`, clones and odd inputs) |
+| `bun run lint` | regenerates the IPC types (`types`: the ts-rs `export_bindings` tests) and fails when `src/api/types.gen.ts` or `src/stage/types.gen.ts` changed, then `tsc --noEmit` (app and tests) and `cargo clippy --lib --bins -- -D warnings` (production code only; test code is compiled by `cargo test` but not linted, because tests deliberately use `unwrap`, clones and odd inputs) |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | Rust formatting (run before lint) |
 
 The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules/testing.md):
@@ -34,7 +34,7 @@ The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules
   | `tests/mysql.rs` | the Docker fixtures; checks the driver on MariaDB and MySQL | `cargo test --test mysql -- --ignored` |
   | `tests/changes.rs` | the Docker fixtures; row edits planned by the core (`db::changes`) on `wp_write` and `databee_test`: serialized edits, NULL and `''` restored by undo, delete, duplicate and insert, a key column change, no undo for binary cells; every test owns its rows (ids from 9100 up) | `cargo test --test changes -- --ignored` |
   | `tests/sql_mode.rs` | the Docker fixtures; plans, applies and undoes a `SetCell` on a meta row of `wp_write` (`wp_postmeta` 9303) while the server's global `sql_mode` includes `NO_BACKSLASH_ESCAPES` (restored afterwards; its own binary so nothing else connects meanwhile) | `cargo test --test sql_mode -- --ignored` |
-  | `src/document/server_tests.rs` (and the other `server_tests.rs` of `rules/`, `document/actions/`, `search/`) | the Docker fixtures (`wp_test`, `wp_legacy`, `wp_custom`, `wp_multi` and `databee_test` read-only, `wp_write` for actions); the test in `mod real_data` reads `DATABEE_WP_TEST=mysql://user:pass@host:port/db`, a real database of your own, read-only, and round-trips every serialized value of its `[[meta]]` tables | `cargo test --lib -- --ignored document::` |
+  | `src/document/server_tests.rs` (and the other `server_tests.rs` of `rules/`, `document/actions/`, `search/`, `readout/`) | the Docker fixtures (`wp_test`, `wp_legacy`, `wp_custom`, `wp_multi` and `databee_test` read-only, `wp_write` for actions); the test in `mod real_data` reads `DATABEE_WP_TEST=mysql://user:pass@host:port/db`, a real database of your own, read-only, and round-trips every serialized value of its `[[meta]]` tables | `cargo test --lib -- --ignored document::` |
   | `src/statement_counts.rs` | the Docker fixtures (`wp_test`, read-only); asserts the statements per `document`, `peek`, `palette_search`, `readout` and `reference_coverage` ([database.md](database.md#statement-counts)) | `cargo test --lib -- --ignored statement_counts` |
 
   The `real_data` test panics when `DATABEE_WP_TEST` is unset. `test:db` never runs them: its `cargo test` call
@@ -59,8 +59,8 @@ every run, because the fixture uses `UTC_TIMESTAMP()` for relative dates.
 | Database | Contents |
 |---|---|
 | `databee_test` | not WordPress: posts-like table, one column per decoder family, a view, `authors`/`books` with a real foreign key (`books_author`) |
-| `wp_test` | WordPress plus WooCommerce (HPOS with sync) schema and seed data for the lens tests |
-| `wp_write` | `CREATE TABLE … LIKE` copies for edit and undo tests, plus rows (ids from 9100 up: orders 9101 to 9403, actions 9201 and 9202, postmeta 9301 to 9303, user 9501, post 9601, address 9602, `zz_*` options and `zz-retention` log entries) that single write tests change and put back; post 9701 with 5,000 meta keys (`zz_long_0001` to `zz_long_5000`, meta ids 100001 to 105000) for long lists |
+| `wp_test` | WordPress plus WooCommerce (HPOS with sync) schema and seed data for the preset, document, palette and readout tests |
+| `wp_write` | `CREATE TABLE … LIKE` copies for edit and undo tests, plus rows (ids from 9100 up: orders 9101 to 9403, actions 9201 and 9202, postmeta 9301 to 9303, user 9501, post 9601, address 9602, `zz_*` options and `zz-retention` log entries) that single write tests change and put back; post 9701 with 5,000 meta keys (`zz_long_0001` to `zz_long_5000`, meta ids 100001 to 105000) for the long document group and Rows grid |
 | `wp_legacy` | WooCommerce with HPOS off: orders in `wp_posts` (a customer with two orders, a guest order, a refund, order notes), no `wc_orders` tables |
 | `wp_custom` | WordPress with table prefix `xy_` (core tables only), for prefix detection |
 | `wp_multi` | multisite network: main-site `wp_` tables, `wp_blogs`, `wp_sitemeta` (`active_sitewide_plugins`), sub-site 2 (`wp_2_options`, `wp_2_posts`, no `wp_2_users`) |
@@ -98,7 +98,7 @@ has no `window.databee`.
 
 ```sh
 scripts/dev/js.sh 'databee.getState().openDialog({type:"settings", page:"shortcuts"})'
-scripts/dev/js.sh '(() => { const s = databee.getState(); s.setMode("db"); s.openTableTab("wp_test", "wp_options"); })()'
+scripts/dev/js.sh 'databee.getState().openTableTab("wp_test", "wp_options")'
 ```
 
 `launch.sh` sets `DATABEE_WINDOW_FRAME` and `DATABEE_BACKGROUND=1`. Rust reads both in `dev.rs`, a module

@@ -5,10 +5,14 @@ and edits one leaf of it. It is core and knows no application.
 
 | File | Responsibility |
 |---|---|
-| `php.rs` | Lossless parser and serializer for PHP `serialize()` data; `PhpValue::get` and `as_text` for lookups; `looks_serialized` (a strict `is_serialized`, plus `C:`); `is_php_float` |
-| `value.rs` | Turns stored text (PHP or JSON) into a generic `ValueNode` tree. Serialized strings inside other values are decoded up to 3 levels deep |
+| `php.rs` | Lossless parser and serializer for PHP `serialize()` data (`parse`, `parse_lenient`, `serialize`); `PhpValue::get`, `text_at` and `as_text` for lookups; `looks_serialized` (a strict `is_serialized`, plus `C:`); `is_php_float` |
+| `value.rs` | `decode`: stored text (PHP or JSON) as a `DecodedValue` with a generic `ValueNode` tree. Serialized strings inside other values are decoded up to 3 levels deep (`MAX_NESTED_DECODE`). `format_of` tells the format from the first bytes |
 | `edit.rs` | `edit_serialized`: replaces one leaf and re-serializes |
 | `commands.rs` | The `decode_value` and `edit_serialized` Tauri commands |
+
+Results do not carry trees: `value/serialized.rs` (`find_serialized`) only marks the text cells that parse,
+with a short preview such as `a:3:{…}` (`ResultSet.serialized`), before long texts move to the cell cache.
+The page asks `decode_value` for the tree when a value is opened.
 
 ## PHP serialize
 
@@ -35,8 +39,10 @@ Decoding modes:
 
 ## Value tree
 
-`ValueNode { kind, text, class, children, note }`; `kind` is one of `null`, `bool`, `int`, `float`, `string`,
-`array`, `object`, `ref`, `enum`, `custom`. Children carry the display `key` and a `keyKind` (`int`,
+`DecodedValue { format, root, warning, error }`: `format` is `php` or `json`; `warning` is set when only
+lenient parsing succeeded, `error` (the strict parse error) when text that looks PHP-serialized does not
+parse at all; JSON that does not parse decodes to nothing. `ValueNode { kind, text, class, children, note }`; `kind` is one of `null`, `bool`, `int`, `float`, `string`,
+`array`, `object`, `ref`, `enum`, `custom`. Children (`ChildNode`, `ValueChild` in TypeScript) carry the display `key` and a `keyKind` (`int`,
 `string`, or the property visibility `public`, `protected`, `private`); a private property also carries its
 `declaringClass`, and a key that is not valid UTF-8 its bytes as `rawHex`. A string holding serialized data
 gets one child `decoded` with the inner tree. JSON keeps key order; numbers are read as `i64`/`u64` or `f64` (`1.0` stays distinct from `1`, but `2.50`

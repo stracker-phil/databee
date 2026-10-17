@@ -1,8 +1,7 @@
 # Design language
 
-The reference for how DataBee looks and behaves. Every UX redesign step updates this page when it builds or
-changes an item. Items marked "(from U<n>)" are decided but not built yet; the step names are those of the
-redesign plan. Decisions: [ADR 0020](adr/0020-everything-is-rows.md) (one workspace),
+The reference for how DataBee looks and behaves. Update this page with every change that builds or changes
+an item. Decisions: [ADR 0020](adr/0020-everything-is-rows.md) (one workspace),
 [ADR 0024](adr/0024-color-schemes.md) (schemes). Content rules for data:
 [`.claude/rules/presets.md`](../.claude/rules/presets.md). Implementation (files, registries, CSS
 structure): [frontend.md](frontend.md#styling).
@@ -87,7 +86,7 @@ Status colors (`--success`, `--warning`, `--danger`, `--info` and their `-soft` 
 `--chart-*`, `--category-*` and `--tile-*` are removed. Core components use only the tokens above (an error
 or warning background is a `color-mix()` of a `--style-*` color). Older rules in `app.css` still read a few old
 names (`--chart-*`, `--border`, `--text-secondary`, …); they survive as aliases onto scheme tokens in
-`theme.css`, marked `/* alias: removed in U2b/U12 */`, until the CSS pass of U15.
+`theme.css`. New CSS uses only the tokens above.
 
 **Fonts:** Geist (400, 500, 600) and JetBrains Mono (400, 500, 600, italic 400) are bundled (SIL OFL).
 Settings → Appearance "UI font" and "Mono font" take any installed family name; empty means the bundled one.
@@ -127,7 +126,7 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
 - **Kinds without color:** numbers are right-aligned with tabular figures, `NULL` is italic tertiary, binary
   values are tertiary. There are no type tints.
 - **Key/value rows** (Document): a 300px key column in `--o2`, the value in primary text.
-- **Column header row:** column names in `--o3`, small sans (document groups). Grids (mock Rows)
+- **Column header row:** column names in `--o3`, small sans (document groups). Grids
   show the column name in mono and its type below it in `--o3` small text. Table groups always have one, so
   every value is labelled.
 - **Sidebar items** (`.si`): 8px inset, 5px radius, mono, secondary text; hover `--row-hover`; the active
@@ -155,8 +154,8 @@ semibold), the Document/Rows segmented control with its `Tab` key cap, the summa
 closed by a hairline. A `⋯` button and a right-click on the block open the row's actions (`Run <action>`,
 `(no undo)` when it cannot be undone). In the Document view the focused value has a 1.5px accent outline on a `--sel` background.
 
-**Rows view:** per group the same band, the group's `WHERE` in tertiary mono, then a compact grid (grid header
-of U2b: column name, type below) with the table's full columns, 12 rows high before it scrolls.
+**Rows view:** per group the same band, the group's `WHERE` in tertiary mono, then a compact grid (grid header:
+column name, type below) with the table's full columns, 12 rows high before it scrolls.
 
 **Linked table highlight:** hovering a table in the sidebar lights every band of that table
 (`--lit` background, 3px accent bar on the left, accent table name); hovering a band lights its sidebar
@@ -174,7 +173,8 @@ Inputs look like inputs, never like rows.
   without the icon. Key caps follow the user's bindings.
 - **Segmented control** (`.segmented`): a field-styled track with 1px padding; segments in `--o2`; the
   selected segment on `--pop` with primary text and `--shadow-small`. Used for Settings choices, the
-  Tables/History switch, the mode switch and Document/Rows.
+  Tables/History switch, Data/Structure in table tabs, the query results picker, PHP/JSON/Raw in value
+  columns and Document/Rows.
 - **Key cap:** mono 11px, `--o3`, 1px `--field-line` border, 4px radius.
 
 ## Overlays
@@ -189,8 +189,7 @@ Palette, peek, popovers, context menus, toasts and dialogs: `--pop` background, 
 One component (`src/components/value/Value.tsx`) renders every value: grids, documents, peek, the
 palette, the readout and the Project page. Hover never
 opens a tooltip: the status bar shows the provenance of the hovered value, else of the focused (selected)
-value, else the current address. The Hover column is what the status bar shows. Built in U5 except where a
-cell says otherwise.
+value, else the current address. The Hover column is what the status bar shows.
 
 | Kind | Look | Click | Hover |
 |---|---|---|---|
@@ -212,7 +211,7 @@ cell says otherwise.
 - **Trees** (`ValueTree`): a hairline guide on the left, keys secondary, container types tertiary
   (`array(2)`), strings in dim quotes so `"2.04"` and `2.04` differ, leaf pairs of a small array (up to 4
   leaves, 60 characters) on one line unless the tree is editable. Tree rows keep the row anatomy.
-- **Value styles (from U4c):** a project (or preset, off by default) rule `{ columns or meta keys, match:
+- **Value styles:** a project (or preset, off by default) rule `{ columns or meta keys, match:
   = | LIKE | REGEXP, value, color }` colors matching values with `--style-<color>` (`red`, `green`, `yellow`,
   `blue`, `purple`). A style is always scoped to columns or meta keys, never global. There is no status kind
   and no default status color.
@@ -290,7 +289,7 @@ behavior: [presets.md](presets.md#the-project-page).
 
 ## Readout
 
-The readout tab (`databee://<slug>/<db>/`, mock `Readout`) is the home of a database, opened on connect. It
+The readout tab (`databee://<slug>/<db>/`) is the home of a database, opened on connect. It
 uses the full width of the tab on `--bg`. A header block like the object view's: the database as the title in
 mono, a meta line in `--o2` (host · prefix · presets · server version), then the value-pinned queries as an
 aligned key/value grid (source table in `--o3` and query title | value). Then a collapsible section band per
@@ -310,7 +309,7 @@ Every line opens its address; counts refresh after every apply. A failed part or
 
 ## Live mode, snapshots, compare
 
-Changes show in the object itself (mock `Main`: `.chg`, `.flash`, `.old`, the `changes` band), never in a
+Changes show in the object itself (`.chg`, `.flash`, `.old`, the `changes` band), never in a
 separate tool.
 
 - **Live mode** (`w`) reads the active column's row again every few seconds (Settings → Queries → Live
@@ -344,28 +343,38 @@ rebindable.
 
 | Key | Scope | Action |
 |---|---|---|
-| `Tab` | object | Document ↔ Rows of the active column; focus stays on the same provenance |
-| `j` / `k`, ↓ / ↑ | object, grid | move the focused value in a Document column (focus ring `--sel` and accent outline; the status bar shows its provenance when nothing is hovered); grids keep their arrow keys |
+| `Tab` | object | Document ↔ Rows of the active column; focus stays on the same provenance (`object.toggleView`) |
+| `j` / `k`, ↓ / ↑ | object | move the focused value in a Document column (focus ring `--sel` and accent outline; the status bar shows its provenance when nothing is hovered); grids keep their arrow keys |
 | `h` / `l`, ← / → | object | move the active column (a focused grid keeps ← / →) |
-| `Enter` | object, grid | drill into the focused reference or another row's key (next column), open serialized data as a value column; grids: open the row as an object, a reference's target, a value column for serialized data or long text |
-| `Esc` | object, table, query | close the rightmost column (a stack's or a tab's value column); overlays, menus and inputs take `Esc` first |
+| `Enter` | object | drill into the focused reference or another row's key (next column), open serialized data as a value column (`object.drill`); grids handle Enter themselves: open the row as an object, a reference's target, a value column for serialized data or long text |
+| `Esc` | global | close the rightmost column, a stack's or a tab's value column (`columns.close`); overlays, menus and inputs take `Esc` first |
 | ⌘[ / ⌘] | global | back / forward through the active tab's address history; without history the keys stay with the editor |
-| `⌥` (held) | object, grid | peek the hovered or focused reference; ↵ opens it |
-| `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (grid: the `table` scope; documents and Rows grids: the `object` scope) |
-| `r` | object, grid | add a reference from this column or meta key: opens the Project page with the form prefilled (context menu: "Add reference…", "Kind…", "Style…") |
+| `⌥` (held) | object, grid | peek the hovered or focused reference; ↵ opens it (not a command) |
+| `y` / `Y` / `e` / `f` | table, object | copy raw / copy as SQL condition / edit / filter by value (table grids: the `table` scope; documents and Rows grids: the `object` scope) |
+| `r` | table, object | add a reference from this column or meta key: opens the Project page with the form prefilled (context menu: "Add reference…", "Kind…", "Style…") |
 | `w` | object | live mode on/off for the active column (`object.live`) |
 | `s` | object | take a snapshot of the active column's row, after a label prompt (`object.snapshot`) |
 | `x` | object | dismiss the change marks of the active column (`object.dismissChanges`) |
-| `p` | query (focus in the results) | pin the tab's saved query: Not pinned, Count, Value or Rows(n) (`query.pin`) |
-| ⌘S | global, query | `changes.apply` applies pending changes; with nothing pending, `query.save` (its fallback) saves the query tab |
-| ⌘\ | global | toggle the sidebar |
+| `p` | editor (focus in the results) | pin the tab's saved query: Not pinned, Count, Value or Rows(n) (`query.pin`) |
+| ⌘S | global, editor | `changes.apply` applies pending changes; with nothing pending, `query.save` (its fallback) saves the query tab |
+| ⌘↵ / ⌘⇧↵ | editor | run the statement at the cursor / all statements |
+| ⌘F | table | focus the table's `WHERE` filter |
 | ⌘⇧F | db | focus the sidebar filter |
-| ⌘K | global | palette |
+| ⌘K / ⌘P | global | palette / palette with `t:` (tables) |
+| ⌘T / ⌘W | global | new query tab / close tab |
+| ⌃Tab / ⌃⇧Tab | db | next / previous tab |
+| ⌘R | global | refresh the current view |
+| ⌘N / ⌘, | global | new connection / Settings |
+| ⌘= / ⌘- / ⌘0 | global | zoom in / out / reset |
+| ⌘\ | global | toggle the sidebar |
 | `?` | global | shortcut overview |
+
+Scopes are the registry's (`src/commands/index.ts`, `registerCoreScopes`): `global`, `db`, `table` (a table
+tab), `editor` (a query tab) and `object` (an object tab).
 
 ## Palette prefixes
 
-The palette is the main navigation. Sections, in order: Recent, row hits, Tables, Commands. Row hits are
+The palette is the main navigation. Sections, in order: Recent, row hits, saved queries, Tables, Commands. Row hits are
 grouped in sections titled by what they are (`objects with id 4711`, `rows that reference 4711`) and render
 with the value grammar: the table name (or `table.column`) in `--o2`, `#key` in the accent, then the summary
 values. Enter opens a hit in the current object tab's column stack (or a new object tab); ⌘↵ opens a new
