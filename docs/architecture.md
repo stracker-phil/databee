@@ -70,6 +70,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/cli.rs ipc.rs        argv parsing, single-instance socket
   src/launch.rs            queue of launch requests + one-shot passwords
   src/state.rs session.rs  AppState, open sessions
+  src/schema.rs            per-session schema cache: tables, keys, foreign keys, structures
   src/commands.rs          settings, keybindings, favorites, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding

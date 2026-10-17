@@ -41,6 +41,23 @@ INSERT INTO types VALUES
 
 CREATE VIEW published AS SELECT ID, post_title FROM wp_posts WHERE post_status = 'publish';
 
+-- A real foreign key, which WordPress tables never declare.
+CREATE TABLE authors (
+  id int NOT NULL PRIMARY KEY,
+  name varchar(50) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE books (
+  id int NOT NULL PRIMARY KEY,
+  author_id int,
+  title varchar(100) NOT NULL,
+  KEY author_id (author_id),
+  CONSTRAINT books_author FOREIGN KEY (author_id) REFERENCES authors (id)
+) ENGINE=InnoDB;
+
+INSERT INTO authors VALUES (1, 'Ada'), (2, 'Grace');
+INSERT INTO books VALUES (1, 1, 'Notes'), (2, 2, 'Compilers'), (3, NULL, 'Anonymous');
+
 -- WordPress + WooCommerce (HPOS with sync) install for the WP lens tests.
 CREATE DATABASE wp_test CHARACTER SET utf8mb4;
 USE wp_test;

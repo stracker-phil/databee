@@ -51,6 +51,9 @@ pub trait Database: Send + Sync {
     async fn databases(&self) -> AppResult<Vec<DatabaseInfo>>;
     async fn tables(&self, database: &str) -> AppResult<Vec<TableInfo>>;
     async fn structure(&self, database: &str, table: &str) -> AppResult<TableStructure>;
+    /// Primary keys, indexes and foreign keys of every table in `database` that has any, read
+    /// in bulk; a table without keys is absent.
+    async fn keys(&self, database: &str) -> AppResult<BTreeMap<String, TableKeys>>;
     /// Table → column names, for editor autocompletion.
     async fn completion(&self, database: &str) -> AppResult<BTreeMap<String, Vec<String>>>;
     async fn browse(

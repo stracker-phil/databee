@@ -13,6 +13,7 @@ use crate::db::{
     BrowsePage, BrowseRequest, DatabaseInfo, ExecuteResponse, TableInfo, TableStructure,
 };
 use crate::error::{AppError, AppResult};
+use crate::schema;
 use crate::session::{self, OpenArgs, SessionInfo};
 use crate::state::AppState;
 use crate::store::history::HistoryEntry;
@@ -48,6 +49,8 @@ pub async fn list_tables(
     state.sessions.get(&session_id)?.db.tables(&database).await
 }
 
+/// Always read from the server, because the DDL text's `AUTO_INCREMENT` moves with inserts; the
+/// result refreshes the schema cache on the way.
 #[tauri::command]
 pub async fn describe_table(
     state: State<'_, AppState>,
@@ -55,12 +58,16 @@ pub async fn describe_table(
     database: String,
     table: String,
 ) -> AppResult<TableStructure> {
-    state
-        .sessions
-        .get(&session_id)?
-        .db
-        .structure(&database, &table)
-        .await
+    let session = state.sessions.get(&session_id)?;
+    schema::fresh_structure(&session, &database, &table).await
+}
+
+/// Drops the session's schema cache, so DDL made outside the app shows (`view.refresh`).
+#[tauri::command]
+pub fn refresh_schema(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+    let session = state.sessions.get(&session_id)?;
+    schema::refresh(&session);
+    Ok(())
 }
 
 #[tauri::command]

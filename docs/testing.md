@@ -55,7 +55,7 @@ every run, because the fixture uses `UTC_TIMESTAMP()` for relative dates.
 
 | Database | Contents |
 |---|---|
-| `databee_test` | not WordPress: posts-like table, one column per decoder family, a view |
+| `databee_test` | not WordPress: posts-like table, one column per decoder family, a view, `authors`/`books` with a real foreign key (`books_author`) |
 | `wp_test` | WordPress plus WooCommerce (HPOS with sync) schema and seed data for the lens tests |
 | `wp_write` | `CREATE TABLE … LIKE` copies for edit and undo tests, plus rows (ids from 9100 up: orders 9101 to 9403, actions 9201 and 9202, postmeta 9301 and 9302, user 9501, post 9601, address 9602, `zz_*` options and `zz-retention` log entries) that single write tests change and put back |
 | `wp_legacy` | WooCommerce with HPOS off: orders in `wp_posts` (a customer with two orders, a guest order, a refund, order notes), no `wc_orders` tables |

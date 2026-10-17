@@ -3,36 +3,15 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use sqlx::AssertSqlSafe;
 use sqlx::mysql::{MySqlPool, MySqlRow};
-use sqlx::{AssertSqlSafe, Row};
 
+use super::keys::{primary_key, table_keys};
+use super::meta_rows::{rows, text, text_or_empty};
 use super::script::raw_text;
 use super::timeouts::query_within;
-use crate::db::{ColumnInfo, DatabaseInfo, Dialect, IndexInfo, TableInfo, TableStructure};
+use crate::db::{ColumnInfo, DatabaseInfo, Dialect, TableInfo, TableStructure};
 use crate::error::AppResult;
-
-/// Runs a metadata query with bound parameters; every column must be text (CAST as needed)
-/// and is read by its alias.
-async fn rows(
-    pool: &MySqlPool,
-    timeout: Duration,
-    sql: &'static str,
-    binds: &[&str],
-) -> AppResult<Vec<MySqlRow>> {
-    let mut query = sqlx::query(sql);
-    for b in binds {
-        query = query.bind(b.to_string());
-    }
-    query_within(timeout, async { Ok(query.fetch_all(pool).await?) }).await
-}
-
-fn text(row: &MySqlRow, column: &str) -> AppResult<Option<String>> {
-    Ok(row.try_get_unchecked::<Option<String>, _>(column)?)
-}
-
-fn text_or_empty(row: &MySqlRow, column: &str) -> AppResult<String> {
-    Ok(text(row, column)?.unwrap_or_default())
-}
 
 fn number(row: &MySqlRow, column: &str) -> AppResult<Option<u64>> {
     Ok(text(row, column)?.and_then(|v| v.parse().ok()))
@@ -101,7 +80,7 @@ pub async fn structure(
     table: &str,
 ) -> AppResult<TableStructure> {
     let binds = [database, table];
-    let (column_rows, index_rows, ddl) = tokio::try_join!(
+    let (column_rows, (indexes, foreign_keys), ddl) = tokio::try_join!(
         rows(
             pool,
             timeout,
@@ -111,15 +90,7 @@ pub async fn structure(
              WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
             &binds,
         ),
-        rows(
-            pool,
-            timeout,
-            "SELECT INDEX_NAME AS name, CAST(NON_UNIQUE AS CHAR) AS non_unique, \
-             COLUMN_NAME AS column_name \
-             FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
-             ORDER BY INDEX_NAME = 'PRIMARY' DESC, INDEX_NAME, SEQ_IN_INDEX",
-            &binds,
-        ),
+        table_keys(pool, timeout, database, table),
         create_statement(pool, timeout, dialect, database, table),
     )?;
     let columns = column_rows
@@ -139,16 +110,11 @@ pub async fn structure(
             })
         })
         .collect::<AppResult<_>>()?;
-    let indexes = group_indexes(&index_rows)?;
-    let primary_key = indexes
-        .iter()
-        .find(|i| i.name == "PRIMARY")
-        .map(|i| i.columns.clone())
-        .unwrap_or_default();
     Ok(TableStructure {
         columns,
+        primary_key: primary_key(&indexes),
         indexes,
-        primary_key,
+        foreign_keys,
         ddl,
     })
 }
@@ -181,24 +147,6 @@ async fn create_statement(
         Ok(row.and_then(|row| raw_text(&row, 1)))
     })
     .await
-}
-
-/// One `IndexInfo` per index from `STATISTICS` rows ordered by index and column position.
-fn group_indexes(rows: &[MySqlRow]) -> AppResult<Vec<IndexInfo>> {
-    let mut indexes: Vec<IndexInfo> = Vec::new();
-    for row in rows {
-        let name = text_or_empty(row, "name")?;
-        let column = text_or_empty(row, "column_name")?;
-        match indexes.last_mut() {
-            Some(last) if last.name == name => last.columns.push(column),
-            _ => indexes.push(IndexInfo {
-                unique: text(row, "non_unique")?.as_deref() == Some("0"),
-                name,
-                columns: vec![column],
-            }),
-        }
-    }
-    Ok(indexes)
 }
 
 /// Table → column names, for editor autocompletion.

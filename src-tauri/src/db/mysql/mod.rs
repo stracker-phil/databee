@@ -1,6 +1,8 @@
 mod editor;
 mod introspect;
+mod keys;
 mod kill;
+mod meta_rows;
 mod script;
 mod timeouts;
 
@@ -19,7 +21,7 @@ use self::timeouts::{connect_within, pooled_within, query_within};
 use super::browse::{browse_sql, columns_filter, page_limit};
 use super::{
     BrowsePage, BrowseRequest, CellLimit, Database, DatabaseInfo, Dialect, ExecuteResponse,
-    ResultSet, TableInfo, TableStructure,
+    ResultSet, TableInfo, TableKeys, TableStructure,
 };
 use crate::connection::{ConnectionSpec, Secret};
 use crate::error::{AppError, AppResult};
@@ -258,6 +260,10 @@ impl Database for MySqlSession {
             table,
         )
         .await
+    }
+
+    async fn keys(&self, database: &str) -> AppResult<BTreeMap<String, TableKeys>> {
+        keys::database_keys(&self.meta, self.query_timeout, database).await
     }
 
     async fn completion(&self, database: &str) -> AppResult<BTreeMap<String, Vec<String>>> {

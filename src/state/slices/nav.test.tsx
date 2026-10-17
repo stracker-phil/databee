@@ -39,7 +39,7 @@ describe("tab history", () => {
     vi.clearAllMocks();
     connectedStore({ tabs: [] });
     installCommands();
-    mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["ID"], ddl: null });
+    mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["ID"], foreignKeys: [], ddl: null });
   });
 
   it("derives a row address from the single-column primary key", async () => {
@@ -132,7 +132,7 @@ describe("history with the rendered table view", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     connectedStore({ tabs: [] });
-    mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["ID"], ddl: null });
+    mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["ID"], foreignKeys: [], ddl: null });
     mocked.browseTable.mockImplementation(async (_s, req) => ({
       result: resultSet(),
       hasMore: false,
@@ -160,7 +160,7 @@ describe("openAddress", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     connectedStore({ tabs: [] });
-    mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["ID"], ddl: null });
+    mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["ID"], foreignKeys: [], ddl: null });
     render(<Toasts />);
   });
 
@@ -192,7 +192,7 @@ describe("openAddress", () => {
   });
 
   it("reports a row address for a table without a single-column primary key", async () => {
-    mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["a", "b"], ddl: null });
+    mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["a", "b"], foreignKeys: [], ddl: null });
     await act(() => useStore.getState().openAddress("databee://shop/db/wp_postmeta/7"));
     expect(await screen.findByRole("alert")).toHaveTextContent("wp_postmeta has no single-column primary key");
     expect(useStore.getState().tabs).toEqual([]);

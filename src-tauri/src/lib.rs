@@ -12,6 +12,7 @@ pub mod ipc;
 mod launch;
 mod lock;
 mod menu;
+mod schema;
 pub mod secrets;
 mod session;
 pub mod stage;
@@ -246,6 +247,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::list_databases,
             db_commands::list_tables,
             db_commands::describe_table,
+            db_commands::refresh_schema,
             db_commands::completion_schema,
             db_commands::use_database,
             db_commands::execute,

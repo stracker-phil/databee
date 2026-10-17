@@ -6,6 +6,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import App from "../App";
 import { api, type ExecuteResponse, type Favorite, type SessionInfo, type WpInfo } from "../api";
+import { installCommands, runCommand } from "../commands";
 import { FavoritesBar } from "../components/FavoritesBar";
 import { StatusBar } from "../components/StatusBar";
 import { TabBar } from "../components/Tabs";
@@ -347,6 +348,50 @@ describe("store behavior", () => {
       navigate({ params: { page: "2", status: "paid" }, list: "orders", screen: "list" });
 
       expect(useStore.getState().wpNav.stack).toHaveLength(2);
+    });
+  });
+
+  describe("view.refresh", () => {
+    beforeEach(() => {
+      mocked.refreshSchema.mockReset().mockResolvedValue(undefined);
+      installCommands();
+    });
+
+    it("forgets the active session's cached schema, then reloads every view", async () => {
+      const before = useStore.getState().dataVersion;
+      let versionAtCall: number | undefined;
+      mocked.refreshSchema.mockImplementation(async () => {
+        versionAtCall = useStore.getState().dataVersion;
+      });
+
+      await act(async () => {
+        runCommand("view.refresh");
+      });
+
+      expect(mocked.refreshSchema).toHaveBeenCalledWith("s1");
+      expect(versionAtCall).toBe(before);
+      expect(useStore.getState().dataVersion).toBe(before + 1);
+    });
+
+    it("still reloads the views and shows an error toast when the schema refresh is rejected", async () => {
+      mocked.refreshSchema.mockRejectedValue({ kind: "io", message: "connection lost", code: null });
+      const before = useStore.getState().dataVersion;
+      render(<Toasts />);
+
+      await act(() => useStore.getState().refreshView());
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not refresh the schema: connection lost");
+      expect(useStore.getState().dataVersion).toBe(before + 1);
+    });
+
+    it("reloads the views without a schema call when no session is active", async () => {
+      useStore.setState({ sessions: [], activeSessionId: null });
+      const before = useStore.getState().dataVersion;
+
+      await act(() => useStore.getState().refreshView());
+
+      expect(mocked.refreshSchema).not.toHaveBeenCalled();
+      expect(useStore.getState().dataVersion).toBe(before + 1);
     });
   });
 

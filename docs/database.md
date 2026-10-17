@@ -15,11 +15,13 @@ in `src-tauri/src/db_commands.rs`.
 | `db/mysql/editor.rs` | `EditorConnection`: the editor connection's lock, thread id, current database, `reconnect`, `kill_query` and `kill_connection` |
 | `db/mysql/kill.rs` | `Killer`: `KILL QUERY <id>` or `KILL <id>` on a one-off connection, for any server thread id; `spawn_kill_query` fires one in the background |
 | `db/mysql/introspect.rs` | `databases`, `tables`, `structure`, `completion` over the pool; rows are read by column alias |
+| `db/mysql/meta_rows.rs` | `rows` (a bound `information_schema` query within the timeout), `text`, `text_or_empty` (read by column alias), shared by `introspect.rs` and `keys.rs` |
+| `db/mysql/keys.rs` | Indexes and foreign keys: `table_keys` for one table (inside `structure`), `database_keys` for every table of a database (`Database::keys`) |
 | `db/mysql/script.rs` | `run_script` (text protocol, one `ResultSet` per statement, column recovery; returns a `ScriptOutcome` of the finished results and the failing statement, `into_results` for callers that need all of it), `scalar`, `thread_id`, `read_dialect` |
 | `db/mysql/timeouts.rs` | `connect_within`, `query_within`, and `pooled_within`, which reads the pool connection's thread id, kills its query on timeout and closes the connection |
 | `db/fake.rs` | `FakeDatabase`, an in-memory `Database` for unit tests (canned results matched by SQL fragment, recorded `apply` batches); behind `cfg(any(test, feature = "test-util"))` |
 | `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements`, `words`, `is_terminated`, `is_blank` |
-| `db/classify.rs` | What a statement is: `verb_index` (the deciding word, also after a `WITH` clause) and `returns_rows` |
+| `db/classify.rs` | What a statement is: `verb_index` (the deciding word, also after a `WITH` clause), `returns_rows`, and `changes_schema` (a script with `CREATE`, `ALTER`, `DROP`, `RENAME` or `TRUNCATE`) |
 | `db/safety.rs` | `destructive_reason` (which statements need confirmation) |
 | `db/cell.rs` | `Cell`: decodes text-protocol bytes by column `Family`, computed once per result set from the type name; `CellLimit` cuts long text to a preview |
 | `db/cell_cache.rs` | `CellCache`: numbers result sets per session and keeps the full text of their `LongText` cells for `fetch_cell` |
@@ -27,9 +29,11 @@ in `src-tauri/src/db_commands.rs`.
 
 Outside `db/`:
 - `connection.rs` has `ConnectionSpec` and `Secret`.
-- `session.rs` has `Session { id, spec, db: Box<dyn Database>, ext, plans, cells }` and the `Sessions` map. `ext` is a
+- `session.rs` has `Session { id, spec, db: Box<dyn Database>, ext, plans, cells }` and the `Sessions` map
+  (`writes(db)` counts applied batches, `ddl_writes()` counts user scripts with DDL). `ext` is a
   type-keyed `Extensions` map where a module keeps per-session data that dies with the session
-  ([ADR 0013](adr/0013-session-extensions.md)); the WordPress lens keeps its `WpCache` there.
+  ([ADR 0013](adr/0013-session-extensions.md)); the WordPress lens keeps its `WpCache` there, the core its
+  `SchemaCache` ([Schema cache](#schema-cache)).
 - `error.rs` maps `sqlx::Error` to `AppError`.
 
 ## Connection model
@@ -208,9 +212,42 @@ Introspection uses `information_schema`:
 - `SCHEMATA` for databases;
 - `TABLES` for row estimates, sizes and views;
 - `COLUMNS` and `STATISTICS` for structure and indexes;
+- `KEY_COLUMN_USAGE` for foreign keys (`TableStructure.foreignKeys`, `ForeignKey { name, columns, refTable,
+  refColumns }`, columns in key order). Only keys into the same database are read
+  (`REFERENCED_TABLE_SCHEMA = TABLE_SCHEMA`); WordPress declares none, so they appear on plugin and custom
+  tables only;
 - `SHOW CREATE TABLE` for the DDL (`TableStructure.ddl` is `null` when it returns no row; the UI then shows
-  no DDL block). `structure` runs these three queries concurrently;
+  no DDL block). `structure` runs the columns, indexes, foreign keys and DDL queries concurrently;
 - `COLUMNS` again for editor autocompletion.
+
+`Database::keys(database)` is the bulk loader: one `STATISTICS` and one `KEY_COLUMN_USAGE` query for the whole
+database return `TableKeys { primaryKey, indexes, foreignKeys }` per table (the primary key is the `PRIMARY`
+index, so it needs no query of its own). A table without any index or foreign key is absent.
+
+## Schema cache
+
+`src-tauri/src/schema.rs` keeps what only DDL changes, per session (`SchemaCache` in `Session.ext`) and per
+database:
+
+- `schema::database(session, db) -> DatabaseSchema`: `tables` (`Database::tables`; row estimates and sizes as
+  of the load), `keys` (`Database::keys`, an empty `TableKeys` for a table without keys) and `incoming`, the
+  reverse index of foreign keys: referenced table → `IncomingKey { table, foreignKey }`. Three queries
+  (`tables` and the bulk loader's two), run concurrently, however many tables.
+- `schema::structure(session, db, table)`: one table's `TableStructure`, loaded on first use.
+- `schema::fresh_structure`: reads the structure from the server and stores it. `describe_table` uses it
+  because the DDL text's `AUTO_INCREMENT` moves with every insert; `list_tables` is not cached either,
+  because row estimates and sizes move with the data.
+- `schema::refresh(session)` (command `refresh_schema`, sent by the page's `view.refresh` before it reloads)
+  drops everything.
+
+Each entry is stamped with `Session::ddl_writes()` and the cache's refresh count. `Session::execute` bumps
+`ddl_writes` after every user script that `classify::changes_schema` flags, also when it failed (a script may
+stop after its DDL), and any stamp change makes every database's entry stale. The counter is session-wide
+because a statement can name any database. A load stamped before DDL or a refresh finished is returned but
+not kept. Applied plans never contain DDL and leave the cache alone. DDL made outside the app (another
+client, WP-CLI) shows after `view.refresh`.
+
+Users: `address::resolve` (table names, primary keys, filter columns).
 
 ## Editing rows
 

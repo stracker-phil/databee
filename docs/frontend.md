@@ -80,7 +80,7 @@ and the state types, so components import everything from `state/store`.
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
 | `selectedCell` | `{ tabId, row, col, column, cell, source? }`; opens the Inspector. `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets it fetch a `longText` cell in full |
 | `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
-| `dataVersion` | bumped by ⌘R and after apply or undo; views re-fetch when it changes |
+| `dataVersion` | bumped by ⌘R (`refreshView`, which first drops the session's schema cache with `refreshSchema`) and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
 | `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar's `pending n` button uses it) |
 | `uiState` | per connection identity: column widths, pane sizes and `sidebarHidden` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag |

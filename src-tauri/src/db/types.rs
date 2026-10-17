@@ -114,8 +114,30 @@ pub struct TableStructure {
     pub indexes: Vec<IndexInfo>,
     /// Columns of the `PRIMARY` index in key order; empty without one.
     pub primary_key: Vec<String>,
+    /// Declared foreign keys to tables of the same database.
+    pub foreign_keys: Vec<ForeignKey>,
     /// `None` when `SHOW CREATE TABLE` returned no row.
     pub ddl: Option<String>,
+}
+
+/// A declared foreign key; `columns[i]` references `ref_columns[i]` of `ref_table`.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignKey {
+    /// The constraint name.
+    pub name: String,
+    pub columns: Vec<String>,
+    pub ref_table: String,
+    pub ref_columns: Vec<String>,
+}
+
+/// The keys of one table, as the bulk loader reads them for a whole database.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TableKeys {
+    pub primary_key: Vec<String>,
+    pub indexes: Vec<IndexInfo>,
+    pub foreign_keys: Vec<ForeignKey>,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Default, TS)]
@@ -232,6 +254,7 @@ mod tests {
             columns: Vec::new(),
             indexes: Vec::new(),
             primary_key: vec!["post_id".into(), "meta_key".into()],
+            foreign_keys: Vec::new(),
             ddl: None,
         };
 
@@ -241,6 +264,7 @@ mod tests {
                 "columns": [],
                 "indexes": [],
                 "primaryKey": ["post_id", "meta_key"],
+                "foreignKeys": [],
                 "ddl": null
             })
         );

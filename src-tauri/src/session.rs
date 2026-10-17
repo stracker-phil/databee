@@ -1,5 +1,6 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
@@ -8,6 +9,7 @@ use ts_rs::TS;
 
 use crate::connection::{ConnectionSpec, Secret};
 use crate::db::cell_cache::CellCache;
+use crate::db::classify::changes_schema;
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
 use crate::db::{self, BrowsePage, BrowseRequest, CellLimit, Database, ExecuteResponse};
 use crate::error::{AppError, AppResult};
@@ -28,6 +30,9 @@ pub struct Session {
     pub cells: CellCache,
     /// Applied writes per database; caches compare it to notice that their data changed.
     writes: Mutex<HashMap<String, u64>>,
+    /// User scripts with DDL; the schema cache reloads when it changes. Session-wide, because a
+    /// statement may name any database.
+    ddl_writes: AtomicU64,
     /// The connection slug addresses start with; renaming the saved connection updates it.
     slug: RwLock<String>,
 }
@@ -107,6 +112,7 @@ impl Session {
             plans: Plans::default(),
             cells: CellCache::default(),
             writes: Mutex::default(),
+            ddl_writes: AtomicU64::new(0),
         }
     }
 
@@ -135,6 +141,11 @@ impl Session {
             .unwrap_or(0)
     }
 
+    /// How many user scripts with DDL ran in this session.
+    pub fn ddl_writes(&self) -> u64 {
+        self.ddl_writes.load(Ordering::SeqCst)
+    }
+
     /// Runs a user query; long text cells in the results are kept for `fetch_cell`.
     pub async fn execute(
         &self,
@@ -143,7 +154,13 @@ impl Session {
         cell_limit: CellLimit,
         timeout: Duration,
     ) -> AppResult<ExecuteResponse> {
-        let mut response = self.db.execute(sql, row_limit, cell_limit, timeout).await?;
+        let response = self.db.execute(sql, row_limit, cell_limit, timeout).await;
+        // Counted after the run, also a failed one (a script may stop after its DDL), so a
+        // schema read that overlapped the DDL is not kept under the new count.
+        if changes_schema(sql) {
+            self.ddl_writes.fetch_add(1, Ordering::SeqCst);
+        }
+        let mut response = response?;
         for result in &mut response.results {
             self.cells.keep(result);
         }
@@ -393,8 +410,8 @@ impl Sessions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::FakeDatabase;
     use crate::db::changes::Plan;
+    use crate::db::{FakeDatabase, ResultSet};
     use crate::error::ErrorKind;
 
     fn session(id: &str) -> Session {
@@ -899,5 +916,67 @@ mod tests {
     fn missing_password_error_carries_the_account() {
         let err = auth_error(&PasswordSource::None, "wp@h:1".into(), "denied".into());
         assert_eq!(err.account(), Some("wp@h:1"));
+    }
+
+    async fn run(session: &Session, sql: &str) -> AppResult<ExecuteResponse> {
+        session.execute(sql, 10, CellLimit::NONE, TIMEOUT).await
+    }
+
+    #[tokio::test]
+    async fn scripts_with_ddl_count_as_ddl_writes() {
+        let session = Session::new(
+            "a".into(),
+            local_spec(),
+            "local".into(),
+            Box::new(FakeDatabase::new().on("", ResultSet::default())),
+        );
+        assert_eq!(session.ddl_writes(), 0);
+
+        for (i, sql) in [
+            "CREATE TABLE t (id int)",
+            "ALTER TABLE t ADD COLUMN x int",
+            "DROP TABLE t",
+            "RENAME TABLE a TO b",
+            "TRUNCATE TABLE t",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            run(&session, sql).await.unwrap();
+            assert_eq!(session.ddl_writes(), i as u64 + 1, "{sql}");
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_ddl_script_still_counts_as_a_ddl_write() {
+        let session = Session::new(
+            "a".into(),
+            local_spec(),
+            "local".into(),
+            Box::new(FakeDatabase::new().failing("ALTER", AppError::Cancelled)),
+        );
+
+        run(&session, "ALTER TABLE t ADD COLUMN x int")
+            .await
+            .unwrap_err();
+
+        assert_eq!(session.ddl_writes(), 1);
+    }
+
+    #[tokio::test]
+    async fn scripts_without_ddl_do_not_count_as_ddl_writes() {
+        let session = Session::new(
+            "a".into(),
+            local_spec(),
+            "local".into(),
+            Box::new(FakeDatabase::new().on("", ResultSet::default())),
+        );
+
+        run(&session, "SELECT 1").await.unwrap();
+        run(&session, "UPDATE t SET a = 1 WHERE id = 2")
+            .await
+            .unwrap();
+
+        assert_eq!(session.ddl_writes(), 0);
     }
 }

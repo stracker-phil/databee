@@ -80,6 +80,8 @@ export const api = {
     invoke<TableInfo[]>("list_tables", { sessionId, database }),
   describeTable: (sessionId: string, database: string, table: string) =>
     invoke<TableStructure>("describe_table", { sessionId, database, table }),
+  /** Drops the session's schema cache, so DDL made outside the app shows. */
+  refreshSchema: (sessionId: string) => invoke<void>("refresh_schema", { sessionId }),
   completionSchema: (sessionId: string, database: string) =>
     invoke<Record<string, string[]>>("completion_schema", { sessionId, database }),
   useDatabase: (sessionId: string, database: string) =>

@@ -9,6 +9,7 @@ use ts_rs::TS;
 use super::{Address, Target, View};
 use crate::db::{BrowseRequest, CellLimit, ColumnEquals};
 use crate::error::{AppError, AppResult};
+use crate::schema;
 use crate::session::Session;
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
@@ -72,8 +73,9 @@ async fn check_and_canonicalize_target(
                 return Ok(false);
             };
             *table = real;
-            let primary_key = session.db.structure(&database, table).await?.primary_key;
-            let [column] = primary_key.as_slice() else {
+            let schema = schema::database(session, &database).await?;
+            let primary_key = schema.keys(table).map(|k| k.primary_key.as_slice());
+            let Some([column]) = primary_key else {
                 return Ok(false);
             };
             let keys = std::iter::once(key.as_str()).chain(address.compare.as_deref());
@@ -89,15 +91,16 @@ async fn check_and_canonicalize_target(
 
 /// The exact name, else the single case-insensitive match (table names may be case-insensitive).
 async fn real_table(session: &Session, database: &str, table: &str) -> AppResult<Option<String>> {
-    let tables = session.db.tables(database).await?;
-    if tables.iter().any(|t| t.name == table) {
+    let schema = schema::database(session, database).await?;
+    if schema.table(table).is_some() {
         return Ok(Some(table.to_string()));
     }
-    let mut similar = tables
-        .into_iter()
+    let mut similar = schema
+        .tables
+        .iter()
         .filter(|t| t.name.eq_ignore_ascii_case(table));
     Ok(match (similar.next(), similar.next()) {
-        (Some(only), None) => Some(only.name),
+        (Some(only), None) => Some(only.name.clone()),
         _ => None,
     })
 }
@@ -113,9 +116,10 @@ async fn check_and_canonicalize_columns(
     if filter.is_empty() {
         return Ok(true);
     }
-    let columns = session.db.structure(database, table).await?.columns;
+    let structure = schema::structure(session, database, table).await?;
     for condition in filter {
-        let Some(real) = columns
+        let Some(real) = structure
+            .columns
             .iter()
             .find(|c| c.name.eq_ignore_ascii_case(&condition.column))
         else {

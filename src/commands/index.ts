@@ -88,7 +88,7 @@ export const APP_COMMANDS: Command[] = [
     when: () => !!selectActiveSession(useStore.getState()),
     run: () => useStore.getState().toggleSidebar(),
   },
-  { id: "view.refresh", title: "Refresh current view", scope: "global", defaultBinding: "Mod+R", run: () => useStore.getState().bumpData() },
+  { id: "view.refresh", title: "Refresh current view", scope: "global", defaultBinding: "Mod+R", run: () => void useStore.getState().refreshView() },
   {
     id: "view.inspectorDock",
     title: "Toggle inspector position (right / bottom)",

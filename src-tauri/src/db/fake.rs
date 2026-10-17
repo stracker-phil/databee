@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use super::browse::browse_sql;
 use super::{
     BrowsePage, BrowseRequest, CellLimit, Database, DatabaseInfo, Dialect, ExecuteResponse,
-    ResultSet, TableInfo, TableStructure,
+    ResultSet, TableInfo, TableKeys, TableStructure,
 };
 use crate::error::{AppError, AppResult};
 use crate::lock::MutexExt;
@@ -21,6 +21,8 @@ pub struct FakeDatabase {
     responses: Vec<(String, AppResult<ResultSet>)>,
     queries: Mutex<Vec<String>>,
     applied: Mutex<Vec<Vec<String>>>,
+    /// Structures by database and table, behind `tables`, `structure` and `keys`.
+    schema: Mutex<BTreeMap<(String, String), TableStructure>>,
     closed: AtomicBool,
 }
 
@@ -37,6 +39,7 @@ impl FakeDatabase {
             responses: Vec::new(),
             queries: Mutex::default(),
             applied: Mutex::default(),
+            schema: Mutex::default(),
             closed: AtomicBool::new(false),
         }
     }
@@ -44,6 +47,19 @@ impl FakeDatabase {
     pub fn with_database(self, database: &str) -> Self {
         *self.database.lock_unpoisoned() = Some(database.to_string());
         self
+    }
+
+    /// Declares `database`.`table` with `structure`, for `tables`, `structure` and `keys`.
+    pub fn with_table(self, database: &str, table: &str, structure: TableStructure) -> Self {
+        self.set_table(database, table, structure);
+        self
+    }
+
+    /// Adds or replaces a table after the fake was handed to a session, like DDL would.
+    pub fn set_table(&self, database: &str, table: &str, structure: TableStructure) {
+        self.schema
+            .lock_unpoisoned()
+            .insert((database.to_string(), table.to_string()), structure);
     }
 
     /// SQL containing `sql_contains` gets `result`; the first registered match wins.
@@ -134,17 +150,52 @@ impl Database for FakeDatabase {
             .collect())
     }
 
-    async fn tables(&self, _database: &str) -> AppResult<Vec<TableInfo>> {
-        Ok(Vec::new())
+    async fn tables(&self, database: &str) -> AppResult<Vec<TableInfo>> {
+        let schema = self.schema.lock_unpoisoned();
+        let tables = schema
+            .keys()
+            .filter(|(db, _)| db == database)
+            .map(|(_, table)| TableInfo {
+                name: table.clone(),
+                is_view: false,
+                rows_estimate: None,
+                size_bytes: None,
+                comment: String::new(),
+            });
+        Ok(tables.collect())
     }
 
-    async fn structure(&self, _database: &str, _table: &str) -> AppResult<TableStructure> {
-        Ok(TableStructure {
+    /// The declared structure; an undeclared table has no columns and no keys.
+    async fn structure(&self, database: &str, table: &str) -> AppResult<TableStructure> {
+        let key = (database.to_string(), table.to_string());
+        let declared = self.schema.lock_unpoisoned().get(&key).cloned();
+        Ok(declared.unwrap_or(TableStructure {
             columns: Vec::new(),
             indexes: Vec::new(),
             primary_key: Vec::new(),
+            foreign_keys: Vec::new(),
             ddl: None,
-        })
+        }))
+    }
+
+    async fn keys(&self, database: &str) -> AppResult<BTreeMap<String, TableKeys>> {
+        let schema = self.schema.lock_unpoisoned();
+        let keys = schema
+            .iter()
+            .filter(|((db, _), s)| {
+                let keyless =
+                    s.primary_key.is_empty() && s.indexes.is_empty() && s.foreign_keys.is_empty();
+                db == database && !keyless
+            })
+            .map(|((_, table), s)| {
+                let keys = TableKeys {
+                    primary_key: s.primary_key.clone(),
+                    indexes: s.indexes.clone(),
+                    foreign_keys: s.foreign_keys.clone(),
+                };
+                (table.clone(), keys)
+            });
+        Ok(keys.collect())
     }
 
     async fn completion(&self, _database: &str) -> AppResult<BTreeMap<String, Vec<String>>> {
@@ -226,6 +277,10 @@ impl Database for Arc<FakeDatabase> {
         (**self).structure(database, table).await
     }
 
+    async fn keys(&self, database: &str) -> AppResult<BTreeMap<String, TableKeys>> {
+        (**self).keys(database).await
+    }
+
     async fn completion(&self, database: &str) -> AppResult<BTreeMap<String, Vec<String>>> {
         (**self).completion(database).await
     }
@@ -251,6 +306,7 @@ impl Database for Arc<FakeDatabase> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::ForeignKey;
     use crate::error::ErrorKind;
 
     const TIMEOUT: Duration = Duration::from_secs(1);
@@ -313,6 +369,57 @@ mod tests {
         assert_eq!(db.apply(&second, TIMEOUT).await.unwrap(), 2);
 
         assert_eq!(db.applied(), vec![first, second]);
+    }
+
+    fn structure(primary_key: &[&str], foreign_keys: Vec<ForeignKey>) -> TableStructure {
+        TableStructure {
+            columns: Vec::new(),
+            indexes: Vec::new(),
+            primary_key: primary_key.iter().map(ToString::to_string).collect(),
+            foreign_keys,
+            ddl: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn declared_tables_drive_tables_structure_and_keys() {
+        let fk = ForeignKey {
+            name: "books_author".into(),
+            columns: vec!["author_id".into()],
+            ref_table: "authors".into(),
+            ref_columns: vec!["id".into()],
+        };
+        let books = structure(&["id"], vec![fk.clone()]);
+        let db = FakeDatabase::new()
+            .with_table("shop", "authors", structure(&["id"], Vec::new()))
+            .with_table("shop", "books", books.clone())
+            .with_table("other", "elsewhere", structure(&["id"], Vec::new()));
+
+        let names: Vec<_> = db
+            .tables("shop")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        let keys = db.keys("shop").await.unwrap();
+
+        assert_eq!(names, ["authors", "books"]);
+        assert_eq!(db.structure("shop", "books").await.unwrap(), books);
+        assert_eq!(keys["books"].primary_key, ["id"]);
+        assert_eq!(keys["books"].foreign_keys, [fk]);
+        assert_eq!(keys.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn keyless_table_is_listed_but_absent_from_keys() {
+        let db = FakeDatabase::new().with_table("shop", "log", structure(&[], Vec::new()));
+
+        let tables = db.tables("shop").await.unwrap();
+        let keys = db.keys("shop").await.unwrap();
+
+        assert_eq!(tables.len(), 1);
+        assert!(keys.is_empty());
     }
 
     #[tokio::test]

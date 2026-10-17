@@ -241,6 +241,15 @@ entity: string | null, entityId: string | null,
  */
 column: string, };
 
+/**
+ * A declared foreign key; `columns[i]` references `ref_columns[i]` of `ref_table`.
+ */
+export type ForeignKey = { 
+/**
+ * The constraint name.
+ */
+name: string, columns: Array<string>, refTable: string, refColumns: Array<string>, };
+
 export type Format = "php" | "json";
 
 export type Granularity = "day" | "hour";
@@ -566,6 +575,10 @@ export type TableStructure = { columns: Array<ColumnInfo>, indexes: Array<IndexI
  * Columns of the `PRIMARY` index in key order; empty without one.
  */
 primaryKey: Array<string>, 
+/**
+ * Declared foreign keys to tables of the same database.
+ */
+foreignKeys: Array<ForeignKey>, 
 /**
  * `None` when `SHOW CREATE TABLE` returned no row.
  */

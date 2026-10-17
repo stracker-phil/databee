@@ -8,7 +8,7 @@ use databee_lib::connection::Secret;
 use databee_lib::db::Database;
 use databee_lib::db::cell_cache::CellCache;
 use databee_lib::db::mysql::MySqlSession;
-use databee_lib::db::{BrowseRequest, Cell, CellLimit, FilterKind};
+use databee_lib::db::{BrowseRequest, Cell, CellLimit, FilterKind, ForeignKey};
 use databee_lib::error::ErrorKind;
 
 mod common;
@@ -78,11 +78,68 @@ async fn lists_databases_tables_and_views() {
         assert!(dbs.iter().any(|d| d.name == "databee_test" && !d.is_system));
         assert!(dbs.iter().any(|d| d.name == "mysql" && d.is_system));
 
-        let tables = s.tables("databee_test").await.unwrap();
+        // Other tests create short-lived `*_probe` tables in this database.
+        let mut tables = s.tables("databee_test").await.unwrap();
+        tables.retain(|t| !t.name.ends_with("_probe"));
         let names: Vec<_> = tables.iter().map(|t| t.name.as_str()).collect();
-        assert_eq!(names, ["published", "types", "wp_posts"]);
-        assert!(tables[0].is_view);
-        assert_eq!(tables[2].comment, "Posts");
+        assert_eq!(
+            names,
+            ["authors", "books", "published", "types", "wp_posts"]
+        );
+        assert!(tables[2].is_view);
+        assert_eq!(tables[4].comment, "Posts");
+    }
+}
+
+fn books_author() -> ForeignKey {
+    ForeignKey {
+        name: "books_author".into(),
+        columns: vec!["author_id".into()],
+        ref_table: "authors".into(),
+        ref_columns: vec!["id".into()],
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn structure_lists_declared_foreign_keys() {
+    for s in sessions(DATABASE).await {
+        let books = s.structure(DATABASE, "books").await.unwrap();
+        let authors = s.structure(DATABASE, "authors").await.unwrap();
+
+        assert_eq!(books.foreign_keys, [books_author()]);
+        assert!(authors.foreign_keys.is_empty());
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn bulk_keys_include_foreign_keys() {
+    for s in sessions(DATABASE).await {
+        let keys = s.keys(DATABASE).await.unwrap();
+
+        assert_eq!(keys["books"].foreign_keys, [books_author()]);
+        assert_eq!(keys["books"].primary_key, ["id"]);
+        assert!(keys["authors"].foreign_keys.is_empty());
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn bulk_keys_give_every_wordpress_table_a_primary_key() {
+    for s in sessions("wp_test").await {
+        let keys = s.keys("wp_test").await.unwrap();
+        let tables = s.tables("wp_test").await.unwrap();
+
+        for table in tables.iter().filter(|t| !t.is_view) {
+            let primary_key = keys.get(&table.name).map(|k| &k.primary_key);
+            assert!(
+                primary_key.is_some_and(|pk| !pk.is_empty()),
+                "{}: {}",
+                s.server_version(),
+                table.name
+            );
+        }
     }
 }
 

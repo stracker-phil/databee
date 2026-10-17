@@ -97,7 +97,7 @@ use the same names in camelCase.
 | Module | Commands |
 |---|---|
 | `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `rename_connection_slug` (validates, stores, renames the slug of open sessions of that connection), `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
-| `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `resolve_address` (see [Addresses](#addresses)), `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
+| `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `refresh_schema` (see [Schema cache](database.md#schema-cache)), `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `resolve_address` (see [Addresses](#addresses)), `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
 
 `session::open` is the connect service: it peeks the launch password, resolves the password
@@ -193,7 +193,8 @@ A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}
   parameter, extra segments); `Display` writes the canonical text. Both are pure. `view` and `compare` only
   apply to a `Row`; on a `Table` every parameter is a filter column, so a column named `view` stays a filter.
 - `percent.rs`: the encoding (`A-Z a-z 0-9 - . _ ~` stay, everything else is UTF-8 `%XX`) and strict decoding.
-- `resolve.rs`: `resolve(session, address, timeout) -> Resolved { address, exists }`. An address naming
+- `resolve.rs`: `resolve(session, address, timeout) -> Resolved { address, exists }`. Table names, primary
+  keys and columns come from the schema cache ([database.md](database.md#schema-cache)). An address naming
   another connection slug is an error; a missing database, table, filter column or row (key and compare
   key, looked up by the single-column primary key) is `exists: false`. The returned address is canonical:
   table and column names as the server spells them, `view=document` dropped.

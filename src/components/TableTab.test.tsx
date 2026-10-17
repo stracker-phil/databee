@@ -18,6 +18,7 @@ const structure: TableStructure = {
   ],
   indexes: [{ name: "PRIMARY", unique: true, columns: ["ID"] }],
   primaryKey: ["ID"],
+  foreignKeys: [],
   ddl: "CREATE TABLE wp_posts (...)",
 };
 
