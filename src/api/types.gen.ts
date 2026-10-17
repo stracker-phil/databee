@@ -10,6 +10,8 @@ export type Action = { name: string, table: string, scope?: ActionScope, when?: 
  */
 export type ActionFields = { name: string, table: string, scope?: ActionScope, when?: { [key in string]: Match }, params?: Array<Param>, update?: Array<UpdateStep>, delete?: DeleteSpec | null, sql?: string | null, preview_sql?: string | null, };
 
+export type ActionLine = { preset: string, name: string, scope: ActionScope, };
+
 /**
  * A parameter as the page asks for it.
  */
@@ -27,7 +29,26 @@ free: boolean, default: string | null, optional: boolean,
  */
 error: string | null, };
 
+export type ActionPreview = { 
+/**
+ * Queues this plan with `queue_action_preview`.
+ */
+id: number, description: string, canUndo: boolean, 
+/**
+ * The rows an update or delete writes; empty for free SQL.
+ */
+rows: Array<PreviewRow>, 
+/**
+ * The statements of free SQL, whose rows are not known in advance; empty otherwise.
+ */
+sql: Array<string>, };
+
 export type ActionScope = "row" | "table";
+
+/**
+ * What one step of an action writes, on the table as stored (with its prefix).
+ */
+export type ActionWrite = { "write": "set", table: string, columns: Array<string>, } | { "write": "deleteRows", table: string, } | { "write": "freeSql", table: string, };
 
 export type Address = { 
 /**
@@ -219,6 +240,8 @@ database: string | null, table: string, column: string, };
  */
 export type ColumnRef = string;
 
+export type ColumnWrite = { column: string, old: Value, new: Value, };
+
 /**
  * Columns of one table; a reference's two ends pair up by position.
  */
@@ -261,6 +284,25 @@ sampleUnresolved: Array<string>,
  */
 timedOut: boolean, };
 
+/**
+ * One entity's newest rows by its `created` column.
+ */
+export type CreatedEntity = { entity: string, preset: string, table: string, sql: string, 
+/**
+ * Items of the timeline that are rows of this entity.
+ */
+countInWindow: number, error: string | null, };
+
+export type CreatedItem = { 
+/**
+ * The row's entity, as its document names it.
+ */
+entity: string, table: string, address: Address, 
+/**
+ * The `created` value the timeline is ordered by.
+ */
+created: Value, summary: Summary, };
+
 export type DatabaseInfo = { name: string, isSystem: boolean, };
 
 export type DecodedValue = { format: Format, root: ValueNode | null, warning: string | null, error: string | null, };
@@ -298,9 +340,9 @@ address: Address,
  */
 entity: string | null, 
 /**
- * The entity's `summary`: columns of the row or keys of its meta rows.
+ * The row's summary (`summary.rs`).
  */
-header: Array<[string, Value]>, 
+header: Summary, 
 /**
  * Own, meta, incoming references, patterns, events; in that order.
  */
@@ -335,6 +377,8 @@ search_exact?: Array<string>,
  * Found by the palette's `@` prefix.
  */
 people?: boolean, };
+
+export type EntityLine = { preset: string, name: string, filter: string | null, };
 
 export type ErrorKind = "database" | "connection" | "auth_failed" | "password_required" | "timeout" | "cancelled" | "confirmation_required" | "session_not_found" | "invalid_input" | "keychain" | "io";
 
@@ -466,16 +510,11 @@ export type MetaTable = { table: string, owner?: string | null, fk?: string | nu
  */
 export type Money = { currency?: Array<string>, };
 
-/**
- * The newest rows of one entity, by its `created` column.
- */
-export type NewObjects = { entity: string, preset: string, table: string, sql: string, columns: Array<string>, rows: Array<ReadoutRow>, error: string | null, };
-
 export type NewValue = { "kind": "string", "text": string } | { "kind": "int", "text": string } | { "kind": "float", "text": string } | { "kind": "bool", "text": boolean } | { "kind": "null" };
 
 export type NodeKind = "null" | "bool" | "int" | "float" | "string" | "array" | "object" | "ref" | "enum" | "custom";
 
-export type ObjectAction = { name: string, preset: string, kind: ObjectActionKind, undo: boolean, params: Array<ActionParam>, };
+export type ObjectAction = { name: string, preset: string, kind: ObjectActionKind, undo: boolean, params: Array<ActionParam>, writes: Array<ActionWrite>, };
 
 export type ObjectActionKind = "update" | "delete" | "sql";
 
@@ -537,13 +576,30 @@ export type Pattern = { name: string, owner: string, owner_when?: { [key in stri
 
 export type Peek = { 
 /**
+ * The peeked row's address, or the set's as given.
+ */
+address: Address, 
+/**
  * The single-column primary key that row addresses name, e.g. `ID` of `wp_users`.
  */
 keyColumn: string | null, 
 /**
- * The entity's `summary`, else the first five columns that are not part of the key.
+ * The row's summary; empty for a set.
  */
-values: Array<[string, Value]>, };
+summary: Summary, 
+/**
+ * For an address that selects no row or several: how many match and the first ones.
+ */
+matches: PeekMatches | null, };
+
+export type PeekMatch = { address: Address, key: RowKey, summary: Summary, };
+
+export type PeekMatches = { total: number, 
+/**
+ * The first `MATCH_ROWS` by primary key. The row the reference starts from is not known
+ * here, so a reference to its own table may list it.
+ */
+rows: Array<PeekMatch>, };
 
 /**
  * A saved query a preset ships. Without `home` it is offered in the palette only.
@@ -600,6 +656,8 @@ markerTables: Array<string>, applied: boolean, };
 
 export type PresetSource = { "kind": "builtIn" } | { "kind": "user", path: string, };
 
+export type PreviewRow = { table: string, key: RowKey, change: RowChange, };
+
 /**
  * One database of one connection. Fields use the snake_case of the rule types, so the stored
  * rules and the project around them read alike.
@@ -622,27 +680,41 @@ network_prefix: string | null,
  */
 presets: Array<string> | null, 
 /**
- * Added rules, and rules that override a preset rule with the same `from` and `when`.
+ * Added rules, and rules that override the preset rule with the same id, or the same `from`
+ * and `when`.
  */
 references: Array<Reference>, 
 /**
- * Ids of preset or inferred rules switched off.
+ * Ids of project, preset or inferred references switched off, and of preset styles that ship
+ * on and are switched off.
  */
-disabled: Array<string>, kinds: Array<KindRule>, styles: Array<StyleRule>, saved: Array<SavedQuery>, };
+disabled: Array<string>, 
+/**
+ * Ids of preset styles that ship off and are switched on.
+ */
+enabled: Array<string>, kinds: Array<KindRule>, 
+/**
+ * Added styles, and styles that override the preset style with the same `id`.
+ */
+styles: Array<StyleRule>, saved: Array<SavedQuery>, };
 
 /**
- * Kind and style rules have no id, so they are addressed by their index in the project.
+ * Kind rules have no id, so they are addressed by their index in the project.
  */
-export type ProjectChange = { "op": "addReference", reference: Reference, } | { "op": "updateReference", id: string, reference: Reference, } | { "op": "removeReference", id: string, } | { "op": "addKind", rule: KindRule, } | { "op": "updateKind", index: number, rule: KindRule, } | { "op": "removeKind", index: number, } | { "op": "addStyle", rule: StyleRule, } | { "op": "updateStyle", index: number, rule: StyleRule, } | { "op": "removeStyle", index: number, } | { "op": "disable", id: string, } | { "op": "enable", id: string, } | { "op": "setPrefix", prefix: string | null, } | { "op": "setNetworkPrefix", prefix: string | null, } | { "op": "setPresets", presets: Array<string> | null, };
+export type ProjectChange = { "op": "addReference", reference: Reference, } | { "op": "updateReference", id: string, reference: Reference, } | { "op": "removeReference", id: string, } | { "op": "addKind", rule: KindRule, } | { "op": "updateKind", index: number, rule: KindRule, } | { "op": "removeKind", index: number, } | { "op": "addStyle", rule: StyleRule, } | { "op": "updateStyle", id: string, rule: StyleRule, } | { "op": "removeStyle", id: string, } | { "op": "enableStyle", id: string, } | { "op": "disableStyle", id: string, } | { "op": "disable", id: string, } | { "op": "enable", id: string, } | { "op": "setPrefix", prefix: string | null, } | { "op": "setNetworkPrefix", prefix: string | null, } | { "op": "setPresets", presets: Array<string> | null, };
 
-export type ProjectRules = { project: Project, prefix: string, suggestedPrefix: string | null, presets: Array<PresetRow>, foreignKeys: number, references: Array<ReferenceRow>, kinds: Array<KindRow>, styles: Array<StyleRow>, tables: Array<RuleTable>, };
+export type ProjectRules = { project: Project, prefix: string, suggestedPrefix: string | null, presets: Array<PresetRow>, foreignKeys: number, tables: Array<RuleTable>, 
+/**
+ * By real table name, then the group without a table.
+ */
+groups: Array<TableRules>, };
 
 /**
  * Where a value was read: rendered as `wp_postmeta.meta_value · meta_id 9123`.
  */
 export type Provenance = { table: string, column: string, row: RowKey, };
 
-export type Readout = { address: Address, status: Status, anomalies: Part<AnomalyLine>, newObjects: Part<NewObjects>, pinned: Part<PinnedLine>, recent: Part<RecentLine>, };
+export type Readout = { address: Address, status: Status, anomalies: Part<AnomalyLine>, recentlyCreated: RecentlyCreated, pinned: Part<PinnedLine>, recent: Part<RecentLine>, };
 
 export type ReadoutRow = { 
 /**
@@ -661,13 +733,26 @@ account: string, spec: ConnectionSpec, lastUsed: string,
 slug: string, };
 
 /**
- * A row opened in the app, newest first, with the values a peek shows of it.
+ * A row opened in the app, newest first, with its summary.
  */
 export type RecentLine = { address: Address, 
 /**
  * Unix seconds.
  */
-at: number, summary: Array<SummaryValue>, error: string | null, };
+at: number, summary: Summary, error: string | null, };
+
+/**
+ * The rows created last across every entity with a `created` column, newest first.
+ */
+export type RecentlyCreated = { items: Array<CreatedItem>, 
+/**
+ * Each entity's query, for provenance, in rule order.
+ */
+entities: Array<CreatedEntity>, 
+/**
+ * The part timed out.
+ */
+error: string | null, };
 
 /**
  * A virtual foreign key. `when` holds on the source row, `to_when` on the target row (for
@@ -687,9 +772,15 @@ label?: string | null,
  */
 columns?: Array<string>, };
 
-export type ReferenceRow = { origin: RuleOrigin, 
+export type ReferenceRow = { 
 /**
- * What `disable`, `enable` and `removeReference` take; `None` for a foreign key (a fact).
+ * Where the reference comes from; an edited preset or inferred reference keeps its origin.
+ */
+origin: RuleOrigin, 
+/**
+ * What `disable` and `enable` take: the project rule's id for a project or edited row (also
+ * what `updateReference` and `removeReference` take), else the preset or inferred id; `None`
+ * for a foreign key (a fact).
  */
 id: string | null, 
 /**
@@ -701,12 +792,16 @@ from: ColumnsRef, to: ColumnsRef,
  */
 when: string, toWhen: string, label: string | null, disabled: boolean, 
 /**
+ * A preset or inferred reference a project rule replaces (`removeReference` resets it).
+ */
+edited: boolean, 
+/**
  * What `reference_coverage` takes; `None` while the reference does not apply.
  */
 reference: ResolvedReference | null, 
 /**
- * The rule as stored (table names without prefix): a project or preset rule, or the project
- * rule that promotes an inferred reference.
+ * The rule as stored (table names without prefix): a project or preset rule, or for an
+ * inferred reference the project rule that would replace it (empty id).
  */
 rule: Reference | null, };
 
@@ -728,6 +823,11 @@ table: Address, column: string,
  * `column` is the table's single-column primary key, so a value addresses one row.
  */
 key: boolean, };
+
+/**
+ * An incoming reference, listed on its target table.
+ */
+export type ReferencedBy = { from: ColumnsRef, to: ColumnsRef, when: string, disabled: boolean, };
 
 export type RemoteEvent = { id: string, request: RemoteRequest, };
 
@@ -776,6 +876,8 @@ cellKinds: Array<CellKind>,
  * Cells a value style colors, by row then column.
  */
 styles: Array<CellStyle>, };
+
+export type RowChange = { "kind": "update", columns: Array<ColumnWrite>, } | { "kind": "delete" };
 
 /**
  * A row's primary key, in key order. Unlike `db::changes::ChangeKey` it owns its values and
@@ -959,26 +1061,57 @@ export type StyleColor = "red" | "green" | "yellow" | "blue" | "purple";
 
 export type StyleMatch = "=" | "LIKE" | "REGEXP";
 
-export type StyleRow = { origin: RuleOrigin, index: number | null, rule: StyleRule, };
+export type StyleRow = { origin: RuleOrigin, 
+/**
+ * What `updateStyle`, `removeStyle`, `enableStyle` and `disableStyle` take.
+ */
+id: string, 
+/**
+ * The rule that applies: for a preset style, its project override if there is one.
+ */
+rule: StyleRule, 
+/**
+ * A preset style the project has not switched on, or a project style stored off.
+ */
+disabled: boolean, 
+/**
+ * A preset style the project overrides (`removeStyle` brings back the preset's).
+ */
+edited: boolean, };
 
 /**
  * Colors values of its columns or meta keys that match. Never global: the same text in another
  * column stays uncolored.
  */
-export type StyleRule = { columns?: Array<ColumnGlob>, meta_keys?: Array<string>, in?: Array<string>, match: StyleMatch, value: string, color: StyleColor, 
+export type StyleRule = { 
 /**
- * Preset styles ship with `enabled = false`; a project switches them on.
+ * Empty until the loader fills in the default (`default_id`).
+ */
+id?: string, columns?: Array<ColumnGlob>, meta_keys?: Array<string>, in?: Array<string>, match: StyleMatch, value: string, color: StyleColor, 
+/**
+ * Preset styles ship with `enabled = false`; a project switches them on by id.
  */
 enabled: boolean, };
 
+export type Summary = { values: Array<SummaryValue>, };
+
+export type SummaryValue = { 
 /**
- * A value of a recent object's peek, under its column or meta key.
+ * The column as the table spells it, or the meta key.
  */
-export type SummaryValue = { column: string, value: Value, };
+name: string, value: Value, };
 
 export type TableInfo = { name: string, isView: boolean, rowsEstimate: number | null, sizeBytes: number | null, comment: string, };
 
 export type TableReferences = { outgoing: Array<ResolvedReference>, incoming: Array<ResolvedReference>, };
+
+/**
+ * The rules of one real table: references from it, the references to it from other tables, the
+ * value styles and kinds whose scope covers one of its columns (or its meta keys, for a meta
+ * table), and the entities and actions on it. `table` is `None` for styles and kinds that cover
+ * no table of this database.
+ */
+export type TableRules = { table: string | null, references: Array<ReferenceRow>, referencedBy: Array<ReferencedBy>, styles: Array<StyleRow>, kinds: Array<KindRow>, entities: Array<EntityLine>, actions: Array<ActionLine>, };
 
 export type TableStructure = { columns: Array<ColumnInfo>, indexes: Array<IndexInfo>, 
 /**

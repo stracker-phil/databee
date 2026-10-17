@@ -325,6 +325,8 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             document::commands::peek,
             document::commands::table_actions,
             document::commands::plan_action,
+            document::commands::preview_action,
+            document::commands::queue_action_preview,
             document::commands::watch_start,
             document::commands::watch_poll,
             document::commands::watch_stop,

@@ -16,12 +16,13 @@ use crate::error::{AppError, AppResult};
 use crate::schema::{self, DatabaseSchema};
 use crate::session::Session;
 
-/// Kind and style rules have no id, so they are addressed by their index in the project.
+/// Kind rules have no id, so they are addressed by their index in the project.
 #[derive(Deserialize, Debug, Clone, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum ProjectChange {
-    /// Without an `id`, the reference gets its default id (docs/presets.md).
+    /// Without an `id`, the reference gets its default id (docs/presets.md). One with a preset
+    /// reference's id overrides that reference.
     AddReference {
         reference: Reference,
     },
@@ -43,17 +44,29 @@ pub enum ProjectChange {
     RemoveKind {
         index: usize,
     },
+    /// Without an `id`, the style gets its default id. One that is a preset style's id overrides
+    /// that style and switches it on.
     AddStyle {
         rule: StyleRule,
     },
+    /// A project style, or a preset style, which gets a project override. An empty `id` in `rule`
+    /// keeps the old one.
     UpdateStyle {
-        index: usize,
+        id: String,
         rule: StyleRule,
     },
+    /// Removing an override brings back the preset style.
     RemoveStyle {
-        index: usize,
+        id: String,
     },
-    /// Switches off a preset or inferred rule by its id.
+    /// Switches a preset or project style on or off by its id.
+    EnableStyle {
+        id: String,
+    },
+    DisableStyle {
+        id: String,
+    },
+    /// Switches off a project, preset or inferred reference by its id.
     Disable {
         id: String,
     },
@@ -166,19 +179,49 @@ fn apply_checked(
             check_index(index, project.kinds.len())?;
             project.kinds.remove(index);
         }
-        ProjectChange::AddStyle { rule } => {
+        ProjectChange::AddStyle { mut rule } => {
             Tables::new(project, ctx).check_style(&rule)?;
+            rule.id = new_style_id(&project.styles, &rule)?;
+            if let Some(shipped) = preset_style(ctx, &rule.id) {
+                project.switch_preset_style(shipped, true);
+            }
             project.styles.push(rule);
         }
-        ProjectChange::UpdateStyle { index, rule } => {
-            check_index(index, project.styles.len())?;
+        ProjectChange::UpdateStyle { id, mut rule } => {
+            let index = project.styles.iter().position(|s| s.id == id);
+            if index.is_none() && preset_style(ctx, &id).is_none() {
+                let message = format!("no value style `{id}` in the project or its presets");
+                return Err(FieldError::new("id", message));
+            }
             Tables::new(project, ctx).check_style(&rule)?;
-            project.styles[index] = rule;
+            if rule.id.is_empty() || index.is_none() {
+                rule.id = id;
+            } else if project
+                .styles
+                .iter()
+                .enumerate()
+                .any(|(i, s)| Some(i) != index && s.id == rule.id)
+            {
+                let message = format!("`{}` is already used in this project", rule.id);
+                return Err(FieldError::new("style.id", message));
+            }
+            match index {
+                Some(index) => project.styles[index] = rule,
+                None => project.styles.push(rule),
+            }
         }
-        ProjectChange::RemoveStyle { index } => {
-            check_index(index, project.styles.len())?;
+        ProjectChange::RemoveStyle { id } => {
+            let index = project
+                .styles
+                .iter()
+                .position(|s| s.id == id)
+                .ok_or_else(|| {
+                    FieldError::new("id", format!("the project has no value style `{id}`"))
+                })?;
             project.styles.remove(index);
         }
+        ProjectChange::EnableStyle { id } => switch_style(project, ctx, &id, true)?,
+        ProjectChange::DisableStyle { id } => switch_style(project, ctx, &id, false)?,
         ProjectChange::Disable { id } => {
             check_rule_id(&id)?;
             if !project.disabled.contains(&id) {
@@ -203,6 +246,64 @@ fn apply_checked(
         }
     }
     Ok(())
+}
+
+/// The style with `id` in one of the loaded presets.
+fn preset_style<'c>(ctx: &'c ChangeContext, id: &str) -> Option<&'c StyleRule> {
+    ctx.presets
+        .iter()
+        .flat_map(|p| &p.styles)
+        .find(|s| s.id == id)
+}
+
+fn switch_style(
+    project: &mut Project,
+    ctx: &ChangeContext,
+    id: &str,
+    on: bool,
+) -> Result<(), FieldError> {
+    if let Some(shipped) = preset_style(ctx, id) {
+        project.switch_preset_style(shipped, on);
+        return Ok(());
+    }
+    let own = project
+        .styles
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| {
+            FieldError::new(
+                "id",
+                format!("no value style `{id}` in the project or its presets"),
+            )
+        })?;
+    own.enabled = on;
+    Ok(())
+}
+
+/// A style without an id gets its default id, or `-><color>` when the project already uses that.
+fn new_style_id(styles: &[StyleRule], rule: &StyleRule) -> Result<String, FieldError> {
+    if styles.iter().any(|s| s.same_style(rule)) {
+        let message = "the project already has this value style";
+        return Err(FieldError::new("style.value", message));
+    }
+    let taken = |id: &str| styles.iter().any(|s| s.id == id);
+    if !rule.id.is_empty() {
+        if taken(&rule.id) {
+            let message = format!("`{}` is already used in this project", rule.id);
+            return Err(FieldError::new("style.id", message));
+        }
+        return Ok(rule.id.clone());
+    }
+    let default = rule.default_id();
+    if !taken(&default) {
+        return Ok(default);
+    }
+    let qualified = rule.qualified_id();
+    if taken(&qualified) {
+        let message = format!("`{qualified}` is already used; give this value style an `id`");
+        return Err(FieldError::new("style.id", message));
+    }
+    Ok(qualified)
 }
 
 fn check_rule_id(id: &str) -> Result<(), FieldError> {
@@ -391,6 +492,7 @@ mod tests {
     use crate::db::TableInfo;
     use crate::error::ErrorKind;
     use crate::rules::kinds::{StyleColor, StyleMatch, ValueRule};
+    use crate::rules::preset;
     use crate::rules::types::{ColumnRef, Match};
 
     fn schema(tables: &[(&str, &[&str])]) -> DatabaseSchema {
@@ -489,6 +591,7 @@ mod tests {
 
     fn style(columns: &[&str], meta_keys: &[&str], in_meta: &[&str]) -> StyleRule {
         StyleRule {
+            id: String::new(),
             columns: columns.iter().map(|c| glob(c)).collect(),
             meta_keys: meta_keys.iter().map(|k| k.to_string()).collect(),
             r#in: in_meta.iter().map(|t| t.to_string()).collect(),
@@ -570,10 +673,22 @@ mod tests {
             ),
             (
                 ProjectChange::UpdateStyle {
-                    index: 2,
+                    id: "nope".into(),
                     rule: style(&["posts.post_status"], &[], &[]),
                 },
-                "`index`: 2 is out of range; the project has 0 such rules",
+                "`id`: no value style `nope` in the project or its presets",
+            ),
+            (
+                ProjectChange::RemoveStyle { id: "nope".into() },
+                "`id`: the project has no value style `nope`",
+            ),
+            (
+                ProjectChange::EnableStyle { id: "nope".into() },
+                "`id`: no value style `nope` in the project or its presets",
+            ),
+            (
+                ProjectChange::DisableStyle { id: "nope".into() },
+                "`id`: no value style `nope` in the project or its presets",
             ),
             (
                 ProjectChange::RemoveReference { id: "nope".into() },
@@ -725,7 +840,7 @@ mod tests {
     }
 
     #[test]
-    fn kinds_and_styles_are_added_updated_and_removed_by_index() {
+    fn kinds_are_added_updated_and_removed_by_index() {
         let mut project = project();
         for column in ["posts.post_status", "posts.post_type"] {
             let rule = kind(&[column]);
@@ -742,20 +857,214 @@ mod tests {
         )
         .unwrap();
         apply(&mut project, ProjectChange::RemoveKind { index: 0 }, &ctx()).unwrap();
-        assert_eq!(project.kinds, [replacement]);
 
-        let first = style(&["posts.post_status"], &[], &[]);
-        let second = style(&["posts.post_type"], &[], &[]);
-        for rule in [first, second.clone()] {
-            apply(&mut project, ProjectChange::AddStyle { rule }, &ctx()).unwrap();
+        assert_eq!(project.kinds, [replacement]);
+    }
+
+    const STYLED: &str = r#"
+[preset]
+name = "styled"
+marker_tables = ["posts"]
+
+[[style]]
+columns = ["posts.post_status"]
+match = "="
+value = "trash"
+color = "red"
+enabled = false
+
+[[style]]
+id = "drafts"
+columns = ["posts.post_status"]
+match = "="
+value = "draft"
+color = "blue"
+"#;
+
+    fn styled_ctx() -> ChangeContext {
+        let styled = preset::parse("styled.toml", STYLED).unwrap();
+        ctx_of(wp_schema(), vec![Arc::new(styled)])
+    }
+
+    fn style_ids(project: &Project) -> Vec<&str> {
+        project.styles.iter().map(|s| s.id.as_str()).collect()
+    }
+
+    fn valued(value: &str, color: StyleColor) -> StyleRule {
+        StyleRule {
+            value: value.into(),
+            color,
+            ..style(&["posts.post_status"], &[], &[])
         }
+    }
+
+    #[test]
+    fn styles_are_added_with_their_default_id_and_updated_and_removed_by_id() {
+        let mut project = project();
+        let add = |rule| ProjectChange::AddStyle { rule };
         apply(
             &mut project,
-            ProjectChange::RemoveStyle { index: 0 },
+            add(style(&["posts.post_status"], &[], &[])),
             &ctx(),
         )
         .unwrap();
-        assert_eq!(project.styles, [second]);
+        apply(
+            &mut project,
+            add(style(&["posts.post_type"], &[], &[])),
+            &ctx(),
+        )
+        .unwrap();
+        assert_eq!(
+            style_ids(&project),
+            ["style:posts.post_status=x", "style:posts.post_type=x"]
+        );
+
+        let green = valued("x", StyleColor::Green);
+        apply(
+            &mut project,
+            ProjectChange::UpdateStyle {
+                id: "style:posts.post_status=x".into(),
+                rule: green,
+            },
+            &ctx(),
+        )
+        .unwrap();
+        apply(
+            &mut project,
+            ProjectChange::RemoveStyle {
+                id: "style:posts.post_type=x".into(),
+            },
+            &ctx(),
+        )
+        .unwrap();
+
+        assert_eq!(style_ids(&project), ["style:posts.post_status=x"]);
+        assert_eq!(project.styles[0].color, StyleColor::Green);
+    }
+
+    #[test]
+    fn a_style_with_a_taken_default_id_gets_its_color_appended_and_an_exact_copy_is_rejected() {
+        let mut project = project();
+        let add = |rule| ProjectChange::AddStyle { rule };
+        apply(&mut project, add(valued("x", StyleColor::Red)), &ctx()).unwrap();
+
+        apply(&mut project, add(valued("x", StyleColor::Blue)), &ctx()).unwrap();
+        let message = rejection(&mut project, add(valued("x", StyleColor::Red)), &ctx());
+
+        assert_eq!(
+            style_ids(&project),
+            [
+                "style:posts.post_status=x",
+                "style:posts.post_status=x->blue"
+            ]
+        );
+        assert_eq!(
+            message,
+            "`style.value`: the project already has this value style"
+        );
+    }
+
+    #[test]
+    fn switching_a_preset_style_on_or_off_twice_stores_its_id_once() {
+        let ctx = styled_ctx();
+        let mut project = project();
+        let trash = || "style:posts.post_status=trash".to_string();
+        let enable = |id: String| ProjectChange::EnableStyle { id };
+        let disable = |id: String| ProjectChange::DisableStyle { id };
+
+        apply(&mut project, enable(trash()), &ctx).unwrap();
+        apply(&mut project, enable(trash()), &ctx).unwrap();
+        apply(&mut project, disable("drafts".into()), &ctx).unwrap();
+        apply(&mut project, disable("drafts".into()), &ctx).unwrap();
+        assert_eq!(project.enabled, [trash()]);
+        assert_eq!(project.disabled, ["drafts"]);
+        assert!(project.styles.is_empty());
+
+        apply(&mut project, disable(trash()), &ctx).unwrap();
+        apply(&mut project, enable("drafts".into()), &ctx).unwrap();
+        assert!(project.enabled.is_empty());
+        assert!(project.disabled.is_empty());
+    }
+
+    #[test]
+    fn switching_a_project_style_sets_its_own_enabled_flag() {
+        let mut project = project();
+        let rule = valued("x", StyleColor::Red);
+        let id = "style:posts.post_status=x";
+        apply(&mut project, ProjectChange::AddStyle { rule }, &ctx()).unwrap();
+
+        apply(
+            &mut project,
+            ProjectChange::DisableStyle { id: id.into() },
+            &ctx(),
+        )
+        .unwrap();
+        assert!(!project.styles[0].enabled);
+
+        apply(
+            &mut project,
+            ProjectChange::EnableStyle { id: id.into() },
+            &ctx(),
+        )
+        .unwrap();
+        assert!(project.styles[0].enabled);
+        assert!(project.enabled.is_empty() && project.disabled.is_empty());
+    }
+
+    #[test]
+    fn adding_a_reference_under_a_preset_references_id_stores_an_override() {
+        let linked = preset::parse(
+            "linked.toml",
+            "[preset]\nname = \"linked\"\nmarker_tables = [\"posts\"]\n\n[[reference]]\nfrom = \"posts.post_author\"\nto = \"users.ID\"\n",
+        )
+        .unwrap();
+        let ctx = ctx_of(wp_schema(), vec![Arc::new(linked)]);
+        let mut project = project();
+        let edited = Reference {
+            id: "posts.post_author".into(),
+            ..reference("posts.post_author", "users.user_login")
+        };
+
+        apply(&mut project, add(edited), &ctx).unwrap();
+
+        assert_eq!(project.references.len(), 1);
+        assert_eq!(project.references[0].id, "posts.post_author");
+        assert_eq!(project.references[0].to, column("users.user_login"));
+    }
+
+    #[test]
+    fn editing_a_preset_style_stores_an_override_under_its_id() {
+        let ctx = styled_ctx();
+        let mut project = project();
+        let edit = || ProjectChange::UpdateStyle {
+            id: "drafts".into(),
+            rule: valued("draft", StyleColor::Yellow),
+        };
+
+        apply(&mut project, edit(), &ctx).unwrap();
+        apply(&mut project, edit(), &ctx).unwrap();
+
+        assert_eq!(style_ids(&project), ["drafts"]);
+        assert_eq!(project.styles[0].color, StyleColor::Yellow);
+        assert!(project.enabled.is_empty() && project.disabled.is_empty());
+    }
+
+    #[test]
+    fn adding_a_style_under_a_preset_styles_id_overrides_it_and_switches_it_on() {
+        let ctx = styled_ctx();
+        let mut project = project();
+
+        apply(
+            &mut project,
+            ProjectChange::AddStyle {
+                rule: valued("trash", StyleColor::Purple),
+            },
+            &ctx,
+        )
+        .unwrap();
+
+        assert_eq!(style_ids(&project), ["style:posts.post_status=trash"]);
+        assert_eq!(project.enabled, ["style:posts.post_status=trash"]);
     }
 
     #[test]

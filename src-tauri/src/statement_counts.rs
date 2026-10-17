@@ -127,10 +127,10 @@ async fn the_peek_of_order_4711_runs_1_statement() {
 
 #[tokio::test]
 #[ignore]
-async fn palette_searches_for_an_id_and_a_value_run_35_and_16_statements() {
+async fn palette_searches_for_an_id_and_a_value_run_43_and_16_statements() {
     let rig = Rig::new();
     for counted in counted_sessions().await {
-        for (query, expected) in [("#4711", 35), ("=sandbox", 16)] {
+        for (query, expected) in [("#4711", 43), ("=sandbox", 16)] {
             crate::search::search(&counted.session, DATABASE, query, rig.sources(), TIMEOUT)
                 .await
                 .unwrap();
@@ -141,11 +141,11 @@ async fn palette_searches_for_an_id_and_a_value_run_35_and_16_statements() {
 
 #[tokio::test]
 #[ignore]
-async fn the_readout_runs_19_statements() {
+async fn the_readout_runs_20_statements() {
     let rig = Rig::new();
     for counted in counted_sessions().await {
         crate::readout::readout(&counted.session, DATABASE, rig.sources(), &[], TIMEOUT).await;
-        counted.assert_count("readout", 19);
+        counted.assert_count("readout", 20);
     }
 }
 
@@ -159,8 +159,9 @@ async fn the_coverage_of_the_40_project_references_runs_43_statements() {
             .await
             .unwrap();
         let references: Vec<_> = rows
-            .references
+            .groups
             .iter()
+            .flat_map(|g| &g.references)
             .filter_map(|r| r.reference.clone())
             .collect();
         for reference in &references {

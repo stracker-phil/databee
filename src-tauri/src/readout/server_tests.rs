@@ -5,8 +5,9 @@ use std::time::Duration;
 
 use tempfile::{TempDir, tempdir};
 
-use super::{AnomalyLine, NewObjects, PinnedResult, Readout, readout};
+use super::{AnomalyLine, CreatedItem, PinnedResult, Readout, readout};
 use crate::address::{Address, Target};
+use crate::document::moment;
 use crate::rules::catalog::PresetCatalog;
 use crate::rules::effective::RuleSources;
 use crate::rules::project::{ProjectsStore, SavedQuery};
@@ -86,16 +87,17 @@ impl Read {
         self.readout.anomalies.items.iter().find(|l| l.id == id)
     }
 
-    fn new_objects(&self, entity: &str, table: &str) -> &NewObjects {
-        self.readout
-            .new_objects
+    fn created(&self, table: &str, key: &str) -> &CreatedItem {
+        let address = self.row("wp_test", table, key);
+        let created = &self.readout.recently_created;
+        created
             .items
             .iter()
-            .find(|l| l.entity == entity && l.table == table)
+            .find(|i| i.address == address)
             .unwrap_or_else(|| {
                 panic!(
-                    "{}: no new objects of {entity} on {table}: {:?}",
-                    self.server, self.readout.new_objects
+                    "{}: {address} not created recently: {created:?}",
+                    self.server
                 )
             })
     }
@@ -115,16 +117,6 @@ async fn read_all(rig: &Rig, database: &str, recent: &[RecentObject]) -> Vec<Rea
         });
     }
     out
-}
-
-fn row_keys(line: &NewObjects) -> Vec<String> {
-    line.rows
-        .iter()
-        .map(|row| match row.address.as_ref().map(|a| &a.target) {
-            Some(Target::Row { key, .. }) => key.clone(),
-            other => panic!("{}: row without a row address: {other:?}", line.entity),
-        })
-        .collect()
 }
 
 #[tokio::test]
@@ -270,55 +262,83 @@ async fn anomalies_list_what_the_fixture_data_trips_with_counts_and_addresses() 
 
 #[tokio::test]
 #[ignore]
-async fn new_objects_show_the_newest_rows_of_each_entity_with_a_created_column() {
+async fn rows_created_last_merge_every_entity_newest_first_each_row_once() {
     let rig = Rig::new();
     for read in read_all(&rig, "wp_test", &[]).await {
         let server = &read.server;
-        assert_eq!(read.readout.new_objects.error, None, "{server}");
+        let created = &read.readout.recently_created;
+        assert_eq!(created.error, None, "{server}");
 
-        let orders = read.new_objects("order", "wp_wc_orders");
+        let orders = created
+            .entities
+            .iter()
+            .find(|e| e.entity == "order" && e.table == "wp_wc_orders")
+            .unwrap_or_else(|| panic!("{server}: {:?}", created.entities));
         assert_eq!(orders.error, None, "{server}");
         assert_eq!(orders.preset, "woocommerce", "{server}");
-        assert_eq!(orders.columns[0], "id", "{server}");
+        assert_eq!(orders.count_in_window, 4, "{server}");
         assert!(
-            orders.columns.contains(&"date_created_gmt".to_string()),
-            "{server}"
-        );
-        let keys = row_keys(orders);
-        assert_eq!(keys.len(), 4, "{server}");
-        assert_eq!(keys.first().map(String::as_str), Some("4712"), "{server}");
-        assert_eq!(keys.last().map(String::as_str), Some("4713"), "{server}");
-        assert_eq!(
-            orders.rows[0].address,
-            Some(read.row("wp_test", "wp_wc_orders", "4712")),
-            "{server}"
-        );
-
-        let posts = read.new_objects("post", "wp_posts");
-        assert_eq!(posts.rows.len(), 5, "{server}");
-        assert!(
-            posts.sql.ends_with("ORDER BY `post_date_gmt` DESC LIMIT 5"),
+            orders
+                .sql
+                .ends_with("ORDER BY t.`date_created_gmt` DESC LIMIT 20"),
             "{server}: {}",
-            posts.sql
+            orders.sql
         );
+        let moments: Vec<Option<i64>> = created.items.iter().map(|i| moment(&i.created)).collect();
+        let mut sorted = moments.clone();
+        sorted.sort_by(|a, b| match (a, b) {
+            (Some(a), Some(b)) => b.cmp(a),
+            _ => b.is_some().cmp(&a.is_some()),
+        });
+        assert_eq!(moments, sorted, "{server}");
+        let mut addresses: Vec<String> = created
+            .items
+            .iter()
+            .map(|i| i.address.to_string())
+            .collect();
+        addresses.sort();
+        addresses.dedup();
+        assert_eq!(addresses.len(), created.items.len(), "{server}");
     }
 }
 
 #[tokio::test]
 #[ignore]
-async fn new_objects_of_a_filtered_entity_only_list_rows_that_pass_its_filter() {
+async fn a_created_row_shows_the_entity_and_summary_of_its_document() {
     let rig = Rig::new();
     for read in read_all(&rig, "wp_test", &[]).await {
         let server = &read.server;
 
-        let order_posts = read.new_objects("order", "wp_posts");
-        let products = read.new_objects("product", "wp_posts");
-
-        assert_eq!(row_keys(order_posts), ["4711"], "{server}");
-        let mut product_keys = row_keys(products);
-        product_keys.sort();
-        assert_eq!(product_keys, ["123", "200", "201", "202"], "{server}");
-        assert!(order_posts.sql.contains(" WHERE "), "{server}");
+        let entity = |table: &str, key: &str| read.created(table, key).entity.as_str();
+        assert_eq!(entity("wp_posts", "4711"), "order", "{server}");
+        assert_eq!(entity("wp_posts", "123"), "product", "{server}");
+        assert_eq!(entity("wp_posts", "300"), "post", "{server}");
+        assert_eq!(entity("wp_wc_orders", "4711"), "order", "{server}");
+        let order = read.created("wp_wc_orders", "4711");
+        let names: Vec<&str> = order
+            .summary
+            .values
+            .iter()
+            .map(|v| v.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "type",
+                "status",
+                "payment_method",
+                "total_amount",
+                "date_created_gmt"
+            ],
+            "{server}"
+        );
+        let product = read.created("wp_posts", "123");
+        let sku = product.summary.values.iter().find(|v| v.name == "_sku");
+        assert_eq!(
+            sku.and_then(|v| v.value.raw.as_text()),
+            Some("MUG-1"),
+            "{server}"
+        );
     }
 }
 
@@ -429,8 +449,8 @@ async fn a_pinned_query_with_broken_sql_carries_its_error_and_the_other_parts_st
         assert_eq!(read.status.values.items.len(), 4, "{server}");
         assert_eq!(read.anomalies.error, None, "{server}");
         assert!(!read.anomalies.items.is_empty(), "{server}");
-        assert_eq!(read.new_objects.error, None, "{server}");
-        assert!(!read.new_objects.items.is_empty(), "{server}");
+        assert_eq!(read.recently_created.error, None, "{server}");
+        assert!(!read.recently_created.items.is_empty(), "{server}");
     }
 }
 
@@ -461,7 +481,7 @@ async fn recent_objects_show_the_values_of_their_row() {
         let line = &read.recent.items[0];
         assert_eq!((line.address.clone(), line.at), (address, 99), "{server}");
         assert_eq!(line.error, None, "{server}");
-        let status = line.summary.iter().find(|s| s.column == "status");
+        let status = line.summary.values.iter().find(|s| s.name == "status");
         let status = status.unwrap_or_else(|| panic!("{server}: {:?}", line.summary));
         assert_eq!(
             status.value.raw.as_text(),
@@ -485,12 +505,12 @@ async fn a_database_no_preset_fits_has_a_bare_status_and_no_other_lines() {
         assert!(!readout.status.server_version.is_empty(), "{server}");
         assert!(readout.status.values.items.is_empty(), "{server}");
         assert!(readout.anomalies.items.is_empty(), "{server}");
-        assert!(readout.new_objects.items.is_empty(), "{server}");
+        assert!(readout.recently_created.items.is_empty(), "{server}");
         assert!(readout.pinned.items.is_empty(), "{server}");
         for error in [
             &readout.status.values.error,
             &readout.anomalies.error,
-            &readout.new_objects.error,
+            &readout.recently_created.error,
             &readout.pinned.error,
             &readout.recent.error,
         ] {

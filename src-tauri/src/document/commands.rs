@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use tauri::State;
 
-use super::actions::{self, ObjectAction};
+use super::actions::{self, ActionPreview, ObjectAction, Previews};
 use super::compare::Comparison;
 use super::diff::FlatDocument;
 use super::snapshot::{self, SnapshotDiff};
@@ -69,6 +69,39 @@ pub async fn plan_action(
     let address = parse_address(&session, &address)?;
     let ctx = Ctx::load(&session, &address.database, state.rules(), timeout).await?;
     let plan = actions::plan(&ctx, &address, &action, &params).await?;
+    Ok(session.plans.add(plan))
+}
+
+/// Plans action `action` like `plan_action` without queueing it: the rows and values it writes.
+/// The plan is kept for `queue_action_preview`.
+#[tauri::command]
+pub async fn preview_action(
+    state: State<'_, AppState>,
+    session_id: String,
+    address: String,
+    action: String,
+    params: BTreeMap<String, String>,
+) -> AppResult<ActionPreview> {
+    let session = state.sessions.get(&session_id)?;
+    let timeout = state.settings.get().query_timeout();
+    let address = parse_address(&session, &address)?;
+    let ctx = Ctx::load(&session, &address.database, state.rules(), timeout).await?;
+    let planned = actions::planned(&ctx, &address, &action, &params).await?;
+    Ok(session
+        .ext
+        .get_or_insert_with(Previews::default)
+        .keep(planned))
+}
+
+/// Queues the plan of the latest `preview_action` for review in the pending changes.
+#[tauri::command]
+pub fn queue_action_preview(
+    state: State<'_, AppState>,
+    session_id: String,
+    id: u64,
+) -> AppResult<PlannedChange> {
+    let session = state.sessions.get(&session_id)?;
+    let plan = session.ext.get_or_insert_with(Previews::default).take(id)?;
     Ok(session.plans.add(plan))
 }
 

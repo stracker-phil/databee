@@ -101,11 +101,14 @@ async fn table_hits<'s>(
         .rows_per_filter(table, ALIAS, &filters, &order, SECTION_CAP)
         .await
         .unwrap_or_default();
-    sources
-        .into_iter()
-        .zip(results)
-        .map(|(source, result)| (source, source_hits(ctx, source, result)))
-        .collect()
+    let hits = join_all(
+        sources
+            .iter()
+            .zip(results)
+            .map(|(source, result)| source_hits(ctx, source, result)),
+    )
+    .await;
+    sources.into_iter().zip(hits).collect()
 }
 
 fn held(ctx: &Ctx<'_>, source: &Source, value: &str) -> String {
@@ -117,15 +120,12 @@ fn held(ctx: &Ctx<'_>, source: &Source, value: &str) -> String {
     }
 }
 
-fn source_hits(ctx: &Ctx<'_>, source: &Source, result: ResultSet) -> Vec<PaletteHit> {
+async fn source_hits(ctx: &Ctx<'_>, source: &Source, result: ResultSet) -> Vec<PaletteHit> {
     let rows = ctx.annotate(&source.table, result);
     let section = format!("{}.{}", source.table, source.column);
     match ctx.rules.meta_table(&source.table) {
         Some(meta) => hits::from_meta(ctx, &rows, meta, &section),
-        None => {
-            let entity = hits::table_entity(ctx, &source.table);
-            hits::from_rows(ctx, &rows, &section, entity, Some(&source.column))
-        }
+        None => hits::from_rows(ctx, &rows, None, &section, Some(&source.column)).await,
     }
 }
 

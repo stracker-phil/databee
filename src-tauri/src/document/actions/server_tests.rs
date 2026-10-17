@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use regex::Regex;
 use tempfile::{TempDir, tempdir};
 
 use super::{ObjectActionKind, for_table, plan};
@@ -69,6 +70,15 @@ async fn ctx<'a>(session: &'a Session, rig: &Rig) -> Ctx<'a> {
     Ctx::load(session, DB, rig.sources(), TIMEOUT)
         .await
         .unwrap()
+}
+
+/// `statements` with each resolved `UTC_TIMESTAMP()` or `NOW()` literal as `'<now>'`.
+fn now_masked(statements: &[String]) -> Vec<String> {
+    let moment = Regex::new(r"'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'").unwrap();
+    statements
+        .iter()
+        .map(|s| moment.replace_all(s, "'<now>'").into_owned())
+        .collect()
 }
 
 async fn run(ctx: &Ctx<'_>, statements: &[&str]) {
@@ -139,9 +149,9 @@ async fn retry_on_a_failed_action_plans_an_update_with_undo() {
             "{server}"
         );
         assert_eq!(
-            plan.statements,
+            now_masked(&plan.statements),
             [format!(
-                "UPDATE {ACTIONS} SET `claim_id` = '0', `scheduled_date_gmt` = UTC_TIMESTAMP(), \
+                "UPDATE {ACTIONS} SET `claim_id` = '0', `scheduled_date_gmt` = '<now>', \
                  `status` = 'pending' WHERE `action_id` IN ('1')"
             )],
             "{server}"
@@ -271,12 +281,12 @@ async fn set_status_on_an_hpos_order_writes_the_order_and_its_posts_copy_and_und
             "{server}"
         );
         assert_eq!(
-            plan.statements,
+            now_masked(&plan.statements),
             [
-                "UPDATE `wp_write`.`wp_wc_orders` SET `date_updated_gmt` = UTC_TIMESTAMP(), \
+                "UPDATE `wp_write`.`wp_wc_orders` SET `date_updated_gmt` = '<now>', \
                  `status` = 'wc-completed' WHERE `id` IN ('4711')",
-                "UPDATE `wp_write`.`wp_posts` SET `post_modified` = NOW(), \
-                 `post_modified_gmt` = UTC_TIMESTAMP(), `post_status` = 'wc-completed' \
+                "UPDATE `wp_write`.`wp_posts` SET `post_modified` = '<now>', \
+                 `post_modified_gmt` = '<now>', `post_status` = 'wc-completed' \
                  WHERE `ID` IN ('4711')",
             ],
             "{server}"

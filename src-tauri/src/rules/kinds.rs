@@ -187,6 +187,9 @@ impl StyleColor {
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(deny_unknown_fields)]
 pub struct StyleRule {
+    /// Empty until the loader fills in the default (`default_id`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub columns: Vec<ColumnGlob>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -197,7 +200,7 @@ pub struct StyleRule {
     pub matching: StyleMatch,
     pub value: String,
     pub color: StyleColor,
-    /// Preset styles ship with `enabled = false`; a project switches them on.
+    /// Preset styles ship with `enabled = false`; a project switches them on by id.
     #[serde(default = "enabled_by_default")]
     pub enabled: bool,
 }
@@ -217,6 +220,42 @@ impl Check for StyleRule {
 }
 
 impl StyleRule {
+    /// `style:<columns>|<meta_keys>|<in><match>`, each list joined with `,`, trailing empty parts
+    /// left out, the match as in reference ids: `style:wc_orders.status=wc-failed`,
+    /// `style:|_status|postmeta=like(ok%)`.
+    pub fn default_id(&self) -> String {
+        let columns: Vec<String> = self.columns.iter().map(ToString::to_string).collect();
+        let mut parts = vec![
+            columns.join(","),
+            self.meta_keys.join(","),
+            self.r#in.join(","),
+        ];
+        while parts.len() > 1 && parts.last().is_some_and(String::is_empty) {
+            parts.pop();
+        }
+        let matcher = match self.matching {
+            StyleMatch::Eq => format!("={}", self.value),
+            StyleMatch::Like => format!("=like({})", self.value),
+            StyleMatch::Regexp => format!("=regexp({})", self.value),
+        };
+        format!("style:{}{matcher}", parts.join("|"))
+    }
+
+    /// The default id with `-><color>`, for a rule whose default id another rule shares.
+    pub fn qualified_id(&self) -> String {
+        format!("{}->{}", self.default_id(), self.color.name())
+    }
+
+    /// The same scope, match and color, whatever the id and `enabled`.
+    pub fn same_style(&self, other: &StyleRule) -> bool {
+        self.columns == other.columns
+            && self.meta_keys == other.meta_keys
+            && self.r#in == other.r#in
+            && self.matching == other.matching
+            && self.value == other.value
+            && self.color == other.color
+    }
+
     pub fn matcher(&self) -> Result<Matcher, String> {
         match self.matching {
             StyleMatch::Eq => Ok(Matcher::Eq(self.value.clone())),

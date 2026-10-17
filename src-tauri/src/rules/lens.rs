@@ -401,7 +401,7 @@ mod tests {
     use crate::address::{Address, Target};
     use crate::db::{ColumnEquals, ForeignKey};
     use crate::lens::ColumnsRef;
-    use crate::rules::kinds::{KindRule, StyleColor, StyleMatch, StyleRule, Zone};
+    use crate::rules::kinds::{KindRule, Zone};
     use crate::rules::project::Project;
     use crate::rules::testing::{
         forum, forum_schema, preset, project, reference, schema, with_foreign_key,
@@ -797,6 +797,27 @@ mod tests {
     }
 
     #[test]
+    fn a_disabled_rule_on_a_column_leaves_no_reference_and_no_inference_there() {
+        let own = Project {
+            references: vec![reference("mine", "threads.person_id", "people.name")],
+            disabled: vec!["mine".into()],
+            ..project()
+        };
+        let lens = lens(&own);
+
+        assert_eq!(
+            kind_of(&lens, "f_threads", "person_id", "BIGINT"),
+            ColumnKind::Number
+        );
+        assert!(from_column(lens.references_from("f_threads"), "person_id").is_empty());
+        assert!(
+            lens.references_to("f_people")
+                .iter()
+                .all(|r| r.from.table != "f_threads" || r.from.columns != ["person_id"])
+        );
+    }
+
+    #[test]
     fn rules_of_one_source_on_one_column_make_one_reference_with_both_targets() {
         let lens = lens(&project());
         let first = by_forum("replies.by->people.person_id");
@@ -1120,17 +1141,9 @@ mod tests {
     }
 
     #[test]
-    fn a_project_switches_a_preset_style_on_by_adding_it_enabled() {
+    fn a_project_switches_a_preset_style_on_by_its_id() {
         let own = Project {
-            styles: vec![StyleRule {
-                columns: vec![glob("threads.title")],
-                meta_keys: Vec::new(),
-                r#in: Vec::new(),
-                matching: StyleMatch::Eq,
-                value: "draft".into(),
-                color: StyleColor::Blue,
-                enabled: true,
-            }],
+            enabled: vec!["style:threads.title=draft".into()],
             ..project()
         };
         let lens = lens(&own);

@@ -69,7 +69,8 @@ fn timestamps<'g>(
     }
 }
 
-fn moment(value: &Value) -> Option<i64> {
+/// The value's moment in Unix seconds; a time without a stored zone counts as UTC.
+pub fn moment(value: &Value) -> Option<i64> {
     let ValueKind::Timestamp { utc, .. } = value.kind else {
         return None;
     };

@@ -173,7 +173,8 @@ pub async fn reference_coverage(
 }
 
 /// The coverage `rule` would have once stored in the project: checked like `project_update`
-/// (`replacing` names the project reference it would replace), counted like a saved rule.
+/// (`replacing` names the project reference it would replace), counted like a saved rule that is
+/// switched on.
 pub async fn coverage_preview(
     session: &Session,
     database: &str,
@@ -191,6 +192,7 @@ pub async fn coverage_preview(
     };
     let from = rule.from.clone();
     let id = project_change::put_reference(&mut project, rule, replacing.as_deref(), &ctx)?;
+    project.disabled.retain(|d| *d != id);
     let by = ReferenceSource::Project { id };
     let rules = Arc::new(EffectiveRules::build(&project, &schema, &loaded));
     let Some(applied) = rules.references.iter().find(|r| r.by == by) else {
@@ -1122,6 +1124,42 @@ to_when = { active = "1" }
                 },
                 "{host}:{port}"
             );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn a_preview_counts_a_rule_whose_stored_copy_is_switched_off() {
+        let dir = tempdir().unwrap();
+        let (catalog, projects) = built_in_sources(&dir);
+        let sources = RuleSources {
+            presets: &catalog,
+            projects: &projects,
+        };
+        for (host, port) in servers() {
+            let session = fixture_session(&host, port, "databee_test").await;
+            projects
+                .update(&session.slug(), "databee_test", |project| {
+                    project.references = vec![children_rule("mine", "cov_children.parent_id")];
+                    project.disabled = vec!["mine".into()];
+                    Ok(())
+                })
+                .await
+                .unwrap();
+
+            let preview = coverage_preview(
+                &session,
+                "databee_test",
+                children_rule("mine", "cov_children.parent_id"),
+                Some("mine".into()),
+                sources,
+                TIMEOUT,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
+
+            assert_eq!(preview.total, 5, "{host}:{port}");
+            assert_eq!(preview.resolved, 1, "{host}:{port}");
         }
     }
 

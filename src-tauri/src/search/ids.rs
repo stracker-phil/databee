@@ -4,7 +4,7 @@ use futures_util::future::join_all;
 
 use super::hits::{self, Place};
 use super::{PLAIN_TABLE_ROWS, PaletteHit, SECTION_CAP};
-use crate::document::{self, Own, peek};
+use crate::document::{self, Own, summary};
 use crate::query::Ctx;
 
 /// Found rows whose referencing rows are read.
@@ -40,11 +40,7 @@ pub async fn search(ctx: &Ctx<'_>, id: &str) -> Vec<PaletteHit> {
     )
     .await;
     let groups: Vec<_> = groups.into_iter().flatten().collect();
-    out.extend(hits::from_groups(
-        ctx,
-        &groups,
-        &format!("rows that reference {id}"),
-    ));
+    out.extend(hits::from_groups(ctx, &groups, &format!("rows that reference {id}")).await);
     out
 }
 
@@ -72,19 +68,16 @@ fn tables(ctx: &Ctx<'_>) -> Vec<String> {
 
 async fn object(ctx: &Ctx<'_>, own: &Own, section: &str) -> Option<PaletteHit> {
     let key = own.rows.key(0)?;
-    let summary = peek::values(ctx, own).await;
+    let summary = summary::of_own(ctx, own).await;
     let fields = own.rows.values(&|_, _| None).into_iter().next()?;
     let fields: Vec<_> = own.rows.names().into_iter().zip(fields).collect();
     let place = Place {
         section,
         source: own.table().to_string(),
         table: own.table(),
-        skip: &[],
-        summary: &[],
         matched: None,
     };
-    let detail = summary.into_iter().map(|(_, value)| value).collect();
-    Some(hits::with_detail(ctx, &place, &key, &fields, detail))
+    Some(hits::hit(ctx, &place, &key, &fields, summary))
 }
 
 #[cfg(test)]

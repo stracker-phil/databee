@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -31,14 +32,20 @@ pub struct Project {
     /// Enabled presets by name. `None`: every preset whose marker tables exist.
     #[serde(default)]
     pub presets: Option<Vec<String>>,
-    /// Added rules, and rules that override a preset rule with the same `from` and `when`.
+    /// Added rules, and rules that override the preset rule with the same id, or the same `from`
+    /// and `when`.
     #[serde(default)]
     pub references: Vec<Reference>,
-    /// Ids of preset or inferred rules switched off.
+    /// Ids of project, preset or inferred references switched off, and of preset styles that ship
+    /// on and are switched off.
     #[serde(default)]
     pub disabled: Vec<String>,
+    /// Ids of preset styles that ship off and are switched on.
+    #[serde(default)]
+    pub enabled: Vec<String>,
     #[serde(default)]
     pub kinds: Vec<KindRule>,
+    /// Added styles, and styles that override the preset style with the same `id`.
     #[serde(default)]
     pub styles: Vec<StyleRule>,
     #[serde(default)]
@@ -82,6 +89,77 @@ impl Project {
             pinned: self.saved.iter().map(SavedQuery::to_pinned).collect(),
             ..Preset::default()
         }
+    }
+
+    /// Whether the preset style `rule` colors values here: one that ships on unless switched off,
+    /// one that ships off when switched on.
+    pub fn preset_style_on(&self, rule: &StyleRule) -> bool {
+        if rule.enabled {
+            !self.disabled.contains(&rule.id)
+        } else {
+            self.enabled.contains(&rule.id)
+        }
+    }
+
+    /// Switches the preset style `rule` on or off; switching twice changes nothing.
+    pub fn switch_preset_style(&mut self, rule: &StyleRule, on: bool) {
+        let ids = if rule.enabled {
+            &mut self.disabled
+        } else {
+            &mut self.enabled
+        };
+        let listed = on != rule.enabled;
+        ids.retain(|id| *id != rule.id);
+        if listed {
+            ids.push(rule.id.clone());
+        }
+    }
+
+    /// The project style that replaces the preset style `id`.
+    pub fn style_override(&self, id: &str) -> Option<&StyleRule> {
+        self.styles.iter().find(|s| s.id == id)
+    }
+
+    /// Gives styles stored before styles had ids their ids. A copy of a preset style (the old way
+    /// to switch one on) becomes that style's switch, and an exact duplicate is dropped. Returns
+    /// whether anything changed.
+    pub fn migrate_styles(&mut self, presets: &[Arc<Preset>]) -> bool {
+        if self.styles.iter().all(|s| !s.id.is_empty()) {
+            return false;
+        }
+        let shipped: Vec<&StyleRule> = presets.iter().flat_map(|p| &p.styles).collect();
+        let stored = std::mem::take(&mut self.styles);
+        let mut taken: Vec<String> = stored
+            .iter()
+            .filter(|s| !s.id.is_empty())
+            .map(|s| s.id.clone())
+            .collect();
+        for mut style in stored {
+            if !style.id.is_empty() {
+                self.styles.push(style);
+                continue;
+            }
+            if let Some(copied) = shipped
+                .iter()
+                .find(|p| style.enabled && p.same_style(&style))
+            {
+                self.switch_preset_style(copied, true);
+                continue;
+            }
+            if self.styles.iter().any(|s| s.same_style(&style)) {
+                continue;
+            }
+            style.id = [style.default_id(), style.qualified_id()]
+                .into_iter()
+                .find(|id| !taken.contains(id))
+                .unwrap_or_else(|| format!("{}#{}", style.qualified_id(), taken.len()));
+            if let Some(overridden) = shipped.iter().find(|p| p.id == style.id) {
+                self.switch_preset_style(overridden, true);
+            }
+            taken.push(style.id.clone());
+            self.styles.push(style);
+        }
+        true
     }
 
     pub fn export(&self) -> AppResult<String> {
@@ -215,6 +293,23 @@ impl ProjectsStore {
         })
     }
 
+    /// Runs `Project::migrate_styles` on every stored project; saves only when one changed.
+    pub fn migrate_styles(&self, presets: &[Arc<Preset>]) -> AppResult<()> {
+        let pending = self.store.read(|file| {
+            file.projects
+                .values()
+                .any(|p| p.styles.iter().any(|s| s.id.is_empty()))
+        });
+        if !pending {
+            return Ok(());
+        }
+        self.store.update(|file| {
+            for project in file.projects.values_mut() {
+                project.migrate_styles(presets);
+            }
+        })
+    }
+
     /// Moves every project of the connection `old` to `new` after a slug rename. A project
     /// already stored under `new` belongs to no saved connection (slugs are unique) and gives way.
     pub async fn rename_connection(&self, old: &str, new: &str) -> AppResult<()> {
@@ -295,6 +390,7 @@ mod tests {
                 },
             ],
             disabled: vec!["posts.post_parent".into()],
+            enabled: vec!["style:posts.post_status=trash".into()],
             kinds: vec![
                 KindRule {
                     columns: vec![glob("posts.*_total")],
@@ -313,6 +409,7 @@ mod tests {
             ],
             styles: vec![
                 StyleRule {
+                    id: "style:posts.post_status=wc-failed".into(),
                     columns: vec![glob("posts.post_status")],
                     meta_keys: Vec::new(),
                     r#in: Vec::new(),
@@ -322,6 +419,7 @@ mod tests {
                     enabled: true,
                 },
                 StyleRule {
+                    id: "ok".into(),
                     columns: Vec::new(),
                     meta_keys: vec!["_status".into()],
                     r#in: vec!["postmeta".into()],
@@ -708,6 +806,102 @@ mod tests {
 
         assert_eq!(store.get("shop", "wp"), Project::new("shop", "wp"));
         assert!(store.global().is_empty());
+    }
+
+    const SHIPPED: &str = r#"
+[preset]
+name = "shop"
+
+[[style]]
+columns = ["posts.post_status"]
+match = "="
+value = "failed"
+color = "red"
+enabled = false
+
+[[style]]
+columns = ["posts.post_status"]
+match = "="
+value = "done"
+color = "green"
+"#;
+
+    fn status_style(value: &str, color: StyleColor) -> StyleRule {
+        StyleRule {
+            id: String::new(),
+            columns: vec![glob("posts.post_status")],
+            meta_keys: Vec::new(),
+            r#in: Vec::new(),
+            matching: StyleMatch::Eq,
+            value: value.into(),
+            color,
+            enabled: true,
+        }
+    }
+
+    fn shipped() -> Vec<Arc<Preset>> {
+        vec![Arc::new(preset::parse("shop.toml", SHIPPED).unwrap())]
+    }
+
+    #[test]
+    fn copies_of_a_preset_style_become_its_switch_and_other_styles_get_ids() {
+        let failed = || status_style("failed", StyleColor::Red);
+        let mut project = Project {
+            disabled: vec!["style:posts.post_status=done".into()],
+            styles: vec![
+                failed(),
+                failed(),
+                status_style("open", StyleColor::Blue),
+                failed(),
+                status_style("open", StyleColor::Blue),
+                status_style("open", StyleColor::Yellow),
+                status_style("done", StyleColor::Green),
+            ],
+            ..Project::new("shop", "wp")
+        };
+
+        assert!(project.migrate_styles(&shipped()));
+
+        assert_eq!(project.enabled, ["style:posts.post_status=failed"]);
+        assert!(project.disabled.is_empty());
+        let ids: Vec<&str> = project.styles.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "style:posts.post_status=open",
+                "style:posts.post_status=open->yellow"
+            ]
+        );
+        assert!(!project.migrate_styles(&shipped()));
+    }
+
+    #[test]
+    fn a_style_stored_without_id_under_a_preset_styles_id_overrides_it_and_switches_it_on() {
+        let mut project = Project {
+            styles: vec![status_style("failed", StyleColor::Purple)],
+            ..Project::new("shop", "wp")
+        };
+
+        project.migrate_styles(&shipped());
+
+        assert_eq!(project.styles[0].id, "style:posts.post_status=failed");
+        assert_eq!(project.enabled, ["style:posts.post_status=failed"]);
+    }
+
+    #[tokio::test]
+    async fn the_store_migrates_and_saves_styles_stored_without_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy = Project {
+            styles: vec![status_style("failed", StyleColor::Red)],
+            ..Project::new("shop", "wp")
+        };
+        let store = store_with(dir.path(), vec![legacy]).await;
+
+        store.migrate_styles(&shipped()).unwrap();
+
+        let reopened = ProjectsStore::open(dir.path()).get("shop", "wp");
+        assert!(reopened.styles.is_empty());
+        assert_eq!(reopened.enabled, ["style:posts.post_status=failed"]);
     }
 
     #[tokio::test]

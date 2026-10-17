@@ -1,6 +1,6 @@
 //! The readout: the home page of one database (`databee://<slug>/<db>/`). A status line, the
-//! anomalies of the applied presets, the newest rows of each entity with a `created` column,
-//! the pinned saved queries and the objects opened last. Every part runs with its own timeout;
+//! anomalies of the applied presets, the rows created last across the entities with a `created`
+//! column, the pinned saved queries and the objects opened last. Every part runs with its own timeout;
 //! a part or a line that fails carries its error, and the rest of the readout stands.
 
 pub mod commands;
@@ -18,6 +18,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::address::{Address, Target};
+use crate::document::Summary;
 use crate::error::{AppError, AppResult};
 use crate::query::Ctx;
 use crate::rules::effective::RuleSources;
@@ -30,8 +31,8 @@ use crate::value::Value;
 const QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long one part may take in all; its queries run side by side.
 const PART_TIMEOUT: Duration = Duration::from_secs(10);
-/// Rows of each entity in `new_objects`.
-const NEW_ROWS: u32 = 5;
+/// Rows of the `recently_created` timeline, and rows read of each entity to fill it.
+const CREATED_ROWS: usize = 20;
 /// Rows of a pinned query shown as rows without a `limit`.
 const PINNED_ROWS: u32 = 5;
 
@@ -42,7 +43,7 @@ pub struct Readout {
     pub address: Address,
     pub status: Status,
     pub anomalies: Part<AnomalyLine>,
-    pub new_objects: Part<NewObjects>,
+    pub recently_created: RecentlyCreated,
     pub pinned: Part<PinnedLine>,
     pub recent: Part<RecentLine>,
 }
@@ -128,17 +129,40 @@ pub struct AnomalyFix {
     pub address: Address,
 }
 
-/// The newest rows of one entity, by its `created` column.
+/// The rows created last across every entity with a `created` column, newest first.
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct RecentlyCreated {
+    pub items: Vec<CreatedItem>,
+    /// Each entity's query, for provenance, in rule order.
+    pub entities: Vec<CreatedEntity>,
+    /// The part timed out.
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct CreatedItem {
+    /// The row's entity, as its document names it.
+    pub entity: String,
+    pub table: String,
+    pub address: Address,
+    /// The `created` value the timeline is ordered by.
+    pub created: Value,
+    pub summary: Summary,
+}
+
+/// One entity's newest rows by its `created` column.
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
-pub struct NewObjects {
+pub struct CreatedEntity {
     pub entity: String,
     pub preset: String,
     pub table: String,
     pub sql: String,
-    pub columns: Vec<String>,
-    pub rows: Vec<ReadoutRow>,
+    /// Items of the timeline that are rows of this entity.
+    pub count_in_window: u32,
     pub error: Option<String>,
 }
 
@@ -178,7 +202,7 @@ pub enum PinnedResult {
     },
 }
 
-/// A row opened in the app, newest first, with the values a peek shows of it.
+/// A row opened in the app, newest first, with its summary.
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
@@ -187,16 +211,8 @@ pub struct RecentLine {
     /// Unix seconds.
     #[ts(type = "number")]
     pub at: i64,
-    pub summary: Vec<SummaryValue>,
+    pub summary: Summary,
     pub error: Option<String>,
-}
-
-/// A value of a recent object's peek, under its column or meta key.
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct SummaryValue {
-    pub column: String,
-    pub value: Value,
 }
 
 pub async fn readout(
@@ -213,10 +229,10 @@ pub async fn readout(
     };
     let project = sources.projects.get(&session.slug(), database);
     let entries = crate::saved::list(&project, &sources.projects.global(), &ctx.rules);
-    let (values, anomalies, new_objects, pinned, recent) = tokio::join!(
+    let (values, anomalies, recently_created, pinned, recent) = tokio::join!(
         part(parts::status_values(&ctx, sources, &entries)),
         part(parts::anomalies(&ctx)),
-        part(parts::new_objects(&ctx)),
+        created(&ctx),
         part(parts::pinned(&ctx, sources, &entries)),
         part(parts::recent(&ctx, recent)),
     );
@@ -231,7 +247,7 @@ pub async fn readout(
             values,
         ),
         anomalies,
-        new_objects,
+        recently_created,
         pinned,
         recent,
     }
@@ -272,7 +288,7 @@ fn unreadable(session: &Session, database: &str, error: String) -> Readout {
             Part::failed(error.clone()),
         ),
         anomalies: Part::failed(error.clone()),
-        new_objects: Part::failed(error.clone()),
+        recently_created: RecentlyCreated::failed(error.clone()),
         pinned: Part::failed(error.clone()),
         recent: Part::failed(error),
     }
@@ -283,6 +299,21 @@ async fn within<T>(work: impl Future<Output = AppResult<T>>) -> Result<T, String
         Ok(Ok(value)) => Ok(value),
         Ok(Err(e)) => Err(e.to_string()),
         Err(_) => Err(format!("Timed out after {} s", PART_TIMEOUT.as_secs())),
+    }
+}
+
+async fn created(ctx: &Ctx<'_>) -> RecentlyCreated {
+    let work = async { Ok(parts::recently_created(ctx).await) };
+    within(work).await.unwrap_or_else(RecentlyCreated::failed)
+}
+
+impl RecentlyCreated {
+    fn failed(error: String) -> Self {
+        Self {
+            items: Vec::new(),
+            entities: Vec::new(),
+            error: Some(error),
+        }
     }
 }
 

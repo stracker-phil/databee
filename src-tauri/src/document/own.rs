@@ -2,8 +2,8 @@
 //! in the same query (the first entity whose filter holds; filtered ones come first).
 
 use crate::address::{Address, Target};
-use crate::db::ColumnEquals;
 use crate::db::browse::aliased_equals_sql;
+use crate::db::{ColumnEquals, ResultSet};
 use crate::error::{AppError, AppResult};
 use crate::query::{Ctx, Rows};
 use crate::rules::effective::AppliedEntity;
@@ -53,14 +53,19 @@ pub fn row_filter(ctx: &Ctx<'_>, address: &Address) -> AppResult<(String, Vec<Co
 /// The row of `address` with its entity, and the filter that selected it.
 pub async fn resolve(ctx: &Ctx<'_>, address: &Address) -> AppResult<(Own, Vec<ColumnEquals>)> {
     let (table, filter) = row_filter(ctx, address)?;
-    if ctx.schema.table(&table).is_none() {
-        return Err(AppError::InvalidInput(format!(
-            "`{}` has no table `{table}`",
-            ctx.database
-        )));
-    }
+    existing(ctx, &table)?;
     let own = load(ctx, &table, &filter).await?;
     Ok((own, filter))
+}
+
+pub fn existing(ctx: &Ctx<'_>, table: &str) -> AppResult<()> {
+    match ctx.schema.table(table) {
+        Some(_) => Ok(()),
+        None => Err(AppError::InvalidInput(format!(
+            "`{}` has no table `{table}`",
+            ctx.database
+        ))),
+    }
 }
 
 fn covers_key(key: &[String], filter: &[ColumnEquals]) -> bool {
@@ -71,8 +76,61 @@ fn covers_key(key: &[String], filter: &[ColumnEquals]) -> bool {
 }
 
 pub async fn load(ctx: &Ctx<'_>, table: &str, filter: &[ColumnEquals]) -> AppResult<Own> {
-    let entities: Vec<&AppliedEntity> = ctx.rules.entities_of(table).collect();
-    let tests: Vec<String> = entities
+    let condition = aliased_equals_sql(ctx.dialect, "t", filter);
+    let (rows, mut entities) = Selection::new(ctx, table, &condition, " LIMIT 2")
+        .run(ctx)
+        .await?;
+    if rows.len() != 1 {
+        return Err(AppError::InvalidInput(format!(
+            "`{table}` has {} rows for this key",
+            if rows.len() == 0 { "no" } else { "several" }
+        )));
+    }
+    Ok(Own {
+        rows,
+        entity: entities.remove(0),
+    })
+}
+
+/// A `SELECT` of the rows of a table as `t` where `condition` holds (every row when empty),
+/// each with the first entity of the table whose filter holds on it, in the same query.
+pub struct Selection<'r> {
+    pub table: String,
+    pub sql: String,
+    entities: Vec<&'r AppliedEntity>,
+}
+
+impl<'r> Selection<'r> {
+    /// `tail` orders and limits.
+    pub fn new(ctx: &'r Ctx<'_>, table: &str, condition: &str, tail: &str) -> Self {
+        let entities: Vec<&AppliedEntity> = ctx.rules.entities_of(table).collect();
+        let condition = if condition.is_empty() {
+            String::new()
+        } else {
+            format!(" WHERE {condition}")
+        };
+        let sql = format!(
+            "SELECT t.*{} FROM {} AS t{condition}{tail}",
+            entity_tests(ctx, &entities),
+            ctx.table_ref(table),
+        );
+        Self {
+            table: table.to_string(),
+            sql,
+            entities,
+        }
+    }
+
+    pub async fn run(&self, ctx: &Ctx<'_>) -> AppResult<(Rows, Vec<Option<AppliedEntity>>)> {
+        let mut result = ctx.fetch(&self.sql).await?;
+        let entities = take_entities(&mut result, &self.entities);
+        Ok((ctx.annotate(&self.table, result), entities))
+    }
+}
+
+/// `, <filter> AS __databee_entity_<i>` for each entity, `1` for an unfiltered one.
+pub fn entity_tests(ctx: &Ctx<'_>, entities: &[&AppliedEntity]) -> String {
+    entities
         .iter()
         .enumerate()
         .map(|(i, e)| {
@@ -82,36 +140,28 @@ pub async fn load(ctx: &Ctx<'_>, table: &str, filter: &[ColumnEquals]) -> AppRes
             };
             format!(", {test} AS {}", ctx.ident(&format!("{ENTITY_COLUMN}{i}")))
         })
-        .collect();
-    let sql = format!(
-        "SELECT t.*{} FROM {} AS t WHERE {} LIMIT 2",
-        tests.concat(),
-        ctx.table_ref(table),
-        aliased_equals_sql(ctx.dialect, "t", filter)
-    );
-    let mut result = ctx.fetch(&sql).await?;
-    if result.rows.len() != 1 {
-        return Err(AppError::InvalidInput(format!(
-            "`{table}` has {} rows for this key",
-            if result.rows.is_empty() {
-                "no"
-            } else {
-                "several"
-            }
-        )));
-    }
-    let own_columns = result.columns.len() - entities.len();
-    let row = result.rows.remove(0);
-    let entity = row[own_columns..]
-        .iter()
-        .position(|cell| cell.as_text().is_some_and(|t| t != "0"))
-        .map(|i| entities[i].clone());
+        .collect()
+}
+
+/// Removes the trailing test columns of `entity_tests` and gives each row the first entity whose
+/// test holds.
+pub fn take_entities(
+    result: &mut ResultSet,
+    entities: &[&AppliedEntity],
+) -> Vec<Option<AppliedEntity>> {
+    let own_columns = result.columns.len().saturating_sub(entities.len());
     result.columns.truncate(own_columns);
-    result.rows = vec![row[..own_columns].to_vec()];
-    Ok(Own {
-        rows: ctx.annotate(table, result),
-        entity,
-    })
+    result
+        .rows
+        .iter_mut()
+        .map(|row| {
+            let tests = row.split_off(own_columns.min(row.len()));
+            tests
+                .iter()
+                .position(|cell| cell.as_text().is_some_and(|t| t != "0"))
+                .map(|i| entities[i].clone())
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -23,6 +23,7 @@ mod pivot;
 mod server_tests;
 mod shorthand;
 pub mod snapshot;
+pub mod summary;
 #[cfg(test)]
 mod testing;
 pub mod watch;
@@ -41,8 +42,10 @@ use crate::session::Session;
 use crate::value::{RowKey, Value};
 
 pub use build::referencing;
-pub use own::{Own, resolve};
+pub use events::moment;
+pub use own::{Own, Selection, resolve};
 pub use peek::Peek;
+pub use summary::{Summary, SummaryValue};
 
 /// Meta rows shown before the group is capped.
 pub const META_CAP: usize = 50;
@@ -57,8 +60,8 @@ pub struct Document {
     pub address: Address,
     /// The first entity of the table whose `filter` holds on this row.
     pub entity: Option<String>,
-    /// The entity's `summary`: columns of the row or keys of its meta rows.
-    pub header: Vec<(String, Value)>,
+    /// The row's summary (`summary.rs`).
+    pub header: Summary,
     /// Own, meta, incoming references, patterns, events; in that order.
     pub groups: Vec<Group>,
     /// Other rows an entity shorthand (`order 4711`) matched, in other tables.

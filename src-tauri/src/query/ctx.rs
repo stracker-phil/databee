@@ -8,7 +8,7 @@ use futures_util::future::join_all;
 
 use super::Rows;
 use crate::address::{Address, Target};
-use crate::db::{Dialect, ResultSet};
+use crate::db::{ColumnEquals, Dialect, ResultSet};
 use crate::error::AppResult;
 use crate::lens::{self, Lens};
 use crate::rules::effective::{self, EffectiveRules, RuleSources};
@@ -16,7 +16,7 @@ use crate::rules::lens::build;
 use crate::rules::placeholder::qualify_prefixes;
 use crate::schema::DatabaseSchema;
 use crate::session::Session;
-use crate::value;
+use crate::value::{self, RowKey};
 
 pub struct Ctx<'a> {
     pub session: &'a Session,
@@ -99,6 +99,25 @@ impl<'a> Ctx<'a> {
         self.address(Target::Row {
             table: table.to_string(),
             key: key.to_string(),
+        })
+    }
+
+    /// A single-part key as a row address, a composite key as a filter on every part.
+    pub fn key_address(&self, table: &str, key: &RowKey) -> Address {
+        if let [only] = key.0.as_slice() {
+            return self.row_address(table, &only.value);
+        }
+        let filter = key
+            .0
+            .iter()
+            .map(|part| ColumnEquals {
+                column: part.column.clone(),
+                value: Some(part.value.clone()),
+            })
+            .collect();
+        self.address(Target::Table {
+            table: table.to_string(),
+            filter,
         })
     }
 

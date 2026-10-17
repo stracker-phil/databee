@@ -1,15 +1,17 @@
 //! Plans an action on a row or a table. Structured effects are planned as `where_changes`
-//! updates and deletes, which read the rows first and keep their before-image for undo; free SQL is planned
-//! as written, without undo, its `preview_sql` result in the description.
+//! updates and deletes, which read the rows first and keep their before-image for undo; `set`
+//! values are resolved to literals first, so the plan writes what the preview shows. Free SQL is
+//! planned as written, without undo, its `preview_sql` result in the description.
 
 use std::collections::BTreeMap;
 
 use super::super::own;
 use super::params::{self, ParamValue};
+use super::preview::{self, Planned};
 use super::rules;
 use crate::address::{Address, Target};
 use crate::db::browse::equals_sql;
-use crate::db::changes::Plan;
+use crate::db::changes::{Plan, restore_literal};
 use crate::db::where_changes::{self, RowsDelete, RowsUpdate};
 use crate::error::{AppError, AppResult};
 use crate::query::Ctx;
@@ -17,6 +19,7 @@ use crate::rules::actions::{ActionEffect, ActionScope, DeleteSpec, SetValue, Upd
 use crate::rules::condition::{conditions_sql, holds};
 use crate::rules::effective::RuleAction;
 use crate::rules::placeholder::{Placeholder, render, scan};
+use crate::value::{ResultValues, Value};
 
 /// What an action's SQL is rendered with.
 struct Scope<'a> {
@@ -46,6 +49,16 @@ pub async fn plan(
     name: &str,
     given: &BTreeMap<String, String>,
 ) -> AppResult<Plan> {
+    Ok(planned(ctx, address, name, given).await?.plan)
+}
+
+/// The plan of `plan` and the rows and values it writes.
+pub async fn planned(
+    ctx: &Ctx<'_>,
+    address: &Address,
+    name: &str,
+    given: &BTreeMap<String, String>,
+) -> AppResult<Planned> {
     let (table, filter) = match &address.target {
         Target::Table { table, filter } if filter.is_empty() => (table.clone(), None),
         _ => {
@@ -83,18 +96,75 @@ pub async fn plan(
         params,
     };
     let (db, database) = (ctx.session.db.as_ref(), ctx.database.as_str());
-    let plan = match &action.rule.effect {
+    let planned = match &action.rule.effect {
         ActionEffect::Update(steps) => {
-            where_changes::plan_update(db, database, &scope.updates(steps)?, ctx.timeout).await?
+            let mut updates = scope.updates(steps)?;
+            let new_values = resolve(ctx, &mut updates).await?;
+            let (plan, befores) =
+                where_changes::plan_update(db, database, &updates, ctx.timeout).await?;
+            Planned {
+                rows: preview::updated_rows(&updates, &befores, &new_values),
+                plan,
+                sql: Vec::new(),
+            }
         }
         ActionEffect::Delete(spec) => {
-            where_changes::plan_delete(db, database, &scope.delete(spec)?, ctx.timeout).await?
+            let delete = scope.delete(spec)?;
+            let (plan, rows) =
+                where_changes::plan_delete(db, database, &delete, ctx.timeout).await?;
+            Planned {
+                rows: preview::deleted_rows(&delete, &rows),
+                plan,
+                sql: Vec::new(),
+            }
         }
         ActionEffect::Sql { sql, preview_sql } => {
-            scope.free_sql(sql, preview_sql.as_deref()).await?
+            let plan = scope.free_sql(sql, preview_sql.as_deref()).await?;
+            Planned {
+                sql: plan.statements.clone(),
+                plan,
+                rows: Vec::new(),
+            }
         }
     };
-    Ok(named(name, plan))
+    Ok(Planned {
+        plan: named(name, planned.plan),
+        ..planned
+    })
+}
+
+/// Evaluates every `set` value in one `SELECT` and puts its result in as a literal, so
+/// `UTC_TIMESTAMP()` is the same moment in every step and in the preview. The values, per update
+/// and column.
+async fn resolve(ctx: &Ctx<'_>, updates: &mut [RowsUpdate]) -> AppResult<Vec<Vec<Value>>> {
+    let exprs: Vec<&str> = updates
+        .iter()
+        .flat_map(|u| u.set.iter().map(|(_, expr)| expr.as_str()))
+        .collect();
+    if exprs.is_empty() {
+        return Ok(vec![Vec::new(); updates.len()]);
+    }
+    let result = ctx.fetch(&format!("SELECT {}", exprs.join(", "))).await?;
+    let row = result
+        .rows
+        .first()
+        .filter(|row| row.len() == exprs.len())
+        .ok_or_else(|| AppError::InvalidInput("The `set` values did not resolve".into()))?;
+    let values = ResultValues::new(&result);
+    let mut index = 0;
+    let mut resolved = Vec::with_capacity(updates.len());
+    for update in updates.iter_mut() {
+        let mut news = Vec::with_capacity(update.set.len());
+        for (column, expr) in &mut update.set {
+            *expr = restore_literal(ctx.dialect, &row[index]).ok_or_else(|| {
+                AppError::InvalidInput(format!("`{column}` resolves to a binary value"))
+            })?;
+            news.push(values.value(0, index, None));
+            index += 1;
+        }
+        resolved.push(news);
+    }
+    Ok(resolved)
 }
 
 fn named(name: &str, plan: Plan) -> Plan {
@@ -297,6 +367,8 @@ impl Scope<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::Cell;
+    use crate::document::actions::preview::{PreviewRow, Previews, RowChange};
     use crate::query::testing::{Rig, count, num, result, shop, text};
 
     const ACTIONS: &str = r#"
@@ -313,6 +385,21 @@ scope = "table"
 params = [{ name = "msg" }]
 sql = "DELETE FROM {p}log WHERE msg = {param.msg}"
 preview_sql = "SELECT COUNT(*) FROM {p}log WHERE msg = {param.msg}"
+
+[[action]]
+name = "touch"
+table = "orders"
+params = [{ name = "status" }]
+update = [
+  { set = { status = "{param.status}", created_gmt = { sql = "UTC_TIMESTAMP()" } } },
+  { table = "log", key = "order_id", set = { at_gmt = { sql = "UTC_TIMESTAMP()" } } },
+]
+
+[[action]]
+name = "forget"
+table = "people"
+scope = "table"
+delete = { where = "name = ''" }
 "#;
 
     fn given(name: &str, value: &str) -> BTreeMap<String, String> {
@@ -322,6 +409,7 @@ preview_sql = "SELECT COUNT(*) FROM {p}log WHERE msg = {param.msg}"
     #[tokio::test]
     async fn a_quote_in_a_param_value_is_escaped_in_an_update_statement() {
         let db = shop()
+            .on("SELECT 'it''s'", result(&["v"], vec![vec![text("it's")]]))
             .on(
                 "SELECT t.*",
                 result(&["id", "status"], vec![vec![num("1"), text("open")]]),
@@ -375,6 +463,182 @@ preview_sql = "SELECT COUNT(*) FROM {p}log WHERE msg = {param.msg}"
             rig.db.queries(),
             ["SELECT COUNT(*) FROM `wp`.f_log WHERE msg = 'it''s'"]
         );
+    }
+
+    fn columns(row: &PreviewRow) -> Vec<(String, Cell, Cell)> {
+        match &row.change {
+            RowChange::Update { columns } => columns
+                .iter()
+                .map(|c| (c.column.clone(), c.old.raw.clone(), c.new.raw.clone()))
+                .collect(),
+            RowChange::Delete => Vec::new(),
+        }
+    }
+
+    fn key(row: &PreviewRow) -> Vec<(&str, &str)> {
+        row.key
+            .0
+            .iter()
+            .map(|part| (part.column.as_str(), part.value.as_str()))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn an_update_preview_shows_each_rows_old_and_new_values_and_writes_the_resolved_ones() {
+        let now = "2026-10-17 12:34:56";
+        let db = shop()
+            .on(
+                "SELECT UTC_TIMESTAMP(), 'done', UTC_TIMESTAMP()",
+                result(
+                    &["a", "b", "c"],
+                    vec![vec![text(now), text("done"), text(now)]],
+                ),
+            )
+            .on(
+                "SELECT t.*",
+                result(&["id", "status"], vec![vec![num("7"), text("open")]]),
+            )
+            .on(
+                "SELECT `id`, `created_gmt`, `status`",
+                result(
+                    &["id", "created_gmt", "status"],
+                    vec![vec![num("7"), text("2026-01-01 00:00:00"), text("open")]],
+                ),
+            )
+            .on(
+                "SELECT `log_id`, `at_gmt`",
+                result(
+                    &["log_id", "at_gmt"],
+                    vec![
+                        vec![num("1"), Cell::Null],
+                        vec![num("2"), text("2026-02-02 00:00:00")],
+                    ],
+                ),
+            );
+        let rig = Rig::new(db, ACTIONS);
+        let ctx = rig.ctx().await;
+        let address = ctx.row_address("f_orders", "7");
+
+        let planned = planned(&ctx, &address, "touch", &given("status", "done"))
+            .await
+            .unwrap();
+
+        let rows: Vec<_> = planned
+            .rows
+            .iter()
+            .map(|row| (row.table.as_str(), key(row), columns(row)))
+            .collect();
+        let at = |old: Cell| ("at_gmt".to_string(), old, text(now));
+        assert_eq!(
+            rows,
+            [
+                (
+                    "f_orders",
+                    vec![("id", "7")],
+                    vec![
+                        ("created_gmt".into(), text("2026-01-01 00:00:00"), text(now)),
+                        ("status".into(), text("open"), text("done")),
+                    ]
+                ),
+                ("f_log", vec![("log_id", "1")], vec![at(Cell::Null)]),
+                (
+                    "f_log",
+                    vec![("log_id", "2")],
+                    vec![at(text("2026-02-02 00:00:00"))]
+                ),
+            ]
+        );
+        assert_eq!(
+            planned.plan.statements,
+            [
+                format!(
+                    "UPDATE `wp`.`f_orders` SET `created_gmt` = '{now}', `status` = 'done' \
+                     WHERE `id` IN ('7')"
+                ),
+                format!("UPDATE `wp`.`f_log` SET `at_gmt` = '{now}' WHERE `log_id` IN ('1', '2')"),
+            ]
+        );
+        assert!(planned.sql.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_delete_preview_lists_the_rows_it_deletes() {
+        let db = shop().on(
+            "SELECT * FROM `wp`.`f_people`",
+            result(
+                &["person_id", "name"],
+                vec![vec![num("3"), text("")], vec![num("4"), text("")]],
+            ),
+        );
+        let rig = Rig::new(db, ACTIONS);
+        let ctx = rig.ctx().await;
+        let address = ctx.address(Target::Table {
+            table: "f_people".into(),
+            filter: Vec::new(),
+        });
+
+        let planned = planned(&ctx, &address, "forget", &BTreeMap::new())
+            .await
+            .unwrap();
+
+        let rows: Vec<_> = planned
+            .rows
+            .iter()
+            .map(|row| (row.table.as_str(), key(row), row.change.clone()))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("f_people", vec![("person_id", "3")], RowChange::Delete),
+                ("f_people", vec![("person_id", "4")], RowChange::Delete),
+            ]
+        );
+        assert!(!planned.plan.undo.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_free_sql_preview_has_its_statements_and_no_rows() {
+        let rig = Rig::new(shop().on("SELECT COUNT(*)", count(3)), ACTIONS);
+        let ctx = rig.ctx().await;
+        let address = ctx.address(Target::Table {
+            table: "f_log".into(),
+            filter: Vec::new(),
+        });
+
+        let planned = planned(&ctx, &address, "purge", &given("msg", "x"))
+            .await
+            .unwrap();
+
+        assert!(planned.rows.is_empty());
+        assert_eq!(planned.sql, ["DELETE FROM `wp`.f_log WHERE msg = 'x'"]);
+        assert_eq!(planned.sql, planned.plan.statements);
+    }
+
+    #[tokio::test]
+    async fn the_latest_preview_is_queued_once_and_an_older_one_is_refused() {
+        let rig = Rig::new(shop().on("SELECT COUNT(*)", count(3)), ACTIONS);
+        let ctx = rig.ctx().await;
+        let address = ctx.address(Target::Table {
+            table: "f_log".into(),
+            filter: Vec::new(),
+        });
+        let previews = Previews::default();
+        let older = previews.keep(
+            planned(&ctx, &address, "purge", &given("msg", "a"))
+                .await
+                .unwrap(),
+        );
+        let latest = previews.keep(
+            planned(&ctx, &address, "purge", &given("msg", "b"))
+                .await
+                .unwrap(),
+        );
+
+        assert!(previews.take(older.id).is_err());
+        let plan = previews.take(latest.id).unwrap();
+        assert_eq!(plan.statements, latest.sql);
+        assert!(!latest.can_undo);
+        assert!(previews.take(latest.id).is_err());
     }
 
     #[tokio::test]

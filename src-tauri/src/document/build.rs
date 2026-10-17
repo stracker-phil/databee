@@ -10,6 +10,7 @@ use super::non_empty;
 use super::own::{self, Own};
 use super::{
     Document, Group, GroupLink, GroupRow, GroupShape, actions, events, exists, incoming, patterns,
+    summary,
 };
 use crate::address::{Address, Target};
 use crate::db::ColumnEquals;
@@ -35,8 +36,9 @@ pub async fn document(ctx: &Ctx<'_>, address: &Address) -> AppResult<Document> {
     let (referencing, orders) = incoming_and_patterns(ctx, &own, &meta_values).await;
     groups.extend(referencing);
     unique_ids(&mut groups);
-    let mut header = header(&own, &groups[0].rows[0].fields, &groups, &meta_values);
-    exists::check(ctx, &mut header, &mut groups).await;
+    let stored = MetaValues::with_currency(&meta_rows, &currency);
+    let mut header = summary::of_document(ctx, &own, &own_values, &stored);
+    exists::check(ctx, &mut header.values, &mut groups).await;
     groups.push(events::group(&groups, &orders));
     let actions = actions::for_row(ctx, &own).await;
     Ok(Document {
@@ -81,7 +83,7 @@ async fn incoming_and_patterns(
 
 /// A money value without its currency in its own row looks in the document's row (the owner of
 /// its meta rows), then in its meta keys.
-pub(super) fn currency_lookup<'a>(
+fn currency_lookup<'a>(
     own: &'a Own,
     plain: &'a [Value],
     meta: &'a MetaValues,
@@ -112,9 +114,9 @@ fn own_group(own: &Own, values: &[Value]) -> Group {
     group
 }
 
-/// Meta keys the document reads by name besides showing them: the header, the patterns'
+/// Meta keys the document reads by name besides showing them: the summary, the patterns'
 /// `{meta.…}` and money currencies. Read beyond the cap of the meta group.
-pub(super) fn needed_meta_keys(ctx: &Ctx<'_>, own: &Own) -> Vec<String> {
+fn needed_meta_keys(ctx: &Ctx<'_>, own: &Own) -> Vec<String> {
     let mut names: Vec<&str> = Vec::new();
     if let Some(entity) = &own.entity {
         for name in &entity.entity.summary {
@@ -144,43 +146,6 @@ pub(super) fn needed_meta_keys(ctx: &Ctx<'_>, own: &Own) -> Vec<String> {
     keys
 }
 
-/// The entity's summary: the row's own value of a column, else the first meta row of the key.
-fn header(
-    own: &Own,
-    own_fields: &[(String, Value)],
-    groups: &[Group],
-    meta: &MetaValues,
-) -> Vec<(String, Value)> {
-    let Some(entity) = &own.entity else {
-        return Vec::new();
-    };
-    entity
-        .entity
-        .summary
-        .iter()
-        .filter_map(|name| {
-            let column = own_fields
-                .iter()
-                .find(|(c, _)| c.eq_ignore_ascii_case(name));
-            let value = column
-                .map(|(_, v)| v.clone())
-                .or_else(|| meta_group_value(groups, name))
-                .or_else(|| meta.get(name).cloned())?;
-            Some((name.clone(), value))
-        })
-        .collect()
-}
-
-fn meta_group_value(groups: &[Group], key: &str) -> Option<Value> {
-    groups
-        .iter()
-        .filter(|g| matches!(g.via, GroupLink::Meta { .. }))
-        .flat_map(|g| &g.rows)
-        .filter_map(meta::key_value)
-        .find(|(k, _)| *k == key)
-        .map(|(_, v)| v.clone())
-}
-
 /// Two rules may give the same id (a reference to this table and its meta copy): later ones
 /// get `#2`, `#3`.
 fn unique_ids(groups: &mut [Group]) {
@@ -194,7 +159,7 @@ fn unique_ids(groups: &mut [Group]) {
     }
 }
 
-fn canonical(ctx: &Ctx<'_>, table: &str, filter: Vec<ColumnEquals>) -> Address {
+pub(super) fn canonical(ctx: &Ctx<'_>, table: &str, filter: Vec<ColumnEquals>) -> Address {
     if let ([column], [only]) = (ctx.primary_key(table), filter.as_slice())
         && column.eq_ignore_ascii_case(&only.column)
         && let Some(key) = &only.value

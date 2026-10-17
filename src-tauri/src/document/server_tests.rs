@@ -225,7 +225,7 @@ async fn an_hpos_order_names_its_entity_and_lists_all_its_columns_first() {
 async fn the_order_header_shows_the_summary_columns_with_their_source_rows() {
     let rig = Rig::new();
     for (server, doc) in documents(&rig, "wp_test", ORDER).await {
-        let names: Vec<&str> = doc.header.iter().map(|(name, _)| name.as_str()).collect();
+        let names: Vec<&str> = doc.header.values.iter().map(|v| v.name.as_str()).collect();
         assert_eq!(
             names,
             [
@@ -237,9 +237,10 @@ async fn the_order_header_shows_the_summary_columns_with_their_source_rows() {
             ],
             "{server}"
         );
-        for (name, value) in &doc.header {
+        for summary in &doc.header.values {
+            let name = &summary.name;
             assert_eq!(
-                value.source,
+                summary.value.source,
                 Some(provenance("wp_wc_orders", name, "id", "4711")),
                 "{server}: {name}"
             );
@@ -536,10 +537,11 @@ async fn a_posts_shaped_order_reads_its_amount_and_currency_from_post_meta() {
     for (server, doc) in documents(&rig, "wp_legacy", LEGACY_ORDER).await {
         let total = &doc
             .header
+            .values
             .iter()
-            .find(|(name, _)| name == "_order_total")
+            .find(|v| v.name == "_order_total")
             .unwrap_or_else(|| panic!("{server}: no _order_total in {:?}", doc.header))
-            .1;
+            .value;
 
         assert_eq!(doc.entity.as_deref(), Some("order"), "{server}");
         assert_eq!(text(total), Some("30.00"), "{server}");
@@ -613,7 +615,13 @@ async fn a_declared_foreign_key_adds_an_incoming_group_without_any_rule() {
         let books = group_by_id(&server, &doc, "books_author");
 
         assert_eq!(doc.entity, None, "{server}");
-        assert!(doc.header.is_empty(), "{server}");
+        let header: Vec<(&str, Option<&str>)> = doc
+            .header
+            .values
+            .iter()
+            .map(|v| (v.name.as_str(), v.value.raw.as_text()))
+            .collect();
+        assert_eq!(header, [("name", Some("Ada"))], "{server}");
         assert_eq!(books.table, "books", "{server}");
         assert_eq!(books.total, 1, "{server}");
         assert_eq!(keys(books), ["1"], "{server}");

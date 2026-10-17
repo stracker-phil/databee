@@ -81,22 +81,26 @@ pub struct MetaValues(HashMap<String, Value>);
 
 impl MetaValues {
     pub fn new(meta: &[MetaRows]) -> Self {
+        Self::with_currency(meta, &|_, _| None)
+    }
+
+    /// Money values take their currency from `currency`.
+    pub fn with_currency(meta: &[MetaRows], currency: CurrencyLookup<'_>) -> Self {
         let mut values = Self::default();
         for rows in meta {
             let loaded = rows.loaded.as_ref().ok().map(|c| &c.rows);
             for found in loaded.into_iter().chain(&rows.beyond_cap) {
-                values.add(&rows.meta, found);
+                values.add(&rows.meta, found, currency);
             }
         }
         values
     }
 
-    fn add(&mut self, meta: &MetaRef, rows: &Rows) {
+    fn add(&mut self, meta: &MetaRef, rows: &Rows, currency: CurrencyLookup<'_>) {
         let Some(value_col) = rows.column(&meta.value) else {
             return;
         };
-        let no_currency = |_: usize, _: &str| None;
-        let values = rows.values(&no_currency);
+        let values = rows.values(currency);
         for (row, cells) in values.into_iter().enumerate() {
             let Some(Some(key)) = rows.text(row, &meta.key) else {
                 continue;

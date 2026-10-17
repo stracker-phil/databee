@@ -180,6 +180,7 @@ pub fn parse(file: &str, src: &str) -> Result<Preset, PresetError> {
         ("pinned", lines_of(&raw.pinned)),
         ("anomaly", lines_of(&raw.anomaly)),
         ("action", lines_of(&raw.action)),
+        ("style", lines_of(&raw.style)),
     ]);
     let header_at = reader.at("preset", 0, raw.preset.span());
     let header: Header = reader.decode(&header_at, raw.preset.into_inner())?;
@@ -200,6 +201,7 @@ pub fn parse(file: &str, src: &str) -> Result<Preset, PresetError> {
         finds: reader.rules("find", raw.find)?,
     };
     fill_reference_ids(&mut preset.references);
+    fill_style_ids(&mut preset.styles);
     check_preset(&preset).map_err(|bad| {
         let line = rule_lines
             .get(bad.section)
@@ -218,17 +220,50 @@ pub fn parse(file: &str, src: &str) -> Result<Preset, PresetError> {
 /// Default ids are `<from>[?<when>]`. Two rules that would share one (the same column pointing
 /// at two tables) both get `-><to>` appended, so either can be disabled on its own.
 fn fill_reference_ids(references: &mut [Reference]) {
-    let defaults: Vec<Option<String>> = references
-        .iter()
-        .map(|r| r.id.is_empty().then(|| r.default_id()))
+    fill_ids(
+        references,
+        |r| &mut r.id,
+        Reference::default_id,
+        Reference::qualified_id,
+    );
+}
+
+/// Default ids are `style:<scope><match>`; two styles that would share one both get `-><color>`.
+fn fill_style_ids(styles: &mut [StyleRule]) {
+    fill_ids(
+        styles,
+        |s| &mut s.id,
+        StyleRule::default_id,
+        StyleRule::qualified_id,
+    );
+}
+
+fn fill_ids<R>(
+    rules: &mut [R],
+    id: fn(&mut R) -> &mut String,
+    default_id: fn(&R) -> String,
+    qualified_id: fn(&R) -> String,
+) {
+    let defaults: Vec<Option<String>> = rules
+        .iter_mut()
+        .map(|r| {
+            let empty = id(r).is_empty();
+            empty.then(|| default_id(r))
+        })
         .collect();
-    for (i, reference) in references.iter_mut().enumerate() {
-        let Some(id) = &defaults[i] else { continue };
-        let shared = defaults.iter().filter(|d| d.as_ref() == Some(id)).count() > 1;
-        reference.id = if shared {
-            reference.qualified_id()
+    for (i, rule) in rules.iter_mut().enumerate() {
+        let Some(default) = &defaults[i] else {
+            continue;
+        };
+        let shared = defaults
+            .iter()
+            .filter(|d| d.as_ref() == Some(default))
+            .count()
+            > 1;
+        *id(rule) = if shared {
+            qualified_id(rule)
         } else {
-            id.clone()
+            default.clone()
         };
     }
 }
@@ -262,6 +297,7 @@ fn check_preset(preset: &Preset) -> Result<(), Bad> {
         preset.references.iter().map(|r| r.id.clone()),
         "id",
     )?;
+    unique("style", preset.styles.iter().map(|s| s.id.clone()), "id")?;
     unique("pinned", preset.pinned.iter().map(|p| p.id.clone()), "id")?;
     unique(
         "anomaly",
@@ -602,6 +638,76 @@ mod tests {
         assert_eq!((rule.section, rule.index), ("pinned", 2));
         assert_eq!(error.field.as_deref(), Some("id"));
         assert_eq!(error.message, "`a` is used twice");
+    }
+
+    fn style(scope: &str, matching: &str, value: &str, color: &str) -> String {
+        format!(
+            "[[style]]\n{scope}\nmatch = \"{matching}\"\nvalue = \"{value}\"\ncolor = \"{color}\"\n\n"
+        )
+    }
+
+    #[test]
+    fn styles_get_a_default_id_from_scope_and_match_unless_they_name_one() {
+        let body = [
+            style(
+                "columns = [\"a.status\", \"b.status\"]",
+                "=",
+                "failed",
+                "red",
+            ),
+            style("meta_keys = [\"_s\"]\nin = [\"m\"]", "LIKE", "ok%", "green"),
+            style("meta_keys = [\"_s\", \"_t\"]", "REGEXP", "^x$", "blue"),
+            style(
+                "id = \"mine\"\ncolumns = [\"a.status\"]",
+                "=",
+                "failed",
+                "red",
+            ),
+        ]
+        .concat();
+
+        let preset = parsed(&body);
+
+        let ids: Vec<&str> = preset.styles.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "style:a.status,b.status=failed",
+                "style:|_s|m=like(ok%)",
+                "style:|_s,_t=regexp(^x$)",
+                "mine",
+            ]
+        );
+    }
+
+    #[test]
+    fn styles_sharing_a_default_id_get_their_color_appended() {
+        let body = [
+            style("columns = [\"a.status\"]", "=", "x", "red"),
+            style("columns = [\"a.status\"]", "=", "x", "blue"),
+        ]
+        .concat();
+
+        let preset = parsed(&body);
+
+        let ids: Vec<&str> = preset.styles.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["style:a.status=x->red", "style:a.status=x->blue"]);
+    }
+
+    #[test]
+    fn style_ids_are_unique() {
+        let body = [
+            style("id = \"s\"\ncolumns = [\"a.status\"]", "=", "x", "red"),
+            style("id = \"s\"\ncolumns = [\"a.status\"]", "=", "y", "red"),
+        ]
+        .concat();
+
+        let error = rejected(&body);
+
+        let rule = rule_of(&error);
+        assert_eq!((rule.section, rule.index, rule.line), ("style", 2, 11));
+        assert_eq!(error.field.as_deref(), Some("id"));
+        assert_eq!(error.message, "`s` is used twice");
     }
 
     #[test]

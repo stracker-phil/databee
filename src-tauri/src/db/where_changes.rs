@@ -32,12 +32,14 @@ pub struct RowsDelete {
     pub filter: String,
 }
 
+/// The plan and, per update, the before-image of the rows it matches (key columns, then set
+/// columns).
 pub async fn plan_update(
     db: &dyn Database,
     database: &str,
     updates: &[RowsUpdate],
     timeout: Duration,
-) -> AppResult<Plan> {
+) -> AppResult<(Plan, Vec<ResultSet>)> {
     let dialect = db.dialect();
     let mut befores = Vec::with_capacity(updates.len());
     for update in updates {
@@ -50,26 +52,29 @@ pub async fn plan_update(
         let sql = select_sql(dialect, database, &update.table, &columns, &update.filter);
         befores.push(db.fetch(&sql, timeout).await?);
     }
-    build_update(dialect, database, updates, &befores)
+    let plan = build_update(dialect, database, updates, &befores)?;
+    Ok((plan, befores))
 }
 
+/// The plan and every column of the rows it deletes.
 pub async fn plan_delete(
     db: &dyn Database,
     database: &str,
     delete: &RowsDelete,
     timeout: Duration,
-) -> AppResult<Plan> {
+) -> AppResult<(Plan, ResultSet)> {
     let dialect = db.dialect();
     let sql = select_sql(dialect, database, &delete.table, &[], &delete.filter);
     let rows = db.fetch(&sql, timeout).await?;
     let structure = db.structure(database, &delete.table).await?;
-    build_delete(
+    let plan = build_delete(
         dialect,
         database,
         delete,
         &rows,
         &generated_columns(&structure.columns),
-    )
+    )?;
+    Ok((plan, rows))
 }
 
 /// Every column when `columns` is empty.
@@ -635,7 +640,7 @@ mod tests {
             ..update("orders", &["id"], &[("status", "'x'")])
         }];
 
-        let plan = plan_update(&db, "wp", &updates, Duration::from_secs(1))
+        let (plan, _) = plan_update(&db, "wp", &updates, Duration::from_secs(1))
             .await
             .unwrap();
 

@@ -216,7 +216,8 @@ match = "contains"
         assert_eq!(hit.source, "f_log.msg");
         assert_eq!(hit.address, log_address("1"));
         assert_eq!(hit.title[0].raw, num("1"));
-        assert_eq!(hit.detail[0].raw, text("sandbox ok"));
+        let detail: Vec<_> = hit.detail.iter().map(|v| v.raw.clone()).collect();
+        assert_eq!(detail, [num("4711"), text("sandbox ok")]);
     }
 
     #[tokio::test]

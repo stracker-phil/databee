@@ -49,14 +49,26 @@ impl Rows {
     pub fn values(&self, currency: CurrencyLookup<'_>) -> Vec<Vec<Value>> {
         let values = ResultValues::new(&self.result);
         (0..self.len())
-            .map(|row| {
-                (0..self.result.columns.len())
-                    .map(|col| {
-                        let mut value = values.value(row, col, self.provenance(row, col));
-                        self.add_currency(&mut value, row, col, currency);
-                        value
-                    })
-                    .collect()
+            .map(|row| self.row_with(&values, row, currency))
+            .collect()
+    }
+
+    /// The values of one row, as `values` gives them.
+    pub fn row_values(&self, row: usize, currency: CurrencyLookup<'_>) -> Vec<Value> {
+        self.row_with(&ResultValues::new(&self.result), row, currency)
+    }
+
+    fn row_with(
+        &self,
+        values: &ResultValues<'_>,
+        row: usize,
+        currency: CurrencyLookup<'_>,
+    ) -> Vec<Value> {
+        (0..self.result.columns.len())
+            .map(|col| {
+                let mut value = values.value(row, col, self.provenance(row, col));
+                self.add_currency(&mut value, row, col, currency);
+                value
             })
             .collect()
     }

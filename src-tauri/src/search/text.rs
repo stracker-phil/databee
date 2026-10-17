@@ -8,6 +8,7 @@ use futures_util::future::{join, join_all};
 
 use super::hits;
 use super::{PaletteHit, SECTION_CAP};
+use crate::document::Selection;
 use crate::query::Ctx;
 use crate::rules::condition::conditions_sql;
 use crate::rules::effective::{AppliedEntity, MetaRef, RuleReference};
@@ -74,8 +75,9 @@ fn owner_meta<'r>(ctx: &'r Ctx<'_>, table: &str) -> Option<&'r MetaRef> {
     ctx.rules.owned_meta(table).next()
 }
 
-/// The entity's newest rows where `predicate` holds besides its `filter`.
-fn select_entities(ctx: &Ctx<'_>, entity: &Entity, predicate: &str) -> String {
+/// The entity's newest rows where `predicate` holds besides its `filter`, each with the entity
+/// its document shows.
+fn select_entities<'r>(ctx: &'r Ctx<'_>, entity: &Entity, predicate: &str) -> Selection<'r> {
     let table = &entity.table;
     let filter = entity
         .filter
@@ -86,9 +88,11 @@ fn select_entities(ctx: &Ctx<'_>, entity: &Entity, predicate: &str) -> String {
         || "1".to_string(),
         |key| format!("{} DESC", ctx.column(Some(ALIAS), key)),
     );
-    format!(
-        "SELECT {ALIAS}.* FROM {} AS {ALIAS} WHERE {filter}({predicate}) ORDER BY {order} LIMIT {SECTION_CAP}",
-        ctx.table_ref(table),
+    Selection::new(
+        ctx,
+        table,
+        &format!("{filter}({predicate})"),
+        &format!(" ORDER BY {order} LIMIT {SECTION_CAP}"),
     )
 }
 
@@ -103,20 +107,19 @@ async fn entity_hits(
     let is_column = |term: &Term<'_>| columns.iter().any(|c| c.eq_ignore_ascii_case(term.name));
     let (column_terms, meta_terms): (Vec<_>, Vec<_>) =
         terms(entity).into_iter().partition(is_column);
-    let queries: Vec<String> = [
+    let queries: Vec<Selection<'_>> = [
         column_sql(ctx, entity, &column_terms, text),
         meta_sql(ctx, entity, &meta_terms, text),
     ]
     .into_iter()
     .flatten()
     .collect();
-    let results = join_all(queries.iter().map(|sql| ctx.fetch(sql))).await;
+    let results = join_all(queries.iter().map(|selection| selection.run(ctx))).await;
     let mut out = Vec::new();
     for result in results {
         match result {
-            Ok(result) => {
-                let rows = ctx.annotate(&entity.table, result);
-                out.extend(hits::from_rows(ctx, &rows, section, Some(entity), None));
+            Ok((rows, entities)) => {
+                out.extend(hits::from_rows(ctx, &rows, Some(entities), section, None).await);
             }
             Err(e) => log::debug!("Search in `{}` skipped: {e}", entity.table),
         }
@@ -124,7 +127,12 @@ async fn entity_hits(
     out
 }
 
-fn column_sql(ctx: &Ctx<'_>, entity: &Entity, terms: &[Term<'_>], text: &str) -> Option<String> {
+fn column_sql<'r>(
+    ctx: &'r Ctx<'_>,
+    entity: &Entity,
+    terms: &[Term<'_>],
+    text: &str,
+) -> Option<Selection<'r>> {
     if terms.is_empty() {
         return None;
     }
@@ -136,7 +144,12 @@ fn column_sql(ctx: &Ctx<'_>, entity: &Entity, terms: &[Term<'_>], text: &str) ->
 }
 
 /// Terms that are not columns are keys of the entity's own `[[meta]]` table.
-fn meta_sql(ctx: &Ctx<'_>, entity: &Entity, terms: &[Term<'_>], text: &str) -> Option<String> {
+fn meta_sql<'r>(
+    ctx: &'r Ctx<'_>,
+    entity: &Entity,
+    terms: &[Term<'_>],
+    text: &str,
+) -> Option<Selection<'r>> {
     if terms.is_empty() {
         return None;
     }
@@ -189,30 +202,29 @@ async fn external_ids(ctx: &Ctx<'_>, text: &str) -> Vec<PaletteHit> {
             ctx.literal(text)
         )];
         parts.extend(to_when.iter().cloned());
-        let sql = format!(
-            "SELECT * FROM {} AS {ALIAS} WHERE {} LIMIT {SECTION_CAP}",
-            ctx.table_ref(&reference.to.table),
-            parts.join(" AND ")
+        let table = &reference.to.table;
+        let selection = Selection::new(
+            ctx,
+            table,
+            &parts.join(" AND "),
+            &format!(" LIMIT {SECTION_CAP}"),
         );
-        async move { (*reference, ctx.fetch(&sql).await) }
+        async move { (*reference, selection.run(ctx).await) }
     });
     let mut out = Vec::new();
     for (reference, result) in join_all(queries).await {
         let table = &reference.to.table;
-        let result = match result {
-            Ok(result) => result,
+        let (rows, entities) = match result {
+            Ok(found) => found,
             Err(e) => {
                 log::debug!("External ids in `{table}` skipped: {e}");
                 continue;
             }
         };
-        let rows = ctx.annotate(table, result);
+        let column = Some(reference.to.column.as_str());
         let found = match ctx.rules.meta_table(table) {
             Some(meta) => hits::from_meta(ctx, &rows, meta, &section),
-            None => {
-                let entity = hits::table_entity(ctx, table);
-                hits::from_rows(ctx, &rows, &section, entity, Some(&reference.to.column))
-            }
+            None => hits::from_rows(ctx, &rows, Some(entities), &section, column).await,
         };
         out.extend(found);
     }
@@ -294,7 +306,7 @@ search_exact = ["currency"]
         assert_eq!(
             rig.db.queries(),
             [
-                r"SELECT t.* FROM `wp`.`f_orders` AS t WHERE (status <> 'trash') AND (t.`status` LIKE '%a\\%b%' OR t.`currency` = 'a%b') ORDER BY t.`id` DESC LIMIT 20"
+                r"SELECT t.*, (status <> 'trash') AS `__databee_entity_0` FROM `wp`.`f_orders` AS t WHERE (status <> 'trash') AND (t.`status` LIKE '%a\\%b%' OR t.`currency` = 'a%b') ORDER BY t.`id` DESC LIMIT 20"
             ]
         );
         assert_eq!(summary(&found), [("objects matching a%b", "f_orders")]);
@@ -327,7 +339,7 @@ search = ["name"]
         assert_eq!(
             rig.db.queries(),
             [
-                "SELECT t.* FROM `wp`.`f_people` AS t WHERE (t.`name` LIKE '%jane%') ORDER BY t.`person_id` DESC LIMIT 20"
+                "SELECT t.*, 1 AS `__databee_entity_0` FROM `wp`.`f_people` AS t WHERE (t.`name` LIKE '%jane%') ORDER BY t.`person_id` DESC LIMIT 20"
             ]
         );
         assert_eq!(summary(&found), [("people matching jane", "f_people")]);

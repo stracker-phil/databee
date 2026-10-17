@@ -1,44 +1,17 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
+
+use futures_util::future::join_all;
 
 use super::{PaletteHit, SECTION_CAP};
-use crate::address::{Address, Target};
-use crate::db::{Cell, ColumnEquals};
+use crate::address::Address;
+use crate::db::Cell;
+use crate::document::summary::{self, RowRef, Summary};
 use crate::document::{Group, GroupLink};
 use crate::query::{Ctx, Rows};
-use crate::rules::effective::MetaRef;
-use crate::rules::types::Entity;
+use crate::rules::effective::{AppliedEntity, MetaRef};
 use crate::value::{KeyPart, RowKey, Value, ValueKind};
 
-/// Values shown for a row without an entity summary.
-const PLAIN_VALUES: usize = 4;
-
 type Fields = Vec<(String, Value)>;
-
-pub fn address(ctx: &Ctx<'_>, table: &str, key: &RowKey) -> Address {
-    if let [only] = key.0.as_slice() {
-        return ctx.row_address(table, &only.value);
-    }
-    let filter = key
-        .0
-        .iter()
-        .map(|part| ColumnEquals {
-            column: part.column.clone(),
-            value: Some(part.value.clone()),
-        })
-        .collect();
-    ctx.address(Target::Table {
-        table: table.to_string(),
-        filter,
-    })
-}
-
-/// The entity a table's rows are shown with: its unfiltered one, else its first.
-pub fn table_entity<'r>(ctx: &'r Ctx<'_>, table: &str) -> Option<&'r Entity> {
-    let mut entities = ctx.rules.entities_of(table);
-    let first = entities.clone().next()?;
-    let unfiltered = entities.find(|e| e.entity.filter.is_none());
-    Some(&unfiltered.unwrap_or(first).entity)
-}
 
 fn field<'f>(fields: &'f Fields, name: &str) -> Option<&'f Value> {
     fields
@@ -47,57 +20,38 @@ fn field<'f>(fields: &'f Fields, name: &str) -> Option<&'f Value> {
         .map(|(_, v)| v)
 }
 
-fn shown(value: &Value) -> bool {
-    !matches!(value.kind, ValueKind::Null | ValueKind::Empty)
-}
-
-/// How the rows of one table become hits; `skip` columns stay out of the plain values.
+/// How the rows of one table become hits.
 pub struct Place<'a> {
     pub section: &'a str,
     pub source: String,
     pub table: &'a str,
-    pub skip: &'a [String],
-    pub summary: &'a [String],
-    /// A matched column, shown first.
+    /// A matched column, shown first unless the summary shows it.
     pub matched: Option<&'a str>,
 }
 
-pub fn row(ctx: &Ctx<'_>, place: &Place<'_>, key: &RowKey, fields: &Fields) -> PaletteHit {
-    let in_key = |name: &str| key.0.iter().any(|p| p.column.eq_ignore_ascii_case(name));
-    let skipped = |name: &str| place.skip.iter().any(|s| s.eq_ignore_ascii_case(name));
-    let mut detail: Vec<Value> = place
-        .matched
-        .and_then(|name| field(fields, name))
-        .into_iter()
-        .cloned()
-        .collect();
-    let named: Vec<&str> = place.summary.iter().map(String::as_str).collect();
-    if named.is_empty() {
-        let plain = fields
-            .iter()
-            .filter(|(name, value)| !in_key(name) && !skipped(name) && shown(value))
-            .filter(|(name, _)| Some(name.as_str()) != place.matched)
-            .take(PLAIN_VALUES)
-            .map(|(_, v)| v.clone());
-        detail.extend(plain);
-    } else {
-        let summary = named
-            .into_iter()
-            .filter(|name| Some(*name) != place.matched)
-            .filter_map(|name| field(fields, name).cloned());
-        detail.extend(summary);
-    }
-    with_detail(ctx, place, key, fields, detail)
-}
-
-pub fn with_detail(
+/// The hit of one row: its key as the title, the matched value and the row's summary as detail.
+pub fn hit(
     ctx: &Ctx<'_>,
     place: &Place<'_>,
     key: &RowKey,
     fields: &Fields,
-    detail: Vec<Value>,
+    summary: Summary,
 ) -> PaletteHit {
-    let address = address(ctx, place.table, key);
+    let summarized = |name: &str| {
+        summary
+            .values
+            .iter()
+            .any(|v| v.name.eq_ignore_ascii_case(name))
+    };
+    let mut detail: Vec<Value> = place
+        .matched
+        .filter(|name| !summarized(name))
+        .and_then(|name| field(fields, name))
+        .into_iter()
+        .cloned()
+        .collect();
+    detail.extend(summary.values.into_iter().map(|v| v.value));
+    let address = ctx.key_address(place.table, key);
     PaletteHit {
         section: place.section.to_string(),
         title: key
@@ -134,12 +88,13 @@ fn fields_of(rows: &Rows) -> Vec<Fields> {
         .collect()
 }
 
-/// One hit per row of `rows` with a key, at most `SECTION_CAP`.
-pub fn from_rows(
+/// One hit per row of `rows` with a key, at most `SECTION_CAP`, each with its entity's summary;
+/// rows read without their `entities` have them tested.
+pub async fn from_rows(
     ctx: &Ctx<'_>,
     rows: &Rows,
+    entities: Option<Vec<Option<AppliedEntity>>>,
     section: &str,
-    entity: Option<&Entity>,
     matched: Option<&str>,
 ) -> Vec<PaletteHit> {
     let place = Place {
@@ -149,52 +104,87 @@ pub fn from_rows(
             |column| format!("{}.{column}", rows.table),
         ),
         table: &rows.table,
-        skip: &[],
-        summary: entity.map_or(&[], |e| &e.summary),
         matched,
     };
-    fields_of(rows)
-        .iter()
-        .enumerate()
-        .filter_map(|(i, fields)| Some(row(ctx, &place, &rows.key(i)?, fields)))
+    let keyed: Vec<(usize, RowKey)> = (0..rows.len())
+        .filter_map(|row| Some((row, rows.key(row)?)))
         .take(SECTION_CAP)
+        .collect();
+    if keyed.is_empty() {
+        return Vec::new();
+    }
+    let entities = match entities {
+        Some(entities) => entities,
+        None => summary::entities(ctx, rows).await,
+    };
+    let items: Vec<RowRef<'_>> = keyed
+        .iter()
+        .map(|(row, _)| RowRef {
+            rows,
+            row: *row,
+            entity: entities[*row].as_ref(),
+        })
+        .collect();
+    let summaries = summary::of_rows(ctx, &items).await;
+    let fields = fields_of(rows);
+    keyed
+        .iter()
+        .zip(summaries)
+        .map(|((row, key), summary)| hit(ctx, &place, key, &fields[*row], summary))
         .collect()
 }
 
-/// The rows of incoming reference and pattern groups, named by the referencing column.
-pub fn from_groups(ctx: &Ctx<'_>, groups: &[Group], section: &str) -> Vec<PaletteHit> {
-    let mut hits = Vec::new();
+/// The rows of incoming reference and pattern groups, named by the referencing column. Group
+/// rows may hold only some columns, so each table's rows are read again for their summaries.
+pub async fn from_groups(ctx: &Ctx<'_>, groups: &[Group], section: &str) -> Vec<PaletteHit> {
+    let mut found: Vec<(Place<'_>, &RowKey, &Fields)> = Vec::new();
+    let mut seen = HashSet::new();
     for group in groups {
-        let (source, skip) = match &group.via {
+        let source = match &group.via {
             GroupLink::Incoming { reference, .. } => {
-                let columns = &reference.from.columns;
-                (
-                    format!("{}.{}", group.table, columns.join(",")),
-                    columns.clone(),
-                )
+                format!("{}.{}", group.table, reference.from.columns.join(","))
             }
-            GroupLink::Pattern { .. } => (group.table.clone(), Vec::new()),
+            GroupLink::Pattern { .. } => group.table.clone(),
             _ => continue,
         };
-        let place = Place {
-            section,
-            source,
-            table: &group.table,
-            skip: &skip,
-            summary: &[],
-            matched: None,
-        };
-        hits.extend(
-            group
-                .rows
-                .iter()
-                .filter_map(|r| Some(row(ctx, &place, r.key.as_ref()?, &r.fields))),
-        );
+        for row in &group.rows {
+            let Some(key) = &row.key else {
+                continue;
+            };
+            if found.len() < SECTION_CAP
+                && seen.insert(ctx.key_address(&group.table, key).to_string())
+            {
+                let place = Place {
+                    section,
+                    source: source.clone(),
+                    table: &group.table,
+                    matched: None,
+                };
+                found.push((place, key, &row.fields));
+            }
+        }
     }
-    let mut seen = HashSet::new();
-    hits.retain(|hit| seen.insert(hit.address.to_string()));
-    hits.truncate(SECTION_CAP);
-    hits
+    let mut keys: BTreeMap<&str, Vec<RowKey>> = BTreeMap::new();
+    for (place, key, _) in &found {
+        keys.entry(place.table).or_default().push((*key).clone());
+    }
+    let summaries: BTreeMap<&str, _> =
+        join_all(keys.iter().map(|(table, keys)| async move {
+            (*table, summary::of_keys(ctx, table, keys).await)
+        }))
+        .await
+        .into_iter()
+        .collect();
+    found
+        .into_iter()
+        .map(|(place, key, fields)| {
+            let summary = summaries
+                .get(place.table)
+                .and_then(|s| s.get(key).cloned())
+                .unwrap_or_default();
+            hit(ctx, &place, key, fields, summary)
+        })
+        .collect()
 }
 
 /// Rows of a `[[meta]]` table: each opens its owner row (titled by the `fk` value), or the meta
@@ -212,7 +202,7 @@ pub fn from_meta(ctx: &Ctx<'_>, rows: &Rows, meta: &MetaRef, section: &str) -> V
                 Some(owner) => owner,
                 None => {
                     let key = rows.key(i)?;
-                    let own = address(ctx, &meta.table, &key);
+                    let own = ctx.key_address(&meta.table, &key);
                     let title = key.0.iter().map(|p| key_value(fields, p, &own)).collect();
                     (own, title, meta.table.clone())
                 }
@@ -251,30 +241,9 @@ fn owner_of(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::address::Target;
+    use crate::db::ColumnEquals;
     use crate::query::testing::{Rig, shop};
-
-    const TWO_FILTERED: &str = r#"
-[[entity]]
-name = "paid"
-table = "orders"
-filter = "status = 'paid'"
-
-[[entity]]
-name = "late"
-table = "orders"
-filter = "status = 'late'"
-"#;
-
-    const FILTERED_THEN_UNFILTERED: &str = r#"
-[[entity]]
-name = "paid"
-table = "orders"
-filter = "status = 'paid'"
-
-[[entity]]
-name = "order"
-table = "orders"
-"#;
 
     fn key(parts: &[(&str, &str)]) -> RowKey {
         RowKey(
@@ -289,32 +258,16 @@ table = "orders"
     }
 
     #[tokio::test]
-    async fn a_table_is_shown_with_its_unfiltered_entity_else_its_first() {
-        for (rules, expected) in [
-            (FILTERED_THEN_UNFILTERED, Some("order")),
-            (TWO_FILTERED, Some("paid")),
-            ("", None),
-        ] {
-            let rig = Rig::new(shop(), rules);
-            let ctx = rig.ctx().await;
-
-            let entity = table_entity(&ctx, "f_orders").map(|e| e.name.as_str());
-
-            assert_eq!(entity, expected, "{rules}");
-        }
-    }
-
-    #[tokio::test]
     async fn a_single_part_key_is_a_row_address_and_a_composite_key_filters_every_part() {
         let rig = Rig::new(shop(), "");
         let ctx = rig.ctx().await;
 
         assert_eq!(
-            address(&ctx, "f_orders", &key(&[("id", "5")])),
+            ctx.key_address("f_orders", &key(&[("id", "5")])),
             ctx.row_address("f_orders", "5")
         );
         assert_eq!(
-            address(&ctx, "f_pairs", &key(&[("a", "1"), ("b", "2")])),
+            ctx.key_address("f_pairs", &key(&[("a", "1"), ("b", "2")])),
             ctx.address(Target::Table {
                 table: "f_pairs".into(),
                 filter: vec![

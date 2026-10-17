@@ -1,8 +1,10 @@
 //! The effective rules of one database: the applied presets ⊕ the project, with real table names
 //! and compiled conditions (docs/presets.md, "Effective rules").
 //!
-//! - A project reference with the same `from` and `when` as a preset reference replaces it.
-//! - `disabled` drops preset references by id (any preset) and inferred references (`inferred_id`).
+//! - A project reference with the same id, or the same `from` and `when`, as a preset reference
+//!   replaces it.
+//! - `disabled` drops project and preset references by id (any preset) and inferred references
+//!   (`inferred_id`).
 //! - Rules are kept in precedence order: project rules first, then the presets from the last
 //!   applied to the first (a preset refines the presets it requires).
 //! - Rules whose tables do not exist are dropped: presets describe optional tables too.
@@ -147,7 +149,7 @@ impl EffectiveRules {
             applied,
             references: Vec::new(),
             kinds: project.kinds.clone(),
-            styles: project.styles.iter().filter_map(to_rule_style).collect(),
+            styles: Vec::new(),
             meta: Vec::new(),
             entities: Vec::new(),
             patterns: Vec::new(),
@@ -155,18 +157,22 @@ impl EffectiveRules {
             finds: Vec::new(),
             disabled,
         };
-        rules.add_references(&project.references, None);
-        let preset_rules: Vec<_> = rules.preset_reference_rules(project, schema).collect();
+        rules.add_styles(project);
+        let (own_on, own_off): (Vec<Reference>, Vec<Reference>) = project
+            .references
+            .iter()
+            .cloned()
+            .partition(|r| !rules.disabled.contains(&r.id));
+        rules.add_references(&own_on, None);
+        rules.keep_inference_off(&own_off);
+        let preset_rules: Vec<_> = rules.preset_reference_rules(schema).collect();
         for (preset, references) in preset_rules {
             let kept: Vec<Reference> = references
                 .into_iter()
-                .filter(|r| !rules.disabled.contains(&r.id))
+                .filter(|r| !rules.disabled.contains(&r.id) && !is_overridden(project, r))
                 .collect();
             rules.add_references(&kept, Some(&preset.name));
             rules.kinds.extend(preset.kinds.iter().cloned());
-            rules
-                .styles
-                .extend(preset.styles.iter().filter_map(to_rule_style));
         }
         let presets = rules.applied.presets.clone();
         for preset in &presets {
@@ -199,6 +205,34 @@ impl EffectiveRules {
             && self.kinds.is_empty()
             && self.styles.is_empty()
             && self.disabled.is_empty()
+    }
+
+    /// The project's own styles that are on, then the applied presets' styles (the last applied
+    /// first) the project switches on, each replaced by its project override.
+    fn add_styles(&mut self, project: &Project) {
+        let presets = &self.applied.presets;
+        let shipped = |id: &str| presets.iter().any(|p| p.styles.iter().any(|s| s.id == id));
+        let own = project
+            .styles
+            .iter()
+            .filter(|s| s.enabled && !shipped(&s.id));
+        let switched_on = presets
+            .iter()
+            .rev()
+            .flat_map(|p| &p.styles)
+            .filter(|s| project.preset_style_on(s))
+            .map(|s| project.style_override(&s.id).unwrap_or(s));
+        self.styles = own.chain(switched_on).filter_map(to_rule_style).collect();
+    }
+
+    /// A switched-off unconditional project reference still replaces the same-name inference on
+    /// its column, so switching off an edited inferred reference switches the reference off.
+    fn keep_inference_off(&mut self, switched_off: &[Reference]) {
+        for rule in switched_off.iter().filter(|r| r.when.is_empty()) {
+            if let Some(from) = self.column(&rule.from) {
+                self.disabled.insert(inferred_id(&from.table, &from.column));
+            }
+        }
     }
 
     /// The references of `preset`, or of the project (`None`). Conditional rules of a source
@@ -259,22 +293,14 @@ impl EffectiveRules {
     }
 
     /// The reference rules of each applied preset in precedence order (the last applied first):
-    /// its own and those its meta tables imply, without the ones a project rule replaces.
-    /// Disabled rules are kept.
+    /// its own and those its meta tables imply. Disabled and overridden rules are kept.
     pub(super) fn preset_reference_rules<'a>(
         &'a self,
-        project: &'a Project,
         schema: &'a DatabaseSchema,
     ) -> impl Iterator<Item = (Arc<Preset>, Vec<Reference>)> + 'a {
         self.applied.presets.iter().rev().map(move |preset| {
             let implied = self.meta_references(preset, schema);
-            let references = preset
-                .references
-                .iter()
-                .chain(&implied)
-                .filter(|r| !is_overridden(project, r))
-                .cloned()
-                .collect();
+            let references = preset.references.iter().chain(&implied).cloned().collect();
             (preset.clone(), references)
         })
     }
@@ -466,20 +492,17 @@ pub fn meta_keys_match(globs: &[String], in_meta: &[String], meta: &MetaRef, key
     in_scope && globs.iter().any(|glob| glob_match(glob, key))
 }
 
-/// A project reference with the same `from` and `when` replaces the preset rule.
-fn is_overridden(project: &Project, rule: &Reference) -> bool {
-    project
-        .references
-        .iter()
-        .any(|own| own.from == rule.from && own.when == rule.when)
+/// A project reference with the same id, or the same `from` and `when`, replaces the preset rule.
+pub(super) fn overrides(own: &Reference, rule: &Reference) -> bool {
+    own.id == rule.id || (own.from == rule.from && own.when == rule.when)
 }
 
-/// Styles that are switched off (presets ship them so) are left out; a pattern that does not
-/// compile was rejected on load, so it is only logged here.
+fn is_overridden(project: &Project, rule: &Reference) -> bool {
+    project.references.iter().any(|own| overrides(own, rule))
+}
+
+/// A pattern that does not compile was rejected on load, so it is only logged here.
 fn to_rule_style(rule: &StyleRule) -> Option<RuleStyle> {
-    if !rule.enabled {
-        return None;
-    }
     match rule.matcher() {
         Ok(matcher) => Some(RuleStyle {
             rule: rule.clone(),
@@ -634,6 +657,79 @@ mod tests {
             .collect()
     }
 
+    const CLOSED: &str = "style:threads.status=closed";
+    const TONE: &str = "style:|tone|settings=like(wa%)";
+    const DRAFT: &str = "style:threads.title=draft";
+
+    fn forum_project(change: impl FnOnce(&mut Project)) -> Project {
+        let mut own = Project {
+            prefix: Some("f_".into()),
+            ..project()
+        };
+        change(&mut own);
+        own
+    }
+
+    fn style_colors(rules: &EffectiveRules) -> Vec<(&str, &str)> {
+        rules
+            .styles
+            .iter()
+            .map(|s| (s.rule.id.as_str(), s.rule.color.name()))
+            .collect()
+    }
+
+    fn style(id: &str, columns: &str, value: &str, color: StyleColor) -> StyleRule {
+        StyleRule {
+            id: id.into(),
+            columns: vec![ColumnGlob::try_from(columns.to_string()).unwrap()],
+            meta_keys: Vec::new(),
+            r#in: Vec::new(),
+            matching: StyleMatch::Eq,
+            value: value.into(),
+            color,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn preset_styles_apply_as_shipped_until_the_project_switches_them_by_id() {
+        let shipped = build(&forum_project(|_| {}), &[forum()]);
+        let switched = build(
+            &forum_project(|p| {
+                p.enabled = vec![DRAFT.into()];
+                p.disabled = vec![CLOSED.into()];
+            }),
+            &[forum()],
+        );
+
+        assert_eq!(style_colors(&shipped), [(CLOSED, "red"), (TONE, "green")]);
+        assert_eq!(style_colors(&switched), [(TONE, "green"), (DRAFT, "blue")]);
+    }
+
+    #[test]
+    fn a_project_override_replaces_the_preset_style_in_place_and_follows_its_switch() {
+        let edited = |p: &mut Project| {
+            p.styles = vec![
+                style(CLOSED, "threads.status", "closed", StyleColor::Purple),
+                style("mine", "threads.title", "x", StyleColor::Yellow),
+            ];
+        };
+        let on = build(&forum_project(edited), &[forum()]);
+        let off = build(
+            &forum_project(|p| {
+                edited(p);
+                p.disabled = vec![CLOSED.into()];
+            }),
+            &[forum()],
+        );
+
+        assert_eq!(
+            style_colors(&on),
+            [("mine", "yellow"), (CLOSED, "purple"), (TONE, "green")]
+        );
+        assert_eq!(style_colors(&off), [("mine", "yellow"), (TONE, "green")]);
+    }
+
     const BASE: &str = r#"
 [preset]
 name = "base"
@@ -786,6 +882,83 @@ to = "threads.thread_id"
             sources_from(&rules, "f_threads"),
             [by_project("q"), by_preset("forum", "threads.author")]
         );
+    }
+
+    #[test]
+    fn a_disabled_project_reference_is_dropped() {
+        let own = Project {
+            references: vec![reference("mine", "replies.by", "bots.bot_id")],
+            disabled: vec!["mine".into()],
+            ..prefixed()
+        };
+        let enabled = Project {
+            disabled: Vec::new(),
+            ..own.clone()
+        };
+
+        assert_eq!(
+            sources_from(&build(&enabled, &[]), "f_replies"),
+            [by_project("mine")]
+        );
+        assert!(build(&own, &[]).references.is_empty());
+    }
+
+    #[test]
+    fn a_disabled_unconditional_project_reference_keeps_the_inference_on_its_column_off() {
+        let conditional = Reference {
+            when: when("title", Match::Eq("x".into())),
+            ..reference("cond", "threads.parent_id", "threads.thread_id")
+        };
+        let own = Project {
+            references: vec![
+                reference("mine", "threads.person_id", "people.name"),
+                conditional,
+            ],
+            disabled: vec!["mine".into(), "cond".into()],
+            ..prefixed()
+        };
+
+        let rules = build(&own, &[]);
+
+        assert!(rules.references.is_empty());
+        let mut disabled: Vec<&str> = rules.disabled.iter().map(String::as_str).collect();
+        disabled.sort();
+        assert_eq!(disabled, ["cond", "inferred:f_threads.person_id", "mine"]);
+    }
+
+    #[test]
+    fn a_project_reference_with_a_preset_rules_id_replaces_it_whatever_its_from() {
+        let own = Project {
+            references: vec![reference("threads.author", "replies.by", "bots.bot_id")],
+            ..project()
+        };
+
+        let rules = build(&own, &[forum()]);
+
+        assert_eq!(
+            sources_from(&rules, "f_replies"),
+            [by_project("threads.author")]
+        );
+        assert!(sources_from(&rules, "f_threads").is_empty());
+    }
+
+    #[test]
+    fn preset_reference_rules_keep_the_overridden_and_disabled_rules() {
+        let own = Project {
+            references: vec![reference("mine", "threads.author", "people.name")],
+            disabled: vec!["notes.thread_id".into()],
+            ..project()
+        };
+        let rules = build(&own, &[forum()]);
+
+        let ids: Vec<String> = rules
+            .preset_reference_rules(&forum_schema())
+            .flat_map(|(_, references)| references)
+            .map(|r| r.id)
+            .collect();
+
+        assert!(ids.contains(&"threads.author".to_string()));
+        assert!(ids.contains(&"notes.thread_id".to_string()));
     }
 
     #[test]
@@ -1265,6 +1438,7 @@ to_when = { k = { not = "x" } }
                 ..reference("p", "notes.v", "people.person_id")
             };
             let style = StyleRule {
+                id: String::new(),
                 columns: vec![ColumnGlob::try_from("threads.title".to_string()).unwrap()],
                 meta_keys: Vec::new(),
                 r#in: Vec::new(),

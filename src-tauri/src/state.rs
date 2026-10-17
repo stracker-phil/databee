@@ -42,14 +42,19 @@ impl AppState {
         if let Err(e) = migrate_favorites(config_dir) {
             log::warn!("Favorites were not moved to saved queries: {e}");
         }
+        let presets = PresetCatalog::open(config_dir);
+        let projects = ProjectsStore::open(config_dir);
+        if let Err(e) = projects.migrate_styles(&presets.presets()) {
+            log::warn!("Value styles were not given ids: {e}");
+        }
         Self {
             settings: SettingsStore::open(config_dir),
             keybindings: KeybindingsStore::open(config_dir),
             recents: RecentsStore::open(config_dir),
             history: HistoryStore::open(config_dir),
             ui_state: UiStateStore::open(config_dir),
-            presets: PresetCatalog::open(config_dir),
-            projects: ProjectsStore::open(config_dir),
+            presets,
+            projects,
             recent_objects: RecentObjectsStore::open(config_dir),
             snapshots: SnapshotStore::open(config_dir),
             launches: LaunchQueue::default(),

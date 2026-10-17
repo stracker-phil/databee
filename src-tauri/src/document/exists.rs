@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use futures_util::future::join_all;
 
-use super::Group;
+use super::{Group, SummaryValue};
 use crate::address::{Address, Target};
 use crate::db::browse::equals_sql;
 use crate::db::{ColumnEquals, ResultSet};
@@ -18,7 +18,7 @@ type Lookup = Vec<ColumnEquals>;
 /// The rows found per table; `None` when the query failed, so `exists` stays unknown.
 type Found = HashMap<String, Option<ResultSet>>;
 
-pub async fn check(ctx: &Ctx<'_>, header: &mut [(String, Value)], groups: &mut [Group]) {
+pub async fn check(ctx: &Ctx<'_>, header: &mut [SummaryValue], groups: &mut [Group]) {
     let mut wanted: BTreeMap<String, Vec<Lookup>> = BTreeMap::new();
     for_each_value(header, groups, |value| {
         for (table, lookup) in targets(ctx, value).into_iter().flatten() {
@@ -59,12 +59,12 @@ fn verdict(each: &[Option<bool>]) -> Option<bool> {
 }
 
 fn for_each_value(
-    header: &mut [(String, Value)],
+    header: &mut [SummaryValue],
     groups: &mut [Group],
     mut f: impl FnMut(&mut Value),
 ) {
-    for (_, value) in header.iter_mut() {
-        f(value);
+    for summary in header.iter_mut() {
+        f(&mut summary.value);
     }
     for group in groups.iter_mut() {
         for row in &mut group.rows {
@@ -229,10 +229,10 @@ mod tests {
             "",
         );
         let ctx = rig.ctx().await;
-        let mut header = vec![(
-            "owner".to_string(),
-            reference(vec![ctx.row_address("f_people", "7")]),
-        )];
+        let mut header = vec![SummaryValue {
+            name: "owner".to_string(),
+            value: reference(vec![ctx.row_address("f_people", "7")]),
+        }];
         let mut groups = vec![group_of(vec![
             reference(vec![ctx.row_address("f_people", "8")]),
             reference(vec![ctx.row_address("f_orders", "1")]),
@@ -250,7 +250,7 @@ mod tests {
                 "SELECT DISTINCT `person_id` FROM `wp`.`f_people` WHERE (`person_id` = '7') OR (`person_id` = '8')",
             ]
         );
-        assert_eq!(exists_of(&header[0].1), Some(true));
+        assert_eq!(exists_of(&header[0].value), Some(true));
         assert_eq!(checked(&groups[0]), [Some(false), Some(true), Some(true)]);
     }
 
