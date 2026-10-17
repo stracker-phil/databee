@@ -44,6 +44,15 @@ pub enum ChangeRequest {
         table: String,
         values: Vec<(String, Option<String>)>,
     },
+    /// A row whose single-column key the server assigns (a meta row); undo deletes the newest
+    /// row that holds these values.
+    #[serde(rename_all = "camelCase")]
+    AddRow {
+        database: String,
+        table: String,
+        key_column: String,
+        values: Vec<(String, Option<String>)>,
+    },
 }
 
 impl ChangeRequest {
@@ -52,7 +61,8 @@ impl ChangeRequest {
             ChangeRequest::SetCell { database, .. }
             | ChangeRequest::DeleteRow { database, .. }
             | ChangeRequest::DuplicateRow { database, .. }
-            | ChangeRequest::InsertRow { database, .. } => database,
+            | ChangeRequest::InsertRow { database, .. }
+            | ChangeRequest::AddRow { database, .. } => database,
         }
     }
 }
@@ -271,6 +281,12 @@ pub async fn plan(db: &dyn Database, change: &ChangeRequest, timeout: Duration) 
             table,
             values,
         } => Ok(build_insert_row(dialect, database, table, values)),
+        ChangeRequest::AddRow {
+            database,
+            table,
+            key_column,
+            values,
+        } => Ok(build_add_row(dialect, database, table, key_column, values)),
     }
 }
 
@@ -409,6 +425,38 @@ pub fn build_insert_row(
             dialect.table_ref(database, table)
         )],
         undo: Vec::new(),
+    }
+}
+
+/// `build_insert_row` with an undo that deletes the newest row (by `key_column`) holding exactly
+/// the inserted values, since the new key is only known once the insert ran.
+pub fn build_add_row(
+    dialect: Dialect,
+    database: &str,
+    table: &str,
+    key_column: &str,
+    values: &[(String, Option<String>)],
+) -> Plan {
+    let insert = build_insert_row(dialect, database, table, values);
+    let same = values
+        .iter()
+        .map(|(c, v)| {
+            format!(
+                "{} <=> {}",
+                dialect.quote_ident(c),
+                sql_value(dialect, v.as_deref())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    Plan {
+        description: format!("Add a {table} row"),
+        undo: vec![format!(
+            "DELETE FROM {} WHERE {same} ORDER BY {} DESC LIMIT 1",
+            dialect.table_ref(database, table),
+            dialect.quote_ident(key_column)
+        )],
+        ..insert
     }
 }
 
@@ -737,6 +785,74 @@ mod tests {
                     "INSERT INTO `wp`.`t` (`name`, `slug`) VALUES ('it''s', NULL)".into()
                 ],
                 undo: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn add_row_inserts_and_undo_deletes_the_newest_row_holding_the_same_values() {
+        let values = [
+            ("post_id".to_string(), Some("7".to_string())),
+            ("meta_key".to_string(), Some("it's".to_string())),
+            ("meta_value".to_string(), None),
+        ];
+
+        let plan = build_add_row(Dialect::MYSQL, "wp", "t", "meta_id", &values);
+
+        assert_eq!(
+            plan,
+            Plan {
+                database: "wp".into(),
+                description: "Add a t row".into(),
+                statements: vec![
+                    "INSERT INTO `wp`.`t` (`post_id`, `meta_key`, `meta_value`) VALUES ('7', 'it''s', NULL)"
+                        .into()
+                ],
+                undo: vec![
+                    "DELETE FROM `wp`.`t` WHERE `post_id` <=> '7' AND `meta_key` <=> 'it''s' AND `meta_value` <=> NULL ORDER BY `meta_id` DESC LIMIT 1"
+                        .into()
+                ],
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn planning_an_add_row_needs_no_read() {
+        let db = FakeDatabase::new();
+        let request = ChangeRequest::AddRow {
+            database: "wp".into(),
+            table: "t".into(),
+            key_column: "id".into(),
+            values: vec![("name".into(), Some("a".into()))],
+        };
+
+        let plan = plan(&db, &request, TIMEOUT).await.unwrap();
+
+        assert_eq!(request.database(), "wp");
+        assert_eq!(
+            plan.undo,
+            ["DELETE FROM `wp`.`t` WHERE `name` <=> 'a' ORDER BY `id` DESC LIMIT 1"]
+        );
+        assert!(db.queries().is_empty());
+    }
+
+    #[test]
+    fn add_row_request_deserializes_from_the_page_shape() {
+        let add = serde_json::json!({
+            "type": "addRow",
+            "database": "wp",
+            "table": "t",
+            "keyColumn": "id",
+            "values": [["name", "a"], ["slug", null]],
+        });
+
+        assert_eq!(
+            serde_json::from_value::<ChangeRequest>(add).unwrap(),
+            ChangeRequest::AddRow {
+                database: "wp".into(),
+                table: "t".into(),
+                key_column: "id".into(),
+                values: vec![("name".into(), Some("a".into())), ("slug".into(), None)],
             }
         );
     }

@@ -9,9 +9,10 @@ Status: presets are parsed, checked and listed (`presets_list`); projects are st
 (`project_get`, `project_update`, `project_export`); references, kinds and value styles apply to browse
 pages, query results and `table_references` ([Effective rules](#effective-rules)), `rules_info` reports
 the prefixes, presets and entities, and `reference_coverage` counts how many rows of a reference resolve
-([Coverage](#coverage)). The WordPress screens read entities, meta tables and kinds through adapters
-([wordpress.md](wordpress.md#screens-until-u12)); patterns, pinned queries, anomalies, actions and find
-sources are parsed but not used yet.
+([Coverage](#coverage)). `document` builds a row's document from meta tables, references, entities,
+patterns and kinds ([Documents](#documents)). The WordPress screens read entities, meta tables and kinds
+through adapters ([wordpress.md](wordpress.md#screens-until-u12)); pinned queries, anomalies, actions and
+find sources are parsed but not used yet.
 
 ## Where presets live
 
@@ -163,6 +164,13 @@ where = "message LIKE CONCAT('%', {meta._txn_id}, '%')"   # skipped when a place
 order = "created"
 limit = 100
 ```
+
+On a row of `owner` whose `owner_when` holds, `where` selects rows of `table`. Rules with the same `name` and
+`table` on one owner are one group, their conditions OR'ed. `{id}` is the row's key (a number literal when it
+is one), `{owner.<column>}` a column of the row and `{meta.<key>}` the first value of the key in the row's
+meta tables, both as SQL literals; a rule whose `{owner.…}` or `{meta.…}` value is NULL or `''` is skipped.
+Rows are ordered by `order` (then the primary key); `limit` lowers the group's cap of 20 rows, and `order`
+names the column whose timestamps go into `events`.
 
 ### `[[pinned]]` queries
 
@@ -330,7 +338,7 @@ row of an applied `[[meta]]` table (owned or not), in every meta table unless `i
 
 | Rule | Column kind | Cell |
 |---|---|---|
-| `money = { currency = [...] }` | `money` | the currency is the first listed column of the row with text, sourced from the same row (owner columns and sibling meta keys come with documents) |
+| `money = { currency = [...] }` | `money` | the currency is the first listed column of the row with text, sourced from the same row; in documents also a column of the owner row, then a meta key of the document |
 | `timestamp = "unix"` | `timestamp`, zone `unix` | `utc` from the leading digits (`<unix>:<id>` reads too); `0` is no time |
 | `timestamp = "utc"` | `timestamp`, zone `utc` | `utc` from `YYYY-MM-DD HH:MM:SS` or `YYYY-MM-DD`; zero dates are no time |
 | `timestamp = "local"` | `timestamp`, zone `local` | `utc` stays empty: the zone is not stored, so the value is never converted |
@@ -358,6 +366,21 @@ project's and the applied presets' enabled styles (project first) become `Effect
 `meta_keys`, with the key column in the result) and adds `{ row, col, style }` to `ResultSet.styles` of browse
 pages and query results; `valueAt` (`src/lib/values.ts`) puts it on the cell's `Value.style`. The first
 matching style wins. The style is the scheme color name; no value is colored without a rule.
+
+## Documents
+
+`document` ([architecture.md](architecture.md#documents)) reads the rules of a row's table:
+
+| Rule | In the document |
+|---|---|
+| `[[entity]]` | the row's `entity` (the first whose `filter` holds) and its `header` (`summary`); the entity shorthand `order 4711` |
+| owned `[[meta]]` | one meta group per table, key/value rows in stored order, at most 50 |
+| `[[reference]]` to the table | an incoming group per reference, named by `label`, with `columns` (meta keys of the source's `[[meta]]` table pivot in), at most 20 rows; left out when `to_when` does not hold on the row |
+| `[[pattern]]` owned by the table | a pattern group per `name` and `table` |
+| `[[kind]]` | every value's kind; money currencies from the row, the owner row or a meta key of the document; every timestamp goes into `events` |
+
+Declared foreign keys and same-name inference add incoming groups without any rule, so every table with a
+primary key has a document.
 
 ## `rules_info`
 

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use super::Lens;
 use super::cells::{IndexedColumns, add_cells, annotate_origins, table_columns};
-use crate::db::{BrowsePage, ColumnMeta, ExecuteResponse};
+use crate::db::{BrowsePage, ColumnMeta, ExecuteResponse, ResultSet};
 use crate::error::AppResult;
 use crate::rules::effective::{EffectiveRules, RuleSources};
 use crate::schema::DatabaseSchema;
@@ -37,20 +37,27 @@ pub fn annotate_browse(
         .map(|k| k.primary_key.clone())
         .unwrap_or_default();
     let lens = super::build(schema, &session.slug(), database, rules);
-    page.result.kinds = lens.kinds(&page.table, &page.result.columns);
-    let names: IndexedColumns = page
-        .result
+    annotate_kinds(lens.as_ref(), &page.table, &mut page.result);
+    page.keys = value::row_keys(&page.result, &primary_key);
+}
+
+/// Column kinds, per-cell kinds and styles of a result whose columns all come from `table`
+/// under their own names (`SELECT * FROM table`).
+pub fn annotate_kinds(lens: &dyn Lens, table: &str, result: &mut ResultSet) {
+    result.kinds = lens.kinds(table, &result.columns);
+    let names: IndexedColumns = result
         .columns
         .iter()
         .enumerate()
         .map(|(i, c)| (i, c.name.clone()))
         .collect();
-    add_cells(
-        &mut page.result,
-        lens.as_ref(),
-        &table_columns(&page.table, &names),
-    );
-    page.keys = value::row_keys(&page.result, &primary_key);
+    add_cells(result, lens, &table_columns(table, &names));
+}
+
+/// `annotate_kinds` plus the cells that decode as serialized data.
+pub fn annotate_table(lens: &dyn Lens, table: &str, result: &mut ResultSet) {
+    value::find_serialized(result);
+    annotate_kinds(lens, table, result);
 }
 
 /// Kinds from the SQL types, and from the lens of each column's origin table where the server
@@ -266,6 +273,47 @@ mod tests {
                 preview: "a:1:{…}".into(),
             }]
         );
+    }
+
+    async fn items_lens(session: &Session) -> Box<dyn Lens> {
+        let schema = crate::schema::database(session, "wp").await.unwrap();
+        super::super::build(schema, &session.slug(), "wp", None)
+    }
+
+    #[tokio::test]
+    async fn annotate_kinds_gives_the_columns_of_a_table_result_their_kinds() {
+        let session = session_over(FakeDatabase::new());
+        let lens = items_lens(&session).await;
+        let mut result = items_page_result();
+
+        annotate_kinds(lens.as_ref(), "items", &mut result);
+
+        assert_eq!(result.kinds, items_kinds());
+        assert!(result.serialized.is_empty());
+    }
+
+    #[tokio::test]
+    async fn annotate_table_also_finds_serialized_cells() {
+        let session = session_over(FakeDatabase::new());
+        let lens = items_lens(&session).await;
+        let mut result = items_page_result();
+        result.columns.push(column_meta("meta", "VARCHAR"));
+        result.rows[0].push(Cell::Text("a:1:{i:0;i:1;}".into()));
+        result.rows[1].push(Cell::Text("plain".into()));
+
+        annotate_table(lens.as_ref(), "items", &mut result);
+
+        assert_eq!(
+            result.serialized,
+            [SerializedCell {
+                row: 0,
+                col: 2,
+                format: Format::Php,
+                preview: "a:1:{…}".into(),
+            }]
+        );
+        assert_eq!(result.kinds[..2], items_kinds()[..]);
+        assert_eq!(result.kinds.len(), 3);
     }
 
     #[tokio::test]

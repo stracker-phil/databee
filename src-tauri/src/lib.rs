@@ -7,6 +7,7 @@ mod db_commands;
 pub mod decode;
 #[cfg(debug_assertions)]
 mod dev;
+pub mod document;
 pub mod error;
 pub mod ipc;
 mod launch;
@@ -273,6 +274,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             rules::commands::project_update,
             rules::commands::project_export,
             rules::commands::reference_coverage,
+            document::commands::document,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

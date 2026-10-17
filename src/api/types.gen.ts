@@ -163,7 +163,7 @@ export type CellStyle = { row: number, col: number,
  */
 style: string, };
 
-export type ChangeRequest = { "type": "setCell", database: string, table: string, keyColumn: string, key: string, column: string, value: string | null, } | { "type": "deleteRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "duplicateRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "insertRow", database: string, table: string, values: Array<[string, string | null]>, };
+export type ChangeRequest = { "type": "setCell", database: string, table: string, keyColumn: string, key: string, column: string, value: string | null, } | { "type": "deleteRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "duplicateRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "insertRow", database: string, table: string, values: Array<[string, string | null]>, } | { "type": "addRow", database: string, table: string, keyColumn: string, values: Array<[string, string | null]>, };
 
 export type ChipTarget = { "kind": "list", list: WpList, params: { [key in string]: string }, } | { "kind": "timeline" };
 
@@ -277,6 +277,28 @@ autoload: Autoload | null, };
  * Where the value inspector and the WordPress detail pane sit next to the content.
  */
 export type Dock = "right" | "bottom";
+
+export type Document = { 
+/**
+ * The row's canonical address.
+ */
+address: Address, 
+/**
+ * The first entity of the table whose `filter` holds on this row.
+ */
+entity: string | null, 
+/**
+ * The entity's `summary`: columns of the row or keys of its meta rows.
+ */
+header: Array<[string, Value]>, 
+/**
+ * Own, meta, incoming references, patterns, events; in that order.
+ */
+groups: Array<Group>, 
+/**
+ * Other rows an entity shorthand (`order 4711`) matched, in other tables.
+ */
+alternatives: Array<Address>, };
 
 /**
  * A name, header and search columns for rows of one table. A `filter` (SQL) narrows the rows;
@@ -404,6 +426,46 @@ name: string, columns: Array<string>, refTable: string, refColumns: Array<string
 export type Format = "php" | "json";
 
 export type Granularity = "day" | "hour";
+
+export type Group = { 
+/**
+ * Unique within the document.
+ */
+id: string, 
+/**
+ * The real table the rows come from; empty for `events`, whose values name their own.
+ */
+table: string, via: GroupLink, shape: GroupShape, 
+/**
+ * Column names, or meta keys pivoted in from the source's meta table.
+ */
+columns: Array<string>, 
+/**
+ * All matching rows, also beyond the cap.
+ */
+total: number, rows: Array<GroupRow>, capped: boolean, 
+/**
+ * The group's rows as an address, when an `=` filter selects exactly them.
+ */
+rowsAddress: Address | null, 
+/**
+ * The group's query failed (a timeout, broken rule SQL); the rest of the document stands.
+ */
+error: string | null, };
+
+export type GroupLink = { "kind": "own" } | { "kind": "meta", fk: string, key: string, value: string, } | { "kind": "incoming", reference: ResolvedReference, 
+/**
+ * The rule's `label`.
+ */
+label: string | null, } | { "kind": "pattern", rule: string, sql: string, } | { "kind": "events" };
+
+export type GroupRow = { 
+/**
+ * `None` for a table without a primary key.
+ */
+key: RowKey | null, fields: Array<[string, Value]>, };
+
+export type GroupShape = "fields" | "meta" | "rows";
 
 /**
  * What a kind rule says about a stored value, next to it; never instead of it.

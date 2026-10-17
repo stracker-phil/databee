@@ -11,7 +11,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-pub use annotate::{annotate_browse, annotate_execute};
+pub use annotate::{annotate_browse, annotate_execute, annotate_table};
 pub use schema_lens::SchemaLens;
 
 use crate::db::{ColumnMeta, ResultSet};

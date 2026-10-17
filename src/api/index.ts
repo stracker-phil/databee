@@ -54,6 +54,7 @@ import type {
   PresetInfo,
   RulesInfo,
   Coverage,
+  Document,
   ResolvedReference,
   Project,
   ProjectChange,
@@ -123,6 +124,9 @@ export const api = {
   /** How many source rows of a reference (as `tableReferences` returned it) find a target row; read-only. */
   referenceCoverage: (sessionId: string, database: string, reference: ResolvedReference) =>
     invoke<Coverage>("reference_coverage", { sessionId, database, reference }),
+  /** The document of a row address, or of an entity shorthand (`order 4711`) in `database`. */
+  document: (sessionId: string, address: string, database: string | null) =>
+    invoke<Document>("document", { sessionId, address, database }),
   /** The "New query" SQL for a table, quoted by Rust. */
   tableSelectSql: (sessionId: string, database: string, table: string) =>
     invoke<string>("table_select_sql", { sessionId, database, table }),

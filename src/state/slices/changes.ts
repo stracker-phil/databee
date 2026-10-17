@@ -20,7 +20,7 @@ export interface ChangesSlice {
 }
 
 /** Row edits are planned by the core; every other change by the WordPress lens. */
-const ROW_CHANGES: ChangeRequest["type"][] = ["setCell", "deleteRow", "duplicateRow", "insertRow"];
+const ROW_CHANGES: ChangeRequest["type"][] = ["setCell", "deleteRow", "duplicateRow", "insertRow", "addRow"];
 const isRowChange = (change: ChangeRequest | WpChangeRequest): change is ChangeRequest =>
   (ROW_CHANGES as string[]).includes(change.type);
 

@@ -19,6 +19,7 @@ use super::catalog::{PresetCatalog, PresetEntry};
 use super::condition::{self, Condition, Matcher, column_glob_match, glob_match};
 use super::kinds::{KindRule, StyleRule};
 use super::project::Project;
+use super::queries::Pattern;
 use super::types::{ColumnGlob, ColumnRef, Entity, Preset, Reference};
 use crate::db::ColumnEquals;
 use crate::lock::MutexExt;
@@ -57,6 +58,17 @@ pub struct RuleReference {
     pub to_filter: Vec<ColumnEquals>,
     /// Names the incoming group on the target's document.
     pub label: Option<String>,
+    /// The incoming group's columns: source columns, or keys of the source's meta table.
+    pub columns: Vec<String>,
+}
+
+/// A `[[pattern]]` of an applied preset, with real table names and `owner_when` compiled.
+#[derive(Debug, Clone)]
+pub struct RulePattern {
+    pub preset: String,
+    /// `owner` and `table` are real table names; `where` is as written.
+    pub rule: Pattern,
+    pub owner_when: Vec<Condition>,
 }
 
 /// A `[[meta]]` table of an applied preset.
@@ -97,6 +109,8 @@ pub struct EffectiveRules {
     pub meta: Vec<MetaRef>,
     /// Filtered entities before unfiltered ones, so a row takes the first whose filter holds.
     pub entities: Vec<AppliedEntity>,
+    /// In apply order.
+    pub patterns: Vec<RulePattern>,
     pub disabled: HashSet<String>,
 }
 
@@ -116,6 +130,7 @@ impl EffectiveRules {
             styles: project.styles.iter().filter_map(to_rule_style).collect(),
             meta: Vec::new(),
             entities: Vec::new(),
+            patterns: Vec::new(),
             disabled,
         };
         rules.add_references(&project.references, None);
@@ -205,6 +220,7 @@ impl EffectiveRules {
             to_when,
             to_filter,
             label: rule.label.clone(),
+            columns: rule.columns.clone(),
         })
     }
 
@@ -273,6 +289,34 @@ impl EffectiveRules {
                 },
             });
         }
+        for pattern in &preset.patterns {
+            self.add_pattern(&preset.name, pattern);
+        }
+    }
+
+    fn add_pattern(&mut self, preset: &str, pattern: &Pattern) {
+        let (Some(owner), Some(table)) = (
+            self.applied.existing_table(&pattern.owner),
+            self.applied.existing_table(&pattern.table),
+        ) else {
+            return;
+        };
+        let owner_when = match condition::compile(&pattern.owner_when) {
+            Ok(conditions) => conditions,
+            Err(e) => {
+                log::warn!("Pattern {} skipped: {e}", pattern.name);
+                return;
+            }
+        };
+        self.patterns.push(RulePattern {
+            preset: preset.to_string(),
+            rule: Pattern {
+                owner,
+                table,
+                ..pattern.clone()
+            },
+            owner_when,
+        });
     }
 
     /// The `[[meta]]` table with the real name `table`.
@@ -766,6 +810,119 @@ to = "threads.thread_id"
             .map(|r| (r.from.column.as_str(), r.label.as_deref()))
             .collect();
         assert_eq!(labels, [("parent_id", Some("children")), ("author", None)]);
+    }
+
+    #[test]
+    fn a_reference_carries_the_columns_of_its_rule_and_an_implied_one_has_none() {
+        let columned = preset(
+            "[preset]\nname = \"c\"\nmarker_tables = [\"threads\"]\n\n[[meta]]\ntable = \"notes\"\nowner = \"threads\"\nfk = \"thread_id\"\nkey = \"k\"\nvalue = \"v\"\n\n[[reference]]\nfrom = \"threads.parent_id\"\nto = \"threads.thread_id\"\ncolumns = [\"title\", \"status\"]\n\n[[reference]]\nfrom = \"threads.author\"\nto = \"people.person_id\"\n",
+        );
+
+        let rules = build(&prefixed(), &[columned]);
+
+        let columns: Vec<(&str, Vec<&str>)> = rules
+            .references
+            .iter()
+            .map(|r| {
+                (
+                    r.from.column.as_str(),
+                    r.columns.iter().map(String::as_str).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            columns,
+            [
+                ("parent_id", vec!["title", "status"]),
+                ("author", vec![]),
+                ("thread_id", vec![]),
+            ]
+        );
+    }
+
+    const PATTERNS: &str = r#"
+[preset]
+name = "pat"
+marker_tables = ["threads"]
+
+[[pattern]]
+name = "audit"
+owner = "threads"
+owner_when = { status = "open" }
+table = "notes"
+where = "thread_id = {id} AND k = {meta._key}"
+order = "note_id"
+limit = 5
+
+[[pattern]]
+name = "audit"
+owner = "threads"
+table = "replies"
+where = "thread_id = {id}"
+
+[[pattern]]
+name = "ghosts"
+owner = "threads"
+table = "ghosts"
+where = "1"
+
+[[pattern]]
+name = "orphan"
+owner = "ghosts"
+table = "notes"
+where = "1"
+"#;
+
+    #[test]
+    fn patterns_name_real_tables_and_keep_the_rule_as_written() {
+        let rules = build(&prefixed(), &[preset(PATTERNS)]);
+
+        let patterns: Vec<(&str, &str, &str, &str)> = rules
+            .patterns
+            .iter()
+            .map(|p| {
+                (
+                    p.preset.as_str(),
+                    p.rule.name.as_str(),
+                    p.rule.owner.as_str(),
+                    p.rule.table.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            patterns,
+            [
+                ("pat", "audit", "f_threads", "f_notes"),
+                ("pat", "audit", "f_threads", "f_replies"),
+            ]
+        );
+        let first = &rules.patterns[0];
+        assert_eq!(first.rule.r#where, "thread_id = {id} AND k = {meta._key}");
+        assert_eq!(first.rule.order.as_deref(), Some("note_id"));
+        assert_eq!(first.rule.limit, Some(5));
+        assert_eq!(
+            first
+                .owner_when
+                .iter()
+                .map(|c| c.column.as_str())
+                .collect::<Vec<_>>(),
+            ["status"]
+        );
+        assert!(rules.patterns[1].owner_when.is_empty());
+    }
+
+    #[test]
+    fn a_pattern_whose_owner_or_table_does_not_exist_is_dropped() {
+        let rules = build(&prefixed(), &[preset(PATTERNS)]);
+
+        let names: Vec<&str> = rules
+            .patterns
+            .iter()
+            .map(|p| p.rule.name.as_str())
+            .collect();
+
+        assert!(!names.contains(&"ghosts"));
+        assert!(!names.contains(&"orphan"));
     }
 
     #[test]

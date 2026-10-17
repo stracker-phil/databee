@@ -322,14 +322,19 @@ read first (`SELECT <key> … WHERE <row key> LIMIT 1` with the query timeout), 
 Grid edits are core (`db/changes.rs`) and work without the WordPress module. Every write goes plan, review,
 apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/0012-plans-applied-by-id.md)):
 
-1. `TableTab` queues a `ChangeRequest` (`queueChange` in the store): `setCell`, `deleteRow`, `duplicateRow` or `insertRow`.
+1. `TableTab` queues a `ChangeRequest` (`queueChange` in the store): `setCell`, `deleteRow`, `duplicateRow`,
+   `insertRow` or `addRow`. Documents use the same requests on a value's provenance row (see
+   [architecture.md](architecture.md#documents)).
 2. `plan_change` plans it (`db::changes::plan`): each variant fetches what it needs (the current row, the
    structure), then a pure `build_*` function turns that into a `Plan { database, description, statements,
    undo }`. A `setCell`, `deleteRow` or `duplicateRow` requires the key to match **exactly one row**. For
    `setCell` the undo restores the old value; for `deleteRow` it reinserts the row without its generated
    columns (and the description warns when a zero date would be reinserted, which fails under `NO_ZERO_DATE`).
    A row with binary cells can't be reinserted, because only a preview of its bytes is known, so it has no
-   undo. `duplicateRow` copies every column except auto-increment and generated ones.
+   undo. `duplicateRow` copies every column except auto-increment and generated ones. `insertRow` has no
+   undo; `addRow` (a row whose `keyColumn` the server assigns, such as a new meta key) undoes by deleting the
+   newest row that holds exactly the inserted values (`<=>`, ordered by `keyColumn` descending, `LIMIT 1`),
+   since the new key is only known after the insert.
 3. The plan is stored in the session (`Session.plans`, `db/plans.rs`) under an id; the page receives a
    `PlannedChange { id, description, statements, canUndo }`, where `statements` are for display only.
    `discard_change` drops one. The pending tray lists each plan's description and statements as returned.

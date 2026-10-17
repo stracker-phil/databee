@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Coverage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Project, type Resolved, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Coverage, type Dashboard, type Document, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Project, type Resolved, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { NOW } from "./now";
 import { session } from "./session";
@@ -53,6 +53,7 @@ export function createApiMock(): typeof realApi {
     projectUpdate: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
     projectExport: vi.fn().mockResolvedValue(""),
     referenceCoverage: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
+    document: vi.fn(async (_s, text): Promise<Document> => ({ address: parseAddress(text), entity: null, header: [], groups: [], alternatives: [] })),
     rulesInfo: vi.fn().mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [], tableEntities: {} } satisfies RulesInfo),
     refreshSchema: vi.fn().mockResolvedValue(undefined),
     completionSchema: vi.fn().mockResolvedValue({}),

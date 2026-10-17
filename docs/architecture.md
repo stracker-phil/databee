@@ -77,6 +77,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/lens/                the lens seam: SchemaLens (keys, foreign keys, same-name inference), result kinds
   src/rules/               presets and projects: rule types, TOML parsing, the preset catalog, projects.json,
                            effective rules, the rules lens and reference coverage
+  src/document/            documents: one row with its meta rows, incoming references, patterns and events
   src/commands.rs          settings, keybindings, favorites, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
@@ -210,6 +211,66 @@ WordPress, WooCommerce and Action Scheduler are preset files ([wordpress.md](wor
 - `lens.rs`: `RulesLens` (see the lens seam above).
 - `coverage.rs`: `reference_coverage`, read-only counts of how many rows of one reference resolve
   (`CoverageQuery` builds the SQL from the reference and its rule's conditions).
+
+## Documents
+
+`src-tauri/src/document/` builds the document of any row with a primary key from the effective rules and the
+schema alone; no code names an application. `document(session_id, address, database)` takes a row address
+(`databee://…/<table>/<key>`, or a table address whose filter covers a composite key) or an entity shorthand
+`<entity> <key>` (`order 4711`) in `database` (default: the session's current one).
+
+```rust
+Document { address, entity, header: Vec<(String, Value)>, groups: Vec<Group>, alternatives: Vec<Address> }
+Group { id, table, via: GroupLink, shape: Fields | Meta | Rows, columns, total, rows: Vec<GroupRow>, capped,
+        rows_address, error }
+GroupLink = Own | Meta { fk, key, value } | Incoming { reference, label } | Pattern { rule, sql } | Events
+GroupRow { key: Option<RowKey>, fields: Vec<(String, Value)> }
+```
+
+**Groups, in order** (`build.rs`):
+1. **own** (`own.rs`): the row, read in one query together with the `filter` of every entity of its table; the
+   row's `entity` is the first whose filter holds (filtered entities come first), and `header` is its
+   `summary` (a column of the row, else the first meta row of the key).
+2. **meta** (`meta.rs`): one group per owned `[[meta]]` table, rows in stored order (the meta table's primary
+   key), at most 50. When capped, the keys the document reads by name (header, `{meta.…}` of patterns,
+   currencies) are read in one more query.
+3. **incoming references** (`incoming.rs`): every reference that points at the table, in the lens's order
+   (`Lens::references_to`: rule references in precedence order, then declared foreign keys, then same-name
+   inference), except the `fk` of the table's own meta tables. A reference whose `to_when` does not hold on
+   the row is left out. Source rows are those the lens gives this reference: the rule's `when` holds, no
+   conditional rule that comes first on the same column holds, and a rule after an unconditional one on the
+   same column is left out. A column that references its own table never finds the row itself. At most 20
+   rows; `columns` picks the group's columns, and names that are keys of the source's `[[meta]]` table are
+   pivoted in with one query per group (`pivot.rs`; a missing key is NULL).
+4. **patterns** (`patterns.rs`): `[[pattern]]` rules of the table, merged by name and table (OR), each
+   applying when its `owner_when` holds and none of its `{owner.…}`/`{meta.…}` values is NULL or `''`; ordered
+   by `order`, at most 20 rows (fewer with a smaller `limit`).
+5. **events** (`events.rs`): every timestamp-kind value of the own row, the meta rows and the incoming groups,
+   and of each pattern row its `order` column, sorted. A value without a stored zone (`local`, or none)
+   sorts by its wall-clock text; zero dates are left out. Each row is one value with its provenance.
+
+Groups with no rows stay in the list with `total: 0`. A group whose query fails (a timeout, broken rule SQL)
+carries `error`; the rest of the document stands. `rows_address` is the group's rows as a structured filter
+when `=` conditions select exactly them.
+
+**Values.** Every field is a `Value` with provenance (`lens::annotate_table` gives a result the kinds of
+browse pages). A money value whose currency is not in its own row takes the first listed name that is a
+column of the owner row (for meta rows the document's row; for pivoted values the group row), else a meta
+key of the document. Outgoing references get `exists` from one `SELECT DISTINCT` per target table for all
+values that point into it.
+
+**Queries** are bounded by the rules, never by the rows: one for the row, one per group (a `COUNT(*)` more
+when it is capped), one per pivoted group and one per referenced table. Each uses the session's query
+timeout on the metadata pool.
+
+**Entity shorthand** (`shorthand.rs`): the tables that define the entity are tried with the key (a table
+only for the entity, without `filter`, before filtered ones); the first that holds it wins and the others are
+`alternatives`.
+
+**Edits.** A value's provenance names its row: an edit is a core `setCell` on it (meta values included, the
+meta table's primary key is the key), deleting a meta row is `deleteRow`, and adding a meta key is `addRow`
+of `(fk, key, value)` into the meta table (`GroupLink::Meta`), all through `plan_change` like grid edits
+([database.md](database.md#editing-rows)).
 
 ## A request, end to end
 

@@ -107,6 +107,20 @@ pub fn with_prefixes(sql: &str, prefix: &str, network_prefix: &str) -> String {
     out
 }
 
+/// `sql` with every placeholder replaced by what `value` gives for it; `None` as soon as one has
+/// no value, so the caller can skip the SQL.
+pub fn render(sql: &str, value: impl Fn(Placeholder<'_>) -> Option<String>) -> Option<String> {
+    let mut out = String::with_capacity(sql.len());
+    let mut last = 0;
+    for (range, placeholder) in scan(sql) {
+        out.push_str(&sql[last..range.start]);
+        out.push_str(&value(placeholder)?);
+        last = range.end;
+    }
+    out.push_str(&sql[last..]);
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,6 +187,51 @@ mod tests {
     fn with_prefixes_accepts_empty_prefixes_and_plain_sql() {
         assert_eq!(with_prefixes("SELECT {p}a", "", ""), "SELECT a");
         assert_eq!(with_prefixes("SELECT 1", "wp_", "wp_"), "SELECT 1");
+    }
+
+    fn known(placeholder: Placeholder<'_>) -> Option<String> {
+        match placeholder {
+            Placeholder::Prefix => Some("wp_".into()),
+            Placeholder::Id => Some("7".into()),
+            Placeholder::Meta("_key") => Some("'k'".into()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn render_replaces_every_placeholder_with_its_value() {
+        assert_eq!(
+            render(
+                "SELECT * FROM {p}t WHERE id = {id} AND k = {meta._key}",
+                known
+            ),
+            Some("SELECT * FROM wp_t WHERE id = 7 AND k = 'k'".to_string())
+        );
+    }
+
+    #[test]
+    fn render_gives_none_when_one_placeholder_has_no_value() {
+        assert_eq!(render("id = {id} AND c = {owner.total}", known), None);
+        assert_eq!(render("{meta.other}", known), None);
+    }
+
+    #[test]
+    fn render_keeps_braces_that_are_not_placeholders() {
+        assert_eq!(
+            render("h REGEXP '^[0-9a-f]{32}$' AND id = {id}", known),
+            Some("h REGEXP '^[0-9a-f]{32}$' AND id = 7".to_string())
+        );
+        assert_eq!(render("SELECT 1", |_| None), Some("SELECT 1".to_string()));
+    }
+
+    #[test]
+    fn render_does_not_rescan_substituted_text() {
+        let value = |placeholder: Placeholder<'_>| match placeholder {
+            Placeholder::Id => Some("{p}".to_string()),
+            _ => None,
+        };
+
+        assert_eq!(render("{id}", value), Some("{p}".to_string()));
     }
 
     #[test]
