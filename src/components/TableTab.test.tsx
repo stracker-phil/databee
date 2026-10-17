@@ -204,6 +204,13 @@ describe("TableTab", () => {
       fireEvent.contextMenu(await screen.findByText("Hello world"));
       expect(screen.getByRole("menuitem", { name: "Delete row" })).toBeInTheDocument();
     });
+
+    it("opens the row as an object from the row menu", async () => {
+      render(<TableTab tab={tab} />);
+      fireEvent.contextMenu(await screen.findByText("Hello world"));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Open as object" }));
+      expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "object", address: { connection: "shop", target: { kind: "row", table: "wp_posts", key: "1" } } });
+    });
   });
 
   describe("structure view", () => {

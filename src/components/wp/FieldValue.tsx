@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Copy, Eye, Maximize2, Minimize2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { api, type ColumnEquals, type DocField, type NewValue, type Provenance, type Value as StoredValue, type ValueKind } from "../../api";
+import { Copy, Eye, Maximize2, Minimize2, MoreHorizontal, Pencil } from "lucide-react";
+import { api, type ColumnEquals, type DocField, type EntityLink, type NewValue, type Provenance, type Value as StoredValue, type ValueKind } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { cellText, relativeTime } from "../../lib/format";
 import { absoluteFromUnix, shorten } from "../../lib/wpFormat";
@@ -9,15 +9,11 @@ import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { Value } from "../value/Value";
 import { ValueTree } from "../ValueTree";
 import { sourceText } from "../../lib/provenance";
-import { LinkChip } from "./LinkChip";
 
 const COLLAPSE_AT = 120;
 
-/** Where edits of a field list go: a table row (columns) or an entity's meta. */
-export type EditTarget =
-  /** `key: null` uses the field name as key (e.g. options); `column` defaults to the field name. */
-  | { kind: "row"; table: string; keyColumn: string; key: string | null; column?: string }
-  | { kind: "meta"; entity: string; id: string };
+/** Where edits of a field list go: a table row; `key: null` uses the field name as key (options), `column` defaults to the field name. */
+export type EditTarget = { kind: "row"; table: string; keyColumn: string; key: string | null; column?: string };
 
 function formatBytesShort(n: number) {
   return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
@@ -60,19 +56,24 @@ function useFieldEditor(field: DocField, target?: EditTarget) {
   if (!target || !session?.database) return null;
   const database = session.database;
   return (value: string | null) =>
-    target.kind === "row"
-      ? queueChange({
-          type: "setCell",
-          database,
-          table: target.table,
-          keyColumn: target.keyColumn,
-          key: target.key ?? field.name,
-          column: target.column ?? field.name,
-          value,
-        })
-      : value == null
-        ? queueChange({ type: "deleteMeta", database, entity: target.entity, id: target.id, key: field.name })
-        : queueChange({ type: "setMeta", database, entity: target.entity, id: target.id, key: field.name, value });
+    queueChange({
+      type: "setCell",
+      database,
+      table: target.table,
+      keyColumn: target.keyColumn,
+      key: target.key ?? field.name,
+      column: target.column ?? field.name,
+      value,
+    });
+}
+
+/** An entity link drawn as a reference: the stored id in the accent; a click opens the entity as an object. */
+function EntityRef({ link }: { link: EntityLink }) {
+  return (
+    <button className="val-ref" aria-label={`Open ${link.entity} ${link.id}`} onClick={() => void useStore.getState().openEntity(link.entity, link.id)}>
+      {link.id}
+    </button>
+  );
 }
 
 function TextEditor({ initial, onSave, onCancel, nullable }: { initial: string; onSave: (v: string | null) => void; onCancel: () => void; nullable: boolean }) {
@@ -93,7 +94,7 @@ function TextEditor({ initial, onSave, onCancel, nullable }: { initial: string; 
         <input className="input" autoFocus aria-label="New value" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={keys} />
       )}
       <button className="btn tiny btn-primary" onClick={() => onSave(text)}>Queue</button>
-      {nullable && <button className="btn tiny" onClick={() => onSave(null)} title="Set NULL / delete meta">{"∅"}</button>}
+      {nullable && <button className="btn tiny" onClick={() => onSave(null)} title="Set NULL">{"∅"}</button>}
       <button className="btn tiny" onClick={onCancel}>Cancel</button>
     </span>
   );
@@ -142,8 +143,8 @@ function provenanceOf(source?: RowSource): Provenance | null {
 }
 
 /**
- * The field as a `Value`, for the kinds `Value` draws the same way (bridge until U7 replaces these
- * screens): null, empty, secrets, money and time hints, short text.
+ * The field as a `Value`, for the kinds `Value` draws the same way (until the options screen goes in U12):
+ * null, empty, secrets, money and time hints, short text.
  */
 function fieldValue(field: DocField, source: Provenance): StoredValue | null {
   const { value: raw, hint } = field;
@@ -195,8 +196,8 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
     );
   }
 
-  // The branches after `bridged` stay until U7 deletes these screens: fields without a single column (meta,
-  // options) and what `Value` has no form for yet (entity links, editable trees, collapsed long text).
+  // Option fields have no single column, and `Value` has no form for entity links, editable trees or
+  // collapsed long text yet.
   let body: React.ReactNode;
   if (bridged) {
     body = <Value value={bridged} />;
@@ -205,7 +206,7 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
   } else if (sensitive === "secret") {
     body = <Secret text={text} />;
   } else if (link) {
-    body = <LinkChip link={link} />;
+    body = <EntityRef link={link} />;
   } else if (decoded && !raw) {
     body = <ValueTree value={decoded} onEdit={editTree} />;
   } else if (hint) {
@@ -234,7 +235,7 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
   const openMenu = (x: number, y: number) => hasMenu && setMenu({ x, y });
   return (
     <span
-      className="field-value"
+      className="field-value val"
       data-src={provenance ? sourceText(provenance) : undefined}
       data-table={provenance?.table}
       onContextMenu={(e) => {
@@ -264,16 +265,9 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
         </button>
       )}
       {save && (
-        <>
-          <button className="row-action" aria-label={`Edit ${field.name}`} onClick={() => setEditing(true)} title="Edit">
-            <Pencil size="0.846rem" />
-          </button>
-          {target?.kind === "meta" && (
-            <button className="row-action" aria-label={`Delete ${field.name}`} onClick={() => void save(null)} title="Delete meta">
-              <Trash2 size="0.846rem" />
-            </button>
-          )}
-        </>
+        <button className="row-action" aria-label={`Edit ${field.name}`} onClick={() => setEditing(true)} title="Edit">
+          <Pencil size="0.846rem" />
+        </button>
       )}
     </span>
   );

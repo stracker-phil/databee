@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Coverage, type Dashboard, type Document, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Project, type Resolved, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Coverage, type Dashboard, type Document,type Keybindings, type Page, type PlannedChange, type Project, type Resolved, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { NOW } from "./now";
 import { session } from "./session";
@@ -95,26 +95,7 @@ export function createApiMock(): typeof realApi {
     wpActionHistogram: vi.fn().mockResolvedValue({ days: [], labels: { completed: "complete", processing: "in-progress", failed: "failed", other: "other" } } satisfies ActionHistogram),
     wpSessions: vi.fn(async () => emptyPage()),
     wpContent: vi.fn(async () => emptyPage()),
-    wpView: vi.fn(
-      async (_s, _d, entity, id): Promise<EntityViewData> => ({
-        view: "generic",
-        entity,
-        label: entity,
-        id,
-        title: null,
-        subtitle: null,
-        image: null,
-        table: "wp_posts",
-        idColumn: "ID",
-        fields: [],
-        meta: [],
-        metaSource: null,
-        relations: [],
-      }),
-    ),
-    wpOrderLogs: vi.fn().mockResolvedValue([]),
     wpSearch: vi.fn().mockResolvedValue([]),
-    wpPeek: vi.fn().mockResolvedValue([]),
     wpFindValue: vi.fn().mockResolvedValue([]),
     wpFailedByHook: vi.fn().mockResolvedValue([]),
     wpOptionsGroup: vi.fn().mockResolvedValue([]),
@@ -128,7 +109,6 @@ export function createApiMock(): typeof realApi {
     wpSnapshots: vi.fn().mockResolvedValue([]),
     wpSnapshotDiff: vi.fn().mockResolvedValue([]),
     wpSnapshotDelete: vi.fn().mockResolvedValue(undefined),
-    wpCompare: vi.fn().mockResolvedValue([]),
     onLaunch: vi.fn().mockResolvedValue(() => {}),
     onCommand: vi.fn().mockResolvedValue(() => {}),
     getKeybindings: vi.fn().mockResolvedValue({}),

@@ -62,6 +62,14 @@ describe("FieldValue rendering", () => {
     expect(screen.getByText(token)).toBeInTheDocument();
   });
 
+  it("draws an entity link as a reference that opens the entity as an object tab", async () => {
+    mocked.document.mockResolvedValue({ address: { connection: "shop", database: "db", target: { kind: "row", table: "wp_users", key: "12" }, view: null, compare: null }, entity: "user", header: [], groups: [], alternatives: [], actions: [] });
+    render(<FieldValue field={field("customer_id", "12", { link: { entity: "user", id: "12" } })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Open user 12" }));
+    expect(mocked.document).toHaveBeenCalledWith("s1", "user 12", "db");
+    await vi.waitFor(() => expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_users", key: "12" } } }));
+  });
+
   it("opens the row a field is stored in from its menu", async () => {
     render(<FieldValue field={field("_ppcp_paypal_intent", "CAPTURE")} source={{ table: "wp_wc_orders_meta", where: [{ column: "order_id", value: "4711" }, { column: "meta_key", value: "_ppcp_paypal_intent" }] }} />);
     await userEvent.click(screen.getByRole("button", { name: "Actions for _ppcp_paypal_intent" }));
@@ -80,14 +88,13 @@ describe("FieldValue editing", () => {
     wpStore();
   });
 
-  it("queues a meta edit with the new value", async () => {
-    render(<FieldValue field={field("_note", "old")} target={{ kind: "meta", entity: "order", id: "4711" }} />);
-    await userEvent.click(screen.getByRole("button", { name: "Edit _note" }));
+  it("queues an option edit keyed by the field name", async () => {
+    render(<FieldValue field={field("blogname", "old")} target={{ kind: "row", table: "wp_options", keyColumn: "option_name", key: null, column: "option_value" }} />);
+    await userEvent.click(screen.getByRole("button", { name: "Edit blogname" }));
     const input = screen.getByLabelText("New value");
     await userEvent.clear(input);
     await userEvent.type(input, "new{Enter}");
-    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", { type: "setMeta", database: "db", entity: "order", id: "4711", key: "_note", value: "new" });
-    expect(mocked.planChange).not.toHaveBeenCalled();
+    expect(mocked.planChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setCell", table: "wp_options", keyColumn: "option_name", key: "blogname", column: "option_value", value: "new" }));
     expect(useStore.getState().pending).toHaveLength(1);
   });
 
@@ -106,13 +113,13 @@ describe("FieldValue editing", () => {
       error: null,
     };
     mocked.editSerialized.mockResolvedValue('a:1:{s:5:"title";s:3:"New";}');
-    render(<FieldValue field={field("settings", 'a:1:{s:5:"title";s:6:"PayPal";}', { decoded })} target={{ kind: "meta", entity: "order", id: "4711" }} />);
+    render(<FieldValue field={field("settings", 'a:1:{s:5:"title";s:6:"PayPal";}', { decoded })} target={{ kind: "row", table: "wp_options", keyColumn: "option_name", key: null }} />);
     await userEvent.click(screen.getByRole("button", { name: "Edit title" }));
     const input = screen.getByLabelText("New value");
     await userEvent.clear(input);
     await userEvent.type(input, "New{Enter}");
     expect(mocked.editSerialized).toHaveBeenCalledWith('a:1:{s:5:"title";s:6:"PayPal";}', [0], { kind: "string", text: "New" });
-    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", value: 'a:1:{s:5:"title";s:3:"New";}' }));
+    expect(mocked.planChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setCell", key: "settings", value: 'a:1:{s:5:"title";s:3:"New";}' }));
   });
 
   it("sends the index of the right node when two properties share a display key", async () => {
@@ -130,7 +137,7 @@ describe("FieldValue editing", () => {
       error: null,
     };
     mocked.editSerialized.mockResolvedValue("edited");
-    render(<FieldValue field={field("obj", "O:3:…", { decoded })} target={{ kind: "meta", entity: "order", id: "4711" }} />);
+    render(<FieldValue field={field("obj", "O:3:…", { decoded })} target={{ kind: "row", table: "wp_options", keyColumn: "option_name", key: null }} />);
     await userEvent.click(screen.getAllByRole("button", { name: "Edit bar" })[1]);
     await userEvent.type(screen.getByLabelText("New value"), "{Control>}a{/Control}x{Enter}");
     expect(mocked.editSerialized).toHaveBeenCalledWith("O:3:…", [1], { kind: "string", text: "x" });

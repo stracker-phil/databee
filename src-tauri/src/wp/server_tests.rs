@@ -17,15 +17,14 @@ use std::time::Duration;
 use crate::db::changes::{ChangeRequest, Plan, plan as plan_row_change};
 use crate::db::mysql::MySqlSession;
 use crate::db::{Cell, Database};
-use crate::error::AppError;
 use crate::test_support::{sessions, wordpress};
 use crate::wp::catalog::Catalog;
 use crate::wp::changes::{WpChangeRequest, plan as plan_wp_change};
 use crate::wp::dashboard::{Granularity, action_histogram, browser, dashboard};
-use crate::wp::detail::{EntityView, EventKind, EventLevel, entity_view, search};
 use crate::wp::document::Sensitive;
+use crate::wp::find::{FindGroup, FindHit, find_value};
 use crate::wp::lists::{self, ListQuery};
-use crate::wp::peek::{FactKind, FindGroup, FindHit, PeekFact, find_value, peek};
+use crate::wp::search::search;
 use crate::wp::site::WpContext;
 use crate::wp::{WpList, expand, load_docs, options_overview, post_images};
 
@@ -70,7 +69,6 @@ async fn loads_an_order_document_with_meta_links_and_relation_counts() {
             "{:?}",
             order.title
         );
-        assert_eq!(order.subtitle, None);
 
         let customer = order
             .fields
@@ -79,10 +77,6 @@ async fn loads_an_order_document_with_meta_links_and_relation_counts() {
             .unwrap();
         let link = customer.link.as_ref().unwrap();
         assert_eq!(link.entity, "user");
-        assert_eq!(
-            link.label.as_deref(),
-            Some("jane · Jane Doe · jane@shop.test · 2026-01-02 10:00:00")
-        );
 
         let total = order
             .fields
@@ -138,10 +132,6 @@ async fn expands_relations_lazily_and_follows_meta_links() {
             .unwrap();
         let link = product.link.as_ref().unwrap();
         assert_eq!((link.entity.as_str(), link.id.as_str()), ("post", "123"));
-        assert_eq!(
-            link.label.as_deref(),
-            Some("product · publish · Mug · 2026-01-01 00:00:00")
-        );
 
         let user = load_docs(&db, &ctx, &catalog, "wp_test", "user", &["12".into()])
             .await
@@ -330,114 +320,19 @@ async fn lists_sort_by_whitelisted_keys() {
 
 #[tokio::test]
 #[ignore]
-async fn guest_checkouts_are_not_users_but_open_from_orders_and_search() {
-    for (db, ctx, catalog) in env().await {
+async fn guest_checkouts_are_not_users_but_are_found_by_search() {
+    for (db, ctx, _) in env().await {
         let all = lists::users(&db, &ctx, "wp_test", &lists::ListQuery::default(), false)
             .await
             .unwrap();
         assert!(!all.items.iter().any(|c| c.id.starts_with("guest:")));
         assert!(!all.kinds.iter().any(|k| k.value == "guest"));
 
-        let EntityView::Customer(c) = entity_view(
-            &db,
-            &ctx,
-            &catalog,
-            "wp_test",
-            "user",
-            "guest:guest@shop.test",
-            false,
-        )
-        .await
-        .unwrap() else {
-            panic!("expected customer view")
-        };
-        assert_eq!(c.email.as_deref(), Some("guest@shop.test"));
-        assert_eq!(
-            c.orders.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
-            ["4713"]
-        );
-        assert_eq!(c.roles, ["Guest"]);
-        assert!(c.tokens.is_empty());
-
-        let hits = crate::wp::detail::search(&db, &ctx, "wp_test", "guest@")
-            .await
-            .unwrap();
+        let hits = search(&db, &ctx, "wp_test", "guest@").await.unwrap();
         assert!(
             hits.iter()
                 .any(|h| h.entity == "user" && h.id == "guest:guest@shop.test"),
             "{hits:?}"
-        );
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn peek_summarizes_an_entity_in_a_few_facts() {
-    for (db, ctx, catalog) in env().await {
-        let facts = peek(&db, &ctx, &catalog, "wp_test", "order", "4711")
-            .await
-            .unwrap();
-        let shape = |facts: &[PeekFact]| -> Vec<(String, FactKind, String)> {
-            facts
-                .iter()
-                .map(|f| (f.label.clone(), f.kind, f.value.clone()))
-                .collect()
-        };
-        let row = |label: &str, kind: FactKind, value: &str| -> (String, FactKind, String) {
-            (label.into(), kind, value.into())
-        };
-
-        // "Created" is relative to the fixture load time, so only its label and kind are exact.
-        let (created, rest) = facts.split_last().unwrap();
-        assert_eq!(
-            shape(rest),
-            [
-                row("Status", FactKind::Status, "wc-processing"),
-                row("Total", FactKind::Money, "49.90000000 EUR"),
-                row("Gateway", FactKind::Text, "ppcp-gateway"),
-                row("Customer", FactKind::Text, "jane@shop.test"),
-            ]
-        );
-        assert_eq!(
-            (created.label.as_str(), created.kind),
-            ("Created", FactKind::Time)
-        );
-        assert!(created.value.parse::<i64>().unwrap() > 0, "{created:?}");
-
-        // Order stats follow the identity fact; `user_registered` is stored in UTC.
-        let admin = peek(&db, &ctx, &catalog, "wp_test", "user", "1")
-            .await
-            .unwrap();
-        assert_eq!(
-            shape(&admin),
-            [
-                row("Name", FactKind::Text, "Admin"),
-                row("Orders", FactKind::Text, "0"),
-                row("Spent", FactKind::Money, "0.00000000"),
-                row("Email", FactKind::Text, "admin@shop.test"),
-                row("Login", FactKind::Text, "admin"),
-                row("Registered", FactKind::Time, "1735689600"),
-            ]
-        );
-        let buyer = peek(&db, &ctx, &catalog, "wp_test", "user", "12")
-            .await
-            .unwrap();
-        assert_eq!(
-            shape(&buyer),
-            [
-                row("Name", FactKind::Text, "Jane Doe"),
-                row("Orders", FactKind::Text, "1"),
-                row("Spent", FactKind::Money, "49.90000000"),
-                row("Email", FactKind::Text, "jane@shop.test"),
-                row("Login", FactKind::Text, "jane"),
-                row("Registered", FactKind::Time, "1767348000"),
-            ]
-        );
-        assert!(
-            peek(&db, &ctx, &catalog, "wp_test", "order", "999999")
-                .await
-                .unwrap()
-                .is_empty()
         );
     }
 }
@@ -734,198 +629,9 @@ async fn content_without_a_kind_lists_every_visible_post_type() {
 
 #[tokio::test]
 #[ignore]
-async fn order_view_tells_the_story_of_a_checkout() {
-    for (db, ctx, catalog) in env().await {
-        let EntityView::Order(o) =
-            entity_view(&db, &ctx, &catalog, "wp_test", "order", "4711", false)
-                .await
-                .unwrap()
-        else {
-            panic!("expected order view")
-        };
-        assert_eq!(
-            (o.status.as_str(), o.total.as_deref()),
-            ("wc-processing", Some("49.90000000 EUR"))
-        );
-        assert_eq!(
-            o.customer.as_ref().unwrap().label.as_deref(),
-            Some("jane · Jane Doe · jane@shop.test · 2026-01-02 10:00:00")
-        );
-        assert!(o.paid.is_some());
-        let mug = &o.items[0];
-        assert_eq!(
-            (
-                mug.name.as_str(),
-                mug.quantity.as_deref(),
-                mug.sku.as_deref()
-            ),
-            ("Mug", Some("2"), Some("MUG-1"))
-        );
-        assert_eq!(
-            mug.product.as_ref().unwrap().image.as_deref(),
-            Some("https://shop.test/wp-content/uploads/2026/01/mug-150x150.jpg")
-        );
-        assert!(
-            o.totals
-                .iter()
-                .any(|(l, v)| l == "Shipping" && v == "4.9000 EUR")
-        );
-        assert!(
-            o.totals
-                .iter()
-                .any(|(l, v)| l == "Refunded" && v == "−10 EUR")
-        );
-        assert!(o.address_notes.iter().any(|n| n.contains("City/postcode")));
-        let p = o.payment.as_ref().unwrap();
-        assert_eq!(p.paypal_order_id.as_deref(), Some("66M12696JX411763D"));
-        assert_eq!(p.fees.as_ref().unwrap().net, "47.86 EUR");
-        assert!(
-            o.attribution
-                .as_ref()
-                .unwrap()
-                .user_agent
-                .as_deref()
-                .unwrap()
-                .starts_with("Mozilla/5.0 (Macintosh"),
-            "the stored user agent, not a summary"
-        );
-
-        let kinds: Vec<EventKind> = o.timeline.iter().map(|e| e.kind).collect();
-        let logs = crate::wp::detail::order_logs(&db, &ctx, &catalog, "wp_test", "4711")
-            .await
-            .unwrap();
-        assert_eq!(
-            logs.len(),
-            3,
-            "PayPal PATCH row, #4711 email row and serialized-context webhook row: {logs:?}"
-        );
-        for l in &logs {
-            let text = format!("{} {}", l.title, l.raw.as_deref().unwrap_or(""));
-            assert!(
-                !text.contains("Stock reduced for order #47110")
-                    && !text.contains("Unrelated error #14711"),
-                "{text}"
-            );
-        }
-        let webhook = logs
-            .iter()
-            .find(|l| l.title.contains("Webhook delivered"))
-            .unwrap();
-        assert_eq!(webhook.detail.as_deref(), Some("webhooks"));
-        let paypal = logs
-            .iter()
-            .find(|l| l.detail.as_deref() == Some("woocommerce-paypal-payments"))
-            .unwrap();
-        assert_eq!(paypal.level, EventLevel::Info);
-        assert_eq!(paypal.title, "PayPal API · PATCH order");
-        assert!(paypal.raw.as_deref().unwrap().contains("66M12696JX411763D"));
-        let row = paypal.row.as_ref().unwrap();
-        assert_eq!(
-            (row.table.as_str(), row.id_column.as_str()),
-            ("wp_woocommerce_log", "log_id")
-        );
-        assert!(
-            !kinds.contains(&EventKind::Session),
-            "the attribution start time is a local timestamp, shown raw: {kinds:?}"
-        );
-        for k in [
-            EventKind::Created,
-            EventKind::Paid,
-            EventKind::Note,
-            EventKind::Action,
-            EventKind::Refund,
-        ] {
-            assert!(kinds.contains(&k), "timeline lacks {k:?}: {kinds:?}");
-        }
-        assert!(o.timeline.windows(2).all(|w| w[0].at <= w[1].at));
-        assert!(
-            o.timeline.iter().all(|e| !e.title.contains("14711")),
-            "unrelated IDs must not match"
-        );
-        let failed = o
-            .timeline
-            .iter()
-            .find(|e| e.kind == EventKind::Action)
-            .unwrap();
-        assert_eq!(failed.level, EventLevel::Error);
-        assert!(o.related.iter().any(|r| r.label == "Subscription #4714"));
-        assert!(o.related.iter().any(|r| r.label == "Refund #4712"));
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn customer_and_product_views() {
-    for (db, ctx, catalog) in env().await {
-        let EntityView::Customer(c) =
-            entity_view(&db, &ctx, &catalog, "wp_test", "user", "12", true)
-                .await
-                .unwrap()
-        else {
-            panic!("expected customer view")
-        };
-        assert_eq!(c.name, "Jane Doe");
-        assert_eq!(c.roles, ["customer"]);
-        assert_eq!(c.orders[0].id, "4711");
-        assert_eq!(c.subscriptions[0].id, "4714");
-        assert_eq!(c.tokens[0].summary, "VISA •••• 2503 · 01/2029");
-        assert!(
-            c.avatar
-                .unwrap()
-                .starts_with("https://gravatar.com/avatar/")
-        );
-        assert!(c.session.is_some());
-        assert_eq!(c.billing.as_ref().unwrap().country.as_deref(), Some("AT"));
-        let groups: Vec<&str> = c.doc.meta.iter().map(|g| g.name.as_str()).collect();
-        assert_eq!(
-            groups,
-            ["wp_usermeta"],
-            "one group for the whole meta table"
-        );
-
-        let EntityView::Product(p) =
-            entity_view(&db, &ctx, &catalog, "wp_test", "post", "200", false)
-                .await
-                .unwrap()
-        else {
-            panic!("expected product view")
-        };
-        assert_eq!(p.kind.as_deref(), Some("variable"));
-        assert_eq!(
-            p.attributes,
-            [(
-                "color".to_string(),
-                vec!["Blue".to_string(), "Red".to_string()]
-            )]
-        );
-        assert_eq!(p.variations.len(), 2);
-        assert_eq!(
-            p.variations[1].attributes,
-            [("color".to_string(), "blue".to_string())]
-        );
-        assert_eq!(p.variations[1].stock_status.as_deref(), Some("outofstock"));
-        assert!(matches!(
-            entity_view(&db, &ctx, &catalog, "wp_test", "post", "201", false).await.unwrap(),
-            EntityView::Product(v) if v.name == "Shirt"
-        ));
-
-        let EntityView::Action(a) =
-            entity_view(&db, &ctx, &catalog, "wp_test", "action", "1", false)
-                .await
-                .unwrap()
-        else {
-            panic!("expected action view")
-        };
-        assert_eq!(a.group.as_deref(), Some("woocommerce-paypal-payments"));
-        assert_eq!(a.logs.len(), 2);
-    }
-}
-
-#[tokio::test]
-#[ignore]
 async fn omnisearch_finds_pasted_identifiers() {
     for (db, ctx, _) in env().await {
-        let first = |hits: Vec<crate::wp::detail::SearchHit>| {
+        let first = |hits: Vec<crate::wp::search::SearchHit>| {
             hits.into_iter().next().map(|h| (h.entity, h.id, h.matched))
         };
         assert_eq!(
@@ -976,13 +682,8 @@ async fn apply(db: &MySqlSession, statements: &[String]) {
     db.apply(statements, TIMEOUT).await.unwrap();
 }
 
-async fn wp_plan(
-    db: &MySqlSession,
-    ctx: &WpContext,
-    catalog: &Catalog,
-    request: WpChangeRequest,
-) -> Plan {
-    plan_wp_change(db, ctx, catalog, &request).await.unwrap()
+async fn wp_plan(db: &MySqlSession, ctx: &WpContext, request: WpChangeRequest) -> Plan {
+    plan_wp_change(db, ctx, &request).await.unwrap()
 }
 
 async fn row_plan(db: &MySqlSession, request: ChangeRequest) -> Plan {
@@ -999,143 +700,6 @@ async fn first_row(db: &MySqlSession, sql: &str) -> Vec<Option<String>> {
             c => Some(crate::wp::rows::cell_str(c).unwrap_or_default().to_string()),
         })
         .collect()
-}
-
-/// `(meta_key, meta_value)` of an order's meta rows in insertion order.
-async fn order_meta(db: &MySqlSession, order_id: u64) -> Vec<(String, String)> {
-    let rs = db
-        .fetch(
-            &format!("SELECT meta_key, meta_value FROM wp_write.wp_wc_orders_meta WHERE order_id = {order_id} ORDER BY id"),
-            TIMEOUT,
-        )
-        .await
-        .unwrap();
-    rs.rows
-        .iter()
-        .map(|r| {
-            let text = |c: &Cell| crate::wp::rows::cell_str(c).unwrap_or_default().to_string();
-            (text(&r[0]), text(&r[1]))
-        })
-        .collect()
-}
-
-#[tokio::test]
-#[ignore]
-async fn set_order_status_updates_both_copies_and_undo_restores_the_status() {
-    for (db, ctx, catalog) in write_env().await {
-        let hpos = "SELECT status, date_updated_gmt FROM wp_write.wp_wc_orders WHERE id = 9101";
-        let posts = "SELECT post_status, post_modified_gmt, post_modified FROM wp_write.wp_posts WHERE ID = 9101";
-        let strings = |cells: Vec<Option<String>>| -> Vec<String> {
-            cells.into_iter().map(Option::unwrap_or_default).collect()
-        };
-        let hpos_before = strings(first_row(&db, hpos).await);
-        let posts_before = strings(first_row(&db, posts).await);
-        assert_eq!(hpos_before[0], "wc-processing");
-        assert_eq!(posts_before[0], "wc-processing");
-
-        let change = wp_plan(
-            &db,
-            &ctx,
-            &catalog,
-            WpChangeRequest::SetOrderStatus {
-                database: "wp_write".into(),
-                id: "9101".into(),
-                status: "completed".into(),
-            },
-        )
-        .await;
-        assert_eq!(change.statements.len(), 2, "HPOS table and posts copy");
-        apply(&db, &change.statements).await;
-        let hpos_after = strings(first_row(&db, hpos).await);
-        let posts_after = strings(first_row(&db, posts).await);
-        assert_eq!(hpos_after[0], "wc-completed");
-        assert!(
-            hpos_after[1] > hpos_before[1],
-            "{hpos_before:?} -> {hpos_after:?}"
-        );
-        assert_eq!(posts_after[0], "wc-completed");
-        assert!(
-            posts_after[1] > posts_before[1] && posts_after[2] > posts_before[2],
-            "the posts copy follows, with both modified timestamps bumped: {posts_before:?} -> {posts_after:?}"
-        );
-
-        apply(&db, &change.undo).await;
-        let hpos_undone = strings(first_row(&db, hpos).await);
-        let posts_undone = strings(first_row(&db, posts).await);
-        assert_eq!(hpos_undone[0], "wc-processing");
-        assert_eq!(posts_undone[0], "wc-processing");
-        assert_eq!(
-            hpos_undone[1], hpos_after[1],
-            "undo restores only the status"
-        );
-        assert_eq!(
-            posts_undone[1..],
-            posts_after[1..],
-            "undo restores only the status"
-        );
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn set_meta_adds_a_new_key_and_undo_removes_it() {
-    for (db, ctx, catalog) in write_env().await {
-        let count = "SELECT COUNT(*) FROM wp_write.wp_wc_orders_meta WHERE order_id = 9102 AND meta_key = '_debug_flag'";
-        let change = wp_plan(
-            &db,
-            &ctx,
-            &catalog,
-            WpChangeRequest::SetMeta {
-                database: "wp_write".into(),
-                entity: "order".into(),
-                id: "9102".into(),
-                key: "_debug_flag".into(),
-                value: "1".into(),
-            },
-        )
-        .await;
-        apply(&db, &change.statements).await;
-        assert_eq!(
-            scalar(&db, "SELECT meta_value FROM wp_write.wp_wc_orders_meta WHERE order_id = 9102 AND meta_key = '_debug_flag'")
-                .await
-                .as_deref(),
-            Some("1")
-        );
-        apply(&db, &change.undo).await;
-        assert_eq!(scalar(&db, count).await.as_deref(), Some("0"));
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn delete_meta_removes_only_that_key_and_undo_reinserts_it() {
-    for (db, ctx, catalog) in write_env().await {
-        let both = vec![
-            ("_keep".to_string(), "k".to_string()),
-            ("_to_delete".to_string(), "bye".to_string()),
-        ];
-        assert_eq!(order_meta(&db, 9103).await, both);
-
-        let change = wp_plan(
-            &db,
-            &ctx,
-            &catalog,
-            WpChangeRequest::DeleteMeta {
-                database: "wp_write".into(),
-                entity: "order".into(),
-                id: "9103".into(),
-                key: "_to_delete".into(),
-            },
-        )
-        .await;
-        apply(&db, &change.statements).await;
-        assert_eq!(
-            order_meta(&db, 9103).await,
-            [("_keep".to_string(), "k".to_string())]
-        );
-        apply(&db, &change.undo).await;
-        assert_eq!(order_meta(&db, 9103).await, both);
-    }
 }
 
 #[tokio::test]
@@ -1178,11 +742,10 @@ async fn editing_a_serialized_value_by_path_keeps_it_parseable_and_undo_restores
 #[tokio::test]
 #[ignore]
 async fn expired_transients_are_deleted_and_restored_by_undo() {
-    for (db, ctx, catalog) in write_env().await {
+    for (db, ctx, _) in write_env().await {
         let change = wp_plan(
             &db,
             &ctx,
-            &catalog,
             WpChangeRequest::DeleteExpiredTransients {
                 database: "wp_write".into(),
             },
@@ -1214,13 +777,12 @@ async fn expired_transients_are_deleted_and_restored_by_undo() {
 #[tokio::test]
 #[ignore]
 async fn autoload_keeps_the_yes_no_style_and_undo_restores_it() {
-    for (db, ctx, catalog) in write_env().await {
+    for (db, ctx, _) in write_env().await {
         let read =
             "SELECT autoload FROM wp_write.wp_options WHERE option_name = 'zz_autoload_probe'";
         let change = wp_plan(
             &db,
             &ctx,
-            &catalog,
             WpChangeRequest::SetAutoload {
                 database: "wp_write".into(),
                 option: "zz_autoload_probe".into(),
@@ -1238,70 +800,6 @@ async fn autoload_keeps_the_yes_no_style_and_undo_restores_it() {
         assert_eq!(scalar(&db, read).await.as_deref(), Some("no"));
         apply(&db, &change.undo).await;
         assert_eq!(scalar(&db, read).await.as_deref(), Some("yes"));
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn retrying_a_failed_action_makes_it_pending_and_undo_restores_status_and_date() {
-    for (db, ctx, catalog) in write_env().await {
-        let read = "SELECT status, scheduled_date_gmt FROM wp_write.wp_actionscheduler_actions WHERE action_id = 9201";
-        let change = wp_plan(
-            &db,
-            &ctx,
-            &catalog,
-            WpChangeRequest::RetryAction {
-                database: "wp_write".into(),
-                id: "9201".into(),
-            },
-        )
-        .await;
-        apply(&db, &change.statements).await;
-        let after = first_row(&db, read).await;
-        assert_eq!(after[0].as_deref(), Some("pending"));
-        assert_ne!(after[1].as_deref(), Some("2026-01-01 00:00:00"));
-        apply(&db, &change.undo).await;
-        assert_eq!(
-            first_row(&db, read).await,
-            [
-                Some("failed".to_string()),
-                Some("2026-01-01 00:00:00".to_string())
-            ]
-        );
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn cancelling_a_pending_action_marks_it_canceled_and_undo_restores_it() {
-    for (db, ctx, catalog) in write_env().await {
-        let read = "SELECT status, scheduled_date_gmt FROM wp_write.wp_actionscheduler_actions WHERE action_id = 9202";
-        let pending = vec![
-            Some("pending".to_string()),
-            Some("2030-01-01 00:00:00".to_string()),
-        ];
-        assert_eq!(first_row(&db, read).await, pending);
-        let change = wp_plan(
-            &db,
-            &ctx,
-            &catalog,
-            WpChangeRequest::CancelAction {
-                database: "wp_write".into(),
-                id: "9202".into(),
-            },
-        )
-        .await;
-        assert_eq!(change.description, "Cancel action #9202");
-        apply(&db, &change.statements).await;
-        assert_eq!(
-            first_row(&db, read).await,
-            [
-                Some("canceled".to_string()),
-                Some("2030-01-01 00:00:00".to_string())
-            ]
-        );
-        apply(&db, &change.undo).await;
-        assert_eq!(first_row(&db, read).await, pending);
     }
 }
 
@@ -1428,12 +926,11 @@ async fn inserting_a_row_writes_null_for_a_missing_value() {
 #[tokio::test]
 #[ignore]
 async fn deleting_old_logs_removes_only_that_sources_old_entries() {
-    for (db, ctx, catalog) in write_env().await {
+    for (db, ctx, _) in write_env().await {
         let remaining = "SELECT message FROM wp_write.wp_woocommerce_log WHERE source = 'zz-retention' ORDER BY log_id";
         let change = wp_plan(
             &db,
             &ctx,
-            &catalog,
             WpChangeRequest::DeleteLogsBefore {
                 database: "wp_write".into(),
                 days: 30,
@@ -1502,7 +999,7 @@ async fn a_failing_statement_rolls_back_the_whole_change() {
 
 #[tokio::test]
 #[ignore]
-async fn snapshots_diff_and_compare() {
+async fn snapshots_capture_and_diff() {
     use crate::wp::snapshot::{Scope, capture, diff};
     for (db, ctx, catalog) in write_env().await {
         let scope = Scope {
@@ -1563,62 +1060,6 @@ async fn snapshots_diff_and_compare() {
                     "order#9402/meta/_snap".to_string(),
                     None,
                     Some("x".to_string())
-                ),
-            ]
-        );
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn compare_lists_differing_fields_and_one_sided_meta() {
-    use crate::wp::snapshot::compare;
-    for (db, ctx, catalog) in write_env().await {
-        let rows = compare(&db, &ctx, &catalog, "wp_write", "order", "9401", "9403")
-            .await
-            .unwrap();
-        let status = rows.iter().find(|r| r.path == "field/status").unwrap();
-        assert_eq!(
-            (status.a.as_deref(), status.b.as_deref()),
-            (Some("wc-processing"), Some("wc-failed"))
-        );
-        let fees: Vec<_> = rows
-            .iter()
-            .filter(|r| r.path.starts_with("meta/_ppcp_paypal_fees/"))
-            .map(|r| (r.path.as_str(), r.a.as_deref(), r.b.as_deref()))
-            .collect();
-        assert_eq!(
-            fees,
-            [
-                (
-                    "meta/_ppcp_paypal_fees/gross_amount/currency_code",
-                    Some("EUR"),
-                    None
-                ),
-                (
-                    "meta/_ppcp_paypal_fees/gross_amount/value",
-                    Some("49.90"),
-                    None
-                ),
-                (
-                    "meta/_ppcp_paypal_fees/net_amount/currency_code",
-                    Some("EUR"),
-                    None
-                ),
-                (
-                    "meta/_ppcp_paypal_fees/net_amount/value",
-                    Some("47.86"),
-                    None
-                ),
-                (
-                    "meta/_ppcp_paypal_fees/paypal_fee/currency_code",
-                    Some("EUR"),
-                    None
-                ),
-                (
-                    "meta/_ppcp_paypal_fees/paypal_fee/value",
-                    Some("2.04"),
-                    None
                 ),
             ]
         );
@@ -1753,57 +1194,11 @@ async fn undo_of_a_key_column_change_finds_the_row_by_its_new_key() {
 
 #[tokio::test]
 #[ignore]
-async fn set_meta_refuses_duplicate_rows() {
-    for (db, ctx, catalog) in write_env().await {
-        let result = plan_wp_change(
-            &db,
-            &ctx,
-            &catalog,
-            &WpChangeRequest::SetMeta {
-                database: "wp_write".into(),
-                entity: "user".into(),
-                id: "9501".into(),
-                key: "dup_key".into(),
-                value: "c".into(),
-            },
-        )
-        .await;
-        let err = result.expect_err("two rows of one meta key");
-        assert!(
-            matches!(&err, AppError::InvalidInput(m) if m == "user #9501 has 2 rows of meta dup_key; edit them in the Database view"),
-            "{err:?}"
-        );
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn delete_meta_of_a_missing_key_is_refused() {
-    for (db, ctx, catalog) in write_env().await {
-        let result = plan_wp_change(
-            &db,
-            &ctx,
-            &catalog,
-            &WpChangeRequest::DeleteMeta {
-                database: "wp_write".into(),
-                entity: "user".into(),
-                id: "12".into(),
-                key: "no_such_key".into(),
-            },
-        )
-        .await;
-        assert!(result.is_err(), "{result:?}");
-    }
-}
-
-#[tokio::test]
-#[ignore]
 async fn log_retention_plans_a_fixed_cutoff_literal() {
-    for (db, ctx, catalog) in write_env().await {
+    for (db, ctx, _) in write_env().await {
         let change = wp_plan(
             &db,
             &ctx,
-            &catalog,
             WpChangeRequest::DeleteLogsBefore {
                 database: "wp_write".into(),
                 days: 0,
@@ -1835,23 +1230,6 @@ async fn legacy_user_document_loads_without_an_orders_relation() {
             .unwrap();
         assert_eq!(docs.len(), 1);
         assert!(docs[0].relations.iter().all(|r| r.name != "orders"));
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn legacy_customer_view_lists_posts_based_orders() {
-    for (db, ctx, catalog) in legacy_env().await {
-        let EntityView::Customer(c) =
-            entity_view(&db, &ctx, &catalog, "wp_legacy", "user", "7", false)
-                .await
-                .unwrap()
-        else {
-            panic!("expected customer view")
-        };
-        let mut ids: Vec<&str> = c.orders.iter().map(|o| o.id.as_str()).collect();
-        ids.sort();
-        assert_eq!(ids, ["501", "502"]);
     }
 }
 
@@ -2032,8 +1410,8 @@ mod real_data {
     #[tokio::test]
     #[ignore]
     async fn wordpress_mode_queries_work_on_real_data() {
-        use crate::wp::detail::{EntityView, entity_view, search};
         use crate::wp::lists::{self, ListQuery};
+        use crate::wp::search::search;
         use crate::wp::{dashboard, options_group};
 
         fn non_empty<T>(what: &str, items: &[T]) {
@@ -2081,57 +1459,13 @@ mod real_data {
         lap("lists");
 
         let order_id = &orders.items[0].id;
-        let EntityView::Order(order) =
-            entity_view(&db, &ctx, &catalog, &database, "order", order_id, false)
-                .await
-                .unwrap()
-        else {
-            panic!("expected an order view for #{order_id}");
-        };
-        lap("order view");
-        eprintln!(
-            "  order #{}: {} items, {} timeline events",
-            order.doc.id,
-            order.items.len(),
-            order.timeline.len()
+        let hits = search(&db, &ctx, &database, order_id).await.unwrap();
+        assert!(
+            hits.iter()
+                .any(|h| h.entity == "order" && &h.id == order_id),
+            "search by order id {order_id}"
         );
-        match order.payment.and_then(|p| p.transaction_id) {
-            Some(tx) => {
-                let hits = search(&db, &ctx, &database, &tx).await.unwrap();
-                assert!(
-                    hits.iter()
-                        .any(|h| h.entity == "order" && h.id == order.doc.id),
-                    "search by transaction id {tx}"
-                );
-                lap("search transaction id");
-            }
-            None => eprintln!("  order #{} has no transaction id", order.doc.id),
-        }
-
-        entity_view(
-            &db,
-            &ctx,
-            &catalog,
-            &database,
-            "user",
-            &customers.items[0].id,
-            false,
-        )
-        .await
-        .unwrap();
-        lap("customer view");
-        entity_view(
-            &db,
-            &ctx,
-            &catalog,
-            &database,
-            "post",
-            &products.items[0].id,
-            false,
-        )
-        .await
-        .unwrap();
-        lap("product view");
+        lap("search order id");
         non_empty(
             "woocommerce options",
             &options_group(&db, &ctx, &catalog, &database, "woocommerce")

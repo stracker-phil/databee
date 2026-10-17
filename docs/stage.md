@@ -62,7 +62,7 @@ The page side lives in `src/stage/`:
 | `anchors.ts` | The anchors, read from the `data-stage*` attributes: `collectAnchors` (rects, visibility, role, list and states), `findAnchor`, `labelOf`, `roleOf`, `detailsOf`, `clipsOf`. `MAX_LABEL` (80) is the hook's only label limit; Rust passes labels through. |
 | `actions.ts` | What an act does to the page: `reveal`, `click`, `typeInto` (replace or append; CodeMirror too), `scroll`, `press` (keys), `sheet` (open or close settings and the palette), `nextFrame` |
 | `hooks.ts` | Dispatch only: answers `stage:collect` (`stage_anchors`), `stage:info` (`stage_info`) and `stage:act` with `perform`, an exhaustive `switch` on `kind` with one handler per kind, then `stage_done` |
-| `state.ts` | `stageView()` (`connect`, `db`, `wp:<screen>`), `stageSurfaces()` (the settings window's sections are `settingsSections()`, from the settings page registry), `stageUi()` and the flat `stageState()`. `stageState()` never includes SQL text or passwords. |
+| `state.ts` | `stageView()` (`connect`, `db`, `wp:<screen>`; an object tab is `db` with `state.object` set to its address and view), `stageSurfaces()` (the settings window's sections are `settingsSections()`, from the settings page registry), `stageUi()` and the flat `stageState()`. `stageState()` never includes SQL text or passwords. |
 | `commands.ts` | The registry's commands in Stage form, with shortcuts in Stage notation. Conventional ids: `app:settings`, `view:palette`. Families: `settings:open:<page>`, `table:open:<table>`, `wp:open:<entity>:<id>` |
 | `rect.ts` | Rectangle math (`intersectRect`, `visiblePart`, `isInView`, `centerOf`) |
 
@@ -82,7 +82,11 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
 - **Anchors** are `data-stage` attributes, with optional `-label`, `-role` and `-list`. Ids follow the data
   where rows have stable ids:
   - `table:<db>.<table>` (list `tables`)
-  - `tab:table:<db>.<table>`
+  - `tab:table:<db>.<table>`, `tab:object:<row address>`
+  - object tabs: `object` (the panel), `object-header`, `object-actions` (the actions menu button),
+    `view-toggle` with `view-toggle:document` and `view-toggle:rows`, `group-<table>` on each section band's
+    table name (list `groups`; a second band of the same table is `group-<table>:<group id>`), `more:<group id>`
+    (`+n rows`), `also:<group id>` (the "Also linked" tables), `alternative:<row address>`
   - `<entity>:<id>` for WordPress rows (list `wp:<list>`)
   - `wp:nav:<list>`
   - `palette:search` and the palette results (list `palette:results`)
@@ -91,8 +95,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are
     `appearance:accent:<id>` (list `appearance:accent`)
 
-  - `value:<table>.<column>:<key>` for values that act on click or reveal (references, enums, serialized
-    data, secrets) and have a provenance (list `values`; label: the raw value)
+  - `value:<table>.<column>:<key>` for values that act on click or reveal (primary keys, references, enums,
+    serialized data, secrets) and have a provenance (list `values`; label: the raw value)
   - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:search` (opens the palette),
     `toolbar:mode:<wp|db>`, `statusbar:sidebar` (the ▤ toggle), `statusbar:pending`
 
@@ -102,6 +106,9 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   `view.inspectorDock` command) and `statusbar:connection` (the toolbar shows the connection;
   `toolbar:connection` carries its identity).
   U4d removed `statusbar:site` (the site URL is no longer read; the `site_url` pinned query holds it).
+  U7 removed the WordPress entity pages (they had no anchors of their own) and the view `wp:<entity>`: an
+  entity opens as an object tab in the `db` view, which `stageState()` reports as `object`;
+  `wp:open:<entity>:<id>` opens that object tab.
 - **Commands** come from the in-app registry, with `shortcut` and `enabled`.
 - **Keys.** When a key combination is a command's shortcut, that command runs in the current view, even
   without focus. So ⌘, ⌘K and ⌘T behave like their menu items. Other keys go to the focused element;

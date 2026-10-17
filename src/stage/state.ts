@@ -1,4 +1,5 @@
 /** What Stage reads about DataBee: the main window's view and panels, its sheets, and a short state. */
+import { formatAddress } from "../lib/address";
 import type { StageInfoReply, StageRect, StageSurface } from "./types";
 import { resolveSettingsPage, settingsPages } from "../registry/settingsPages";
 import { selectActiveSession, selectActiveTab, selectSidebarHidden, selectWp, selectWpRoute, useStore } from "../state/store";
@@ -17,7 +18,7 @@ export function stageView(): string {
   if (s.sessions.length === 0) return "connect";
   if (s.mode === "wp" && selectWp(s)) {
     const route = selectWpRoute(s);
-    return `wp:${route.screen === "list" ? route.list : route.screen === "entity" ? route.entity : route.screen}`;
+    return `wp:${route.screen === "list" ? route.list : route.screen}`;
   }
   return "db";
 }
@@ -64,7 +65,6 @@ export function stageState(): Flat {
   const session = selectActiveSession(s);
   const tab = selectActiveTab(s);
   const wp = selectWp(s);
-  const route = selectWpRoute(s);
   const state: Flat = {
     view: stageView(),
     mode: s.mode,
@@ -82,11 +82,11 @@ export function stageState(): Flat {
     pendingChanges: s.pending.length,
   };
   if (tab?.kind === "table") state.table = `${tab.database}.${tab.table} (${tab.view})`;
+  if (tab?.kind === "object") state.object = `${formatAddress(tab.address)} (${tab.view})`;
   if (tab?.kind === "query") state.query = tab.running ? "running" : tab.error ? "failed" : tab.response ? "done" : "not run";
   if (wp) {
     state.prefix = wp.prefix;
     state.presets = wp.presets.join(", ");
-    if (s.mode === "wp" && route.screen === "entity") state.entity = `${route.entity} ${route.id}`;
   }
   return state;
 }

@@ -1,104 +1,112 @@
-//! Changes the servers' global `sql_mode`, so it is its own test binary: Cargo runs binaries
-//! one after another and no other test sees the altered mode.
+//! Writes under `NO_BACKSLASH_ESCAPES`. The dialect is read when a session connects, so the
+//! server's global `sql_mode` is switched for the new session and put back afterwards. This is
+//! its own test binary so no other test connects while the global mode is changed.
 
 use std::time::Duration;
 
-use databee_lib::db::Cell;
-use databee_lib::db::Database;
-use databee_lib::db::mysql::MySqlSession;
-use databee_lib::wp::changes::{WpChangeRequest, plan};
-use databee_lib::wp::rows::cell_str;
+use databee_lib::db::changes::{self, ChangeRequest};
+use databee_lib::db::{CellLimit, Database};
+use databee_lib::error::AppResult;
 
 mod common;
 
-use common::{connect_to, servers, wordpress};
+use common::{connect_to, servers};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
+const VALUE: &str = r"it's\x";
 
-async fn scalar(db: &MySqlSession, sql: &str) -> Option<String> {
-    let rs = db.fetch(sql, TIMEOUT).await.unwrap();
-    rs.rows.first().and_then(|r| match &r[0] {
-        Cell::Null => None,
-        c => Some(cell_str(c).unwrap_or_default().to_string()),
-    })
+async fn scalar(db: &dyn Database, sql: &str) -> String {
+    let rows = db.fetch(sql, TIMEOUT).await.unwrap();
+    rows.rows[0][0].as_text().unwrap().to_string()
 }
 
-/// Puts the server's global `sql_mode` back when dropped, also after a failed assertion.
-struct SqlModeGuard {
-    host: String,
-    port: u16,
-    original: String,
+struct Outcome {
+    backslash_escapes: bool,
+    statements: Vec<String>,
+    undo: Vec<String>,
+    applied: String,
+    restored: String,
 }
 
-impl Drop for SqlModeGuard {
-    fn drop(&mut self) {
-        let (host, port) = (self.host.clone(), self.port);
-        let restore = format!("SET GLOBAL sql_mode = '{}'", self.original);
-        std::thread::spawn(move || {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap()
-                .block_on(async {
-                    let admin = connect_to(&host, port, "wp_write").await;
-                    admin.apply(&[restore], TIMEOUT).await.unwrap();
-                });
-        })
-        .join()
-        .unwrap();
-    }
+async fn edit_title(host: &str, port: u16) -> AppResult<Outcome> {
+    let db = connect_to(host, port, "wp_write").await;
+    let read = "SELECT post_title FROM wp_posts WHERE ID = 9601";
+
+    let change = ChangeRequest::SetCell {
+        database: "wp_write".into(),
+        table: "wp_posts".into(),
+        key_column: "ID".into(),
+        key: "9601".into(),
+        column: "post_title".into(),
+        value: Some(VALUE.into()),
+    };
+    let plan = changes::plan(&db, &change, TIMEOUT).await?;
+    db.apply(&plan.statements, TIMEOUT).await?;
+    let applied = scalar(&db, read).await;
+    db.apply(&plan.undo, TIMEOUT).await?;
+    let restored = scalar(&db, read).await;
+
+    let outcome = Outcome {
+        backslash_escapes: db.dialect().backslash_escapes,
+        statements: plan.statements,
+        undo: plan.undo,
+        applied,
+        restored,
+    };
+    db.close().await;
+    Ok(outcome)
 }
 
 #[tokio::test]
 #[ignore]
-async fn no_backslash_escapes_writes_keep_a_single_backslash() {
+async fn set_cell_with_quote_and_backslash_round_trips_under_no_backslash_escapes() {
     for (host, port) in servers() {
         let admin = connect_to(&host, port, "wp_write").await;
-        let original = scalar(&admin, "SELECT @@GLOBAL.sql_mode")
-            .await
-            .unwrap_or_default();
-        let _restore = SqlModeGuard {
-            host: host.clone(),
-            port,
-            original,
+        let previous = scalar(&admin, "SELECT @@GLOBAL.sql_mode").await;
+        let original = scalar(
+            &admin,
+            "SELECT post_title FROM wp_write.wp_posts WHERE ID = 9601",
+        )
+        .await;
+        let mode = if previous.is_empty() {
+            "NO_BACKSLASH_ESCAPES".to_string()
+        } else {
+            format!("{previous},NO_BACKSLASH_ESCAPES")
         };
+        let set = |mode: &str| format!("SET GLOBAL sql_mode = '{mode}'");
         admin
-            .apply(
-                &["SET GLOBAL sql_mode = CONCAT_WS(',', NULLIF(@@GLOBAL.sql_mode, ''), 'NO_BACKSLASH_ESCAPES')"
-                    .to_string()],
-                TIMEOUT,
-            )
+            .execute(&set(&mode), 1, CellLimit::NONE, TIMEOUT)
             .await
             .unwrap();
 
-        let db = connect_to(&host, port, "wp_write").await;
-        assert!(
-            !db.dialect().backslash_escapes,
-            "{host}:{port}: session ignored NO_BACKSLASH_ESCAPES"
-        );
-        let (ctx, catalog) = wordpress(&db, "wp_write")
-            .await
-            .unwrap_or_else(|| panic!("{host}:{port}: wp_write is not a WordPress database"));
-        let change = plan(
-            &db,
-            &ctx,
-            &catalog,
-            &WpChangeRequest::SetMeta {
-                database: "wp_write".into(),
-                entity: "order".into(),
-                id: "4711".into(),
-                key: "_backslash_probe".into(),
-                value: r"a\b".into(),
-            },
-        )
-        .await
-        .unwrap();
-        db.apply(&change.statements, TIMEOUT).await.unwrap();
-        let read = "SELECT meta_value FROM wp_write.wp_wc_orders_meta WHERE order_id = 4711 AND meta_key = '_backslash_probe'";
-        let stored = scalar(&db, read).await;
-        db.apply(&change.undo, TIMEOUT).await.unwrap();
+        let outcome = edit_title(&host, port).await;
 
-        assert_eq!(stored.as_deref(), Some(r"a\b"), "{host}:{port}");
-        assert_eq!(scalar(&db, read).await, None, "{host}:{port}: undo");
+        admin
+            .execute(&set(&previous), 1, CellLimit::NONE, TIMEOUT)
+            .await
+            .unwrap();
+        let outcome = outcome.unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
+
+        assert!(!outcome.backslash_escapes, "{host}:{port}");
+        assert_eq!(
+            outcome.statements,
+            ["UPDATE `wp_write`.`wp_posts` SET `post_title` = 'it''s\\x' WHERE `ID` = '9601'"],
+            "{host}:{port}"
+        );
+        assert_eq!(
+            outcome.undo,
+            [format!(
+                "UPDATE `wp_write`.`wp_posts` SET `post_title` = '{}' WHERE `ID` = '9601'",
+                original.replace('\'', "''")
+            )],
+            "{host}:{port}"
+        );
+        assert_eq!(outcome.applied, VALUE, "{host}:{port}");
+        assert_eq!(outcome.restored, original, "{host}:{port}");
+        assert_eq!(
+            scalar(&admin, "SELECT @@GLOBAL.sql_mode").await,
+            previous,
+            "{host}:{port}: global sql_mode is put back"
+        );
     }
 }

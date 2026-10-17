@@ -13,7 +13,8 @@ import { TabBar } from "../components/Tabs";
 import { Toasts } from "../components/Toasts";
 import { Toolbar } from "../components/Toolbar";
 import { columnMeta, connectedStore, pendingChange, queryTab, resultSet, session, text } from "../test/fixtures";
-import { wpInfo, wpStore } from "../test/wpFixtures";
+import { orderDocument, wpInfo, wpStore } from "../test/wpFixtures";
+import { documentKey } from "./slices/objects";
 import { useStore, type QueryTab } from "./store";
 
 const mocked = vi.mocked(api, true);
@@ -97,8 +98,11 @@ describe("store behavior", () => {
             { sessionId: "s2", batchId: 11, canUndo: true },
           ],
           wp: { ...s.wp, "s1/db": wpInfo, "s2/other": wpInfo },
-          wpNav: { stack: [{ screen: "dashboard" }, { screen: "entity", entity: "order", id: "4711" }], index: 1 },
-          entityMeta: { key: "order:4711", table: "wp_wc_orders", idColumn: "id", id: "4711" },
+          wpNav: { stack: [{ screen: "dashboard" }, { screen: "list", list: "orders", selected: { entity: "order", id: "4711" } }], index: 1 },
+          documents: {
+            [documentKey("s1", "order 4711")]: { version: 0, document: orderDocument(), error: null },
+            [documentKey("s2", "order 4711")]: { version: 0, document: orderDocument(), error: null },
+          },
         }));
       });
 
@@ -124,7 +128,7 @@ describe("store behavior", () => {
         expect(state.selectedCell).toBeNull();
         expect(Object.keys(state.wp)).toEqual(["s2/other"]);
         expect(state.wpNav).toEqual({ stack: [{ screen: "dashboard" }], index: 0 });
-        expect(state.entityMeta).toBeNull();
+        expect(Object.keys(state.documents)).toEqual([documentKey("s2", "order 4711")]);
       });
 
       it("leaves the active session's changes, cell and navigation alone when another session closes", async () => {
@@ -144,7 +148,7 @@ describe("store behavior", () => {
         expect(state.selectedCell?.tabId).toBe("a");
         expect(Object.keys(state.wp)).toEqual(["s1/db"]);
         expect(state.wpNav.index).toBe(1);
-        expect(state.entityMeta?.key).toBe("order:4711");
+        expect(Object.keys(state.documents)).toEqual([documentKey("s1", "order 4711")]);
       });
     });
 

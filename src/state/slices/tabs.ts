@@ -1,5 +1,6 @@
-import { api, toAppError, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse, type Value } from "../../api";
+import { api, toAppError, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse, type Provenance, type Value } from "../../api";
 import type { CellSource } from "../../lib/cells";
+import type { ObjectView } from "../../lib/document";
 import { fail } from "../requests";
 import { isWpView, selectActiveSession, selectActiveTab } from "../selectors";
 import type { Slice, Store } from "../store";
@@ -42,7 +43,38 @@ export interface TableTab {
   nav: TabNav;
 }
 
-export type Tab = QueryTab | TableTab;
+/** A row as an object: its document, or one grid per group (`view`). */
+export interface ObjectTab {
+  id: string;
+  kind: "object";
+  sessionId: string;
+  title: string;
+  /** A row address; its `view` mirrors `view` (`null` for the document, the default). */
+  address: Address;
+  view: ObjectView;
+  /** The focused value, kept across the Document/Rows toggle. */
+  focus: Provenance | null;
+  preview?: boolean;
+  nav: TabNav;
+}
+
+export type Tab = QueryTab | TableTab | ObjectTab;
+
+/** The preview tab of a session (table or object), which the next preview replaces. */
+export function previewTab(s: Store, sessionId: string): TableTab | ObjectTab | undefined {
+  return s.tabs.find((t): t is TableTab | ObjectTab => t.kind !== "query" && !!t.preview && t.sessionId === sessionId);
+}
+
+/** `tabs` with `tab` in the place of `replaced` (or appended), so a preview keeps its position. */
+export function placed(tabs: Tab[], tab: Tab, replaced: Tab | undefined): Tab[] {
+  const kept = tabs.filter((t) => t.id !== replaced?.id);
+  const at = replaced ? tabs.indexOf(replaced) : kept.length;
+  return [...kept.slice(0, at), tab, ...kept.slice(at)];
+}
+
+let nextTabId = 1;
+
+export const newTabId = (kind: Tab["kind"]) => `${kind}-${nextTabId++}`;
 
 export interface SelectedCell {
   /** The tab whose grid holds the cell; closing, leaving or reloading it clears the selection. */
@@ -80,13 +112,12 @@ export interface TabsSlice {
   cycleTab(delta: number): void;
   updateQueryTab(id: string, patch: Partial<QueryTab>): void;
   updateTableTab(id: string, patch: Partial<TableTab>): void;
+  updateObjectTab(id: string, patch: Partial<ObjectTab>): void;
   /** Selects a cell of the active tab's grid. */
   selectCell(selected: Omit<SelectedCell, "tabId"> | null): void;
   runQuery(tabId: string, sql: string, confirmed?: boolean): Promise<void>;
   cancelQuery(tabId: string): Promise<void>;
 }
-
-let nextTabId = 1;
 
 export const resetSelection = () => ({ selectedCell: null });
 
@@ -119,7 +150,7 @@ export const tabsSlice: Slice<TabsSlice> = {
         const previous = s.queryCounter[session.id] ?? 0;
         const count = title ? previous : previous + 1;
         const tab: QueryTab = {
-          id: `query-${nextTabId++}`,
+          id: newTabId("query"),
           kind: "query",
           sessionId: session.id,
           title: title ?? `Query ${count}`,
@@ -155,9 +186,9 @@ export const tabsSlice: Slice<TabsSlice> = {
       set((s) => {
         const address = tableAddress(s, session.id, { database, table, where });
         // A preview tab takes the place of the previous preview tab of this session, history included.
-        const replaced = opts.preview ? s.tabs.find((t): t is TableTab => t.kind === "table" && !!t.preview && t.sessionId === session.id) : undefined;
+        const replaced = opts.preview ? previewTab(s, session.id) : undefined;
         const tab: TableTab = {
-          id: `table-${nextTabId++}`,
+          id: newTabId("table"),
           kind: "table",
           sessionId: session.id,
           title: tableTitle(table, where, filter),
@@ -170,9 +201,7 @@ export const tabsSlice: Slice<TabsSlice> = {
           address,
           nav: replaced ? pushed(replaced.nav, replaced.address, address) : EMPTY_NAV,
         };
-        const kept = s.tabs.filter((t) => t.id !== replaced?.id);
-        const at = replaced ? s.tabs.indexOf(replaced) : kept.length;
-        return { tabs: [...kept.slice(0, at), tab, ...kept.slice(at)], ...activate(s, tab.id) };
+        return { tabs: placed(s.tabs, tab, replaced), ...activate(s, tab.id) };
       });
     },
 
@@ -197,7 +226,7 @@ export const tabsSlice: Slice<TabsSlice> = {
     },
 
     pinTab(id) {
-      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind === "table" && t.preview ? { ...t, preview: false } : t)) }));
+      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind !== "query" && t.preview ? { ...t, preview: false } : t)) }));
     },
 
     activateTab(id) {
@@ -234,6 +263,10 @@ export const tabsSlice: Slice<TabsSlice> = {
 
     updateTableTab(id, patch) {
       set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind === "table" ? { ...t, ...patch } : t)) }));
+    },
+
+    updateObjectTab(id, patch) {
+      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind === "object" ? { ...t, ...patch } : t)) }));
     },
 
     selectCell(selected) {

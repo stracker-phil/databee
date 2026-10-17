@@ -3,6 +3,7 @@ import { changesSlice, type ChangesSlice } from "./slices/changes";
 import { dataSlice, type DataSlice } from "./slices/data";
 import { favoritesSlice, type FavoritesSlice } from "./slices/favorites";
 import { navSlice, type NavSlice } from "./slices/nav";
+import { objectsSlice, type ObjectsSlice } from "./slices/objects";
 import { sessionSlice, type SessionSlice } from "./slices/session";
 import { settingsSlice, type SettingsSlice } from "./slices/settings";
 import { tabsSlice, type TabsSlice } from "./slices/tabs";
@@ -17,6 +18,8 @@ export {
   selectActiveTab,
   selectCanNav,
   selectCanUndo,
+  selectDocument,
+  selectFocusedValue,
   selectMaxCellChars,
   selectNullLabel,
   selectSidebarHidden,
@@ -28,12 +31,13 @@ export {
 } from "./selectors";
 export type { TabNav, TableLocation } from "./slices/nav";
 export type { SchemaState, StructureEntry } from "./slices/session";
-export type { QueryTab, SelectedCell, Tab, TableTab } from "./slices/tabs";
+export type { DocumentEntry } from "./slices/objects";
+export type { ObjectTab, QueryTab, SelectedCell, Tab, TableTab } from "./slices/tabs";
 export type { Dialog, Mode, RecentNav, Toast, ValueHover } from "./slices/ui";
-export type { EntityMeta, WpList, WpRoute } from "./slices/wp";
+export type { WpList, WpRoute } from "./slices/wp";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
-export interface Store extends SettingsSlice, SessionSlice, TabsSlice, ChangesSlice, DataSlice, FavoritesSlice, UiSlice, WpSlice, NavSlice {}
+export interface Store extends SettingsSlice, SessionSlice, TabsSlice, ChangesSlice, DataSlice, FavoritesSlice, UiSlice, WpSlice, NavSlice, ObjectsSlice {}
 
 type SetStore = StoreApi<Store>["setState"];
 type GetStore = StoreApi<Store>["getState"];
@@ -76,3 +80,4 @@ registerSlice(favoritesSlice);
 registerSlice(uiSlice);
 registerSlice(wpSlice);
 registerSlice(navSlice);
+registerSlice(objectsSlice);

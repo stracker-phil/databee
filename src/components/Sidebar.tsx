@@ -5,7 +5,7 @@ import { api, type HistoryEntry, type TableInfo } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { compactCount, formatBytes, formatCount, relativeTime } from "../lib/format";
-import { fail, selectActiveSession, selectActiveTab, selectVisibleDatabases, useStore } from "../state/store";
+import { fail, selectActiveSession, selectActiveTab, selectVisibleDatabases, useStore, type Tab } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { InsetField } from "./Field";
 
@@ -78,11 +78,21 @@ function useTreeFocus(rows: TreeRow[], { toggle, openTable }: TreeActions) {
   });
 }
 
+/** The table the active tab shows: a table tab's, or an object tab's row table. */
+function tableOf(tab: Tab | null): { database: string; table: string } | null {
+  if (tab?.kind === "table") return { database: tab.database, table: tab.table };
+  if (tab?.kind === "object" && tab.address.target.kind === "row") return { database: tab.address.database, table: tab.address.target.table };
+  return null;
+}
+
 function TablesPanel() {
   const session = useStore(selectActiveSession);
   const schema = useStore((s) => (session ? s.schema[session.id] : undefined));
   const databases = useStore(useShallow(selectVisibleDatabases));
   const activeTab = useStore(selectActiveTab);
+  const activeTable = tableOf(activeTab);
+  const hoverTable = useStore((s) => s.hover.table);
+  const hoverLinked = useStore((s) => s.hover.linked);
   const { loadTables, loadDatabases, openTableTab, openQueryTab, addFavorite } = useStore.getState();
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -196,7 +206,8 @@ function TablesPanel() {
                 )}
                 {tableRows.map((tr) => {
                   const t = tr.table;
-                  const active = activeTab?.kind === "table" && activeTab.database === d.name && activeTab.table === t.name;
+                  const active = activeTable?.database === d.name && activeTable.table === t.name;
+                  const lit = d.name === current && hoverTable === t.name ? (hoverLinked ? " lit" : " lit-value") : "";
                   const meta = t.isView ? "view" : t.rowsEstimate != null ? compactCount(t.rowsEstimate) : null;
                   return (
                     <div
@@ -207,7 +218,8 @@ function TablesPanel() {
                       data-stage-list="tables"
                       aria-selected={active}
                       data-stage-label={t.name}
-                      className={`si${active ? " sel" : ""}`}
+                      className={`si${active ? " sel" : ""}${lit}`}
+                      data-table={d.name === current ? t.name : undefined}
                       title={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}
                       onClick={(e) => openPreview(d.name, t.name, !e.metaKey)}
                       onDoubleClick={() => openTableTab(d.name, t.name, undefined, undefined, { preview: false })}

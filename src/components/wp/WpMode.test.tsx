@@ -9,17 +9,21 @@ import { api, type Dashboard, type OrderSummary } from "../../api";
 import { installCommands } from "../../commands";
 import { selectWpRoute, useStore } from "../../state/store";
 import { session } from "../../test/fixtures";
-import { NOW, doc, orderView, wpInfo, wpStore } from "../../test/wpFixtures";
+import { NOW, orderDocument, wpInfo, wpStore } from "../../test/wpFixtures";
 import { CommandPalette } from "../CommandPalette";
 import { Dialogs } from "../Dialogs";
 import { Toasts } from "../Toasts";
 import { PendingTray } from "../PendingTray";
-import { CompareScreen, SnapshotsScreen } from "./Debugging";
+import { SnapshotsScreen } from "./Debugging";
 import { WpWorkspace } from "./WpWorkspace";
 
 const mocked = vi.mocked(api, true);
 const now = NOW / 1000;
 const originalWidth = window.innerWidth;
+
+/** `document` answers `<entity> <id>` with the order row of that id. */
+const answerEntityDocuments = () => mocked.document.mockImplementation(async (_s, text) => orderDocument(text.split(" ")[1]));
+const lastTab = () => useStore.getState().tabs.at(-1);
 
 afterEach(() => {
   window.innerWidth = originalWidth;
@@ -80,7 +84,7 @@ describe("WordPress mode", () => {
       ],
       kinds: [],
     });
-    mocked.wpView.mockResolvedValue(orderView);
+    answerEntityDocuments();
   });
 
   it("shows attention badges in the sidebar only for actionable statuses", async () => {
@@ -167,13 +171,13 @@ describe("WordPress mode", () => {
     expect(screen.queryByRole("navigation", { name: "Favorites" })).not.toBeInTheDocument();
   });
 
-  it("navigates from the dashboard to an order and back", async () => {
-    render(<WpWorkspace />);
+  it("opens an order from the dashboard as an object tab", async () => {
+    render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: /#3229/ }));
-    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3229" });
-    expect(await screen.findByText("City/postcode differs")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "dashboard" });
+    const tab = await screen.findByRole("tab", { name: /order #3229/ });
+    expect(tab).toHaveAttribute("title", "databee://shop/db/wp_wc_orders/3229");
+    expect(mocked.document).toHaveBeenCalledWith("s1", "order 3229", "db");
+    expect(useStore.getState().mode).toBe("db");
   });
 
   it("filters orders by status chips and search", async () => {
@@ -206,14 +210,14 @@ describe("WordPress mode", () => {
     await vi.waitFor(() => expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ sort: "total", descending: false })));
   });
 
-  it("opens rows in a side pane on wide windows, moves the selection with arrows and opens the page with Enter", async () => {
+  it("opens rows in a side pane on wide windows, moves the selection with arrows and opens the object tab with Enter", async () => {
     window.innerWidth = 1600;
     useStore.getState().navigate({ screen: "list", list: "orders" });
     render(<WpWorkspace />);
     await userEvent.click(await screen.findByRole("row", { name: /#3229/ }));
     expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "orders", selected: { entity: "order", id: "3229" } });
     expect(await screen.findByRole("complementary", { name: "Detail" })).toBeInTheDocument();
-    expect(mocked.wpView).toHaveBeenCalledWith("s1", "db", "order", "3229");
+    expect(mocked.document).toHaveBeenCalledWith("s1", "order 3229", "db");
     expect(screen.getByRole("row", { name: /#3229/ })).toHaveAttribute("aria-selected", "true");
 
     screen.getByRole("grid", { name: "orders list" }).focus();
@@ -221,7 +225,7 @@ describe("WordPress mode", () => {
     expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "orders", selected: { entity: "order", id: "3227" } });
     expect(useStore.getState().wpNav.stack.filter((r) => r.screen === "list")).toHaveLength(1);
     await userEvent.keyboard("{Enter}");
-    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3227" });
+    await vi.waitFor(() => expect(lastTab()).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_wc_orders", key: "3227" } } }));
   });
 
   it("resizes the side pane by dragging the divider", async () => {
@@ -252,7 +256,8 @@ describe("WordPress mode", () => {
     expect(within(row).getByText("customer")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "customer (1)" })).toBeInTheDocument();
     await userEvent.click(row);
-    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "user", id: "12" });
+    await vi.waitFor(() => expect(lastTab()?.kind).toBe("object"));
+    expect(mocked.document).toHaveBeenCalledWith("s1", "user 12", "db");
   });
 
   it("falls back to full-page navigation on narrow windows", async () => {
@@ -260,64 +265,17 @@ describe("WordPress mode", () => {
     useStore.getState().navigate({ screen: "list", list: "orders" });
     render(<WpWorkspace />);
     await userEvent.click(await screen.findByRole("row", { name: /#3229/ }));
-    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3229" });
+    await vi.waitFor(() => expect(lastTab()).toMatchObject({ kind: "object", address: { target: { kind: "row", key: "3229" } } }));
     expect(screen.queryByRole("complementary", { name: "Detail" })).not.toBeInTheDocument();
   });
 
-  it("shows an order with addresses, items, payment waterfall and timeline", async () => {
-    mocked.wpOrderLogs.mockResolvedValue([
-      {
-        at: now - 1800,
-        kind: "log",
-        title: "PayPal API · capture order → 201",
-        detail: "woocommerce-paypal-payments",
-        level: "info",
-        link: null,
-        raw: "#7199.REST - POST https://api-m.sandbox.paypal.com/v2/checkout/orders/66M/capture\nResponse: Array ( [code] => 201 )",
-        row: { table: "wp_woocommerce_log", idColumn: "log_id", id: "1732" },
-      },
-    ]);
-    useStore.getState().openEntity("order", "4711");
-    render(<WpWorkspace />);
-    expect(await screen.findByText("Marktstraße 1")).toBeInTheDocument();
-    expect(screen.getByText("MUG-1")).toBeInTheDocument();
-    expect(screen.getByLabelText("Fees")).toHaveTextContent("gross €49.90→ fee €2.04→ net €47.86");
-    const summary = await screen.findByRole("button", { name: /PayPal API · capture order → 201/ });
-    expect(screen.queryByText(/#7199.REST/)).not.toBeInTheDocument();
-    await userEvent.click(summary);
-    expect(screen.getByText(/#7199.REST - POST/)).toBeInTheDocument();
-    expect(screen.getByText("Order created")).toBeInTheDocument();
-    await userEvent.click(within(screen.getByRole("list")).getByRole("button", { name: /Source row/ }));
-    const tab = useStore.getState().tabs.at(-1)!;
-    expect(tab.kind === "table" && [tab.table, tab.where]).toEqual(["wp_woocommerce_log", [{ column: "log_id", value: "1732" }]]);
+  it("opens an entity as an object tab on the row Rust resolved it to", async () => {
+    render(<App />);
+    await useStore.getState().openEntity("order", "4711");
+    const tab = await screen.findByRole("tab", { name: /order #4711/ });
+    expect(tab).toHaveAttribute("title", "databee://shop/db/wp_wc_orders/4711");
+    expect(mocked.document).toHaveBeenCalledWith("s1", "order 4711", "db");
     expect(useStore.getState().mode).toBe("db");
-  });
-
-  it("names payment facts by their stored keys and opens item meta rows", async () => {
-    useStore.getState().openEntity("order", "4711");
-    render(<WpWorkspace />);
-    expect(within(await screen.findByRole("region", { name: "Payment" })).getByText("_ppcp_paypal_order_id")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Payment" })).getByText("payment_method")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "item #1" }));
-    expect(useStore.getState().tabs.at(-1)).toMatchObject({ table: "wp_woocommerce_order_itemmeta", where: [{ column: "order_item_id", value: "1" }] });
-  });
-
-  it("queues an order status change from the header", async () => {
-    useStore.getState().openEntity("order", "4711");
-    render(<WpWorkspace />);
-    await userEvent.selectOptions(await screen.findByLabelText("Change status"), "completed");
-    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", { type: "setOrderStatus", database: "db", id: "4711", status: "completed" });
-  });
-
-  it("highlights fields that changed in live mode", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    useStore.getState().openEntity("order", "4711");
-    render(<WpWorkspace />);
-    await screen.findByText("Marktstraße 1");
-    mocked.wpView.mockResolvedValue({ ...orderView, doc: { ...orderView.doc, fields: [orderView.doc.fields[0], { ...orderView.doc.fields[1], value: { t: "text", v: "wc-completed" } }] } });
-    await userEvent.click(screen.getByRole("button", { name: /Live mode/ }));
-    await vi.advanceTimersByTimeAsync(3100);
-    await vi.waitFor(() => expect(screen.getByText(/1 changed/)).toBeInTheDocument());
   });
 });
 
@@ -340,28 +298,27 @@ describe("List filters in the route", () => {
     wpStore();
     mocked.wpBrowser.mockResolvedValue([]);
     mocked.wpOrders.mockResolvedValue(page());
-    mocked.wpView.mockResolvedValue(orderView);
+    answerEntityDocuments();
   });
 
-  it("keeps the status chip after opening an order and going back", async () => {
+  it("keeps the status chip after opening an order as an object tab", async () => {
     window.innerWidth = 1000;
     useStore.getState().navigate({ screen: "list", list: "orders" });
     render(<WpWorkspace />);
     await userEvent.click(await screen.findByRole("button", { name: /Failed 1/ }));
     await userEvent.click(await screen.findByRole("row", { name: /#3229/ }));
-    expect(selectWpRoute(useStore.getState())).toMatchObject({ screen: "entity" });
-    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    await vi.waitFor(() => expect(lastTab()?.kind).toBe("object"));
     expect(await screen.findByRole("button", { name: /Failed 1/ })).toHaveClass("on");
     expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ status: "wc-failed" }));
   });
 
-  it("keeps the gateway selection after opening an order and going back", async () => {
+  it("keeps the gateway selection after opening an order as an object tab", async () => {
     window.innerWidth = 1000;
     useStore.getState().navigate({ screen: "list", list: "orders" });
     render(<WpWorkspace />);
     await userEvent.selectOptions(await screen.findByLabelText("Gateway"), "ppcp-gateway");
     await userEvent.click(await screen.findByRole("row", { name: /#3229/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    await vi.waitFor(() => expect(lastTab()?.kind).toBe("object"));
     expect(await screen.findByLabelText("Gateway")).toHaveValue("ppcp-gateway");
     expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ kind: "ppcp-gateway" }));
   });
@@ -438,9 +395,10 @@ describe("Command palette", () => {
     vi.clearAllMocks();
     wpStore();
     installCommands();
+    answerEntityDocuments();
   });
 
-  it("finds pasted identifiers and opens the match", async () => {
+  it("finds pasted identifiers and opens the match as an object tab", async () => {
     mocked.wpSearch.mockResolvedValue([{ entity: "order", id: "3229", title: "Order #3229", subtitle: null, matched: "_ppcp_paypal_order_id" }]);
     useStore.getState().setPaletteOpen(true);
     render(<CommandPalette />);
@@ -448,7 +406,7 @@ describe("Command palette", () => {
     expect(await screen.findByText("Order #3229")).toBeInTheDocument();
     expect(screen.getByText(/matched _ppcp_paypal_order_id/)).toBeInTheDocument();
     await userEvent.keyboard("{Enter}");
-    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "3229" });
+    await vi.waitFor(() => expect(lastTab()).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_wc_orders", key: "3229" } } }));
     expect(useStore.getState().paletteOpen).toBe(false);
   });
 
@@ -513,16 +471,16 @@ describe("Pending changes", () => {
 
   it("plans WordPress changes through wpPlanChange, applies them by id in one batch and undoes that batch", async () => {
     mocked.wpPlanChange
-      .mockResolvedValueOnce({ id: 11, description: "planned retryAction", statements: ["-- retryAction"], canUndo: true })
+      .mockResolvedValueOnce({ id: 11, description: "planned deleteExpiredTransients", statements: ["-- deleteExpiredTransients"], canUndo: true })
       .mockResolvedValueOnce({ id: 12, description: "planned setAutoload", statements: ["-- setAutoload"], canUndo: true });
     mocked.applyChanges.mockResolvedValueOnce({ batchId: 7, affected: 2, canUndo: true });
-    await useStore.getState().queueChange({ type: "retryAction", database: "db", id: "1" });
+    await useStore.getState().queueChange({ type: "deleteExpiredTransients", database: "db" });
     await useStore.getState().queueChange({ type: "setAutoload", database: "db", option: "x", on: false });
     render(<PendingTray />);
     expect(screen.getByText("2 pending changes")).toBeInTheDocument();
     expect(mocked.planChange).not.toHaveBeenCalled();
     await userEvent.click(screen.getAllByRole("button", { name: "Show SQL" })[0]);
-    expect(screen.getByText("-- retryAction")).toBeInTheDocument();
+    expect(screen.getByText("-- deleteExpiredTransients")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
     expect(mocked.applyChanges).toHaveBeenCalledWith("s1", [11, 12]);
     await userEvent.click(await screen.findByRole("button", { name: /Undo last apply/ }));
@@ -530,10 +488,10 @@ describe("Pending changes", () => {
   });
 
   it("discards a single change on the server and removes it from the tray", async () => {
-    mocked.wpPlanChange.mockResolvedValueOnce({ id: 21, description: "planned retryAction", statements: ["-- retryAction"], canUndo: true });
-    await useStore.getState().queueChange({ type: "retryAction", database: "db", id: "1" });
+    mocked.wpPlanChange.mockResolvedValueOnce({ id: 21, description: "planned deleteExpiredTransients", statements: ["-- deleteExpiredTransients"], canUndo: true });
+    await useStore.getState().queueChange({ type: "deleteExpiredTransients", database: "db" });
     render(<PendingTray />);
-    await userEvent.click(screen.getByRole("button", { name: /Discard planned retryAction/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Discard planned deleteExpiredTransients/ }));
     expect(mocked.discardChange).toHaveBeenCalledWith("s1", 21);
     expect(screen.queryByText(/pending change/)).not.toBeInTheDocument();
     expect(mocked.applyChanges).not.toHaveBeenCalled();
@@ -605,18 +563,6 @@ describe("Snapshots and compare", () => {
       await vi.waitFor(() => expect(screen.queryByText("Changes since snapshot")).not.toBeInTheDocument());
     });
   });
-
-  it("compares two entities showing only differences by default", async () => {
-    mocked.wpCompare.mockResolvedValue([
-      { path: "field/status", a: "wc-processing", b: "wc-failed" },
-      { path: "field/currency", a: "EUR", b: "EUR" },
-    ]);
-    render(<CompareScreen entity="order" a="4711" b="4713" />);
-    expect(await screen.findByText("field/status")).toBeInTheDocument();
-    expect(screen.queryByText("field/currency")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("checkbox"));
-    expect(screen.getByText("field/currency")).toBeInTheDocument();
-  });
 });
 
 describe("Rust-provided labels and targets", () => {
@@ -624,35 +570,6 @@ describe("Rust-provided labels and targets", () => {
     vi.clearAllMocks();
     wpStore();
     mocked.wpBrowser.mockResolvedValue([]);
-  });
-
-  it("opens the orders list with the search of a customer's related chip", async () => {
-    mocked.wpView.mockResolvedValue({
-      view: "customer",
-      doc: doc({ entity: "user", label: "User", id: "12", table: "wp_users", idColumn: "ID" }),
-      name: "Jane Doe",
-      login: "jane",
-      email: "jane@x",
-      avatar: null,
-      roles: ["customer"],
-      registered: now - 86400,
-      lastActive: null,
-      billing: null,
-      shipping: null,
-      orderCount: 2,
-      totalSpent: null,
-      averageOrder: null,
-      orders: [],
-      subscriptions: [],
-      tokens: [],
-      session: null,
-      related: [{ label: "Orders by email", link: null, count: 2, target: { kind: "list", list: "orders", params: { search: "jane@x" } } }],
-    });
-    useStore.getState().openEntity("user", "12");
-    render(<WpWorkspace />);
-    await userEvent.click(await screen.findByRole("button", { name: /Orders by email/ }));
-    expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "orders", params: { search: "jane@x" } });
-    await vi.waitFor(() => expect(mocked.wpOrders).toHaveBeenLastCalledWith("s1", "db", "shop_order", expect.objectContaining({ search: "jane@x" })));
   });
 
   it("labels the action histogram legend with the status names from Rust", async () => {

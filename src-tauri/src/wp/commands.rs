@@ -7,16 +7,16 @@ use tauri::State;
 use super::catalog::Catalog;
 use super::changes::{self, WpChangeRequest};
 use super::dashboard::{self, ActionHistogram, BrowserSection, Dashboard};
-use super::detail::{self, EntityView, SearchHit};
 use super::document::DocField;
+use super::find::{self, FindGroup};
 use super::lists::{
     self, ActionSummary, ListQuery, OrderSummary, OrderType, Page, PostSummary, ProductSummary,
     SessionSummary, UserSummary,
 };
 use super::options::OptionsOverview;
-use super::peek::{self, FindGroup, PeekFact};
+use super::search::{self, SearchHit};
 use super::site::WpContext;
-use super::snapshot::{self, CompareRow, DiffEntry, Scope};
+use super::snapshot::{self, DiffEntry, Scope};
 use super::snapshots_store::SnapshotInfo;
 use super::{self as lens, WpInfo, WpState};
 use crate::db::plans::PlannedChange;
@@ -237,47 +237,6 @@ pub async fn wp_content(
 }
 
 #[tauri::command]
-pub async fn wp_view(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    entity: String,
-    id: String,
-) -> AppResult<EntityView> {
-    let WpEnv {
-        ctx,
-        catalog,
-        session: s,
-    } = wp_env(&state, &session_id, &database).await?;
-    detail::entity_view(
-        s.db.as_ref(),
-        &ctx,
-        &catalog,
-        &database,
-        &entity,
-        &id,
-        state.settings.get().gravatar,
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn wp_peek(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    entity: String,
-    id: String,
-) -> AppResult<Vec<PeekFact>> {
-    let WpEnv {
-        ctx,
-        catalog,
-        session: s,
-    } = wp_env(&state, &session_id, &database).await?;
-    peek::peek(s.db.as_ref(), &ctx, &catalog, &database, &entity, &id).await
-}
-
-#[tauri::command]
 pub async fn wp_find_value(
     state: State<'_, AppState>,
     session_id: String,
@@ -287,7 +246,7 @@ pub async fn wp_find_value(
     let WpEnv {
         ctx, session: s, ..
     } = wp_env(&state, &session_id, &database).await?;
-    peek::find_value(s.db.as_ref(), &ctx, &database, &value).await
+    find::find_value(s.db.as_ref(), &ctx, &database, &value).await
 }
 
 #[tauri::command]
@@ -300,7 +259,7 @@ pub async fn wp_search(
     let WpEnv {
         ctx, session: s, ..
     } = wp_env(&state, &session_id, &database).await?;
-    detail::search(s.db.as_ref(), &ctx, &database, &query).await
+    search::search(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
@@ -316,21 +275,6 @@ pub async fn wp_options_group(
         session: s,
     } = wp_env(&state, &session_id, &database).await?;
     lens::options_group(s.db.as_ref(), &ctx, &catalog, &database, &prefix).await
-}
-
-#[tauri::command]
-pub async fn wp_order_logs(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    id: String,
-) -> AppResult<Vec<detail::TimelineEvent>> {
-    let WpEnv {
-        ctx,
-        catalog,
-        session: s,
-    } = wp_env(&state, &session_id, &database).await?;
-    detail::order_logs(s.db.as_ref(), &ctx, &catalog, &database, &id).await
 }
 
 #[tauri::command]
@@ -387,30 +331,13 @@ pub async fn wp_snapshot_delete(wp: State<'_, WpState>, id: String) -> AppResult
 }
 
 #[tauri::command]
-pub async fn wp_compare(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    entity: String,
-    a: String,
-    b: String,
-) -> AppResult<Vec<CompareRow>> {
-    let WpEnv {
-        ctx,
-        catalog,
-        session: s,
-    } = wp_env(&state, &session_id, &database).await?;
-    snapshot::compare(s.db.as_ref(), &ctx, &catalog, &database, &entity, &a, &b).await
-}
-
-#[tauri::command]
 pub async fn wp_plan_change(
     state: State<'_, AppState>,
     session_id: String,
     change: WpChangeRequest,
 ) -> AppResult<PlannedChange> {
     let env = wp_env(&state, &session_id, change.database()).await?;
-    let plan = changes::plan(env.session.db.as_ref(), &env.ctx, &env.catalog, &change).await?;
+    let plan = changes::plan(env.session.db.as_ref(), &env.ctx, &change).await?;
     Ok(env.session.plans.add(plan))
 }
 

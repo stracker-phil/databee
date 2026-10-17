@@ -1,14 +1,16 @@
 import { useEffect, type RefObject } from "react";
 import { NO_HOVER, useStore, type ValueHover } from "../../state/store";
 
+/** The nearest value or table link: a value (`.val`) names its provenance, anything else with `data-table` links a table. */
 function hoverOf(target: EventTarget | null): ValueHover {
-  const value = target instanceof Element ? target.closest<HTMLElement>("[data-src]") : null;
-  if (!value) return NO_HOVER;
-  return { src: value.dataset.src ?? null, table: value.dataset.table ?? null };
+  const found = target instanceof Element ? target.closest<HTMLElement>("[data-src], [data-table]") : null;
+  if (!found) return NO_HOVER;
+  return { src: found.dataset.src ?? null, table: found.dataset.table ?? null, linked: !found.classList.contains("val") };
 }
 
 /**
- * Puts the provenance of the value under the pointer into the store (`hover`), for the status bar. One
+ * Puts the value or table link under the pointer into the store (`hover`), for the status bar and the
+ * linked table highlight. One
  * delegated listener for the whole area, read at most once per frame, so grids add no per-cell handlers.
  */
 export function useValueHover(ref: RefObject<HTMLElement | null>) {

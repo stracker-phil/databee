@@ -234,7 +234,7 @@ describe("SettingsDialog", () => {
     ["Zoom in", "Everywhere"],
     ["Run statement at cursor", "Editor"],
     ["Value filter", "Table"],
-    ["Take snapshot", "Document"],
+    ["Switch between Document and Rows", "Object"],
   ])("shows the scope label of %s", async (title, label) => {
     installCommands();
     render(<SettingsDialog />);

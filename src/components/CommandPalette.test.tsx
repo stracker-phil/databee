@@ -6,9 +6,9 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, type SearchHit } from "../api";
 import { installCommands } from "../commands";
-import { selectWpRoute, useStore } from "../state/store";
+import { useStore } from "../state/store";
 import { connectedStore } from "../test/fixtures";
-import { wpInfo, wpStore } from "../test/wpFixtures";
+import { orderDocument, wpInfo, wpStore } from "../test/wpFixtures";
 import { CommandPalette } from "./CommandPalette";
 
 const mocked = vi.mocked(api, true);
@@ -161,8 +161,10 @@ describe("CommandPalette", () => {
       expect(selectedOptions()).toHaveLength(1);
       expect(selectedOptions()[0]).toHaveTextContent("Order #123");
 
+      mocked.document.mockResolvedValue(orderDocument("123"));
       await userEvent.keyboard("{Enter}");
-      expect(selectWpRoute(useStore.getState())).toEqual({ screen: "entity", entity: "order", id: "123" });
+      await vi.waitFor(() => expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_wc_orders", key: "123" } } }));
+      expect(mocked.document).toHaveBeenCalledWith("s1", "order 123", "db");
     });
   });
 });

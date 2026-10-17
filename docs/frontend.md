@@ -11,7 +11,7 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    1. `installCore()`: `registerCoreSettingsPages()` and `registerCoreScopes()`.
    2. `installStage()` (`src/stage/install.ts`): the Presentations Settings page and the Stage event
       listeners, which stay subscribed for the app's lifetime.
-   3. `installWp()` (`src/components/wp/install.ts`): the `wp` and `document` scopes.
+   3. `installWp()` (`src/components/wp/install.ts`): the `wp` scope.
    4. `installCommands()`: the command registry. It runs last because some core commands use WordPress scopes.
 3. `main.tsx` calls `installNativeMenuGuard()` (`src/lib/nativeMenu.ts`): a right-click that no app menu
    handled shows nothing, so the WebView's own Reload and Inspect Element never appear; text fields and the
@@ -42,6 +42,7 @@ App
    │  or DbWorkspace: [Sidebar |] TabBar + TabPanels [| Splitter | Inspector]
    │       TabPanels → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel)
    │                 → TableTab (filter bar + ResultsGrid | StructureView)
+   │                 → ObjectPanel (ObjectHeader, DocumentView | RowsView)
    ├─ PendingTray
    └─ StatusBar                        ▤ sidebar toggle, provenance or address, pending n
 Dialogs · CommandPalette · Toasts
@@ -54,7 +55,7 @@ root: it creates the store, keeps the slice registry and re-exports the selector
 and the state types, so components import everything from `state/store`.
 
 - `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs`, `changes`, `data`,
-  `favorites`, `ui`, `nav`, and the temporary `wp` until it moves to the WordPress module). Each exports its
+  `favorites`, `ui`, `nav`, `objects`, and the temporary `wp` until it moves to the WordPress module). Each exports its
   member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
   the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
 - `Store` is an interface extending every core slice's interface. A module adds its members with
@@ -74,21 +75,22 @@ and the state types, so components import everything from `state/store`.
 |---|---|
 | `settings` | `Settings \| null`; null until loaded |
 | `sessions`, `activeSessionId` | open connections (`SessionInfo`, with the connection `slug`) |
-| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error) or `TableTab` (database, table, data/structure view, filter, structured `where`, preview). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
+| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error), `TableTab` (database, table, data/structure view, filter, structured `where`, preview) or `ObjectTab` (a row address, `view: "document" \| "rows"`, `focus`, preview; [Object tabs](#object-tabs)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
+| `documents` | `document` replies by `session/<address or shorthand>`, tagged with their `dataVersion` (`loadDocument`, `keepDocument`, `selectDocument`) |
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
 | `mode`, `modeChosen` | `"wp" \| "db"`. A WordPress database switches to `wp` until the user picks a mode |
-| `wp`, `wpNav` | detection results per `session/db`; navigation stack (max 100) |
+| `wp`, `wpNav` | detection results per `session/db`; navigation stack (max 100) of the WordPress screens |
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
 | `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`; opens the Inspector. `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets it fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
-| `hover` | `{ src, table }` of the value under the pointer (`setHover`, from `useValueHover`); the status bar shows `src` |
+| `hover` | `{ src, table, linked }` under the pointer (`setHover`, from `useValueHover`): a value's provenance, or a table link (`linked`: a sidebar row, a section band); the status bar shows `src`, the linked table highlight reads `table` |
 | `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
 | `dataVersion` | bumped by ⌘R (`refreshView`, which first drops the session's schema cache with `refreshSchema`) and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
 | `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar's `pending n` button uses it) |
 | `uiState` | per connection identity: column widths, pane sizes and `sidebarHidden` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag |
-| `paletteOpen`, `keybindings`, `favorites`, `toasts`, `recentNav`, `entityMeta` | as named |
+| `paletteOpen`, `keybindings`, `favorites`, `toasts`, `recentNav` | as named |
 
 Conventions:
 - Components subscribe with narrow selectors (`useStore((s) => s.x)`), and `useShallow` for derived arrays.
@@ -110,8 +112,8 @@ Conventions:
   Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]`
   pass through). The palette renders inside `Modal` too. `ContextMenu` focuses its first item, moves
   with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
-- Writes: `queueChange` asks Rust to plan (`planChange` for row edits, `wpPlanChange` for WordPress edits) and
-  keeps the returned plan; `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
+- Writes: `queueChange` asks Rust to plan (`planChange` for row edits, `wpPlanChange` for the WordPress screens'
+  edits) and keeps the returned plan; `queueAction(address, action, params)` plans a rule action (`planAction`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
   (`undoBatch`); `discardChange` / `discardAll` drop plans in Rust too. The page never sends SQL to write.
 - In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
@@ -124,9 +126,9 @@ Conventions:
 - `disconnect(sessionId)` closes the session in Rust, then applies one `set` that merges every registered
   slice's `sessionClosed` result: the session and the next active session (`session`), its schema and
   `structures` keys (`session`), its tabs, `queryCounter` and the selection if its tab was closed (`tabs`),
-  its `pending` and `applied` entries (`changes`), its `wp` keys, and `wpNav` and `entityMeta` when it was
-  active (`wp`). A slice that keys data by session implements `sessionClosed`.
-- `switchDatabase` resets `wpNav`, the selection and `entityMeta`; unless the target is known WordPress it
+  its `pending` and `applied` entries (`changes`), its `documents` (`objects`), its `wp` keys, and `wpNav` when it
+  was active (`wp`). A slice that keys data by session implements `sessionClosed`.
+- `switchDatabase` resets `wpNav` and the selection; unless the target is known WordPress it
   also resets `mode` to `db` and `modeChosen`. `connect` resets `wpNav`, `mode` and the selection and reuses
   the session's query tab on reconnect.
 - Tab updates are typed: `updateQueryTab` and `updateTableTab` only patch tabs of their kind.
@@ -166,8 +168,8 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   activeScopes()              // every registered scope whose isActive() is true
   isAncestor(a, scope), specificity(scope), scopeLabel(id)
   ```
-  The core registers `global` → `db` → `table` / `editor` (`registerCoreScopes()`, called by
-  `installCommands`); the WordPress lens registers `global` → `wp` → `document` from
+  The core registers `global` → `db` → `table` / `editor` and `global` → `object` (`registerCoreScopes()`,
+  called by `installCommands`); the WordPress lens registers `global` → `wp` from
   `components/wp/install.ts` (`installWp()`, called by `installModules()` before `installCommands`). Registering a
   command with an unregistered scope throws, which catches typos. When several commands match a key, the
   most specific active scope wins; specificity is the depth in the parent chain (`global` is 0). The
@@ -183,8 +185,9 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   `Digit1` → `1`, `Minus` → `-`), so ⌥⌘K records as `Mod+Alt+K`.
 - **Overrides** come from `keybindings.json` (`null` unbinds). Settings → Shortcuts records new bindings and
   flags conflicts in overlapping scopes.
-- **Palette** (`CommandPalette.tsx`) lists the commands whose `when()` passes, plus tables, entities and
-  recent items. The prefixes `>`, `t:`, `#` and `@` narrow the search. `usePaletteItems(query)` builds
+- **Palette** (`CommandPalette.tsx`) lists the commands whose `when()` passes, the active object's rule
+  actions (`objectActionCommands()`, `Run <action>`), plus tables, entities and recent items. A guest
+  customer hit (`guest:<email>`) opens Find everywhere for the email. The prefixes `>`, `t:`, `#` and `@` narrow the search. `usePaletteItems(query)` builds
   the results and runs the entity search; `PaletteList` renders them and scrolls the active one into
   view. Enter opens a table in the preview tab, ⌘↵ (`goAlt`) opens it pinned.
 - **Menu.** Native menu items emit `command` events. See [backend.md](backend.md#native-menu) for the Rust side
@@ -220,8 +223,9 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 |---|---|
 | Shell | `Toolbar`, `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `Inspector` + `ValueTree` (PHP/JSON decode) |
-| Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), see [Values](#values) |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `Inspector` + `ValueTree` (PHP/JSON decode) |
+| Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` (what a click on a value opens), see [Values](#values) |
+| Objects | `object/`: `ObjectPanel`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, see [Object tabs](#object-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `CommandPalette`, `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens-until-u12) |
 
@@ -285,34 +289,39 @@ stay mounted; inactive panels are `hidden`. Tabs use a roving `tabIndex` with Le
 component, drawn per kind as [ux.md](ux.md#value-grammar) lists. `density` is `grid` (one line, cut to
 `maxCellChars`; serialized data followed by its raw text) or `full` (the default; serialized data expands in
 place to a `ValueTree`, decoded with `api.decodeValue` on first expand). `onOpen(value, event)` fires for
-the kinds that act on click (`opensOnClick`: a reference with a target that is not known to be missing, an
-enum, serialized data in a grid); the caller decides what that does. A secret reveals on its own. A style
+the kinds that act on click (`opensOnClick`: a primary key with a row address, a reference with a target that is
+not known to be missing, an enum, serialized data in a grid); the caller decides what that does, usually through
+`useOpenValue(owner)`: a primary key opens its row as an object (the key of the object `owner` shows switches
+that object between Document and Rows instead), a reference opens its target (several: a menu), an enum runs
+`value.filter`. A secret reveals on its own. A style
 sets `color: var(--style-<name>)`. CSS classes are `val` and `val-<kind>` (`styles/app.css`, values).
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
 (`AppShell` in `App.tsx`) adds one delegated `mouseover`/`mouseleave` listener to the app, reads the nearest
-`[data-src]` at most once per animation frame and writes `hover` (`setHover` skips equal values). The status
+`[data-src]` or `[data-table]` at most once per animation frame and writes `hover` (`setHover` skips equal
+values): a `.val` element is a value (`linked: false`), anything else a table link (`linked: true`; a sidebar
+row, a section band, whose `data-src` is the rule's origin). The status
 bar's address slot shows `hover.src`, else the provenance of `selectedCell.value`, else the address.
 Interactive values with a provenance are Stage anchors `value:<table>.<column>:<key>` (list `values`).
 
-**Value commands** (`commands/values.ts`, `VALUE_COMMANDS` in `APP_COMMANDS`, scope `table`; the object
-scope follows in U7) act on the focused value, `selectedCell.value`, and are rebindable like every command.
+**Value commands** (`commands/values.ts`: `VALUE_COMMANDS`, ids `value.*`, scope `table`, and
+`OBJECT_VALUE_COMMANDS`, ids `object.*`, scope `object`) act on the focused value, `selectFocusedValue`: the
+selected grid cell of the active tab, else the focused value of an object tab's Document view. They are rebindable
+like every command.
 Bare keys never fire in inputs or the editor (`resolveKeydown`).
 
 | Command | Key | Does |
 |---|---|---|
 | `value.copyRaw` | `y` | copies the stored text (a `longText` cell fetched in full; NULL as empty) |
 | `value.copyCondition` | `Y` | `api.valueCondition(sessionId, database, provenance, raw)`: Rust renders the condition from `ColumnEquals` with the session's `Dialect`; on the value column of a `[[meta]]` table it reads the row's key and returns `` `meta_key` = '…' AND `meta_value` = '…' `` |
-| `value.edit` | `e` | dispatches `EDIT_VALUE_EVENT`; the grid of the active tab that holds the selection opens its inline editor there, which queues a core `setCell` through the pending tray |
-| `value.filter` | `f` | `filterRows(tabId, { column, value })` (nav slice): adds the match to the table tab's structured filter, replacing one on the same column, through `showRows` (so ⌘[ returns) |
+| `value.edit` | `e` | dispatches `EDIT_VALUE_EVENT`; the grid of the active tab that holds the selection, or the active Document view, opens its inline editor there, which queues a core `setCell` on the provenance row through the pending tray (documents: rows with a single-column key, meta rows by their own id) |
+| `value.filter` | `f` | in a table tab, `filterRows(tabId, { column, value })` (nav slice): adds the match to the table tab's structured filter, replacing one on the same column, through `showRows` (so ⌘[ returns); elsewhere it opens the value's table filtered by it in the preview tab |
 
 Binary cells offer none of `Y`, `e` and `f`, since their cell holds only a preview.
 
-**WordPress bridge (until U7).** `FieldValue` renders a column field (`RowSource.column`, set for an entity's
-own columns in `views/common.tsx`) through `Value` when its kind has a form there: NULL, `""`, secrets,
-money and time hints, short text; the field's wrapper carries `data-src` either way. Meta and option
-fields, entity links, editable trees and collapsed long text keep the old rendering. `LinkChip` draws an
-entity link as a reference (the id in the accent with a dotted underline, the target's summary secondary).
+**WordPress options screen (until U12).** `FieldValue` renders an option field through `Value` when its kind has
+a form there (NULL, `""`, secrets, money and time hints, short text); entity links (a reference-style button that
+runs `openEntity`), editable trees and collapsed long text keep the old rendering.
 
 ### Results grid
 
@@ -322,9 +331,13 @@ below it. Hover is plain CSS (`--row-hover` on the row, `--cell` on the cell), s
 re-renders the grid. Cells render `Value` with `density="grid"`, from the `valueAt(row, col)` prop
 (`TableTab`: `lib/values.ts` `valueAt` on the page; `QueryTab`: `resultValueAt`; without it `cellValue`);
 values are built once per row and rows identity, so `Value`'s memo holds while the grid re-renders. The
-only kind class on a cell is `num` (right alignment for number cells). A click on a reference opens its
-target with `openAddress(…, { preview: true })` (several targets: a menu), on an enum runs `value.filter`;
-serialized data opens in the Inspector through the selection. Keys live in `KEY_ACTIONS` (arrows, Home/End, PageUp/PageDown, Enter to edit, ⌘C). `bytes`
+only kind class on a cell is `num` (right alignment for number cells). Clicks go through `useOpenValue(owner)`:
+a primary key opens its row as an object in the preview tab, a reference opens its target with
+`openAddress(…, { preview: true })` (several targets: a menu), an enum runs `value.filter`; serialized data
+opens in the Inspector through the selection. On a primary key cell, double-click opens the object pinned and
+Enter in the preview tab; on other cells both edit. Keys live in `KEY_ACTIONS` (arrows, Home/End,
+PageUp/PageDown, Enter, ⌘C). `owner` names the object whose rows a grid shows (Rows view), `focus` selects and
+reveals a cell (the focus carried over from the Document view). `bytes`
 cells are never editable: they show a `0x…` preview, which an edit would write back.
 
 Rust cuts text longer than the `maxCellChars` setting to a `longText { len, preview }` cell
@@ -361,12 +374,49 @@ The page never builds SQL conditions. Opening rows in the Database view passes s
 - `openRow(table, column, value)` (tabs slice): while the Database view shows a table tab of the active
   session, that tab moves to the rows (`showRows`, so ⌘[ returns). Otherwise it switches to Database mode
   (`setMode("db")`) and opens `table` of the active database with `where: [{ column, value }]` in the
-  preview tab. Source-row links, timeline rows, "Find everywhere" hits, option rows and order item meta use it.
+  preview tab. "Find everywhere" hits and option rows use it.
 - `openInDatabase(table, where?)`: the same with any number of matches, in a kept tab. `RowSource.where`
   (`FieldValue.tsx`) carries the matches for a field's "Open row in Database view".
 - `openTableTab(database, table, view?, filter?, { preview?, where? })`: an open tab is reused only when
   its `filter` and `where` are the same. A preview tab that replaces the previous one takes over its history
   and records the replaced address, so a single click in the sidebar can be undone with ⌘[.
+
+### Object tabs
+
+An `ObjectTab` shows one row (`components/object/`, mock `Main` and `Rows`): `address` is its row address,
+whose `view` mirrors the tab's `view` (`null` for the document, `rows`); `focus` is the provenance of the focused
+value. `openObject(address, { preview })` (`objects` slice) reuses an open tab of the same row and otherwise
+opens one, in the preview tab when asked: a preview of either kind (table or object) replaces the session's
+previous preview and takes over its history (`previewTab`, `placed`). Rows open as objects from a primary key
+click, from a grid's double-click or Enter on a primary key cell, from `openAddress` with a row address, from
+the table tab's row menu ("Open as object") and from `openEntity(entity, id)` (WordPress records, see
+[wordpress.md](wordpress.md)).
+
+- **Loading:** `useDocument(sessionId, text, database)` reads `documents` and calls `loadDocument` once per
+  `dataVersion`, so ⌘R and applied writes refresh it; the previous document stays while reloading. The key
+  is the address without its view (`documentText`), so toggling never refetches. A failed load renders
+  `ErrorPanel`. The tab title becomes `<entity> #<key>` once the document names its entity.
+- **`ObjectHeader`:** table name, `#key`, the Document/Rows segmented control with the `object.toggleView` key
+  cap, the actions button, the summary (`Document.header`) as `key value` pairs, other rows an entity
+  shorthand matched (`alternatives`). Right-click opens the actions menu (`actionMenu`): each action plans
+  through `queueAction` after a prompt per required parameter (choices in the title; optional parameters keep
+  their default). The palette lists the same actions.
+- **`DocumentView`:** per group a `GroupHeader` band (`data-table`, relation text from `relationText`, count,
+  the rule's origin as `data-src`; the table name opens the group's rows in a table tab), then the body:
+  `FieldsGroup` and `MetaGroup` as `.row.kv` rows, `RowsGroup` as a `.row.hdr` header plus rows on a grid
+  template sized in characters, `EventsGroup` as time, table and column or key. Values render through the
+  memoized `Field` (no effects per value); a mousedown focuses its provenance (`focusObject`), the focused
+  value gets an accent outline. `+n keys` / `+n rows` under a capped group switches to Rows and scrolls to that
+  group. Zero-row groups collapse into `AlsoLinked` ("Also linked: …").
+- **`RowsView`:** per group with a table its band, the `WHERE` of its rows address, and a compact `ResultsGrid`
+  (12 rows high, then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and
+  editable cells, or, for a group no address names (patterns), its document rows read-only.
+- **Toggle:** `object.toggleView` (`Tab`, scope `object`; never in inputs, the editor or dialogs) and the
+  segmented control call `toggleObjectView` / `setObjectView`, which push the address being left onto the
+  tab's history. Focus follows the provenance: Document → Rows selects the same cell in its group's grid,
+  Rows → Document takes the selected cell's provenance as `focus`.
+- **Linked table highlight:** a section band takes `lit` while `hover` is a table link to its table; sidebar
+  rows take `lit` for a link and `lit-value` (lighter) for a hovered value of that table.
 
 ### Addresses and history
 
@@ -390,11 +440,13 @@ results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's
   (opening a row in place, clearing the column filter) and a replaced preview tab push the address being
   left and clear `forward`; an unchanged address pushes nothing. `navBack` / `navForward` (commands
   `nav.back` ⌘[ and `nav.forward` ⌘], global scope) move the active tab and restore its table and `where`;
-  a row address needs the primary key, so they load the structure first. They are enabled only while
+  a row address needs the primary key, so they load the structure first. An object tab moves to the row
+  address and view it recorded. They are enabled only while
   `selectCanNav` finds history, so ⌘[ still outdents in the editor. In WordPress mode both delegate to
   `wpNav` (`goBack` / `goForward`) until WordPress mode is removed.
-- **`openAddress(text, { preview? })`:** parses, finds the open session by slug, and opens a table or row
-  address in a table tab (`openTableTab` with the matching `where`, in the preview tab when asked). Other targets (home, saved query, find, project)
+- **`openAddress(text, { preview? })`:** parses, finds the open session by slug, opens a row address as an
+  object tab (`openObject`) and a table address in a table tab (`openTableTab` with the matching `where`), in
+  the preview tab when asked. Other targets (home, saved query, find, project)
   answer with a toast until their views exist. The dev hook reaches it as
   `window.databee.getState().openAddress("databee://…")`.
 - **Slug renames:** `renameConnectionSlug(identity, slug)` calls Rust, then rewrites `slug` on the sessions
@@ -420,6 +472,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `sql.ts` | statement ranges and the statement at the cursor |
 | `theme.ts` | `applyAppearance` (scheme, accent, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `applyInitialScheme` (first paint) |
 | `codeTheme.ts` | CodeMirror theme and syntax colors from the scheme's `--code-*` tokens |
+| `document.ts` | object addresses (`objectAddress`, `documentText`, `objectTitle`), `findValue` / `provenanceKey`, group texts (`relationText`, `originText`, `countText`, `moreText`), `groupAnchors` |
 | `crumbs.ts` | WordPress breadcrumbs |
 | `wpFormat.ts` | WordPress formatting (absolute times, flags, initials, `shorten`) |
 

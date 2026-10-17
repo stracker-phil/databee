@@ -1,8 +1,8 @@
 import { TEXT_SIZES } from "../api";
-import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
+import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, selectWp, useStore, type Store, type Tab, type WpList, type WpRoute } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
-import { VALUE_COMMANDS } from "./values";
+import { OBJECT_VALUE_COMMANDS, VALUE_COMMANDS } from "./values";
 
 export * from "./registry";
 export * from "./scopes";
@@ -19,7 +19,7 @@ function dbViewActive(s: Store): boolean {
   return !isWpView(s);
 }
 
-function activeTabIs(kind: "table" | "query"): boolean {
+function activeTabIs(kind: Tab["kind"]): boolean {
   const s = useStore.getState();
   return dbViewActive(s) && selectActiveTab(s)?.kind === kind;
 }
@@ -30,6 +30,7 @@ export function registerCoreScopes() {
   registerScope({ id: "db", parent: "global", label: "Database", isActive: () => dbViewActive(useStore.getState()) });
   registerScope({ id: "table", parent: "db", label: "Table", isActive: () => activeTabIs("table") });
   registerScope({ id: "editor", parent: "db", label: "Editor", isActive: () => activeTabIs("query") });
+  registerScope({ id: "object", parent: "global", label: "Object", isActive: () => activeTabIs("object") });
 }
 
 /** Rust's `Settings::sanitized` clamps the sizes, so zooming past a bound is a no-op. */
@@ -45,7 +46,6 @@ function zoom(step: number | null) {
 
 const inScope = (scope: Scope) => () => activeScopes().includes(scope);
 const inDb = inScope("db");
-const onEntity = inScope("document");
 const hasWp = () => !!selectWp(useStore.getState());
 
 const go = (id: string, title: string, route: WpRoute): Command => ({
@@ -134,25 +134,13 @@ export const APP_COMMANDS: Command[] = [
   { id: "editor.run", title: "Run statement at cursor", scope: "editor", defaultBinding: "Mod+Enter", run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "statement" })) },
   { id: "editor.runAll", title: "Run all statements", scope: "editor", defaultBinding: "Mod+Shift+Enter", run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "all" })) },
   {
-    id: "document.source",
-    title: "Open source row",
-    scope: "document",
-    defaultBinding: "Mod+E",
-    when: () => onEntity() && !!useStore.getState().entityMeta,
+    id: "object.toggleView",
+    title: "Switch between Document and Rows",
+    scope: "object",
+    defaultBinding: "Tab",
     run: () => {
-      const meta = useStore.getState().entityMeta;
-      if (meta) useStore.getState().openRow(meta.table, meta.idColumn, meta.id);
-    },
-  },
-  {
-    id: "wp.snapshot",
-    title: "Take snapshot",
-    scope: "document",
-    defaultBinding: "Mod+Shift+S",
-    when: onEntity,
-    run: () => {
-      const route = selectWpRoute(useStore.getState());
-      if (route.screen === "entity") void useStore.getState().takeSnapshot(route.entity, route.id);
+      const tab = selectActiveTab(useStore.getState());
+      if (tab?.kind === "object") useStore.getState().toggleObjectView(tab.id);
     },
   },
   { id: "connection.new", title: "New connection…", scope: "global", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "connect" }) },
@@ -172,6 +160,7 @@ export const APP_COMMANDS: Command[] = [
   { id: "changes.apply", title: "Apply pending changes", scope: "global", defaultBinding: "Mod+S", menu: true, when: () => selectActivePending(useStore.getState()).length > 0, run: () => void useStore.getState().applyChanges() },
   { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => selectCanUndo(useStore.getState()), run: () => void useStore.getState().undoLast() },
   ...VALUE_COMMANDS,
+  ...OBJECT_VALUE_COMMANDS,
   ...SCREENS,
 ];
 

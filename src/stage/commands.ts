@@ -87,8 +87,7 @@ const FAMILIES: Family[] = [
       const id = rest.join(":");
       const s = useStore.getState();
       if (!entity || !id || !selectWp(s)) return false;
-      s.setMode("wp");
-      s.openEntity(entity, id);
+      void s.openEntity(entity, id);
       return true;
     },
   },

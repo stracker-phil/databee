@@ -8,7 +8,7 @@ import { ValueTree } from "../ValueTree";
 /** `grid`: one line, cut to the cell; `full`: the whole value, serialized data expands in place. */
 export type Density = "grid" | "full";
 
-/** Called when a value that acts on click is clicked: a reference, an enum, serialized data in a grid. */
+/** Called when a value that acts on click is clicked: a primary key, a reference, an enum, serialized data in a grid. */
 export type OpenValue = (value: StoredValue, event: MouseEvent) => void;
 
 interface Props {
@@ -20,6 +20,7 @@ interface Props {
 /** Whether a click on the value does something (docs/ux.md, Value grammar). */
 export function opensOnClick(value: StoredValue, density: Density): boolean {
   const kind = value.kind;
+  if (kind.kind === "primaryKey") return kind.address.target.kind === "row";
   if (kind.kind === "reference") return kind.exists !== false && kind.targets.length > 0;
   if (kind.kind === "serialized") return density === "grid";
   return kind.kind === "enum";
@@ -118,7 +119,11 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
   if (value.raw.t === "null" && (kind.kind === "null" || kind.kind === "noReference")) return <NullText />;
   switch (kind.kind) {
     case "primaryKey":
-      return <span className="val-pk">{text}</span>;
+      return (
+        <span className="val-pk" role={onActivate ? "link" : undefined} onClick={onActivate}>
+          {text}
+        </span>
+      );
     case "reference": {
       if (kind.exists === false) return <span className="val-dang">{text}</span>;
       const inferred = kind.by.kind === "sameName";

@@ -38,10 +38,6 @@ pub(crate) fn money(raw: &str, currency: Option<&str>) -> Option<String> {
     })
 }
 
-pub(crate) fn num(cell: &Cell) -> Option<f64> {
-    cell_str(cell)?.trim().parse().ok()
-}
-
 /// Exact for any `i64`; `"12.0"`-style text is truncated through `f64`.
 pub(crate) fn int(cell: &Cell) -> Option<i64> {
     let s = cell_str(cell)?.trim();
@@ -193,14 +189,6 @@ mod tests {
             assert_eq!(int(&t(input)), expected, "{input:?}");
         }
         assert_eq!(int(&Cell::Null), None);
-    }
-
-    #[test]
-    fn num_trims_whitespace_and_rejects_non_numbers() {
-        assert_eq!(num(&t(" 12.5 ")), Some(12.5));
-        assert_eq!(num(&n("-0.25")), Some(-0.25));
-        assert_eq!(num(&t("x")), None);
-        assert_eq!(num(&Cell::Null), None);
     }
 
     #[test]

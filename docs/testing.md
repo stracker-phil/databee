@@ -32,7 +32,7 @@ The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules
   | File | Needs | Run alone |
   |---|---|---|
   | `tests/mysql.rs` | the Docker fixtures; checks the driver on MariaDB and MySQL | `cargo test --test mysql -- --ignored` |
-  | `tests/sql_mode.rs` | the Docker fixtures (`wp_write`); changes the global `sql_mode`, so it is its own binary | `cargo test --test sql_mode -- --ignored` |
+  | `tests/sql_mode.rs` | the Docker fixtures; plans, applies and undoes a `SetCell` on `wp_write` while the server's global `sql_mode` includes `NO_BACKSLASH_ESCAPES` (restored afterwards; its own binary so nothing else connects meanwhile) | `cargo test --test sql_mode -- --ignored` |
   | `src/wp/server_tests.rs` | the Docker fixtures (`wp_test`, `wp_legacy`, `wp_custom` and `wp_multi` read-only, `wp_write` for edits; every write test owns its rows there, ids from 9100 up); the two tests in `mod real_data` read `DATABEE_WP_TEST=mysql://user:pass@host:port/db`, a real WordPress database of your own, read-only | `cargo test --lib -- --ignored wp::` |
 
   The `real_data` tests panic when `DATABEE_WP_TEST` is unset. `test:db` never runs them: its `cargo test` call

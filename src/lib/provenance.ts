@@ -19,7 +19,7 @@ function targetText(target: Address): string {
   return filter ? `${t.table} · ${filter}` : t.table;
 }
 
-function bySourceText(by: ReferenceSource): string {
+export function bySourceText(by: ReferenceSource): string {
   switch (by.kind) {
     case "foreignKey":
       return `foreign key ${by.constraint}`;

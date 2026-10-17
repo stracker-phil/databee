@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Copy, FileText, Filter, Hash, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Copy, Filter, Hash, Loader2, Plus, RefreshCw, X } from "lucide-react";
 import { api, toAppError, type AppError, type AppliedFilter, type BrowsePage, type ColumnMeta, type TableStructure } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
+import { address } from "../lib/address";
 import { copyText } from "../lib/clipboard";
 import { cellText } from "../lib/format";
 import { valueAt } from "../lib/values";
-import { selectStructure, selectWp, useStore, type TableTab as TableTabState } from "../state/store";
+import { selectStructure, useStore, type TableTab as TableTabState } from "../state/store";
 import type { MenuEntry } from "./ContextMenu";
 import { ErrorPanel } from "./ErrorPanel";
 import { InsetField } from "./Field";
@@ -163,12 +164,9 @@ function Pager({ offset, rows, limit, hasMore, onOffset }: PagerProps) {
   );
 }
 
-/**
- * Row menu entries and cell edits. Duplicate, Delete and cell edits address the row by its single-column
- * primary key; "Open … in WordPress view" needs the WordPress entity's id column instead.
- */
-function useRowEditing(tab: TableTabState, page: BrowsePage | null, primaryKey: string | null, entity: { entity: string; idColumn: string } | undefined) {
-  const openEntity = useStore((s) => s.openEntity);
+/** Row menu entries and cell edits, which address the row by its single-column primary key. */
+function useRowEditing(tab: TableTabState, page: BrowsePage | null, primaryKey: string | null) {
+  const slug = useStore((s) => s.sessions.find((x) => x.id === tab.sessionId)?.slug ?? "");
   const queueChange = useStore((s) => s.queueChange);
   const pinTab = useStore((s) => s.pinTab);
   const columns = page?.result.columns ?? [];
@@ -178,11 +176,10 @@ function useRowEditing(tab: TableTabState, page: BrowsePage | null, primaryKey: 
 
   const rowActions = (row: number): MenuEntry[] => {
     const items: MenuEntry[] = [];
-    const idIndex = entity ? columnIndex(columns, entity.idColumn) : -1;
-    const id = idIndex >= 0 ? cellText(rows[row][idIndex]) : "";
-    if (entity && id) items.push({ label: `Open ${entity.entity} #${id} in WordPress view`, action: () => openEntity(entity.entity, id) });
     const key = keyOf(row);
     if (primaryKey && key != null) {
+      const object = address(slug, tab.database, { kind: "row", table: tab.table, key });
+      items.push({ label: "Open as object", action: () => useStore.getState().openObject(object) });
       const base = { database: tab.database, table: tab.table, keyColumn: primaryKey, key };
       items.push({ label: "Duplicate row", action: () => void queueChange({ type: "duplicateRow", ...base }) });
       items.push({ label: "Delete row", action: () => void queueChange({ type: "deleteRow", ...base }) });
@@ -218,8 +215,7 @@ function DataView({ tab }: { tab: TableTabState }) {
   const { browse, setBrowse, page, error, loading, reload, pageSize } = useBrowse(tab, primaryKey, structure !== null || structureError !== null);
   const setTableFilter = useStore((s) => s.setTableFilter);
   const showRows = useStore((s) => s.showRows);
-  const entity = useStore((s) => (s.sessions.find((x) => x.id === tab.sessionId)?.database === tab.database ? selectWp(s)?.tableEntities[tab.table] : undefined));
-  const { rowActions, onEditCell } = useRowEditing(tab, page, primaryKey, entity);
+  const { rowActions, onEditCell } = useRowEditing(tab, page, primaryKey);
   const [showFilterSql, setShowFilterSql] = useState(false);
   const identity = useStore((s) => s.sessions.find((x) => x.id === tab.sessionId)?.identity ?? null);
   const [savedWidths, saveWidths] = useColumnWidths(identity, tab);
@@ -260,11 +256,6 @@ function DataView({ tab }: { tab: TableTabState }) {
         {structureError && (
           <span className="hint" role="alert" title={structureError.message}>
             <AlertTriangle size="0.846rem" style={{ verticalAlign: -1 }} /> Editing unavailable: the table structure did not load ({structureError.message})
-          </span>
-        )}
-        {entity && (
-          <span className="hint" title="Right-click a row to open it as a document">
-            <FileText size="0.846rem" style={{ verticalAlign: -1 }} /> {entity.entity} documents
           </span>
         )}
         <div className="spacer" />

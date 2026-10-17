@@ -1,18 +1,17 @@
 //! WordPress screens over the effective rules of the `wordpress`, `woocommerce` and
-//! `action-scheduler` presets: documents, lists, detail views and the options inspector.
+//! `action-scheduler` presets: documents, lists, search, snapshots and the options inspector.
 
 pub mod catalog;
 pub mod changes;
 pub mod commands;
 pub mod dashboard;
-pub mod detail;
 pub mod document;
+pub mod find;
 pub mod lists;
-pub mod logs;
 pub mod media;
 pub mod options;
-pub mod peek;
 pub mod rows;
+pub mod search;
 #[cfg(test)]
 mod server_tests;
 pub mod site;
@@ -33,7 +32,7 @@ use ts_rs::TS;
 
 use self::catalog::{Catalog, TableEntity};
 use self::document::{EntityDoc, Fetched};
-use self::rows::{string, text};
+use self::rows::string;
 use self::site::WpContext;
 use crate::db::Database;
 use crate::db::{ResultSet, escape_like};
@@ -58,17 +57,13 @@ pub const COMMANDS: &[&str] = &[
     "wp_failed_by_hook",
     "wp_sessions",
     "wp_content",
-    "wp_view",
-    "wp_order_logs",
     "wp_search",
-    "wp_peek",
     "wp_find_value",
     "wp_options_group",
     "wp_snapshot_take",
     "wp_snapshots",
     "wp_snapshot_diff",
     "wp_snapshot_delete",
-    "wp_compare",
     "wp_plan_change",
 ];
 
@@ -117,17 +112,13 @@ pub fn init(config_dir: &Path) -> TauriPlugin<Wry> {
             commands::wp_failed_by_hook,
             commands::wp_sessions,
             commands::wp_content,
-            commands::wp_view,
-            commands::wp_order_logs,
             commands::wp_search,
-            commands::wp_peek,
             commands::wp_find_value,
             commands::wp_options_group,
             commands::wp_snapshot_take,
             commands::wp_snapshots,
             commands::wp_snapshot_diff,
             commands::wp_snapshot_delete,
-            commands::wp_compare,
             commands::wp_plan_change,
         ])
         .setup(move |app, _| {
@@ -190,7 +181,7 @@ pub(crate) async fn fetch(db: &dyn Database, sql: &str) -> AppResult<ResultSet> 
 }
 
 /// Loads documents for the given IDs, in that order, with meta and relation counts
-/// fetched in one query each.
+/// fetched in one query each. Snapshots flatten them into paths.
 pub async fn load_docs(
     db: &dyn Database,
     ctx: &WpContext,
@@ -233,54 +224,7 @@ pub async fn load_docs(
     };
     let mut docs = document::assemble(&ctx.rules, catalog, def, fetched);
     docs.sort_by_key(|d| ids.iter().position(|id| id.to_string() == d.id));
-    resolve_links(db, ctx, catalog, database, &mut docs).await?;
-    if def.table == ctx.table("posts") {
-        let ids: Vec<String> = docs.iter().map(|d| d.id.clone()).collect();
-        let images = post_images(db, ctx, database, &ids).await?;
-        for doc in &mut docs {
-            doc.image = images.get(&doc.id).cloned();
-        }
-    }
     Ok(docs)
-}
-
-/// `id → summary` of one entity's rows, in one query.
-pub async fn titles(
-    db: &dyn Database,
-    catalog: &Catalog,
-    database: &str,
-    entity: &str,
-    ids: &[String],
-) -> AppResult<HashMap<String, String>> {
-    let dialect = db.dialect();
-    let def = catalog.get(entity)?;
-    let Ok(ids) = catalog::parse_ids(ids) else {
-        return Ok(HashMap::new());
-    };
-    if ids.is_empty() || def.summary_columns.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let columns: Vec<String> = def
-        .summary_columns
-        .iter()
-        .map(|c| dialect.quote_ident(c))
-        .collect();
-    let rs = fetch(
-        db,
-        &format!(
-            "SELECT {id}, CONCAT_WS(' · ', {columns}) FROM {table} WHERE {id} IN ({ids})",
-            id = dialect.quote_ident(&def.id),
-            columns = columns.join(", "),
-            table = dialect.table_ref(database, &def.table),
-            ids = catalog::id_list(&ids),
-        ),
-    )
-    .await?;
-    Ok(rs
-        .rows
-        .iter()
-        .filter_map(|r| Some((string(&r[0])?, text(&r[1])?)))
-        .collect())
 }
 
 /// Featured-image thumbnail URL per post ID (posts without one are left out). Each
@@ -370,47 +314,6 @@ async fn attachment_guids(
         .iter()
         .filter_map(|r| Some((string(&r[0])?, string(&r[1])?)))
         .collect())
-}
-
-/// Fills `label` (and `image` for posts) of every link in the documents, one query per
-/// target entity.
-async fn resolve_links(
-    db: &dyn Database,
-    ctx: &WpContext,
-    catalog: &Catalog,
-    database: &str,
-    docs: &mut [EntityDoc],
-) -> AppResult<()> {
-    let mut wanted: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for doc in docs.iter() {
-        for f in doc.all_fields() {
-            if let Some(link) = &f.link {
-                wanted
-                    .entry(link.entity.clone())
-                    .or_default()
-                    .push(link.id.clone());
-            }
-        }
-    }
-    for (entity, mut ids) in wanted {
-        ids.sort();
-        ids.dedup();
-        let names = titles(db, catalog, database, &entity, &ids).await?;
-        let images = if catalog.get(&entity)?.table == ctx.table("posts") {
-            post_images(db, ctx, database, &ids).await?
-        } else {
-            HashMap::new()
-        };
-        for doc in docs.iter_mut() {
-            for f in doc.all_fields_mut() {
-                if let Some(link) = f.link.as_mut().filter(|l| l.entity == entity) {
-                    link.label = names.get(&link.id).cloned();
-                    link.image = images.get(&link.id).cloned();
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 pub async fn expand(

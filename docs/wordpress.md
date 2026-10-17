@@ -4,7 +4,9 @@ WordPress knowledge is configuration: three built-in presets in `src-tauri/prese
 [presets.md](presets.md) and governed by [`.claude/rules/presets.md`](../.claude/rules/presets.md). The engine
 (`src-tauri/src/rules/`) knows no WordPress names. The WordPress screens in `src-tauri/src/wp/` and
 `src/components/wp/` still exist and read the presets through small adapters ([Screens](#screens-until-u12));
-U7 to U12 replace them with generic views.
+U8 to U12 replace them with generic views. Since U7 a WordPress record (`order 4711`, `user 12`) opens as an
+object tab: the generic document of its row ([frontend.md](frontend.md#object-tabs)); the purpose-built entity
+views are gone.
 
 ## The presets
 
@@ -84,20 +86,25 @@ preset applies.
 | `site.rs` | `WpContext`: the prefix, `table(name)` (network tables under the network prefix), `has_table`, `woocommerce()` (the preset applies) and `hpos()` (orders are read from `wc_orders` wherever that table exists) |
 | `catalog.rs` | `Catalog` from the rules: one `EntityDef` per entity name (an unfiltered entity wins, so `order` is `wc_orders` where it exists and `posts` otherwise), its owned meta table, `links` (unconditional references to another entity's key), `meta_links` (references from the meta value by meta key), `relations` (labelled references to its key); `table_entities`; the document SQL |
 | `document.rs` | `EntityDoc` and `DocField`; `assemble` adds a `Hint` (money with the currency of the row or the document, time for `unix`/`utc` timestamps) and `Sensitive::Secret` from the kind rules; the title is the entity's summary values |
-| `mod.rs` | `WpInfo` (the `rules_info` shim), `load_docs`, `titles`, `expand`, featured images, options queries |
+| `mod.rs` | `WpInfo` (the `rules_info` shim), `load_docs` and `expand` (only for snapshots: rows, meta and relation counts), featured images (`post_images`, for the lists), options queries |
 | `commands.rs` | The Tauri commands, which only forward; `wp_detect` maps `rules_info` to `WpInfo` |
-| `lists.rs`, `detail.rs`, `dashboard.rs`, `peek.rs`, `options.rs`, `snapshot.rs`, `changes.rs` | The list screens, purpose-built views, dashboard (UTC days), peek and find, options inspector, snapshots and writes |
-| `sql.rs`, `rows.rs`, `logs.rs`, `media.rs`, `snapshots_store.rs` | Shared SQL fragments, cell readers (`money`: an amount as stored plus its currency code), log titles, thumbnail URLs, the snapshot store |
+| `lists.rs`, `dashboard.rs`, `search.rs`, `find.rs`, `options.rs`, `snapshot.rs`, `changes.rs` | The list screens, dashboard (UTC days), the palette's entity search (`wp_search`), find everywhere (`wp_find_value`), options inspector, snapshots and writes |
+| `sql.rs`, `rows.rs`, `media.rs`, `snapshots_store.rs` | Shared SQL fragments, cell readers (`money`: an amount as stored plus its currency code), thumbnail URLs, the snapshot store |
 
 `wp_detect` returns `WpInfo { prefix, presets, entities, tableEntities, legacyEntitiesFile }` or `null`.
 `entities` are the entity names of `RulesInfo.entities`, which the palette's `#`/`@` search needs;
-`tableEntities` maps a real table to the entity its rows open as. There is no site URL, WooCommerce version,
+`tableEntities` maps a real table to the entity its rows open as. `openEntity(entity, id)` (`wp` slice) asks
+`document` for the shorthand `<entity> <id>`, keeps the reply (`keepDocument`) and opens its canonical row address
+as an object tab. A list's side pane shows the same document (`object/EntityDocument.tsx`). The Compare screen
+and the entity page's snapshot button are gone until U13; live mode is absent until then. There is no site URL, WooCommerce version,
 HPOS mode, time zone or store currency any more: the status bar shows the prefix, amounts show as stored with
 their own currency, and the dashboard counts days in UTC.
 
-Writes stay `WpChangeRequest` variants planned by `wp_plan_change` (`changes::plan`) into the session's plans:
-`SetMeta`, `DeleteMeta`, `SetOrderStatus`, `SetAutoload`, `DeleteExpiredTransients`, `DeleteLogsBefore`,
-`RetryAction`, `CancelAction`. Raw SQL writes run no WordPress hooks. Undo restores old values exactly
+The remaining screens' writes are `WpChangeRequest` variants planned by `wp_plan_change` (`changes::plan`) into
+the session's plans: `SetAutoload` and `DeleteExpiredTransients` (Options screen) and `DeleteLogsBefore` (dashboard
+insights). Meta edits, order status, retry and cancel moved to core edits on the document's rows (`setCell` on
+the provenance row) and to the presets' rule actions (`set_status`, `retry`, `cancel`, `plan_action`). Raw SQL
+writes run no WordPress hooks. Undo restores old values exactly
 (`db::changes::restore_literal`); literals follow the server's `sql_mode` (`Dialect::sql_string`).
 
 ## Tests
@@ -105,6 +112,5 @@ Writes stay `WpChangeRequest` variants planned by `wp_plan_change` (`changes::pl
 - Preset tests: the built-in files parse, round-trip and apply on the fixtures (`src-tauri/tests/rules.rs`,
   against `wp_test`, `wp_legacy`, `wp_custom` with prefix `xy_`, `wp_multi` and `databee_test`).
 - `src-tauri/src/wp/server_tests.rs` holds the `#[ignore]` integration tests of the remaining screens; they run
-  with `bun run test:db`. `src-tauri/tests/sql_mode.rs` changes the servers' global `sql_mode` and stays its own
-  test binary.
+  with `bun run test:db`.
 - Frontend: `src/components/wp/WpMode.test.tsx` plus tests per component.

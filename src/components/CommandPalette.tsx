@@ -4,6 +4,7 @@ import { api, type SearchHit } from "../api";
 import { allCommands, bindingFor, bindingLabel, type Command } from "../commands";
 import { selectActiveSession, selectWp, useStore, type RecentNav } from "../state/store";
 import { KeyCap } from "./Field";
+import { objectActionCommands } from "./object/actions";
 import { Modal } from "./Modal";
 
 interface Item {
@@ -19,6 +20,9 @@ interface Item {
 }
 
 type Prefix = ">" | "#" | "t:" | "@" | null;
+
+/** Rust's `lists::GUEST_PREFIX`: search hits for guest checkouts carry `guest:<email>` as their id. */
+const GUEST_PREFIX = "guest:";
 
 export function parsePrefix(input: string): { prefix: Prefix; needle: string } {
   const q = input.trimStart();
@@ -85,7 +89,7 @@ function usePaletteItems(query: string) {
     const close = () => setPaletteOpen(false);
     const db = session?.database;
     const inMode = (c: Command) => ((c.scope === "wp") === (mode === "wp") ? 1 : 0);
-    const commandItems = (prefix === null || prefix === ">" ? allCommands() : [])
+    const commandItems = (prefix === null || prefix === ">" ? [...allCommands(), ...objectActionCommands()] : [])
       .filter((c: Command) => c.when?.() !== false)
       .map((c) => ({ c, s: score(c.title, needle) }))
       .filter(({ s }) => s > 0)
@@ -120,7 +124,9 @@ function usePaletteItems(query: string) {
         go: () => {
           close();
           if (h.entity === "option") useStore.getState().navigate({ screen: "list", list: "settings" });
-          else openEntity(h.entity, h.id);
+          // A guest customer is no row: it is found by its billing email.
+          else if (h.id.startsWith(GUEST_PREFIX)) useStore.getState().navigate({ screen: "find", value: h.id.slice(GUEST_PREFIX.length) });
+          else void openEntity(h.entity, h.id);
         },
       }),
     );
@@ -132,7 +138,7 @@ function usePaletteItems(query: string) {
         badge: r.kind === "entity" ? r.entity : "table",
         go: () => {
           close();
-          if (r.kind === "entity") openEntity(r.entity, r.id);
+          if (r.kind === "entity") void openEntity(r.entity, r.id);
           else (setMode("db"), openTableTab(r.database, r.table));
         },
       }),

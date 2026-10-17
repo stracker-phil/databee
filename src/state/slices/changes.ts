@@ -1,4 +1,5 @@
-import { api, type ChangeRequest, type PlannedChange, type WpChangeRequest } from "../../api";
+import { api, type Address, type ChangeRequest, type PlannedChange, type WpChangeRequest } from "../../api";
+import { formatAddress } from "../../lib/address";
 import { fail } from "../requests";
 import { selectActivePending, selectActiveSession, selectLastBatch } from "../selectors";
 import type { Slice } from "../store";
@@ -12,6 +13,8 @@ export interface ChangesSlice {
   /** Bumped to move focus to the pending tray's Apply button. */
   trayFocusRequest: number;
   queueChange(change: ChangeRequest | WpChangeRequest): Promise<boolean>;
+  /** Plans rule action `action` on a row address (or a table address for table actions) for review. */
+  queueAction(address: Address, action: string, params: Record<string, string>): Promise<boolean>;
   discardChange(id: number): Promise<void>;
   discardAll(): Promise<void>;
   applyChanges(): Promise<void>;
@@ -36,6 +39,18 @@ export const changesSlice: Slice<ChangesSlice> = {
       }
     };
 
+    /** Keeps the plan Rust returns; a refused plan becomes an error toast. */
+    const queue = async (sessionId: string, plan: () => Promise<PlannedChange>) => {
+      try {
+        const planned = await plan();
+        set((s) => ({ pending: [...s.pending, { ...planned, sessionId }] }));
+        return true;
+      } catch (e) {
+        fail(e, "Cannot prepare change");
+        return false;
+      }
+    };
+
     return {
       pending: [],
       applied: [],
@@ -45,16 +60,13 @@ export const changesSlice: Slice<ChangesSlice> = {
       async queueChange(change) {
         const session = selectActiveSession(get());
         if (!session) return false;
-        try {
-          const planned = isRowChange(change)
-            ? await api.planChange(session.id, change)
-            : await api.wpPlanChange(session.id, change);
-          set((s) => ({ pending: [...s.pending, { ...planned, sessionId: session.id }] }));
-          return true;
-        } catch (e) {
-          fail(e, "Cannot prepare change");
-          return false;
-        }
+        return queue(session.id, () => (isRowChange(change) ? api.planChange(session.id, change) : api.wpPlanChange(session.id, change)));
+      },
+
+      async queueAction(address, action, params) {
+        const session = get().sessions.find((x) => x.slug === address.connection);
+        if (!session) return false;
+        return queue(session.id, () => api.planAction(session.id, formatAddress(address), action, params));
       },
 
       async discardChange(id) {

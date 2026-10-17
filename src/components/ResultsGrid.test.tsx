@@ -5,9 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api, type Cell } from "../api";
+import { address } from "../lib/address";
 import { syncRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
-import { connectedStore, num, resultSet, settings, text } from "../test/fixtures";
+import { connectedStore, num, resultSet, settings, text, value } from "../test/fixtures";
 import { ResultsGrid } from "./ResultsGrid";
 
 const mocked = vi.mocked(api, true);
@@ -77,6 +78,42 @@ describe("ResultsGrid editing", () => {
       fireEvent.contextMenu(bytes());
       expect(screen.getByRole("menuitem", { name: "Edit value" })).toBeDisabled();
     });
+  });
+});
+
+describe("ResultsGrid primary key cells", () => {
+  const rs = resultSet();
+  const rows = [rs.rows[0]];
+  const valueAt = (row: number, col: number) =>
+    col === 0
+      ? value({ raw: rows[row][col], kind: { kind: "primaryKey", address: address("shop", "db", { kind: "row", table: "wp_posts", key: "1" }) } })
+      : value({ raw: rows[row][col] });
+  const lastTab = () => useStore.getState().tabs.at(-1);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore();
+  });
+
+  it("opens the row as a pinned object on double-click instead of editing", async () => {
+    render(<ResultsGrid columns={rs.columns} rows={rows} source={source} valueAt={valueAt} onEditCell={vi.fn()} />);
+    await userEvent.dblClick(screen.getByText("1"));
+    expect(lastTab()).toMatchObject({ kind: "object", preview: false, address: { target: { kind: "row", table: "wp_posts", key: "1" } } });
+    expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
+  });
+
+  it("opens the row in the preview tab on Enter instead of editing", async () => {
+    render(<ResultsGrid columns={rs.columns} rows={rows} source={source} valueAt={valueAt} onEditCell={vi.fn()} />);
+    await userEvent.click(screen.getByText("Hello world"));
+    await userEvent.keyboard("{Home}{Enter}");
+    expect(lastTab()).toMatchObject({ kind: "object", preview: true, address: { target: { kind: "row", table: "wp_posts", key: "1" } } });
+    expect(screen.queryByLabelText("Edit cell")).not.toBeInTheDocument();
+  });
+
+  it("still edits the other cells of the row on double-click", async () => {
+    render(<ResultsGrid columns={rs.columns} rows={rows} source={source} valueAt={valueAt} onEditCell={vi.fn()} />);
+    await userEvent.dblClick(screen.getByText("Hello world"));
+    expect(screen.getByLabelText("Edit cell")).toHaveValue("Hello world");
   });
 });
 

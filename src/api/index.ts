@@ -3,7 +3,6 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppliedBatch,
   ChangeRequest,
-  CompareRow,
   DiffEntry,
   NewValue,
   PlannedChange,
@@ -17,10 +16,8 @@ import type {
   ActionHistogram,
   ErrorKind,
   DocField,
-  EntityViewData,
   FindGroup,
   HookFailures,
-  PeekFact,
   ListQuery,
   OrderSummary,
   OrderType,
@@ -29,7 +26,6 @@ import type {
   ProductSummary,
   SearchHit,
   SessionSummary,
-  TimelineEvent,
   AppError,
   DecodedValue,
   OptionsOverview,
@@ -168,12 +164,6 @@ export const api = {
     invoke<Page<SessionSummary>>("plugin:wp|wp_sessions", { sessionId, database, query }),
   wpContent: (sessionId: string, database: string, query: ListQuery) =>
     invoke<Page<PostSummary>>("plugin:wp|wp_content", { sessionId, database, query }),
-  wpView: (sessionId: string, database: string, entity: string, id: string) =>
-    invoke<EntityViewData>("plugin:wp|wp_view", { sessionId, database, entity, id }),
-  wpOrderLogs: (sessionId: string, database: string, id: string) =>
-    invoke<TimelineEvent[]>("plugin:wp|wp_order_logs", { sessionId, database, id }),
-  wpPeek: (sessionId: string, database: string, entity: string, id: string) =>
-    invoke<PeekFact[]>("plugin:wp|wp_peek", { sessionId, database, entity, id }),
   wpFindValue: (sessionId: string, database: string, value: string) =>
     invoke<FindGroup[]>("plugin:wp|wp_find_value", { sessionId, database, value }),
   wpSearch: (sessionId: string, database: string, query: string) =>
@@ -192,8 +182,6 @@ export const api = {
   wpSnapshots: (sessionId: string, database: string) => invoke<SnapshotInfo[]>("plugin:wp|wp_snapshots", { sessionId, database }),
   wpSnapshotDiff: (sessionId: string, database: string, id: string) => invoke<DiffEntry[]>("plugin:wp|wp_snapshot_diff", { sessionId, database, id }),
   wpSnapshotDelete: (id: string) => invoke<void>("plugin:wp|wp_snapshot_delete", { id }),
-  wpCompare: (sessionId: string, database: string, entity: string, a: string, b: string) =>
-    invoke<CompareRow[]>("plugin:wp|wp_compare", { sessionId, database, entity, a, b }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu items emit the id of the command they run. */

@@ -6,9 +6,8 @@ import { selectWp, selectWpRoute, useStore, type WpList, type WpRoute } from "..
 import { ErrorPanel } from "../ErrorPanel";
 import { DashboardScreen } from "./Dashboard";
 import { ListScreen } from "./Lists";
-import { EntityScreen } from "./views/EntityScreen";
 import { SettingsScreen } from "./Settings";
-import { CompareScreen, SnapshotsScreen } from "./Debugging";
+import { SnapshotsScreen } from "./Debugging";
 import { FindScreen } from "./FindScreen";
 import { useWpData } from "./useWpData";
 
@@ -58,10 +57,6 @@ export function routeTitle(route: WpRoute): string {
       return "Dashboard";
     case "list":
       return route.list.charAt(0).toUpperCase() + route.list.slice(1);
-    case "entity":
-      return `${route.entity.charAt(0).toUpperCase() + route.entity.slice(1)} #${route.id}`;
-    case "compare":
-      return `Compare #${route.a} ↔ #${route.b}`;
     case "snapshots":
       return "Snapshots";
     case "find":
@@ -130,10 +125,8 @@ function Nav({ route }: { route: WpRoute }) {
 function Header() {
   const { stack, index } = useStore((s) => s.wpNav);
   const route = useStore(selectWpRoute);
-  const meta = useStore((s) => s.entityMeta);
   const { goBack, goForward, setPaletteOpen, navigate } = useStore.getState();
-  const metaKey = route.screen === "entity" ? `${route.entity}:${route.id}` : null;
-  const crumbs = routeCrumbs(route, meta && meta.key === metaKey ? meta : null);
+  const crumbs = routeCrumbs(route);
   return (
     <div className="wp-header" data-stage="wp:header" data-stage-label="Header">
       <button data-stage="wp:back" className="icon-btn" aria-label="Back" title="Back (⌘[)" disabled={index === 0} onClick={goBack}>
@@ -176,8 +169,6 @@ export function WpWorkspace() {
           {route.screen === "dashboard" && <DashboardScreen />}
           {/* ListScreen seeds its search input once, so back and forward must remount it via the history index. */}
           {route.screen === "list" && (route.list === "settings" ? <SettingsScreen key={JSON.stringify(route.params ?? {})} params={route.params} /> : <ListScreen key={`${route.list}:${historyIndex}`} list={route.list} params={route.params} />)}
-          {route.screen === "entity" && <EntityScreen key={`${route.entity}:${route.id}`} entity={route.entity} id={route.id} />}
-          {route.screen === "compare" && <CompareScreen entity={route.entity} a={route.a} b={route.b} />}
           {route.screen === "snapshots" && <SnapshotsScreen />}
           {route.screen === "find" && <FindScreen key={route.value} value={route.value} />}
         </div>

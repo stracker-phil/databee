@@ -1,4 +1,4 @@
-//! Snapshots and comparisons work on flat paths (`meta/_ppcp_fees/gross_amount/value`),
+//! Snapshots work on flat paths (`meta/_ppcp_fees/gross_amount/value`),
 //! which makes diffs trivial to compute and to render as a list.
 
 use std::collections::BTreeMap;
@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::catalog::Catalog;
-use super::detail::args_reference;
 use super::document::EntityDoc;
 use super::lists::epoch;
 use super::rows::{cell_str, text};
@@ -123,6 +122,20 @@ pub struct Scope {
     pub include_actions: bool,
 }
 
+/// Whether Action Scheduler args (JSON) reference the given ID as a number or string.
+fn args_reference(args: &str, id: &str) -> bool {
+    fn walk(v: &serde_json::Value, id: &str) -> bool {
+        match v {
+            serde_json::Value::Number(n) => n.to_string() == id,
+            serde_json::Value::String(s) => s == id,
+            serde_json::Value::Array(a) => a.iter().any(|x| walk(x, id)),
+            serde_json::Value::Object(o) => o.values().any(|x| walk(x, id)),
+            _ => false,
+        }
+    }
+    serde_json::from_str::<serde_json::Value>(args).is_ok_and(|v| walk(&v, id))
+}
+
 pub async fn capture(
     session: &dyn Database,
     ctx: &WpContext,
@@ -224,59 +237,18 @@ pub async fn diff_against_now(
     Ok(diff(&taken.values, &now))
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
-pub struct CompareRow {
-    pub path: String,
-    pub a: Option<String>,
-    pub b: Option<String>,
-}
-
-/// Side-by-side comparison of two entities of the same kind (paths relative to each).
-pub async fn compare(
-    session: &dyn Database,
-    ctx: &WpContext,
-    catalog: &Catalog,
-    db: &str,
-    entity: &str,
-    a: &str,
-    b: &str,
-) -> AppResult<Vec<CompareRow>> {
-    let docs = load_docs(
-        session,
-        ctx,
-        catalog,
-        db,
-        entity,
-        &[a.to_string(), b.to_string()],
-    )
-    .await?;
-    let find = |id: &str| {
-        docs.iter()
-            .find(|d| d.id == id)
-            .ok_or_else(|| AppError::InvalidInput(format!("{entity} #{id} was not found")))
-    };
-    let (mut pa, mut pb) = (Paths::new(), Paths::new());
-    flatten_doc("", find(a)?, &mut pa);
-    flatten_doc("", find(b)?, &mut pb);
-    let mut keys: Vec<&String> = pa.keys().chain(pb.keys()).collect();
-    keys.sort();
-    keys.dedup();
-    Ok(keys
-        .into_iter()
-        .map(|k| CompareRow {
-            path: k.clone(),
-            a: pa.get(k).cloned(),
-            b: pb.get(k).cloned(),
-        })
-        .collect())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::decode::value::decode;
+
+    #[test]
+    fn action_args_must_reference_the_exact_id() {
+        assert!(args_reference("[3088,false]", "3088"));
+        assert!(args_reference(r#"{"order_id":"3088"}"#, "3088"));
+        assert!(!args_reference("[13088]", "3088"));
+        assert!(!args_reference("not json 3088", "3088"));
+    }
 
     #[test]
     fn decoded_values_flatten_into_sub_paths() {

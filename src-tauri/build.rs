@@ -25,17 +25,13 @@ const WP_COMMANDS: &[&str] = &[
     "wp_failed_by_hook",
     "wp_sessions",
     "wp_content",
-    "wp_view",
-    "wp_order_logs",
     "wp_search",
-    "wp_peek",
     "wp_find_value",
     "wp_options_group",
     "wp_snapshot_take",
     "wp_snapshots",
     "wp_snapshot_diff",
     "wp_snapshot_delete",
-    "wp_compare",
     "wp_plan_change",
 ];
 

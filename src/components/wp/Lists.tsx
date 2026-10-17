@@ -14,14 +14,14 @@ import {
 } from "../../api";
 import { formatCount, relativeTime } from "../../lib/format";
 import { shorten } from "../../lib/wpFormat";
-import { selectWpRoute, useStore, type WpList } from "../../state/store";
+import { selectActiveSession, selectWpRoute, useStore, type WpList } from "../../state/store";
 import { ErrorPanel } from "../ErrorPanel";
 import { DEFAULT_PANE_HEIGHT, Splitter, usePaneSize, useWindowSize } from "../Splitter";
 import { BreakdownChart } from "./BreakdownChart";
 import { StackedBars } from "./charts";
 import { Ago, Avatar, Card, StatusPill, Thumb } from "./ui";
 import { useWpData } from "./useWpData";
-import { EntityScreen } from "./views/EntityScreen";
+import { EntityDocument } from "../object/EntityDocument";
 
 const PAGE = 50;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -368,6 +368,7 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
   );
 
   const route = useStore(selectWpRoute);
+  const session = useStore(selectActiveSession);
   const { replaceRoute, openEntity } = useStore.getState();
   const bottom = useStore((s) => s.settings?.inspectorDock === "bottom");
   const { width, height } = useWindowSize();
@@ -386,7 +387,7 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
   const select = useCallback(
     (item: unknown) => {
       const target = rowTarget(list, item);
-      if (!split) return openEntity(target.entity, target.id);
+      if (!split) return void openEntity(target.entity, target.id);
       if (route.screen === "list") replaceRoute({ ...route, selected: target });
     },
     [list, split, route, replaceRoute, openEntity],
@@ -402,7 +403,7 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
     if (!items.length) return;
     if (e.key === "Enter" && selected) {
       e.preventDefault();
-      openEntity(selected.entity, selected.id);
+      void openEntity(selected.entity, selected.id);
       return;
     }
     // Arrows move the side pane's selection; without the pane a row opens as a full page.
@@ -498,15 +499,15 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
         <div className="detail-head">
           <span className="muted small">{selected.entity} #{selected.id}</span>
           <div className="spacer" />
-          <button className="btn tiny" onClick={() => openEntity(selected.entity, selected.id)} title="Open as a full page (↵)">
-            <ExternalLink size="0.846rem" /> Open page
+          <button className="btn tiny" onClick={() => void openEntity(selected.entity, selected.id)} title="Open as an object tab (↵)">
+            <ExternalLink size="0.846rem" /> Open object
           </button>
           <button className="icon-btn tiny" aria-label="Close detail" onClick={() => route.screen === "list" && replaceRoute({ ...route, selected: undefined })}>
             <X size="0.846rem" />
           </button>
         </div>
         <div className="detail-body">
-          <EntityScreen key={`${selected.entity}:${selected.id}`} entity={selected.entity} id={selected.id} embedded />
+          {session?.database && <EntityDocument sessionId={session.id} database={session.database} entity={selected.entity} id={selected.id} />}
         </div>
       </aside>
     </div>

@@ -128,11 +128,10 @@ describe("conflicts", () => {
   afterEach(clearCommands);
 
   it("reports shared bindings only in overlapping scopes", () => {
-    registerCommands([cmd("wp", "wp", "Mod+F"), cmd("table", "table", "Mod+F"), cmd("doc", "document", "Mod+E"), cmd("glob", "global", "Mod+E")]);
+    registerCommands([cmd("wp", "wp", "Mod+F"), cmd("table", "table", "Mod+F"), cmd("doc", "object", "Mod+E"), cmd("glob", "global", "Mod+E")]);
     const found = conflicts().map((c) => [c.a.id, c.b.id]);
     expect(found).toEqual([["doc", "glob"]]);
     expect(conflicts({ wp: "Mod+E" }).map((c) => [c.a.id, c.b.id])).toEqual([
-      ["wp", "doc"],
       ["wp", "glob"],
       ["doc", "glob"],
     ]);

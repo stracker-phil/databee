@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { toAppError, type Address, type Cell, type ColumnMeta, type Value as StoredValue } from "../api";
-import { EDIT_VALUE_EVENT, runCommand } from "../commands";
-import { formatAddress } from "../lib/address";
+import { EDIT_VALUE_EVENT } from "../commands";
 import { fullCellText, type CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import { cellText, rowsToJson, rowsToTsv } from "../lib/format";
@@ -11,6 +10,7 @@ import { useRowHeight } from "../lib/theme";
 import { cellValue } from "../lib/values";
 import { selectNullLabel, useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { openRowObject, useOpenValue } from "./value/useOpenValue";
 import { Value } from "./value/Value";
 
 interface Props {
@@ -30,6 +30,10 @@ interface Props {
   columnWidths?: Record<string, number>;
   /** Called after a drag or auto-fit with every column's width. */
   onColumnWidthsChange?: (widths: Record<string, number>) => void;
+  /** The object whose rows these are; clicking its own primary key switches its view instead of opening it. */
+  owner?: Address;
+  /** A cell to select and scroll to, e.g. the focused value carried over from the Document view. */
+  focus?: CellPos | null;
 }
 
 const MIN_WIDTH_REM = 3;
@@ -38,7 +42,7 @@ const MAX_FIT_REM = 40;
 /** Viewport the virtualizer assumes until the first layout measurement, so the first frame already has rows. */
 const INITIAL_VIEWPORT = { width: 1000, height: 800 };
 
-type CellPos = { row: number; col: number };
+export type CellPos = { row: number; col: number };
 
 const samePos = <T extends CellPos>(a: T | null, row: number, col: number): a is T => a?.row === row && a.col === col;
 
@@ -56,7 +60,7 @@ interface KeyContext {
   /** Rows that fit the viewport, for PageUp / PageDown. */
   pageRows: number;
   moveTo(row: number, col: number): void;
-  edit(at: CellPos): void;
+  open(at: CellPos): void;
   copyValue(at: CellPos): void;
 }
 
@@ -70,7 +74,7 @@ const KEY_ACTIONS: Record<string, (c: KeyContext) => void> = {
   End: (c) => c.moveTo(c.at.row, c.lastCol),
   PageUp: (c) => c.moveTo(c.at.row - c.pageRows, c.at.col),
   PageDown: (c) => c.moveTo(c.at.row + c.pageRows, c.at.col),
-  Enter: (c) => c.edit(c.at),
+  Enter: (c) => c.open(c.at),
   "Mod+c": (c) => c.copyValue(c.at),
 };
 
@@ -122,9 +126,22 @@ function useEditValueCommand(source: CellSource, startEdit: (at: CellPos) => voi
   }, [source.sessionId, source.resultId]);
 }
 
-const openTarget = (target: Address) => void useStore.getState().openAddress(formatAddress(target), { preview: true });
+/** Selects `focus` when it changes or new rows arrive, and scrolls the grid to it. */
+function useFocusCell(focus: CellPos | null | undefined, rows: Cell[][], select: (row: number, col: number) => void, reveal: (row: number) => void) {
+  const apply = useRef({ select, reveal });
+  useEffect(() => {
+    apply.current = { select, reveal };
+  });
+  const row = focus?.row ?? -1;
+  const col = focus?.col ?? -1;
+  useEffect(() => {
+    if (row < 0 || row >= rows.length) return;
+    apply.current.select(row, col);
+    apply.current.reveal(row);
+  }, [row, col, rows]);
+}
 
-export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange }: Props) {
+export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus }: Props) {
   const nullLabel = useStore(selectNullLabel);
   const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
   const selectCell = useStore((s) => s.selectCell);
@@ -214,14 +231,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
     selectCell({ row, col, column: columns[col], cell: rows[row][col], source, value: rowValues(row)[col] });
   };
 
-  // A click lands after the mousedown that selected the cell, so value commands act on this value.
-  const openValue = useCallback((value: StoredValue, e: ReactMouseEvent) => {
-    const kind = value.kind;
-    if (kind.kind === "enum") return void runCommand("value.filter");
-    if (kind.kind !== "reference") return;
-    if (kind.targets.length === 1) return openTarget(kind.targets[0]);
-    setMenu({ x: e.clientX, y: e.clientY, items: kind.targets.map((t) => ({ label: `Open ${formatAddress(t)}`, action: () => openTarget(t) })) });
-  }, []);
+  const { openValue, targetMenu } = useOpenValue(owner ?? null);
 
   // Bytes cells carry a preview, not their value; editing it would write the preview back. Long text is fetched first.
   const canEdit = (cell: Cell) => !!onEditCell && cell.t !== "bytes";
@@ -243,6 +253,17 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   const copyCell = (at: CellPos) => withFullText(at, (text) => void copyText(text, "value"));
 
   useEditValueCommand(source, startEdit);
+  useFocusCell(focus, rows, select, (row) => {
+    virtualizer.scrollToIndex(row);
+    scrollRef.current?.scrollIntoView?.({ block: "nearest" });
+  });
+
+  /** A primary key cell opens its row as an object (double-click pinned, Enter in the preview tab); other cells edit. */
+  const openOrEdit = (at: CellPos, preview: boolean) => {
+    const value = rows[at.row] ? rowValues(at.row)[at.col] : null;
+    if (value?.kind.kind === "primaryKey" && value.kind.address.target.kind === "row") return openRowObject(value.kind.address, owner ?? null, preview);
+    startEdit(at);
+  };
 
   const openMenu = (e: React.MouseEvent, row: number, col: number) => {
     e.preventDefault();
@@ -283,7 +304,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
         select(target, clamp(col, lastCol));
         virtualizer.scrollToIndex(target);
       },
-      edit: startEdit,
+      open: (at) => openOrEdit(at, true),
       copyValue: copyCell,
     });
   };
@@ -349,7 +370,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
                   className={cellClass(cell, v.index, ci, { selected, editing })}
                   style={{ width: `var(--col-${ci})` }}
                   onMouseDown={() => select(v.index, ci)}
-                  onDoubleClick={() => startEdit({ row: v.index, col: ci })}
+                  onDoubleClick={() => openOrEdit({ row: v.index, col: ci }, false)}
                   onContextMenu={(e) => openMenu(e, v.index, ci)}
                 >
                   {samePos(editing, v.index, ci) ? (
@@ -379,6 +400,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
         })}
       </div>
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
+      {targetMenu}
     </div>
   );
 }

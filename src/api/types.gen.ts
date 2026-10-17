@@ -52,8 +52,6 @@ export type ActionSummary = { id: string, hook: string, status: string, schedule
  */
 message: string | null, };
 
-export type ActionView = { doc: EntityDoc, hook: string, status: string, scheduled: number | null, args: DecodedValue | null, group: string | null, logs: Array<LogLine>, };
-
 export type Address = { 
 /**
  * The connection slug (`RecentConnection::slug`).
@@ -114,8 +112,6 @@ export type AppliedFilter = { kind: FilterKind, sql: string,
  * Human label, e.g. `ID in (3229, 3227)`.
  */
 label: string, };
-
-export type Attribution = { source: string | null, sourceType: string | null, referrer: string | null, entry: string | null, pages: string | null, sessions: string | null, device: string | null, userAgent: string | null, sessionStart: number | null, utm: Array<[string, string]>, };
 
 export type Autoload = { 
 /**
@@ -182,8 +178,6 @@ style: string, };
 
 export type ChangeRequest = { "type": "setCell", database: string, table: string, keyColumn: string, key: string, column: string, value: string | null, } | { "type": "deleteRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "duplicateRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "insertRow", database: string, table: string, values: Array<[string, string | null]>, } | { "type": "addRow", database: string, table: string, keyColumn: string, values: Array<[string, string | null]>, };
 
-export type ChipTarget = { "kind": "list", list: WpList, params: { [key in string]: string }, } | { "kind": "timeline" };
-
 /**
  * `column = value`, or `column IS NULL` for a `None` value.
  */
@@ -233,8 +227,6 @@ export type ColumnRef = string;
  */
 export type ColumnsRef = { table: string, columns: Array<string>, };
 
-export type CompareRow = { path: string, a: string | null, b: string | null, };
-
 /**
  * Everything needed to reach a database, except the password.
  */
@@ -262,8 +254,6 @@ sampleUnresolved: Array<string>,
  * stand and the sample is empty.
  */
 timedOut: boolean, };
-
-export type CustomerView = { doc: EntityDoc, name: string, login: string | null, email: string | null, avatar: string | null, roles: Array<string>, registered: number | null, lastActive: number | null, billing: PostalAddress | null, shipping: PostalAddress | null, orderCount: number, totalSpent: string | null, averageOrder: string | null, orders: Array<OrderSummary>, subscriptions: Array<OrderSummary>, tokens: Array<PaymentToken>, session: EntityLink | null, related: Array<RelatedChip>, };
 
 export type Dashboard = { orders: OrderStats | null, recentOrders: Array<OrderSummary>, autoloadBytes: number, autoloadHealthy: boolean, transientsExpired: number, actions: ActionStats | null, 
 /**
@@ -343,37 +333,9 @@ search_exact?: Array<string>,
  */
 people?: boolean, };
 
-export type EntityDoc = { entity: string, label: string, id: string, 
-/**
- * The entity's summary values, joined.
- */
-title: string | null, subtitle: string | null, 
-/**
- * Featured image (posts), resolved after assembly.
- */
-image: string | null, 
-/**
- * Where the row lives, so the UI can jump to the table view.
- */
-table: string, idColumn: string, fields: Array<DocField>, meta: Array<MetaGroup>, 
-/**
- * Where the meta rows live, so the UI can open them filtered in the table view.
- */
-metaSource: MetaSource | null, relations: Array<RelationInfo>, };
-
-export type EntityLink = { entity: string, id: string, 
-/**
- * The target's summary, resolved in a batch after assembly.
- */
-label: string | null, image: string | null, };
-
-export type EntityViewData = { "view": "order" } & OrderView | { "view": "customer" } & CustomerView | { "view": "product" } & ProductView | { "view": "action" } & ActionView | { "view": "session" } & SessionView | { "view": "generic" } & EntityDoc;
+export type EntityLink = { entity: string, id: string, };
 
 export type ErrorKind = "database" | "connection" | "auth_failed" | "password_required" | "timeout" | "cancelled" | "confirmation_required" | "session_not_found" | "invalid_input" | "keychain" | "io";
-
-export type EventKind = "created" | "paid" | "completed" | "note" | "customer_note" | "action" | "log" | "session" | "refund";
-
-export type EventLevel = "info" | "warning" | "error";
 
 export type ExecuteResponse = { results: Array<ResultSet>, elapsedMs: number, 
 /**
@@ -387,11 +349,6 @@ failure: StatementFailure | null, };
 
 export type Facet = { value: string, label: string, count: number, };
 
-/**
- * How a fact's value renders; `Time` values are unix timestamps.
- */
-export type FactKind = "text" | "status" | "money" | "time";
-
 export type Favorite = { id: string, name: string, 
 /**
  * Server account (`user@host:port`) the favorite belongs to; `None` shows it everywhere.
@@ -399,12 +356,6 @@ export type Favorite = { id: string, name: string,
 scope: string | null, target: FavoriteTarget, };
 
 export type FavoriteTarget = { "kind": "table", database: string, table: string, } | { "kind": "query", sql: string, };
-
-export type Fees = { gross: string, fee: string, net: string, 
-/**
- * Fee share of gross, 0–1, for the waterfall bar.
- */
-feeRatio: number, };
 
 export type FilterKind = "ids" | "sql" | "columns";
 
@@ -541,13 +492,6 @@ export type KindRuleFields = { columns?: Array<ColumnGlob>, meta_keys?: Array<st
  */
 export type LaunchEvent = { "type": "connect", requestId: string, spec: ConnectionSpec, hasPassword: boolean, savePassword: boolean, } | { "type": "error", message: string, };
 
-export type LineItem = { id: string, name: string, kind: string, quantity: string | null, total: string | null, product: EntityLink | null, sku: string | null, 
-/**
- * Item meta without `_` keys, empty and serialized values; the rest is one click away
- * in `woocommerce_order_itemmeta`.
- */
-meta: Array<[string, string]>, };
-
 export type ListQuery = { status?: string | null, 
 /**
  * Orders: gateway id; products: product type; users: role; content: post type.
@@ -560,32 +504,11 @@ sort?: string | null, descending?: boolean | null, };
 
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
-export type LogLine = { at: number | null, message: string, };
-
 /**
  * How one column's value must look: `"x"` (=), `["a", "b"]` (IN), `{ glob }`, `{ like }`,
  * `{ regexp }` or `{ not = <match> }`. Integers are read as their text.
  */
 export type Match = string | Array<string> | { glob: string, } | { like: string, } | { regexp: string, } | { not: Match, };
-
-/**
- * The meta rows of a document, in stored order, named by their table.
- */
-export type MetaGroup = { name: string, 
-/**
- * All keys start with `_`.
- */
-private: boolean, entries: Array<DocField>, };
-
-export type MetaSource = { table: string, 
-/**
- * Column holding the entity ID, e.g. `order_id`.
- */
-fk: string, 
-/**
- * Column holding the key, e.g. `meta_key`.
- */
-key: string, };
 
 /**
  * A key/value table. With `owner` and `fk` it describes the owner's rows and declares the
@@ -650,8 +573,6 @@ export type OrderSummary = { id: string, kind: string, status: string, total: st
  */
 export type OrderType = "shop_order" | "shop_subscription";
 
-export type OrderView = { doc: EntityDoc, kind: string, status: string, total: string | null, currency: string | null, created: number | null, paid: number | null, completed: number | null, customer: EntityLink | null, customerEmail: string | null, parent: EntityLink | null, billing: PostalAddress | null, shipping: PostalAddress | null, addressNotes: Array<string>, items: Array<LineItem>, totals: Array<[string, string]>, payment: PaymentPanel | null, attribution: Attribution | null, timeline: Array<TimelineEvent>, related: Array<RelatedChip>, };
-
 export type Page<T> = { items: Array<T>, hasMore: boolean, 
 /**
  * Page size after the clamp to `PAGE_MAX`; the next page starts at `offset + limit`.
@@ -685,12 +606,6 @@ export type ParamType = "text" | "int";
  */
 export type Pattern = { name: string, owner: string, owner_when?: { [key in string]: Match }, table: string, where: string, order?: string | null, limit?: number | null, };
 
-export type PaymentPanel = { gateway: string | null, gatewayTitle: string | null, transactionId: string | null, paypalOrderId: string | null, intent: string | null, mode: string | null, source: string | null, payerEmail: string | null, fees: Fees | null, };
-
-export type PaymentToken = { id: string, gateway: string, kind: string, isDefault: boolean, summary: string, };
-
-export type PeekFact = { label: string, value: string, kind: FactKind, };
-
 /**
  * A saved query a preset ships. Without `home` it is offered in the palette only.
  */
@@ -706,8 +621,6 @@ title?: string | null, sql: string, home?: Home | null, };
 export type PlannedChange = { id: number, description: string, statements: Array<string>, canUndo: boolean, };
 
 export type PostSummary = { id: string, title: string | null, kind: string, status: string, author: string | null, date: number | null, modified: number | null, };
-
-export type PostalAddress = { name: string | null, company: string | null, lines: Array<string>, country: string | null, email: string | null, phone: string | null, };
 
 /**
  * One preset: rules for tables named without the prefix.
@@ -738,8 +651,6 @@ name: string, source: PresetSource, error: string | null, };
 export type PresetSource = { "kind": "builtIn" } | { "kind": "user", path: string, };
 
 export type ProductSummary = { id: string, name: string, status: string, kind: string | null, sku: string | null, price: string | null, stockStatus: string | null, stock: string | null, totalSales: number, variations: number, image: string | null, };
-
-export type ProductView = { doc: EntityDoc, name: string, status: string, kind: string | null, image: string | null, sku: string | null, price: string | null, regularPrice: string | null, salePrice: string | null, stockStatus: string | null, stock: string | null, totalSales: string | null, terms: Array<[string, Array<string>]>, attributes: Array<[string, Array<string>]>, variations: Array<Variation>, related: Array<RelatedChip>, };
 
 /**
  * One database of one connection. Fields use the snake_case of the rule types, so the stored
@@ -828,18 +739,6 @@ table: Address, column: string,
  */
 key: boolean, };
 
-export type RelatedChip = { label: string, link: EntityLink | null, 
-/**
- * For counts without a single target (e.g. "3 notes").
- */
-count: number | null, 
-/**
- * Where the chip leads when it has no single `link`.
- */
-target: ChipTarget | null, };
-
-export type RelationInfo = { name: string, label: string, entity: string, count: number, };
-
 export type Resolved = { 
 /**
  * The canonical form: table and column names as the server spells them, the default view dropped.
@@ -889,8 +788,6 @@ styles: Array<CellStyle>, };
  * covers composite keys.
  */
 export type RowKey = Array<KeyPart>;
-
-export type RowRef = { table: string, idColumn: string, id: string, };
 
 /**
  * What `rules_info` returns: the prefixes, the presets and the entities of a database.
@@ -950,8 +847,6 @@ account: string, displayName: string, serverVersion: string, database: string | 
 slug: string, };
 
 export type SessionSummary = { key: string, expires: number | null, customerId: string | null, email: string | null, items: number, total: string | null, };
-
-export type SessionView = { doc: EntityDoc, key: string, expires: number | null, customer: EntityLink | null, items: number, total: string | null, email: string | null, value: DecodedValue | null, };
 
 /**
  * A `set` value: text as an SQL literal, or `{ sql = "…" }` as an SQL expression.
@@ -1068,16 +963,6 @@ export type Target = { "kind": "home" } | { "kind": "table", table: string, filt
 
 export type Theme = "system" | "light" | "dark";
 
-export type TimelineEvent = { at: number, kind: EventKind, title: string, detail: string | null, level: EventLevel, link: EntityLink | null, 
-/**
- * The full original text when `title` is a summary (log lines).
- */
-raw?: string | null, 
-/**
- * The table row behind the event, for "Source row".
- */
-row?: RowRef | null, };
-
 export type TransientInfo = { name: string, siteWide: boolean, bytes: number, 
 /**
  * Unix timestamp; `None` means the transient never expires.
@@ -1132,11 +1017,9 @@ exists: boolean | null, } | { "kind": "noReference" } | { "kind": "enum" } | { "
 
 export type ValueNode = { kind: NodeKind, text?: string, class?: string, children?: Array<ValueChild>, note?: string, };
 
-export type Variation = { id: string, attributes: Array<[string, string]>, sku: string | null, price: string | null, stockStatus: string | null, stock: string | null, image: string | null, };
-
 export type View = "document" | "rows";
 
-export type WpChangeRequest = { "type": "setMeta", database: string, entity: string, id: string, key: string, value: string, } | { "type": "deleteMeta", database: string, entity: string, id: string, key: string, } | { "type": "setOrderStatus", database: string, id: string, status: string, } | { "type": "setAutoload", database: string, option: string, on: boolean, } | { "type": "deleteExpiredTransients", database: string, } | { "type": "deleteLogsBefore", database: string, days: number, source?: string | null, } | { "type": "retryAction", database: string, id: string, } | { "type": "cancelAction", database: string, id: string, };
+export type WpChangeRequest = { "type": "setAutoload", database: string, option: string, on: boolean, } | { "type": "deleteExpiredTransients", database: string, } | { "type": "deleteLogsBefore", database: string, days: number, source?: string | null, };
 
 /**
  * `rules_info` in the shape the WordPress screens read.

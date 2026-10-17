@@ -1,4 +1,6 @@
-import type { DatabaseInfo, WpInfo } from "../api";
+import type { DatabaseInfo, Value, WpInfo } from "../api";
+import { documentText, findValue } from "../lib/document";
+import { documentKey, type DocumentEntry } from "./slices/objects";
 import type { StructureEntry } from "./slices/session";
 import type { WpRoute } from "./slices/wp";
 import type { Store } from "./store";
@@ -21,6 +23,21 @@ export const selectNullLabel = (s: Store) => s.settings?.nullLabel ?? "NULL";
 export const selectMaxCellChars = (s: Store) => s.settings?.maxCellChars ?? 500;
 
 export const selectActiveTab = (s: Store) => s.tabs.find((t) => t.id === s.activeTabId) ?? null;
+
+export const selectDocument = (s: Store, sessionId: string, text: string): DocumentEntry | undefined => s.documents[documentKey(sessionId, text)];
+
+/**
+ * The value the value commands and the status bar act on: the selected grid cell of the active tab, else
+ * the focused value of an object tab's document.
+ */
+export const selectFocusedValue = (s: Store): Value | null => {
+  const tab = selectActiveTab(s);
+  if (!tab) return null;
+  if (s.selectedCell?.tabId === tab.id && s.selectedCell.value) return s.selectedCell.value;
+  if (tab.kind !== "object" || tab.view !== "document" || !tab.focus) return null;
+  const document = s.documents[documentKey(tab.sessionId, documentText(tab.address))]?.document;
+  return document ? findValue(document, tab.focus) : null;
+};
 
 /** Back or forward has somewhere to go: the active tab's history, or WordPress mode's own. */
 export const selectCanNav = (s: Store, direction: "back" | "forward"): boolean => {

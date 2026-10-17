@@ -173,6 +173,9 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .si .meta { color: var(--o3); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
 .si svg { flex: none; color: var(--o3); }
 .si.system .label { color: var(--o3); }
+/* Linked table highlight (docs/ux.md): a hovered band or table link lights its entry; a hovered value, lighter. */
+.si.lit { background: var(--lit); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
+.si.lit-value { background: var(--lit); color: var(--text); }
 .tree-children { padding-left: 1.077rem; }
 .sidebar-empty { padding: 0.462rem 1.231rem; color: var(--o3); font-size: var(--fs-small); }
 
@@ -490,6 +493,50 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .val-secret, button.val-ser, button.val-ref { border: none; background: none; padding: 0; font: inherit; }
 .val-secret:hover, .val-ser:hover { color: var(--text); }
 .val-tree { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; }
+
+/* ---------- object view ---------- */
+/* mock Main: the header block, section bands (.sh) and rows (.row, .kv, .hdr) share the row anatomy. */
+.object { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.object-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 1.231rem; border-bottom: 1px solid var(--line); }
+.object-title { display: flex; align-items: center; gap: 0.923rem; flex-wrap: wrap; }
+.object-title .tn { font-family: var(--font-mono); font-size: var(--fs-large); color: var(--o2); }
+.object-title .key { font-family: var(--font-mono); font-size: var(--fs-large); font-weight: 600; color: var(--accent); }
+.object-summary { display: flex; flex-wrap: wrap; gap: 0.462rem 1.846rem; font-family: var(--font-mono); font-size: var(--data-font-size); }
+.object-alternatives { color: var(--o3); font-size: var(--fs-small); }
+.document { display: flex; flex-direction: column; }
+.object .sh {
+  display: flex; align-items: baseline; gap: 0.923rem; margin-top: 28px; padding: 6px 12px;
+  background: var(--band); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: default;
+}
+.object .sh .tn { border: none; background: none; padding: 0; font-family: var(--font-mono); font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.object .sh .tn.sans { font-family: var(--font-ui); }
+.object .sh button.tn:hover { text-decoration: underline; }
+.object .sh .via { color: var(--o2); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.object .sh .cnt { color: var(--o3); font-size: var(--fs-small); white-space: nowrap; }
+.object .sh.lit { background: var(--lit); box-shadow: inset 3px 0 0 var(--accent); }
+.object .sh.lit .tn { color: var(--accent); }
+.object .row {
+  display: grid; column-gap: 20px; padding: var(--pad) 12px; line-height: 20px; border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono); font-size: var(--data-font-size);
+}
+.object .row > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.object .row:hover { background: var(--row-hover); }
+.object .row .val[data-src] { border-radius: 3px; padding: 0 3px; margin: 0 -3px; }
+.object .row .val[data-src]:hover { background: var(--cell); }
+.object .row .focus .val { box-shadow: 0 0 0 1.5px var(--accent); border-radius: 3px; }
+.object .row .r { text-align: right; }
+.object .row.kv { grid-template-columns: 300px minmax(0, 1fr); }
+.object .row.kv > :first-child { color: var(--o2); }
+.object .row.hdr { color: var(--o3); font-family: var(--font-ui); font-size: var(--fs-small); }
+.object .row.hdr:hover { background: transparent; }
+.object .row.group-error { color: var(--style-red); white-space: normal; }
+.object .more { align-self: flex-start; border: none; background: none; padding: var(--pad) 12px; color: var(--accent); font-size: var(--fs-small); }
+.object .also { padding: 14px 12px 0; color: var(--o3); font-size: var(--fs-small); }
+.also-table { border: none; background: none; padding: 0; color: inherit; font-family: var(--font-mono); font-size: var(--data-font-size); }
+.also-table:hover { color: var(--text); text-decoration: underline; }
+.rows-view section { display: flex; flex-direction: column; }
+.rows-grid { display: flex; flex-direction: column; min-height: 0; }
+.rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); }
 
 /* ---------- documents ---------- */
 .doc { overflow: auto; padding: 1.231rem 1.538rem 2.462rem; display: flex; flex-direction: column; gap: 1.385rem; }

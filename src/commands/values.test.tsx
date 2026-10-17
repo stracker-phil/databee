@@ -167,6 +167,6 @@ describe("value commands", () => {
     act(() => useStore.getState().openTableTab("db", "wp_posts"));
     const links = await screen.findAllByRole("link", { name: "12" });
     await userEvent.click(links[0]);
-    await waitFor(() => expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "table", table: "wp_users", preview: true, where: [{ column: "ID", value: "12" }] }));
+    await waitFor(() => expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", preview: true, address: { target: { kind: "row", table: "wp_users", key: "12" } } }));
   });
 });

@@ -1,7 +1,10 @@
-import { FileCode2, Loader2, Plus, Table2, X } from "lucide-react";
+import { FileCode2, FileText, Loader2, Plus, Table2, X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useBindingLabel } from "../commands";
 import { useStore, type Tab } from "../state/store";
+import { formatAddress } from "../lib/address";
+import { documentText } from "../lib/document";
+import { ObjectPanel } from "./object/ObjectPanel";
 import { QueryTab } from "./QueryTab";
 import { TableTab } from "./TableTab";
 
@@ -9,26 +12,42 @@ const ARROW_STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 };
 
 function tabIcon(tab: Tab) {
   if (tab.kind === "table") return <Table2 size="0.923rem" />;
+  if (tab.kind === "object") return <FileText size="0.923rem" />;
   if (tab.running) return <Loader2 size="0.923rem" className="spin" />;
   return <FileCode2 size="0.923rem" />;
 }
 
+const PREVIEW_HINT = " · preview (double-click to keep)";
+
 function tabTooltip(tab: Tab): string {
   if (tab.kind === "query") return tab.title;
+  if (tab.kind === "object") return `${formatAddress(tab.address)}${tab.preview ? PREVIEW_HINT : ""}`;
   const columns = tab.where.map((w) => ` · ${w.column}: ${w.value ?? "NULL"}`).join("");
   const filter = tab.filter ? ` · ${tab.filter}` : "";
-  const preview = tab.preview ? " · preview (double-click to keep)" : "";
+  const preview = tab.preview ? PREVIEW_HINT : "";
   return `${tab.database}.${tab.table}${columns}${filter}${preview}`;
+}
+
+function tabStage(tab: Tab): string {
+  if (tab.kind === "table") return `tab:table:${tab.database}.${tab.table}`;
+  if (tab.kind === "object") return `tab:object:${documentText(tab.address)}`;
+  return `tab:query:${tab.id}`;
+}
+
+function TabPanel({ tab }: { tab: Tab }) {
+  if (tab.kind === "query") return <QueryTab tab={tab} />;
+  if (tab.kind === "object") return <ObjectPanel tab={tab} />;
+  return <TableTab tab={tab} />;
 }
 
 function TabItem({ tab, active }: { tab: Tab; active: boolean }) {
   const { activateTab, closeTab, pinTab } = useStore.getState();
-  const preview = tab.kind === "table" && tab.preview;
+  const preview = tab.kind !== "query" && tab.preview;
   return (
     <div
       role="tab"
       tabIndex={active ? 0 : -1}
-      data-stage={tab.kind === "table" ? `tab:table:${tab.database}.${tab.table}` : `tab:query:${tab.id}`}
+      data-stage={tabStage(tab)}
       data-stage-label={tab.title}
       data-stage-list="tabs"
       aria-selected={active}
@@ -105,7 +124,7 @@ export function TabPanels() {
     <>
       {tabs.map((t) => (
         <div key={t.id} role="tabpanel" className="tab-content" hidden={t.id !== activeTabId}>
-          {t.kind === "query" ? <QueryTab tab={t} /> : <TableTab tab={t} />}
+          <TabPanel tab={t} />
         </div>
       ))}
     </>

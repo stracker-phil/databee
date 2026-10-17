@@ -1,42 +1,50 @@
-/** Value commands (`y`, `Y`, `e`, `f`) on the focused value: the selected grid cell (docs/ux.md, Keys). */
+/**
+ * Value commands (`y`, `Y`, `e`, `f`) on the focused value: the selected grid cell of the active tab, or the
+ * focused value of an object's document (docs/ux.md, Keys). The table and object scopes each have a set.
+ */
 import { api, type Provenance, type Value } from "../api";
 import { fullCellText } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
-import { fail, useStore, type SelectedCell, type TableTab } from "../state/store";
-import type { Command } from "./registry";
+import { cellText } from "../lib/format";
+import { fail, selectActiveSession, selectActiveTab, selectFocusedValue, useStore, type Store, type Tab } from "../state/store";
+import type { Command, Scope } from "./registry";
 
-/** Window event: the grid holding the selected cell opens its inline editor there. */
+/** Window event: the view holding the focused value (a grid, a document) opens its inline editor there. */
 export const EDIT_VALUE_EVENT = "databee:edit-value";
 
-type Focused = SelectedCell & { value: Value };
+interface Focused {
+  value: Value;
+  tab: Tab;
+  database: string | null;
+  /** The full stored text (a grid's `longText` cell fetched first); null for NULL. */
+  raw(): Promise<string | null>;
+}
 
-const hasValue = (selected: SelectedCell | null): selected is Focused => !!selected?.value;
+function databaseOf(s: Store, tab: Tab): string | null {
+  if (tab.kind === "table") return tab.database;
+  if (tab.kind === "object") return tab.address.database;
+  return selectActiveSession(s)?.database ?? null;
+}
 
 function focused(): Focused | null {
-  const selected = useStore.getState().selectedCell;
-  return hasValue(selected) ? selected : null;
-}
-
-/** The focused value with its table tab; values of query results have none. */
-function inTable(): { selected: Focused; tab: TableTab } | null {
   const s = useStore.getState();
-  const selected = focused();
-  const tab = s.tabs.find((t) => t.id === selected?.tabId);
-  return selected && tab?.kind === "table" ? { selected, tab } : null;
+  const tab = selectActiveTab(s);
+  const value = selectFocusedValue(s);
+  if (!tab || !value) return null;
+  const selected = s.selectedCell?.tabId === tab.id ? s.selectedCell : null;
+  const raw = async () => {
+    if (value.raw.t === "null") return null;
+    return selected ? fullCellText(selected.cell, selected.source, selected.row, selected.col) : cellText(value.raw);
+  };
+  return { value, tab, database: databaseOf(s, tab), raw };
 }
 
-/** A sourced value in a table tab; a binary cell holds only a preview, which must not become a condition. */
-function sourced(): { selected: Focused; tab: TableTab; source: Provenance } | null {
-  const found = inTable();
-  const source = found?.selected.value.source;
-  if (!found || !source || found.selected.cell.t === "bytes") return null;
-  return { ...found, source };
-}
-
-/** The full stored text, fetched for a `longText` cell; null for NULL. */
-async function rawText(selected: Focused): Promise<string | null> {
-  if (selected.cell.t === "null") return null;
-  return fullCellText(selected.cell, selected.source, selected.row, selected.col);
+/** A sourced value; a binary cell holds only a preview, which must not become a condition or an edit. */
+function sourced(): (Focused & { source: Provenance; database: string }) | null {
+  const found = focused();
+  const source = found?.value.source;
+  if (!found || !source || !found.database || found.value.raw.t === "bytes") return null;
+  return { ...found, source, database: found.database };
 }
 
 async function attempt(context: string, action: () => Promise<void>) {
@@ -48,39 +56,51 @@ async function attempt(context: string, action: () => Promise<void>) {
 }
 
 async function copyRaw() {
-  const selected = focused();
-  if (!selected) return;
-  await attempt("Could not load the value", async () => copyText((await rawText(selected)) ?? "", "value"));
+  const found = focused();
+  if (!found) return;
+  await attempt("Could not load the value", async () => copyText((await found.raw()) ?? "", "value"));
 }
 
 async function copyCondition() {
   const found = sourced();
   if (!found) return;
-  const { selected, tab, source } = found;
   await attempt("Could not build the condition", async () => {
-    const sql = await api.valueCondition(tab.sessionId, tab.database, source, await rawText(selected));
+    const sql = await api.valueCondition(found.tab.sessionId, found.database, found.source, await found.raw());
     await copyText(sql, "condition");
   });
 }
 
-/** Adds `column = value` of the focused value to its table tab's structured filter. */
+/** A table tab narrows its own rows; elsewhere the value's table opens filtered by it. */
 async function filterByValue() {
   const found = sourced();
   if (!found) return;
-  const { selected, tab, source } = found;
+  const { tab, source, database } = found;
   await attempt("Could not load the value", async () => {
-    useStore.getState().filterRows(tab.id, { column: source.column, value: await rawText(selected) });
+    const match = { column: source.column, value: await found.raw() };
+    const s = useStore.getState();
+    if (tab.kind === "table" && tab.table === source.table) return s.filterRows(tab.id, match);
+    s.openTableTab(database, source.table, "data", undefined, { preview: true, where: [match] });
   });
 }
 
+/** Table grids edit by their primary key, documents by the provenance row's single-column key. */
 function editable(): boolean {
-  const found = inTable();
-  return !!found && found.selected.cell.t !== "bytes";
+  const found = sourced();
+  if (!found) return false;
+  if (found.tab.kind === "table") return true;
+  return found.tab.kind === "object" && found.source.row.length === 1;
 }
 
-export const VALUE_COMMANDS: Command[] = [
-  { id: "value.copyRaw", title: "Copy value", scope: "table", defaultBinding: "Y", when: () => !!focused(), run: copyRaw },
-  { id: "value.copyCondition", title: "Copy value as SQL condition", scope: "table", defaultBinding: "Shift+Y", when: () => !!sourced(), run: copyCondition },
-  { id: "value.edit", title: "Edit value", scope: "table", defaultBinding: "E", when: editable, run: () => void window.dispatchEvent(new Event(EDIT_VALUE_EVENT)) },
-  { id: "value.filter", title: "Filter rows by value", scope: "table", defaultBinding: "F", when: () => !!sourced(), run: filterByValue },
-];
+const editValue = () => void window.dispatchEvent(new Event(EDIT_VALUE_EVENT));
+
+function valueCommands(scope: Scope, idPrefix: string): Command[] {
+  return [
+    { id: `${idPrefix}copyRaw`, title: "Copy value", scope, defaultBinding: "Y", when: () => !!focused(), run: copyRaw },
+    { id: `${idPrefix}copyCondition`, title: "Copy value as SQL condition", scope, defaultBinding: "Shift+Y", when: () => !!sourced(), run: copyCondition },
+    { id: `${idPrefix}edit`, title: "Edit value", scope, defaultBinding: "E", when: editable, run: editValue },
+    { id: `${idPrefix}filter`, title: "Filter rows by value", scope, defaultBinding: "F", when: () => !!sourced(), run: filterByValue },
+  ];
+}
+
+export const VALUE_COMMANDS: Command[] = valueCommands("table", "value.");
+export const OBJECT_VALUE_COMMANDS: Command[] = valueCommands("object", "object.");

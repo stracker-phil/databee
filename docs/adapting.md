@@ -106,14 +106,14 @@ has no WordPress code. Until U12 removes them, the WordPress screens remain a mo
 ([wordpress.md](wordpress.md#screens-until-u12)); grid edits don't depend on them (`ChangeRequest` and its
 planning are core, in `db/changes.rs`). To remove them as well:
 
-1. `git rm -r src-tauri/src/wp src-tauri/capabilities/wp.json src-tauri/tests/sql_mode.rs`; delete `pub mod wp;`
+1. `git rm -r src-tauri/src/wp src-tauri/capabilities/wp.json`; delete `pub mod wp;`
    and `.plugin(wp::init(&config_dir))` in `lib.rs`; delete the `.plugin("wp", …)` line and `WP_COMMANDS` in
    `build.rs`; delete the `wordpress` settings page. The plugin takes its commands, snapshot store and
    integration tests with it.
 2. In the frontend:
    - delete `src/components/wp/` (its `install.ts` registers the `wp` and `document` scopes) and
      `src/lib/wpFormat.ts`, and drop the `installWp()` line in `src/modules.ts`;
-   - delete the `wp`, `wpNav`, `mode` and `entityMeta` store slices;
+   - delete the `wp`, `wpNav` and `mode` store slices;
    - delete the `go.*`, `document.*` and `wp.*` commands and the WordPress palette search;
    - remove the mode toggle in `Toolbar`, and render `DbWorkspace` directly in `App.tsx`.
 3. Delete the `wp_test`/`wp_write`/`wp_legacy`/`wp_custom`/`wp_multi` sections of `dev/fixture.sql` and the

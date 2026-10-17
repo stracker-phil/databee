@@ -10,7 +10,8 @@ describe("scope registry", () => {
     expect(specificity("global")).toBe(0);
     expect(specificity("db")).toBe(1);
     expect(specificity("table")).toBe(2);
-    expect(specificity("document")).toBe(2);
+    expect(specificity("editor")).toBe(2);
+    expect(specificity("object")).toBe(1);
   });
 
   it("knows ancestors along the whole chain but not siblings or itself", () => {

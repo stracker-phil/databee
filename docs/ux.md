@@ -118,7 +118,7 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
 
 - **Padding:** `--pad` above and below a 20px line. Settings → Appearance "row padding" has four steps
   (1px, 3px, 5px, 8px); the default is step 2 (3px). Grid rows, sidebar items and palette results use it;
-  document rows and Project page lists follow when they are built (U7, U8).
+  document rows too; Project page lists follow when they are built (U8).
 - **Hairline:** every row has a 1px `--line` below it.
 - **Row hover:** the whole row takes `--row-hover` (subtle).
 - **Cell hover:** the hovered value itself takes `--cell` (stronger), with a 3px radius.
@@ -127,13 +127,13 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
 - **Kinds without color:** numbers are right-aligned with tabular figures, `NULL` is italic tertiary, binary
   values are tertiary. There are no type tints.
 - **Key/value rows** (Document): a 300px key column in `--o2`, the value in primary text.
-- **Column header row:** column names in `--o3`, small sans (document groups, from U7). Grids (mock Rows)
+- **Column header row:** column names in `--o3`, small sans (document groups). Grids (mock Rows)
   show the column name in mono and its type below it in `--o3` small text. Table groups always have one, so
   every value is labelled.
 - **Sidebar items** (`.si`): 8px inset, 5px radius, mono, secondary text; hover `--row-hover`; the active
   table `--sel`. History entries use the same row.
 
-## Section header band (from U7)
+## Section header band
 
 Each group in a document starts with a band: `--band` background, `--line` hairlines above and below, 28px
 of space above it, 6px 12px inside.
@@ -142,14 +142,20 @@ of space above it, 6px 12px inside.
 - relation in secondary small text, mirroring the group's link: `this row`, `meta · order_id`,
   `items · order_id → this row`, `pattern · <rule as SQL>`;
 - count right-aligned in tertiary small text (`13 columns`, `9 keys · id order`, `2 rows`);
-- capped groups end with `+n keys` / `+n rows`, which open the Rows view; groups with 0 rows collapse into
-  one tertiary "Also linked:" line.
+- capped groups end with `+n keys` / `+n rows` in the accent, which open the Rows view at that group; groups
+  with 0 rows collapse into one tertiary "Also linked:" line of table names (each opens its rows);
+- hovering a band shows the rule's origin (`preset …`, `foreign key …`, `inferred · same name`) in the status
+  bar; clicking the table name opens the group's rows in a table tab.
 
 The object header is its own block above the groups: table name (`--o2`, large mono), `#key` (accent,
 semibold), the Document/Rows segmented control with its `Tab` key cap, the summary as `key value` pairs,
-closed by a hairline.
+closed by a hairline. A `⋯` button and a right-click on the block open the row's actions (`Run <action>`,
+`(no undo)` when it cannot be undone). In the Document view the focused value has a 1.5px accent outline.
 
-**Linked table highlight (from U7):** hovering a table in the sidebar lights every band of that table
+**Rows view:** per group the same band, the group's `WHERE` in tertiary mono, then a compact grid (grid header
+of U2b: column name, type below) with the table's full columns, 12 rows high before it scrolls.
+
+**Linked table highlight:** hovering a table in the sidebar lights every band of that table
 (`--lit` background, 3px accent bar on the left, accent table name); hovering a band lights its sidebar
 entry (`--lit` and a 1px accent outline). Hovering a value lights only its provenance table in the sidebar.
 
@@ -164,7 +170,7 @@ Inputs look like inputs, never like rows.
   without the icon. Key caps follow the user's bindings.
 - **Segmented control** (`.segmented`): a field-styled track with 1px padding; segments in `--o2`; the
   selected segment on `--pop` with primary text and `--shadow-small`. Used for Settings choices, the
-  Tables/History switch and the mode switch; Document/Rows from U7.
+  Tables/History switch, the mode switch and Document/Rows.
 - **Key cap:** mono 11px, `--o3`, 1px `--field-line` border, 4px radius.
 
 ## Overlays
@@ -177,14 +183,14 @@ Palette, peek, popovers, context menus, toasts and dialogs: `--pop` background, 
 ## Value grammar
 
 One component (`src/components/value/Value.tsx`) renders every value: grids and the WordPress column fields
-today, documents (U7), peek, the palette, the readout and the Project page as they are built. Hover never
+today, documents, peek, the palette, the readout and the Project page as they are built. Hover never
 opens a tooltip: the status bar shows the provenance of the hovered value, else of the focused (selected)
 value, else the current address. The Hover column is what the status bar shows. Built in U5 except where a
 cell says otherwise.
 
 | Kind | Look | Click | Hover |
 |---|---|---|---|
-| PrimaryKey `#3297` | accent, mono | opens the object (Rows view when already in its Document) (from U7; none yet) | provenance |
+| PrimaryKey `#3297` | accent, mono | opens the object (Rows view when already in its Document, and back); in grids double-click and Enter open it too | provenance |
 | Reference, declared `customer_id 4` | accent, dotted underline | opens the target (grids: in the preview tab until U9's column stack) | provenance, `→` target and source (`foreign key …`, `project …`, `preset …`); ⌥ peeks (from U9) |
 | Reference, inferred | accent, dashed underline, tertiary "inferred" | as declared; several targets: a menu to choose | `→` target `· inferred · same name · indexed` |
 | Reference, dangling | tertiary, struck through | none | "no row `#4` in `wp_users`" |
@@ -222,7 +228,7 @@ cell says otherwise.
   from U9), the search field on the right, then icon buttons. The WordPress/Database mode switch stays as a
   segmented control until U12.
 - **Tab bar** (`--chrome`): tabs are cells separated by `--line`; the active tab takes `--bg` and joins the
-  content; preview tabs show italic titles. Tabs: query, table, object (from U7), project (from U8).
+  content; preview tabs show italic titles. Tabs: query, table, object, project (from U8).
 - **Sidebar** (`--chrome`): the Tables/History switch, the filter field, a `db · N tables` caption, then the
   database tree. `view.sidebar` (⌘\, the palette, or the ▤ button) hides it entirely (no rail); the state
   is persisted per connection (`sidebarHidden` in `ui_state.json`).
@@ -242,14 +248,14 @@ the object and grid scopes, never in inputs, the editor or dialogs; `Tab` keeps 
 
 | Key | Scope | Action |
 |---|---|---|
-| `Tab` | object | Document ↔ Rows for the focused column; focus stays on the same provenance (from U7) |
+| `Tab` | object | Document ↔ Rows; focus stays on the same provenance (per column from U9) |
 | `j` / `k`, ↓ / ↑ | object, grid | move between values / rows (from U9) |
 | `h` / `l`, ← / → | object | move between columns (from U9) |
 | `Enter` | object, grid | drill into the focused reference / open the row as an object (from U9) |
 | `Esc` | object | close the rightmost column; overlays take `Esc` first (from U9) |
 | ⌘[ / ⌘] | global | back / forward through the active tab's address history (WordPress mode: its own history until U12); without history the keys stay with the editor |
 | `⌥` (held) | object, grid | peek the focused or hovered reference (from U9) |
-| `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (grid: the `table` scope; object from U7) |
+| `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (grid: the `table` scope; documents and Rows grids: the `object` scope) |
 | `r` | object, grid | add a reference from this column or meta key (from U8) |
 | `w` | object | live mode on/off (from U13) |
 | `s` | object | snapshot (from U13) |

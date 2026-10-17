@@ -26,13 +26,17 @@ export type RecentNav =
   | { kind: "entity"; entity: string; id: string; title: string }
   | { kind: "table"; database: string; table: string };
 
-/** The value under the pointer: its provenance text and table (`data-src`, `data-table`). */
+/**
+ * What is under the pointer: a value (its provenance text and table), or a table link such as a sidebar
+ * row or a section band (`linked`), which lights every element of that table (docs/ux.md).
+ */
 export interface ValueHover {
   src: string | null;
   table: string | null;
+  linked: boolean;
 }
 
-export const NO_HOVER: ValueHover = { src: null, table: null };
+export const NO_HOVER: ValueHover = { src: null, table: null, linked: false };
 
 export interface UiSlice {
   toasts: Toast[];
@@ -77,11 +81,6 @@ const recentKey = (r: RecentNav) => JSON.stringify(r.kind === "entity" ? [r.kind
 export function remembered(s: Store, item: RecentNav): Partial<Store> {
   const rest = s.recentNav.filter((r) => recentKey(r) !== recentKey(item));
   return { recentNav: [item, ...rest].slice(0, 20) };
-}
-
-/** Updates the title of the matching Recent entity once its page has loaded. */
-export function retitledRecent(s: Store, key: string, title: string): Partial<Store> {
-  return { recentNav: s.recentNav.map((r) => (r.kind === "entity" && `${r.entity}:${r.id}` === key ? { ...r, title } : r)) };
 }
 
 export const uiSlice: Slice<UiSlice> = {
@@ -165,7 +164,7 @@ export const uiSlice: Slice<UiSlice> = {
 
       setHover(hover) {
         const current = get().hover;
-        if (current.src !== hover.src || current.table !== hover.table) set({ hover });
+        if (current.src !== hover.src || current.table !== hover.table || current.linked !== hover.linked) set({ hover });
       },
     };
   },

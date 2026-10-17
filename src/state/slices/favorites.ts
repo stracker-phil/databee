@@ -59,6 +59,7 @@ export const favoritesSlice: Slice<FavoritesSlice> = {
         void get().addFavorite(tab.table, target);
         return;
       }
+      if (tab.kind === "object") return get().toast("info", "Objects cannot be favorites yet; add their table instead");
       if (!tab.sql.trim()) {
         get().toast("info", "Write a query first, then add it to favorites");
         return;

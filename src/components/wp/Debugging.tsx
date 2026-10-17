@@ -117,38 +117,3 @@ export function SnapshotsScreen() {
     </div>
   );
 }
-
-export function CompareScreen({ entity, a, b }: { entity: string; a: string; b: string }) {
-  const [onlyDiff, setOnlyDiff] = useState(true);
-  const { data, error } = useWpData([entity, a, b], (s, d) => api.wpCompare(s, d, entity, a, b));
-  if (error) return <ErrorPanel message={error.message} code={error.code} />;
-  if (!data) return <Loading />;
-  const rows = onlyDiff ? data.filter((r) => r.a !== r.b) : data;
-  return (
-    <div className="dash">
-      <Card
-        title={`${entity} #${a} ↔ #${b}`}
-        aside={
-          <label className="check">
-            <input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> only differences ({data.filter((r) => r.a !== r.b).length})
-          </label>
-        }
-      >
-        <table className="diff">
-          <thead>
-            <tr><th>Path</th><th>#{a}</th><th>#{b}</th></tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.path} className={r.a === r.b ? "" : r.a == null ? "added" : r.b == null ? "removed" : "changed"}>
-                <td className="mono">{r.path}</td>
-                <td className="mono">{r.a ?? <span className="muted">—</span>}</td>
-                <td className="mono">{r.b ?? <span className="muted">—</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
-    </div>
-  );
-}

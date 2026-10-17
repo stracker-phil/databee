@@ -39,9 +39,6 @@ pub enum Sensitive {
 pub struct EntityLink {
     pub entity: String,
     pub id: String,
-    /// The target's summary, resolved in a batch after assembly.
-    pub label: Option<String>,
-    pub image: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
@@ -68,9 +65,7 @@ pub struct Autoload {
 }
 
 /// The meta rows of a document, in stored order, named by their table.
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MetaGroup {
     pub name: String,
     /// All keys start with `_`.
@@ -78,9 +73,7 @@ pub struct MetaGroup {
     pub entries: Vec<DocField>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RelationInfo {
     pub name: String,
     pub label: String,
@@ -88,18 +81,13 @@ pub struct RelationInfo {
     pub count: u64,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EntityDoc {
     pub entity: String,
     pub label: String,
     pub id: String,
     /// The entity's summary values, joined.
     pub title: Option<String>,
-    pub subtitle: Option<String>,
-    /// Featured image (posts), resolved after assembly.
-    pub image: Option<String>,
     /// Where the row lives, so the UI can jump to the table view.
     pub table: String,
     pub id_column: String,
@@ -110,9 +98,7 @@ pub struct EntityDoc {
     pub relations: Vec<RelationInfo>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MetaSource {
     pub table: String,
     /// Column holding the entity ID, e.g. `order_id`.
@@ -122,13 +108,6 @@ pub struct MetaSource {
 }
 
 impl EntityDoc {
-    /// Every field and meta entry, e.g. to resolve links in one batch.
-    pub fn all_fields_mut(&mut self) -> impl Iterator<Item = &mut DocField> {
-        self.fields
-            .iter_mut()
-            .chain(self.meta.iter_mut().flat_map(|g| g.entries.iter_mut()))
-    }
-
     pub fn all_fields(&self) -> impl Iterator<Item = &DocField> {
         self.fields
             .iter()
@@ -137,10 +116,6 @@ impl EntityDoc {
 
     pub fn field(&self, name: &str) -> Option<&DocField> {
         self.all_fields().find(|f| f.name == name)
-    }
-
-    pub fn text(&self, name: &str) -> Option<&str> {
-        self.field(name).and_then(|f| non_empty_str(&f.value))
     }
 }
 
@@ -155,8 +130,6 @@ fn link_for(catalog: &Catalog, entity: Option<&String>, cell: &Cell) -> Option<E
     (catalog.has(entity) && id.parse::<u64>().is_ok_and(|n| n > 0)).then(|| EntityLink {
         entity: entity.clone(),
         id: id.to_string(),
-        label: None,
-        image: None,
     })
 }
 
@@ -307,8 +280,6 @@ pub fn assemble(
                 entity: def.name.clone(),
                 label: def.name.clone(),
                 title: summary(def, &columns, &doc_meta),
-                subtitle: None,
-                image: None,
                 table: def.table.clone(),
                 id_column: def.id.clone(),
                 fields,
@@ -733,7 +704,6 @@ mod tests {
             doc.title.as_deref(),
             Some("shop_order · wc-completed · ppcp-gateway · 30.00 · 2026-01-02 10:00:00")
         );
-        assert_eq!(doc.subtitle, None);
     }
 
     #[test]
@@ -799,8 +769,6 @@ mod tests {
                 expected.map(|id| EntityLink {
                     entity: "user".into(),
                     id: id.into(),
-                    label: None,
-                    image: None,
                 }),
                 "{stored:?}"
             );
@@ -822,8 +790,6 @@ mod tests {
             Some(EntityLink {
                 entity: "user".into(),
                 id: "7".into(),
-                label: None,
-                image: None,
             })
         );
         assert_eq!(doc.field("_payment_method").unwrap().link, None);
@@ -870,37 +836,5 @@ mod tests {
         );
         assert_eq!(shape(&docs[1])[0], row("notes", "comment", 1));
         assert_eq!(docs[0].relations[3].label, "items");
-    }
-
-    #[test]
-    fn a_document_serializes_with_camel_case_keys() {
-        let doc = document(HPOS, "order", &["id"], &["4711"], &[]);
-
-        let value = serde_json::to_value(&doc).unwrap();
-
-        let mut keys: Vec<&str> = value
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect();
-        keys.sort();
-        assert_eq!(
-            keys,
-            [
-                "entity",
-                "fields",
-                "id",
-                "idColumn",
-                "image",
-                "label",
-                "meta",
-                "metaSource",
-                "relations",
-                "subtitle",
-                "table",
-                "title"
-            ]
-        );
     }
 }

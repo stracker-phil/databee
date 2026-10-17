@@ -168,9 +168,10 @@ describe("openAddress", () => {
     expect(activeTable()).toMatchObject({ table: "wp_posts", where: row7, title: "wp_posts (filtered)" });
   });
 
-  it("resolves a row address to its primary key column", async () => {
+  it("opens a row address as an object tab in the view it names, without describing the table", async () => {
     await act(() => useStore.getState().openAddress("databee://shop/db/wp_posts/7?view=rows"));
-    expect(activeTable()).toMatchObject({ table: "wp_posts", where: row7 });
+    expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", view: "rows", address: { view: "rows", target: { kind: "row", table: "wp_posts", key: "7" } } });
+    expect(mocked.describeTable).not.toHaveBeenCalled();
   });
 
   it("opens a bare table address unfiltered", async () => {
@@ -204,11 +205,10 @@ describe("openAddress", () => {
     expect(useStore.getState().tabs).toEqual([]);
   });
 
-  it("reports a row address for a table without a single-column primary key", async () => {
+  it("opens a row address of a composite-key table as an object tab", async () => {
     mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["a", "b"], foreignKeys: [], ddl: null });
     await act(() => useStore.getState().openAddress("databee://shop/db/wp_postmeta/7"));
-    expect(await screen.findByRole("alert")).toHaveTextContent("wp_postmeta has no single-column primary key");
-    expect(useStore.getState().tabs).toEqual([]);
+    expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_postmeta", key: "7" } } });
   });
 
   it("says that other address kinds do not open yet", async () => {

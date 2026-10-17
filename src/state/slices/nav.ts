@@ -7,7 +7,8 @@ import { AddressError, formatAddress, parseAddress, sameAddress } from "../../li
 import { fail } from "../requests";
 import { isWpView, selectActiveTab, selectStructure } from "../selectors";
 import type { Slice, Store } from "../store";
-import type { Tab, TableTab } from "./tabs";
+import { objectAddress, objectTitle } from "../../lib/document";
+import type { ObjectTab, Tab, TableTab } from "./tabs";
 
 /** Entries kept per direction and tab. */
 export const NAV_LIMIT = 50;
@@ -27,7 +28,7 @@ export interface TableLocation {
 }
 
 export interface NavSlice {
-  /** Opens an address given as text; errors become a toast. `preview` opens it in the preview tab. */
+  /** Opens an address given as text (a row as an object tab); errors become a toast. `preview` opens it in the preview tab. */
   openAddress(text: string, opts?: { preview?: boolean }): Promise<void>;
   /** Shows other rows in table tab `tabId`, recording the current address for back. */
   showRows(tabId: string, location: TableLocation): void;
@@ -109,27 +110,37 @@ function withTab(s: Store, tab: Tab): Partial<Store> {
   return { tabs: s.tabs.map((t) => (t.id === tab.id ? tab : t)) };
 }
 
+/** `tab`'s history after one step in `direction`: the address being left goes onto the other stack. */
+function stepped(tab: Tab & { address: Address }, direction: "back" | "forward"): TabNav {
+  const leave = (entries: Address[]) => [...entries, tab.address].slice(-NAV_LIMIT);
+  return direction === "back"
+    ? { back: tab.nav.back.slice(0, -1), forward: leave(tab.nav.forward) }
+    : { back: leave(tab.nav.back), forward: tab.nav.forward.slice(0, -1) };
+}
+
+/** Object tab `tab` showing the row address `target` in the view it names. */
+function reobjected(tab: ObjectTab, target: Address, nav: TabNav): ObjectTab {
+  const view = target.view === "rows" ? "rows" : "document";
+  const sameRow = objectTitle(target) === objectTitle(tab.address);
+  return { ...tab, address: objectAddress(target, view), view, title: sameRow ? tab.title : objectTitle(target), focus: sameRow ? tab.focus : null, nav };
+}
+
 export const navSlice: Slice<NavSlice> = {
   create: (set, get) => {
-    /** Moves the active table tab one step through its history. */
+    /** Moves the active table or object tab one step through its history. */
     const travel = async (direction: "back" | "forward") => {
-      const s = get();
-      const tab = selectActiveTab(s);
-      if (tab?.kind !== "table") return;
-      const stack = tab.nav[direction];
-      const target = stack.at(-1);
-      if (!target) return;
+      const tab = selectActiveTab(get());
+      const target = tab?.nav[direction].at(-1);
+      if (!tab || !target || tab.kind === "query") return;
+      if (tab.kind === "object") {
+        if (target.target.kind === "row") set((st) => ({ ...withTab(st, reobjected(tab, target, stepped(tab, direction))), selectedCell: null }));
+        return;
+      }
       const location = await locationOf(get, tab.sessionId, target);
       // The tab may have closed or moved on while the structure loaded.
       const current = get().tabs.find((t) => t.id === tab.id);
       if (!location || current !== tab) return;
-      // The address being left goes onto the other stack.
-      const leave = (entries: Address[]) => [...entries, tab.address].slice(-NAV_LIMIT);
-      const nav: TabNav =
-        direction === "back"
-          ? { back: tab.nav.back.slice(0, -1), forward: leave(tab.nav.forward) }
-          : { back: leave(tab.nav.back), forward: tab.nav.forward.slice(0, -1) };
-      set((st) => withTab(st, retargeted(st, tab, location, nav)));
+      set((st) => withTab(st, retargeted(st, tab, location, stepped(tab, direction))));
     };
 
     return {
@@ -140,6 +151,7 @@ export const navSlice: Slice<NavSlice> = {
           if (!session) return get().toast("error", `No open connection is named ${address.connection}`);
           const kind = address.target.kind;
           if (kind !== "table" && kind !== "row") return get().toast("info", `${formatAddress(address)} cannot be opened yet: only table and row addresses open so far`);
+          if (kind === "row") return get().openObject(address, { preview: opts.preview });
           if (get().activeSessionId !== session.id) get().setActiveSession(session.id);
           const location = await locationOf(get, session.id, address);
           if (!location) return;

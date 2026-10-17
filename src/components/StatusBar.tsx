@@ -4,7 +4,7 @@ import { formatAddress } from "../lib/address";
 import { copyText } from "../lib/clipboard";
 import { formatCount } from "../lib/format";
 import { provenanceText } from "../lib/provenance";
-import { isWpView, selectActivePending, selectActiveTab, selectSidebarHidden, selectWp, useStore, type QueryTab, type Tab } from "../state/store";
+import { isWpView, selectActivePending, selectActiveTab, selectFocusedValue, selectSidebarHidden, selectWp, useStore, type QueryTab, type Tab } from "../state/store";
 
 /** WordPress mode: the table prefix the presets apply under. */
 function WpFacts() {
@@ -47,10 +47,13 @@ function QuerySummary({ tab }: { tab: QueryTab }) {
   );
 }
 
-/** Where the hovered value is stored, else the focused one (docs/ux.md, Value grammar). */
+/** Where the hovered value is stored (or a hovered band's rule), else the focused value's (docs/ux.md, Value grammar). */
 function useProvenance(): string | null {
   const hovered = useStore((s) => s.hover.src);
-  const focused = useStore((s) => (s.selectedCell?.value ? provenanceText(s.selectedCell.value) : null));
+  const focused = useStore((s) => {
+    const value = selectFocusedValue(s);
+    return value ? provenanceText(value) : null;
+  });
   return hovered ?? focused;
 }
 
