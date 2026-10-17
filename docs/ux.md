@@ -221,9 +221,10 @@ shows.
 - **Sidebar** (`--chrome`): the Tables/History switch, the filter field, a `db · N tables` caption, then the
   database tree. `view.sidebar` (⌘\, the palette, or the ▤ button) hides it entirely (no rail); the state
   is persisted per connection (`sidebarHidden` in `ui_state.json`).
-- **Status bar** (`--chrome`), left to right: ▤ sidebar toggle, the address (today the table tab's
-  `db.table` with its column matches and filter, or the query result summary; provenance from U5, addresses
-  from U3), spacer, `pending n` (a button to the tray when n > 0), `● live 2 s` in the accent while live
+- **Status bar** (`--chrome`), left to right: ▤ sidebar toggle, the active tab's address in mono
+  (`databee://wc-pp/db/wp_posts?post_type=page`; a click copies it; `· filtered` follows when a typed SQL
+  filter applies, which no address holds), for a query tab its result summary after it (provenance from U5),
+  spacer, `pending n` (a button to the tray when n > 0), `● live 2 s` in the accent while live
   (from U13). Plain text, no chips; theme and inspector dock live in Settings and the palette.
 - **Column stack** (from U9): drilling opens a column to the right (minimum 420px); the oldest collapse to
   34px strips with a vertical `table #key` label; the active column has a 2px accent line on top.
@@ -240,7 +241,7 @@ the object and grid scopes, never in inputs, the editor or dialogs; `Tab` keeps 
 | `h` / `l`, ← / → | object | move between columns (from U9) |
 | `Enter` | object, grid | drill into the focused reference / open the row as an object (from U9) |
 | `Esc` | object | close the rightmost column; overlays take `Esc` first (from U9) |
-| ⌘[ / ⌘] | global | back / forward through address history (today WordPress only; every tab from U3) |
+| ⌘[ / ⌘] | global | back / forward through the active tab's address history (WordPress mode: its own history until U12); without history the keys stay with the editor |
 | `⌥` (held) | object, grid | peek the focused or hovered reference (from U9) |
 | `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (from U5) |
 | `r` | object, grid | add a reference from this column or meta key (from U8) |

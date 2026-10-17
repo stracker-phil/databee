@@ -146,7 +146,7 @@ pub struct BrowseRequest {
 }
 
 /// `column = value`, or `column IS NULL` for a `None` value.
-#[derive(Deserialize, Debug, Clone, PartialEq, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct ColumnEquals {
     pub column: String,

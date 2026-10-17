@@ -25,7 +25,19 @@ message: string | null, };
 
 export type ActionView = { doc: EntityDoc, hook: string, status: string, scheduled: number | null, args: DecodedValue | null, group: string | null, logs: Array<LogLine>, };
 
-export type Address = { name: string | null, company: string | null, lines: Array<string>, country: string | null, email: string | null, phone: string | null, };
+export type Address = { 
+/**
+ * The connection slug (`RecentConnection::slug`).
+ */
+connection: string, database: string, target: Target, 
+/**
+ * Only on a `Row`; `None` is the default (document).
+ */
+view: View | null, 
+/**
+ * Only on a `Row`: the key of a second row to compare with.
+ */
+compare: string | null, };
 
 /**
  * The JSON shape of an `AppError`.
@@ -119,7 +131,7 @@ export type CompareRow = { path: string, a: string | null, b: string | null, };
  */
 export type ConnectionSpec = { name?: string | null, host: string, port: number, socket?: string | null, user: string, database?: string | null, };
 
-export type CustomerView = { doc: EntityDoc, name: string, login: string | null, email: string | null, avatar: string | null, roles: Array<string>, registered: number | null, lastActive: number | null, billing: Address | null, shipping: Address | null, orderCount: number, totalSpent: string | null, averageOrder: string | null, orders: Array<OrderSummary>, subscriptions: Array<OrderSummary>, tokens: Array<PaymentToken>, session: EntityLink | null, related: Array<RelatedChip>, };
+export type CustomerView = { doc: EntityDoc, name: string, login: string | null, email: string | null, avatar: string | null, roles: Array<string>, registered: number | null, lastActive: number | null, billing: PostalAddress | null, shipping: PostalAddress | null, orderCount: number, totalSpent: string | null, averageOrder: string | null, orders: Array<OrderSummary>, subscriptions: Array<OrderSummary>, tokens: Array<PaymentToken>, session: EntityLink | null, related: Array<RelatedChip>, };
 
 export type Dashboard = { orders: OrderStats | null, recentOrders: Array<OrderSummary>, autoloadBytes: number, autoloadHealthy: boolean, transientsExpired: number, actions: ActionStats | null, 
 /**
@@ -343,7 +355,7 @@ export type OrderSummary = { id: string, kind: string, status: string, total: st
  */
 export type OrderType = "shop_order" | "shop_subscription";
 
-export type OrderView = { doc: EntityDoc, kind: string, status: string, total: string | null, currency: string | null, created: number | null, paid: number | null, completed: number | null, customer: EntityLink | null, customerEmail: string | null, parent: EntityLink | null, billing: Address | null, shipping: Address | null, addressNotes: Array<string>, items: Array<LineItem>, totals: Array<[string, string]>, payment: PaymentPanel | null, attribution: Attribution | null, timeline: Array<TimelineEvent>, related: Array<RelatedChip>, };
+export type OrderView = { doc: EntityDoc, kind: string, status: string, total: string | null, currency: string | null, created: number | null, paid: number | null, completed: number | null, customer: EntityLink | null, customerEmail: string | null, parent: EntityLink | null, billing: PostalAddress | null, shipping: PostalAddress | null, addressNotes: Array<string>, items: Array<LineItem>, totals: Array<[string, string]>, payment: PaymentPanel | null, attribution: Attribution | null, timeline: Array<TimelineEvent>, related: Array<RelatedChip>, };
 
 export type Page<T> = { items: Array<T>, hasMore: boolean, 
 /**
@@ -382,6 +394,8 @@ plugins: Array<string>, };
 
 export type PostSummary = { id: string, title: string | null, kind: string, status: string, author: string | null, date: number | null, modified: number | null, };
 
+export type PostalAddress = { name: string | null, company: string | null, lines: Array<string>, country: string | null, email: string | null, phone: string | null, };
+
 export type ProductSummary = { id: string, name: string, status: string, kind: string | null, sku: string | null, price: string | null, stockStatus: string | null, stock: string | null, totalSales: number, variations: number, image: string | null, };
 
 export type ProductView = { doc: EntityDoc, name: string, status: string, kind: string | null, image: string | null, sku: string | null, price: string | null, regularPrice: string | null, salePrice: string | null, stockStatus: string | null, stock: string | null, totalSales: string | null, terms: Array<[string, Array<string>]>, attributes: Array<[string, Array<string>]>, variations: Array<Variation>, related: Array<RelatedChip>, };
@@ -390,7 +404,11 @@ export type RecentConnection = { identity: string,
 /**
  * Derived from `spec` when listed; older files lack it.
  */
-account: string, spec: ConnectionSpec, lastUsed: string, };
+account: string, spec: ConnectionSpec, lastUsed: string, 
+/**
+ * The connection part of an address, unique within the store (filled on open for older files).
+ */
+slug: string, };
 
 export type RelatedChip = { label: string, link: EntityLink | null, 
 /**
@@ -403,6 +421,16 @@ count: number | null,
 target: ChipTarget | null, };
 
 export type RelationInfo = { name: string, label: string, entity: string, count: number, };
+
+export type Resolved = { 
+/**
+ * The canonical form: table and column names as the server spells them, the default view dropped.
+ */
+address: Address, 
+/**
+ * The database, table, filter columns and row (key and compare key) all exist.
+ */
+exists: boolean, };
 
 export type ResultSet = { 
 /**
@@ -430,7 +458,11 @@ export type SessionInfo = { id: string, spec: ConnectionSpec, identity: string,
 /**
  * The Keychain account, which also scopes favorites.
  */
-account: string, displayName: string, serverVersion: string, database: string | null, };
+account: string, displayName: string, serverVersion: string, database: string | null, 
+/**
+ * The connection slug (`databee://<slug>/…`).
+ */
+slug: string, };
 
 export type SessionSummary = { key: string, expires: number | null, customerId: string | null, email: string | null, items: number, total: string | null, };
 
@@ -547,6 +579,8 @@ category: string, };
 
 export type TableUi = { widths: { [key in string]: number }, };
 
+export type Target = { "kind": "home" } | { "kind": "table", table: string, filter: Array<ColumnEquals>, } | { "kind": "row", table: string, key: string, } | { "kind": "query", id: string, } | { "kind": "find", value: string, } | { "kind": "project" };
+
 export type Theme = "system" | "light" | "dark";
 
 export type TimelineEvent = { at: number, kind: EventKind, title: string, detail: string | null, level: EventLevel, link: EntityLink | null, 
@@ -595,6 +629,8 @@ rawHex?: string, node: ValueNode, };
 export type ValueNode = { kind: NodeKind, text?: string, class?: string, children?: Array<ValueChild>, note?: string, };
 
 export type Variation = { id: string, attributes: Array<[string, string]>, sku: string | null, price: string | null, stockStatus: string | null, stock: string | null, image: string | null, };
+
+export type View = "document" | "rows";
 
 export type WcContext = { version: string | null, hpos: HposMode, hasActionScheduler: boolean, };
 

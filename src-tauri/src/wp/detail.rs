@@ -46,7 +46,7 @@ fn link(entity: &str, id: impl Into<String>) -> EntityLink {
 // ---------- shared pieces ----------
 
 #[derive(Serialize, Debug, Clone, PartialEq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
+#[ts(export, export_to = "src/api/types.gen.ts", rename = "PostalAddress")]
 #[serde(rename_all = "camelCase")]
 pub struct Address {
     pub name: Option<String>,

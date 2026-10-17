@@ -96,15 +96,17 @@ use the same names in camelCase.
 
 | Module | Commands |
 |---|---|
-| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
-| `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
+| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `rename_connection_slug` (validates, stores, renames the slug of open sessions of that connection), `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
+| `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `resolve_address` (see [Addresses](#addresses)), `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
 
 `session::open` is the connect service: it peeks the launch password, resolves the password
 (`resolve_password`, in `spawn_blocking` because the Keychain may block on a dialog), calls `db::open`, maps a
 rejected login through the pure `auth_error`, saves a typed password to the Keychain when asked, touches
-recents and registers the session. `SessionInfo::new` is pure and carries `identity`, `account` (the Keychain
-account that also scopes favorites) and `displayName`, so the page never derives them. `session::close`
+recents (which returns the connection's slug) and registers the session with that slug. `SessionInfo::new` is
+pure and carries `identity`, `account` (the Keychain account that also scopes favorites), `displayName` and
+`slug`, so the page never derives them. `open` resolves the slug once (the one `touch` returns, else
+`default_slug`) and passes it to `Session::new`; `Sessions::rename_slug` renames open sessions in place. `session::close`
 removes the session and calls `Database::close`, which interrupts a running query and closes the editor
 connection and the pool. `db_commands::run_query` holds `execute`'s logic (confirmation gate before the
 session lookup, history entry for failed queries too). `execute` and `browse_table` run through `Session::execute`
@@ -180,6 +182,28 @@ A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
   bind while a listener is alive.
 
+## Addresses
+
+`src-tauri/src/address/` is the core address model ([architecture](architecture.md#addresses)):
+
+- `mod.rs`: `Address { connection, database, target, view, compare }`, `Target` (`Home`, `Table { table,
+  filter: Vec<ColumnEquals> }`, `Row { table, key }`, `Query { id }`, `Find { value }`, `Project`) and
+  `View` (`Document`, `Rows`), exported to TypeScript. `Address::parse(&str)` returns `invalid_input` for
+  anything outside the grammar (no `databee://`, an empty part, a broken escape, an unknown or repeated row
+  parameter, extra segments); `Display` writes the canonical text. Both are pure. `view` and `compare` only
+  apply to a `Row`; on a `Table` every parameter is a filter column, so a column named `view` stays a filter.
+- `percent.rs`: the encoding (`A-Z a-z 0-9 - . _ ~` stay, everything else is UTF-8 `%XX`) and strict decoding.
+- `resolve.rs`: `resolve(session, address, timeout) -> Resolved { address, exists }`. An address naming
+  another connection slug is an error; a missing database, table, filter column or row (key and compare
+  key, looked up by the single-column primary key) is `exists: false`. The returned address is canonical:
+  table and column names as the server spells them, `view=document` dropped.
+- `cases.rs` (tests only): `canonical()`, the `(text, address)` pairs of every form; the round-trip test
+  walks them and a fixture test writes them to `src/test/fixtures/addresses.json` for the TypeScript port.
+
+Connection slugs live in `store/slug.rs`: `slugify` (lowercase `[a-z0-9-]`, runs of other characters become
+one `-`, at most 64 characters), `default_slug(spec)` (the `--name`, else `<host>-<port>-<database>`, for a
+socket `<file stem>-<database>`), `unique(base, taken)` (`-2`, `-3`, …) and `validate` for a typed slug.
+
 ## Persistence
 
 Everything lives in the config dir, `~/Library/Application Support/com.philippstracker.databee/`. Most JSON
@@ -206,7 +230,7 @@ snapshot migration). Store methods that write are `async` and the commands calli
 |---|---|
 | `settings.json` | `Settings` (camelCase, `#[serde(default)]`). `sanitized()` clamps values on load and on update: font sizes, row limit, timeouts, ports. Renamed fields use serde aliases. Enum and free-text fields (`theme`, `lightScheme`, `darkScheme`, `fontUi`, `fontMono`, `logLevel`, `inspectorDock`) use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` also resets unknown accents (including the retired `pink`) to `orange` and unknown scheme ids to the defaults (`ayu-light`, `ayu-mirage`), clamps `rowPadding` to 1..4 and turns blank font names into `null`. `rowPadding` reads the retired `density` key: `compact` becomes 1, anything else 2. `SettingsStore::update` returns `(previous, saved)` from one lock. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` runs on load and in `KeybindingsStore::update`: it drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed (unknown modifier, missing or multi-part key). A trailing `++` is the `+` key (`Mod+Shift++`) |
-| `connections.json` | recent connections by identity (`user@host:port/db`) |
+| `connections.json` | recent connections by identity (`user@host:port/db`), each with its `slug` ([Addresses](#addresses)). `RecentsStore::open` fills a missing slug on load (`open_with`), saved with the next change; `touch` keeps a known connection's slug and gives a new one its default, unique within the file; `rename_slug` validates and refuses a slug another connection has |
 | `favorites.json` | tables and saved queries, global or scoped to one server account. `FavoritesStore::create(NewFavorite)` assigns the id; `update(Favorite)` replaces by id and refuses an unknown id. Both refuse a blank name and a second favorite with the same `(scope, target)` (`invalid_input`) |
 | `history.json` | executed queries per account, with time, duration and error. At most 500 entries across all accounts. SQL over 64 KiB is stored cut on a char boundary with `truncated: true`. Each entry stores a `hash` of the full SQL (first 8 bytes of SHA-256, computed on load for older files); rerunning the same SQL on the same account replaces its entry. Written behind, see below |
 | `stage.json` | Stage's own settings (`stage::settings::StageStore`, see [stage.md](stage.md)); not part of `settings.json` |

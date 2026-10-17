@@ -66,6 +66,7 @@ These rules hold everywhere in the code. Keep them when you change things.
 ```
 src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/lib.rs               startup, plugin setup, command registration, run loop
+  src/address/             addresses: parse, format, resolve against a session
   src/cli.rs ipc.rs        argv parsing, single-instance socket
   src/launch.rs            queue of launch requests + one-shot passwords
   src/state.rs session.rs  AppState, open sessions
@@ -120,6 +121,32 @@ folder and its install line. The core never imports a module; modules import the
 Not yet separated: the `wp` store slice and the WordPress commands live in the core (`src/state/slices/wp.ts`,
 `src/commands/index.ts`), and `App.tsx` renders `WpWorkspace`.
 See [ADR 0015](adr/0015-frontend-registries.md).
+
+## Addresses
+
+Every view has one address ([ADR 0021](adr/0021-addresses.md)), a URL-like name that the status bar shows and copies
+and that back/forward, and later deep links, the CLI and MCP, pass around:
+
+```
+databee://<connection>/<database>/                       home
+databee://<connection>/<database>/<table>                rows of a table
+databee://<connection>/<database>/<table>?col=val&col2   rows with a structured filter (bare `col` = IS NULL)
+databee://<connection>/<database>/<table>/<key>          object (`?view=document|rows`, `?compare=<key2>`)
+databee://<connection>/<database>/q/<saved-query-id>     saved query
+databee://<connection>/<database>/?find=<value>          find everywhere
+databee://<connection>/<database>/?project               project page
+```
+
+- `<connection>` is the saved connection's **slug** (`RecentConnection.slug`): unique, editable in Settings →
+  Connections, by default the `--name` given on launch, else `<host>-<port>-<database>`.
+- `<table>` is the real table name with its prefix; `<key>` the single-column primary key value. Composite
+  keys use the filter form. A table literally named `q` is written `%71`, so it never reads as a saved query.
+- Every part is percent-encoded: everything but `A-Z a-z 0-9 - . _ ~`, as UTF-8 bytes in uppercase hex.
+- Rust owns the model (`src-tauri/src/address/`: `Address::parse`, `Display`, `resolve`); the page keeps a
+  port (`src/lib/address.ts`) because it builds an address on every navigation. A shared fixture
+  (`src/test/fixtures/addresses.json`, written by a Rust test) keeps both equal.
+- Free SQL filters are not addressable: a tab filtered by typed SQL keeps the table's address with a
+  `· filtered` hint.
 
 ## A request, end to end
 

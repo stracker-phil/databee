@@ -3,7 +3,7 @@ import { session } from "./session";
 import { settings } from "./settings";
 
 export { session, settings };
-import { resetStore, type QueryTab } from "../state/store";
+import { resetStore, type QueryTab, type Tab, type TableTab } from "../state/store";
 
 export function table(name: string, patch: Partial<TableInfo> = {}): TableInfo {
   return { name, isView: false, rowsEstimate: 10, sizeBytes: 16384, comment: "", ...patch };
@@ -33,7 +33,35 @@ export function resultSet(patch: Partial<ResultSet> = {}): ResultSet {
 }
 
 export function queryTab(patch: Partial<QueryTab> = {}): QueryTab {
-  return { id: "q1", kind: "query", sessionId: "s1", title: "Query 1", sql: "", running: false, activeResult: 0, ...patch };
+  return {
+    id: "q1",
+    kind: "query",
+    sessionId: "s1",
+    title: "Query 1",
+    sql: "",
+    running: false,
+    activeResult: 0,
+    address: { connection: session.slug, database: "db", target: { kind: "home" }, view: null, compare: null },
+    nav: { back: [], forward: [] },
+    ...patch,
+  };
+}
+
+export function tableTab(patch: Partial<TableTab> = {}): TableTab {
+  const table = patch.table ?? "wp_posts";
+  return {
+    id: "t1",
+    kind: "table",
+    sessionId: "s1",
+    title: table,
+    database: "db",
+    table,
+    view: "data",
+    where: [],
+    address: { connection: session.slug, database: "db", target: { kind: "table", table, filter: [] }, view: null, compare: null },
+    nav: { back: [], forward: [] },
+    ...patch,
+  };
 }
 
 type PendingChange = PlannedChange & { sessionId: string };
@@ -43,7 +71,7 @@ export function pendingChange(patch: Partial<PendingChange> = {}): PendingChange
 }
 
 /** A store with one connected session showing the given tabs. */
-export function connectedStore(opts: { tabs?: QueryTab[]; tables?: TableInfo[]; settings?: Partial<Settings> } = {}) {
+export function connectedStore(opts: { tabs?: Tab[]; tables?: TableInfo[]; settings?: Partial<Settings> } = {}) {
   const tabs = opts.tabs ?? [queryTab()];
   resetStore({
     settings: settings(opts.settings),

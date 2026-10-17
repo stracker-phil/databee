@@ -1,5 +1,5 @@
 import { TEXT_SIZES } from "../api";
-import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
+import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
 
@@ -43,7 +43,6 @@ function zoom(step: number | null) {
 
 const inScope = (scope: Scope) => () => activeScopes().includes(scope);
 const inDb = inScope("db");
-const inWp = inScope("wp");
 const onEntity = inScope("document");
 const hasWp = () => !!selectWp(useStore.getState());
 
@@ -75,8 +74,9 @@ export const APP_COMMANDS: Command[] = [
   { id: "palette.openTable", title: "Open table or entity", scope: "global", defaultBinding: "Mod+P", run: () => useStore.getState().setPaletteOpen(true, "t:") },
   { id: "view.wp", title: "Switch to WordPress view", scope: "global", defaultBinding: "Mod+1", when: hasWp, run: () => useStore.getState().setMode("wp") },
   { id: "view.db", title: "Switch to Database view", scope: "global", defaultBinding: "Mod+2", run: () => useStore.getState().setMode("db") },
-  { id: "nav.back", title: "Back", scope: "global", defaultBinding: "Mod+[", menu: true, when: inWp, run: () => useStore.getState().goBack() },
-  { id: "nav.forward", title: "Forward", scope: "global", defaultBinding: "Mod+]", menu: true, when: inWp, run: () => useStore.getState().goForward() },
+  // Without history the keys stay with the editor (⌘[ outdents there).
+  { id: "nav.back", title: "Back", scope: "global", defaultBinding: "Mod+[", menu: true, when: () => selectCanNav(useStore.getState(), "back"), run: () => useStore.getState().navBack() },
+  { id: "nav.forward", title: "Forward", scope: "global", defaultBinding: "Mod+]", menu: true, when: () => selectCanNav(useStore.getState(), "forward"), run: () => useStore.getState().navForward() },
   { id: "view.zoomIn", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", run: () => zoom(1) },
   { id: "view.zoomOut", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", run: () => zoom(-1) },
   { id: "view.zoomReset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", run: () => zoom(null) },

@@ -1,0 +1,299 @@
+[
+  {
+    "text": "databee://wc-pp/db/",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "home"
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_wc_orders",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "table",
+        "table": "wp_wc_orders",
+        "filter": []
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_postmeta?post_id=12&meta_key=_price",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "table",
+        "table": "wp_postmeta",
+        "filter": [
+          {
+            "column": "post_id",
+            "value": "12"
+          },
+          {
+            "column": "meta_key",
+            "value": "_price"
+          }
+        ]
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_posts?post_parent",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "table",
+        "table": "wp_posts",
+        "filter": [
+          {
+            "column": "post_parent",
+            "value": null
+          }
+        ]
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_options?option_value=",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "table",
+        "table": "wp_options",
+        "filter": [
+          {
+            "column": "option_value",
+            "value": ""
+          }
+        ]
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_wc_orders/3229",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "row",
+        "table": "wp_wc_orders",
+        "key": "3229"
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_wc_orders/3229?view=rows",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "row",
+        "table": "wp_wc_orders",
+        "key": "3229"
+      },
+      "view": "rows",
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_wc_orders/3229?view=document",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "row",
+        "table": "wp_wc_orders",
+        "key": "3229"
+      },
+      "view": "document",
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_wc_orders/3229?compare=3227",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "row",
+        "table": "wp_wc_orders",
+        "key": "3229"
+      },
+      "view": null,
+      "compare": "3227"
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_wc_orders/3229?view=rows&compare=3227",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "row",
+        "table": "wp_wc_orders",
+        "key": "3229"
+      },
+      "view": "rows",
+      "compare": "3227"
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/q/failed-orders",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "query",
+        "id": "failed-orders"
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/?find=PAYID-123",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "find",
+        "value": "PAYID-123"
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/?project",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "project"
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/%71",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "table",
+        "table": "q",
+        "filter": []
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/%71/7",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "row",
+        "table": "q",
+        "key": "7"
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_options/a%2Fb%3Fc%26d%3De%25f%23g",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "row",
+        "table": "wp_options",
+        "key": "a/b?c&d=e%f#g"
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/wp_options?option_name=caf%C3%A9%20au%20lait",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "table",
+        "table": "wp_options",
+        "filter": [
+          {
+            "column": "option_name",
+            "value": "café au lait"
+          }
+        ]
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://wc-pp/db/?find=a%2Bb%20c",
+    "address": {
+      "connection": "wc-pp",
+      "database": "db",
+      "target": {
+        "kind": "find",
+        "value": "a+b c"
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://my%20site/wp-test.1/wp_users/1",
+    "address": {
+      "connection": "my site",
+      "database": "wp-test.1",
+      "target": {
+        "kind": "row",
+        "table": "wp_users",
+        "key": "1"
+      },
+      "view": null,
+      "compare": null
+    }
+  },
+  {
+    "text": "databee://ddev-db/db/wp_users/~u_1.x",
+    "address": {
+      "connection": "ddev-db",
+      "database": "db",
+      "target": {
+        "kind": "row",
+        "table": "wp_users",
+        "key": "~u_1.x"
+      },
+      "view": null,
+      "compare": null
+    }
+  }
+]

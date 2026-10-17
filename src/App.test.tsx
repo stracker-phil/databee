@@ -238,7 +238,7 @@ describe("App", () => {
 
   describe("palette commands across sessions", () => {
     const planned = { id: 1, description: "Set post_title", statements: ["UPDATE wp_posts SET post_title = 'x'"], canUndo: true };
-    const other: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:52958/blog", displayName: "Blog", database: "db" };
+    const other: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:52958/blog", displayName: "Blog", database: "db", slug: "blog" };
 
     const search = async (text: string) => {
       act(() => useStore.getState().setPaletteOpen(true));

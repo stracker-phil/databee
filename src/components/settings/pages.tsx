@@ -6,6 +6,7 @@ import {
 } from "../../api";
 import { ROW_PADDING_PX, rowPaddingPx } from "../../lib/theme";
 import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
+import { ConnectionSlugs } from "./ConnectionSlugs";
 import { capitalize, Group, NumberField, Row, Segmented, SegmentedButtons, Switch, TextField } from "./controls";
 import { ShortcutsPage } from "./ShortcutsPage";
 
@@ -184,10 +185,13 @@ function DisplayPage({ s, set }: SettingsPageProps) {
 
 function ConnectionsPage({ s, set }: SettingsPageProps) {
   return (
-    <Group>
-      <NumberField label="Connect timeout" suffix="s" value={s.connectTimeoutSecs} {...SETTINGS_LIMITS.connectTimeoutSecs} onCommit={(connectTimeoutSecs) => set({ connectTimeoutSecs })} />
-      <NumberField label="Default port" description="Used when a connection doesn't name one." value={s.defaultPort} {...SETTINGS_LIMITS.defaultPort} onCommit={(defaultPort) => set({ defaultPort })} />
-    </Group>
+    <>
+      <Group>
+        <NumberField label="Connect timeout" suffix="s" value={s.connectTimeoutSecs} {...SETTINGS_LIMITS.connectTimeoutSecs} onCommit={(connectTimeoutSecs) => set({ connectTimeoutSecs })} />
+        <NumberField label="Default port" description="Used when a connection doesn't name one." value={s.defaultPort} {...SETTINGS_LIMITS.defaultPort} onCommit={(defaultPort) => set({ defaultPort })} />
+      </Group>
+      <ConnectionSlugs />
+    </>
   );
 }
 
@@ -223,7 +227,7 @@ export function registerCoreSettingsPages() {
   registerSettingsPage({ id: "shortcuts", group: "Interface", label: "Shortcuts", icon: Keyboard, order: 20, intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.", Body: ShortcutsPage });
   registerSettingsPage({ id: "queries", group: "Database", label: "Queries", icon: SquareTerminal, order: 10, intro: "Limits and safety checks for the SQL editor and table views.", Body: QueriesPage });
   registerSettingsPage({ id: "display", group: "Database", label: "Display", icon: Table2, order: 20, intro: "How values and schemas show up in grids, documents and the sidebar.", Body: DisplayPage });
-  registerSettingsPage({ id: "connections", group: "Database", label: "Connections", icon: Plug, order: 30, intro: "Defaults for new connections.", Body: ConnectionsPage });
+  registerSettingsPage({ id: "connections", group: "Database", label: "Connections", icon: Plug, order: 30, intro: "Defaults for new connections, and the name each saved connection has in addresses.", Body: ConnectionsPage });
   registerSettingsPage({ id: "wordpress", group: "WordPress", label: "WordPress", icon: Blocks, order: 10, intro: "The WordPress lens for WooCommerce and WordPress databases.", Body: WordPressPage });
   registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What DataBee writes to its log file.", Body: LoggingPage });
 }

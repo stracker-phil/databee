@@ -23,6 +23,7 @@ const second: SessionInfo = {
   spec: { ...session.spec, name: "Blog", port: 52959 },
   identity: "root@127.0.0.1:52959/db",
   displayName: "Blog",
+  slug: "blog",
 };
 
 function deferred<T>() {

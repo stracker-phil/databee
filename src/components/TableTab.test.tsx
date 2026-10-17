@@ -6,7 +6,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, EMPTY_UI_STATE, type BrowsePage, type TableStructure } from "../api";
 import { useStore, type TableTab as TableTabState } from "../state/store";
-import { connectedStore, num, resultSet, session, text } from "../test/fixtures";
+import { connectedStore, num, resultSet, session, tableTab, text } from "../test/fixtures";
 import { TableTab } from "./TableTab";
 
 const mocked = vi.mocked(api, true);
@@ -21,7 +21,7 @@ const structure: TableStructure = {
   ddl: "CREATE TABLE wp_posts (...)",
 };
 
-const tab: TableTabState = { id: "t1", kind: "table", sessionId: session.id, title: "wp_posts", database: "db", table: "wp_posts", view: "data", where: [] };
+const tab: TableTabState = tableTab();
 
 describe("TableTab", () => {
   beforeEach(() => {
@@ -40,7 +40,8 @@ describe("TableTab", () => {
       filter: { kind: "ids", sql: "`ID` IN (3229, 3227)", label: "ID in (3229, 3227)" },
       columnsFilter: null,
     });
-    render(<TableTab tab={tab} />);
+    const Live = () => <TableTab tab={useStore((s) => s.tabs[0]) as TableTabState} />;
+    render(<Live />);
     const where = screen.getByLabelText("WHERE filter");
     await waitFor(() => expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ primaryKey: "ID" })));
     await userEvent.type(where, "3229, 3227{Enter}");

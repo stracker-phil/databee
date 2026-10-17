@@ -1,3 +1,4 @@
+pub mod address;
 pub mod cli;
 mod commands;
 pub mod connection;
@@ -231,6 +232,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             commands::take_launch_events,
             commands::list_recents,
             commands::remove_recent,
+            commands::rename_connection_slug,
             commands::list_favorites,
             commands::create_favorite,
             commands::update_favorite,
@@ -249,6 +251,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::execute,
             db_commands::cancel_query,
             db_commands::browse_table,
+            db_commands::resolve_address,
             db_commands::fetch_cell,
             db_commands::table_select_sql,
             db_commands::plan_change,

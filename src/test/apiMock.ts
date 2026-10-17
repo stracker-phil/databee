@@ -1,7 +1,8 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type SnapshotInfo, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Resolved, type SnapshotInfo, type TableStructure, type UiState } from "../api/types";
+import { parseAddress } from "../lib/address";
 import { NOW } from "./now";
 import { session } from "./session";
 import { settings } from "./settings";
@@ -35,6 +36,8 @@ export function createApiMock(): typeof realApi {
     takeLaunchEvents: vi.fn().mockResolvedValue([]),
     listRecents: vi.fn().mockResolvedValue([]),
     removeRecent: vi.fn().mockResolvedValue(undefined),
+    renameConnectionSlug: vi.fn().mockResolvedValue(undefined),
+    resolveAddress: vi.fn(async (_s, text): Promise<Resolved> => ({ address: parseAddress(text), exists: true })),
     connect: vi.fn().mockResolvedValue(session),
     disconnect: vi.fn().mockResolvedValue(undefined),
     listDatabases: vi.fn().mockResolvedValue([]),

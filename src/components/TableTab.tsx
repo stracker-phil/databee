@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Copy, FileText, Filter, Hash, Loader2, Plus, RefreshCw, X } from "lucide-react";
-import { api, toAppError, type AppError, type AppliedFilter, type BrowsePage, type ColumnEquals, type ColumnMeta, type TableStructure } from "../api";
+import { api, toAppError, type AppError, type AppliedFilter, type BrowsePage, type ColumnMeta, type TableStructure } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { cellText } from "../lib/format";
@@ -13,12 +13,11 @@ import { ResultsGrid } from "./ResultsGrid";
 /** Rust's default `rowLimit`, for the moment before settings load; Rust clamps the page size anyway. */
 const DEFAULT_ROW_LIMIT = 1000;
 
+/** Paging and sort; the filters live on the tab, which back and forward change. */
 interface Browse {
   offset: number;
   orderBy: string | null;
   descending: boolean;
-  filter: string;
-  where: ColumnEquals[];
 }
 
 /** The table's structure from the store cache: one request per table and `dataVersion`, shared by all tabs. */
@@ -46,7 +45,9 @@ function columnIndex(columns: ColumnMeta[], name: string): number {
 function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean) {
   const pageSize = useStore((s) => s.settings?.rowLimit ?? DEFAULT_ROW_LIMIT);
   const dataVersion = useStore((s) => s.dataVersion);
-  const [browse, setBrowse] = useState<Browse>({ offset: 0, orderBy: null, descending: false, filter: tab.filter ?? "", where: tab.where });
+  const [browse, setBrowse] = useState<Browse>({ offset: 0, orderBy: null, descending: false });
+  // Other rows (a new filter, back, forward) start at their first page and keep the sort.
+  useEffect(() => setBrowse((b) => (b.offset === 0 ? b : { ...b, offset: 0 })), [tab.filter, tab.where]);
   const [page, setPage] = useState<BrowsePage | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,9 +64,9 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
         limit: pageSize,
         orderBy: browse.orderBy,
         descending: browse.descending,
-        filter: browse.filter || null,
+        filter: tab.filter || null,
         primaryKey,
-        where: browse.where,
+        where: tab.where,
       });
       if (token !== latest.current) return;
       setPage(result);
@@ -77,7 +78,7 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
     }
     // `dataVersion` is only a refetch trigger: a new value recreates `load`, which the effect below reruns.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.sessionId, tab.database, tab.table, browse, pageSize, dataVersion, primaryKey]);
+  }, [tab.sessionId, tab.database, tab.table, tab.filter, tab.where, browse, pageSize, dataVersion, primaryKey]);
 
   useEffect(() => {
     if (ready) void load();
@@ -88,6 +89,8 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
 
 function FilterBar({ tabId, initial, primaryKey, onApply }: { tabId: string; initial: string; primaryKey: string | null; onApply: (filter: string) => void }) {
   const [value, setValue] = useState(initial);
+  // Back and forward replace the applied filter; the field follows without losing focus.
+  useEffect(() => setValue(initial), [initial]);
   const inputRef = useRef<HTMLInputElement>(null);
   const isActive = useStore((s) => s.activeTabId === tabId);
   const keys = useBindingLabel("table.focusFilter");
@@ -212,6 +215,8 @@ function DataView({ tab }: { tab: TableTabState }) {
   const primaryKey = singleColumnPrimaryKey(structure);
   // Browsing waits for the structure so an ID filter is resolved against the primary key from the first request.
   const { browse, setBrowse, page, error, loading, reload, pageSize } = useBrowse(tab, primaryKey, structure !== null || structureError !== null);
+  const setTableFilter = useStore((s) => s.setTableFilter);
+  const showRows = useStore((s) => s.showRows);
   const entity = useStore((s) => (s.sessions.find((x) => x.id === tab.sessionId)?.database === tab.database ? selectWp(s)?.tableEntities[tab.table] : undefined));
   const { rowActions, onEditCell } = useRowEditing(tab, page, primaryKey, entity);
   const [showFilterSql, setShowFilterSql] = useState(false);
@@ -229,9 +234,9 @@ function DataView({ tab }: { tab: TableTabState }) {
   return (
     <>
       <div className="table-head">
-        <FilterBar tabId={tab.id} initial={tab.filter ?? ""} primaryKey={primaryKey} onApply={(filter) => setBrowse((b) => ({ ...b, offset: 0, filter }))} />
-        {page?.columnsFilter && browse.where.length > 0 && (
-          <ColumnsFilterChip filter={page.columnsFilter} onClear={() => setBrowse((b) => ({ ...b, offset: 0, where: [] }))} />
+        <FilterBar tabId={tab.id} initial={tab.filter ?? ""} primaryKey={primaryKey} onApply={(filter) => setTableFilter(tab.id, filter)} />
+        {page?.columnsFilter && tab.where.length > 0 && (
+          <ColumnsFilterChip filter={page.columnsFilter} onClear={() => showRows(tab.id, { database: tab.database, table: tab.table, where: [] })} />
         )}
         {page?.filter?.kind === "ids" && (
           <button className="filter-chip" title="Interpreted as a primary-key lookup; click to see the SQL" onClick={() => setShowFilterSql((v) => !v)}>

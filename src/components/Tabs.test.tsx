@@ -6,7 +6,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { installCommands } from "../commands";
 import { useStore, type TableTab } from "../state/store";
-import { connectedStore, queryTab } from "../test/fixtures";
+import { connectedStore, queryTab, tableTab } from "../test/fixtures";
 import { TabBar, TabPanels } from "./Tabs";
 
 const tabNamed = (title: RegExp) => screen.getByRole("tab", { name: title });
@@ -37,17 +37,7 @@ describe("TabPanels empty state", () => {
 });
 
 describe("TabBar", () => {
-  const previewTab: TableTab = {
-    id: "t1",
-    kind: "table",
-    sessionId: "s1",
-    title: "wp_posts",
-    database: "db",
-    table: "wp_posts",
-    view: "data",
-    where: [],
-    preview: true,
-  };
+  const previewTab: TableTab = tableTab({ preview: true });
 
   beforeEach(() => {
     vi.clearAllMocks();

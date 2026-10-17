@@ -6,7 +6,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, type Favorite } from "../api";
 import { useStore } from "../state/store";
-import { connectedStore } from "../test/fixtures";
+import { connectedStore, queryTab } from "../test/fixtures";
 import { Dialogs } from "./Dialogs";
 import { FavoritesBar } from "./FavoritesBar";
 import { Toasts } from "./Toasts";
@@ -49,7 +49,7 @@ describe("FavoritesBar", () => {
   });
 
   it("pins the current query under a chosen name", async () => {
-    connectedStore({ tabs: [{ id: "q1", kind: "query", sessionId: "s1", title: "Query 1", sql: "SELECT 1", running: false, activeResult: 0 }] });
+    connectedStore({ tabs: [queryTab({ sql: "SELECT 1" })] });
     render(
       <>
         <FavoritesBar />

@@ -8,4 +8,5 @@ export const session: SessionInfo = {
   displayName: "Shop",
   serverVersion: "10.3.39-MariaDB",
   database: "db",
+  slug: "shop",
 };

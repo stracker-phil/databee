@@ -3,6 +3,8 @@ use std::time::Instant;
 
 use tauri::State;
 
+use crate::address::Address;
+use crate::address::resolve::{self, Resolved};
 use crate::db::browse::select_all_sql;
 use crate::db::changes::{self, ChangeRequest};
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, PlannedChange};
@@ -192,6 +194,18 @@ pub async fn browse_table(
         .await
 }
 
+/// Parses `address` and checks it against the session: its slug, database, table and key.
+#[tauri::command]
+pub async fn resolve_address(
+    state: State<'_, AppState>,
+    session_id: String,
+    address: String,
+) -> AppResult<Resolved> {
+    let address = Address::parse(&address)?;
+    let session = state.sessions.get(&session_id)?;
+    resolve::resolve(&session, address, state.settings.get().query_timeout()).await
+}
+
 /// The full text of a cell that a result set sent as a `LongText` preview.
 #[tauri::command]
 pub fn fetch_cell(
@@ -279,9 +293,12 @@ mod tests {
     fn state_with(db: FakeDatabase) -> (tempfile::TempDir, AppState) {
         let dir = tempfile::tempdir().unwrap();
         let state = AppState::open(dir.path(), Arc::new(MemoryStore::default()));
-        state
-            .sessions
-            .insert(Session::new("s1".into(), spec(), Box::new(db)));
+        state.sessions.insert(Session::new(
+            "s1".into(),
+            spec(),
+            "local".into(),
+            Box::new(db),
+        ));
         (dir, state)
     }
 

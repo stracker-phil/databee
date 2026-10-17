@@ -45,6 +45,7 @@ import type {
   Keybindings,
   LaunchEvent,
   RecentConnection,
+  Resolved,
   SessionInfo,
   Settings,
   TableInfo,
@@ -69,6 +70,8 @@ export const api = {
   takeLaunchEvents: () => invoke<LaunchEvent[]>("take_launch_events"),
   listRecents: () => invoke<RecentConnection[]>("list_recents"),
   removeRecent: (identity: string) => invoke<void>("remove_recent", { identity }),
+  /** Rust validates the slug (`[a-z0-9-]`, unique among saved connections) and renames open sessions too. */
+  renameConnectionSlug: (identity: string, slug: string) => invoke<void>("rename_connection_slug", { identity, slug }),
 
   connect: (args: OpenArgs) => invoke<SessionInfo>("connect", { args }),
   disconnect: (sessionId: string) => invoke<void>("disconnect", { sessionId }),
@@ -89,6 +92,8 @@ export const api = {
     invoke<string>("fetch_cell", { sessionId, resultId, row, col }),
   browseTable: (sessionId: string, request: BrowseRequest) =>
     invoke<BrowsePage>("browse_table", { sessionId, request }),
+  /** Checks an address against the session (slug, database, table, key) and returns its canonical form. */
+  resolveAddress: (sessionId: string, address: string) => invoke<Resolved>("resolve_address", { sessionId, address }),
   /** The "New query" SQL for a table, quoted by Rust. */
   tableSelectSql: (sessionId: string, database: string, table: string) =>
     invoke<string>("table_select_sql", { sessionId, database, table }),

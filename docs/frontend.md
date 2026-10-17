@@ -51,7 +51,7 @@ root: it creates the store, keeps the slice registry and re-exports the selector
 and the state types, so components import everything from `state/store`.
 
 - `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs`, `changes`, `data`,
-  `favorites`, `ui`, and the temporary `wp` until it moves to the WordPress module). Each exports its
+  `favorites`, `ui`, `nav`, and the temporary `wp` until it moves to the WordPress module). Each exports its
   member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
   the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
 - `Store` is an interface extending every core slice's interface. A module adds its members with
@@ -70,8 +70,8 @@ and the state types, so components import everything from `state/store`.
 | Key | Meaning |
 |---|---|
 | `settings` | `Settings \| null`; null until loaded |
-| `sessions`, `activeSessionId` | open connections (`SessionInfo`) |
-| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error) or `TableTab` (database, table, data/structure view, filter, structured `where`, preview) |
+| `sessions`, `activeSessionId` | open connections (`SessionInfo`, with the connection `slug`) |
+| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error) or `TableTab` (database, table, data/structure view, filter, structured `where`, preview). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
 | `mode`, `modeChosen` | `"wp" \| "db"`. A WordPress database switches to `wp` until the user picks a mode |
@@ -89,7 +89,7 @@ and the state types, so components import everything from `state/store`.
 Conventions:
 - Components subscribe with narrow selectors (`useStore((s) => s.x)`), and `useShallow` for derived arrays.
 - Event handlers call actions through `useStore.getState()`.
-- Selectors live in `selectors.ts`: `selectActiveSession`, `selectActiveTab`, `selectStructure`,
+- Selectors live in `selectors.ts`: `selectActiveSession`, `selectActiveTab`, `selectCanNav`, `selectStructure`,
   `selectActivePending`, `selectCanUndo`, `selectSidebarHidden`, `selectVisibleDatabases` (the active session's databases without
   system schemas unless shown or current; use with `useShallow`), `selectWp`, `selectWpRoute`. For
   `selectWp`, `undefined` means not probed yet and `null` means not WordPress.
@@ -264,8 +264,8 @@ one of them.
   each name (`Connection` only with several sessions, `Database` always) opens the picker. `SearchField` is a
   button styled as a field (label "Go to") that opens the palette; its key cap follows `palette.open`.
 - **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (WordPress mode: the
-  site facts; table tab: `db.table` with its column matches and filter; query tab: rows, time and statement
-  count, with the row-limit warning), spacer, `PendingCount` (`pending n`, a button to the tray when n > 0).
+  site facts; otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
+  typed SQL filter applies; a query tab adds rows, time and statement count, with the row-limit warning), spacer, `PendingCount` (`pending n`, a button to the tray when n > 0).
   The theme and dock chips are gone: both stay in Settings and the palette.
 - **Sidebar:** the Tables/History switch, the filter (`InsetField`, key cap from `sidebar.focusFilter`), a
   `db · N tables` caption, then the tree. Rows are `.si` items (`sel` for the active table). All tabs of the active session
@@ -300,9 +300,12 @@ titled "Statement N failed" above the results of the statements before it. A `ti
 filter always has the primary key. `useBrowse` drops replies that are not the latest request, and the
 `Pager` moves by `BrowsePage.limit` (Rust's clamped page size). A failed structure shows an alert and
 leaves editing off. `FilterBar` and `useRowEditing` hold the filter input and the row menu and cell edits;
-primary-key and WordPress id columns match case-insensitively. The tab's `where` goes into every browse
-request next to the typed filter; `ColumnsFilterChip` shows `BrowsePage.columnsFilter.label` read-only
-(the SQL as its tooltip), and its clear button drops the `where` for that tab.
+primary-key and WordPress id columns match case-insensitively. The typed filter and `where` live on the
+tab, not in `useBrowse` (which keeps only offset and sort), so back and forward can change them; other
+rows start at the first page. Applying the filter calls `setTableFilter` (no history entry: a free SQL
+filter is not addressable). The tab's `where` goes into every browse request next to the typed filter;
+`ColumnsFilterChip` shows `BrowsePage.columnsFilter.label` read-only (the SQL as its tooltip), and its clear
+button calls `showRows` with no matches, which records the filtered address for back.
 
 ### Opening rows
 
@@ -310,13 +313,43 @@ The page never builds SQL conditions. Opening rows in the Database view passes s
 (`ColumnEquals`: `{ column, value }`, a `null` value means `IS NULL`), and Rust renders and quotes them
 ([Browsing tables](database.md#browsing-tables)):
 
-- `openRow(table, column, value)` (tabs slice): switches to Database mode (`setMode("db")`) and opens
-  `table` of the active database with `where: [{ column, value }]` in the preview tab. Source-row links,
-  timeline rows, "Find everywhere" hits, option rows and order item meta use it.
+- `openRow(table, column, value)` (tabs slice): while the Database view shows a table tab of the active
+  session, that tab moves to the rows (`showRows`, so ⌘[ returns). Otherwise it switches to Database mode
+  (`setMode("db")`) and opens `table` of the active database with `where: [{ column, value }]` in the
+  preview tab. Source-row links, timeline rows, "Find everywhere" hits, option rows and order item meta use it.
 - `openInDatabase(table, where?)`: the same with any number of matches, in a kept tab. `RowSource.where`
   (`FieldValue.tsx`) carries the matches for a field's "Open row in Database view".
 - `openTableTab(database, table, view?, filter?, { preview?, where? })`: an open tab is reused only when
-  its `filter` and `where` are the same.
+  its `filter` and `where` are the same. A preview tab that replaces the previous one takes over its history
+  and records the replaced address, so a single click in the sidebar can be undone with ⌘[.
+
+### Addresses and history
+
+Every view has an address (`databee://<slug>/<database>/<table>/<key>?…`, [architecture](architecture.md#addresses)).
+`lib/address.ts` ports Rust's parser and formatter (`parseAddress`, which throws an `AddressError`,
+`formatAddress`, `sameAddress`, `encodePart`), because addresses are built on every navigation; a Vitest
+test checks it against `src/test/fixtures/addresses.json`, which a Rust test writes.
+
+- **Tab addresses** (`slices/nav.ts`): a `TableTab`'s `address` is derived from its table and `where` by
+  `tableAddress`: one match on the table's single-column primary key (from the `structures` cache) is the
+  row (`…/<table>/<key>?view=rows`), anything else the table with its filter (`…/<table>?col=val`, a `null`
+  value written as a bare `?col`). The typed SQL filter never enters an address. A `QueryTab`'s address is
+  the database home (`homeAddress`), null without a current database. The connection part is the session's
+  `slug`.
+- **History:** every tab has `nav { back, forward }`, at most `NAV_LIMIT` (50) addresses each. `showRows`
+  (opening a row in place, clearing the column filter) and a replaced preview tab push the address being
+  left and clear `forward`; an unchanged address pushes nothing. `navBack` / `navForward` (commands
+  `nav.back` ⌘[ and `nav.forward` ⌘], global scope) move the active tab and restore its table and `where`;
+  a row address needs the primary key, so they load the structure first. They are enabled only while
+  `selectCanNav` finds history, so ⌘[ still outdents in the editor. In WordPress mode both delegate to
+  `wpNav` (`goBack` / `goForward`) until WordPress mode is removed.
+- **`openAddress(text)`:** parses, finds the open session by slug, and opens a table or row address in a
+  table tab (`openTableTab` with the matching `where`). Other targets (home, saved query, find, project)
+  answer with a toast until their views exist. The dev hook reaches it as
+  `window.databee.getState().openAddress("databee://…")`.
+- **Slug renames:** `renameConnectionSlug(identity, slug)` calls Rust, then rewrites `slug` on the sessions
+  and the connection part of every address of their tabs. Settings → Connections lists the saved
+  connections with their slugs (`components/settings/ConnectionSlugs.tsx`, anchors `settings:slug:<identity>`).
 
 The Sidebar's "New query: SELECT …" asks Rust for the statement (`api.tableSelectSql`), so identifier
 quoting stays in Rust too.
@@ -331,6 +364,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text, TSV/JSON export, `relativeTime` |
 | `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText` |
 | `clipboard.ts` | `copyText` with a success or error toast |
+| `address.ts` | `parseAddress` / `formatAddress`, the port of Rust's `address` module |
 | `sql.ts` | statement ranges and the statement at the cursor |
 | `theme.ts` | `applyAppearance` (scheme, accent, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `applyInitialScheme` (first paint) |
 | `codeTheme.ts` | CodeMirror theme and syntax colors from the scheme's `--code-*` tokens |

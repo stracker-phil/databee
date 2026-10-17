@@ -14,6 +14,7 @@ use crate::error::{AppError, AppResult};
 use crate::lock::{MutexExt, RwLockExt};
 use crate::secrets::{PasswordSource, SecretStore, resolve_password};
 use crate::state::AppState;
+use crate::store::slug::default_slug;
 
 pub struct Session {
     pub id: String,
@@ -27,6 +28,8 @@ pub struct Session {
     pub cells: CellCache,
     /// Applied writes per database; caches compare it to notice that their data changed.
     writes: Mutex<HashMap<String, u64>>,
+    /// The connection slug addresses start with; renaming the saved connection updates it.
+    slug: RwLock<String>,
 }
 
 /// A map from type to one shared value of that type, so a module can attach its own data to a
@@ -68,6 +71,8 @@ pub struct SessionInfo {
     pub display_name: String,
     pub server_version: String,
     pub database: Option<String>,
+    /// The connection slug (`databee://<slug>/…`).
+    pub slug: String,
 }
 
 impl SessionInfo {
@@ -76,6 +81,7 @@ impl SessionInfo {
         spec: &ConnectionSpec,
         server_version: &str,
         database: Option<String>,
+        slug: String,
     ) -> SessionInfo {
         SessionInfo {
             id: id.to_string(),
@@ -85,14 +91,16 @@ impl SessionInfo {
             display_name: spec.display_name(),
             server_version: server_version.to_string(),
             database,
+            slug,
         }
     }
 }
 
 impl Session {
-    pub fn new(id: String, spec: ConnectionSpec, db: Box<dyn Database>) -> Self {
+    pub fn new(id: String, spec: ConnectionSpec, slug: String, db: Box<dyn Database>) -> Self {
         Self {
             id,
+            slug: RwLock::new(slug),
             spec,
             db,
             ext: Extensions::default(),
@@ -100,6 +108,14 @@ impl Session {
             cells: CellCache::default(),
             writes: Mutex::default(),
         }
+    }
+
+    pub fn slug(&self) -> String {
+        self.slug.read_unpoisoned().clone()
+    }
+
+    pub fn set_slug(&self, slug: &str) {
+        *self.slug.write_unpoisoned() = slug.to_string();
     }
 
     pub fn bump_writes(&self, database: &str) {
@@ -211,6 +227,7 @@ impl Session {
             &self.spec,
             self.db.server_version(),
             self.db.current_database(),
+            self.slug(),
         )
     }
 }
@@ -260,12 +277,17 @@ pub async fn open(state: &AppState, args: OpenArgs) -> AppResult<Arc<Session>> {
     if let (true, PasswordSource::Provided(secret)) = (args.save_password, &source) {
         save_password(state.secrets.clone(), args.spec.account(), secret.clone()).await;
     }
-    if let Err(e) = state.recents.touch(&args.spec).await {
-        log::warn!("Could not update recent connections: {e}");
-    }
+    // Without the store the session still gets its default slug.
+    let slug = match state.recents.touch(&args.spec).await {
+        Ok(slug) => slug,
+        Err(e) => {
+            log::warn!("Could not update recent connections: {e}");
+            default_slug(&args.spec)
+        }
+    };
     log::info!("Connected to {identity} ({})", db.server_version());
     let id = uuid::Uuid::new_v4().to_string();
-    Ok(state.sessions.insert(Session::new(id, args.spec, db)))
+    Ok(state.sessions.insert(Session::new(id, args.spec, slug, db)))
 }
 
 /// Resolves the password, connects, and settles the launch password: a timeout or network
@@ -357,6 +379,15 @@ impl Sessions {
     pub fn remove(&self, id: &str) -> Option<Arc<Session>> {
         self.0.write_unpoisoned().remove(id)
     }
+
+    /// Gives every open session of the connection `identity` the renamed slug.
+    pub fn rename_slug(&self, identity: &str, slug: &str) {
+        for session in self.0.read_unpoisoned().values() {
+            if session.spec.identity() == identity {
+                session.set_slug(slug);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -370,6 +401,7 @@ mod tests {
         Session::new(
             id.into(),
             local_spec(),
+            "local".into(),
             Box::new(FakeDatabase::new().with_database("wp")),
         )
     }
@@ -397,7 +429,12 @@ mod tests {
     }
 
     fn session_over(db: &Arc<FakeDatabase>) -> Session {
-        Session::new("a".into(), local_spec(), Box::new(db.clone()))
+        Session::new(
+            "a".into(),
+            local_spec(),
+            "local".into(),
+            Box::new(db.clone()),
+        )
     }
 
     #[tokio::test]
@@ -527,7 +564,7 @@ mod tests {
             let db = MySqlSession::connect(&spec, Some(&Secret::new("root")), TIMEOUT, TIMEOUT)
                 .await
                 .unwrap();
-            let session = Session::new("it".into(), spec, Box::new(db));
+            let session = Session::new("it".into(), spec, "it".into(), Box::new(db));
             let read = |sql: &'static str| {
                 let session = &session;
                 async move {
@@ -583,7 +620,7 @@ mod tests {
         let db = MySqlSession::connect(&spec, Some(&Secret::new("root")), TIMEOUT, TIMEOUT)
             .await
             .unwrap();
-        let session = Session::new("it".into(), spec, Box::new(db));
+        let session = Session::new("it".into(), spec, "it".into(), Box::new(db));
 
         let err = session.apply_plans(&[999], TIMEOUT).await.unwrap_err();
 
@@ -645,7 +682,7 @@ mod tests {
     fn session_info_derives_identity_account_and_display_name_from_the_spec() {
         let host_spec = session("a").spec;
         for spec in [host_spec, socket_spec()] {
-            let info = SessionInfo::new("a", &spec, "8.4.0", Some("wp".into()));
+            let info = SessionInfo::new("a", &spec, "8.4.0", Some("wp".into()), "wp".into());
 
             assert_eq!(info.id, "a");
             assert_eq!(info.identity, spec.identity());
@@ -661,7 +698,9 @@ mod tests {
     fn session_info_serializes_camel_case_with_an_account_and_no_password() {
         let spec = socket_spec();
 
-        let value = serde_json::to_value(SessionInfo::new("a", &spec, "8.4.0", None)).unwrap();
+        let value =
+            serde_json::to_value(SessionInfo::new("a", &spec, "8.4.0", None, "local".into()))
+                .unwrap();
 
         assert_eq!(
             value,
@@ -673,9 +712,40 @@ mod tests {
                 "displayName": "Local",
                 "serverVersion": "8.4.0",
                 "database": null,
+                "slug": "local",
             })
         );
         assert!(value.get("password").is_none());
+    }
+
+    #[test]
+    fn info_slug_is_the_given_slug_and_follows_set_slug() {
+        let session = session("a");
+        assert_eq!(session.info().slug, "local");
+
+        session.set_slug("mine");
+
+        assert_eq!(session.slug(), "mine");
+        assert_eq!(session.info().slug, "mine");
+    }
+
+    #[test]
+    fn renaming_a_slug_changes_only_the_sessions_of_that_connection() {
+        let sessions = Sessions::default();
+        let first = sessions.insert(session("a"));
+        let second = sessions.insert(session("b"));
+        let other = sessions.insert(Session::new(
+            "c".into(),
+            socket_spec(),
+            "socket".into(),
+            Box::new(FakeDatabase::new()),
+        ));
+
+        sessions.rename_slug(&local_spec().identity(), "renamed");
+
+        assert_eq!(first.slug(), "renamed");
+        assert_eq!(second.slug(), "renamed");
+        assert_eq!(other.slug(), "socket");
     }
 
     #[tokio::test]

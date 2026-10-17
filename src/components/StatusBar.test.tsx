@@ -5,9 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { installCommands } from "../commands";
-import { selectSidebarHidden, useStore, type TableTab } from "../state/store";
-import { connectedStore, pendingChange } from "../test/fixtures";
+import { selectSidebarHidden, useStore } from "../state/store";
+import { connectedStore, pendingChange, queryTab, tableTab } from "../test/fixtures";
 import { StatusBar } from "./StatusBar";
+import { Toasts } from "./Toasts";
 
 describe("StatusBar", () => {
   beforeEach(() => {
@@ -31,11 +32,43 @@ describe("StatusBar", () => {
     expect(selectSidebarHidden(useStore.getState())).toBe(true);
   });
 
-  it("shows a table tab's address as database.table", () => {
-    const tab: TableTab = { id: "t1", kind: "table", sessionId: "s1", title: "wp_posts", database: "db", table: "wp_posts", view: "data", where: [] };
-    useStore.setState({ tabs: [tab], activeTabId: "t1" });
-    render(<StatusBar />);
-    expect(screen.getByText("db.wp_posts")).toBeInTheDocument();
+  describe("address", () => {
+    beforeEach(() => useStore.setState({ tabs: [tableTab()], activeTabId: "t1" }));
+
+    it("shows a table tab's address", () => {
+      render(<StatusBar />);
+      expect(screen.getByRole("button", { name: "databee://shop/db/wp_posts" })).toBeInTheDocument();
+    });
+
+    it("shows a query tab's database home", () => {
+      useStore.setState({ tabs: [queryTab()], activeTabId: "q1" });
+      render(<StatusBar />);
+      expect(screen.getByRole("button", { name: "databee://shop/db/" })).toBeInTheDocument();
+    });
+
+    it("copies the address on click and confirms it", async () => {
+      render(
+        <>
+          <StatusBar />
+          <Toasts />
+        </>,
+      );
+      await userEvent.click(screen.getByRole("button", { name: "databee://shop/db/wp_posts" }));
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("databee://shop/db/wp_posts");
+      expect(await screen.findByText("Copied address")).toBeInTheDocument();
+    });
+
+    it("adds a filtered hint for a typed SQL filter and keeps the address", () => {
+      useStore.setState({ tabs: [tableTab({ filter: "post_type = 'page'" })] });
+      render(<StatusBar />);
+      expect(screen.getByText("· filtered")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "databee://shop/db/wp_posts" })).toBeInTheDocument();
+    });
+
+    it("shows no filtered hint without a typed filter", () => {
+      render(<StatusBar />);
+      expect(screen.queryByText("· filtered")).not.toBeInTheDocument();
+    });
   });
 
   it("shows plain text and no button when nothing is pending", () => {

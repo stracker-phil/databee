@@ -74,7 +74,7 @@ describe("ConnectScreen", () => {
 
   it("fills the form from a recent connection and connects on double-click", async () => {
     mocked.listRecents.mockResolvedValue([
-      { identity: session.identity, account: session.account, spec: session.spec, lastUsed: new Date().toISOString() },
+      { identity: session.identity, account: session.account, spec: session.spec, lastUsed: new Date().toISOString(), slug: session.slug },
     ]);
     mocked.connect.mockResolvedValue(session);
     render(<ConnectScreen />);
@@ -87,7 +87,7 @@ describe("ConnectScreen", () => {
 
   it("describes a recent connection by the account Rust sent", async () => {
     mocked.listRecents.mockResolvedValue([
-      { identity: session.identity, account: "wp@db.test:3307", spec: session.spec, lastUsed: new Date().toISOString() },
+      { identity: session.identity, account: "wp@db.test:3307", spec: session.spec, lastUsed: new Date().toISOString(), slug: session.slug },
     ]);
     render(<ConnectScreen />);
     const recent = await screen.findByRole("button", { name: "Connect to Shop" });
@@ -109,7 +109,7 @@ describe("ConnectScreen", () => {
   });
 
   describe("removing a recent connection", () => {
-    const recent = { identity: session.identity, account: session.account, spec: session.spec, lastUsed: new Date().toISOString() };
+    const recent = { identity: session.identity, account: session.account, spec: session.spec, lastUsed: new Date().toISOString(), slug: session.slug };
 
     beforeEach(() => mocked.listRecents.mockResolvedValue([recent]));
 

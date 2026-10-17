@@ -1,8 +1,10 @@
 import { PanelLeft } from "lucide-react";
 import { api } from "../api";
 import { useBindingLabel } from "../commands";
+import { formatAddress } from "../lib/address";
+import { copyText } from "../lib/clipboard";
 import { formatCount } from "../lib/format";
-import { isWpView, selectActivePending, selectActiveTab, selectSidebarHidden, selectWp, useStore, type QueryTab, type TableTab } from "../state/store";
+import { isWpView, selectActivePending, selectActiveTab, selectSidebarHidden, selectWp, useStore, type QueryTab, type Tab } from "../state/store";
 
 /** WordPress mode: the site URL, the table prefix and WooCommerce's stored version and HPOS mode. */
 function WpFacts() {
@@ -23,11 +25,19 @@ function WpFacts() {
   );
 }
 
-/** A table tab's location: `db.table`, then its column matches and typed filter. */
-function tableAddress(tab: TableTab): string {
-  const columns = tab.where.map((w) => ` · ${w.column} = ${w.value ?? "NULL"}`).join("");
-  const filter = tab.filter ? ` · ${tab.filter}` : "";
-  return `${tab.database}.${tab.table}${columns}${filter}`;
+/** The tab's address as text; click copies it. A typed SQL filter is not part of it and shows as a hint. */
+function AddressText({ tab }: { tab: Tab }) {
+  if (!tab.address) return null;
+  const text = formatAddress(tab.address);
+  const filtered = tab.kind === "table" && !!tab.filter;
+  return (
+    <>
+      <button data-stage="statusbar:address" className="status-text address mono" title="Copy address" onClick={() => void copyText(text, "address")}>
+        {text}
+      </button>
+      {filtered && <span className="o3" title={`WHERE ${tab.filter}`}>· filtered</span>}
+    </>
+  );
 }
 
 function QuerySummary({ tab }: { tab: QueryTab }) {
@@ -49,14 +59,18 @@ function QuerySummary({ tab }: { tab: QueryTab }) {
   );
 }
 
-/** The address slot: where the active tab is. */
+/** The address slot: where the active tab is, and a query tab's result summary. */
 function Address() {
   const tab = useStore(selectActiveTab);
   const wpMode = useStore(isWpView);
   if (wpMode) return <WpFacts />;
-  if (tab?.kind === "table") return <span className="address mono">{tableAddress(tab)}</span>;
-  if (tab?.kind === "query") return <QuerySummary tab={tab} />;
-  return null;
+  if (!tab) return null;
+  return (
+    <>
+      <AddressText tab={tab} />
+      {tab.kind === "query" && <QuerySummary tab={tab} />}
+    </>
+  );
 }
 
 function SidebarToggle() {

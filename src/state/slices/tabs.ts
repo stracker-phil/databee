@@ -1,8 +1,9 @@
-import { api, toAppError, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse } from "../../api";
+import { api, toAppError, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse } from "../../api";
 import type { CellSource } from "../../lib/cells";
 import { fail } from "../requests";
-import { selectActiveSession } from "../selectors";
+import { isWpView, selectActiveSession, selectActiveTab } from "../selectors";
 import type { Slice, Store } from "../store";
+import { EMPTY_NAV, homeAddress, pushed, tableAddress, tableTitle, type TabNav } from "./nav";
 import { nextActiveSessionId } from "./session";
 import { remembered } from "./ui";
 
@@ -16,6 +17,9 @@ export interface QueryTab {
   response?: ExecuteResponse;
   error?: AppError;
   activeResult: number;
+  /** The database home; null while the session has no current database. */
+  address: Address | null;
+  nav: TabNav;
 }
 
 export interface TableTab {
@@ -32,6 +36,10 @@ export interface TableTab {
   where: ColumnEquals[];
   /** Preview tabs (single click in the sidebar) are replaced by the next preview; pinning keeps them. */
   preview?: boolean;
+  /** Derived from `table` and `where` (never from `filter`), see `tableAddress`. */
+  address: Address;
+  /** Addresses for back and forward. */
+  nav: TabNav;
 }
 
 export type Tab = QueryTab | TableTab;
@@ -58,7 +66,10 @@ export interface TabsSlice {
   openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean; where?: ColumnEquals[] }): void;
   /** Switches to the Database view and opens `table` of the active database filtered by `where`. */
   openInDatabase(table: string, where?: ColumnEquals[]): void;
-  /** Switches to the Database view and opens the rows of `table` where `column` equals `value`, in the preview tab. */
+  /**
+   * Opens the rows of `table` where `column` equals `value`: in the active table tab while the Database view shows
+   * one (back returns), else in the preview tab of the Database view.
+   */
   openRow(table: string, column: string, value: string | null): void;
   pinTab(id: string): void;
   activateTab(id: string): void;
@@ -113,6 +124,8 @@ export const tabsSlice: Slice<TabsSlice> = {
           sql,
           running: false,
           activeResult: 0,
+          address: homeAddress(s, session.id, session.database),
+          nav: EMPTY_NAV,
         };
         return { tabs: [...s.tabs, tab], queryCounter: { ...s.queryCounter, [session.id]: count }, ...activate(s, tab.id) };
       });
@@ -137,21 +150,24 @@ export const tabsSlice: Slice<TabsSlice> = {
         set((s) => ({ tabs: s.tabs.map((t) => (t.id === existing.id ? updated : t)), ...activate(s, existing.id) }));
         return;
       }
-      const tab: TableTab = {
-        id: `table-${nextTabId++}`,
-        kind: "table",
-        sessionId: session.id,
-        title: filter || where.length > 0 ? `${table} (filtered)` : table,
-        database,
-        table,
-        view: view ?? "data",
-        filter,
-        where,
-        preview: opts.preview ?? false,
-      };
       set((s) => {
-        // A preview tab takes the place of the previous preview tab of this session.
+        const address = tableAddress(s, session.id, { database, table, where });
+        // A preview tab takes the place of the previous preview tab of this session, history included.
         const replaced = opts.preview ? s.tabs.find((t): t is TableTab => t.kind === "table" && !!t.preview && t.sessionId === session.id) : undefined;
+        const tab: TableTab = {
+          id: `table-${nextTabId++}`,
+          kind: "table",
+          sessionId: session.id,
+          title: tableTitle(table, where, filter),
+          database,
+          table,
+          view: view ?? "data",
+          filter,
+          where,
+          preview: opts.preview ?? false,
+          address,
+          nav: replaced ? pushed(replaced.nav, replaced.address, address) : EMPTY_NAV,
+        };
         const kept = s.tabs.filter((t) => t.id !== replaced?.id);
         const at = replaced ? s.tabs.indexOf(replaced) : kept.length;
         return { tabs: [...kept.slice(0, at), tab, ...kept.slice(at)], ...activate(s, tab.id) };
@@ -166,10 +182,16 @@ export const tabsSlice: Slice<TabsSlice> = {
     },
 
     openRow(table, column, value) {
-      const database = selectActiveSession(get())?.database;
+      const s = get();
+      const database = selectActiveSession(s)?.database;
       if (!database) return;
-      get().setMode("db");
-      get().openTableTab(database, table, "data", undefined, { preview: true, where: [{ column, value }] });
+      const active = selectActiveTab(s);
+      if (!isWpView(s) && active?.kind === "table" && active.sessionId === s.activeSessionId) {
+        s.showRows(active.id, { database, table, where: [{ column, value }] });
+        return;
+      }
+      s.setMode("db");
+      s.openTableTab(database, table, "data", undefined, { preview: true, where: [{ column, value }] });
     },
 
     pinTab(id) {

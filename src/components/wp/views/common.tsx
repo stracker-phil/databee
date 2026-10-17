@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Database, Lock, Table2 } from "lucide-react";
-import type { Address, ChipTarget, ColumnEquals, DocField, EntityDoc, RelatedChip, TimelineEvent } from "../../../api";
+import type { ChipTarget, ColumnEquals, DocField, EntityDoc, RelatedChip, PostalAddress, TimelineEvent } from "../../../api";
 import { cellText } from "../../../lib/format";
 import { flagEmoji } from "../../../lib/wpFormat";
 import { useStore } from "../../../state/store";
@@ -34,7 +34,7 @@ export function RelationStrip({ items, onTarget }: { items: RelatedChip[]; onTar
   );
 }
 
-export function AddressCard({ title, address, warn }: { title: string; address: Address | null; warn?: boolean }) {
+export function AddressCard({ title, address, warn }: { title: string; address: PostalAddress | null; warn?: boolean }) {
   return (
     <div className={`address-card${warn ? " warn" : ""}`}>
       <div className="address-title">{title}</div>

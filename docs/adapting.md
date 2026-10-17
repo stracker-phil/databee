@@ -34,6 +34,7 @@ The app's name and ids live in a few places. Change them together.
 | Binary and CLI command `databee` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli.rs` `name`; `scripts/install-cli.sh`; `scripts/dev/launch.sh` | The Rust lib is `databee_lib`, also used by `main.rs` and `tests/` |
 | Keychain service `"databee"` | `secrets/keychain.rs` `SERVICE` | Changing it loses saved passwords |
 | Socket file `databee.sock` | `lib.rs`, `scripts/dev/js.sh` | |
+| Address scheme `databee://` | `src-tauri/src/address/mod.rs` `SCHEME`; `src/lib/address.ts` `SCHEME`; `src/test/fixtures/addresses.json` | Copied and saved addresses stop parsing when it changes |
 | Env vars `DATABEE_*` | `dev.rs`, `scripts/dev/launch.sh`, tests | |
 | Window events `databee:*`, `window.databee` | `src/commands/index.ts`, `src/main.tsx`, the dev scripts | Internal only |
 | Icons | `src-tauri/icons/` | Regenerate with `bun tauri icon <1024px png>` |
