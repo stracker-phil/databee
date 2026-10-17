@@ -70,7 +70,6 @@ fn value_match(ctx: &Ctx<'_>, column: &str, term: &Term<'_>, text: &str) -> Stri
     }
 }
 
-/// The `[[meta]]` table that `table` owns.
 fn owner_meta<'r>(ctx: &'r Ctx<'_>, table: &str) -> Option<&'r MetaRef> {
     ctx.rules
         .meta
@@ -222,4 +221,118 @@ async fn external_ids(ctx: &Ctx<'_>, text: &str) -> Vec<PaletteHit> {
     }
     out.truncate(SECTION_CAP);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::ResultSet;
+    use crate::document::testing::{Rig, num, result, shop, text};
+
+    fn numbered(columns: &[&str; 2], count: usize) -> ResultSet {
+        let rows = (1..=count)
+            .map(|i| vec![num(&i.to_string()), text("sandbox")])
+            .collect();
+        result(columns, rows)
+    }
+
+    fn summary(hits: &[PaletteHit]) -> Vec<(&str, &str)> {
+        hits.iter()
+            .map(|hit| (hit.section.as_str(), hit.source.as_str()))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn external_id_hits_come_before_entity_hits_and_entity_hits_stop_at_the_cap() {
+        let rules = r#"
+[[entity]]
+name = "order"
+table = "orders"
+search = ["status"]
+
+[[entity]]
+name = "entry"
+table = "log"
+search = ["msg"]
+
+[[reference]]
+from = "orders.currency"
+to = "people.name"
+"#;
+        let rig = Rig::new(
+            shop()
+                .on("`f_people`", numbered(&["person_id", "name"], 1))
+                .on("`f_orders`", numbered(&["id", "status"], 15))
+                .on("`f_log`", numbered(&["log_id", "msg"], 15)),
+            rules,
+        );
+        let ctx = rig.ctx().await;
+
+        let found = free(&ctx, "sandbox").await;
+
+        let mut expected = vec![("external id sandbox", "f_people.name")];
+        expected.extend([("objects matching sandbox", "f_orders"); 15]);
+        expected.extend([("objects matching sandbox", "f_log"); SECTION_CAP - 15]);
+        assert_eq!(summary(&found), expected);
+    }
+
+    #[tokio::test]
+    async fn exact_columns_use_equals_and_contains_columns_escaped_like_inside_the_entity_filter() {
+        let rules = r#"
+[[entity]]
+name = "order"
+table = "orders"
+filter = "status <> 'trash'"
+search = ["status"]
+search_exact = ["currency"]
+"#;
+        let rig = Rig::new(
+            shop().on("`f_orders`", numbered(&["id", "status"], 1)),
+            rules,
+        );
+        let ctx = rig.ctx().await;
+
+        let found = free(&ctx, "a%b").await;
+
+        assert_eq!(
+            rig.db.queries(),
+            [
+                r"SELECT t.* FROM `wp`.`f_orders` AS t WHERE (status <> 'trash') AND (t.`status` LIKE '%a\\%b%' OR t.`currency` = 'a%b') ORDER BY t.`id` DESC LIMIT 20"
+            ]
+        );
+        assert_eq!(summary(&found), [("objects matching a%b", "f_orders")]);
+    }
+
+    #[tokio::test]
+    async fn people_reads_only_entities_marked_people() {
+        let rules = r#"
+[[entity]]
+name = "order"
+table = "orders"
+search = ["status"]
+
+[[entity]]
+name = "person"
+table = "people"
+people = true
+search = ["name"]
+"#;
+        let rig = Rig::new(
+            shop()
+                .on("`f_orders`", numbered(&["id", "status"], 1))
+                .on("`f_people`", numbered(&["person_id", "name"], 1)),
+            rules,
+        );
+        let ctx = rig.ctx().await;
+
+        let found = people(&ctx, "jane").await;
+
+        assert_eq!(
+            rig.db.queries(),
+            [
+                "SELECT t.* FROM `wp`.`f_people` AS t WHERE (t.`name` LIKE '%jane%') ORDER BY t.`person_id` DESC LIMIT 20"
+            ]
+        );
+        assert_eq!(summary(&found), [("people matching jane", "f_people")]);
+    }
 }

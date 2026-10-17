@@ -1,4 +1,3 @@
-/** Saved queries (docs/frontend.md, Saved queries): the project's, the global ones and the presets' pinned ones. */
 import { api, type Home, type SavedEntry, type SavedOrigin, type SavedQuery } from "../../api";
 import { fail } from "../requests";
 import { selectActiveTab } from "../selectors";
@@ -23,7 +22,6 @@ export interface SavedSlice {
 
 export const isPreset = (origin: SavedOrigin): origin is Extract<SavedOrigin, { kind: "preset" }> => origin.kind === "preset";
 
-/** `project`, `global` or `preset:<name>`, as the palette and the query tab show it. */
 export function originText(origin: SavedOrigin): string {
   return origin.kind === "preset" ? `preset:${origin.preset}` : origin.kind;
 }
@@ -47,7 +45,6 @@ function savedRef(query: SavedQuery, origin: SavedOrigin, database: string): Sav
 export const savedSlice: Slice<SavedSlice> = {
   create: (set, get) => {
 
-    /** Runs a store request and points the tab at the stored query. */
     const persist = async (tab: QueryTab, database: string, origin: SavedOrigin, request: () => Promise<SavedQuery>, done: (title: string) => string, failure: string) => {
       try {
         const query = await request();

@@ -1,4 +1,3 @@
-/** Value styles and kinds: project rules editable, preset rules read-only in `--o2`. */
 import type { KindRow, ProjectChange, StyleRow } from "../../api";
 import { kindFormFromRow, kindText, originText, scopeText, styleFormFromRow, styleMatchText } from "../../lib/ruleForms";
 import { fail } from "../../state/store";

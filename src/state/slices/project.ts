@@ -1,4 +1,3 @@
-/** Project tabs (`?project`) and the rules they show; `projectRules` is reloaded once per `dataVersion`. */
 import { api, toAppError, type AppError, type ProjectChange, type ProjectRules, type RulesInfo, type SessionInfo } from "../../api";
 import type { ProjectForm } from "../../lib/ruleForms";
 import { fail } from "../requests";

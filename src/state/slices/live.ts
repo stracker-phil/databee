@@ -1,4 +1,3 @@
-/** Live mode, snapshots and their change marks (docs/frontend.md, Live mode, snapshots, compare). */
 import { api, type DocDelta, type SnapshotInfo } from "../../api";
 import { formatAddress } from "../../lib/address";
 import { objectColumnAt } from "../../lib/columns";
@@ -27,7 +26,6 @@ export interface ChangeTarget {
   database: string;
   /** A row address, or the saved query's (`…/q/<id>`). */
   address: string;
-  /** What the snapshot dialogs call it. */
   title: string;
 }
 
@@ -46,11 +44,9 @@ export interface LiveSlice {
   takeSnapshot(): void;
   /** "Changes since snapshot…": lists the active target's snapshots to pick one. */
   chooseSnapshot(): Promise<void>;
-  /** Marks what changed since snapshot `id` on `target`. */
   showSnapshotDiff(target: ChangeTarget, id: string): Promise<void>;
 }
 
-/** The `changeMarks` key of a query tab's saved query. */
 export const queryMarksKey = (sessionId: string, tabId: string) => `${sessionId}/q:${tabId}`;
 
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -61,7 +57,6 @@ function stopTimer() {
   timer = null;
 }
 
-/** The active object column, or the active query tab when it shows a saved query. */
 export function selectChangeTarget(s: Store): ChangeTarget | null {
   const tab = selectActiveTab(s);
   if (tab?.kind === "object") {
@@ -79,7 +74,6 @@ export function selectChangeTarget(s: Store): ChangeTarget | null {
   return { key: queryMarksKey(tab.sessionId, tab.id), kind: "query", sessionId: tab.sessionId, database, address, title: tab.title };
 }
 
-/** The live interval in seconds while the active object column is live, else null. */
 export function selectActiveLive(s: Store): number | null {
   const target = selectChangeTarget(s);
   return target && s.live[target.key] ? (s.settings?.liveIntervalSecs ?? 2) : null;
@@ -92,7 +86,6 @@ export const selectActiveMarks = (s: Store): ChangeMarks | undefined => {
 
 export const selectCanDismissMarks = (s: Store) => hasMarks(selectActiveMarks(s));
 
-/** Whether an object tab still shows the document `key`. */
 function shown(s: Store, key: string): boolean {
   return s.tabs.some((tab) => tab.kind === "object" && tab.columns.some((c) => c.kind === "object" && documentKey(tab.sessionId, documentText(c.address)) === key));
 }

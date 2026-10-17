@@ -1,4 +1,3 @@
-/** Live mode, change marks, snapshots and compare (docs/ux.md, Keys); `w`, `x` and `s` act on the active object column. */
 import { formatAddress } from "../lib/address";
 import { objectColumnAt } from "../lib/columns";
 import { selectActiveTab, selectCanDismissMarks, selectChangeTarget, useStore } from "../state/store";

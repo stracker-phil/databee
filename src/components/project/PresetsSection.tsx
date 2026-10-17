@@ -1,4 +1,3 @@
-/** Presets and prefix: the prefix with its suggestion, each preset with its marker tables and a switch, export. */
 import { useState } from "react";
 import { api, type PresetRow } from "../../api";
 import { fail, useStore } from "../../state/store";

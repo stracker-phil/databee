@@ -1,7 +1,3 @@
-/**
- * Every reference of the database: project rows editable, preset and foreign-key rows read-only (`--o2`),
- * inferred rows dashed with promote, switched-off rows struck through. Coverage is checked on demand.
- */
 import { useState } from "react";
 import { api, toAppError, type ProjectChange, type ReferenceRow } from "../../api";
 import { originText, referenceFormFromRow } from "../../lib/ruleForms";
@@ -40,7 +36,6 @@ function OriginCell({ row }: { row: ReferenceRow }) {
 
 type ActionName = "check" | "edit" | "remove" | "enable" | "promote" | "disable";
 
-/** Which actions a row offers: project rows are edited, preset and inferred rows switched off and on. */
 function rowActions(row: ReferenceRow): ActionName[] {
   const actions: ActionName[] = row.reference ? ["check"] : [];
   if (!row.id) return actions;

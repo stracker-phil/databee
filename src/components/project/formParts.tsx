@@ -1,10 +1,8 @@
-/** Pieces the rule forms share: column pickers from the schema cache, field errors, the form frame. */
 import { useEffect, type ReactNode } from "react";
 import type { RuleTable } from "../../api";
 import type { ColumnPick, FieldError, FormField } from "../../lib/ruleForms";
 import { selectStructure, useStore } from "../../state/store";
 
-/** The columns and primary key of `table`, described once per `dataVersion`. */
 export function useTableColumns(sessionId: string, database: string, table: string) {
   const entry = useStore((s) => (table ? selectStructure(s, sessionId, database, table) : undefined));
   const dataVersion = useStore((s) => s.dataVersion);

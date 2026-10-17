@@ -23,10 +23,8 @@ pub use plan::plan;
 #[serde(rename_all = "camelCase")]
 pub struct ObjectAction {
     pub name: String,
-    /// The preset that defines it.
     pub preset: String,
     pub kind: ObjectActionKind,
-    /// Applying it can be undone.
     pub undo: bool,
     pub params: Vec<ActionParam>,
 }
@@ -66,7 +64,6 @@ pub async fn for_row(ctx: &Ctx<'_>, own: &Own) -> Vec<ObjectAction> {
     actions
 }
 
-/// The table actions of `table`.
 pub async fn for_table(ctx: &Ctx<'_>, table: &str) -> Vec<ObjectAction> {
     let mut actions = Vec::new();
     for action in rules(ctx, table, ActionScope::Table) {

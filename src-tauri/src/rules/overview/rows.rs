@@ -1,5 +1,3 @@
-//! The rows the Project page lists (`project_rules`).
-
 use serde::Serialize;
 use ts_rs::TS;
 

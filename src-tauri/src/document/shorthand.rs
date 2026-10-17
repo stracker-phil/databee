@@ -76,3 +76,121 @@ async fn holds(ctx: &Ctx<'_>, entity: &AppliedEntity, key: &str) -> bool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{ResultSet, TableStructure};
+    use crate::document::testing::{Rig, num, result, shop};
+
+    const FILTERED_ORDER: &str = r#"
+[[entity]]
+name = "order"
+table = "orders"
+filter = "status = 'open'"
+"#;
+
+    const UNFILTERED_ORDER_IN_LOG: &str = r#"
+[[entity]]
+name = "order"
+table = "log"
+"#;
+
+    fn found() -> ResultSet {
+        result(&["1"], vec![vec![num("1")]])
+    }
+
+    fn missing() -> ResultSet {
+        result(&["1"], Vec::new())
+    }
+
+    fn message(err: AppError) -> String {
+        match err {
+            AppError::InvalidInput(message) => message,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn an_entity_no_table_defines_is_invalid_input() {
+        let rig = Rig::new(shop(), FILTERED_ORDER);
+        let ctx = rig.ctx().await;
+
+        let err = resolve(&ctx, "x", "1").await.err().unwrap();
+
+        assert_eq!(message(err), "No entity `x` in this database");
+        assert_eq!(rig.db.queries(), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn a_key_no_candidate_holds_is_named_in_the_error() {
+        let rig = Rig::new(shop().on("SELECT 1 FROM", missing()), FILTERED_ORDER);
+        let ctx = rig.ctx().await;
+
+        let err = resolve(&ctx, "order", "999").await.err().unwrap();
+
+        assert_eq!(message(err), "No order 999");
+        assert_eq!(
+            rig.db.queries(),
+            ["SELECT 1 FROM `wp`.`f_orders` WHERE `id` = '999' AND (status = 'open') LIMIT 1"]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_unfiltered_table_is_the_address_whatever_the_rule_order() {
+        let orders = [
+            format!("{FILTERED_ORDER}{UNFILTERED_ORDER_IN_LOG}"),
+            format!("{UNFILTERED_ORDER_IN_LOG}{FILTERED_ORDER}"),
+        ];
+        for rules in orders {
+            let db = shop().on("`f_orders`", found()).on("`f_log`", found());
+            let rig = Rig::new(db, &rules);
+            let ctx = rig.ctx().await;
+
+            let named = resolve(&ctx, "order", "1").await.ok().unwrap();
+
+            assert_eq!(named.address, ctx.row_address("f_log", "1"), "{rules}");
+            assert_eq!(
+                named.alternatives,
+                [ctx.row_address("f_orders", "1")],
+                "{rules}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_candidate_without_a_single_column_key_is_skipped_unqueried() {
+        let pairs = TableStructure {
+            columns: Vec::new(),
+            indexes: Vec::new(),
+            primary_key: vec!["a".into(), "b".into()],
+            foreign_keys: Vec::new(),
+            ddl: None,
+        };
+        let rules = r#"
+[[entity]]
+name = "order"
+table = "pairs"
+
+[[entity]]
+name = "order"
+table = "orders"
+"#;
+        let rig = Rig::new(
+            shop()
+                .with_table("wp", "f_pairs", pairs)
+                .on("`f_orders`", found()),
+            rules,
+        );
+        let ctx = rig.ctx().await;
+
+        let named = resolve(&ctx, "order", "1").await.ok().unwrap();
+
+        assert_eq!(named.address, ctx.row_address("f_orders", "1"));
+        assert!(named.alternatives.is_empty());
+        assert_eq!(
+            rig.db.queries(),
+            ["SELECT 1 FROM `wp`.`f_orders` WHERE `id` = '1' LIMIT 1"]
+        );
+    }
+}

@@ -20,11 +20,7 @@ interface Props {
   onToggle(groupId: string): void;
 }
 
-/**
- * The section band of a group (docs/ux.md, Section header band). Its `data-table` links the sidebar entry
- * of the same table; hovering that entry lights the band (`lit`). The chevron, or a click on the band outside
- * its buttons, collapses the group's rows.
- */
+/** Its `data-table` links the sidebar entry of the same table; hovering that entry lights the band (`lit`). */
 export const GroupHeader = memo(function GroupHeader({ group, database, anchor, collapsed, onToggle }: Props) {
   const lit = useStore((s) => s.hover.linked && !!group.table && s.hover.table === group.table);
   const events = group.via.kind === "events";

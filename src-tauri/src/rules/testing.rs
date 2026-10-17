@@ -42,7 +42,6 @@ pub fn schema(tables: &[TableSpec<'_>]) -> DatabaseSchema {
     schema
 }
 
-/// Tables with neither columns nor keys.
 pub fn tables(names: &[&str]) -> DatabaseSchema {
     let specs: Vec<TableSpec<'_>> = names.iter().map(|n| (*n, &[][..], &[][..])).collect();
     schema(&specs)

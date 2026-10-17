@@ -1,4 +1,3 @@
-/** Object tabs (a row as its document or its rows) and the documents they show. */
 import { api, toAppError, type Address, type AppError, type Document, type Provenance } from "../../api";
 import { sameAddress } from "../../lib/address";
 import { objectColumn, type ObjectColumn } from "../../lib/columns";
@@ -49,7 +48,6 @@ function withObjectTab(s: Store, tab: ObjectTab): Partial<Store> {
 
 const sameRow = (a: Address, b: Address) => sameAddress(objectAddress(a, "document"), objectAddress(b, "document"));
 
-/** The object column at `index` (default: the active one), with its index. */
 function columnOf(tab: ObjectTab, index = tab.active): { column: ObjectColumn; at: number } | null {
   const column = tab.columns[index];
   return column?.kind === "object" ? { column, at: index } : null;

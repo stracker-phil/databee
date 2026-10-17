@@ -1,4 +1,3 @@
-/** Change marks of live mode, snapshots and compare (docs/frontend.md, Live mode, snapshots, compare). */
 import type { Cell, DocDelta, Group, Provenance, RowMark } from "../api";
 import { provenanceKey } from "./document";
 import { relativeTime } from "./format";
@@ -6,7 +5,6 @@ import { relativeTime } from "./format";
 /** What the marks are against: the start of live mode, or a snapshot. */
 export type MarksSince = { kind: "live" } | { kind: "snapshot"; label: string; created: number };
 
-/** One line of the change list. */
 export interface ChangeLine {
   /** When the change was seen (ms since the epoch); changes of one poll share it. */
   at: number;
@@ -18,7 +16,6 @@ export interface ChangeLine {
   old: Cell | null;
   /** The value after (null for a removed row, or an added row that is no meta row). */
   new: Cell | null;
-  /** Where the line jumps to. */
   source: Provenance | null;
 }
 
@@ -80,7 +77,6 @@ export interface DocumentMarks {
   changed: Map<string, { old: Cell | null; at: number | null }>;
   /** Provenance keys of values in new rows → when they appeared (null: no flash). */
   added: Map<string, number | null>;
-  /** Provenance keys of the values of removed rows. */
   removed: Set<string>;
   /** The removed rows, drawn struck through in their groups. */
   removedRows: RowMark[];

@@ -302,3 +302,152 @@ fn rows_address(ctx: &Ctx<'_>, own: &Own, incoming: &Incoming<'_>) -> Option<Add
         filter,
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{Cell, ResultSet};
+    use crate::document::testing::{Rig, count, num, order, result, shop, text};
+    use crate::error::AppError;
+
+    const LOG_REFERENCES: &str = r#"
+[[reference]]
+from = "log.order_id"
+to = "orders.id"
+
+[[reference]]
+from = "log.msg"
+to = "orders.status"
+"#;
+
+    const PEOPLE_REFERENCE: &str = r#"
+[[reference]]
+from = "people.name"
+to = "orders.status"
+"#;
+
+    fn log_parts(parts: &[(usize, usize)]) -> ResultSet {
+        let rows = parts
+            .iter()
+            .map(|(part, log_id)| {
+                vec![
+                    num(&log_id.to_string()),
+                    num("1"),
+                    text(""),
+                    text("open"),
+                    num(&part.to_string()),
+                ]
+            })
+            .collect();
+        result(
+            &["log_id", "order_id", "at_gmt", "msg", "__databee_part"],
+            rows,
+        )
+    }
+
+    fn from_column<'g>(groups: &'g [Group], column: &str) -> &'g Group {
+        groups
+            .iter()
+            .find(|g| {
+                matches!(&g.via, GroupLink::Incoming { reference, .. }
+                    if reference.from.columns == [column])
+            })
+            .unwrap_or_else(|| panic!("no group from {column}"))
+    }
+
+    fn first_cells(group: &Group) -> Vec<Cell> {
+        group
+            .rows
+            .iter()
+            .map(|row| row.fields[0].1.raw.clone())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn references_from_one_table_share_one_statement_and_keep_their_own_rows() {
+        let mut parts: Vec<(usize, usize)> = (1..=21).map(|i| (0, i)).collect();
+        parts.push((1, 5));
+        let rig = Rig::new(
+            shop()
+                .on("SELECT COUNT(*)", count(30))
+                .on("UNION ALL", log_parts(&parts)),
+            LOG_REFERENCES,
+        );
+        let ctx = rig.ctx().await;
+        let own = order(&ctx, "1", text("open"), text(""));
+
+        let groups = groups(&ctx, &own).await;
+
+        assert_eq!(
+            rig.db.queries(),
+            [
+                "(SELECT s.*, 0 AS `__databee_part` FROM `wp`.`f_log` AS s WHERE s.`order_id` = '1' ORDER BY s.`log_id` LIMIT 21) \
+                 UNION ALL (SELECT s.*, 1 AS `__databee_part` FROM `wp`.`f_log` AS s WHERE s.`msg` = 'open' ORDER BY s.`log_id` LIMIT 21) \
+                 ORDER BY `__databee_part`, `log_id`",
+                "SELECT COUNT(*) FROM `wp`.`f_log` AS s WHERE s.`order_id` = '1'",
+            ]
+        );
+        let by_order = from_column(&groups, "order_id");
+        assert_eq!(
+            (by_order.rows.len(), by_order.total, by_order.capped),
+            (20, 30, true)
+        );
+        let expected: Vec<Cell> = (1..=20).map(|i| num(&i.to_string())).collect();
+        assert_eq!(first_cells(by_order), expected);
+        let by_msg = from_column(&groups, "msg");
+        assert_eq!(
+            (by_msg.rows.len(), by_msg.total, by_msg.capped),
+            (1, 1, false)
+        );
+        assert_eq!(first_cells(by_msg), [num("5")]);
+    }
+
+    #[tokio::test]
+    async fn a_failing_shared_statement_fails_every_group_of_its_table_only() {
+        let failure = AppError::InvalidInput("boom".into());
+        let rig = Rig::new(
+            shop().failing("`f_log`", failure.clone()).on(
+                "`f_people`",
+                result(&["person_id", "name"], vec![vec![num("7"), text("open")]]),
+            ),
+            &format!("{LOG_REFERENCES}{PEOPLE_REFERENCE}"),
+        );
+        let ctx = rig.ctx().await;
+        let own = order(&ctx, "1", text("open"), text(""));
+
+        let groups = groups(&ctx, &own).await;
+
+        for column in ["order_id", "msg"] {
+            let group = from_column(&groups, column);
+            assert_eq!(group.error, Some(failure.to_string()), "{column}");
+            assert!(group.rows.is_empty(), "{column}");
+        }
+        let people = from_column(&groups, "name");
+        assert_eq!(people.error, None);
+        assert_eq!((people.rows.len(), people.total), (1, 1));
+    }
+
+    #[tokio::test]
+    async fn a_reference_whose_target_is_empty_in_the_row_reads_nothing() {
+        for status in [Cell::Null, text("")] {
+            let rig = Rig::new(shop(), PEOPLE_REFERENCE);
+            let ctx = rig.ctx().await;
+            let own = order(&ctx, "1", status.clone(), text(""));
+
+            let groups = groups(&ctx, &own).await;
+
+            let people = from_column(&groups, "name");
+            assert_eq!(
+                (
+                    people.rows.len(),
+                    people.total,
+                    people.capped,
+                    &people.error
+                ),
+                (0, 0, false, &None),
+                "{status:?}"
+            );
+            assert_eq!(rig.db.queries(), Vec::<String>::new(), "{status:?}");
+        }
+    }
+}

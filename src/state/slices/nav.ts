@@ -11,7 +11,6 @@ import { objectColumn, objectColumnAt, type ColumnStack, type StackColumn } from
 import { documentText, objectTitle } from "../../lib/document";
 import type { ObjectTab, Tab, TableTab } from "./tabs";
 
-/** Entries kept per direction and tab. */
 export const NAV_LIMIT = 50;
 
 export interface TabNav {
@@ -37,7 +36,6 @@ export interface NavSlice {
   filterRows(tabId: string, match: ColumnEquals): void;
   /** Applies a typed WHERE filter to table tab `tabId`; not addressable, so no history entry. */
   setTableFilter(tabId: string, filter: string): void;
-  /** Back and forward in the active tab. */
   navBack(): Promise<void>;
   navForward(): Promise<void>;
   /** Stores a renamed connection slug and rewrites the addresses of that connection's tabs. */
@@ -95,7 +93,6 @@ async function locationOf(get: () => Store, sessionId: string, address: Address)
   return { database, table: target.table, where: [{ column: primaryKey[0], value: target.key }] };
 }
 
-/** Table tab `tab` showing `location`, with `nav` as its history. */
 function retargeted(s: Store, tab: TableTab, location: TableLocation, nav: TabNav): TableTab {
   return {
     ...tab,
@@ -143,7 +140,6 @@ function movedActive(tab: ObjectTab, target: Address): ColumnStack {
   return { columns: [...tab.columns.slice(0, tab.active), column], active: tab.active };
 }
 
-/** Object tab `tab` showing the row address `target` with the stack it had there. */
 function reobjected(tab: ObjectTab, target: Address, nav: TabNav): ObjectTab {
   const stack = tab.stacks[formatAddress(target)] ?? movedActive(tab, target);
   const root = stack.columns[0];
@@ -165,7 +161,6 @@ function renamed(tab: Tab, slug: string): Tab {
 
 export const navSlice: Slice<NavSlice> = {
   create: (set, get) => {
-    /** Moves the active table or object tab one step through its history. */
     const travel = async (direction: "back" | "forward") => {
       const tab = selectActiveTab(get());
       const target = tab?.nav[direction].at(-1);

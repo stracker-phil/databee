@@ -58,7 +58,6 @@ impl Watches {
         id
     }
 
-    /// The watched address.
     pub fn address(&self, id: &str) -> AppResult<String> {
         self.0
             .lock_unpoisoned()

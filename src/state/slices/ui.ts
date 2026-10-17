@@ -51,7 +51,6 @@ export interface UiSlice {
   paletteSeed: string;
   /** Per-connection UI state (column widths, split width) by connection identity. */
   uiState: Record<string, UiState>;
-  /** Recently opened entities and tables, newest first. */
   recentNav: RecentNav[];
   /** Shown in the status bar instead of the address while set. */
   hover: ValueHover;
@@ -63,9 +62,7 @@ export interface UiSlice {
   setPaletteOpen(open: boolean, seed?: string): void;
   loadUiState(identity: string): Promise<void>;
   setTableWidths(identity: string, table: string, widths: Record<string, number>): void;
-  /** Persists a dragged pane size for this connection. */
   setPaneSize(identity: string, pane: PaneSize, px: number): void;
-  /** Shows or hides the sidebar of the active connection and persists the choice. */
   toggleSidebar(): void;
   /** Collapses or expands an object view group (`<document table>::<group id>`) in one database and persists it. */
   toggleGroupCollapsed(identity: string, database: string, key: string): void;
@@ -84,7 +81,6 @@ export function remembered(s: Store, item: RecentNav): Partial<Store> {
 
 export const uiSlice: Slice<UiSlice> = {
   create: (set, get) => {
-    /** Applies `patch` to one connection's UI state, then saves it debounced. */
     const patchUiState = (identity: string, patch: (current: UiState) => Partial<UiState>) => {
       const current = get().uiState[identity] ?? EMPTY_UI_STATE;
       const ui: UiState = { ...current, ...patch(current) };

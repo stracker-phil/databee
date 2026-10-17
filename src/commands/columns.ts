@@ -23,7 +23,6 @@ function activeObjectTab(): ObjectTab | null {
   return tab?.kind === "object" ? tab : null;
 }
 
-/** The active column, when it shows a document. */
 function documentColumn() {
   const tab = activeObjectTab();
   const column = tab?.columns[tab.active];

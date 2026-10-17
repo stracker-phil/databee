@@ -13,9 +13,8 @@ function hoverOf(target: EventTarget | null): ValueHover {
 }
 
 /**
- * Puts the value or table link under the pointer into the store (`hover`), for the status bar and the
- * linked table highlight. One
- * delegated listener for the whole area, read at most once per frame, so grids add no per-cell handlers.
+ * Puts the value or table link under the pointer into the store (`hover`). One delegated listener for the
+ * whole area, read at most once per frame, so grids add no per-cell handlers.
  */
 export function useValueHover(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {

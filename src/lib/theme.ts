@@ -19,7 +19,6 @@ function subscribeToSystemTheme(onChange: () => void) {
 
 const systemIsDark = () => darkQuery?.matches ?? false;
 
-/** Whether macOS is in dark mode; re-renders when it switches. */
 export function useSystemDark(): boolean {
   return useSyncExternalStore(subscribeToSystemTheme, systemIsDark);
 }
@@ -108,7 +107,6 @@ export function syncRowHeight() {
   publishRowHeight(measureRowHeight());
 }
 
-/** Grid row height in px (`--row-h`), for virtualized lists. */
 export function useRowHeight(): number {
   return useSyncExternalStore(subscribeToRowHeight, () => rowHeight);
 }

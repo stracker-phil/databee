@@ -1,4 +1,3 @@
-/** An object tab: its column stack, left to right; columns that do not fit collapse to strips. */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { columnLabel, columnName, shownColumns, type StackColumn } from "../../lib/columns";
 import { documentText } from "../../lib/document";
@@ -46,7 +45,6 @@ interface ColumnProps {
   shown: boolean;
 }
 
-/** A strip: the column's `table #key` read vertically; it pops back to the column, or shows one to the right. */
 function Strip({ tab, column, index }: ColumnProps) {
   const label = columnLabel(column);
   const { name, key } = columnName(column);

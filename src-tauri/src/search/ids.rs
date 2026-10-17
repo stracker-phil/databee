@@ -94,8 +94,6 @@ mod tests {
     use crate::document::testing::{Rig, shop};
     use crate::schema::DatabaseSchema;
 
-    /// The tables `#` reads in the shop database without entities, after `adjust` changed what
-    /// the schema says about them.
     async fn read_without_entities(adjust: fn(&mut DatabaseSchema)) -> Vec<String> {
         let rig = Rig::new(shop(), "");
         let mut ctx = rig.ctx().await;

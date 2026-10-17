@@ -5,7 +5,6 @@ import { openGroupRows } from "./GroupHeader";
 /** Linked tables with no rows here; an empty `events` group is not a table and is left out. */
 const emptyTables = (groups: Group[]) => groups.filter((g) => isEmpty(g) && g.via.kind !== "events");
 
-/** The tables linked to this row that hold no matching rows, in one tertiary line. */
 export function AlsoLinked({ groups, database }: { groups: Group[]; database: string }) {
   const empty = emptyTables(groups);
   if (empty.length === 0) return null;

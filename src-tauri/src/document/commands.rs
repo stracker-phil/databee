@@ -44,7 +44,6 @@ pub async fn peek(
     super::peek::peek(&ctx, &address).await
 }
 
-/// The `scope = "table"` actions of `table`.
 #[tauri::command]
 pub async fn table_actions(
     state: State<'_, AppState>,

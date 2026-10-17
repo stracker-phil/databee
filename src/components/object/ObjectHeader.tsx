@@ -14,7 +14,6 @@ import { actionMenu } from "./actions";
 interface Props {
   document: Document;
   owner: Address;
-  /** The Document/Rows control. */
   view: { current: ObjectView; onChange(view: ObjectView): void };
 }
 
@@ -35,7 +34,6 @@ function ViewToggle({ current, onChange }: Props["view"]) {
   );
 }
 
-/** The object header block (docs/ux.md): table name, `#key`, the view control, the summary; actions on right-click. */
 export function ObjectHeader({ document, owner, view }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
   const { openValue, targetMenu } = useOpenValue(owner);

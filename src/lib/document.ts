@@ -1,4 +1,3 @@
-/** Helpers over a `Document`: object addresses, finding a value by its provenance, group texts. */
 import type { Address, Document, Group, GroupRow, Provenance, Value } from "../api";
 import { formatAddress } from "./address";
 import { formatCount } from "./format";

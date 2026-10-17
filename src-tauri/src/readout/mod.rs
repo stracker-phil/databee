@@ -296,7 +296,6 @@ async fn part<T>(work: impl Future<Output = AppResult<Vec<T>>>) -> Part<T> {
     }
 }
 
-/// Records a row address as the newest recent object of its project.
 pub async fn remember(store: &RecentObjectsStore, address: &Address, at: i64) -> AppResult<()> {
     let Target::Row { .. } = &address.target else {
         return Err(AppError::InvalidInput(format!(

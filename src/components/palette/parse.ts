@@ -1,4 +1,3 @@
-/** What the palette's input asks for (docs/frontend.md, Palette). */
 export type Prefix = ">" | "t:" | "q:" | "#" | "@" | "=" | "databee://" | null;
 
 const PREFIXES = [">", "t:", "q:", "#", "@", "=", "databee://"] as const;
@@ -24,7 +23,6 @@ export function searchesRows(prefix: Prefix, needle: string): boolean {
   return prefix === null && [...needle].length >= MIN_TEXT;
 }
 
-/** The text Rust parses for this input. */
 export function searchText(prefix: Prefix, needle: string): string {
   return prefix === null ? needle : `${prefix}${needle}`;
 }

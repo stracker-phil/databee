@@ -191,3 +191,22 @@ fn canonical(ctx: &Ctx<'_>, table: &str, filter: Vec<ColumnEquals>) -> Address {
         filter,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn group(id: &str) -> Group {
+        Group::new(id.into(), "t", GroupLink::Own, GroupShape::Rows)
+    }
+
+    #[test]
+    fn groups_with_the_same_id_are_numbered_from_the_second() {
+        let mut groups = vec![group("a"), group("b"), group("a"), group("a"), group("b")];
+
+        unique_ids(&mut groups);
+
+        let ids: Vec<&str> = groups.iter().map(|g| g.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b", "a#2", "a#3", "b#2"]);
+    }
+}

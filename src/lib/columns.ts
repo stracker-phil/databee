@@ -1,9 +1,7 @@
-/** The column stack of an object tab (docs/frontend.md, Object tabs): drilled objects and opened values. */
 import type { Address, Provenance, Value } from "../api";
 import { cellText } from "./format";
 import { objectAddress, type ObjectView } from "./document";
 
-/** A row as its document or its rows. */
 export interface ObjectColumn {
   kind: "object";
   /** A row address; `address.view` is null for the document and "rows" for rows. */
@@ -18,7 +16,6 @@ export interface ValueColumn {
   value: Value;
   /** The full stored text; after an edit is queued, the edited text. */
   text: string;
-  /** The database of the value's row, for edits. */
   database: string | null;
 }
 

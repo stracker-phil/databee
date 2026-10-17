@@ -74,7 +74,6 @@ impl CoverageQuery<'_> {
         )
     }
 
-    /// Distinct values of source rows that hold a reference but find no target.
     fn sample_sql(&self, dialect: Dialect) -> String {
         let values: Vec<String> = self
             .from
@@ -1014,7 +1013,6 @@ to_when = { active = "1" }
         )
     }
 
-    /// The built-in presets and an empty projects file in `dir`.
     fn built_in_sources(dir: &TempDir) -> (PresetCatalog, ProjectsStore) {
         (
             PresetCatalog::open(dir.path()),

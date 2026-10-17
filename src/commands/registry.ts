@@ -1,8 +1,5 @@
-/** Command registry, bindings and key resolution; see docs/frontend.md "Commands, shortcuts, palette, menu". */
-
 import { isAncestor, scopeDef, specificity } from "./scopes";
 
-/** The id of a registered scope (`scopes.ts`). */
 export type Scope = string;
 
 export interface Command {
@@ -212,7 +209,6 @@ export interface Conflict {
   b: Command;
 }
 
-/** Pairs of commands that share a binding in overlapping scopes. */
 export function conflicts(custom: Overrides = overrides): Conflict[] {
   const list = allCommands();
   const out: Conflict[] = [];

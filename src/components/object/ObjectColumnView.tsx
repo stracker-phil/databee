@@ -1,4 +1,3 @@
-/** One object column of a stack: its row's header block, then its Document or Rows view, or a compare of two rows. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Provenance } from "../../api";
 import type { ObjectColumn } from "../../lib/columns";
@@ -15,7 +14,6 @@ import { RowsView } from "./RowsView";
 import { useDocument } from "./useDocument";
 import { useViewScroll } from "./useViewScroll";
 
-/** Once the first column's document names its entity, the tab says `order #4711` instead of the table name. */
 function useEntityTitle(tab: ObjectTab, column: ObjectColumn, isRoot: boolean, entity: string | null | undefined) {
   useEffect(() => {
     if (!isRoot || !entity) return;

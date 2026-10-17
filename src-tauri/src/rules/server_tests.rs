@@ -23,7 +23,6 @@ use crate::value::{ColumnKind, ReferenceSource, ValueKind, value_at};
 const TIMEOUT: Duration = Duration::from_secs(10);
 const ALL_PRESETS: [&str; 3] = ["wordpress", "woocommerce", "action-scheduler"];
 
-/// The built-in presets and an empty projects file, both in a tempdir.
 struct Rig {
     _dir: TempDir,
     catalog: PresetCatalog,
@@ -611,7 +610,6 @@ async fn the_posts_shaped_orders_resolve_on_the_legacy_fixture() {
     }
 }
 
-/// `result` with the kinds and per-cell annotations the lens decides for `table`.
 fn annotate(lens: &dyn Lens, table: &str, mut result: ResultSet) -> ResultSet {
     result.kinds = lens.kinds(table, &result.columns);
     let cells = {

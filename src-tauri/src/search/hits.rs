@@ -1,5 +1,3 @@
-//! Hits from rows: the row's address and key, and the values that say which row it is.
-
 use std::collections::HashSet;
 
 use super::{PaletteHit, SECTION_CAP};
@@ -241,4 +239,88 @@ fn owner_of(
         address: address.clone(),
     };
     Some((address, vec![title], owner.clone()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::testing::{Rig, shop};
+
+    const TWO_FILTERED: &str = r#"
+[[entity]]
+name = "paid"
+table = "orders"
+filter = "status = 'paid'"
+
+[[entity]]
+name = "late"
+table = "orders"
+filter = "status = 'late'"
+"#;
+
+    const FILTERED_THEN_UNFILTERED: &str = r#"
+[[entity]]
+name = "paid"
+table = "orders"
+filter = "status = 'paid'"
+
+[[entity]]
+name = "order"
+table = "orders"
+"#;
+
+    fn key(parts: &[(&str, &str)]) -> RowKey {
+        RowKey(
+            parts
+                .iter()
+                .map(|(column, value)| KeyPart {
+                    column: column.to_string(),
+                    value: value.to_string(),
+                })
+                .collect(),
+        )
+    }
+
+    #[tokio::test]
+    async fn a_table_is_shown_with_its_unfiltered_entity_else_its_first() {
+        for (rules, expected) in [
+            (FILTERED_THEN_UNFILTERED, Some("order")),
+            (TWO_FILTERED, Some("paid")),
+            ("", None),
+        ] {
+            let rig = Rig::new(shop(), rules);
+            let ctx = rig.ctx().await;
+
+            let entity = table_entity(&ctx, "f_orders").map(|e| e.name.as_str());
+
+            assert_eq!(entity, expected, "{rules}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_single_part_key_is_a_row_address_and_a_composite_key_filters_every_part() {
+        let rig = Rig::new(shop(), "");
+        let ctx = rig.ctx().await;
+
+        assert_eq!(
+            address(&ctx, "f_orders", &key(&[("id", "5")])),
+            ctx.row_address("f_orders", "5")
+        );
+        assert_eq!(
+            address(&ctx, "f_pairs", &key(&[("a", "1"), ("b", "2")])),
+            ctx.address(Target::Table {
+                table: "f_pairs".into(),
+                filter: vec![
+                    ColumnEquals {
+                        column: "a".into(),
+                        value: Some("1".into()),
+                    },
+                    ColumnEquals {
+                        column: "b".into(),
+                        value: Some("2".into()),
+                    },
+                ],
+            })
+        );
+    }
 }

@@ -74,7 +74,6 @@ pub struct Condition {
     pub rule: Match,
 }
 
-/// All of `conditions`, compiled; the error names the column.
 pub fn compile(conditions: &Conditions) -> Result<Vec<Condition>, String> {
     conditions
         .iter()

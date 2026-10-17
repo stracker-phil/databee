@@ -9,7 +9,6 @@ use super::project::Project;
 use super::types::Preset;
 use crate::schema::DatabaseSchema;
 
-/// The prefixes and presets of one project on one database.
 #[derive(Debug, Clone)]
 pub struct Applied {
     /// The project's prefix, else the suggestion, else none.
@@ -125,7 +124,6 @@ fn suggest_marker_prefix<'p>(
         .min_by(|a, b| a.len().cmp(&b.len()).then(a.cmp(b)))
 }
 
-/// Presets with marker tables that all exist under `prefix`.
 fn detected(present: &HashSet<&str>, prefix: &str, loaded: &[Arc<Preset>]) -> Vec<String> {
     loaded
         .iter()

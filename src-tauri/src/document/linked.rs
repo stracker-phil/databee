@@ -12,7 +12,6 @@ use super::{Group, incoming, patterns};
 use crate::db::ColumnEquals;
 use crate::error::{AppError, AppResult};
 
-/// The row of `table` whose single-column key is `key`.
 pub async fn row(ctx: &Ctx<'_>, table: &str, key: &str) -> AppResult<Own> {
     let column = ctx.single_key(table).ok_or_else(|| {
         AppError::InvalidInput(format!("`{table}` has no single-column primary key"))

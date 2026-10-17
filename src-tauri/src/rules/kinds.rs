@@ -27,7 +27,6 @@ pub struct Money {
     pub currency: Vec<String>,
 }
 
-/// What a kind rule makes its values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueRule {
     Money(Money),
@@ -217,7 +216,6 @@ impl Check for StyleRule {
 }
 
 impl StyleRule {
-    /// The rule's `match` and `value` as a value matcher.
     pub fn matcher(&self) -> Result<Matcher, String> {
         match self.matching {
             StyleMatch::Eq => Ok(Matcher::Eq(self.value.clone())),

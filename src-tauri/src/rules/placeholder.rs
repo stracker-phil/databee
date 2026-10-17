@@ -37,7 +37,6 @@ impl Placeholder<'_> {
     }
 }
 
-/// Every placeholder in `sql`, with its byte range, in order.
 pub fn scan(sql: &str) -> Vec<(std::ops::Range<usize>, Placeholder<'_>)> {
     let mut found = Vec::new();
     let mut rest = 0;
@@ -68,7 +67,6 @@ pub struct Allowed<'a> {
     pub params: Option<&'a [String]>,
 }
 
-/// The first placeholder `sql` may not use, as a message.
 pub fn check(sql: &str, allowed: Allowed<'_>) -> Result<(), String> {
     for (range, placeholder) in scan(sql) {
         let ok = match placeholder {

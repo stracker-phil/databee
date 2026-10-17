@@ -28,7 +28,6 @@ use crate::schema::DatabaseSchema;
 use crate::session::Session;
 use crate::value::ReferenceSource;
 
-/// Where the rules of a database come from.
 #[derive(Clone, Copy)]
 pub struct RuleSources<'a> {
     pub presets: &'a PresetCatalog,
@@ -45,7 +44,6 @@ pub struct GroupKey {
     pub rule: String,
 }
 
-/// A reference rule on real tables.
 #[derive(Debug, Clone)]
 pub struct RuleReference {
     pub by: ReferenceSource,
@@ -72,10 +70,8 @@ pub struct RulePattern {
     pub owner_when: Vec<Condition>,
 }
 
-/// A `[[meta]]` table of an applied preset.
 #[derive(Debug, Clone)]
 pub struct MetaRef {
-    /// The real table.
     pub table: String,
     /// The name rules use (`in`).
     pub name: String,
@@ -370,7 +366,6 @@ impl EffectiveRules {
         });
     }
 
-    /// The `[[meta]]` table with the real name `table`.
     pub fn meta_table(&self, table: &str) -> Option<&MetaRef> {
         self.meta.iter().find(|m| m.table == table)
     }
@@ -460,7 +455,6 @@ pub struct RulesInfo {
     pub suggested_prefix: Option<String>,
     /// In apply order: each after the presets it requires.
     pub applied_presets: Vec<String>,
-    /// Every preset that loads.
     pub available_presets: Vec<String>,
     pub entities: Vec<AppliedEntity>,
     /// Entity names by real table, filtered entities first.
@@ -1510,7 +1504,6 @@ to = "extras.extra_id"
         assert_eq!(rig.rules().await.references.len(), 2);
     }
 
-    /// What `rules_info` returns for `database` on one fixture server.
     async fn rules_info(
         sources: RuleSources<'_>,
         database: &str,

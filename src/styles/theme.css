@@ -58,7 +58,6 @@
   /* alias: removed in U2b/U12 */
   --text-tertiary: var(--o3);
   /* alias: removed in U2b/U12 */
-  --flash: color-mix(in srgb, var(--accent) 26%, transparent);
 
   /* alias: removed in U2b/U12 */
   --danger: var(--style-red);

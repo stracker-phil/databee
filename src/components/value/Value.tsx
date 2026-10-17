@@ -18,7 +18,6 @@ interface Props {
   density?: Density;
 }
 
-/** Whether a click on the value does something (docs/ux.md, Value grammar). */
 export function opensOnClick(value: StoredValue, density: Density): boolean {
   const kind = value.kind;
   if (kind.kind === "primaryKey") return kind.address.target.kind === "row";
@@ -56,7 +55,6 @@ function SecretText({ text }: { text: string }) {
   );
 }
 
-/** PHP-serialized or JSON text, decoded once it is first expanded. */
 function useDecoded(text: string, open: boolean): DecodedValue | null {
   const [decoded, setDecoded] = useState<DecodedValue | null>(null);
   useEffect(() => {
@@ -163,7 +161,6 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
   }
 }
 
-/** What a peek of a reference needs (`Peek`): the target address, the source column and the rule. */
 function peekData(value: StoredValue) {
   const kind = value.kind;
   if (kind.kind !== "reference" || kind.exists === false || kind.targets.length !== 1) return {};

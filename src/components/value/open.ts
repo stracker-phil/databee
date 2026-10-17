@@ -11,7 +11,6 @@ import { documentText } from "../../lib/document";
 import { cellText } from "../../lib/format";
 import { fail, selectActiveSession, selectActiveTab, useStore, type Tab } from "../../state/store";
 
-/** The object tab column a view renders in; null outside a column stack. */
 export interface ColumnPlace {
   tabId: string;
   index: number;
@@ -73,7 +72,6 @@ export function drillable(value: Value): boolean {
   return kind.kind === "serialized";
 }
 
-/** Enter on a value of column `place`, whose row is `owner`. */
 export function openValueAt(value: Value, owner: Address, place: ColumnPlace) {
   const kind = value.kind;
   if (kind.kind === "reference" && kind.targets.length === 1) return openTarget(kind.targets[0], place);

@@ -1,4 +1,3 @@
-/** The Document view: a section band per group, then its key/value or table rows. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { Address, Document, Group, Provenance, Value as StoredValue } from "../../api";
 import { EDIT_VALUE_EVENT, RULE_MENU } from "../../commands";
@@ -42,7 +41,6 @@ function saveValue(owner: Address, value: StoredValue, text: string | null) {
   void useStore.getState().queueChange({ type: "setCell", database: owner.database, table: source.table, keyColumn: key.column, key: key.value, column: source.column, value: text });
 }
 
-/** `value.edit` opens the editor on the focused value while this view is the one shown. */
 function useEditCommand(editable: boolean, focus: Provenance | null, setEditing: (key: string | null) => void) {
   useEffect(() => {
     if (!editable || !focus) return;
@@ -52,7 +50,6 @@ function useEditCommand(editable: boolean, focus: Provenance | null, setEditing:
   }, [editable, focus, setEditing]);
 }
 
-/** Keeps the focused value in view as `j`/`k` move it. */
 function useRevealFocus(focus: Provenance | null) {
   const ref = useRef<HTMLDivElement>(null);
   const key = focus ? provenanceKey(focus) : null;

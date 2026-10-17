@@ -35,7 +35,6 @@ export interface SessionSlice {
   loadStructure(sessionId: string, database: string, table: string): Promise<void>;
 }
 
-/** The session that is active once `closed` is gone. */
 export function nextActiveSessionId(s: Store, closed: string) {
   if (s.activeSessionId !== closed) return s.activeSessionId;
   return s.sessions.find((x) => x.id !== closed)?.id ?? null;

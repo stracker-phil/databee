@@ -102,7 +102,6 @@ fn text(value: &crate::value::Value) -> Option<&str> {
     value.raw.as_text()
 }
 
-/// The hits for `input` in `database` on every fixture server.
 async fn search_all(rig: &Rig, database: &str, input: &str) -> Vec<Found> {
     let mut out = Vec::new();
     for (host, port) in servers() {

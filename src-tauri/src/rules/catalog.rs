@@ -14,7 +14,6 @@ use super::preset;
 use super::types::Preset;
 use crate::lock::MutexExt;
 
-/// `(file name, source)` of every built-in preset.
 pub const BUILT_IN: &[(&str, &str)] = &[
     (
         "wordpress.toml",
@@ -70,7 +69,6 @@ impl PresetCatalog {
         Self::with_built_in(config_dir.join("presets"), BUILT_IN)
     }
 
-    /// A catalog of `built_in` plus the user presets in `dir`.
     pub fn with_built_in(dir: PathBuf, built_in: &'static [(&'static str, &'static str)]) -> Self {
         Self {
             dir,

@@ -38,7 +38,6 @@ pub async fn saved_queries(
     Ok(super::list(&project, &state.projects.global(), &rules))
 }
 
-/// Stores a new query in the project of the session's connection and `database`.
 #[tauri::command]
 pub async fn save_query(
     state: State<'_, AppState>,
@@ -58,7 +57,6 @@ pub async fn save_query(
     super::add_to_project(&state.projects, &session.slug(), &database, query).await
 }
 
-/// Replaces the project or global query with the same id.
 #[tauri::command]
 pub async fn update_saved_query(
     state: State<'_, AppState>,
@@ -70,7 +68,6 @@ pub async fn update_saved_query(
     super::update(&state.projects, &session.slug(), &database, query).await
 }
 
-/// Removes the project or global query `id`.
 #[tauri::command]
 pub async fn remove_saved_query(
     state: State<'_, AppState>,

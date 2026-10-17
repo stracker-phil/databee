@@ -1,4 +1,3 @@
-/** Rule actions of an object (docs/presets.md, actions): planned through `plan_action` into the pending tray. */
 import type { ActionParam, Address, ObjectAction } from "../../api";
 import type { Command } from "../../commands";
 import { documentText, objectAddress } from "../../lib/document";

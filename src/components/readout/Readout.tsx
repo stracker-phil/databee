@@ -1,4 +1,3 @@
-/** The readout tab (`databee://<slug>/<db>/`): status header, anomalies, new, pinned and recent; every line opens its address. */
 import { useEffect, useMemo, type MouseEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { Address, AnomalyLine, NewObjects, Part, PinnedLine, ReadoutRow, RecentLine, Status, Value as StoredValue } from "../../api";
@@ -205,7 +204,6 @@ interface BlockProps {
   children: ReactNode;
 }
 
-/** One entity or pinned query: its heading, the SQL behind it in tertiary text, then its rows. */
 function Block({ anchor, label, title, detail, sql, children }: BlockProps) {
   return (
     <div className="readout-block" data-stage={anchor} data-stage-label={anchor && label}>

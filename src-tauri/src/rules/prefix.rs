@@ -18,7 +18,6 @@ pub fn suggest_prefix<'a>(
         .map(str::to_string)
 }
 
-/// Every marker exists as `<prefix><marker>`.
 pub fn markers_exist(tables: &HashSet<&str>, prefix: &str, markers: &[String]) -> bool {
     markers
         .iter()

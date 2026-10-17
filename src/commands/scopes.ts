@@ -1,5 +1,3 @@
-/** Registered command scopes; see docs/frontend.md "Commands, shortcuts, palette, menu". */
-
 export interface ScopeDef {
   id: string;
   /** Null only for the root scope; any other parent must already be registered. */
@@ -23,12 +21,10 @@ export function scopeDef(id: string): ScopeDef | undefined {
   return scopes.get(id);
 }
 
-/** Every registered scope whose `isActive()` is true, in registration order. */
 export function activeScopes(): string[] {
   return [...scopes.values()].filter((def) => def.isActive()).map((def) => def.id);
 }
 
-/** The scope's parent, grandparent and so on up to the root. */
 function ancestors(scope: string): string[] {
   const chain: string[] = [];
   for (let parent = scopes.get(scope)?.parent ?? null; parent; parent = scopes.get(parent)?.parent ?? null) {

@@ -1,4 +1,3 @@
-/** How a saved query shows on the readout (`Home`, the shape of `[[pinned]] home`). */
 import type { Home } from "../api";
 
 export type PinChoice = "none" | Home["show"];

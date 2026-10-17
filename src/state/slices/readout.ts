@@ -1,4 +1,3 @@
-/** The readout tab (the database home, `databee://<slug>/<db>/`) and its data, reloaded once per `dataVersion`. */
 import { api, toAppError, type AppError, type Readout } from "../../api";
 import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";

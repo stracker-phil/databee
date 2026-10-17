@@ -91,7 +91,6 @@ struct Header {
     network_tables: Vec<String>,
 }
 
-/// Reads the rules of one section; `file` and `src` locate errors.
 struct Reader<'a> {
     file: &'a str,
     src: &'a str,
@@ -168,7 +167,6 @@ fn split_field(message: &str) -> (Option<String>, String) {
     }
 }
 
-/// Parses a preset file. `file` names it in errors.
 pub fn parse(file: &str, src: &str) -> Result<Preset, PresetError> {
     let reader = Reader { file, src };
     let raw: RawFile = toml::from_str(src).map_err(|e| reader.toml_error(None, e))?;
@@ -254,7 +252,6 @@ impl Bad {
     }
 }
 
-/// Checks across rules: unique ids, and anomalies that point at rules of this preset.
 fn check_preset(preset: &Preset) -> Result<(), Bad> {
     if preset.requires.contains(&preset.name) {
         let message = "a preset cannot require itself".into();
@@ -310,7 +307,6 @@ fn unique(
     Ok(())
 }
 
-/// The file as written, ready to be saved: the TOML twin of `parse`.
 #[derive(Serialize)]
 struct FileOut<'a> {
     preset: Header,

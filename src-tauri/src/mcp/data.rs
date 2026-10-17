@@ -462,6 +462,92 @@ mod server_tests {
         }
     }
 
+    fn column_texts(page: &BrowsePage, column: &str) -> Vec<Option<String>> {
+        let index = page
+            .result
+            .columns
+            .iter()
+            .position(|c| c.name == column)
+            .unwrap_or_else(|| panic!("no column {column}"));
+        page.result
+            .rows
+            .iter()
+            .map(|row| row[index].as_text().map(str::to_string))
+            .collect()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn rows_of_a_table_address_are_the_matching_rows_up_to_the_limit() {
+        for rig in rigs() {
+            let address = format!(
+                "databee://{}/{DB}/wp_term_relationships?object_id=200",
+                rig.slug
+            );
+
+            let all = rig
+                .core
+                .rows(&address, None)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e:?}", rig.server));
+            let limited = rig
+                .core
+                .rows(&address, Some(2))
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e:?}", rig.server));
+
+            let owners = vec![Some("200".to_string()); 3];
+            assert_eq!(column_texts(&all, "object_id"), owners, "{}", rig.server);
+            assert_eq!(
+                column_texts(&limited, "object_id"),
+                owners[..2],
+                "{}",
+                rig.server
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn rows_of_a_row_address_are_exactly_that_row() {
+        for rig in rigs() {
+            let address = format!("databee://{}/{DB}/wp_users/12", rig.slug);
+
+            let page = rig
+                .core
+                .rows(&address, None)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e:?}", rig.server));
+
+            assert_eq!(
+                column_texts(&page, "user_login"),
+                [Some("jane".to_string())],
+                "{}",
+                rig.server
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn rows_of_a_row_address_on_a_composite_key_table_names_no_row() {
+        for rig in rigs() {
+            let address = format!("databee://{}/{DB}/wp_term_relationships/123", rig.slug);
+            let shown = Address::parse(&address).unwrap();
+
+            let err = rig.core.rows(&address, None).await.err();
+
+            assert_eq!(
+                err,
+                Some(AppError::InvalidInput(format!(
+                    "wp_term_relationships has no single-column primary key, so {shown} names no row"
+                ))),
+                "{}",
+                rig.server
+            );
+        }
+    }
+
     #[tokio::test]
     #[ignore]
     async fn references_name_the_tables_they_connect_and_their_source() {

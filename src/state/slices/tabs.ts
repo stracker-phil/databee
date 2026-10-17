@@ -9,7 +9,6 @@ import { EMPTY_NAV, homeAddress, pushed, tableAddress, tableTitle, type TabNav }
 import { nextActiveSessionId } from "./session";
 import { remembered } from "./ui";
 
-/** The saved query a query tab was opened from or saved as. */
 export interface SavedRef {
   id: string;
   /** Preset queries are read-only. */
@@ -52,7 +51,6 @@ export interface TableTab {
   preview?: boolean;
   /** Derived from `table` and `where` (never from `filter`), see `tableAddress`. */
   address: Address;
-  /** Addresses for back and forward. */
   nav: TabNav;
   /** A value opened to the right of the rows (Enter on serialized data or long text). */
   valueColumn?: ValueColumn;
@@ -63,7 +61,6 @@ export interface ObjectTab {
   id: string;
   kind: "object";
   sessionId: string;
-  /** The first column's row. */
   title: string;
   columns: StackColumn[];
   /** The column `h`/`l` move, the path marks and history records. */
@@ -139,7 +136,6 @@ export interface TabsSlice {
   openQueryTab(sql?: string, title?: string, saved?: SavedRef): void;
   /** An open tab of the same table is activated; `view` and `preview: false` (pin) apply to it only when given. */
   openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean; where?: ColumnEquals[] }): void;
-  /** Opens `table` of the active database filtered by `where`. */
   openInDatabase(table: string, where?: ColumnEquals[]): void;
   /**
    * Opens the rows of `table` where `column` equals `value`: in the active table tab (back returns), else in the
@@ -149,12 +145,10 @@ export interface TabsSlice {
   pinTab(id: string): void;
   activateTab(id: string): void;
   closeTab(id: string): void;
-  /** Activates the next (+1) or previous (-1) tab of the active session. */
   cycleTab(delta: number): void;
   updateQueryTab(id: string, patch: Partial<QueryTab>): void;
   updateTableTab(id: string, patch: Partial<TableTab>): void;
   updateObjectTab(id: string, patch: Partial<ObjectTab>): void;
-  /** Selects a cell of the active tab's grid. */
   selectCell(selected: Omit<SelectedCell, "tabId"> | null): void;
   runQuery(tabId: string, sql: string, confirmed?: boolean): Promise<void>;
   cancelQuery(tabId: string): Promise<void>;
@@ -162,7 +156,6 @@ export interface TabsSlice {
 
 export const resetSelection = () => ({ selectedCell: null });
 
-/** The selection, unless it belongs to `tabId`. */
 function selectionOutside(s: Store, tabId: string | null) {
   return s.selectedCell?.tabId === tabId ? null : s.selectedCell;
 }

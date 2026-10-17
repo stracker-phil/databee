@@ -1,4 +1,3 @@
-/** Coverage text: `resolved of total`, how many hold no reference (0 or NULL), a sample of unresolved values. */
 import type { Coverage } from "../../api";
 
 export type CoverageState = { status: "running" } | { status: "done"; coverage: Coverage } | { status: "error"; message: string };

@@ -1,4 +1,3 @@
-/** The Rows view: one compact grid per group with the full columns of the group's table. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
@@ -24,7 +23,6 @@ import { AlsoLinked } from "./AlsoLinked";
 import { GroupHeader } from "./GroupHeader";
 import { useCollapsedGroups } from "./useCollapsedGroups";
 
-/** Rows a grid shows before it scrolls. */
 const VISIBLE_ROWS = 12;
 const DEFAULT_ROW_LIMIT = 1000;
 
@@ -33,7 +31,6 @@ const sameKey = (a: RowKey, b: RowKey) =>
 
 const columnAt = (columns: ColumnMeta[], name: string) => columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase());
 
-/** The open session of the object's connection. */
 const useSessionId = (owner: Address) => useStore((s) => s.sessions.find((x) => x.slug === owner.connection)?.id ?? null);
 
 /** The group's rows as a browse page; not browsed for a group whose rows no address names (patterns). */
@@ -124,7 +121,6 @@ const NULL_VALUE: Value = {
   secondary: null,
 };
 
-/** A group row's values in the group's column order. */
 const rowValues = (group: Group, row: GroupRow) => group.columns.map((column, i) => fieldOf(row, column, i) ?? NULL_VALUE);
 
 function cellOf(values: Value[][], focus: Provenance | null): CellPos | null {
@@ -160,7 +156,6 @@ function GroupGrid({ group, owner, focus }: { group: Group; owner: Address; focu
   return <BrowsedGrid page={page} sessionId={sessionId} owner={owner} focus={focus} />;
 }
 
-/** The filter the grid shows, e.g. `order_id = 4711`, next to the count. */
 function filterText(group: Group): string | null {
   const target = group.rowsAddress?.target;
   if (target?.kind !== "table" || target.filter.length === 0) return null;

@@ -94,11 +94,8 @@ pub struct Group {
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub enum GroupShape {
-    /// One row, column by column.
     Fields,
-    /// Key/value rows.
     Meta,
-    /// A table of rows.
     Rows,
 }
 
@@ -117,7 +114,6 @@ pub enum GroupLink {
     /// Rows whose reference points at this row.
     Incoming {
         reference: ResolvedReference,
-        /// The rule's `label`.
         label: Option<String>,
     },
     /// Rows a `[[pattern]]` rule selects; `sql` is the condition as run.
@@ -197,5 +193,63 @@ impl Group {
     fn failed(mut self, error: impl ToString) -> Self {
         self.error = Some(error.to_string());
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::FakeDatabase;
+    use crate::document::testing::{Rig, TIMEOUT, shop};
+
+    async fn open_text(rig: &Rig, text: &str, database: Option<&str>) -> AppError {
+        open(
+            &rig.session,
+            text,
+            database.map(str::to_string),
+            rig.sources(),
+            TIMEOUT,
+        )
+        .await
+        .unwrap_err()
+    }
+
+    #[tokio::test]
+    async fn text_that_is_neither_an_address_nor_an_entity_and_key_is_invalid_input() {
+        let rig = Rig::new(shop(), "");
+
+        let err = open_text(&rig, "order", Some("wp")).await;
+
+        assert!(
+            matches!(&err, AppError::InvalidInput(m) if m == "Not an address or `<entity> <key>`: order"),
+            "{err:?}"
+        );
+        assert_eq!(rig.db.queries(), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn a_shorthand_without_any_database_is_invalid_input() {
+        let rig = Rig::new(FakeDatabase::new(), "");
+
+        let err = open_text(&rig, "order 4711", None).await;
+
+        assert!(
+            matches!(&err, AppError::InvalidInput(m) if m == "No database selected"),
+            "{err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_address_of_another_connection_is_invalid_input() {
+        let rig = Rig::new(shop(), "");
+
+        let err = open_text(&rig, "databee://other/wp/f_orders/1", Some("wp")).await;
+
+        assert!(
+            matches!(&err, AppError::InvalidInput(m)
+                if m == "Unknown connection `other`; this connection is `local`"),
+            "{err:?}"
+        );
+        assert_eq!(rig.db.queries(), Vec::<String>::new());
     }
 }

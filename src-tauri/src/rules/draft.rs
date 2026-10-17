@@ -13,7 +13,6 @@ use crate::schema;
 use crate::session::Session;
 use crate::value::{Provenance, stored_key};
 
-/// A meta value: the meta table as rules name it, its key column and the row's key.
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]

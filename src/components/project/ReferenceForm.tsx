@@ -1,4 +1,3 @@
-/** The reference form: source, `when`, target and label, with live coverage of the unsaved rule. */
 import { useEffect, useState } from "react";
 import { api, toAppError, type Coverage, type Reference } from "../../api";
 import { fieldError, referenceComplete, referenceRule, type FieldError, type ReferenceForm as Form } from "../../lib/ruleForms";

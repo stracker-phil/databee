@@ -10,7 +10,6 @@ use ts_rs::TS;
 use super::placeholder::{self, Allowed};
 use super::types::{Check, Conditions, FieldError};
 
-/// `text` (SQL or a title) uses only the placeholders `allowed` names.
 pub(super) fn checked_field(
     field: &str,
     sql: &str,
@@ -50,7 +49,6 @@ impl Check for Pattern {
     }
 }
 
-/// Where a pinned query shows on the readout home.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "show", rename_all = "lowercase", try_from = "HomeFields")]
@@ -110,7 +108,6 @@ impl Check for Pinned {
     }
 }
 
-/// What an anomaly opens: a pinned query of the same preset, or table rows with a SQL filter.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(untagged, try_from = "OpenFields")]

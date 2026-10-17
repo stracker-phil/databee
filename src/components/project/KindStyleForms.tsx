@@ -1,4 +1,3 @@
-/** Kind and value-style forms: a scope (columns, or meta keys in meta tables), then the kind or the style. */
 import { useState } from "react";
 import type { ProjectChange, StyleColor } from "../../api";
 import { fieldError, KIND_CHOICES, kindRule, STYLE_COLORS, STYLE_MATCHES, styleRule, ZONES, type FieldError, type KindChoice, type KindForm as KForm, type ScopeDraft, type StyleForm as SForm } from "../../lib/ruleForms";

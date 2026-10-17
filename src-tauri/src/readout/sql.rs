@@ -27,7 +27,6 @@ pub fn limited(statement: &str, limit: u32) -> String {
     format!("{} LIMIT {limit}{}", &statement[..end], &statement[end..])
 }
 
-/// SQL that counts the rows `statement` returns.
 pub fn counted(statement: &str) -> String {
     format!("SELECT COUNT(*) FROM (\n{statement}\n) AS counted")
 }

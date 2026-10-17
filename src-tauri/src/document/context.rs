@@ -566,7 +566,6 @@ value = "v"
         }
     }
 
-    /// The own row of order `id`.
     pub fn order(ctx: &Ctx<'_>, id: &str, status: Cell, currency: Cell) -> Own {
         let row = vec![
             num(id),

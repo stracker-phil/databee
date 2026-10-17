@@ -145,7 +145,6 @@ pub fn is_project_query(project: &Project, id: &str) -> bool {
     project.saved.iter().any(|q| q.id == id)
 }
 
-/// Replaces the query with `query.id` in `queries`; an error when there is none.
 pub fn replace(queries: &mut [SavedQuery], query: &SavedQuery) -> AppResult<()> {
     let stored = queries
         .iter_mut()
@@ -166,7 +165,6 @@ fn in_project(projects: &ProjectsStore, connection: &str, database: &str, id: &s
     })
 }
 
-/// Appends `query` to the project of `connection` and `database`.
 pub async fn add_to_project(
     projects: &ProjectsStore,
     connection: &str,

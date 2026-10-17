@@ -104,7 +104,6 @@ pub struct DeleteSpec {
     pub r#where: Option<String>,
 }
 
-/// What an action writes.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionEffect {
     Update(Vec<UpdateStep>),
@@ -275,4 +274,61 @@ fn check_updates(steps: &[UpdateStep], row: bool, allowed: Allowed<'_>) -> Resul
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::preset::{PresetError, parse};
+
+    fn rejected(action: &str) -> PresetError {
+        let src =
+            format!("[preset]\nname = \"t\"\n\n[[action]]\nname = \"a\"\ntable = \"t\"\n{action}");
+        parse("t.toml", &src).expect_err(action)
+    }
+
+    #[test]
+    fn an_action_without_exactly_one_effect_is_rejected() {
+        for action in [
+            "update = [{ set = { a = \"1\" } }]\nsql = \"SELECT 1\"\n",
+            "update = [{ set = { a = \"1\" } }]\ndelete = {}\n",
+            "delete = {}\nsql = \"SELECT 1\"\n",
+            "",
+        ] {
+            let error = rejected(action);
+            assert!(
+                error
+                    .message
+                    .contains("an action sets exactly one of update, delete, sql"),
+                "{action}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_param_name_declared_twice_is_rejected() {
+        let error = rejected(
+            "params = [{ name = \"x\" }, { name = \"x\" }]\nupdate = [{ set = { a = \"1\" } }]\n",
+        );
+
+        assert_eq!(error.field.as_deref(), Some("params"));
+        assert_eq!(error.message, "`x` is declared twice");
+    }
+
+    #[test]
+    fn an_update_step_that_sets_nothing_is_rejected() {
+        let error = rejected("update = [{ set = { a = \"1\" } }, { set = {} }]\n");
+
+        assert_eq!(error.field.as_deref(), Some("update[1].set"));
+        assert_eq!(error.message, "sets nothing");
+    }
+
+    #[test]
+    fn choices_sql_has_no_row_to_fill_id_from() {
+        let error = rejected(
+            "params = [{ name = \"x\", choices_sql = \"SELECT s FROM t WHERE id = {id}\" }]\nupdate = [{ set = { a = \"1\" } }]\n",
+        );
+
+        assert_eq!(error.field.as_deref(), Some("params[0].choices_sql"));
+        assert_eq!(error.message, "`{id}` is not available here");
+    }
 }

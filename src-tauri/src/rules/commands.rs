@@ -20,7 +20,6 @@ pub fn presets_list(state: State<'_, AppState>) -> Vec<PresetInfo> {
     state.presets.list()
 }
 
-/// The prefixes, applied presets and entities of `database`.
 #[tauri::command]
 pub async fn rules_info(
     state: State<'_, AppState>,
@@ -63,7 +62,6 @@ pub async fn project_update(
         .await
 }
 
-/// The project's rules as a preset file (TOML).
 #[tauri::command]
 pub fn project_export(
     state: State<'_, AppState>,
@@ -74,7 +72,6 @@ pub fn project_export(
     state.projects.get(&session.slug(), &database).export()
 }
 
-/// Writes `project_export` to `path` (a path the user chose in the save panel).
 #[tauri::command]
 pub async fn project_export_to(
     state: State<'_, AppState>,
@@ -88,7 +85,6 @@ pub async fn project_export_to(
         .map_err(|e| AppError::Io(format!("Writing {path} failed: {e}")))
 }
 
-/// Everything the Project page lists for `database`.
 #[tauri::command]
 pub async fn project_rules(
     state: State<'_, AppState>,
@@ -103,7 +99,6 @@ pub async fn project_rules(
     Ok(overview::project_rules(project, schema, rules, &loaded))
 }
 
-/// The start of a rule form for the value at `provenance`.
 #[tauri::command]
 pub async fn rule_draft(
     state: State<'_, AppState>,

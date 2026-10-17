@@ -19,7 +19,6 @@ export interface ReferenceForm {
   type: "reference";
   /** What opened the form, e.g. `r on wp_wc_orders_meta.meta_value · meta_id 9`. */
   opener: string;
-  /** The project reference being edited. */
   replacing: string | null;
   /** The stored rule being edited or promoted; what the form does not show is kept from it. */
   base: Reference | null;
@@ -178,7 +177,6 @@ export function ruleTableName(tables: RuleTable[], table: string): string {
 
 const ruleColumn = (tables: RuleTable[], pick: ColumnPick) => `${ruleTableName(tables, pick.table)}.${pick.column}`;
 
-/** Whether the form names both ends, so a preview or save can run. */
 export const referenceComplete = (form: ReferenceForm) => !!(form.source.table && form.source.column && form.target.table && form.target.column);
 
 export function referenceRule(form: ReferenceForm, tables: RuleTable[]): Reference {

@@ -1,4 +1,3 @@
-/** The "changes" section at the bottom of a column (mock `Main`): time, table, column or key, old → new; a line jumps to its value. */
 import type { Cell, Provenance } from "../../api";
 import { useBindingLabel } from "../../commands";
 import { clockTime, sinceText, type ChangeLine, type ChangeMarks } from "../../lib/diff";

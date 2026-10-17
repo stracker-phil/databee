@@ -19,7 +19,6 @@ export interface Item {
   /** Secondary text in --o2, e.g. where a saved query is stored. */
   note?: string;
   binding?: string;
-  /** A row hit, rendered with its values. */
   hit?: PaletteHit;
   go: () => void;
   /** ⌘↵: tables and addresses open in a kept tab, row hits in a new tab. */

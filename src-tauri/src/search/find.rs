@@ -128,3 +128,38 @@ fn source_hits(ctx: &Ctx<'_>, source: &Source, result: ResultSet) -> Vec<Palette
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::testing::{Rig, num, result, shop, text};
+
+    const FIND_LOG_MESSAGES: &str = r#"
+[[find]]
+table = "log"
+columns = ["msg"]
+match = "contains"
+"#;
+
+    #[tokio::test]
+    async fn sections_follow_the_declaration_order_not_the_table_names() {
+        let meta = result(
+            &["meta_id", "order_id", "k", "v"],
+            vec![vec![num("1"), num("1"), text("_note"), text("sandbox")]],
+        );
+        let log = result(
+            &["log_id", "order_id", "at_gmt", "msg"],
+            vec![vec![num("7"), num("1"), text(""), text("sandbox ok")]],
+        );
+        let rig = Rig::new(
+            shop().on("`f_ordermeta`", meta).on("`f_log`", log),
+            FIND_LOG_MESSAGES,
+        );
+        let ctx = rig.ctx().await;
+
+        let found = everywhere(&ctx, "sandbox").await;
+
+        let sections: Vec<&str> = found.iter().map(|hit| hit.section.as_str()).collect();
+        assert_eq!(sections, ["f_ordermeta.v", "f_log.msg"]);
+    }
+}

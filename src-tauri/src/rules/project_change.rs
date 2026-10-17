@@ -71,9 +71,7 @@ pub enum ProjectChange {
     },
 }
 
-/// What a change is checked against.
 pub struct ChangeContext {
-    /// The tables and columns that rule names must resolve to.
     pub schema: Arc<DatabaseSchema>,
     /// Every preset that loaded: `setPresets` names must be among them, and their marker and
     /// network tables suggest the prefixes when the project sets none.
@@ -81,7 +79,6 @@ pub struct ChangeContext {
 }
 
 impl ChangeContext {
-    /// The schema of `database` (from the session's cache) and the loaded presets.
     pub async fn load(
         session: &Session,
         database: &str,

@@ -95,7 +95,6 @@ export function PaletteList({ items, active, activeRef, empty, onHover, onChoose
 
 const PREFIX_HINTS = "# id · @ people · t: tables · q: queries · > commands · = find everywhere · databee://";
 
-/** The keys, the prefixes and, for `#` without entities, which tables it reads. */
 export function PaletteFooter({ prefix, hasEntities, hasHit }: { prefix: Prefix; hasEntities: boolean; hasHit: boolean }) {
   return (
     <div className="palette-foot o3">

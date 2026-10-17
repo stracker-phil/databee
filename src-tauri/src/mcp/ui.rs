@@ -6,7 +6,6 @@ use crate::ipc::{self, IpcMessage};
 
 pub const NOT_RUNNING: &str = "DataBee is not running";
 
-/// The app's reply to `message`, or why there is none.
 pub async fn ask(socket: &Path, message: IpcMessage) -> Result<serde_json::Value, String> {
     let socket: PathBuf = socket.to_path_buf();
     let reply = tokio::task::spawn_blocking(move || ipc::request(&socket, message))

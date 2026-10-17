@@ -45,7 +45,6 @@ export function charWidth(name: string, texts: Iterable<string>, max = 40): stri
   return `${Math.min(max, longest) + 2}ch`;
 }
 
-/** Single-line text for a grid cell, cut to `maxChars`. */
 export function cellDisplay(cell: Cell, nullLabel: string, maxChars: number): string {
   if (cell.t === "null") return nullLabel;
   if (cell.t === "bytes") return `${cellText(cell)} (${formatBytes(cell.v.len)})`;

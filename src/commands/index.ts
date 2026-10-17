@@ -56,7 +56,6 @@ function withQueryTab(run: (tab: Extract<Tab, { kind: "query" }>) => unknown) {
   if (tab?.kind === "query") return run(tab);
 }
 
-/** The keyboard focus is in a query tab's results grid. */
 const inResults = () => !!document.activeElement?.closest(".results [role='grid']");
 const hasDatabase = () => !!selectActiveSession(useStore.getState())?.database;
 

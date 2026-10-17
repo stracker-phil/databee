@@ -132,7 +132,6 @@ impl RulesLens {
             .unwrap_or(base)
     }
 
-    /// The first kind rule for meta rows of `meta` under `key`.
     fn meta_kind(&self, meta: &MetaRef, key: &str) -> Option<ColumnKind> {
         self.rules
             .meta_kind_rule(meta, key)

@@ -1,4 +1,3 @@
-/** One value of a document row: focusable, editable in place, drawn by `Value`. */
 import { createContext, memo, useContext, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { Provenance, Value as StoredValue } from "../../api";
 import { FLASH_MS } from "../../lib/diff";
@@ -19,7 +18,6 @@ const noop = () => {};
 
 export const DocumentContext = createContext<DocumentActions>({ onOpen: noop, focus: noop, save: noop, cancelEdit: noop, menu: noop });
 
-/** Numbers and money align right, as in grids. */
 export const isNumeric = (value: StoredValue | null) => value?.kind.kind === "number" || value?.kind.kind === "money";
 
 function ValueEditor({ value }: { value: StoredValue }) {
@@ -44,7 +42,6 @@ interface FieldProps {
   value: StoredValue | null;
   focused: boolean;
   editing?: boolean;
-  /** Right-aligned, as numbers are in grids. */
   numeric?: boolean;
   change?: FieldChange;
 }

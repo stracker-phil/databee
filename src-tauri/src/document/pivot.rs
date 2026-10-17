@@ -144,3 +144,56 @@ fn meta_of<'r>(ctx: &'r Ctx<'_>, owner: &str) -> Option<&'r MetaRef> {
         .iter()
         .find(|m| m.owner.as_deref() == Some(owner) && m.fk.is_some())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::testing::{Rig, num, result, shop, text};
+    use crate::value::{KeyPart, Provenance, RowKey};
+
+    #[tokio::test]
+    async fn a_meta_key_some_rows_lack_is_null_there_and_sourced_from_the_meta_row_elsewhere() {
+        let meta = result(
+            &["meta_id", "order_id", "k", "v"],
+            vec![vec![num("10"), num("2"), text("_paid"), text("yes")]],
+        );
+        let rig = Rig::new(shop().on("`f_ordermeta`", meta), "");
+        let ctx = rig.ctx().await;
+        let orders = ctx.annotate(
+            "f_orders",
+            result(
+                &["id", "status"],
+                vec![vec![num("1"), text("open")], vec![num("2"), text("open")]],
+            ),
+        );
+        let columns = ["id".to_string(), "_paid".to_string()];
+
+        let rows = rows(&ctx, &orders, &columns).await;
+
+        assert_eq!(
+            rig.db.queries(),
+            [
+                "SELECT * FROM `wp`.`f_ordermeta` WHERE `order_id` IN ('1', '2') AND `k` IN ('_paid') ORDER BY `meta_id`"
+            ]
+        );
+        let paid: Vec<_> = rows.iter().map(|r| &r.fields[1]).collect();
+        assert_eq!(paid[0].0, "_paid");
+        assert_eq!(
+            (&paid[0].1.raw, &paid[0].1.kind),
+            (&Cell::Null, &ValueKind::Null)
+        );
+        assert_eq!(paid[1].1.raw, text("yes"));
+        assert_eq!(
+            paid[1].1.source,
+            Some(Provenance {
+                table: "f_ordermeta".into(),
+                column: "v".into(),
+                row: RowKey(vec![KeyPart {
+                    column: "meta_id".into(),
+                    value: "10".into(),
+                }]),
+            })
+        );
+        assert_eq!(rows[0].fields[0].1.raw, num("1"));
+    }
+}

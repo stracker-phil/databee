@@ -1,4 +1,3 @@
-/** `?compare=<key>`: two rows of one table side by side, the values that differ marked on both sides. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, toAppError, type AppError, type Comparison, type Provenance } from "../../api";
 import type { ObjectColumn } from "../../lib/columns";
@@ -11,7 +10,6 @@ import { ErrorPanel } from "../ErrorPanel";
 import { DocumentView } from "./DocumentView";
 import { ObjectHeader } from "./ObjectHeader";
 
-/** Both documents and their differences, fetched again once per `dataVersion`. */
 function useComparison(sessionId: string, address: string) {
   const dataVersion = useStore((s) => s.dataVersion);
   const [state, setState] = useState<{ comparison: Comparison | null; error: AppError | null }>({ comparison: null, error: null });

@@ -16,7 +16,6 @@ use crate::rules::types::{ColumnRef, Conditions, Preset, Reference};
 use crate::schema::DatabaseSchema;
 use crate::value::ReferenceSource;
 
-/// The Project page of `project` on `schema`, whose effective rules are `rules`.
 pub fn project_rules(
     project: Project,
     schema: Arc<DatabaseSchema>,
@@ -208,7 +207,6 @@ impl Overview<'_> {
         }
     }
 
-    /// The project rule an inferred reference becomes when promoted.
     fn promoted(&self, reference: &ResolvedReference) -> Option<Reference> {
         let ([from], [to]) = (
             reference.from.columns.as_slice(),

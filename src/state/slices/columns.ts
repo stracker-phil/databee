@@ -1,4 +1,3 @@
-/** The column stack of object tabs and the value column of table and query tabs (docs/frontend.md, Column stack). */
 import type { Address } from "../../api";
 import { objectColumn, type ColumnStack, type StackColumn, type ValueColumn } from "../../lib/columns";
 import { selectActiveTab } from "../selectors";

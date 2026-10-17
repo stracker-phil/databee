@@ -1,4 +1,3 @@
-/** Group bodies of the Document view: key/value rows for fields and meta, a small table for row groups. */
 import { memo, useMemo } from "react";
 import type { Group, GroupRow, Value as StoredValue } from "../../api";
 import type { DocumentMarks } from "../../lib/diff";
@@ -16,7 +15,6 @@ export interface Marks {
 
 const keyOf = (value: StoredValue | null) => (value?.source ? provenanceKey(value.source) : null);
 
-/** The old value as the change list writes it. */
 export const oldText = (cell: StoredValue["raw"]) => (cell.t === "null" ? "NULL" : cellText(cell));
 
 function changeOf(key: string | null, diff: DocumentMarks | null | undefined): FieldChange | undefined {
@@ -27,7 +25,6 @@ function changeOf(key: string | null, diff: DocumentMarks | null | undefined): F
   return undefined;
 }
 
-/** Whether `value` is the focused or the edited one, and how it changed. */
 function marksFor(value: StoredValue | null, marks: Marks): { focused: boolean; editing: boolean; change?: FieldChange } {
   const key = keyOf(value);
   return { focused: !!key && key === marks.focus, editing: !!key && key === marks.editing, change: changeOf(key, marks.diff) };
@@ -54,7 +51,6 @@ function KvRow({ name, value, table, marks }: { name: string; value: StoredValue
 const isFocused = (value: StoredValue | null, marks: Marks) => !!marks.focus && keyOf(value) === marks.focus;
 const holdsFocus = (row: GroupRow, marks: Marks) => row.fields.some(([, value]) => isFocused(value, marks));
 
-/** The own row: one key/value row per column. */
 export function FieldsGroup({ group, marks }: { group: Group; marks: Marks }) {
   const row = group.rows[0];
   if (!row) return null;
@@ -112,7 +108,6 @@ const TableRow = memo(function TableRow({ row, columns, table, style, marks }: T
   );
 });
 
-/** Rows of an incoming reference or a pattern: a header row of column names, then the rows. */
 export function RowsGroup({ group, marks }: { group: Group; marks: Marks }) {
   const style = useMemo(() => ({ gridTemplateColumns: template(group.columns, group.rows) }), [group]);
   const first = group.rows[0];
@@ -137,7 +132,6 @@ export function RowsGroup({ group, marks }: { group: Group; marks: Marks }) {
 
 const EVENT_STYLE = { gridTemplateColumns: "22ch 32ch minmax(0, 1fr)" };
 
-/** Every timestamp of the document in order: the time, the table it is stored in, the column or meta key. */
 export function EventsGroup({ group, marks }: { group: Group; marks: Marks }) {
   return (
     <>

@@ -1,4 +1,3 @@
-/** The Project page (`?project`): presets and prefix, the open rule form, references, value styles and kinds. */
 import { useEffect } from "react";
 import type { ProjectChange } from "../../api";
 import { useStore, type ProjectTab } from "../../state/store";

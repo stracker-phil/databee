@@ -91,7 +91,6 @@ impl Project {
         }
     }
 
-    /// `to_preset` as a preset file.
     pub fn export(&self) -> AppResult<String> {
         preset::to_toml(&self.to_preset())
             .map_err(|e| AppError::Io(format!("Exporting {} failed: {e}", self.key())))
@@ -123,7 +122,6 @@ struct ProjectsFile {
     global: Vec<SavedQuery>,
 }
 
-/// Saved queries for one project, keyed by connection slug and database.
 pub struct ProjectQueries {
     pub connection: String,
     pub database: String,
