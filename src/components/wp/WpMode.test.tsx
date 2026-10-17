@@ -122,7 +122,19 @@ describe("WordPress mode", () => {
     expect(screen.getByText(/holds 54% of all rows/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Table rows" }));
     expect(screen.getByRole("button", { name: "woocommerce_log: 44k rows" })).toBeInTheDocument();
-    expect(screen.getByText("HPOS in sync")).toBeInTheDocument();
+    expect(screen.queryByText(/HPOS/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/differ from their posts copy/)).not.toBeInTheDocument();
+  });
+
+  it("shows a drift badge on the dashboard when wc_orders differ from their posts copy", async () => {
+    mocked.wpDashboard.mockResolvedValue({ ...dashboard, hposDrift: 4 });
+    render(<App />);
+    expect(await screen.findByText(/4 wc_orders differ from their posts copy/)).toBeInTheDocument();
+  });
+
+  it("shows the table prefix in the dashboard header", async () => {
+    render(<App />);
+    expect(await screen.findByText(/· wp_$/)).toBeInTheDocument();
   });
 
   it("turns alerts into actions: changes queue with SQL, reviews open filtered lists", async () => {

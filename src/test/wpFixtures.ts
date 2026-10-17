@@ -7,18 +7,11 @@ export { NOW };
 const NOW_SECS = Math.round(NOW / 1000);
 
 export const wpInfo: WpInfo = {
-  context: {
-    prefix: "wp_",
-    version: "58975",
-    sites: [],
-    wc: { version: "9.3.0", hpos: "on_with_sync", hasActionScheduler: true },
-    site: { name: "Shop", url: "https://shop.test", currency: "EUR", zone: "+00:00", zoneSource: "gmt_offset", theme: "storefront", activePlugins: { source: "active_plugins", plugins: ["woocommerce"] }, networkPlugins: null, uploadsUrl: null, priceDecimals: 2 },
-  },
-  entities: [
-    { name: "order", label: "Order" },
-    { name: "user", label: "User" },
-  ],
+  prefix: "wp_",
+  presets: ["wordpress", "woocommerce"],
+  entities: ["order", "user"],
   tableEntities: { wp_wc_orders: { entity: "order", idColumn: "id" } },
+  legacyEntitiesFile: null,
 };
 
 /** A connected session on a WordPress database, in WordPress mode. */

@@ -35,7 +35,7 @@ function OptionGroup({ prefix }: { prefix: string }) {
       </div>
       <FieldList
         fields={data.map((f) => ({ ...f, label: null }))}
-        target={{ kind: "row", table: `${wp.context.prefix}options`, keyColumn: "option_name", key: null, column: "option_value" }}
+        target={{ kind: "row", table: `${wp.prefix}options`, keyColumn: "option_name", key: null, column: "option_value" }}
       />
     </Card>
   );

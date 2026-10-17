@@ -18,39 +18,39 @@ use crate::db::changes::{ChangeRequest, Plan, plan as plan_row_change};
 use crate::db::mysql::MySqlSession;
 use crate::db::{Cell, Database};
 use crate::error::AppError;
-use crate::test_support::sessions;
+use crate::test_support::{sessions, wordpress};
+use crate::wp::catalog::Catalog;
 use crate::wp::changes::{WpChangeRequest, plan as plan_wp_change};
-use crate::wp::context::{HposMode, SiteInfo, SiteZone};
 use crate::wp::dashboard::{Granularity, action_histogram, browser, dashboard};
 use crate::wp::detail::{EntityView, EventKind, EventLevel, entity_view, search};
-use crate::wp::entity::{Catalog, definitions};
+use crate::wp::document::Sensitive;
 use crate::wp::lists::{self, ListQuery};
 use crate::wp::peek::{FactKind, FindGroup, FindHit, PeekFact, find_value, peek};
-use crate::wp::{WpList, detect, expand, load_docs, options_overview, post_images};
+use crate::wp::site::WpContext;
+use crate::wp::{WpList, expand, load_docs, options_overview, post_images};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-#[tokio::test]
-#[ignore]
-async fn detects_woocommerce_with_hpos_sync() {
-    for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
-        assert_eq!(ctx.prefix, "wp_");
-        let wc = ctx.wc.unwrap();
-        assert_eq!(wc.version.as_deref(), Some("9.3.0"));
-        assert_eq!(wc.hpos, HposMode::OnWithSync);
-        assert!(wc.has_action_scheduler);
-        assert!(detect(&db, "databee_test").await.unwrap().is_none());
-    }
+/// The context and catalog of `database` as the commands build them.
+async fn site(db: &MySqlSession, database: &str) -> (WpContext, Catalog) {
+    wordpress(db, database)
+        .await
+        .unwrap_or_else(|| panic!("{database} is not a WordPress database"))
 }
 
 #[tokio::test]
 #[ignore]
-async fn the_site_zone_comes_from_timezone_string() {
+async fn the_wordpress_preset_applies_to_the_wordpress_fixtures_and_not_to_the_plain_one() {
     for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
-        assert_eq!(ctx.site.zone, SiteZone::Named(chrono_tz::Europe::Berlin));
-        assert_eq!(ctx.site.zone_source, "timezone_string");
+        let (shop, _) = site(&db, "wp_test").await;
+        let (legacy, _) = site(&db, "wp_legacy").await;
+        let (plain, _) = site(&db, "wp_custom").await;
+
+        assert_eq!(shop.prefix, "wp_");
+        assert!(shop.woocommerce() && shop.hpos());
+        assert!(legacy.woocommerce() && !legacy.hpos());
+        assert!(!plain.woocommerce() && !plain.hpos());
+        assert!(wordpress(&db, "databee_test").await.is_none());
     }
 }
 
@@ -58,14 +58,19 @@ async fn the_site_zone_comes_from_timezone_string() {
 #[ignore]
 async fn loads_an_order_document_with_meta_links_and_relation_counts() {
     for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
-        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+        let (ctx, catalog) = site(&db, "wp_test").await;
         let docs = load_docs(&db, &ctx, &catalog, "wp_test", "order", &["4711".into()])
             .await
             .unwrap();
         let order = &docs[0];
-        assert_eq!(order.title.as_deref(), Some("jane@shop.test"));
-        assert_eq!(order.subtitle.as_deref(), Some("wc-processing"));
+        assert!(
+            order.title.as_deref().is_some_and(
+                |t| t.starts_with("shop_order · wc-processing · ppcp-gateway · 49.90000000 · ")
+            ),
+            "{:?}",
+            order.title
+        );
+        assert_eq!(order.subtitle, None);
 
         let customer = order
             .fields
@@ -74,18 +79,30 @@ async fn loads_an_order_document_with_meta_links_and_relation_counts() {
             .unwrap();
         let link = customer.link.as_ref().unwrap();
         assert_eq!(link.entity, "user");
-        assert_eq!(link.label.as_deref(), Some("Jane Doe"));
+        assert_eq!(
+            link.label.as_deref(),
+            Some("jane · Jane Doe · jane@shop.test · 2026-01-02 10:00:00")
+        );
 
         let total = order
             .fields
             .iter()
             .find(|f| f.name == "total_amount")
             .unwrap();
-        assert_eq!(serde_json::to_value(&total.hint).unwrap()["text"], "€49.90");
+        assert_eq!(
+            serde_json::to_value(&total.hint).unwrap()["text"],
+            "49.90000000 EUR"
+        );
 
-        let ppcp = order.meta.iter().find(|g| g.name == "_ppcp*").unwrap();
-        assert!(ppcp.private);
-        assert!(ppcp.entries.iter().all(|e| e.name.starts_with("_ppcp")));
+        assert_eq!(order.meta.len(), 1, "one group for the whole meta table");
+        let meta = &order.meta[0];
+        assert_eq!(meta.name, "wp_wc_orders_meta");
+        assert!(meta.private, "every stored key starts with an underscore");
+        assert!(
+            meta.entries
+                .iter()
+                .any(|e| e.name == "_ppcp_paypal_order_id")
+        );
 
         let count = |name: &str| {
             order
@@ -97,7 +114,7 @@ async fn loads_an_order_document_with_meta_links_and_relation_counts() {
         };
         assert_eq!(count("items"), 2);
         assert_eq!(count("notes"), 1, "reviews are not order notes");
-        assert_eq!(count("refunds"), 1);
+        assert_eq!(count("children"), 2, "the refund and the subscription");
         assert_eq!(count("addresses"), 2);
     }
 }
@@ -106,14 +123,13 @@ async fn loads_an_order_document_with_meta_links_and_relation_counts() {
 #[ignore]
 async fn expands_relations_lazily_and_follows_meta_links() {
     for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
-        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+        let (ctx, catalog) = site(&db, "wp_test").await;
         let items = expand(&db, &ctx, &catalog, "wp_test", "order", "4711", "items")
             .await
             .unwrap();
         assert_eq!(items.len(), 2);
         let mug = &items[0];
-        assert_eq!(mug.title.as_deref(), Some("Mug"));
+        assert_eq!(mug.title.as_deref(), Some("line_item · Mug · 4711"));
         let product = mug
             .meta
             .iter()
@@ -122,12 +138,20 @@ async fn expands_relations_lazily_and_follows_meta_links() {
             .unwrap();
         let link = product.link.as_ref().unwrap();
         assert_eq!((link.entity.as_str(), link.id.as_str()), ("post", "123"));
-        assert_eq!(link.label.as_deref(), Some("Mug"));
+        assert_eq!(
+            link.label.as_deref(),
+            Some("product · publish · Mug · 2026-01-01 00:00:00")
+        );
 
         let user = load_docs(&db, &ctx, &catalog, "wp_test", "user", &["12".into()])
             .await
             .unwrap();
-        assert!(user[0].fields.iter().all(|f| f.name != "user_pass"));
+        let pass = user[0]
+            .fields
+            .iter()
+            .find(|f| f.name == "user_pass")
+            .unwrap();
+        assert_eq!(pass.sensitive, Some(Sensitive::Secret));
     }
 }
 
@@ -135,7 +159,7 @@ async fn expands_relations_lazily_and_follows_meta_links() {
 #[ignore]
 async fn options_overview_reports_groups_and_expired_transients() {
     for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
+        let (ctx, _) = site(&db, "wp_test").await;
         let o = options_overview(&db, &ctx, "wp_test").await.unwrap();
         assert_eq!(o.total_count, 17);
         assert!(
@@ -154,22 +178,24 @@ async fn options_overview_reports_groups_and_expired_transients() {
     }
 }
 
-async fn env() -> Vec<(MySqlSession, crate::wp::context::WpContext, Catalog)> {
+/// One session per fixture server, each with the context and catalog of `database`.
+async fn envs(database: &str) -> Vec<(MySqlSession, WpContext, Catalog)> {
     let mut out = Vec::new();
     for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_test").await.unwrap().unwrap();
-        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+        let (ctx, catalog) = site(&db, database).await;
         out.push((db, ctx, catalog));
     }
     out
+}
+
+async fn env() -> Vec<(MySqlSession, WpContext, Catalog)> {
+    envs("wp_test").await
 }
 
 #[tokio::test]
 #[ignore]
 async fn dashboard_summarizes_orders_actions_and_health() {
     for (db, ctx, _) in env().await {
-        assert_eq!(ctx.site.currency.as_deref(), Some("EUR"));
-        assert_eq!(ctx.site.active_plugins.plugins, ["woocommerce"]);
         let d = dashboard(&db, &ctx, "wp_test").await.unwrap();
         let orders = d.orders.unwrap();
         assert_eq!(orders.total, 2, "subscriptions and refunds are not orders");
@@ -177,7 +203,7 @@ async fn dashboard_summarizes_orders_actions_and_health() {
         assert_eq!(orders.granularity, Granularity::Hour);
         assert_eq!(orders.days.len(), 24);
         assert_eq!(d.recent_orders[0].id, "4711");
-        assert_eq!(d.recent_orders[0].total.as_deref(), Some("€49.90"));
+        assert_eq!(d.recent_orders[0].total.as_deref(), Some("49.90000000 EUR"));
         let actions = d.actions.unwrap();
         assert_eq!(actions.recent_failed[0].hook, "ppcp_check_payment_status");
         assert_eq!(
@@ -223,8 +249,7 @@ async fn dashboard_summarizes_orders_actions_and_health() {
 #[tokio::test]
 #[ignore]
 async fn network_tables_count_as_core_in_the_dashboard() {
-    for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_multi").await.unwrap().unwrap();
+    for (db, ctx, _) in envs("wp_multi").await {
         let d = dashboard(&db, &ctx, "wp_multi").await.unwrap();
         assert_eq!(d.hpos_drift, None);
         for table in ["wp_blogs", "wp_sitemeta", "wp_options"] {
@@ -242,14 +267,11 @@ async fn network_tables_count_as_core_in_the_dashboard() {
 
 #[tokio::test]
 #[ignore]
-async fn action_histogram_covers_fourteen_days_ending_today_in_the_site_zone() {
+async fn action_histogram_covers_fourteen_utc_days_ending_today() {
     for (db, ctx, _) in env().await {
         let now = scalar(&db, "SELECT UTC_TIMESTAMP()").await.unwrap();
-        let now = chrono::NaiveDateTime::parse_from_str(&now, "%Y-%m-%d %H:%M:%S")
+        let today = chrono::NaiveDateTime::parse_from_str(&now, "%Y-%m-%d %H:%M:%S")
             .unwrap()
-            .and_utc();
-        let today = SiteZone::Named(chrono_tz::Europe::Berlin)
-            .to_local(now)
             .date()
             .format("%Y-%m-%d")
             .to_string();
@@ -371,7 +393,7 @@ async fn peek_summarizes_an_entity_in_a_few_facts() {
             shape(rest),
             [
                 row("Status", FactKind::Status, "wc-processing"),
-                row("Total", FactKind::Money, "€49.90"),
+                row("Total", FactKind::Money, "49.90000000 EUR"),
                 row("Gateway", FactKind::Text, "ppcp-gateway"),
                 row("Customer", FactKind::Text, "jane@shop.test"),
             ]
@@ -382,7 +404,7 @@ async fn peek_summarizes_an_entity_in_a_few_facts() {
         );
         assert!(created.value.parse::<i64>().unwrap() > 0, "{created:?}");
 
-        // Order stats follow the identity fact; registration is a site-local time (Europe/Berlin).
+        // Order stats follow the identity fact; `user_registered` is stored in UTC.
         let admin = peek(&db, &ctx, &catalog, "wp_test", "user", "1")
             .await
             .unwrap();
@@ -391,10 +413,10 @@ async fn peek_summarizes_an_entity_in_a_few_facts() {
             [
                 row("Name", FactKind::Text, "Admin"),
                 row("Orders", FactKind::Text, "0"),
-                row("Spent", FactKind::Money, "€0.00"),
+                row("Spent", FactKind::Money, "0.00000000"),
                 row("Email", FactKind::Text, "admin@shop.test"),
                 row("Login", FactKind::Text, "admin"),
-                row("Registered", FactKind::Time, "1735686000"),
+                row("Registered", FactKind::Time, "1735689600"),
             ]
         );
         let buyer = peek(&db, &ctx, &catalog, "wp_test", "user", "12")
@@ -405,10 +427,10 @@ async fn peek_summarizes_an_entity_in_a_few_facts() {
             [
                 row("Name", FactKind::Text, "Jane Doe"),
                 row("Orders", FactKind::Text, "1"),
-                row("Spent", FactKind::Money, "€49.90"),
+                row("Spent", FactKind::Money, "49.90000000"),
                 row("Email", FactKind::Text, "jane@shop.test"),
                 row("Login", FactKind::Text, "jane"),
-                row("Registered", FactKind::Time, "1767344400"),
+                row("Registered", FactKind::Time, "1767348000"),
             ]
         );
         assert!(
@@ -622,7 +644,7 @@ async fn lists_filter_and_search() {
         let jane = users.items.iter().find(|c| c.id == "12").unwrap();
         assert_eq!(jane.roles, ["customer"]);
         assert_eq!(jane.order_count, 1);
-        assert_eq!(jane.total_spent.as_deref(), Some("€49.90"));
+        assert_eq!(jane.total_spent.as_deref(), Some("49.90000000"));
         assert!(users.kinds.iter().any(|k| k.value == "administrator"));
 
         let products = lists::products(&db, &ctx, "wp_test", &q(None, Some("MUG")))
@@ -631,7 +653,7 @@ async fn lists_filter_and_search() {
         let mug = &products.items[0];
         assert_eq!(
             (mug.name.as_str(), mug.kind.as_deref(), mug.price.as_deref()),
-            ("Mug", Some("simple"), Some("€24.95"))
+            ("Mug", Some("simple"), Some("24.9500"))
         );
         assert_eq!(
             mug.image.as_deref(),
@@ -641,7 +663,7 @@ async fn lists_filter_and_search() {
             .await
             .unwrap();
         assert_eq!(shirt.items[0].variations, 2);
-        assert_eq!(shirt.items[0].price.as_deref(), Some("€20.00–€22.00"));
+        assert_eq!(shirt.items[0].price.as_deref(), Some("20.0000–22.0000"));
 
         let actions = lists::actions(&db, &ctx, "wp_test", &q(Some("pending"), None))
             .await
@@ -653,7 +675,7 @@ async fn lists_filter_and_search() {
         let s = sessions.items.iter().find(|s| s.key == "12").unwrap();
         assert_eq!(
             (s.items, s.total.as_deref(), s.customer_id.as_deref()),
-            (2, Some("€49.90"), Some("12"))
+            (2, Some("49.90"), Some("12"))
         );
         let content = lists::content(&db, &ctx, "wp_test", &q(None, None))
             .await
@@ -723,11 +745,11 @@ async fn order_view_tells_the_story_of_a_checkout() {
         };
         assert_eq!(
             (o.status.as_str(), o.total.as_deref()),
-            ("wc-processing", Some("€49.90"))
+            ("wc-processing", Some("49.90000000 EUR"))
         );
         assert_eq!(
             o.customer.as_ref().unwrap().label.as_deref(),
-            Some("Jane Doe")
+            Some("jane · Jane Doe · jane@shop.test · 2026-01-02 10:00:00")
         );
         assert!(o.paid.is_some());
         let mug = &o.items[0];
@@ -746,17 +768,17 @@ async fn order_view_tells_the_story_of_a_checkout() {
         assert!(
             o.totals
                 .iter()
-                .any(|(l, v)| l == "Shipping" && v == "€4.90")
+                .any(|(l, v)| l == "Shipping" && v == "4.9000 EUR")
         );
         assert!(
             o.totals
                 .iter()
-                .any(|(l, v)| l == "Refunded" && v == "−€10.00")
+                .any(|(l, v)| l == "Refunded" && v == "−10 EUR")
         );
         assert!(o.address_notes.iter().any(|n| n.contains("City/postcode")));
         let p = o.payment.as_ref().unwrap();
         assert_eq!(p.paypal_order_id.as_deref(), Some("66M12696JX411763D"));
-        assert_eq!(p.fees.as_ref().unwrap().net, "€47.86");
+        assert_eq!(p.fees.as_ref().unwrap().net, "47.86 EUR");
         assert!(
             o.attribution
                 .as_ref()
@@ -802,8 +824,11 @@ async fn order_view_tells_the_story_of_a_checkout() {
             (row.table.as_str(), row.id_column.as_str()),
             ("wp_woocommerce_log", "log_id")
         );
+        assert!(
+            !kinds.contains(&EventKind::Session),
+            "the attribution start time is a local timestamp, shown raw: {kinds:?}"
+        );
         for k in [
-            EventKind::Session,
             EventKind::Created,
             EventKind::Paid,
             EventKind::Note,
@@ -852,9 +877,10 @@ async fn customer_and_product_views() {
         assert!(c.session.is_some());
         assert_eq!(c.billing.as_ref().unwrap().country.as_deref(), Some("AT"));
         let groups: Vec<&str> = c.doc.meta.iter().map(|g| g.name.as_str()).collect();
-        assert!(
-            groups.iter().all(|g| *g == "Other" || g.ends_with('*')),
-            "meta is grouped by literal key prefix: {groups:?}"
+        assert_eq!(
+            groups,
+            ["wp_usermeta"],
+            "one group for the whole meta table"
         );
 
         let EntityView::Product(p) =
@@ -934,14 +960,8 @@ async fn omnisearch_finds_pasted_identifiers() {
 
 // ---------- edits (on the writable wp_write copy) ----------
 
-async fn write_env() -> Vec<(MySqlSession, crate::wp::context::WpContext, Catalog)> {
-    let mut out = Vec::new();
-    for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_write").await.unwrap().unwrap();
-        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
-        out.push((db, ctx, catalog));
-    }
-    out
+async fn write_env() -> Vec<(MySqlSession, WpContext, Catalog)> {
+    envs("wp_write").await
 }
 
 async fn scalar(db: &MySqlSession, sql: &str) -> Option<String> {
@@ -958,7 +978,7 @@ async fn apply(db: &MySqlSession, statements: &[String]) {
 
 async fn wp_plan(
     db: &MySqlSession,
-    ctx: &crate::wp::context::WpContext,
+    ctx: &WpContext,
     catalog: &Catalog,
     request: WpChangeRequest,
 ) -> Plan {
@@ -1003,16 +1023,15 @@ async fn order_meta(db: &MySqlSession, order_id: u64) -> Vec<(String, String)> {
 #[ignore]
 async fn set_order_status_updates_both_copies_and_undo_restores_the_status() {
     for (db, ctx, catalog) in write_env().await {
-        let hpos = "SELECT status, date_updated_gmt > '2026-01-01 10:00:00' FROM wp_write.wp_wc_orders WHERE id = 9101";
-        let posts = "SELECT post_status, post_modified_gmt > '2026-01-01 10:00:00', post_modified > '2026-01-01 11:00:00' FROM wp_write.wp_posts WHERE ID = 9101";
+        let hpos = "SELECT status, date_updated_gmt FROM wp_write.wp_wc_orders WHERE id = 9101";
+        let posts = "SELECT post_status, post_modified_gmt, post_modified FROM wp_write.wp_posts WHERE ID = 9101";
         let strings = |cells: Vec<Option<String>>| -> Vec<String> {
             cells.into_iter().map(Option::unwrap_or_default).collect()
         };
-        assert_eq!(strings(first_row(&db, hpos).await), ["wc-processing", "0"]);
-        assert_eq!(
-            strings(first_row(&db, posts).await),
-            ["wc-processing", "0", "0"]
-        );
+        let hpos_before = strings(first_row(&db, hpos).await);
+        let posts_before = strings(first_row(&db, posts).await);
+        assert_eq!(hpos_before[0], "wc-processing");
+        assert_eq!(posts_before[0], "wc-processing");
 
         let change = wp_plan(
             &db,
@@ -1027,16 +1046,33 @@ async fn set_order_status_updates_both_copies_and_undo_restores_the_status() {
         .await;
         assert_eq!(change.statements.len(), 2, "HPOS table and posts copy");
         apply(&db, &change.statements).await;
-        assert_eq!(strings(first_row(&db, hpos).await), ["wc-completed", "1"]);
-        assert_eq!(
-            strings(first_row(&db, posts).await),
-            ["wc-completed", "1", "1"],
-            "the posts copy follows, with both modified timestamps bumped"
+        let hpos_after = strings(first_row(&db, hpos).await);
+        let posts_after = strings(first_row(&db, posts).await);
+        assert_eq!(hpos_after[0], "wc-completed");
+        assert!(
+            hpos_after[1] > hpos_before[1],
+            "{hpos_before:?} -> {hpos_after:?}"
+        );
+        assert_eq!(posts_after[0], "wc-completed");
+        assert!(
+            posts_after[1] > posts_before[1] && posts_after[2] > posts_before[2],
+            "the posts copy follows, with both modified timestamps bumped: {posts_before:?} -> {posts_after:?}"
         );
 
         apply(&db, &change.undo).await;
-        assert_eq!(strings(first_row(&db, hpos).await)[0], "wc-processing");
-        assert_eq!(strings(first_row(&db, posts).await)[0], "wc-processing");
+        let hpos_undone = strings(first_row(&db, hpos).await);
+        let posts_undone = strings(first_row(&db, posts).await);
+        assert_eq!(hpos_undone[0], "wc-processing");
+        assert_eq!(posts_undone[0], "wc-processing");
+        assert_eq!(
+            hpos_undone[1], hpos_after[1],
+            "undo restores only the status"
+        );
+        assert_eq!(
+            posts_undone[1..],
+            posts_after[1..],
+            "undo restores only the status"
+        );
     }
 }
 
@@ -1786,23 +1822,8 @@ async fn log_retention_plans_a_fixed_cutoff_literal() {
 
 // ---------- legacy store (wp_legacy: orders in wp_posts, HPOS off) ----------
 
-async fn legacy_env() -> Vec<(MySqlSession, crate::wp::context::WpContext, Catalog)> {
-    let mut out = Vec::new();
-    for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_legacy").await.unwrap().unwrap();
-        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
-        out.push((db, ctx, catalog));
-    }
-    out
-}
-
-#[tokio::test]
-#[ignore]
-async fn legacy_store_is_detected_without_hpos() {
-    for (_, ctx, _) in legacy_env().await {
-        assert!(ctx.wc.is_some());
-        assert!(!ctx.hpos());
-    }
+async fn legacy_env() -> Vec<(MySqlSession, WpContext, Catalog)> {
+    envs("wp_legacy").await
 }
 
 #[tokio::test]
@@ -1836,66 +1857,21 @@ async fn legacy_customer_view_lists_posts_based_orders() {
 
 #[tokio::test]
 #[ignore]
-async fn legacy_order_document_counts_its_notes() {
+async fn legacy_order_document_counts_its_order_notes_as_comments() {
     for (db, ctx, catalog) in legacy_env().await {
         let docs = load_docs(&db, &ctx, &catalog, "wp_legacy", "order", &["501".into()])
             .await
             .unwrap();
-        let notes = docs[0]
+        let comments = docs[0]
             .relations
             .iter()
-            .find(|r| r.name == "notes")
+            .find(|r| r.name == "comments")
             .unwrap();
-        assert_eq!(notes.count, 2);
-    }
-}
-
-// ---------- detection fixtures (wp_custom, wp_multi, read-only) ----------
-
-#[tokio::test]
-#[ignore]
-async fn a_custom_table_prefix_is_detected() {
-    for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_custom").await.unwrap().unwrap();
-        assert_eq!(ctx.prefix, "xy_");
-        assert_eq!(ctx.site.name.as_deref(), Some("Custom Prefix Site"));
-        assert_eq!(ctx.wc, None);
-        assert!(ctx.sites.is_empty());
-        assert!(ctx.has_table("options"));
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn a_multisite_network_lists_sub_sites_and_network_plugins() {
-    for db in sessions("wp_test").await {
-        let ctx = detect(&db, "wp_multi").await.unwrap().unwrap();
-        assert_eq!(ctx.prefix, "wp_");
-        assert_eq!(
-            ctx.sites,
-            [SiteInfo {
-                blog_id: 2,
-                prefix: "wp_2_".into(),
-                domain: Some("shop.network.test".into()),
-                path: Some("/".into()),
-            }]
+        assert_eq!(comments.count, 2);
+        assert!(
+            docs[0].relations.iter().all(|r| r.name != "notes"),
+            "the notes relation targets wc_orders, which this site lacks"
         );
-        let network = ctx.site.network_plugins.unwrap();
-        assert_eq!(network.source, "active_sitewide_plugins");
-        assert_eq!(network.plugins, ["woocommerce"]);
-        assert!(ctx.site.active_plugins.plugins.is_empty());
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn single_sites_have_no_network_plugins_or_sub_sites() {
-    for db in sessions("wp_test").await {
-        for database in ["wp_test", "wp_legacy", "wp_custom"] {
-            let ctx = detect(&db, database).await.unwrap().unwrap();
-            assert_eq!(ctx.site.network_plugins, None, "{database}");
-            assert!(ctx.sites.is_empty(), "{database}");
-        }
     }
 }
 
@@ -1903,7 +1879,6 @@ async fn single_sites_have_no_network_plugins_or_sub_sites() {
 #[ignore]
 async fn product_images_use_the_uploads_base_the_attachment_guid_proves() {
     for (db, ctx, _) in env().await {
-        assert_eq!(ctx.site.uploads_url, None);
         let images = post_images(&db, &ctx, "wp_test", &["123".into(), "200".into()])
             .await
             .unwrap();
@@ -1928,8 +1903,9 @@ mod real_data {
     use crate::db::Database;
     use crate::db::mysql::MySqlSession;
     use crate::decode::php;
-    use crate::wp::context::WpContext;
-    use crate::wp::detect;
+    use crate::test_support::wordpress;
+    use crate::wp::catalog::Catalog;
+    use crate::wp::site::WpContext;
 
     const TIMEOUT: Duration = Duration::from_secs(10);
     const PAGE: usize = 2000;
@@ -1962,11 +1938,8 @@ mod real_data {
         (db, database)
     }
 
-    async fn real_context(db: &MySqlSession, database: &str) -> WpContext {
-        detect(db, database)
-            .await
-            .unwrap()
-            .expect("a WordPress database")
+    async fn real_context(db: &MySqlSession, database: &str) -> (WpContext, Catalog) {
+        wordpress(db, database).await.expect("a WordPress database")
     }
 
     fn unhex(hex: &str) -> Vec<u8> {
@@ -1980,7 +1953,7 @@ mod real_data {
     #[ignore]
     async fn every_serialized_value_round_trips() {
         let (db, database) = real_site().await;
-        let ctx = real_context(&db, &database).await;
+        let (ctx, _) = real_context(&db, &database).await;
         let dialect = db.dialect();
 
         let mut sources = vec![
@@ -1991,7 +1964,7 @@ mod real_data {
         if ctx.hpos() {
             sources.push(("wc_orders_meta", "id", "meta_value"));
         }
-        if ctx.wc.is_some() {
+        if ctx.woocommerce() {
             sources.push(("woocommerce_order_itemmeta", "meta_id", "meta_value"));
         }
 
@@ -2000,7 +1973,7 @@ mod real_data {
             let qualified = format!(
                 "{}.{}",
                 dialect.quote_ident(&database),
-                dialect.quote_ident(&format!("{}{table}", ctx.prefix))
+                dialect.quote_ident(&ctx.table(table))
             );
             let (id, col) = (dialect.quote_ident(id_column), dialect.quote_ident(column));
             let mut offset = 0;
@@ -2060,7 +2033,6 @@ mod real_data {
     #[ignore]
     async fn wordpress_mode_queries_work_on_real_data() {
         use crate::wp::detail::{EntityView, entity_view, search};
-        use crate::wp::entity::{Catalog, definitions};
         use crate::wp::lists::{self, ListQuery};
         use crate::wp::{dashboard, options_group};
 
@@ -2069,8 +2041,7 @@ mod real_data {
         }
 
         let (db, database) = real_site().await;
-        let ctx = real_context(&db, &database).await;
-        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+        let (ctx, catalog) = real_context(&db, &database).await;
         let started = std::time::Instant::now();
         let lap = |what: &str| eprintln!("{what:<28} {:>6} ms", started.elapsed().as_millis());
 

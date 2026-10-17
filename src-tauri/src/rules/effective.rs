@@ -16,10 +16,10 @@ use ts_rs::TS;
 use super::ProjectsStore;
 use super::applied::Applied;
 use super::catalog::{PresetCatalog, PresetEntry};
-use super::condition::{self, Condition, Matcher};
+use super::condition::{self, Condition, Matcher, column_glob_match, glob_match};
 use super::kinds::{KindRule, StyleRule};
 use super::project::Project;
-use super::types::{ColumnRef, Entity, Preset, Reference};
+use super::types::{ColumnGlob, ColumnRef, Entity, Preset, Reference};
 use crate::db::ColumnEquals;
 use crate::lock::MutexExt;
 use crate::schema::DatabaseSchema;
@@ -55,6 +55,8 @@ pub struct RuleReference {
     pub to_when: Vec<Condition>,
     /// The `=` conditions of `to_when`, which the target's address carries as a filter.
     pub to_filter: Vec<ColumnEquals>,
+    /// Names the incoming group on the target's document.
+    pub label: Option<String>,
 }
 
 /// A `[[meta]]` table of an applied preset.
@@ -64,6 +66,9 @@ pub struct MetaRef {
     pub table: String,
     /// The name rules use (`in`).
     pub name: String,
+    /// For an owned table: the real owner table and the column holding the owner's key.
+    pub owner: Option<String>,
+    pub fk: Option<String>,
     pub key: String,
     pub value: String,
 }
@@ -116,9 +121,11 @@ impl EffectiveRules {
         rules.add_references(&project.references, None);
         let presets = rules.applied.presets.clone();
         for preset in presets.iter().rev() {
+            let implied = rules.meta_references(preset, schema);
             let kept: Vec<Reference> = preset
                 .references
                 .iter()
+                .chain(&implied)
                 .filter(|r| !rules.disabled.contains(&r.id))
                 .filter(|r| !is_overridden(project, r))
                 .cloned()
@@ -197,7 +204,37 @@ impl EffectiveRules {
             to,
             to_when,
             to_filter,
+            label: rule.label.clone(),
         })
+    }
+
+    /// The reference `fk → owner` that each owned `[[meta]]` table declares, to the owner's
+    /// single-column primary key.
+    fn meta_references(&self, preset: &Preset, schema: &DatabaseSchema) -> Vec<Reference> {
+        preset
+            .meta
+            .iter()
+            .filter_map(|meta| {
+                let (owner, fk) = (meta.owner.as_ref()?, meta.fk.as_ref()?);
+                let key = single_key(schema, &self.applied.existing_table(owner)?)?;
+                let from = ColumnRef {
+                    table: meta.table.clone(),
+                    column: fk.clone(),
+                };
+                Some(Reference {
+                    id: from.to_string(),
+                    from,
+                    when: Default::default(),
+                    to: ColumnRef {
+                        table: owner.clone(),
+                        column: key.to_string(),
+                    },
+                    to_when: Default::default(),
+                    label: None,
+                    columns: Vec::new(),
+                })
+            })
+            .collect()
     }
 
     fn column(&self, column: &ColumnRef) -> Option<ColumnRef> {
@@ -215,6 +252,11 @@ impl EffectiveRules {
             self.meta.push(MetaRef {
                 table,
                 name: meta.table.clone(),
+                owner: meta
+                    .owner
+                    .as_ref()
+                    .and_then(|owner| self.applied.existing_table(owner)),
+                fk: meta.fk.clone(),
                 key: meta.key.clone(),
                 value: meta.value.clone(),
             });
@@ -233,6 +275,34 @@ impl EffectiveRules {
         }
     }
 
+    /// The `[[meta]]` table with the real name `table`.
+    pub fn meta_table(&self, table: &str) -> Option<&MetaRef> {
+        self.meta.iter().find(|m| m.table == table)
+    }
+
+    /// Whether one of `globs` covers the real `table.column`.
+    pub fn columns_match(&self, globs: &[ColumnGlob], table: &str, column: &str) -> bool {
+        let names = self.applied.rule_names(table);
+        globs.iter().any(|glob| {
+            column_glob_match(&glob.column, column)
+                && names.iter().any(|name| glob_match(&glob.table, name))
+        })
+    }
+
+    /// The first kind rule for the real `table.column`.
+    pub fn column_kind_rule(&self, table: &str, column: &str) -> Option<&KindRule> {
+        self.kinds
+            .iter()
+            .find(|rule| self.columns_match(&rule.columns, table, column))
+    }
+
+    /// The first kind rule for rows of `meta` stored under `key`.
+    pub fn meta_kind_rule(&self, meta: &MetaRef, key: &str) -> Option<&KindRule> {
+        self.kinds
+            .iter()
+            .find(|rule| meta_keys_match(&rule.meta_keys, &rule.in_meta, meta, key))
+    }
+
     /// Entity names per real table, filtered ones first.
     pub fn table_entities(&self) -> BTreeMap<String, Vec<String>> {
         let mut map = BTreeMap::<String, Vec<String>>::new();
@@ -243,6 +313,19 @@ impl EffectiveRules {
             }
         }
         map
+    }
+}
+
+/// Whether a `meta_keys` scope (`globs`, narrowed to the meta tables `in_meta`) covers `key` in `meta`.
+pub fn meta_keys_match(globs: &[String], in_meta: &[String], meta: &MetaRef, key: &str) -> bool {
+    let in_scope = in_meta.is_empty() || in_meta.contains(&meta.name);
+    in_scope && globs.iter().any(|glob| glob_match(glob, key))
+}
+
+fn single_key<'s>(schema: &'s DatabaseSchema, table: &str) -> Option<&'s str> {
+    match schema.keys(table)?.primary_key.as_slice() {
+        [key] => Some(key),
+        _ => None,
     }
 }
 
@@ -363,8 +446,10 @@ mod tests {
     use super::*;
     use crate::connection::ConnectionSpec;
     use crate::db::{CellLimit, ColumnInfo, FakeDatabase, ResultSet, TableStructure};
-    use crate::rules::kinds::{StyleColor, StyleMatch};
-    use crate::rules::testing::{forum, forum_schema, preset, project, reference};
+    use crate::rules::kinds::{StyleColor, StyleMatch, ValueRule, Zone};
+    use crate::rules::testing::{
+        TableSpec, forum, forum_schema, preset, project, reference, schema as schema_of,
+    };
     use crate::rules::types::{ColumnGlob, Conditions, Match};
     use crate::schema;
     use crate::test_support::{connect_to, servers, spec};
@@ -516,6 +601,7 @@ to = "threads.thread_id"
                 by_project("p"),
                 by_preset("forum", "notes.v?k=glob(_who*)"),
                 by_preset("forum", "notes.v?k=_ext"),
+                by_preset("forum", "notes.thread_id"),
             ]
         );
         assert_eq!(
@@ -540,8 +626,277 @@ to = "threads.thread_id"
                 by_preset("forum", "threads.author"),
                 by_preset("forum", "replies.by->people.person_id"),
                 by_preset("forum", "replies.by->bots.bot_id"),
+                by_preset("forum", "notes.thread_id"),
             ]
         );
+    }
+
+    fn owned_meta(owner_table: &str) -> Arc<Preset> {
+        preset(&format!(
+            "[preset]\nname = \"owned\"\nmarker_tables = [\"notes\"]\n\n[[meta]]\ntable = \"notes\"\nowner = \"{owner_table}\"\nfk = \"thread_id\"\nkey = \"k\"\nvalue = \"v\"\n"
+        ))
+    }
+
+    fn prefixed() -> Project {
+        Project {
+            prefix: Some("f_".into()),
+            ..project()
+        }
+    }
+
+    #[test]
+    fn an_owned_meta_table_implies_a_reference_from_its_fk_to_the_owners_key() {
+        let rules = build(&project(), &[forum()]);
+
+        let implied: Vec<&RuleReference> = rules
+            .references
+            .iter()
+            .filter(|r| r.from.table == "f_notes" && r.from.column == "thread_id")
+            .collect();
+
+        assert_eq!(implied.len(), 1);
+        let reference = implied[0];
+        assert_eq!(reference.by, by_preset("forum", "notes.thread_id"));
+        assert_eq!(
+            reference.group,
+            GroupKey {
+                preset: Some("forum".into()),
+                rule: "notes.thread_id".into()
+            }
+        );
+        assert_eq!(
+            (reference.to.table.as_str(), reference.to.column.as_str()),
+            ("f_threads", "thread_id")
+        );
+        assert!(reference.when.is_empty());
+        assert!(reference.to_when.is_empty());
+        assert_eq!(reference.label, None);
+    }
+
+    #[test]
+    fn a_meta_table_without_an_owner_implies_no_reference() {
+        let rules = build(&project(), &[forum()]);
+
+        assert!(sources_from(&rules, "f_settings").is_empty());
+    }
+
+    #[test]
+    fn the_implied_reference_is_disabled_by_its_id() {
+        let own = Project {
+            disabled: vec!["notes.thread_id".into()],
+            ..project()
+        };
+
+        let rules = build(&own, &[forum()]);
+
+        assert!(!sources_from(&rules, "f_notes").contains(&by_preset("forum", "notes.thread_id")));
+        assert_eq!(
+            rules.meta_table("f_notes").unwrap().fk.as_deref(),
+            Some("thread_id")
+        );
+    }
+
+    #[test]
+    fn a_project_reference_from_the_fk_column_replaces_the_implied_one() {
+        let own = Project {
+            references: vec![reference("mine", "notes.thread_id", "people.person_id")],
+            ..project()
+        };
+
+        let rules = build(&own, &[forum()]);
+
+        let from_fk: Vec<ReferenceSource> = sources_from(&rules, "f_notes")
+            .into_iter()
+            .filter(|by| *by == by_project("mine") || *by == by_preset("forum", "notes.thread_id"))
+            .collect();
+        assert_eq!(from_fk, [by_project("mine")]);
+    }
+
+    #[test]
+    fn the_owner_key_must_be_a_single_column_primary_key() {
+        let notes: TableSpec<'_> = ("f_notes", &["note_id", "thread_id", "k", "v"], &["note_id"]);
+        let single: TableSpec<'_> = ("f_threads", &["a"], &["a"]);
+        let composite: TableSpec<'_> = ("f_threads", &["a", "b"], &["a", "b"]);
+        let keyless: TableSpec<'_> = ("f_threads", &["a"], &[]);
+        let cases = [
+            ("single key", vec![notes, single], true),
+            ("composite key", vec![notes, composite], false),
+            ("no key", vec![notes, keyless], false),
+            ("missing owner", vec![notes], false),
+        ];
+        for (name, tables, implied) in cases {
+            let rules =
+                EffectiveRules::build(&prefixed(), &schema_of(&tables), &[owned_meta("threads")]);
+
+            assert_eq!(
+                sources_from(&rules, "f_notes").contains(&by_preset("owned", "notes.thread_id")),
+                implied,
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_implied_reference_targets_the_owners_primary_key_column_whatever_its_name() {
+        let tables = schema_of(&[
+            ("f_notes", &["note_id", "thread_id", "k", "v"], &["note_id"]),
+            ("f_threads", &["thread_id", "uid"], &["uid"]),
+        ]);
+
+        let rules = EffectiveRules::build(&prefixed(), &tables, &[owned_meta("threads")]);
+
+        let to = &rules.references[0].to;
+        assert_eq!(
+            (to.table.as_str(), to.column.as_str()),
+            ("f_threads", "uid")
+        );
+    }
+
+    #[test]
+    fn a_reference_label_names_the_incoming_group_and_defaults_to_none() {
+        let labelled = preset(
+            "[preset]\nname = \"l\"\nmarker_tables = [\"threads\"]\n\n[[reference]]\nfrom = \"threads.parent_id\"\nto = \"threads.thread_id\"\nlabel = \"children\"\n\n[[reference]]\nfrom = \"threads.author\"\nto = \"people.person_id\"\n",
+        );
+
+        let rules = build(&prefixed(), &[labelled]);
+
+        let labels: Vec<(&str, Option<&str>)> = rules
+            .references
+            .iter()
+            .map(|r| (r.from.column.as_str(), r.label.as_deref()))
+            .collect();
+        assert_eq!(labels, [("parent_id", Some("children")), ("author", None)]);
+    }
+
+    #[test]
+    fn meta_tables_name_their_real_owner_and_fk() {
+        let rules = build(&project(), &[forum()]);
+
+        let owners: Vec<(&str, Option<&str>, Option<&str>)> = rules
+            .meta
+            .iter()
+            .map(|m| (m.table.as_str(), m.owner.as_deref(), m.fk.as_deref()))
+            .collect();
+
+        assert_eq!(
+            owners,
+            [
+                ("f_notes", Some("f_threads"), Some("thread_id")),
+                ("f_settings", None, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_meta_table_whose_owner_does_not_exist_has_no_owner_table() {
+        let tables = schema_of(&[("f_notes", &["note_id", "thread_id", "k", "v"], &["note_id"])]);
+
+        let rules = EffectiveRules::build(&prefixed(), &tables, &[owned_meta("threads")]);
+
+        let meta = rules.meta_table("f_notes").unwrap();
+        assert_eq!(meta.owner, None);
+        assert_eq!(meta.fk.as_deref(), Some("thread_id"));
+    }
+
+    #[test]
+    fn column_kind_rules_match_real_table_names_through_the_prefix() {
+        let rules = build(&project(), &[forum()]);
+        let cases = [
+            ("f_people", "secret_code", Some(ValueRule::Secret)),
+            (
+                "f_people",
+                "joined_gmt",
+                Some(ValueRule::Timestamp(Zone::Utc)),
+            ),
+            (
+                "f_threads",
+                "closed_local",
+                Some(ValueRule::Timestamp(Zone::Local)),
+            ),
+            ("f_threads", "status", Some(ValueRule::Enum)),
+            ("f_people", "name", None),
+            ("people", "secret_code", None),
+        ];
+        for (table, column, expected) in cases {
+            assert_eq!(
+                rules
+                    .column_kind_rule(table, column)
+                    .map(|r| r.value.clone()),
+                expected,
+                "{table}.{column}"
+            );
+        }
+    }
+
+    #[test]
+    fn meta_kind_rules_apply_by_key_and_only_in_the_meta_tables_they_name() {
+        let rules = build(&project(), &[forum()]);
+        let notes = rules.meta_table("f_notes").unwrap();
+        let settings = rules.meta_table("f_settings").unwrap();
+        let cases = [
+            (notes, "api_key", Some(ValueRule::Secret)),
+            (settings, "api_key", Some(ValueRule::Secret)),
+            (
+                settings,
+                "expires_at",
+                Some(ValueRule::Timestamp(Zone::Unix)),
+            ),
+            (notes, "expires_at", None),
+            (settings, "tone", Some(ValueRule::Enum)),
+            (notes, "tone", None),
+            (settings, "mood", None),
+        ];
+        for (meta, key, expected) in cases {
+            assert_eq!(
+                rules.meta_kind_rule(meta, key).map(|r| r.value.clone()),
+                expected,
+                "{} {key}",
+                meta.table
+            );
+        }
+    }
+
+    #[test]
+    fn meta_keys_match_needs_a_glob_and_a_table_in_scope() {
+        let rules = build(&project(), &[forum()]);
+        let settings = rules.meta_table("f_settings").unwrap();
+        let globs = vec!["api_*".to_string()];
+        let cases = [
+            (&globs[..], vec![], "api_key", true),
+            (&globs[..], vec!["settings".to_string()], "api_key", true),
+            (&globs[..], vec!["notes".to_string()], "api_key", false),
+            (&globs[..], vec![], "other", false),
+            (&[][..], vec![], "api_key", false),
+        ];
+        for (globs, in_meta, key, expected) in cases {
+            assert_eq!(
+                meta_keys_match(globs, &in_meta, settings, key),
+                expected,
+                "{globs:?} in {in_meta:?} {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn columns_match_covers_the_prefixed_table_and_column_globs() {
+        let rules = build(&project(), &[forum()]);
+        let globs = [
+            ColumnGlob::try_from("people.secret_code".to_string()).unwrap(),
+            ColumnGlob::try_from("*.*_gmt".to_string()).unwrap(),
+        ];
+        let cases = [
+            ("f_people", "secret_code", true),
+            ("f_threads", "opened_gmt", true),
+            ("f_threads", "title", false),
+            ("people", "secret_code", false),
+        ];
+        for (table, column, expected) in cases {
+            assert_eq!(
+                rules.columns_match(&globs, table, column),
+                expected,
+                "{table}.{column}"
+            );
+        }
     }
 
     #[test]
@@ -970,21 +1325,9 @@ to = "extras.extra_id"
 
     #[tokio::test]
     #[ignore]
-    async fn the_draft_presets_apply_to_the_wordpress_fixture_and_not_to_the_plain_one() {
+    async fn the_built_in_presets_apply_to_the_wordpress_fixture_and_not_to_the_plain_one() {
         let dir = tempdir().unwrap();
-        let presets = dir.path().join("presets");
-        fs::create_dir_all(&presets).unwrap();
-        fs::write(
-            presets.join("wordpress.toml"),
-            include_str!("fixtures/wordpress.draft.toml"),
-        )
-        .unwrap();
-        fs::write(
-            presets.join("woocommerce.toml"),
-            include_str!("fixtures/woocommerce.draft.toml"),
-        )
-        .unwrap();
-        let catalog = PresetCatalog::with_built_in(presets, &[]);
+        let catalog = PresetCatalog::open(dir.path());
         let projects = ProjectsStore::open(dir.path());
         let sources = RuleSources {
             presets: &catalog,
@@ -1004,12 +1347,12 @@ to = "extras.extra_id"
             );
             assert_eq!(
                 wordpress.applied_presets,
-                ["wordpress", "woocommerce"],
+                ["wordpress", "woocommerce", "action-scheduler"],
                 "{server}"
             );
             assert_eq!(
                 wordpress.available_presets,
-                ["woocommerce", "wordpress"],
+                ["wordpress", "woocommerce", "action-scheduler"],
                 "{server}"
             );
             assert_eq!(
@@ -1028,7 +1371,7 @@ to = "extras.extra_id"
             assert!(plain.table_entities.is_empty(), "{server}");
             assert_eq!(
                 plain.available_presets,
-                ["woocommerce", "wordpress"],
+                ["wordpress", "woocommerce", "action-scheduler"],
                 "{server}"
             );
         }

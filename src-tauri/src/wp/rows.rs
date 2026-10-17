@@ -26,6 +26,18 @@ pub(crate) fn count(cell: &Cell) -> Option<u64> {
     cell_str(cell)?.trim().parse().ok()
 }
 
+/// An amount as stored, with its currency code when one is known; `None` for blank text.
+pub(crate) fn money(raw: &str, currency: Option<&str>) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    Some(match currency {
+        Some(currency) => format!("{raw} {currency}"),
+        None => raw.to_string(),
+    })
+}
+
 pub(crate) fn num(cell: &Cell) -> Option<f64> {
     cell_str(cell)?.trim().parse().ok()
 }
@@ -142,6 +154,24 @@ mod tests {
     #[test]
     fn text_keeps_whitespace_only_text() {
         assert_eq!(text(&t("  ")), Some("  ".to_string()));
+    }
+
+    #[test]
+    fn money_shows_the_stored_amount_before_its_currency_code() {
+        for (raw, currency, expected) in [
+            ("49.90000000", Some("EUR"), Some("49.90000000 EUR")),
+            (" 12 ", Some("USD"), Some("12 USD")),
+            ("-10.00", Some("EUR"), Some("-10.00 EUR")),
+            ("30.00", None, Some("30.00")),
+            ("", Some("EUR"), None),
+            ("   ", None, None),
+        ] {
+            assert_eq!(
+                money(raw, currency).as_deref(),
+                expected,
+                "{raw:?} {currency:?}"
+            );
+        }
     }
 
     #[test]

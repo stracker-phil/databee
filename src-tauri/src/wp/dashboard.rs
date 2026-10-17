@@ -5,9 +5,9 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::changes::WpChangeRequest;
-use super::context::{HposMode, SiteZone, WpContext};
 use super::lists::{self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary};
 use super::rows::{count, facets, text};
+use super::site::WpContext;
 use super::sql::{autoload_on_sql, table_ref};
 use super::{WpList, fetch};
 use crate::db::Database;
@@ -138,9 +138,9 @@ struct Span {
 
 const SQL_DATETIME: &str = "%Y-%m-%d %H:%M:%S";
 
-/// The `DAYS` local days of the site ending with `today`, keyed `YYYY-MM-DD`.
-fn day_spans(today: NaiveDate, zone: &SiteZone) -> Vec<Span> {
-    let midnight = |date: NaiveDate| zone.to_utc(date.and_time(NaiveTime::MIN));
+/// The `DAYS` UTC days ending with `today`, keyed `YYYY-MM-DD`. The site's zone is not read.
+fn day_spans(today: NaiveDate) -> Vec<Span> {
+    let midnight = |date: NaiveDate| date.and_time(NaiveTime::MIN).and_utc();
     (0..DAYS)
         .rev()
         .map(|back| {
@@ -154,16 +154,13 @@ fn day_spans(today: NaiveDate, zone: &SiteZone) -> Vec<Span> {
         .collect()
 }
 
-/// The 24 local hours ending with the current one, keyed by their UTC start, which stays
-/// unique when DST repeats an hour.
-fn hour_spans(now: DateTime<Utc>, zone: &SiteZone) -> Vec<Span> {
-    let offset = zone.offset_at(now);
-    let local = now.naive_utc() + offset;
-    let local_hour = local
-        .date()
-        .and_hms_opt(local.hour(), 0, 0)
-        .expect("the hour of a valid time is a valid time");
-    let current = (local_hour - offset).and_utc();
+/// The 24 UTC hours ending with the current one, keyed by their start.
+fn hour_spans(now: DateTime<Utc>) -> Vec<Span> {
+    let current = now
+        .date_naive()
+        .and_hms_opt(now.hour(), 0, 0)
+        .expect("the hour of a valid time is a valid time")
+        .and_utc();
     (0..24)
         .rev()
         .map(|back| {
@@ -219,17 +216,13 @@ async fn server_now(session: &dyn Database) -> AppResult<DateTime<Utc>> {
         })
 }
 
-/// 24 hourly buckets ending with the current local hour, labelled `HH:00` in the site zone.
-pub fn hour_buckets(
-    rows: &[(String, String, u64)],
-    now: DateTime<Utc>,
-    zone: &SiteZone,
-) -> Vec<DayBucket> {
-    hour_spans(now, zone)
+/// 24 hourly buckets ending with the current UTC hour, labelled `HH:00`.
+pub fn hour_buckets(rows: &[(String, String, u64)], now: DateTime<Utc>) -> Vec<DayBucket> {
+    hour_spans(now)
         .into_iter()
         .map(|span| {
             let mut bucket = DayBucket {
-                date: zone.to_local(span.start).format("%H:00").to_string(),
+                date: span.start.format("%H:00").to_string(),
                 completed: 0,
                 processing: 0,
                 failed: 0,
@@ -313,7 +306,7 @@ pub fn tiles(ctx: &WpContext, tables: &[TableInfo]) -> Vec<TableTile> {
     tiles
 }
 
-/// Fills all `DAYS` days ending today (site zone) from (date, status, count) rows.
+/// Fills all `DAYS` days ending today (UTC) from (date, status, count) rows.
 pub fn day_buckets(rows: &[(String, String, u64)], today: NaiveDate) -> Vec<DayBucket> {
     (0..DAYS)
         .rev()
@@ -456,127 +449,128 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
     )
     .await?;
 
-    let (orders, recent_orders, hpos_drift) = match &ctx.wc {
-        Some(wc) => {
-            let now = server_now(session).await?;
-            let today = ctx.site.zone.to_local(now).date();
-            let (table, status_col, date_col, type_filter) = if ctx.hpos() {
-                (
-                    table_ref(dialect, db, ctx, "wc_orders"),
-                    "status",
-                    "date_created_gmt",
-                    "type = 'shop_order'",
-                )
-            } else {
-                (
-                    table_ref(dialect, db, ctx, "posts"),
-                    "post_status",
-                    "post_date_gmt",
-                    "post_type = 'shop_order'",
-                )
-            };
-            let by_status = fetch(
-                session,
-                &format!("SELECT {status_col}, COUNT(*) FROM {table} WHERE {type_filter} GROUP BY {status_col}"),
+    let (orders, recent_orders, hpos_drift) = if ctx.woocommerce() {
+        let now = server_now(session).await?;
+        let today = now.date_naive();
+        let (table, status_col, date_col, type_filter) = if ctx.hpos() {
+            (
+                table_ref(dialect, db, ctx, "wc_orders"),
+                "status",
+                "date_created_gmt",
+                "type = 'shop_order'",
             )
-            .await?;
-            let (day_case, day_range) = span_sql(date_col, &day_spans(today, &ctx.site.zone));
-            let days = fetch(
+        } else {
+            (
+                table_ref(dialect, db, ctx, "posts"),
+                "post_status",
+                "post_date_gmt",
+                "post_type = 'shop_order'",
+            )
+        };
+        let by_status = fetch(
+            session,
+            &format!("SELECT {status_col}, COUNT(*) FROM {table} WHERE {type_filter} GROUP BY {status_col}"),
+        )
+        .await?;
+        let (day_case, day_range) = span_sql(date_col, &day_spans(today));
+        let days = fetch(
+            session,
+            &format!(
+                "SELECT {day_case}, {status_col}, COUNT(*) FROM {table} WHERE {type_filter} \
+                 AND {day_range} GROUP BY 1, 2"
+            ),
+        )
+        .await?;
+        let day_rows: Vec<(String, String, u64)> = days
+            .rows
+            .iter()
+            .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, count(&r[2])?)))
+            .collect();
+        let mut buckets = day_buckets(&day_rows, today);
+        let mut granularity = Granularity::Day;
+        let active_days = buckets
+            .iter()
+            .filter(|b| b.completed + b.processing + b.failed + b.other > 0)
+            .count();
+        if active_days < 3 {
+            let (hour_case, hour_range) = span_sql(date_col, &hour_spans(now));
+            let hours = fetch(
                 session,
                 &format!(
-                    "SELECT {day_case}, {status_col}, COUNT(*) FROM {table} WHERE {type_filter} \
-                     AND {day_range} GROUP BY 1, 2"
+                    "SELECT {hour_case}, {status_col}, COUNT(*) FROM {table} WHERE {type_filter} \
+                     AND {hour_range} GROUP BY 1, 2"
                 ),
             )
             .await?;
-            let day_rows: Vec<(String, String, u64)> = days
+            let hour_rows: Vec<(String, String, u64)> = hours
                 .rows
                 .iter()
                 .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, count(&r[2])?)))
                 .collect();
-            let mut buckets = day_buckets(&day_rows, today);
-            let mut granularity = Granularity::Day;
-            let active_days = buckets
+            let today_total = buckets
+                .last()
+                .map_or(0, |b| b.completed + b.processing + b.failed + b.other);
+            buckets = hour_buckets(&hour_rows, now);
+            // keep "today" from the day view
+            buckets.push(DayBucket {
+                date: "__today".into(),
+                completed: today_total,
+                processing: 0,
+                failed: 0,
+                other: 0,
+            });
+            granularity = Granularity::Hour;
+        }
+        let today_count = if granularity == Granularity::Hour {
+            buckets.pop().map_or(0, |b| b.completed)
+        } else {
+            buckets
+                .last()
+                .map_or(0, |b| b.completed + b.processing + b.failed + b.other)
+        };
+        let status_facets = facets(&by_status, 0, 1);
+        let stats = OrderStats {
+            total: status_facets
                 .iter()
-                .filter(|b| b.completed + b.processing + b.failed + b.other > 0)
-                .count();
-            if active_days < 3 {
-                let (hour_case, hour_range) = span_sql(date_col, &hour_spans(now, &ctx.site.zone));
-                let hours = fetch(
-                    session,
-                    &format!(
-                        "SELECT {hour_case}, {status_col}, COUNT(*) FROM {table} WHERE {type_filter} \
-                         AND {hour_range} GROUP BY 1, 2"
-                    ),
-                )
-                .await?;
-                let hour_rows: Vec<(String, String, u64)> = hours
-                    .rows
-                    .iter()
-                    .filter_map(|r| Some((text(&r[0])?, text(&r[1])?, count(&r[2])?)))
-                    .collect();
-                let today_total = buckets
-                    .last()
-                    .map_or(0, |b| b.completed + b.processing + b.failed + b.other);
-                buckets = hour_buckets(&hour_rows, now, &ctx.site.zone);
-                // keep "today" from the day view
-                buckets.push(DayBucket {
-                    date: "__today".into(),
-                    completed: today_total,
-                    processing: 0,
-                    failed: 0,
-                    other: 0,
-                });
-                granularity = Granularity::Hour;
-            }
-            let today_count = if granularity == Granularity::Hour {
-                buckets.pop().map_or(0, |b| b.completed)
-            } else {
-                buckets
-                    .last()
-                    .map_or(0, |b| b.completed + b.processing + b.failed + b.other)
-            };
-            let status_facets = facets(&by_status, 0, 1);
-            let stats = OrderStats {
-                total: status_facets
-                    .iter()
-                    .filter(|f| f.value != "trash")
-                    .map(|f| f.count)
-                    .sum(),
-                today: today_count,
-                by_status: status_facets,
-                days: buckets,
-                granularity,
-            };
-            let recent = lists::orders(
+                .filter(|f| f.value != "trash")
+                .map(|f| f.count)
+                .sum(),
+            today: today_count,
+            by_status: status_facets,
+            days: buckets,
+            granularity,
+        };
+        let recent = lists::orders(
+            session,
+            ctx,
+            db,
+            "shop_order",
+            &ListQuery {
+                limit: 8,
+                ..Default::default()
+            },
+        )
+        .await?;
+        // The posts copies only have to match while data sync is on.
+        let drift = if ctx.hpos() {
+            let rs = fetch(
                 session,
-                ctx,
-                db,
-                "shop_order",
-                &ListQuery {
-                    limit: 8,
-                    ..Default::default()
-                },
+                &format!(
+                    "SELECT COUNT(*) FROM {o} o LEFT JOIN {p} p ON p.ID = o.id WHERE o.type IN ('shop_order', 'shop_order_refund') \
+                     AND (p.ID IS NULL OR p.post_type <> o.type OR p.post_modified_gmt <> o.date_updated_gmt) \
+                     AND EXISTS (SELECT 1 FROM {options} WHERE option_name = 'woocommerce_custom_orders_table_data_sync_enabled' AND option_value = 'yes')",
+                    o = table_ref(dialect, db, ctx, "wc_orders"),
+                    p = table_ref(dialect, db, ctx, "posts"),
+                ),
             )
             .await?;
-            let drift = if wc.hpos == HposMode::OnWithSync {
-                let rs = fetch(
-                    session,
-                    &format!(
-                        "SELECT COUNT(*) FROM {o} o LEFT JOIN {p} p ON p.ID = o.id WHERE o.type IN ('shop_order', 'shop_order_refund') \
-                         AND (p.ID IS NULL OR p.post_type <> o.type OR p.post_modified_gmt <> o.date_updated_gmt)",
-                        o = table_ref(dialect, db, ctx, "wc_orders"),
-                        p = table_ref(dialect, db, ctx, "posts"),
-                    ),
-                )
-                .await?;
-                rs.rows.first().and_then(|r| count(&r[0]))
-            } else {
-                None
-            };
-            (Some(stats), recent.items, drift)
-        }
-        None => (None, Vec::new(), None),
+            rs.rows.first().and_then(|r| count(&r[0]))
+        } else {
+            None
+        };
+        (Some(stats), recent.items, drift)
+    } else {
+        (None, Vec::new(), None)
     };
 
     let actions = if ctx.has_table("actionscheduler_actions") {
@@ -661,7 +655,7 @@ pub async fn browser(
         breakdown,
     };
     let mut out = Vec::new();
-    if ctx.wc.is_some() {
+    if ctx.woocommerce() {
         let (table, status, ty) = if ctx.hpos() {
             (table_ref(dialect, db, ctx, "wc_orders"), "status", "type")
         } else {
@@ -703,7 +697,7 @@ pub async fn browser(
         count: users.rows.first().and_then(|r| count(&r[0])).unwrap_or(0),
         breakdown: Vec::new(),
     });
-    if ctx.wc.is_some() {
+    if ctx.woocommerce() {
         let rs = fetch(
             session,
             &format!(
@@ -799,8 +793,8 @@ pub async fn action_histogram(
     let hook_filter = hook
         .map(|h| format!(" AND hook = {}", dialect.sql_string(h)))
         .unwrap_or_default();
-    let today = ctx.site.zone.to_local(server_now(session).await?).date();
-    let (day_case, day_range) = span_sql("scheduled_date_gmt", &day_spans(today, &ctx.site.zone));
+    let today = server_now(session).await?.date_naive();
+    let (day_case, day_range) = span_sql("scheduled_date_gmt", &day_spans(today));
     let rs = fetch(
         session,
         &format!(
@@ -848,16 +842,31 @@ pub async fn action_histogram(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{Cell, ColumnMeta, FakeDatabase, ResultSet};
+    use crate::wp::testing::site;
 
     fn ctx() -> WpContext {
-        WpContext {
-            prefix: "wp_".into(),
-            version: None,
-            sites: vec![],
-            wc: None,
-            site: Default::default(),
-            tables: Default::default(),
+        site(&["actionscheduler_actions"]).0
+    }
+
+    fn result(columns: &[&str], rows: Vec<Vec<Cell>>) -> ResultSet {
+        ResultSet {
+            columns: columns
+                .iter()
+                .map(|name| ColumnMeta {
+                    name: name.to_string(),
+                    type_name: "TEXT".into(),
+                    origin: None,
+                })
+                .collect(),
+            rows,
+            returns_rows: true,
+            ..Default::default()
         }
+    }
+
+    fn row(cells: &[&str]) -> Vec<Cell> {
+        cells.iter().map(|c| Cell::Text(c.to_string())).collect()
     }
 
     fn table(name: &str, rows: u64) -> TableInfo {
@@ -1015,7 +1024,7 @@ mod tests {
                 7,
             ),
         ];
-        let b = hour_buckets(&rows, now, &SiteZone::default());
+        let b = hour_buckets(&rows, now);
         assert_eq!(b.len(), 24);
         assert_eq!(b[0].date, "10:00");
         assert_eq!(b[0].completed, 1);
@@ -1035,42 +1044,114 @@ mod tests {
     }
 
     #[test]
-    fn hour_buckets_are_labelled_in_the_named_site_zone() {
-        let zone = SiteZone::Named(chrono_tz::Europe::Berlin);
+    fn hour_buckets_cross_midnight_in_utc() {
         let rows = vec![
+            ("2026-10-15 01:00".to_string(), "wc-failed".to_string(), 2),
             (
-                "2026-10-16 09:00".to_string(),
-                "wc-completed".to_string(),
-                4,
+                "2026-10-16 00:00".to_string(),
+                "wc-cancelled".to_string(),
+                3,
             ),
-            (
-                "2026-10-16 10:00".to_string(),
-                "wc-completed".to_string(),
-                9,
-            ),
+            ("2026-10-15 00:00".to_string(), "wc-failed".to_string(), 9),
         ];
-        let b = hour_buckets(&rows, at("2026-10-16T09:30:00Z"), &zone);
-        assert_eq!(b.len(), 24);
-        assert_eq!(b[23].date, "11:00");
-        assert_eq!(b[23].completed, 4);
-        assert_eq!(b[0].date, "12:00");
+
+        let b = hour_buckets(&rows, at("2026-10-16T00:15:00Z"));
+
+        assert_eq!((b[0].date.as_str(), b[0].failed), ("01:00", 2));
+        assert_eq!((b[23].date.as_str(), b[23].failed), ("00:00", 3));
+        assert_eq!(b.iter().map(|x| x.failed).sum::<u64>(), 5);
+    }
+
+    fn histogram_db(now: &str, rows: Vec<Vec<Cell>>) -> FakeDatabase {
+        FakeDatabase::new()
+            .on(
+                "SELECT UTC_TIMESTAMP()",
+                result(&["now"], vec![row(&[now])]),
+            )
+            .on(
+                "FROM `wp`.`wp_actionscheduler_actions`",
+                result(&["day", "status", "n"], rows),
+            )
+    }
+
+    #[tokio::test]
+    async fn action_histogram_spans_the_fourteen_utc_days_ending_on_the_servers_utc_day() {
+        let ctx = ctx();
+        let db = histogram_db(
+            "2026-10-15 23:30:00",
+            vec![
+                row(&["2026-10-15", "complete", "3"]),
+                row(&["2026-10-15", "failed", "1"]),
+                row(&["2026-10-14", "pending", "2"]),
+                row(&["2026-10-14", "canceled", "4"]),
+            ],
+        );
+
+        let histogram = action_histogram(&db, &ctx, "wp", None).await.unwrap();
+
+        assert_eq!(histogram.days.len(), 14);
+        assert_eq!(histogram.days[0].date, "2026-10-02");
+        assert_eq!(histogram.days[13].date, "2026-10-15");
         assert_eq!(
-            b.iter().map(|x| x.completed).sum::<u64>(),
-            4,
-            "10:00 UTC is in the future"
+            (histogram.days[13].completed, histogram.days[13].failed),
+            (3, 1)
+        );
+        assert_eq!(
+            (histogram.days[12].processing, histogram.days[12].other),
+            (2, 4)
+        );
+        assert_eq!(histogram.labels.other, "canceled");
+        let query = &db.queries()[1];
+        assert!(
+            query.starts_with(
+                "SELECT CASE WHEN scheduled_date_gmt >= '2026-10-02 00:00:00' \
+                 AND scheduled_date_gmt < '2026-10-03 00:00:00' THEN '2026-10-02'"
+            ),
+            "{query}"
+        );
+        assert!(
+            query.ends_with(
+                " FROM `wp`.`wp_actionscheduler_actions` \
+                 WHERE scheduled_date_gmt >= '2026-10-02 00:00:00' \
+                 AND scheduled_date_gmt < '2026-10-16 00:00:00' GROUP BY 1, 2"
+            ),
+            "{query}"
+        );
+        assert!(!query.contains("CONVERT_TZ"), "{query}");
+    }
+
+    #[tokio::test]
+    async fn action_histogram_of_one_hook_adds_the_hook_to_the_condition() {
+        let ctx = ctx();
+        let db = histogram_db("2026-10-15 08:00:00", Vec::new());
+
+        let histogram = action_histogram(&db, &ctx, "wp", Some("it's_a_hook"))
+            .await
+            .unwrap();
+
+        let counted: u64 = histogram
+            .days
+            .iter()
+            .map(|d| d.completed + d.processing + d.failed + d.other)
+            .sum();
+        assert_eq!(counted, 0);
+        assert_eq!(histogram.labels.other, "other");
+        assert!(
+            db.queries()[1].ends_with(
+                "AND scheduled_date_gmt < '2026-10-16 00:00:00' AND hook = 'it''s_a_hook' GROUP BY 1, 2"
+            ),
+            "{}",
+            db.queries()[1]
         );
     }
 
-    #[test]
-    fn hour_buckets_follow_a_half_hour_offset() {
-        let zone = SiteZone::Fixed(chrono::FixedOffset::east_opt(19800).unwrap());
-        let rows = vec![("2026-10-16 09:30".to_string(), "wc-failed".to_string(), 2)];
-        let b = hour_buckets(&rows, at("2026-10-16T09:45:00Z"), &zone);
-        assert_eq!(b[23].date, "15:00");
-        assert_eq!(b[23].failed, 2);
+    #[tokio::test]
+    async fn action_histogram_without_a_server_time_is_a_database_error() {
+        let ctx = ctx();
+        let db = FakeDatabase::new().on("SELECT UTC_TIMESTAMP()", result(&["now"], Vec::new()));
 
-        let unmatched = vec![("2026-10-16 09:00".to_string(), "wc-failed".to_string(), 2)];
-        let b = hour_buckets(&unmatched, at("2026-10-16T09:45:00Z"), &zone);
-        assert_eq!(b.iter().map(|x| x.failed).sum::<u64>(), 0);
+        let err = action_histogram(&db, &ctx, "wp", None).await.unwrap_err();
+
+        assert_eq!(err.kind(), crate::error::ErrorKind::Database);
     }
 }

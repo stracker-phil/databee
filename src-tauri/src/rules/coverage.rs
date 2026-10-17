@@ -157,7 +157,7 @@ fn column(dialect: Dialect, alias: &str, name: &str) -> String {
     format!("{alias}.{}", dialect.quote_ident(name))
 }
 
-fn conditions(dialect: Dialect, alias: &str, conditions: &[Condition]) -> Vec<String> {
+pub(crate) fn conditions(dialect: Dialect, alias: &str, conditions: &[Condition]) -> Vec<String> {
     conditions
         .iter()
         .map(|c| match_sql(dialect, &column(dialect, alias, &c.column), &c.rule))
@@ -950,22 +950,10 @@ to_when = { active = "1" }
         )
     }
 
-    /// The draft presets as user presets, as the effective-rules integration test has them.
-    fn draft_sources(dir: &TempDir) -> (PresetCatalog, ProjectsStore) {
-        let presets = dir.path().join("presets");
-        fs::create_dir_all(&presets).unwrap();
-        fs::write(
-            presets.join("wordpress.toml"),
-            include_str!("fixtures/wordpress.draft.toml"),
-        )
-        .unwrap();
-        fs::write(
-            presets.join("woocommerce.toml"),
-            include_str!("fixtures/woocommerce.draft.toml"),
-        )
-        .unwrap();
+    /// The built-in presets and an empty projects file in `dir`.
+    fn built_in_sources(dir: &TempDir) -> (PresetCatalog, ProjectsStore) {
         (
-            PresetCatalog::with_built_in(presets, &[]),
+            PresetCatalog::open(dir.path()),
             ProjectsStore::open(dir.path()),
         )
     }
@@ -1000,7 +988,7 @@ to_when = { active = "1" }
     #[ignore]
     async fn an_inferred_reference_counts_resolved_none_and_unresolved_rows() {
         let dir = tempdir().unwrap();
-        let (catalog, projects) = draft_sources(&dir);
+        let (catalog, projects) = built_in_sources(&dir);
         let sources = RuleSources {
             presets: &catalog,
             projects: &projects,
@@ -1036,7 +1024,7 @@ to_when = { active = "1" }
     #[ignore]
     async fn a_declared_foreign_key_counts_its_null_as_no_reference() {
         let dir = tempdir().unwrap();
-        let (catalog, projects) = draft_sources(&dir);
+        let (catalog, projects) = built_in_sources(&dir);
         let sources = RuleSources {
             presets: &catalog,
             projects: &projects,
@@ -1068,9 +1056,9 @@ to_when = { active = "1" }
 
     #[tokio::test]
     #[ignore]
-    async fn the_draft_presets_cover_the_wordpress_fixture() {
+    async fn the_built_in_presets_cover_the_wordpress_fixture() {
         let dir = tempdir().unwrap();
-        let (catalog, projects) = draft_sources(&dir);
+        let (catalog, projects) = built_in_sources(&dir);
         let sources = RuleSources {
             presets: &catalog,
             projects: &projects,
@@ -1127,7 +1115,7 @@ to_when = { active = "1" }
     #[ignore]
     async fn a_count_blocked_by_a_table_lock_times_out() {
         let dir = tempdir().unwrap();
-        let (catalog, projects) = draft_sources(&dir);
+        let (catalog, projects) = built_in_sources(&dir);
         let sources = RuleSources {
             presets: &catalog,
             projects: &projects,

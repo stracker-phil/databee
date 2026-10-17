@@ -84,9 +84,8 @@ export function stageState(): Flat {
   if (tab?.kind === "table") state.table = `${tab.database}.${tab.table} (${tab.view})`;
   if (tab?.kind === "query") state.query = tab.running ? "running" : tab.error ? "failed" : tab.response ? "done" : "not run";
   if (wp) {
-    state.site = wp.context.site.url;
-    state.prefix = wp.context.prefix;
-    state.woocommerce = wp.context.wc?.version ?? null;
+    state.prefix = wp.prefix;
+    state.presets = wp.presets.join(", ");
     if (s.mode === "wp" && route.screen === "entity") state.entity = `${route.entity} ${route.id}`;
   }
   return state;

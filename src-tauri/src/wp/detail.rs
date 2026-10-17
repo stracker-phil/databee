@@ -7,11 +7,11 @@ use std::collections::{BTreeMap, HashMap};
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::context::WpContext;
-use super::entity::{Catalog, EntityDoc, EntityLink};
-use super::hints::{DEFAULT_PRICE_DECIMALS, Hint, money};
+use super::catalog::Catalog;
+use super::document::{EntityDoc, EntityLink, Hint};
 use super::lists::{self, ListQuery, OrderSummary, epoch, roles_of};
-use super::rows::{cell_str, count, int, num, text};
+use super::rows::{cell_str, count, int, money, num, text};
+use super::site::WpContext;
 use super::sql::table_ref;
 use super::{WpList, fetch, load_docs, post_images, titles};
 use crate::db::Database;
@@ -29,8 +29,8 @@ fn time_of(doc: &EntityDoc, names: &[&str]) -> Option<i64> {
     names
         .iter()
         .find_map(|n| match doc.field(n)?.hint.as_ref()? {
-            Hint::Time { unix, .. } => Some(*unix),
-            _ => None,
+            Hint::Time { unix } => Some(*unix),
+            Hint::Money { .. } => None,
         })
 }
 
@@ -312,11 +312,10 @@ pub fn paypal_fees(raw: &str) -> Option<Fees> {
     let f: f64 = fee.parse().ok()?;
     let n = net.and_then(|n| n.parse::<f64>().ok()).unwrap_or(g - f);
     let cur = (!currency.is_empty()).then_some(currency.as_str());
-    // PayPal reports fees in its own 2-decimal amounts, independent of the store's price decimals.
     Some(Fees {
-        gross: money(&g.to_string(), cur, DEFAULT_PRICE_DECIMALS)?,
-        fee: money(&f.to_string(), cur, DEFAULT_PRICE_DECIMALS)?,
-        net: money(&n.to_string(), cur, DEFAULT_PRICE_DECIMALS)?,
+        gross: money(&g.to_string(), cur)?,
+        fee: money(&f.to_string(), cur)?,
+        net: money(&n.to_string(), cur)?,
         fee_ratio: if g > 0.0 {
             (f / g).clamp(0.0, 1.0)
         } else {
@@ -432,7 +431,7 @@ async fn order_items(
             .filter(|v| v != "0");
         out.push(LineItem {
             name: text(&r[1]).unwrap_or_default(),
-            total: total.and_then(|v| money(&v, currency, ctx.site.price_decimals)),
+            total: total.and_then(|v| money(&v, currency)),
             quantity,
             product: product_id.map(|p| link("post", p)),
             sku: None,
@@ -451,7 +450,7 @@ async fn order_items(
         .filter_map(|i| i.product.as_ref().map(|p| p.id.clone()))
         .collect();
     if !product_ids.is_empty() {
-        let names = titles(session, ctx, catalog, db, "post", &product_ids).await?;
+        let names = titles(session, catalog, db, "post", &product_ids).await?;
         let mut images = post_images(session, ctx, db, &product_ids).await?;
         // Variations without their own image show the parent's.
         let parents = fetch(
@@ -520,10 +519,9 @@ pub async fn order_view(
     let order_id: u64 = id
         .parse()
         .map_err(|_| AppError::InvalidInput(format!("'{id}' is not a valid ID")))?;
-    let currency =
-        pick(&doc, &["currency", "_order_currency"]).or_else(|| ctx.site.currency.clone());
+    let currency = pick(&doc, &["currency", "_order_currency"]);
     let cur = currency.as_deref();
-    let fmt_money = |v: &str| money(v, cur, ctx.site.price_decimals);
+    let fmt_money = |v: &str| money(v, cur);
 
     // Addresses: HPOS table or legacy meta.
     let (billing, shipping) = if ctx.hpos() {
@@ -716,16 +714,9 @@ pub async fn order_view(
         .map(|c| link("user", c));
     let customer = match customer {
         Some(mut c) => {
-            c.label = titles(
-                session,
-                ctx,
-                catalog,
-                db,
-                "user",
-                std::slice::from_ref(&c.id),
-            )
-            .await?
-            .remove(&c.id);
+            c.label = titles(session, catalog, db, "user", std::slice::from_ref(&c.id))
+                .await?
+                .remove(&c.id);
             Some(c)
         }
         None => None,
@@ -1146,13 +1137,9 @@ pub async fn guest_view(
         &lists::guests_sql(dialect, db, ctx, None, Some(email), 1, 0),
     )
     .await?;
-    let summary = lists::guest_rows(
-        &stats,
-        ctx.site.currency.as_deref(),
-        ctx.site.price_decimals,
-    )
-    .pop()
-    .ok_or_else(|| AppError::InvalidInput(format!("No guest orders for {email}")))?;
+    let summary = lists::guest_rows(&stats)
+        .pop()
+        .ok_or_else(|| AppError::InvalidInput(format!("No guest orders for {email}")))?;
     let q = ListQuery {
         search: Some(email.to_string()),
         limit: 10,
@@ -1184,13 +1171,7 @@ pub async fn guest_view(
     let average = (summary.order_count > 0)
         .then(|| stats.rows.first().and_then(|r| num(&r[2])))
         .flatten()
-        .and_then(|spent| {
-            money(
-                &(spent / summary.order_count as f64).to_string(),
-                ctx.site.currency.as_deref(),
-                ctx.site.price_decimals,
-            )
-        });
+        .and_then(|spent| money(&(spent / summary.order_count as f64).to_string(), None));
     let name = summary.name.clone().unwrap_or_else(|| email.to_string());
     let mut related = vec![RelatedChip {
         label: "Orders".into(),
@@ -1278,7 +1259,7 @@ pub async fn customer_view(
 
     let (mut orders, mut subscriptions, mut order_count, mut total_spent, mut average_order) =
         (Vec::new(), Vec::new(), 0, None, None);
-    if ctx.wc.is_some() {
+    if ctx.woocommerce() {
         let q = ListQuery {
             search: None,
             limit: 10,
@@ -1291,17 +1272,9 @@ pub async fn customer_view(
             if let Some(r) = rs.rows.first() {
                 order_count = count(&r[1]).unwrap_or(0);
                 let spent = num(&r[2]).unwrap_or(0.0);
-                total_spent = money(
-                    &spent.to_string(),
-                    ctx.site.currency.as_deref(),
-                    ctx.site.price_decimals,
-                );
+                total_spent = money(&spent.to_string(), None);
                 if order_count > 0 {
-                    average_order = money(
-                        &(spent / order_count as f64).to_string(),
-                        ctx.site.currency.as_deref(),
-                        ctx.site.price_decimals,
-                    );
+                    average_order = money(&(spent / order_count as f64).to_string(), None);
                 }
             }
         }
@@ -1468,7 +1441,7 @@ async fn customer_orders(
         )
     };
     let rs = fetch(session, &sql).await?;
-    let mut rows = lists::order_rows(&rs, ctx.site.currency.as_deref(), ctx.site.price_decimals);
+    let mut rows = lists::order_rows(&rs);
     rows.truncate(q.limit.max(1) as usize);
     Ok(rows)
 }
@@ -1544,8 +1517,7 @@ pub async fn product_view(
     let pid: u64 = id
         .parse()
         .map_err(|_| AppError::InvalidInput(format!("'{id}' is not a valid ID")))?;
-    let cur = ctx.site.currency.as_deref();
-    let fmt_money = |v: &str| money(v, cur, ctx.site.price_decimals);
+    let fmt_money = |v: &str| money(v, None);
     let m = |k: &str| doc.text(k).map(String::from);
 
     let terms_rs = fetch(
@@ -1702,10 +1674,7 @@ pub async fn product_view(
     }
 
     Ok(ProductView {
-        name: doc
-            .title
-            .clone()
-            .unwrap_or_else(|| format!("Product #{id}")),
+        name: pick(&doc, &["post_title"]).unwrap_or_else(|| format!("Product #{id}")),
         status: pick(&doc, &["post_status"]).unwrap_or_default(),
         image: doc.image.clone(),
         sku: m("_sku"),
@@ -1833,21 +1802,14 @@ pub async fn session_view(
     let raw = pick(&doc, &["session_value"]);
     let (items, total, email) = raw
         .as_deref()
-        .map(|v| lists::session_summary(v, ctx.site.currency.as_deref(), ctx.site.price_decimals))
+        .map(lists::session_summary)
         .unwrap_or((0, None, None));
     let customer = match key.parse::<u64>() {
         Ok(uid) => {
             let mut l = link("user", uid.to_string());
-            l.label = titles(
-                session,
-                ctx,
-                catalog,
-                db,
-                "user",
-                std::slice::from_ref(&l.id),
-            )
-            .await?
-            .remove(&l.id);
+            l.label = titles(session, catalog, db, "user", std::slice::from_ref(&l.id))
+                .await?
+                .remove(&l.id);
             Some(l)
         }
         Err(_) => None,
@@ -1913,7 +1875,7 @@ pub async fn entity_view(
         "session" => {
             EntityView::Session(Box::new(session_view(session, ctx, catalog, db, id).await?))
         }
-        "post" => {
+        "post" | "product" => {
             let doc = load_docs(session, ctx, catalog, db, "post", &[id.to_string()])
                 .await?
                 .pop()
@@ -2033,7 +1995,7 @@ pub async fn search(
     if q.contains('@') {
         let rs = fetch(session, &format!("SELECT ID, display_name, user_email, 'email' FROM {users} WHERE user_email LIKE {like} LIMIT 8")).await?;
         out.extend(hits(&rs, "user", "email"));
-        if ctx.wc.is_some() {
+        if ctx.woocommerce() {
             let guests = if ctx.hpos() {
                 format!(
                     "SELECT CONCAT('{prefix}', billing_email), billing_email, CONCAT('Guest · ', COUNT(*), ' orders'), 'billing_email' \
@@ -2238,7 +2200,7 @@ mod tests {
         let f = paypal_fees(raw).unwrap();
         assert_eq!(
             (f.gross.as_str(), f.fee.as_str(), f.net.as_str()),
-            ("$95.40", "$3.82", "$91.58")
+            ("95.4 USD", "3.82 USD", "91.58 USD")
         );
         assert!((f.fee_ratio - 0.04).abs() < 0.001);
         assert_eq!(paypal_fees("nonsense"), None);

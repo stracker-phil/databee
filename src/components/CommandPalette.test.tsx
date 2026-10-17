@@ -8,7 +8,7 @@ import { api, type SearchHit } from "../api";
 import { installCommands } from "../commands";
 import { selectWpRoute, useStore } from "../state/store";
 import { connectedStore } from "../test/fixtures";
-import { wpStore } from "../test/wpFixtures";
+import { wpInfo, wpStore } from "../test/wpFixtures";
 import { CommandPalette } from "./CommandPalette";
 
 const mocked = vi.mocked(api, true);
@@ -116,6 +116,20 @@ describe("CommandPalette", () => {
 
   describe("entity search", () => {
     beforeEach(() => wpStore());
+
+    it("does not search entities when the database has none", async () => {
+      useStore.setState((s) => ({ wp: { ...s.wp, "s1/db": { ...wpInfo, entities: [] } } }));
+      await userEvent.type(openPalette(), "#4711");
+      expect(screen.queryByText("searching…")).not.toBeInTheDocument();
+      expect(mocked.wpSearch).not.toHaveBeenCalled();
+    });
+
+    it("searches entities for an ID query when the database has entities", async () => {
+      mocked.wpSearch.mockResolvedValue([hit("4711")]);
+      await userEvent.type(openPalette(), "#4711");
+      expect(await screen.findByText("Order #4711")).toBeInTheDocument();
+      expect(mocked.wpSearch).toHaveBeenLastCalledWith("s1", "db", "4711");
+    });
 
     it("stops showing 'searching…' when the query drops below two characters while the search is pending", async () => {
       const pending = deferred<SearchHit[]>();

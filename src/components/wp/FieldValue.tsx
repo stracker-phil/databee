@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Check, Copy, Eye, Maximize2, Minimize2, Minus, MonitorSmartphone, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Copy, Eye, Maximize2, Minimize2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { api, type ColumnEquals, type DocField, type NewValue } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { cellText, relativeTime } from "../../lib/format";
-import { absoluteFromUnix, flagEmoji, shorten } from "../../lib/wpFormat";
+import { absoluteFromUnix, shorten } from "../../lib/wpFormat";
 import { selectActiveSession, useStore, type WpList } from "../../state/store";
 import { ContextMenu, type MenuEntry } from "../ContextMenu";
 import { ValueTree } from "../ValueTree";
@@ -184,53 +184,7 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
         {plain} <span className="hint-note" title={title}>{n}</span>
       </>
     );
-    switch (hint.type) {
-      case "money":
-        body = note(hint.text);
-        break;
-      case "time":
-        body = note(relativeTime(hint.unix), `${absoluteFromUnix(hint.unix)}${hint.utc ? "" : " (site time)"}`);
-        break;
-      case "flag": {
-        body = (
-          <button
-            className={`flag-pill ${hint.on ? "on" : "off"}`}
-            disabled={!save}
-            title={save ? `Click to queue “${hint.opposite}”` : undefined}
-            onClick={() => save && void save(hint.opposite)}
-          >
-            {hint.on ? <Check size="0.769rem" /> : <Minus size="0.769rem" />} {text}
-          </button>
-        );
-        break;
-      }
-      case "url":
-        body = (
-          <a href={hint.href} className="url" onClick={(e) => (e.preventDefault(), void api.openUrl(hint.href))} title={`Open ${hint.href}`}>
-            {text}
-          </a>
-        );
-        break;
-      case "userAgent":
-        body = note(
-          <>
-            <MonitorSmartphone size="0.923rem" style={{ verticalAlign: -2 }} /> {hint.text}
-          </>,
-        );
-        break;
-      case "roles":
-        body = note(hint.roles.join(", "));
-        break;
-      case "country":
-        body = note(flagEmoji(hint.code));
-        break;
-      case "guest":
-        body = note("guest");
-        break;
-      case "email":
-        body = plain;
-        break;
-    }
+    body = hint.type === "money" ? note(hint.text) : note(relativeTime(hint.unix), absoluteFromUnix(hint.unix));
   } else if (text.length > COLLAPSE_AT) {
     body = <LongText text={text} />;
   } else {

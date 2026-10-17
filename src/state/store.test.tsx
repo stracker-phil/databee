@@ -190,12 +190,29 @@ describe("store behavior", () => {
 
       const a = useStore.getState().loadWp("s1", "db");
       const b = useStore.getState().loadWp("s1", "db", true);
-      later.resolve({ ...wpInfo, context: { ...wpInfo.context, prefix: "later_" } });
+      later.resolve({ ...wpInfo, prefix: "later_" });
       await b;
-      first.resolve({ ...wpInfo, context: { ...wpInfo.context, prefix: "first_" } });
+      first.resolve({ ...wpInfo, prefix: "first_" });
       await a;
 
-      expect(useStore.getState().wp["s1/db"]?.context.prefix).toBe("later_");
+      expect(useStore.getState().wp["s1/db"]?.prefix).toBe("later_");
+    });
+
+    it("toasts once that the legacy entities file is no longer read, however often detection runs", async () => {
+      mocked.wpDetect.mockResolvedValue({ ...wpInfo, legacyEntitiesFile: "/config/entities.toml" });
+      render(<Toasts />);
+
+      await act(() => useStore.getState().loadWp("s1", "db"));
+      await act(() => useStore.getState().loadWp("s1", "db", true));
+
+      expect(await screen.findAllByText(/\/config\/entities\.toml is no longer read/)).toHaveLength(1);
+    });
+
+    it("does not toast without a legacy entities file", async () => {
+      mocked.wpDetect.mockResolvedValue(wpInfo);
+      render(<Toasts />);
+      await act(() => useStore.getState().loadWp("s1", "db"));
+      expect(screen.queryByText(/no longer read/)).not.toBeInTheDocument();
     });
   });
 

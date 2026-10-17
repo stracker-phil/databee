@@ -1,7 +1,7 @@
 # Architecture
 
 DataBee is a single-window desktop app built with Tauri 2. A Rust process owns every piece of logic:
-connections, SQL, WordPress detection, persistence, secrets, and the CLI. A React 19 webview renders
+connections, SQL, rules and presets, persistence, secrets, and the CLI. A React 19 webview renders
 state and forwards user intent. This page covers the overall shape. The layer pages go into detail:
 [backend](backend.md), [database](database.md), [WordPress](wordpress.md), [frontend](frontend.md),
 [Stage hook](stage.md).
@@ -81,7 +81,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
   src/decode/              PHP serialize and JSON value trees, leaf edits
-  src/wp/                  WordPress plugin: detection, entities, views, commands, snapshots
+  src/wp/                  WordPress screens over the presets (until U12): documents, views, commands, snapshots
   src/store/               JSON stores in the config dir
   src/stage/               Stage plugin: HTTP API, request hub, commands
   src/test_support.rs      fixture-server helpers for tests (`test-util`)
@@ -90,7 +90,8 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/window.rs            window theme and bring-to-front
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
   src/lock.rs              poison-tolerant std lock access
-  tests/                   core integration tests (Docker, #[ignore]); WordPress's are in src/wp/
+  presets/                 built-in presets: wordpress, woocommerce, action-scheduler (docs/wordpress.md)
+  tests/                   core integration tests (Docker, #[ignore]); the WordPress screens' are in src/wp/
   tauri.conf.json          window, bundle and identifier config
 src/                       React app
   main.tsx modules.ts       boot; the install list (core, then one line per module)
@@ -180,7 +181,7 @@ status kind: color comes only from value styles.
 `src-tauri/src/rules/` is the generic configuration layer ([presets.md](presets.md)). A preset is a TOML file
 of rules for tables named without their prefix: key/value tables, references, entities, kinds, value styles,
 patterns, pinned queries, anomalies, actions and find sources. No application name appears in its Rust code;
-WordPress and WooCommerce are preset files.
+WordPress, WooCommerce and Action Scheduler are preset files ([wordpress.md](wordpress.md)).
 
 - `types.rs`, `kinds.rs`, `queries.rs`, `actions.rs`: the rule types. Each has one serialized form, the TOML
   shape, shared by preset files, projects and the page (exported to `types.gen.ts`). Shapes with exclusive
@@ -201,7 +202,8 @@ WordPress and WooCommerce are preset files.
   resolve under (also used to check project changes).
 - `condition.rs`: `when`/`to_when` and value-style matches compiled once (`Matcher`; the `regex` crate for
   LIKE and REGEXP) and evaluated in memory over a page.
-- `effective.rs`: `EffectiveRules` (applied presets ⊕ project, real table names, precedence order) and its
+- `effective.rs`: `EffectiveRules` (applied presets ⊕ project, real table names, precedence order, the
+  `fk → owner` reference of each owned `[[meta]]` table, kind lookups shared with the lens) and its
   cache in `Session.ext`, keyed by the schema (`Arc`), the preset list (`Arc`) and the project (value), so
   DDL, a refresh, a preset file change or a project change rebuilds it. `RuleSources` (from
   `AppState::rules`) is what `Session::browse`, `Session::execute` and `table_references` take.

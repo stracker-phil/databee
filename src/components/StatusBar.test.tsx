@@ -7,6 +7,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { installCommands } from "../commands";
 import { selectSidebarHidden, useStore } from "../state/store";
 import { connectedStore, pendingChange, queryTab, tableTab } from "../test/fixtures";
+import { wpStore } from "../test/wpFixtures";
 import { StatusBar } from "./StatusBar";
 import { Toasts } from "./Toasts";
 
@@ -68,6 +69,23 @@ describe("StatusBar", () => {
     it("shows no filtered hint without a typed filter", () => {
       render(<StatusBar />);
       expect(screen.queryByText("· filtered")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("in WordPress mode", () => {
+    beforeEach(() => wpStore());
+
+    it("shows only the table prefix", () => {
+      render(<StatusBar />);
+      expect(screen.getByText("prefix wp_")).toBeInTheDocument();
+      expect(screen.queryByText(/WooCommerce|HPOS/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Shop|shop\.test/ })).not.toBeInTheDocument();
+    });
+
+    it("shows no prefix in Database mode", () => {
+      useStore.setState({ mode: "db" });
+      render(<StatusBar />);
+      expect(screen.queryByText(/^prefix /)).not.toBeInTheDocument();
     });
   });
 

@@ -1,17 +1,12 @@
-# Test fixture: a copy of the U4a paper-port draft of the WordPress core preset. It is not shipped;
-# `preset.rs` tests assert that it parses and round-trips.
-#
-# Draft (U4a paper port): the WordPress core preset.
-# Format: ux-redesign.md 4.5 as amended by paper-port.md ("Format changes to 4.5").
-# Lines marked `# GAP: Gn` need the engine feature Gn from paper-port.md ("Engine features required").
-# Table names are written without the prefix. In SQL, `{p}` is the project prefix and `{np}` the network
-# prefix (equal to `{p}` on single sites; GAP: G12). Preset SQL is MySQL/MariaDB.
+# The WordPress core preset (docs/presets.md, docs/wordpress.md). Table names are written without the
+# prefix; in SQL, `{p}` is the project prefix and `{np}` the network prefix (equal to `{p}` on single
+# sites). Preset SQL is MySQL/MariaDB.
 
 [preset]
 name = "wordpress"
 marker_tables = ["options", "posts", "users"]
 # Multisite: these tables exist once per network, under the network prefix (wp_), while every
-# sub-site has its own prefix (wp_2_). GAP: G12
+# sub-site has its own prefix (wp_2_).
 network_tables = ["users", "usermeta", "blogs", "blogmeta", "site", "sitemeta", "signups", "registration_log"]
 
 # ---------------------------------------------------------------------------------------------
@@ -61,7 +56,7 @@ key = "meta_key"
 value = "meta_value"
 
 # No owner: a standalone key/value table, so meta-key kind rules (secrets, timestamps) apply to
-# option rows too. GAP: G8
+# option rows too.
 [[meta]]
 table = "options"
 key = "option_name"
@@ -69,7 +64,7 @@ value = "option_value"
 
 # ---------------------------------------------------------------------------------------------
 # References. `id` is optional; the default is `<from>[?<meta key>]`. `label` names the incoming
-# group on the target's document. `columns` picks the group's columns (GAP: G3).
+# group on the target's document. `columns` picks the group's columns.
 # ---------------------------------------------------------------------------------------------
 
 [[reference]]
@@ -147,7 +142,7 @@ name = "post"
 table = "posts"
 summary = ["post_type", "post_status", "post_title", "post_date_gmt"]
 created = "post_date_gmt"
-search = ["post_title", "post_name"]   # contains (GAP: G15)
+search = ["post_title", "post_name"]   # contains
 
 [[entity]]
 name = "user"
@@ -182,7 +177,7 @@ table = "blogs"
 summary = ["domain", "path", "registered"]
 
 # ---------------------------------------------------------------------------------------------
-# Kinds (GAP: G16 for column globs and `in`). `columns` take `table.column`, `*` globs allowed; `meta_keys` are globs over every
+# Kinds. `columns` take `table.column`, `*` globs allowed; `meta_keys` are globs over every
 # `[[meta]]` key column of the applied presets (`in` narrows them to some meta tables).
 # ---------------------------------------------------------------------------------------------
 
@@ -196,7 +191,7 @@ meta_keys = ["*password*", "*secret*", "*api_key*", "*_token", "session_tokens"]
 secret = true
 
 # Timestamps. DATETIME columns are timestamps by type; the rules say which zone they are in
-# (GAP: G7). WordPress stores `*_gmt` in UTC and the plain columns in the site's local time,
+#. WordPress stores `*_gmt` in UTC and the plain columns in the site's local time,
 # whose zone DataBee no longer reads.
 [[kind]]
 columns = ["*.*_gmt", "users.user_registered", "blogs.registered", "blogs.last_updated", "signups.registered", "signups.activated"]
@@ -234,7 +229,7 @@ enabled = false
 id = "site_url"
 title = "{p}options siteurl"
 sql = "SELECT option_value FROM {p}options WHERE option_name = 'siteurl'"
-home = { show = "value" }   # GAP: G11
+home = { show = "value" }
 
 [[pinned]]
 id = "db_version"
@@ -250,7 +245,7 @@ home = { show = "value" }
 
 [[pinned]]
 id = "site_options"
-title = "{p}options probed by WordPress mode"
+title = "{p}options site settings"
 sql = '''
 SELECT option_id, option_name, option_value, autoload FROM {p}options
 WHERE option_name IN ('siteurl', 'home', 'blogname', 'db_version', 'template', 'stylesheet',
@@ -307,7 +302,7 @@ ORDER BY expired DESC, bytes DESC'''
 home = { show = "count" }
 
 # ---------------------------------------------------------------------------------------------
-# Anomalies: shown on the readout while `sql` returns a non-zero value (GAP: G10).
+# Anomalies: shown on the readout while `sql` returns a non-zero value.
 # ---------------------------------------------------------------------------------------------
 
 [[anomaly]]
@@ -329,7 +324,7 @@ open = { pinned = "transients" }
 fix = "delete_expired_transients"
 
 # ---------------------------------------------------------------------------------------------
-# Actions (GAP: G9). Meta edits (set, add, delete a key) are core edits on `[[meta]]` rows (G14).
+# Actions. Meta edits (set, add, delete a key) are core edits on `[[meta]]` rows.
 # ---------------------------------------------------------------------------------------------
 
 [[action]]
@@ -358,7 +353,7 @@ option_id IN (
 
 # ---------------------------------------------------------------------------------------------
 # Find everywhere: every `[[meta]]` value column and every `search` column is searched for an
-# exact match by default; these add containment searches (GAP: G13).
+# exact match by default; these add containment searches.
 # ---------------------------------------------------------------------------------------------
 
 [[find]]

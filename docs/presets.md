@@ -9,14 +9,15 @@ Status: presets are parsed, checked and listed (`presets_list`); projects are st
 (`project_get`, `project_update`, `project_export`); references, kinds and value styles apply to browse
 pages, query results and `table_references` ([Effective rules](#effective-rules)), `rules_info` reports
 the prefixes, presets and entities, and `reference_coverage` counts how many rows of a reference resolve
-([Coverage](#coverage)). Entities, patterns, pinned queries, anomalies, actions and find sources
-are parsed but not used yet.
+([Coverage](#coverage)). The WordPress screens read entities, meta tables and kinds through adapters
+([wordpress.md](wordpress.md#screens-until-u12)); patterns, pinned queries, anomalies, actions and find
+sources are parsed but not used yet.
 
 ## Where presets live
 
 | Source | Location | Notes |
 |---|---|---|
-| Built-in | `src-tauri/presets/*.toml`, compiled in (`rules::catalog::BUILT_IN`) | none yet |
+| Built-in | `src-tauri/presets/*.toml`, compiled in (`rules::catalog::BUILT_IN`) | `wordpress`, `woocommerce`, `action-scheduler` ([wordpress.md](wordpress.md)) |
 | User | `~/Library/Application Support/com.philippstracker.databee/presets/*.toml` | reread when a file is added, removed or saved |
 
 - A user preset whose `name` equals a built-in's **replaces** that built-in.
@@ -57,6 +58,10 @@ fk = "order_id"
 key = "meta_key"
 value = "meta_value"
 ```
+
+An owned table declares the reference `fk → owner`, to the owner's single-column primary key, with the id
+`<table>.<fk>` (`order_meta.order_id`): it is a preset reference like any other, so `disabled` and project
+overrides apply to it.
 
 ### `[[reference]]` virtual foreign keys
 
@@ -318,7 +323,8 @@ replaces it. `disabled` drops preset references by id (in every applied preset) 
 `inferred:<table>.<column>` (real names, e.g. `inferred:wp_actionscheduler_logs.action_id`).
 
 **Kinds.** Kind rules apply where no key or reference does (to columns the SQL type made text, number or
-timestamp). The first matching rule wins, project rules before preset rules. `columns` globs match the
+timestamp). The first matching rule wins, project rules before preset rules (`EffectiveRules::column_kind_rule`,
+`meta_kind_rule`). `columns` globs match the
 table's name without prefix and the column name (case-insensitively); `meta_keys` globs match the key of a
 row of an applied `[[meta]]` table (owned or not), in every meta table unless `in` names some.
 

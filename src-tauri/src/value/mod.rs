@@ -14,6 +14,7 @@ use ts_rs::TS;
 
 pub use rows::{ResultValues, page_value_at, row_keys, value_at};
 pub use serialized::{find_serialized, serialized};
+pub use time::utc_seconds;
 
 use crate::address::Address;
 use crate::db::Cell;

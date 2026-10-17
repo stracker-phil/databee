@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock, Info, RefreshCw } from "lucide-react";
+import { AlertTriangle, Clock, Info, RefreshCw } from "lucide-react";
 import { api, type HookFailures, type Insight } from "../../api";
 import { compactCount, formatBytes, formatCount } from "../../lib/format";
 import { selectActiveSession, selectWp, useStore } from "../../state/store";
@@ -73,11 +73,10 @@ export function DashboardScreen() {
   if (error) return <ErrorPanel message={error.message} code={error.code} />;
   if (!data || !wp || !session) return <Loading />;
 
-  const ctx = wp.context;
   const failed = data.actions?.byStatus.find((f) => f.value === "failed")?.count ?? 0;
   const rowItems = data.tables.map((t) => ({
     id: t.name,
-    label: t.name.replace(ctx.prefix, ""),
+    label: t.name.replace(wp.prefix, ""),
     value: t.rows,
     onOpen: () => openInDatabase(t.name),
   }));
@@ -90,27 +89,15 @@ export function DashboardScreen() {
       sublabel: `${formatCount(g.autoloadCount)} options`,
       onOpen: () => navigate({ screen: "list", list: "settings", params: { prefix: g.prefix } }),
     }));
-  const syncLabel =
-    ctx.wc?.hpos === "on_with_sync"
-      ? data.hposDrift
-        ? `HPOS sync: ${data.hposDrift} differ`
-        : "HPOS in sync"
-      : ctx.wc?.hpos === "on"
-        ? "HPOS"
-        : ctx.wc
-          ? "Legacy orders"
-          : null;
-
   return (
     <div className="dash">
       <div className="dash-head">
         <span className="dot" />
         <h2>{session.displayName}</h2>
-        <span className="muted">{session.serverVersion.split("-")[0]} · {ctx.prefix}</span>
-        {ctx.wc?.version && <span className="wp-badge">WooCommerce {ctx.wc.version}</span>}
-        {syncLabel && (
-          <span className={`wp-badge ${data.hposDrift ? "tone-red" : "tone-green"}`}>
-            {data.hposDrift ? <AlertTriangle size="0.846rem" /> : <CheckCircle2 size="0.846rem" />} {syncLabel}
+        <span className="muted">{session.serverVersion.split("-")[0]} · {wp.prefix}</span>
+        {!!data.hposDrift && (
+          <span className="wp-badge tone-red">
+            <AlertTriangle size="0.846rem" /> {data.hposDrift} wc_orders differ from their posts copy
           </span>
         )}
         <div className="spacer" />

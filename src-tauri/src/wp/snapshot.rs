@@ -6,11 +6,12 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::context::WpContext;
+use super::catalog::Catalog;
 use super::detail::args_reference;
-use super::entity::{Catalog, EntityDoc};
+use super::document::EntityDoc;
 use super::lists::epoch;
 use super::rows::{cell_str, text};
+use super::site::WpContext;
 use super::snapshots_store::Snapshot;
 use super::{expand, fetch, load_docs};
 use crate::db::Database;

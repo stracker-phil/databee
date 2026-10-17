@@ -78,26 +78,26 @@ CREATE DATABASE wp_test CHARACTER SET utf8mb4;
 USE wp_test;
 
 CREATE TABLE wp_options (option_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, option_name varchar(191) UNIQUE, option_value longtext, autoload varchar(20) DEFAULT 'yes');
-CREATE TABLE wp_users (ID bigint unsigned AUTO_INCREMENT PRIMARY KEY, user_login varchar(60), user_pass varchar(255), user_email varchar(100), user_registered datetime DEFAULT '0000-00-00 00:00:00', display_name varchar(250));
+CREATE TABLE wp_users (ID bigint unsigned AUTO_INCREMENT PRIMARY KEY, user_login varchar(60), user_pass varchar(255), user_email varchar(100), user_registered datetime DEFAULT '0000-00-00 00:00:00', display_name varchar(250), user_activation_key varchar(255) NOT NULL DEFAULT '');
 CREATE TABLE wp_usermeta (umeta_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, user_id bigint unsigned, meta_key varchar(255), meta_value longtext);
 CREATE TABLE wp_posts (ID bigint unsigned AUTO_INCREMENT PRIMARY KEY, post_author bigint unsigned DEFAULT 0, post_date datetime NOT NULL DEFAULT '0000-00-00 00:00:00', post_date_gmt datetime DEFAULT '0000-00-00 00:00:00', post_content longtext NOT NULL, post_title text, post_excerpt text, post_status varchar(20), post_name varchar(200) DEFAULT '', post_modified datetime DEFAULT '0000-00-00 00:00:00', post_modified_gmt datetime DEFAULT '0000-00-00 00:00:00', post_parent bigint unsigned DEFAULT 0, guid varchar(255) NOT NULL DEFAULT '', menu_order int DEFAULT 0, post_type varchar(20));
 CREATE TABLE wp_postmeta (meta_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, post_id bigint unsigned, meta_key varchar(255), meta_value longtext);
-CREATE TABLE wp_comments (comment_ID bigint unsigned AUTO_INCREMENT PRIMARY KEY, comment_post_ID bigint unsigned, comment_author varchar(255), comment_date_gmt datetime DEFAULT '0000-00-00 00:00:00', comment_content text, comment_type varchar(20), comment_parent bigint unsigned DEFAULT 0, user_id bigint unsigned DEFAULT 0);
+CREATE TABLE wp_comments (comment_ID bigint unsigned AUTO_INCREMENT PRIMARY KEY, comment_post_ID bigint unsigned, comment_author varchar(255), comment_date_gmt datetime DEFAULT '0000-00-00 00:00:00', comment_content text, comment_type varchar(20), comment_parent bigint unsigned DEFAULT 0, user_id bigint unsigned DEFAULT 0, comment_author_email varchar(100) NOT NULL DEFAULT '', comment_date datetime NOT NULL DEFAULT '0000-00-00 00:00:00', comment_approved varchar(20) NOT NULL DEFAULT '1');
 CREATE TABLE wp_commentmeta (meta_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, comment_id bigint unsigned, meta_key varchar(255), meta_value longtext);
 CREATE TABLE wp_terms (term_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, name varchar(200), slug varchar(200));
-CREATE TABLE wp_term_taxonomy (term_taxonomy_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, term_id bigint unsigned, taxonomy varchar(32));
-CREATE TABLE wp_term_relationships (object_id bigint unsigned, term_taxonomy_id bigint unsigned, PRIMARY KEY (object_id, term_taxonomy_id));
-CREATE TABLE wp_wc_orders (id bigint unsigned PRIMARY KEY, status varchar(20), type varchar(20), currency varchar(10), total_amount decimal(26,8), customer_id bigint unsigned, billing_email varchar(320), date_created_gmt datetime, date_updated_gmt datetime, parent_order_id bigint unsigned DEFAULT 0, payment_method varchar(100), payment_method_title text, transaction_id varchar(100));
+CREATE TABLE wp_term_taxonomy (term_taxonomy_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, term_id bigint unsigned, taxonomy varchar(32), parent bigint unsigned NOT NULL DEFAULT 0);
+CREATE TABLE wp_term_relationships (object_id bigint unsigned, term_taxonomy_id bigint unsigned, term_order int NOT NULL DEFAULT 0, PRIMARY KEY (object_id, term_taxonomy_id));
+CREATE TABLE wp_wc_orders (id bigint unsigned PRIMARY KEY, status varchar(20), type varchar(20), currency varchar(10), total_amount decimal(26,8), customer_id bigint unsigned, billing_email varchar(320), date_created_gmt datetime, date_updated_gmt datetime, parent_order_id bigint unsigned DEFAULT 0, payment_method varchar(100), payment_method_title text, transaction_id varchar(100), tax_amount decimal(26,8));
 CREATE TABLE wp_wc_orders_meta (id bigint unsigned AUTO_INCREMENT PRIMARY KEY, order_id bigint unsigned, meta_key varchar(255), meta_value text);
 CREATE TABLE wp_wc_order_addresses (id bigint unsigned AUTO_INCREMENT PRIMARY KEY, order_id bigint unsigned, address_type varchar(20), first_name text, last_name text, company text, address_1 text, address_2 text, city text, state text, postcode text, country text, email varchar(320), phone varchar(100));
-CREATE TABLE wp_wc_order_operational_data (id bigint unsigned AUTO_INCREMENT PRIMARY KEY, order_id bigint unsigned, created_via varchar(100), date_paid_gmt datetime NULL, date_completed_gmt datetime NULL);
+CREATE TABLE wp_wc_order_operational_data (id bigint unsigned AUTO_INCREMENT PRIMARY KEY, order_id bigint unsigned, created_via varchar(100), date_paid_gmt datetime NULL, date_completed_gmt datetime NULL, order_key varchar(100) NULL, shipping_tax_amount decimal(26,8) NULL, shipping_total_amount decimal(26,8) NULL, discount_tax_amount decimal(26,8) NULL, discount_total_amount decimal(26,8) NULL);
 CREATE TABLE wp_woocommerce_order_items (order_item_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, order_item_name text, order_item_type varchar(200), order_id bigint unsigned);
 CREATE TABLE wp_woocommerce_order_itemmeta (meta_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, order_item_id bigint unsigned, meta_key varchar(255), meta_value longtext);
 CREATE TABLE wp_wc_product_meta_lookup (product_id bigint PRIMARY KEY, sku varchar(100), min_price decimal(19,4), max_price decimal(19,4), stock_quantity double, stock_status varchar(100), total_sales bigint DEFAULT 0, has_price_range tinyint(1) GENERATED ALWAYS AS (min_price <> max_price) STORED);
-CREATE TABLE wp_wc_order_product_lookup (order_item_id bigint unsigned PRIMARY KEY, order_id bigint unsigned, product_id bigint unsigned, variation_id bigint unsigned);
+CREATE TABLE wp_wc_order_product_lookup (order_item_id bigint unsigned PRIMARY KEY, order_id bigint unsigned, product_id bigint unsigned, variation_id bigint unsigned, customer_id bigint unsigned NULL, product_net_revenue double NOT NULL DEFAULT 0, product_gross_revenue double NOT NULL DEFAULT 0);
 CREATE TABLE wp_actionscheduler_actions (action_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, hook varchar(191), status varchar(20), scheduled_date_gmt datetime DEFAULT '0000-00-00 00:00:00', scheduled_date_local datetime DEFAULT '0000-00-00 00:00:00', priority tinyint unsigned NOT NULL DEFAULT 10, args varchar(191), group_id bigint unsigned DEFAULT 0, attempts int DEFAULT 0, claim_id bigint unsigned DEFAULT 0, last_attempt_gmt datetime DEFAULT '0000-00-00 00:00:00', last_attempt_local datetime DEFAULT '0000-00-00 00:00:00', extended_args varchar(8000) DEFAULT NULL);
 CREATE TABLE wp_actionscheduler_groups (group_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, slug varchar(255));
-CREATE TABLE wp_actionscheduler_logs (log_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, action_id bigint unsigned, message text, log_date_gmt datetime);
+CREATE TABLE wp_actionscheduler_logs (log_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, action_id bigint unsigned, message text, log_date_gmt datetime, log_date_local datetime DEFAULT '0000-00-00 00:00:00');
 CREATE TABLE wp_woocommerce_sessions (session_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, session_key char(32) UNIQUE, session_value longtext, session_expiry bigint unsigned);
 CREATE TABLE wp_woocommerce_log (log_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, timestamp datetime, level smallint, source varchar(200), message longtext, context longtext);
 CREATE TABLE wp_woocommerce_payment_tokens (token_id bigint unsigned AUTO_INCREMENT PRIMARY KEY, gateway_id varchar(200), token text, user_id bigint unsigned DEFAULT 0, type varchar(200), is_default tinyint(1) DEFAULT 0);
@@ -122,9 +122,9 @@ INSERT INTO wp_options (option_name, option_value, autoload) VALUES
   ('_transient_fresh_cache', 'y', 'no'),
   ('_transient_timeout_fresh_cache', '4102444800', 'no');
 
-INSERT INTO wp_users (ID, user_login, user_pass, user_email, user_registered, display_name) VALUES
-  (1, 'admin', '$P$admin', 'admin@shop.test', '2025-01-01 00:00:00', 'Admin'),
-  (12, 'jane', '$P$secret', 'jane@shop.test', '2026-01-02 10:00:00', 'Jane Doe');
+INSERT INTO wp_users (ID, user_login, user_pass, user_email, user_registered, display_name, user_activation_key) VALUES
+  (1, 'admin', '$P$admin', 'admin@shop.test', '2025-01-01 00:00:00', 'Admin', ''),
+  (12, 'jane', '$P$secret', 'jane@shop.test', '2026-01-02 10:00:00', 'Jane Doe', '1767348000:$P$Bresetkeyhash');
 INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES
   (1, 'wp_capabilities', 'a:1:{s:13:"administrator";b:1;}'),
   (12, 'wp_capabilities', 'a:1:{s:8:"customer";b:1;}'),
@@ -138,7 +138,7 @@ INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES
 
 INSERT INTO wp_terms (term_id, name, slug) VALUES (1, 'simple', 'simple'), (2, 'variable', 'variable'), (3, 'Mugs', 'mugs'), (4, 'Red', 'red'), (5, 'Blue', 'blue');
 INSERT INTO wp_term_taxonomy (term_taxonomy_id, term_id, taxonomy) VALUES (1, 1, 'product_type'), (2, 2, 'product_type'), (3, 3, 'product_cat'), (4, 4, 'pa_color'), (5, 5, 'pa_color');
-INSERT INTO wp_term_relationships VALUES (123, 1), (123, 3), (200, 2), (200, 4), (200, 5);
+INSERT INTO wp_term_relationships (object_id, term_taxonomy_id, term_order) VALUES (123, 1, 0), (123, 3, 0), (200, 2, 0), (200, 4, 0), (200, 5, 1);
 
 INSERT INTO wp_posts (ID, post_author, post_date_gmt, post_modified_gmt, post_title, post_name, post_status, post_type, post_parent) VALUES
   (123, 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00', 'Mug', 'mug', 'publish', 'product', 0),
@@ -158,11 +158,11 @@ INSERT INTO wp_postmeta (post_id, meta_key, meta_value) VALUES
 INSERT INTO wp_wc_product_meta_lookup (product_id, sku, min_price, max_price, stock_quantity, stock_status, total_sales) VALUES (123, 'MUG-1', 24.95, 24.95, NULL, 'instock', 5), (200, '', 20, 22, NULL, 'instock', 1);
 UPDATE wp_posts SET guid = 'https://shop.test/wp-content/uploads/2026/01/mug.jpg' WHERE ID = 124;
 
-INSERT INTO wp_wc_orders VALUES
-  (4711, 'wc-processing', 'shop_order', 'EUR', 49.90, 12, 'jane@shop.test', UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() - INTERVAL 1 DAY, 0, 'ppcp-gateway', 'PayPal', '61P3809224872131H'),
-  (4712, 'wc-refunded', 'shop_order_refund', 'EUR', -10.00, 0, NULL, UTC_TIMESTAMP() - INTERVAL 2 HOUR, UTC_TIMESTAMP() - INTERVAL 2 HOUR, 4711, '', '', ''),
-  (4713, 'wc-failed', 'shop_order', 'EUR', 18.90, 0, 'guest@shop.test', UTC_TIMESTAMP() - INTERVAL 3 DAY, UTC_TIMESTAMP() - INTERVAL 3 DAY, 0, 'ppcp-gateway', 'PayPal', ''),
-  (4714, 'wc-active', 'shop_subscription', 'EUR', 9.90, 12, 'jane@shop.test', UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() - INTERVAL 1 DAY, 4711, 'ppcp-gateway', 'PayPal', '');
+INSERT INTO wp_wc_orders (id, status, type, currency, total_amount, customer_id, billing_email, date_created_gmt, date_updated_gmt, parent_order_id, payment_method, payment_method_title, transaction_id, tax_amount) VALUES
+  (4711, 'wc-processing', 'shop_order', 'EUR', 49.90, 12, 'jane@shop.test', UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() - INTERVAL 1 DAY, 0, 'ppcp-gateway', 'PayPal', '61P3809224872131H', 7.97),
+  (4712, 'wc-refunded', 'shop_order_refund', 'EUR', -10.00, 0, NULL, UTC_TIMESTAMP() - INTERVAL 2 HOUR, UTC_TIMESTAMP() - INTERVAL 2 HOUR, 4711, '', '', '', -1.60),
+  (4713, 'wc-failed', 'shop_order', 'EUR', 18.90, 0, 'guest@shop.test', UTC_TIMESTAMP() - INTERVAL 3 DAY, UTC_TIMESTAMP() - INTERVAL 3 DAY, 0, 'ppcp-gateway', 'PayPal', '', 3.02),
+  (4714, 'wc-active', 'shop_subscription', 'EUR', 9.90, 12, 'jane@shop.test', UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() - INTERVAL 1 DAY, 4711, 'ppcp-gateway', 'PayPal', '', 1.58);
 -- Both timestamps came from separate UTC_TIMESTAMP() calls; align them so only 4712 and 4713 (no posts copy) drift.
 UPDATE wp_posts p JOIN wp_wc_orders o ON o.id = p.ID SET p.post_modified_gmt = o.date_updated_gmt;
 INSERT INTO wp_wc_orders_meta (order_id, meta_key, meta_value) VALUES
@@ -177,16 +177,17 @@ INSERT INTO wp_wc_orders_meta (order_id, meta_key, meta_value) VALUES
 INSERT INTO wp_wc_order_addresses (order_id, address_type, first_name, last_name, address_1, city, postcode, country, email) VALUES
   (4711, 'billing', 'Jane', 'Doe', 'Ring 1', 'Vienna', '1010', 'AT', 'jane@shop.test'),
   (4711, 'shipping', 'Jane', 'Doe', 'Marktstraße 1', 'Dornbirn', '6850', 'AT', NULL);
-INSERT INTO wp_wc_order_operational_data (order_id, created_via, date_paid_gmt) VALUES (4711, 'checkout', UTC_TIMESTAMP() - INTERVAL 1 DAY + INTERVAL 1 MINUTE);
+INSERT INTO wp_wc_order_operational_data (order_id, created_via, date_paid_gmt, order_key, shipping_tax_amount, shipping_total_amount, discount_tax_amount, discount_total_amount) VALUES (4711, 'checkout', UTC_TIMESTAMP() - INTERVAL 1 DAY + INTERVAL 1 MINUTE, 'wc_order_aBcDeFgH12345', 0.78, 4.90, 0.00, 0.00);
 INSERT INTO wp_woocommerce_order_items (order_item_id, order_item_name, order_item_type, order_id) VALUES (1, 'Mug', 'line_item', 4711), (2, 'Flat rate', 'shipping', 4711), (3, 'Shirt - Red', 'line_item', 4713);
 INSERT INTO wp_woocommerce_order_itemmeta (order_item_id, meta_key, meta_value) VALUES
   (1, '_product_id', '123'), (1, '_variation_id', '0'), (1, '_qty', '2'), (1, '_line_subtotal', '45.00'), (1, '_line_total', '45.00'), (1, '_line_tax', '0'),
   (2, 'cost', '4.90'), (2, 'total_tax', '0'), (2, 'method_id', 'flat_rate'),
   (3, '_product_id', '200'), (3, '_variation_id', '201'), (3, '_qty', '1'), (3, '_line_total', '18.90'), (3, 'pa_color', 'red');
-INSERT INTO wp_wc_order_product_lookup VALUES (1, 4711, 123, 0), (3, 4713, 200, 201);
-INSERT INTO wp_comments (comment_post_ID, comment_author, comment_date_gmt, comment_content, comment_type) VALUES
-  (4711, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 1 DAY + INTERVAL 1 MINUTE, 'Payment captured', 'order_note'),
-  (4711, 'Jane', UTC_TIMESTAMP(), 'Nice mug', 'review');
+INSERT INTO wp_wc_order_product_lookup (order_item_id, order_id, product_id, variation_id, customer_id, product_net_revenue, product_gross_revenue) VALUES (1, 4711, 123, 0, 1, 45, 45), (3, 4713, 200, 201, NULL, 18.9, 18.9);
+INSERT INTO wp_comments (comment_post_ID, comment_author, comment_date_gmt, comment_content, comment_type, comment_author_email, comment_approved, user_id) VALUES
+  (4711, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 1 DAY + INTERVAL 1 MINUTE, 'Payment captured', 'order_note', 'woocommerce@shop.test', '1', 0),
+  (4711, 'Jane', UTC_TIMESTAMP(), 'Nice mug', 'review', 'jane@shop.test', '1', 12);
+UPDATE wp_comments SET comment_date = comment_date_gmt + INTERVAL 2 HOUR;
 INSERT INTO wp_commentmeta (comment_id, meta_key, meta_value) VALUES (1, 'is_customer_note', '0');
 
 INSERT INTO wp_actionscheduler_groups (group_id, slug) VALUES (1, 'woocommerce-paypal-payments');
@@ -195,9 +196,9 @@ INSERT INTO wp_actionscheduler_actions (action_id, hook, status, scheduled_date_
   (2, 'woocommerce_cleanup_draft_orders', 'complete', UTC_TIMESTAMP() - INTERVAL 2 DAY, '[]', 0, 1, UTC_TIMESTAMP() - INTERVAL 2 DAY),
   (3, 'wc-admin_import_orders', 'pending', UTC_TIMESTAMP() + INTERVAL 1 HOUR, '[14711]', 0, 0, '0000-00-00 00:00:00'),
   (4, 'woocommerce_run_on_woocommerce_admin_updated', 'pending', UTC_TIMESTAMP() - INTERVAL 1 HOUR, '[]', 0, 0, '0000-00-00 00:00:00');
-INSERT INTO wp_actionscheduler_logs (action_id, message, log_date_gmt) VALUES
-  (1, 'action created', UTC_TIMESTAMP() - INTERVAL 1 DAY),
-  (1, 'action failed via WP Cron: PayPal API returned 500', UTC_TIMESTAMP() - INTERVAL 1 DAY);
+INSERT INTO wp_actionscheduler_logs (action_id, message, log_date_gmt, log_date_local) VALUES
+  (1, 'action created', UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() - INTERVAL 1 DAY + INTERVAL 2 HOUR),
+  (1, 'action failed via WP Cron: PayPal API returned 500', UTC_TIMESTAMP() - INTERVAL 1 DAY, UTC_TIMESTAMP() - INTERVAL 1 DAY + INTERVAL 2 HOUR);
 
 INSERT INTO wp_woocommerce_sessions (session_key, session_value, session_expiry) VALUES
   ('12', 'a:2:{s:4:"cart";s:41:"a:1:{s:3:"abc";a:1:{s:8:"quantity";i:2;}}";s:11:"cart_totals";s:30:"a:1:{s:5:"total";s:5:"49.90";}";}', UNIX_TIMESTAMP() + 86400),
@@ -371,9 +372,10 @@ INSERT INTO wp_woocommerce_order_itemmeta (order_item_id, meta_key, meta_value) 
   (1, '_product_id', '10'), (1, '_qty', '2'), (1, '_line_total', '30.00'),
   (2, '_product_id', '10'), (2, '_qty', '1'), (2, '_line_total', '15.00'),
   (3, '_product_id', '10'), (3, '_qty', '1'), (3, '_line_total', '15.00');
-INSERT INTO wp_comments (comment_post_ID, comment_author, comment_date_gmt, comment_content, comment_type) VALUES
-  (501, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 2 DAY, 'Order status changed from Processing to Completed.', 'order_note'),
-  (501, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 1 HOUR, 'Refunded $5.00', 'order_note');
+INSERT INTO wp_comments (comment_post_ID, comment_author, comment_date_gmt, comment_content, comment_type, comment_author_email) VALUES
+  (501, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 2 DAY, 'Order status changed from Processing to Completed.', 'order_note', 'woocommerce@legacy.test'),
+  (501, 'WooCommerce', UTC_TIMESTAMP() - INTERVAL 1 HOUR, 'Refunded $5.00', 'order_note', 'woocommerce@legacy.test');
+UPDATE wp_comments SET comment_date = comment_date_gmt;
 INSERT INTO wp_woocommerce_log (timestamp, level, source, message, context) VALUES
   (UTC_TIMESTAMP() - INTERVAL 2 DAY, 200, 'transactional-emails', 'Email "customer_completed_order" for order #501 sent', NULL);
 
@@ -411,7 +413,9 @@ CREATE TABLE wp_2_posts LIKE wp_test.wp_posts;
 CREATE TABLE wp_2_postmeta LIKE wp_test.wp_postmeta;
 CREATE TABLE wp_blogs (blog_id bigint(20) NOT NULL AUTO_INCREMENT, site_id bigint(20) NOT NULL DEFAULT 0, domain varchar(200) NOT NULL DEFAULT '', path varchar(100) NOT NULL DEFAULT '', registered datetime NOT NULL DEFAULT '0000-00-00 00:00:00', last_updated datetime NOT NULL DEFAULT '0000-00-00 00:00:00', public tinyint(2) NOT NULL DEFAULT 1, archived tinyint(2) NOT NULL DEFAULT 0, mature tinyint(2) NOT NULL DEFAULT 0, spam tinyint(2) NOT NULL DEFAULT 0, deleted tinyint(2) NOT NULL DEFAULT 0, lang_id int(11) NOT NULL DEFAULT 0, PRIMARY KEY (blog_id));
 CREATE TABLE wp_sitemeta (meta_id bigint(20) NOT NULL AUTO_INCREMENT, site_id bigint(20) NOT NULL DEFAULT 0, meta_key varchar(255) DEFAULT NULL, meta_value longtext, PRIMARY KEY (meta_id));
+CREATE TABLE wp_site (id bigint(20) unsigned NOT NULL AUTO_INCREMENT, domain varchar(200) NOT NULL DEFAULT '', path varchar(100) NOT NULL DEFAULT '', PRIMARY KEY (id));
 
+INSERT INTO wp_site (id, domain, path) VALUES (1, 'network.test', '/');
 INSERT INTO wp_blogs (blog_id, site_id, domain, path) VALUES
   (1, 1, 'network.test', '/'),
   (2, 1, 'shop.network.test', '/');

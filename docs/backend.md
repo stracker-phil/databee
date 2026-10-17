@@ -88,7 +88,7 @@ the plugin checks that list against its handler (`crate::test_support::build_rs_
 | Plugin | Installed by | State | Commands |
 |---|---|---|---|
 | `stage` | `stage::init` | `Stage` | `stage::commands::COMMANDS` ([stage.md](stage.md)) |
-| `wp` | `wp::init` | `WpState` (snapshot store, `entities.toml` cache) | `wp::COMMANDS` ([wordpress.md](wordpress.md)) |
+| `wp` | `wp::init` | `WpState` (snapshot store, path of a legacy `entities.toml`) | `wp::COMMANDS` ([wordpress.md](wordpress.md)) |
 
 ## Tauri commands
 
@@ -242,7 +242,7 @@ snapshot migration). Store methods that write are `async` and the commands calli
 | `snapshots.json` | WordPress plugin: index of snapshots (id, label, account, database, scope, created, `paths` count), 30 per account and database (`MAX_PER_DATABASE`); adding one evicts the oldest of that database only and deletes its values file |
 | `snapshots/<id>.json` | one snapshot's `path → value` map (0600, dir 0700) |
 | `ui_state.json` | per connection: column widths, `detailPaneWidth`, `inspectorWidth`, `bottomPaneHeight`, `sqlEditorHeight`, `sidebarHidden` (older names load via serde aliases; missing fields take their defaults). `UiStateStore::forget` drops a connection's entry |
-| `entities.toml` | WordPress plugin: optional user entity definitions ([wordpress.md](wordpress.md#entities)) |
+| `entities.toml` | no longer read; when it exists, the log warns once and the page shows a toast ([wordpress.md](wordpress.md#the-presets)) |
 | `projects.json` | `{ "projects": { "<slug>/<database>": Project } }`, snake_case like the rule types ([presets.md](presets.md#projects)). `ProjectsStore::update` runs the change inside the store's update, so a failed check stores nothing; `rename_connection` moves every `<old>/…` key to the new slug |
 | `presets/*.toml` | user presets; one with the name of a built-in replaces it ([presets.md](presets.md)) |
 | `databee.sock` | the IPC socket |
@@ -317,7 +317,7 @@ gives up its value only through `expose()`.
 | `cancelled` | MySQL error 1317, or the user cancelled |
 | `confirmation_required` | a destructive statement without `confirmed` |
 | `session_not_found` | a stale session id |
-| `invalid_input` | bad arguments, a bad filter, a bad `entities.toml` |
+| `invalid_input` | bad arguments, a bad filter, a database that is not WordPress for a WordPress command |
 | `keychain` | Keychain failures |
 | `io` | file errors |
 
@@ -361,7 +361,7 @@ To add a menu item:
 | `zeroize` | `Secret` is zeroed on drop |
 | `thiserror` | `AppError` |
 | `chrono`, `uuid`, `url`, `percent-encoding`, `futures-util` | time stamps, ids, URL parsing, result streaming |
-| `toml` | presets, `entities.toml`, `meta_keys.toml` |
+| `toml` | presets |
 | `sha2` | Gravatar hashes |
 | `libc` | `getuid` for the IPC peer check |
 | `tempfile` (dev) | store and socket tests |

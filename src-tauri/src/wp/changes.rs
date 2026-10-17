@@ -5,10 +5,10 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::context::WpContext;
-use super::entity::{Catalog, MetaDef};
+use super::catalog::{Catalog, MetaDef};
 use super::fetch;
 use super::rows::{self, cell_str, text};
+use super::site::WpContext;
 use super::sql::table_ref;
 use crate::db::changes::{Plan, reinsert_note, reinsert_sql, restore_undo, sql_value};
 use crate::db::{Database, Dialect, ResultSet};
@@ -150,7 +150,6 @@ impl MetaTarget {
 
 pub fn meta_target(
     dialect: Dialect,
-    ctx: &WpContext,
     catalog: &Catalog,
     database: &str,
     entity: &str,
@@ -160,8 +159,10 @@ pub fn meta_target(
         .meta
         .as_ref()
         .ok_or_else(|| AppError::InvalidInput(format!("{entity} has no meta")))?;
-    let table = table_ref(dialect, database, ctx, &meta.table);
-    Ok(MetaTarget::new(table, meta))
+    Ok(MetaTarget::new(
+        dialect.table_ref(database, &meta.table),
+        meta,
+    ))
 }
 
 pub async fn plan(
@@ -179,7 +180,7 @@ pub async fn plan(
             key,
             value,
         } => {
-            let target = meta_target(dialect, ctx, catalog, database, entity)?;
+            let target = meta_target(dialect, catalog, database, entity)?;
             let meta = MetaKey { entity, id, key };
             let sql = format!(
                 "SELECT {} FROM {} WHERE {}",
@@ -196,7 +197,7 @@ pub async fn plan(
             id,
             key,
         } => {
-            let target = meta_target(dialect, ctx, catalog, database, entity)?;
+            let target = meta_target(dialect, catalog, database, entity)?;
             let meta = MetaKey { entity, id, key };
             let sql = format!(
                 "SELECT * FROM {} WHERE {}",
@@ -606,8 +607,7 @@ mod tests {
     use super::*;
     use crate::db::{Cell, ColumnMeta, FakeDatabase};
     use crate::error::ErrorKind;
-    use crate::wp::context::WcContext;
-    use crate::wp::entity::definitions;
+    use crate::wp::testing::site;
 
     const D: Dialect = Dialect::MYSQL;
     const OPTIONS: &str = "`wp`.`wp_options`";
@@ -631,25 +631,6 @@ mod tests {
             returns_rows: true,
             ..Default::default()
         }
-    }
-
-    fn ctx(tables: &[&str]) -> WpContext {
-        WpContext {
-            prefix: "wp_".into(),
-            version: None,
-            sites: vec![],
-            wc: Some(WcContext {
-                version: None,
-                hpos: crate::wp::context::HposMode::On,
-                has_action_scheduler: true,
-            }),
-            site: Default::default(),
-            tables: tables.iter().map(|t| t.to_string()).collect(),
-        }
-    }
-
-    fn catalog(ctx: &WpContext) -> Catalog {
-        Catalog::new(&definitions(None).unwrap(), ctx)
     }
 
     fn postmeta() -> MetaTarget {
@@ -1103,20 +1084,40 @@ mod tests {
 
     #[test]
     fn meta_target_qualifies_the_entitys_meta_table() {
-        let ctx = ctx(&["wp_posts", "wp_postmeta"]);
-        let catalog = catalog(&ctx);
+        let (_, catalog) = site(&["posts", "postmeta"]);
+
+        assert_eq!(meta_target(D, &catalog, "wp", "post").unwrap(), postmeta());
+        assert!(meta_target(D, &catalog, "wp", "no_such_entity").is_err());
+    }
+
+    #[test]
+    fn meta_target_follows_the_meta_table_of_the_entitys_storage() {
+        let (_, catalog) = site(&["posts", "postmeta", "wc_orders", "wc_orders_meta"]);
 
         assert_eq!(
-            meta_target(D, &ctx, &catalog, "wp", "post").unwrap(),
-            postmeta()
+            meta_target(D, &catalog, "wp", "order").unwrap(),
+            MetaTarget {
+                table: "`wp`.`wp_wc_orders_meta`".into(),
+                fk: "order_id".into(),
+                key: "meta_key".into(),
+                value: "meta_value".into(),
+            }
         );
-        assert!(meta_target(D, &ctx, &catalog, "wp", "no_such_entity").is_err());
+    }
+
+    #[test]
+    fn meta_target_of_an_entity_without_meta_is_refused() {
+        let (_, catalog) = site(&["posts", "postmeta", "comments"]);
+
+        let err = meta_target(D, &catalog, "wp", "comment").unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(err.to_string(), "comment has no meta");
     }
 
     #[tokio::test]
     async fn planning_an_autoload_change_reads_the_stored_value_first() {
-        let ctx = ctx(&["wp_options"]);
-        let catalog = catalog(&ctx);
+        let (ctx, catalog) = site(&["options"]);
         let db = FakeDatabase::new().on(
             "SELECT autoload FROM `wp`.`wp_options` WHERE option_name = 'foo'",
             rs(&["autoload"], vec![vec![cell("yes")]]),
@@ -1136,9 +1137,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn planning_a_meta_change_reads_the_value_from_the_entitys_meta_table() {
+        let (ctx, catalog) = site(&["posts", "postmeta"]);
+        let stored = rs(&["meta_value"], vec![vec![cell("old")]]);
+        let db = FakeDatabase::new().on("SELECT `meta_value`", stored.clone());
+        let request = WpChangeRequest::SetMeta {
+            database: "wp".into(),
+            entity: "post".into(),
+            id: "5".into(),
+            key: "k".into(),
+            value: "v".into(),
+        };
+
+        let plan = plan(&db, &ctx, &catalog, &request).await.unwrap();
+
+        assert_eq!(
+            db.queries(),
+            [format!(
+                "SELECT `meta_value` FROM {POSTMETA} WHERE {META_FILTER}"
+            )]
+        );
+        assert_eq!(
+            plan,
+            build_set_meta(D, "wp", &postmeta(), META, "v", &stored).unwrap()
+        );
+    }
+
+    #[tokio::test]
     async fn planning_an_autoload_change_of_a_missing_option_is_refused() {
-        let ctx = ctx(&["wp_options"]);
-        let catalog = catalog(&ctx);
+        let (ctx, catalog) = site(&["options"]);
         let db = FakeDatabase::new().on("SELECT autoload", rs(&["autoload"], vec![]));
         let request = WpChangeRequest::SetAutoload {
             database: "wp".into(),
@@ -1154,8 +1181,7 @@ mod tests {
 
     #[tokio::test]
     async fn planning_an_action_change_with_a_non_numeric_id_is_refused_without_reading() {
-        let ctx = ctx(&[]);
-        let catalog = catalog(&ctx);
+        let (ctx, catalog) = site(&[]);
         let db = FakeDatabase::new();
         let request = WpChangeRequest::RetryAction {
             database: "wp".into(),
@@ -1170,8 +1196,7 @@ mod tests {
 
     #[tokio::test]
     async fn planning_a_log_cleanup_needs_the_log_table() {
-        let ctx = ctx(&["wp_options"]);
-        let catalog = catalog(&ctx);
+        let (ctx, catalog) = site(&["options"]);
         let db = FakeDatabase::new();
         let request = WpChangeRequest::DeleteLogsBefore {
             database: "wp".into(),

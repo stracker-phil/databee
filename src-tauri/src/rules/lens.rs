@@ -6,10 +6,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::condition::{self, Condition, column_glob_match, glob_match};
-use super::effective::{EffectiveRules, GroupKey, MetaRef, RuleReference, RuleStyle, inferred_id};
+use super::condition::{self, Condition};
+use super::effective::{
+    EffectiveRules, GroupKey, MetaRef, RuleReference, RuleStyle, inferred_id, meta_keys_match,
+};
 use super::kinds::ValueRule;
-use super::types::ColumnGlob;
 use crate::db::{Cell, ColumnMeta, ResultSet};
 use crate::lens::{ColumnsRef, Lens, ResolvedReference, SchemaLens, TableColumns};
 use crate::value::{
@@ -124,33 +125,17 @@ impl RulesLens {
         let group = self.unconditional_group(table, &column.name);
         let kind_rule = || {
             self.rules
-                .kinds
-                .iter()
-                .find(|rule| self.columns_match(&rule.columns, table, &column.name))
+                .column_kind_rule(table, &column.name)
                 .map(|rule| rule_kind(&rule.value))
         };
         self.decide(group.as_ref(), &base, kind_rule)
             .unwrap_or(base)
     }
 
-    fn columns_match(&self, globs: &[ColumnGlob], table: &str, column: &str) -> bool {
-        let names = self.rules.applied.rule_names(table);
-        globs.iter().any(|glob| {
-            column_glob_match(&glob.column, column)
-                && names.iter().any(|name| glob_match(&glob.table, name))
-        })
-    }
-
-    fn meta_of(&self, table: &str) -> Option<&MetaRef> {
-        self.rules.meta.iter().find(|m| m.table == table)
-    }
-
     /// The first kind rule for meta rows of `meta` under `key`.
     fn meta_kind(&self, meta: &MetaRef, key: &str) -> Option<ColumnKind> {
         self.rules
-            .kinds
-            .iter()
-            .find(|rule| meta_keys_match(&rule.meta_keys, &rule.in_meta, meta, key))
+            .meta_kind_rule(meta, key)
             .map(|rule| rule_kind(&rule.value))
     }
 
@@ -217,7 +202,7 @@ impl Lens for RulesLens {
             .iter()
             .map(|(index, name)| (name.to_ascii_lowercase(), *index))
             .collect();
-        let meta = self.meta_of(table);
+        let meta = self.rules.meta_table(table);
         for (col, name) in &columns.columns {
             let column = ColumnCells::new(self, table, name, meta, &by_name);
             if column.is_idle() {
@@ -290,7 +275,7 @@ impl<'l> ColumnCells<'l> {
             .styles
             .iter()
             .filter_map(|s| {
-                let by_column = lens.columns_match(&s.rule.columns, table, column);
+                let by_column = lens.rules.columns_match(&s.rule.columns, table, column);
                 let by_key = meta.is_some() && !s.rule.meta_keys.is_empty();
                 (by_column || by_key).then_some((s, by_column))
             })
@@ -339,11 +324,6 @@ impl<'l> ColumnCells<'l> {
     }
 }
 
-fn meta_keys_match(globs: &[String], in_meta: &[String], meta: &MetaRef, key: &str) -> bool {
-    let in_scope = in_meta.is_empty() || in_meta.contains(&meta.name);
-    in_scope && globs.iter().any(|glob| glob_match(glob, key))
-}
-
 /// Kinds that only the SQL type gave, which kind rules may refine.
 fn is_type_kind(kind: &ColumnKind) -> bool {
     matches!(
@@ -386,7 +366,7 @@ mod tests {
     use crate::rules::testing::{
         forum, forum_schema, preset, project, reference, schema, with_foreign_key,
     };
-    use crate::rules::types::Preset;
+    use crate::rules::types::{ColumnGlob, Preset};
     use crate::schema::DatabaseSchema;
     use crate::value::{ValueKind, value_at};
 
@@ -583,6 +563,47 @@ mod tests {
                 vec![target("f_people", "person_id", true)],
                 ReferenceSource::SameName {
                     column: "person_id".into(),
+                    indexed: false
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn the_fk_of_an_owned_meta_table_is_a_preset_reference_that_replaces_the_inference() {
+        let lens = lens(&project());
+        let implied = by_forum("notes.thread_id");
+
+        assert_eq!(
+            kind_of(&lens, "f_notes", "thread_id", "BIGINT"),
+            refkind(
+                vec![target("f_threads", "thread_id", true)],
+                implied.clone()
+            )
+        );
+        assert_eq!(
+            from_column(lens.references_from("f_notes"), "thread_id"),
+            [resolved(
+                ("f_notes", "thread_id"),
+                ("f_threads", "thread_id"),
+                implied
+            )]
+        );
+    }
+
+    #[test]
+    fn disabling_the_implied_meta_reference_leaves_the_same_name_inference() {
+        let own = Project {
+            disabled: vec!["notes.thread_id".into()],
+            ..project()
+        };
+
+        assert_eq!(
+            kind_of(&lens(&own), "f_notes", "thread_id", "BIGINT"),
+            refkind(
+                vec![target("f_threads", "thread_id", true)],
+                ReferenceSource::SameName {
+                    column: "thread_id".into(),
                     indexed: false
                 }
             )

@@ -1,309 +1,110 @@
-# WordPress layer
+# WordPress and WooCommerce presets
 
-WordPress mode is a lens over a WordPress (and WooCommerce) database. It is built for developers who inspect
-their own local sites. It complements wp-admin and the code; it doesn't replace them. The rules in
-[`.claude/rules/presets.md`](../.claude/rules/presets.md) govern every screen:
+WordPress knowledge is configuration: three built-in presets in `src-tauri/presets/`, written in the format of
+[presets.md](presets.md) and governed by [`.claude/rules/presets.md`](../.claude/rules/presets.md). The engine
+(`src-tauri/src/rules/`) knows no WordPress names. The WordPress screens in `src-tauri/src/wp/` and
+`src/components/wp/` still exist and read the presets through small adapters ([Screens](#screens-until-u12));
+U7 to U12 replace them with generic views.
 
-- **Real names.** Show the stored names: columns, meta keys, option names, status slugs. A human label may sit
-  next to a raw value, never in place of it.
-- **No guessing.** Show only facts the database proves. There is no attribution by naming heuristics. Meta and
-  options are grouped by their literal key prefix (`_ppcp*`), never by "which plugin owns this".
-- **Nothing hidden.** Never hide stored data. Collapsing it is the most that's allowed.
-- **Traceable.** Every derived value names its source key. Every entity can be opened as its rows in the
-  Database view.
-- **Secrets masked, nothing else.** There is no PII masking. Secrets such as keys and tokens stay masked until
-  clicked.
+## The presets
 
-The backend is an inline Tauri plugin in `src-tauri/src/wp/`, installed by one line in `lib.rs`
-(`.plugin(wp::init(&config_dir))`). It owns its commands (`wp/commands.rs`, listed in `wp::COMMANDS` and in
-`WP_COMMANDS` in `build.rs`, granted by `capabilities/wp.json`), its managed state `WpState` (the snapshot
-store and the `entities.toml` cache) and its integration tests. The page calls the commands as
-`plugin:wp|<command>` through `src/api/index.ts`. The frontend lives in `src/components/wp/`.
+| Preset | Marker tables | Requires |
+|---|---|---|
+| `wordpress` | `options`, `posts`, `users` | |
+| `woocommerce` | `woocommerce_order_items` | `wordpress` |
+| `action-scheduler` | `actionscheduler_actions` | `wordpress` |
 
-## Modules
+Action Scheduler is its own preset because it ships with plugins other than WooCommerce. The prefix is the
+shortest one under which a preset's marker tables exist, so multisite sub-sites (no users table) never win;
+`users`, `usermeta`, `blogs`, `blogmeta`, `site`, `sitemeta`, `signups` and `registration_log` are network tables
+(`{np}`).
+
+**`wordpress.toml`**
+- Key/value tables: `postmeta`, `usermeta`, `commentmeta`, `termmeta`, `sitemeta`, `blogmeta` (owned), and
+  `options` (standalone, so meta-key kinds apply to option rows). Each owned table declares `fk → owner`.
+- References: authors, parents, comments, featured images (`_thumbnail_id`), `_edit_last`, terms, links and
+  the network tables. Labelled groups: `children`, `comments`, `replies`, `terms`.
+- Entities: `post`, `user` (`people`), `comment`, `term`, `option`, `blog`.
+- Kinds: `user_pass`, `user_activation_key` and key globs such as `*password*`, `*api_key*`, `*_token` are
+  secrets; `*.*_gmt` and registration dates are UTC timestamps; `post_date`, `post_modified`, `comment_date`,
+  `link_updated` are local (zone not stored, shown raw); transient timeouts, `last_update` and `_edit_lock` are
+  unix; status, type and taxonomy columns are enums.
+- Pinned queries: `site_url`, `db_version`, `autoload_bytes` (readout values), `site_options`,
+  `network_plugins`, `content`, `users`, `options_by_prefix`, `options_largest_autoload`, `transients`.
+- Anomalies `autoload_heavy` and `transients_expired` (fix: `delete_expired_transients`); actions
+  `set_autoload` and `delete_expired_transients`; find source `options`.
+
+**`woocommerce.toml`**
+- Both order shapes: HPOS (`wc_orders`, its meta, addresses, operational data) and posts (`shop_order*` posts
+  with their meta). Whichever holds rows shows up; there is no HPOS or version detection.
+- References: customers, parents (`children`), `guest_orders` (same `billing_email`, `customer_id = 0`),
+  `addresses`, `items` (to both shapes, with the item meta `_qty`, `_line_total`, `_product_id`,
+  `_variation_id` as group columns), `notes` (`comment_type = order_note`), PayPal order ids, subscription
+  links, lookup tables, `tokens`, logged-in sessions (`session_key` only when numeric), download permissions.
+- Entities: `order` on `wc_orders` and, filtered by `post_type`, on `posts`; `product` (filtered posts),
+  `order_item`, `order_address` (`people`), `payment_token`, `session`.
+- Kinds: money with the currency of the row (`currency`) or the document (`_order_currency`), amounts without
+  a stored currency (item meta, product prices, lookup tables); timestamps (`_date_paid` unix,
+  `_paid_date` local, `_schedule_*` UTC, `_wc_*_sent` unix, `_wc_order_attribution_session_start_time` local);
+  secrets (`order_key`, payment tokens, API keys); enums (statuses, gateways, item types, log levels).
+- Value styles for order statuses, shipped off.
+- Patterns: `woocommerce_log` (the order id in the message or context, PayPal and transaction ids, within a day
+  before to 90 days after creation) and `actionscheduler_actions` (the order id in `args` or
+  `extended_args`), for both order shapes.
+- Pinned queries: `woocommerce_version`, `hpos_options`, `orders`, `orders_posts`, `subscriptions`,
+  `customers`, `guests`, `guests_posts`, `products`, `sessions`, `hpos_drift`.
+- Anomalies `hpos_drift` (only while data sync is on, checked in its SQL) and `log_errors`; actions
+  `set_status` (on both shapes, each also updating the other table) and `delete_logs_before`; find sources for
+  log messages and order ids.
+
+**`action-scheduler.toml`**
+- References `group_id`, `claim_id` and `logs`; entity `action`; enums `status` and `hook`; timestamps
+  (`log_date_gmt` UTC, `*_local` local; the other `*_gmt` columns are UTC through `wordpress`); value styles
+  for `failed` and `complete`, shipped off.
+- Pinned queries `actions`, `actions_failed_by_hook`, `actions_overdue`; anomalies `actions_failed`,
+  `actions_overdue`; actions `retry` and `cancel`; find source `args`/`extended_args`.
+
+To change a preset for one machine, copy it to `<config dir>/presets/` and edit it: a user preset with the same
+`name` replaces the built-in ([presets.md](presets.md#where-presets-live)). The old
+`<config dir>/entities.toml` is no longer read: when it exists, the log warns once at startup and the page shows
+a toast once per run (`WpInfo.legacyEntitiesFile`); nothing is converted.
+
+## Screens (until U12)
+
+The backend is an inline Tauri plugin in `src-tauri/src/wp/`, installed by `.plugin(wp::init(&config_dir))` in
+`lib.rs`, with its commands in `wp::COMMANDS` and `WP_COMMANDS` in `build.rs` (granted by
+`capabilities/wp.json`). Its state `WpState` holds the snapshot store and the legacy `entities.toml` path.
+
+Every command builds a `WpEnv` from the database's effective rules (`commands::load`): the schema, the cached
+`EffectiveRules`, a `site::WpContext` and a `catalog::Catalog`. A database is WordPress when the `wordpress`
+preset applies.
 
 | File | Responsibility |
 |---|---|
-| `mod.rs` | Plugin setup (`init`, `WpState`, `COMMANDS`), document loading, link resolution, featured images, options queries, `fetch` (30 s timeout) |
-| `commands.rs` | The Tauri commands, which only forward. `wp_env` builds a `WpEnv` (context, catalog, session) for each |
-| `cache.rs` | `WpCache`: detected contexts per session (`Session.ext`), stale once the session wrote to that database; `cache::detect` reads it or detects and fills it |
-| `catalog_cache.rs` | `CatalogCache`: built-in plus user entity definitions, reparsed only when `entities.toml`'s mtime changes |
-| `context/` | Detection: `probe.rs` runs the queries into a plain `Probe`; `mod.rs` (`detect`, the pure `build`) turns it into `WpContext` (prefix, versions, WooCommerce, HPOS mode, multisite, site facts); `timezone.rs` holds `SiteZone` |
-| `sql.rs` | Shared SQL fragments: `table_ref`, `PAID_STATUSES` / `paid_statuses_sql`, `AUTOLOAD_ON` / `autoload_on_sql`, and the `Filter` builder for list `WHERE` clauses (conditions plus one search group led by an ID match). LIKE escaping lives in `db::Dialect` |
-| `rows.rs` | Cell readers for query results: `cell_str` (keeps `""` apart from NULL; undo uses it), `string`, `text` (blank is `None`), `count` (`u64`), `num` (`f64`), `int` (exact `i64`), `column_index`, and `facets` for `(value, count)` chips |
-| `entity.rs` + `entities.toml` | Entity definitions as data, plus the resolver that turns them into SQL and documents |
-| `hints.rs` + `meta_keys.toml` | Render hints (money, time, flag, URL, user agent, email, roles, country, guest) and secret masking, keyed by glob rules |
-| `lists.rs` | List screens: orders and subscriptions (`OrderType` is the order list's post type), users (including guests), products, actions, sessions, content. One query per page, plus one batched query for extras and facets |
-| `detail.rs` | Purpose-built views (order, customer, guest, product, action, session), the order timeline, and the ⌘K omnisearch |
-| `dashboard.rs` | Dashboard metrics, insights, sidebar counts, action histogram |
-| `options.rs` | Options inspector: autoload by prefix, transients, cleanup SQL |
-| `peek.rs` | Hover peek facts and "find everywhere" |
-| `snapshot.rs` | Snapshots, diffs and comparisons over flattened `path → value` maps |
-| `snapshots_store.rs` | `SnapshotStore`: `snapshots.json` and `snapshots/<id>.json` |
-| `changes.rs` | Every write: planned SQL plus undo SQL |
-| `logs.rs` | Short titles for WooCommerce log lines, such as `PayPal API · capture order → 201` |
-| `media.rs` | Thumbnail URLs from attachment meta |
+| `site.rs` | `WpContext`: the prefix, `table(name)` (network tables under the network prefix), `has_table`, `woocommerce()` (the preset applies) and `hpos()` (orders are read from `wc_orders` wherever that table exists) |
+| `catalog.rs` | `Catalog` from the rules: one `EntityDef` per entity name (an unfiltered entity wins, so `order` is `wc_orders` where it exists and `posts` otherwise), its owned meta table, `links` (unconditional references to another entity's key), `meta_links` (references from the meta value by meta key), `relations` (labelled references to its key); `table_entities`; the document SQL |
+| `document.rs` | `EntityDoc` and `DocField`; `assemble` adds a `Hint` (money with the currency of the row or the document, time for `unix`/`utc` timestamps) and `Sensitive::Secret` from the kind rules; the title is the entity's summary values |
+| `mod.rs` | `WpInfo` (the `rules_info` shim), `load_docs`, `titles`, `expand`, featured images, options queries |
+| `commands.rs` | The Tauri commands, which only forward; `wp_detect` maps `rules_info` to `WpInfo` |
+| `lists.rs`, `detail.rs`, `dashboard.rs`, `peek.rs`, `options.rs`, `snapshot.rs`, `changes.rs` | The list screens, purpose-built views, dashboard (UTC days), peek and find, options inspector, snapshots and writes |
+| `sql.rs`, `rows.rs`, `logs.rs`, `media.rs`, `snapshots_store.rs` | Shared SQL fragments, cell readers (`money`: an amount as stored plus its currency code), log titles, thumbnail URLs, the snapshot store |
 
-## Detection
+`wp_detect` returns `WpInfo { prefix, presets, entities, tableEntities, legacyEntitiesFile }` or `null`.
+`entities` are the entity names of `RulesInfo.entities`, which the palette's `#`/`@` search needs;
+`tableEntities` maps a real table to the entity its rows open as. There is no site URL, WooCommerce version,
+HPOS mode, time zone or store currency any more: the status bar shows the prefix, amounts show as stored with
+their own currency, and the dashboard counts days in UTC.
 
-`context::detect` (re-exported as `wp::detect`) runs `probe::probe`, then the pure `context::build(Probe)`.
-`Probe` holds the main prefix and what the database stores, uninterpreted: the table set, the `PROBED_OPTIONS` (NULL is `None`),
-the `PROBED_NETWORK_OPTIONS` from `{prefix}sitemeta` of network 1 (WordPress's default `SITE_ID_CURRENT_SITE`)
-and `{prefix}blogs`. Unit tests build contexts from hand-made probes.
-
-1. **Prefix.** A prefix qualifies when `{p}options`, `{p}posts` and `{p}users` all exist; the shortest one wins,
-   and among equally long ones the alphabetically first. Multisite sub-sites have no users table, so they never
-   win. Custom prefixes work.
-2. **Options.** One query reads the `PROBED_OPTIONS`: versions, HPOS flags, `siteurl`, `blogname`, currency,
-   price decimals (`woocommerce_price_num_decimals`, default 2), time zone, theme, `active_plugins`,
-   `upload_url_path`. On multisite a second query reads `active_sitewide_plugins` from `sitemeta`.
-3. **Facts:**
-   - **WooCommerce:** a non-empty `woocommerce_version` option, or the WooCommerce order tables.
-   - **HPOS:** `On` only when `woocommerce_custom_orders_table_enabled = yes` *and* `wc_orders` exists.
-     `OnWithSync` when data sync is also on.
-   - **Legacy store:** WooCommerce with HPOS off keeps orders in `posts` (`shop_order`, customer in the
-     `_customer_user` meta). Entities and relations carry a `when` (`hpos`, `legacy_orders`), and both the
-     catalog and `wp::load_docs` skip those that don't apply, so the `user.orders` relation (an
-     `wc_orders.customer_id` column) is not counted on legacy stores. Customer views list legacy orders through
-     `_customer_user` instead.
-   - **Action Scheduler:** whether its tables exist.
-   - **Multisite:** sites come from `{main}{N}_options` plus `wp_blogs`; a `{main}{N}_` table set without
-     `_options` is not a site.
-   - **Plugins:** `SiteMeta.active_plugins` (from `active_plugins`, the paths are array values) and, on
-     multisite, `SiteMeta.network_plugins` (from `active_sitewide_plugins`, the paths are array keys). Both are a
-     `PluginList` whose `source` names the option; plugins are slugs (the directory or file name of the stored
-     path). An unserialized or broken value is an empty list.
-   - **Uploads:** `SiteMeta.uploads_url` is `upload_url_path` when set (`source: "upload_url_path"`) and absent
-     otherwise: the default depends on `WP_CONTENT_URL` and `upload_path`, which the database doesn't prove.
-     Featured images (`wp::post_images`) then take each attachment's base from its `guid` minus its
-     `_wp_attached_file` (`media::uploads_base_from_guid`).
-   - **Time zone:** `SiteMeta.zone` is a `context::SiteZone` (`context/timezone.rs`): `Named` from
-     `timezone_string` (with DST, via `chrono-tz`), or `Fixed` from `gmt_offset` (hours, may be fractional) when
-     `timezone_string` is empty or not a zone name. `SiteMeta.zone_source` names the option it came from. Local
-     `DATETIME` values without `gmt` in the key become instants through `SiteZone::to_utc` (`hints::time`). The
-     dashboard and the action histogram bucket by local day (and hour): `dashboard::day_spans` / `hour_spans`
-     turn the site's days into UTC ranges for a `CASE` over the `*_gmt` column, and "today" comes from the
-     server's `UTC_TIMESTAMP()`.
-
-The result `WpContext` is cached per database in the session's `WpCache` (`wp/cache.rs`, attached to
-`Session.ext`; `cache::detect` is the entry point), until `wp_detect(refresh)` or until an applied or undone batch writes to that database (each
-entry remembers the session's write count, `Session::writes`). The cache dies with the session, so a
-reconnect detects again.
-Only WordPress databases are cached, so one that becomes WordPress is detected on the next call.
-The UI receives `WpInfo`, which holds the context, the entity names for the palette, and a map from table to
-entity. That map lets the Database view offer "Open as WordPress document".
-
-Multisite sub-sites are detected but not used yet. All queries go to the main prefix.
-
-## PHP serialize
-
-Decoding and editing stored values (PHP serialize, JSON) is core and lives in `src-tauri/src/decode/`; see
-[decode.md](decode.md). The lens uses `decode::php` for its own reads (`PhpValue::get`, `as_text`).
-
-## Entities
-
-An entity is a table described as data. Most of WordPress mode works for any entity without Rust code: generic
-document views, links, relations, the Database-view row action, the palette, snapshots, compare, and meta
-edits.
-
-- **Built-in definitions:** `src-tauri/src/wp/entities.toml`, compiled in. They cover post, user, comment,
-  order (HPOS and legacy), order item, order address, order operational data, payment token, action and
-  session.
-- **User definitions:** `<config dir>/entities.toml`, re-read on every command. A user definition replaces a
-  built-in one when **both** `name` and `when` match; otherwise it is added.
-- **Selection:** the catalog keeps definitions whose `when` applies and whose table exists. The first match
-  per name wins. That is how `order` resolves to `wc_orders` under HPOS and to `posts` on legacy stores.
-
-| Key | Meaning |
-|---|---|
-| `name`, `label` | id used in routes and links; display label |
-| `when` | `always` (default), `woocommerce`, `hpos`, `legacy_orders` |
-| `table`, `id` | table **without** prefix; unsigned integer id column |
-| `title`, `subtitle` | columns for the document heading |
-| `filter` | raw SQL added as `AND (filter)`; trusted config |
-| `hidden` | columns left out of the document (e.g. `user_pass`) |
-| `meta` | `{ table, fk, key = "meta_key", value = "meta_value" }` |
-| `links`, `meta_links` | `{ column_or_meta_key = "entity" }`: values become links |
-| `relations` | `[{ name, label, entity, fk, filter?, when? }]`: one-to-many, counted in one batched query |
-
-```toml
-[[entity]]
-name = "vault_token"
-label = "PayPal vault token"
-when = "woocommerce"
-table = "ppcp_vault"          # becomes {prefix}ppcp_vault
-id = "id"
-title = "vault_id"
-subtitle = "status"
-meta = { table = "ppcp_vaultmeta", fk = "vault_id" }
-links = { user_id = "user", order_id = "order" }
-```
-
-**Resolving.** The resolver generates `SELECT * … WHERE id IN (…)`, one meta query and one count query per
-relation. Ids must parse as `u64`, so they are safe to inline. `assemble` builds `DocField`s, each holding:
-
-- the raw `Cell`;
-- a decoded tree;
-- a link;
-- a render hint;
-- a sensitivity flag.
-
-It also groups meta by literal key prefix and records the source table and id column, so every field can be
-opened as its row.
-
-## Screens
-
-Routes are a `WpRoute` union in `src/state/store.ts`: dashboard, list, entity, compare, snapshots and find.
-Navigation keeps a browser-like history. `useWpData(key, load)` loads data and reloads it whenever the
-session, database, `key` tuple or the store's `dataVersion` change; it never returns another database's data.
-`dataVersion` is bumped after every apply.
-
-List filters (status, kind, search, sort, order, offset) are part of the route: `Lists.tsx`
-`useListFilters` writes them to `route.params` with `replaceRoute`, and any change except paging resets the
-offset in the same update, so back and forward restore them. Arrow keys move the selection only while the
-split detail pane is shown. The content list without a kind lists every visible post type. Peek facts
-(`Peek.tsx`) are cached per session, database, entity and id for one `dataVersion`.
-
-| Screen | Backend | Component |
-|---|---|---|
-| Sidebar with counts and attention badges | `wp_browser` → `dashboard::browser` | `WpWorkspace.tsx` |
-| Dashboard: tiles, insights, autoload breakdown, order bars, Action Scheduler, recent orders | `wp_dashboard`, `wp_options` | `Dashboard.tsx`, `BreakdownChart.tsx`, `charts.tsx` |
-| Lists (50 per page, facets, search, sort from a whitelist, split pane) | `wp_orders`, `wp_users`, `wp_products`, `wp_actions`, `wp_sessions`, `wp_content` | `Lists.tsx` |
-| Options: autoload weight, largest options, groups by prefix, transients | `wp_options`, `wp_options_group` | `Settings.tsx` |
-| Entity pages: order, customer/guest, product, action, session, generic | `wp_view` → `detail::entity_view`, `wp_order_logs` | `views/EntityScreen.tsx`, `OrderView.tsx`, `OtherViews.tsx`, `common.tsx` |
-| Field values: hints, masked secrets, links with hover peek, editable trees, context menu | `wp_peek`, `edit_serialized` | `FieldValue.tsx`, `Peek.tsx`, `LinkChip.tsx`, `../ValueTree.tsx` |
-| Find everywhere | `wp_find_value` | `FindScreen.tsx` |
-| Snapshots and diff; compare two entities | `wp_snapshot_*`, `wp_compare` | `Debugging.tsx` |
-| ⌘K entity search | `wp_search` | `../CommandPalette.tsx` |
-
-Every purpose-built view also embeds the generic document, so no stored field is hidden. Entity pages have
-Live mode (polls every 3 s and highlights changes), Snapshot, Compare and Source row.
-
-### Snapshots
-
-`snapshot::capture` flattens an entity (and optionally related rows, options matching a pattern, and
-actions) to a `path → value` map; `SnapshotStore::take` stores one as a new snapshot, and
-`snapshot::diff_against_now` captures the stored snapshot's scope again and diffs it (`snapshot::diff`). Storage
-(`snapshots_store.rs`, see [backend.md](backend.md#persistence)): `snapshots.json` in the config dir is the
-index (metadata and the `paths` count, read by `wp_snapshots`), and `snapshots/<id>.json` holds one
-snapshot's values, read only by `wp_snapshot_diff`. A legacy `snapshots.json` that still carries the values
-is migrated once on startup.
-
-### Order logs
-
-`detail::order_logs` (`wp_order_logs`) lists `woocommerce_log` rows from a day before the order's creation to
-90 days after it. `detail::order_log_patterns` builds the match: `message REGEXP '#<id>([^0-9]|$)'` (so `#4711`
-does not find `#47110`), the context's `order` key in the serialized form `WC_Log_Handler_DB` stores
-(`s:5:"order";i:<id>;` or the string variant) and in JSON (`"order": ?<id>[^0-9]` as a REGEXP), and the
-PayPal order and transaction IDs anywhere in the message. Every LIKE value goes through `lists::like`, which
-escapes `%`, `_` and `\`. `detail::log_level` maps the `WC_Log_Levels` scale: up to 300 (debug, info, notice)
-is info, 301 to 400 (warning) is warning, above 400 is error.
-
-Action pages (`detail::action_view`) decode `extended_args` when it is set, because Action Scheduler then
-stores only a hash in `args`.
-
-### Peek
-
-`peek::peek` returns up to seven facts from `peek.rs` `FACTS`. For users on HPOS stores the order stats
-(Orders, Spent) come right after the first identity fact.
-
-### Money
-
-`hints::money(raw, currency, decimals)` parses the stored text as an exact `rust_decimal::Decimal`, rounds half
-away from zero to `SiteMeta.price_decimals` and never shows `−0.00`. Text that is not a finite number (`inf`,
-`NaN`, words) comes back unchanged without a currency, and money hints are only attached to values that parse.
-PayPal fee breakdowns (`detail::paypal_fees`) use `hints::DEFAULT_PRICE_DECIMALS`.
-
-## Writes
-
-Every WordPress write is a `WpChangeRequest` variant, planned by `wp_plan_change` (`changes::plan`, one
-fetch-then-build function per variant; `meta_target` resolves where an entity's meta lives) into the same
-session plans as row edits, then applied and undone by id like them
-([database.md](database.md#editing-rows)). The WordPress context cache notices applied writes through the
-session's write counter, so the core never calls into the lens.
-
-| Variant | Effect | Undo |
-|---|---|---|
-| `SetMeta` | inserts, or updates the one row of that key; refuses when the key has several rows | yes |
-| `DeleteMeta` | meta rows of an entity; refuses when the key has no row | reinserts exact rows |
-| `SetOrderStatus` | `wc_orders.status` plus the posts copy when it exists | yes |
-| `SetAutoload` | keeps the stored style: `yes`/`no` or `on`/`off` (WP 6.6+) | yes |
-| `DeleteExpiredTransients` | value plus timeout rows, site transients too | reinserts exact rows |
-| `DeleteLogsBefore` | WooCommerce log retention, cutoff fixed at plan time; refuses if nothing matches | none |
-| `RetryAction`, `CancelAction` | Action Scheduler status | yes |
-
-The tray warns that these are raw SQL writes, so no WordPress hooks run.
-
-Undo fidelity: old values are restored exactly (`db::changes::restore_literal`). `NULL` stays `NULL` and `''`
-stays `''`. Binary cells only carry a preview, so their edits get no undo and the description says why
-(`(no undo: …)`). When `SetCell` changes the key column itself, the undo finds the row by its new key.
-`DeleteLogsBefore` reads `UTC_TIMESTAMP()` once while planning and embeds the cutoff as a literal, so the
-DELETE removes exactly the counted entries.
-
-Escaping follows the server's `sql_mode`: the session reads it when connecting (and when the editor
-reconnects) and exposes it as `Database::dialect`. Every literal in `wp/` goes through
-`Dialect::sql_string`; under `NO_BACKSLASH_ESCAPES` only quotes are doubled, so a written `\` is stored as one
-backslash. LIKE patterns go through `Dialect::like` / `like_contains` (with `db::escape_like`), which adds
-`ESCAPE '\'` in that mode because the server then has no default LIKE escape character.
-
-## Extending
-
-**A new entity** needs no Rust:
-1. Add an `[[entity]]`, either built-in or in the user file.
-2. Add `meta_keys.toml` rules for hints and secrets.
-3. Optionally:
-   - add peek facts in `peek.rs` `FACTS`;
-   - add a find-everywhere source in `peek.rs` `SOURCES`;
-   - add omnisearch queries in `detail.rs` `search`.
-4. Test it in the `entity.rs` tests.
-
-**A new list screen:**
-1. In `lists.rs`, add a summary struct and an `async fn` with a SQL builder that has no I/O and can be unit
-   tested. Give it a `SORT_KEYS` entry. It returns `Page<T>`.
-2. Expose it: a command in `wp/commands.rs` (use `wp_env`), registered in `wp::init`, named in `wp::COMMANDS`
-   and `WP_COMMANDS` in `build.rs`; a `plugin:wp|<command>` wrapper and types in `src/api/`, and a mock in
-   `src/test/apiMock.ts`.
-3. In the frontend:
-   - add the list to the `WpList` union in `store.ts`;
-   - add `LOADERS`, `COLUMNS`, `cellsFor` and `rowTarget` entries in `Lists.tsx`;
-   - add `ICONS`, `NAV_GROUPS` and `ATTENTION` entries in `WpWorkspace.tsx`;
-   - add a `BrowserSection` in `dashboard::browser`;
-   - add a `go(...)` palette command in `src/commands/index.ts`.
-
-**A new detail view:**
-1. In `detail.rs`, add a struct, a loader and an `EntityView` variant, and dispatch it in `entity_view`.
-2. Embed the generic `EntityDoc`.
-3. Add a component in `views/` and a branch in `EntityScreen.tsx`.
-
-**A new write:**
-1. Add a `WpChangeRequest` variant that carries `database`, and its arm in `WpChangeRequest::database`.
-2. Plan both `statements` and `undo` in `changes::plan`: fetch the current state, then a pure `build_*`.
-3. Mirror the type in `WpChangeRequest` in `src/api/types.ts`.
-4. Trigger it with `queueChange`.
-5. Optionally return it from `dashboard::insights` as a one-click action.
-
-**Another plugin** (Subscriptions, Yoast, a payment gateway):
-1. Add entities with a fitting `when`. If it needs a plugin-specific condition, add a `When` variant and the
-   `WpContext` fact behind it. `site.active_plugins` and `site.network_plugins` already hold the plugin slugs,
-   and probed options go into `PROBED_OPTIONS` (network options into `PROBED_NETWORK_OPTIONS`).
-2. Missing plugin tables are skipped automatically.
-3. Add key rules in `meta_keys.toml`, log humanizers in `logs.rs`, and dashboard insights as needed.
-4. Never attribute keys to the plugin by their names.
+Writes stay `WpChangeRequest` variants planned by `wp_plan_change` (`changes::plan`) into the session's plans:
+`SetMeta`, `DeleteMeta`, `SetOrderStatus`, `SetAutoload`, `DeleteExpiredTransients`, `DeleteLogsBefore`,
+`RetryAction`, `CancelAction`. Raw SQL writes run no WordPress hooks. Undo restores old values exactly
+(`db::changes::restore_literal`); literals follow the server's `sql_mode` (`Dialect::sql_string`).
 
 ## Tests
 
-- **Unit tests** in each module cover detection variants, PHP round trips and limits, exact SQL from the
-  resolver, insights, SQL builders and log humanizers.
-- **`src-tauri/src/wp/server_tests.rs`** holds the `#[ignore]` integration tests, so they leave with the
-  module. They run with `bun run test:db`, or alone with `cargo test --lib -- --ignored wp::`, and use the
-  fixture helpers in `src/test_support.rs`:
-  - against the Docker fixture `wp_test`: WordPress plus WooCommerce with HPOS and sync. Reads go against
-    `wp_test`, and every write goes into its copy `wp_write`, and each write test owns its rows there, so tests never share one. `wp_legacy`
-    covers a posts-based (HPOS off) store;
-  - `every_serialized_value_round_trips` and `wordpress_mode_queries_work_on_real_data` (module `real_data`)
-    read a real database of your own, named by a connection URL (parsed with `cli::parse`):
-    `DATABEE_WP_TEST=mysql://user:pass@host:port/db`. They panic without it, so `bun run test:db` skips them
-    (`--skip real_data`).
-- **`src-tauri/tests/sql_mode.rs`** changes the servers' global `sql_mode`, so it stays its own test binary
-  (Cargo runs binaries one after another). It belongs to this layer and is deleted with it.
-- **Frontend:** `src/components/wp/WpMode.test.tsx` plus tests per component.
+- Preset tests: the built-in files parse, round-trip and apply on the fixtures (`src-tauri/tests/rules.rs`,
+  against `wp_test`, `wp_legacy`, `wp_custom` with prefix `xy_`, `wp_multi` and `databee_test`).
+- `src-tauri/src/wp/server_tests.rs` holds the `#[ignore]` integration tests of the remaining screens; they run
+  with `bun run test:db`. `src-tauri/tests/sql_mode.rs` changes the servers' global `sql_mode` and stays its own
+  test binary.
+- Frontend: `src/components/wp/WpMode.test.tsx` plus tests per component.

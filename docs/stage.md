@@ -99,6 +99,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   **Removed anchors.** U2b removed `statusbar:theme` and `statusbar:dock` (use Settings → Appearance and the
   `view.inspectorDock` command) and `statusbar:connection` (the toolbar shows the connection;
   `toolbar:connection` carries its identity).
+  U4d removed `statusbar:site` (the site URL is no longer read; the `site_url` pinned query holds it).
 - **Commands** come from the in-app registry, with `shortcut` and `enabled`.
 - **Keys.** When a key combination is a command's shortcut, that command runs in the current view, even
   without focus. So ⌘, ⌘K and ⌘T behave like their menu items. Other keys go to the focused element;

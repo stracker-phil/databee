@@ -1,6 +1,6 @@
 //! SQL fragments shared by the WordPress screens. Pure string builders, no I/O.
 
-use super::context::WpContext;
+use super::site::WpContext;
 use crate::db::Dialect;
 
 /// Order statuses that count as paid in customer and order totals.
@@ -104,16 +104,10 @@ impl Filter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wp::testing::site_with;
 
     fn ctx(prefix: &str) -> WpContext {
-        WpContext {
-            version: None,
-            prefix: prefix.into(),
-            sites: vec![],
-            wc: None,
-            site: Default::default(),
-            tables: Default::default(),
-        }
+        site_with(prefix, &[], &["wordpress"]).0
     }
 
     #[test]

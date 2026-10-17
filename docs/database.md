@@ -32,7 +32,7 @@ Outside `db/`:
 - `session.rs` has `Session { id, spec, db: Box<dyn Database>, ext, plans, cells }` and the `Sessions` map
   (`writes(db)` counts applied batches, `ddl_writes()` counts user scripts with DDL). `ext` is a
   type-keyed `Extensions` map where a module keeps per-session data that dies with the session
-  ([ADR 0013](adr/0013-session-extensions.md)); the WordPress lens keeps its `WpCache` there, the core its
+  ([ADR 0013](adr/0013-session-extensions.md)); the rules keep their effective-rules cache there, the core its
   `SchemaCache` ([Schema cache](#schema-cache)).
 - `error.rs` maps `sqlx::Error` to `AppError`.
 

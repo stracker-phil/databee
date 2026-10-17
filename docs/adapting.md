@@ -74,7 +74,7 @@ can do all of this:
 | Goal | Start here |
 |---|---|
 | Add a database engine (SQLite, Postgres) | [database.md: adding another database engine](database.md#adding-another-database-engine) |
-| Add a WordPress entity, list, view or plugin | [wordpress.md: extending](wordpress.md#extending) |
+| Add rules for WordPress, a plugin or another application | [presets.md](presets.md); the built-ins are in [wordpress.md](wordpress.md) |
 | Add a command or shortcut | [frontend.md: commands](frontend.md#commands-shortcuts-palette-menu) |
 | Add a menu item | [backend.md: native menu](backend.md#native-menu) |
 | Add a setting | [backend.md: persistence](backend.md#persistence) |
@@ -100,23 +100,24 @@ Stage is a module on both sides ([stage.md](stage.md)). **Remove Stage**: `git r
 
 ### Removing the WordPress layer
 
-WordPress mode is a module on both sides: the Rust half is the `wp` plugin ([wordpress.md](wordpress.md)).
-Grid edits don't depend on it (`ChangeRequest` and its planning are core, in `db/changes.rs`).
+WordPress, WooCommerce and Action Scheduler are presets: delete `src-tauri/presets/wordpress.toml`,
+`woocommerce.toml` and `action-scheduler.toml` and their lines in `rules::catalog::BUILT_IN`. The rules engine
+has no WordPress code. Until U12 removes them, the WordPress screens remain a module on both sides
+([wordpress.md](wordpress.md#screens-until-u12)); grid edits don't depend on them (`ChangeRequest` and its
+planning are core, in `db/changes.rs`). To remove them as well:
 
-1. Remove the one core test that uses the plugin's types: `wp_cache_is_gone_when_the_session_is_removed_and_reopened`
-   in `session.rs`.
-2. `git rm -r src-tauri/src/wp src-tauri/capabilities/wp.json src-tauri/tests/sql_mode.rs`; delete `pub mod wp;`
+1. `git rm -r src-tauri/src/wp src-tauri/capabilities/wp.json src-tauri/tests/sql_mode.rs`; delete `pub mod wp;`
    and `.plugin(wp::init(&config_dir))` in `lib.rs`; delete the `.plugin("wp", …)` line and `WP_COMMANDS` in
    `build.rs`; delete the `wordpress` settings page. The plugin takes its commands, snapshot store and
    integration tests with it.
-3. In the frontend:
+2. In the frontend:
    - delete `src/components/wp/` (its `install.ts` registers the `wp` and `document` scopes) and
      `src/lib/wpFormat.ts`, and drop the `installWp()` line in `src/modules.ts`;
    - delete the `wp`, `wpNav`, `mode` and `entityMeta` store slices;
    - delete the `go.*`, `document.*` and `wp.*` commands and the WordPress palette search;
    - remove the mode toggle in `Toolbar`, and render `DbWorkspace` directly in `App.tsx`.
-4. Delete the `wp_test`/`wp_write`/`wp_legacy` sections of `dev/fixture.sql`, then run
-   `bun run lint && bun run test`.
+3. Delete the `wp_test`/`wp_write`/`wp_legacy`/`wp_custom`/`wp_multi` sections of `dev/fixture.sql` and the
+   preset tests in `src-tauri/tests/rules.rs`, then run `bun run lint && bun run test`.
 
 The Inspector's decoding and editing of PHP-serialized and JSON values is core (`src-tauri/src/decode/`) and
 stays, and so do grid edits (`db/changes.rs`).

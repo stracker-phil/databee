@@ -18,6 +18,8 @@ pub mod project;
 pub mod project_change;
 pub mod queries;
 #[cfg(test)]
+mod server_tests;
+#[cfg(test)]
 mod testing;
 pub mod types;
 

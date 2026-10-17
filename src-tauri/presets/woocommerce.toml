@@ -1,18 +1,11 @@
-# Test fixture: a copy of the U4a paper-port draft of the WooCommerce preset. It is not shipped;
-# `preset.rs` tests assert that it parses and round-trips.
-#
-# Draft (U4a paper port): the WooCommerce preset, including Action Scheduler, WooCommerce PayPal
-# Payments meta keys and WooCommerce Subscriptions keys.
-# Format: ux-redesign.md 4.5 as amended by paper-port.md. `# GAP: Gn` = engine feature Gn.
-# Both order shapes are defined (HPOS `wc_orders`, posts with post_type shop_order); whichever
-# holds rows shows up (spec decision 8). No HPOS or version detection.
+# The WooCommerce preset (docs/presets.md, docs/wordpress.md), including WooCommerce PayPal Payments
+# and WooCommerce Subscriptions meta keys. Both order shapes are defined (HPOS `wc_orders`, posts with
+# post_type shop_order); whichever holds rows shows up. There is no HPOS or version detection.
 
 [preset]
 name = "woocommerce"
 requires = ["wordpress"]
 marker_tables = ["woocommerce_order_items"]
-# OPEN QUESTION Q3: Action Scheduler ships without WooCommerce too; split it into its own preset
-# (`action-scheduler`, marker `actionscheduler_actions`)?
 
 # ---------------------------------------------------------------------------------------------
 # Key/value tables
@@ -78,7 +71,7 @@ from = "woocommerce_order_items.order_id"
 to = "wc_orders.id"
 label = "items"
 # `_qty`, `_line_total`, `_product_id`, `_variation_id` are keys of the item's own meta rows,
-# shown as columns of the group (GAP: G3).
+# shown as columns of the group.
 columns = ["order_item_id", "order_item_type", "order_item_name", "_qty", "_line_total", "_product_id", "_variation_id"]
 
 # The posts shape of the same items: order_id points at the posts row in legacy storage.
@@ -186,7 +179,7 @@ columns = ["token_id", "gateway_id", "type", "is_default"]
 # Logged-in sessions use the user ID as key; guest keys are random strings, not references.
 [[reference]]
 from = "woocommerce_sessions.session_key"
-when = { session_key = { regexp = "^[0-9]+$" } }   # GAP: G5
+when = { session_key = { regexp = "^[0-9]+$" } }
 to = "users.ID"
 
 [[reference]]
@@ -202,24 +195,6 @@ from = "woocommerce_downloadable_product_permissions.user_id"
 to = "users.ID"
 
 # ---------------------------------------------------------------------------------------------
-# References: Action Scheduler (declared, although same-name inference would find most of them)
-# ---------------------------------------------------------------------------------------------
-
-[[reference]]
-from = "actionscheduler_actions.group_id"
-to = "actionscheduler_groups.group_id"
-
-[[reference]]
-from = "actionscheduler_actions.claim_id"
-to = "actionscheduler_claims.claim_id"
-
-[[reference]]
-from = "actionscheduler_logs.action_id"
-to = "actionscheduler_actions.action_id"
-label = "logs"
-columns = ["log_id", "log_date_gmt", "message"]
-
-# ---------------------------------------------------------------------------------------------
 # Entities
 # ---------------------------------------------------------------------------------------------
 
@@ -229,9 +204,9 @@ table = "wc_orders"
 summary = ["type", "status", "payment_method", "total_amount", "date_created_gmt"]
 created = "date_created_gmt"
 search = ["billing_email"]
-search_exact = ["transaction_id", "_ppcp_paypal_order_id"]   # a meta key: GAP: G15
+search_exact = ["transaction_id", "_ppcp_paypal_order_id"]   # `_ppcp_paypal_order_id` is a meta key
 
-# The posts shape. A filtered entity wins over the unfiltered `post` on the same table (GAP: G4).
+# The posts shape. A filtered entity wins over the unfiltered `post` on the same table.
 [[entity]]
 name = "order"
 table = "posts"
@@ -267,20 +242,13 @@ table = "woocommerce_payment_tokens"
 summary = ["gateway_id", "type", "user_id", "is_default"]
 
 [[entity]]
-name = "action"
-table = "actionscheduler_actions"
-summary = ["hook", "status", "scheduled_date_gmt", "attempts"]
-created = "scheduled_date_gmt"
-search = ["hook"]
-
-[[entity]]
 name = "session"
 table = "woocommerce_sessions"
 summary = ["session_key", "session_expiry"]
 search_exact = ["session_key"]
 
 # ---------------------------------------------------------------------------------------------
-# Kinds (from meta_keys.toml; flag, roles, user_agent, country, email and url renders are dropped)
+# Kinds
 # ---------------------------------------------------------------------------------------------
 
 [[kind]]
@@ -288,7 +256,7 @@ columns = [
   "wc_orders.status", "wc_orders.type", "wc_orders.payment_method", "wc_orders.currency",
   "wc_order_operational_data.created_via", "wc_order_addresses.address_type",
   "woocommerce_order_items.order_item_type", "woocommerce_payment_tokens.gateway_id",
-  "woocommerce_payment_tokens.type", "actionscheduler_actions.status", "actionscheduler_actions.hook",
+  "woocommerce_payment_tokens.type",
   "woocommerce_log.source", "woocommerce_log.level", "wc_product_meta_lookup.stock_status",
 ]
 enum = true
@@ -299,7 +267,7 @@ in = ["postmeta"]
 enum = true
 
 # Money. `currency` names a column of the same row, else of the owner row, else a meta key of the
-# same document; the first one that holds a value wins (GAP: G6).
+# same document; the first one that holds a value wins.
 [[kind]]
 columns = [
   "wc_orders.total_amount", "wc_orders.tax_amount",
@@ -328,13 +296,13 @@ money = {}
 columns = ["wc_product_meta_lookup.min_price", "wc_product_meta_lookup.max_price", "wc_order_product_lookup.product_net_revenue", "wc_order_product_lookup.product_gross_revenue", "wc_order_stats.total_sales", "wc_order_stats.net_total"]
 money = {}
 
-# Timestamps (GAP: G7)
+# Timestamps
 [[kind]]
-columns = ["woocommerce_log.timestamp", "actionscheduler_logs.log_date_gmt"]
+columns = ["woocommerce_log.timestamp"]
 timestamp = "utc"
 
 [[kind]]
-columns = ["actionscheduler_actions.scheduled_date_local", "actionscheduler_actions.last_attempt_local", "actionscheduler_logs.log_date_local", "wc_order_stats.date_created", "wc_order_stats.date_paid", "wc_order_stats.date_completed"]
+columns = ["wc_order_stats.date_created", "wc_order_stats.date_paid", "wc_order_stats.date_completed"]
 timestamp = "local"
 
 [[kind]]
@@ -363,7 +331,7 @@ columns = ["wc_order_operational_data.order_key", "woocommerce_payment_tokens.to
 secret = true
 
 # ---------------------------------------------------------------------------------------------
-# Value styles: today's status tones (ui.tsx STATUS_TONES), shipped off.
+# Value styles: shipped off; a project switches them on.
 # ---------------------------------------------------------------------------------------------
 
 [[style]]
@@ -401,22 +369,8 @@ value = "wc-refunded"
 color = "purple"
 enabled = false
 
-[[style]]
-columns = ["actionscheduler_actions.status"]
-match = "="
-value = "failed"
-color = "red"
-enabled = false
-
-[[style]]
-columns = ["actionscheduler_actions.status"]
-match = "="
-value = "complete"
-color = "green"
-enabled = false
-
 # ---------------------------------------------------------------------------------------------
-# Patterns: groups matched by SQL (GAP: G1 for placeholders other than {id} and {p}).
+# Patterns: groups matched by SQL.
 # Rules with the same `name` and `owner` merge into one group (OR); a rule whose placeholder
 # resolves to NULL or '' is skipped. `{owner.<column>}` and `{meta.<key>}` render as SQL literals.
 # ---------------------------------------------------------------------------------------------
@@ -454,7 +408,7 @@ AND timestamp BETWEEN {owner.date_created_gmt} - INTERVAL 1 DAY AND {owner.date_
 order = "timestamp"
 limit = 100
 
-# The posts shape: `owner_when` restricts the owner rows (GAP: G1).
+# The posts shape: `owner_when` restricts the owner rows.
 [[pattern]]
 name = "woocommerce_log"
 owner = "posts"
@@ -492,7 +446,8 @@ order = "timestamp"
 limit = 100
 
 # Scheduled actions whose args name the order ID as a whole number. Hashed `args` (long argument
-# lists) are skipped; their JSON is in `extended_args`.
+# lists) are skipped; their JSON is in `extended_args`. The group belongs to the order, so it lives
+# here; without Action Scheduler's table it is inactive.
 [[pattern]]
 name = "actionscheduler_actions"
 owner = "wc_orders"
@@ -606,31 +561,6 @@ WHERE p.post_type = 'product'
 ORDER BY p.ID DESC'''
 
 [[pinned]]
-id = "actions"
-title = "{p}actionscheduler_actions"
-sql = '''
-SELECT a.action_id, a.hook, a.status, a.scheduled_date_gmt, a.last_attempt_gmt, a.attempts, a.args, a.group_id,
-  (SELECT l.message FROM {p}actionscheduler_logs l WHERE l.action_id = a.action_id ORDER BY l.log_id DESC LIMIT 1) AS last_log_message
-FROM {p}actionscheduler_actions a ORDER BY a.action_id DESC'''
-
-[[pinned]]
-id = "actions_failed_by_hook"
-title = "{p}actionscheduler_actions failed by hook"
-sql = '''
-SELECT hook, COUNT(*) AS failed, MAX(last_attempt_gmt) AS last_attempt_gmt, MAX(action_id) AS last_action_id
-FROM {p}actionscheduler_actions WHERE status = 'failed'
-GROUP BY hook ORDER BY last_action_id DESC'''
-
-[[pinned]]
-id = "actions_overdue"
-title = "{p}actionscheduler_actions pending, overdue"
-sql = '''
-SELECT action_id, hook, scheduled_date_gmt, attempts, args FROM {p}actionscheduler_actions
-WHERE status = 'pending' AND scheduled_date_gmt > '1000-01-01'
-  AND scheduled_date_gmt < UTC_TIMESTAMP() - INTERVAL 10 MINUTE
-ORDER BY scheduled_date_gmt'''
-
-[[pinned]]
 id = "sessions"
 title = "{p}woocommerce_sessions"
 sql = '''
@@ -648,23 +578,8 @@ WHERE o.type IN ('shop_order', 'shop_order_refund')
 ORDER BY o.id DESC'''
 
 # ---------------------------------------------------------------------------------------------
-# Anomalies (GAP: G10)
+# Anomalies
 # ---------------------------------------------------------------------------------------------
-
-[[anomaly]]
-id = "actions_failed"
-sql = "SELECT COUNT(*) FROM {p}actionscheduler_actions WHERE status = 'failed'"
-text = "{p}actionscheduler_actions status = failed"
-open = { table = "actionscheduler_actions", where = "status = 'failed'" }
-
-[[anomaly]]
-id = "actions_overdue"
-sql = '''
-SELECT COUNT(*) FROM {p}actionscheduler_actions
-WHERE status = 'pending' AND scheduled_date_gmt > '1000-01-01'
-  AND scheduled_date_gmt < UTC_TIMESTAMP() - INTERVAL 10 MINUTE'''
-text = "{p}actionscheduler_actions status = pending, scheduled_date_gmt < now - 10 min"
-open = { pinned = "actions_overdue" }
 
 # Only meaningful while sync is on: without it the posts rows are placeholders.
 [[anomaly]]
@@ -677,7 +592,7 @@ WHERE o.type IN ('shop_order', 'shop_order_refund')
 text = "{p}wc_orders differ from {p}posts while data sync is on"
 open = { pinned = "hpos_drift" }
 
-# Replaces the "big table" insight (which classified tables by name); from the mock.
+# Error-level log entries (WC_Log_Levels: 400 and up) of the last day.
 [[anomaly]]
 id = "log_errors"
 sql = "SELECT COUNT(*) FROM {p}woocommerce_log WHERE level >= 400 AND timestamp > UTC_TIMESTAMP() - INTERVAL 1 DAY"
@@ -685,7 +600,7 @@ text = "{p}woocommerce_log level >= 400, last 24 h"
 open = { table = "woocommerce_log", where = "level >= 400 AND timestamp > UTC_TIMESTAMP() - INTERVAL 1 DAY" }
 
 # ---------------------------------------------------------------------------------------------
-# Actions (GAP: G9)
+# Actions
 # ---------------------------------------------------------------------------------------------
 
 # Order status in wc_orders and the posts copy, when there is one. Undo restores both from the
@@ -709,18 +624,6 @@ update = [
   { table = "wc_orders", key = "id", set = { status = "{param.status}", date_updated_gmt = { sql = "UTC_TIMESTAMP()" } } },
 ]
 
-[[action]]
-name = "retry"
-table = "actionscheduler_actions"
-when = { status = ["failed", "canceled"] }
-update = [{ set = { status = "pending", scheduled_date_gmt = { sql = "UTC_TIMESTAMP()" }, claim_id = "0" } }]
-
-[[action]]
-name = "cancel"
-table = "actionscheduler_actions"
-when = { status = "pending" }
-update = [{ set = { status = "canceled" } }]
-
 # Retention. Free SQL: reviewed as written, marked "no undo".
 [[action]]
 name = "delete_logs_before"
@@ -734,13 +637,8 @@ sql = "DELETE FROM {p}woocommerce_log WHERE timestamp < UTC_TIMESTAMP() - INTERV
 preview_sql = "SELECT COUNT(*) FROM {p}woocommerce_log WHERE timestamp < UTC_TIMESTAMP() - INTERVAL {param.days} DAY AND ({param.source} IS NULL OR source = {param.source})"
 
 # ---------------------------------------------------------------------------------------------
-# Find everywhere: containment searches on top of the default exact meta/search lookups (G13)
+# Find everywhere: containment searches on top of the default exact meta/search lookups
 # ---------------------------------------------------------------------------------------------
-
-[[find]]
-table = "actionscheduler_actions"
-columns = ["args", "extended_args"]
-match = "contains"
 
 [[find]]
 table = "woocommerce_log"

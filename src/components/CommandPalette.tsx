@@ -58,7 +58,7 @@ function usePaletteItems(query: string) {
   const [searching, setSearching] = useState(false);
 
   const { prefix, needle } = parsePrefix(query);
-  const wantEntities = !!wp && (prefix === null || prefix === "#" || prefix === "@");
+  const wantEntities = !!wp?.entities.length && (prefix === null || prefix === "#" || prefix === "@");
 
   useEffect(() => {
     if (!session?.database || !wantEntities || needle.length < 2) {

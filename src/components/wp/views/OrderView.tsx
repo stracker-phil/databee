@@ -61,8 +61,8 @@ export function OrderView({ o, changed }: { o: OrderViewData; changed: Set<strin
   const p = o.payment;
   const wp = useStore(selectWp);
   const openRow = useStore((s) => s.openRow);
-  const prefix = wp?.context.prefix ?? "wp_";
-  const hpos = !!wp?.context.wc && wp.context.wc.hpos !== "off";
+  const prefix = wp?.prefix ?? "wp_";
+  const hpos = o.doc.table !== `${prefix}posts`;
   const k = (column: string) => (hpos ? column : `_${column}`);
 
   return (

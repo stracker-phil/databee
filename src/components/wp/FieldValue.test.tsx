@@ -20,46 +20,30 @@ describe("FieldValue rendering", () => {
     vi.useRealTimers();
   });
 
-  it("shows stored values with readable notes next to them", () => {
-    vi.useFakeTimers({ now: NOW });
-    const unix = NOW / 1000 - 2 * 86400;
-    render(
-      <FieldList
-        fields={[
-          field("total_amount", "95.40000000", { hint: { type: "money", text: "$95.40" } }),
-          field("sent", String(unix), { hint: { type: "time", unix, utc: true } }),
-          field("wp_capabilities", "a:…", { hint: { type: "roles", roles: ["customer"] } }),
-          field("customer_id", "0", { hint: { type: "guest" } }),
-          field("billing_country", "AT", { hint: { type: "country", code: "AT" } }),
-        ]}
-      />,
-    );
+  it("shows the stored money value with the formatted amount next to it", () => {
+    render(<FieldValue field={field("total_amount", "95.40000000", { hint: { type: "money", text: "$95.40" } })} />);
     expect(screen.getByText("95.40000000")).toBeInTheDocument();
     expect(screen.getByText("$95.40")).toBeInTheDocument();
+  });
+
+  it("shows the stored timestamp with its age and the absolute time as title", () => {
+    vi.useFakeTimers({ now: NOW });
+    const unix = NOW / 1000 - 2 * 86400;
+    render(<FieldValue field={field("sent", String(unix), { hint: { type: "time", unix } })} />);
     expect(screen.getByText(String(unix))).toBeInTheDocument();
-    expect(screen.getByText("2 d ago")).toBeInTheDocument();
-    expect(screen.getByText("customer")).toBeInTheDocument();
+    expect(screen.getByText("2 d ago")).toHaveAttribute("title", expect.stringMatching(/\S/));
+  });
+
+  it("shows a plain value without any note when the field has no hint", () => {
+    render(<FieldValue field={field("customer_id", "0")} />);
     expect(screen.getByText("0")).toBeInTheDocument();
-    expect(screen.getByText("guest")).toBeInTheDocument();
-    expect(screen.getByText("AT")).toBeInTheDocument();
+    expect(screen.queryByText("guest")).not.toBeInTheDocument();
   });
 
   it("names every field by its stored key, never a label", () => {
     render(<FieldList fields={[field("_ppcp_paypal_intent", "CAPTURE", { label: "Intent" })]} />);
     expect(screen.getByText("_ppcp_paypal_intent")).toBeInTheDocument();
     expect(screen.queryByText("Intent")).not.toBeInTheDocument();
-  });
-
-  it("opens web links through the backend", async () => {
-    render(<FieldValue field={field("entry", "https://shop.test/cart", { hint: { type: "url", href: "https://shop.test/cart" } })} />);
-    await userEvent.click(screen.getByRole("link"));
-    expect(mocked.openUrl).toHaveBeenCalledWith("https://shop.test/cart");
-  });
-
-  it("shows the user agent string with a short summary", () => {
-    render(<FieldValue field={field("ua", "Mozilla/5.0 …", { hint: { type: "userAgent", text: "Chrome 154 · macOS" } })} />);
-    expect(screen.getByText("Mozilla/5.0 …")).toBeInTheDocument();
-    expect(screen.getByText("Chrome 154 · macOS")).toBeInTheDocument();
   });
 
   it("masks secrets until revealed", async () => {
@@ -112,15 +96,6 @@ describe("FieldValue editing", () => {
     await userEvent.click(screen.getByRole("button", { name: "Edit status" }));
     await userEvent.type(screen.getByLabelText("New value"), "{Control>}a{/Control}x{Enter}");
     expect(mocked.planChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setCell", table: "wp_wc_orders", keyColumn: "id", key: "4711", column: "status" }));
-  });
-
-  it.each([
-    { stored: "no", on: false, opposite: "yes" },
-    { stored: "1", on: true, opposite: "0" },
-  ])("queues the hint's opposite when the $stored flag is clicked", async ({ stored, on, opposite }) => {
-    render(<FieldValue field={field("is_vat_exempt", stored, { hint: { type: "flag", on, opposite } })} target={{ kind: "meta", entity: "order", id: "4711" }} />);
-    await userEvent.click(screen.getByRole("button", { name: new RegExp(stored) }));
-    expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", expect.objectContaining({ type: "setMeta", key: "is_vat_exempt", value: opposite }));
   });
 
   it("edits a serialized value node by its index path", async () => {

@@ -61,6 +61,15 @@ function routeKey(route: WpRoute): string {
   return JSON.stringify(sorted(route));
 }
 
+let legacyEntitiesReported = false;
+
+/** `<config dir>/entities.toml` is no longer read; said once per run. */
+function reportLegacyEntities(info: WpInfo | null) {
+  if (!info?.legacyEntitiesFile || legacyEntitiesReported) return;
+  legacyEntitiesReported = true;
+  useStore.getState().toast("info", `${info.legacyEntitiesFile} is no longer read. User presets replace it; see docs/presets.md.`);
+}
+
 onSessionEvent((event) => {
   if (event.type === "databaseChanged") void useStore.getState().loadWp(event.sessionId, event.database);
 });
@@ -83,6 +92,7 @@ export const wpSlice: Slice<WpSlice> = {
       try {
         const info = await api.wpDetect(sessionId, database, refresh);
         if (!isLatest(`wp:${key}`, token)) return;
+        reportLegacyEntities(info);
         set((s) => {
           if (!s.sessions.some((x) => x.id === sessionId)) return {};
           const active = s.activeSessionId === sessionId && selectActiveSession(s)?.database === database;

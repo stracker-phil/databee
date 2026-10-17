@@ -1,28 +1,15 @@
 import { PanelLeft } from "lucide-react";
-import { api } from "../api";
 import { useBindingLabel } from "../commands";
 import { formatAddress } from "../lib/address";
 import { copyText } from "../lib/clipboard";
 import { formatCount } from "../lib/format";
 import { isWpView, selectActivePending, selectActiveTab, selectSidebarHidden, selectWp, useStore, type QueryTab, type Tab } from "../state/store";
 
-/** WordPress mode: the site URL, the table prefix and WooCommerce's stored version and HPOS mode. */
+/** WordPress mode: the table prefix the presets apply under. */
 function WpFacts() {
   const wp = useStore(selectWp);
   if (!wp) return null;
-  const wc = wp.context.wc;
-  const url = wp.context.site.url;
-  return (
-    <>
-      {url && (
-        <button data-stage="statusbar:site" className="status-text" title={`Open ${url}`} onClick={() => void api.openUrl(url)}>
-          {url.replace(/^https?:\/\//, "")}
-        </button>
-      )}
-      <span>prefix {wp.context.prefix}</span>
-      {wc && <span>WooCommerce {wc.version ?? "?"} · hpos {wc.hpos}</span>}
-    </>
-  );
+  return <span>prefix {wp.prefix}</span>;
 }
 
 /** The tab's address as text; click copies it. A typed SQL filter is not part of it and shows as a hint. */

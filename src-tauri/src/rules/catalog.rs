@@ -15,7 +15,20 @@ use super::types::Preset;
 use crate::lock::MutexExt;
 
 /// `(file name, source)` of every built-in preset.
-pub const BUILT_IN: &[(&str, &str)] = &[];
+pub const BUILT_IN: &[(&str, &str)] = &[
+    (
+        "wordpress.toml",
+        include_str!("../../presets/wordpress.toml"),
+    ),
+    (
+        "woocommerce.toml",
+        include_str!("../../presets/woocommerce.toml"),
+    ),
+    (
+        "action-scheduler.toml",
+        include_str!("../../presets/action-scheduler.toml"),
+    ),
+];
 
 #[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]

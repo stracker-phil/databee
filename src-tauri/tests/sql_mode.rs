@@ -7,13 +7,11 @@ use databee_lib::db::Cell;
 use databee_lib::db::Database;
 use databee_lib::db::mysql::MySqlSession;
 use databee_lib::wp::changes::{WpChangeRequest, plan};
-use databee_lib::wp::detect;
-use databee_lib::wp::entity::{Catalog, definitions};
 use databee_lib::wp::rows::cell_str;
 
 mod common;
 
-use common::{connect_to, servers};
+use common::{connect_to, servers, wordpress};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -78,8 +76,9 @@ async fn no_backslash_escapes_writes_keep_a_single_backslash() {
             !db.dialect().backslash_escapes,
             "{host}:{port}: session ignored NO_BACKSLASH_ESCAPES"
         );
-        let ctx = detect(&db, "wp_write").await.unwrap().unwrap();
-        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+        let (ctx, catalog) = wordpress(&db, "wp_write")
+            .await
+            .unwrap_or_else(|| panic!("{host}:{port}: wp_write is not a WordPress database"));
         let change = plan(
             &db,
             &ctx,

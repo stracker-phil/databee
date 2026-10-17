@@ -300,9 +300,13 @@ search_exact?: Array<string>,
  */
 people?: boolean, };
 
-export type EntityDoc = { entity: string, label: string, id: string, title: string | null, subtitle: string | null, 
+export type EntityDoc = { entity: string, label: string, id: string, 
 /**
- * Featured image (posts/products), resolved after assembly.
+ * The entity's summary values, joined.
+ */
+title: string | null, subtitle: string | null, 
+/**
+ * Featured image (posts), resolved after assembly.
  */
 image: string | null, 
 /**
@@ -316,11 +320,9 @@ metaSource: MetaSource | null, relations: Array<RelationInfo>, };
 
 export type EntityLink = { entity: string, id: string, 
 /**
- * Title of the target (e.g. product name), resolved in a batch after assembly.
+ * The target's summary, resolved in a batch after assembly.
  */
 label: string | null, image: string | null, };
-
-export type EntitySummary = { name: string, label: string, };
 
 export type EntityViewData = { "view": "order" } & OrderView | { "view": "customer" } & CustomerView | { "view": "product" } & ProductView | { "view": "action" } & ActionView | { "view": "session" } & SessionView | { "view": "generic" } & EntityDoc;
 
@@ -403,7 +405,10 @@ export type Format = "php" | "json";
 
 export type Granularity = "day" | "hour";
 
-export type Hint = { "type": "money", text: string, } | { "type": "time", unix: number, utc: boolean, } | { "type": "flag", on: boolean, opposite: string, } | { "type": "url", href: string, } | { "type": "userAgent", text: string, } | { "type": "email" } | { "type": "roles", roles: Array<string>, } | { "type": "country", code: string, } | { "type": "guest" };
+/**
+ * What a kind rule says about a stored value, next to it; never instead of it.
+ */
+export type Hint = { "type": "money", text: string, } | { "type": "time", unix: number, };
 
 export type HistoryEntry = { account: string, database: string | null, sql: string, 
 /**
@@ -420,8 +425,6 @@ export type Home = { "show": "rows", limit?: number | null, } | { "show": "count
  * Failed actions grouped by hook, newest failure first.
  */
 export type HookFailures = { hook: string, count: number, lastFailure: number | null, lastMessage: string | null, };
-
-export type HposMode = "off" | "on" | "on_with_sync";
 
 export type IndexInfo = { name: string, unique: boolean, columns: Array<string>, };
 
@@ -482,9 +485,12 @@ export type LogLine = { at: number | null, message: string, };
  */
 export type Match = string | Array<string> | { glob: string, } | { like: string, } | { regexp: string, } | { not: Match, };
 
+/**
+ * The meta rows of a document, in stored order, named by their table.
+ */
 export type MetaGroup = { name: string, 
 /**
- * All keys start with `_` (hidden from the WordPress UI).
+ * All keys start with `_`.
  */
 private: boolean, entries: Array<DocField>, };
 
@@ -603,20 +609,6 @@ title?: string | null, sql: string, home?: Home | null, };
  * What the page renders for review; `statements` are for display only.
  */
 export type PlannedChange = { id: number, description: string, statements: Array<string>, canUndo: boolean, };
-
-/**
- * Plugins listed in one option.
- */
-export type PluginList = { 
-/**
- * The option the list was read from: `active_plugins` (in `options`) or
- * `active_sitewide_plugins` (in `sitemeta`).
- */
-source: "active_plugins" | "active_sitewide_plugins", 
-/**
- * Plugin slugs (the directory or file name of each stored plugin path), e.g. `woocommerce`.
- */
-plugins: Array<string>, };
 
 export type PostSummary = { id: string, title: string | null, kind: string, status: string, author: string | null, date: number | null, modified: number | null, };
 
@@ -901,34 +893,6 @@ maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSyste
  */
 gravatar: boolean, inspectorDock: Dock, };
 
-export type SiteInfo = { blogId: number, prefix: string, domain: string | null, path: string | null, };
-
-/**
- * Site-level facts read from `wp_options` (and `wp_sitemeta` on multisite).
- */
-export type SiteMeta = { name: string | null, url: string | null, currency: string | null, zone: string, 
-/**
- * The option `zone` was read from: `timezone_string` or `gmt_offset`.
- */
-zoneSource: "timezone_string" | "gmt_offset", theme: string | null, 
-/**
- * From `active_plugins`.
- */
-activePlugins: PluginList, 
-/**
- * Network-activated plugins from `active_sitewide_plugins`, when the network stores it.
- */
-networkPlugins: PluginList | null, 
-/**
- * From `upload_url_path` when set. WordPress derives the default from `WP_CONTENT_URL`
- * and `upload_path`, which the database does not prove, so it is not guessed.
- */
-uploadsUrl: UploadsUrl | null, 
-/**
- * From `woocommerce_price_num_decimals`.
- */
-priceDecimals: number, };
-
 /**
  * A snapshot without its values, for lists.
  */
@@ -1032,11 +996,6 @@ export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: n
  */
 export type UpdateStep = { table?: string | null, key?: string | null, where?: string | null, set: { [key in string]: SetValue }, };
 
-/**
- * The uploads base URL as stored, with the option it came from.
- */
-export type UploadsUrl = { url: string, source: "upload_url_path", };
-
 export type UserSummary = { id: string, login: string, email: string | null, name: string | null, registered: number | null, roles: Array<string>, orderCount: number, totalSpent: string | null, lastOrder: number | null, avatar: string | null, };
 
 export type Value = { raw: Cell, kind: ValueKind, 
@@ -1082,21 +1041,24 @@ export type Variation = { id: string, attributes: Array<[string, string]>, sku: 
 
 export type View = "document" | "rows";
 
-export type WcContext = { version: string | null, hpos: HposMode, hasActionScheduler: boolean, };
-
 export type WpChangeRequest = { "type": "setMeta", database: string, entity: string, id: string, key: string, value: string, } | { "type": "deleteMeta", database: string, entity: string, id: string, key: string, } | { "type": "setOrderStatus", database: string, id: string, status: string, } | { "type": "setAutoload", database: string, option: string, on: boolean, } | { "type": "deleteExpiredTransients", database: string, } | { "type": "deleteLogsBefore", database: string, days: number, source?: string | null, } | { "type": "retryAction", database: string, id: string, } | { "type": "cancelAction", database: string, id: string, };
 
-export type WpContext = { prefix: string, version: string | null, 
 /**
- * Sub-sites of a multisite network (blog 1 uses the main prefix).
+ * `rules_info` in the shape the WordPress screens read.
  */
-sites: Array<SiteInfo>, wc: WcContext | null, site: SiteMeta, };
-
-export type WpInfo = { context: WpContext, 
+export type WpInfo = { prefix: string, 
 /**
- * Entities that can be opened by ID.
+ * The applied presets, each after the presets it requires.
  */
-entities: Array<EntitySummary>, tableEntities: { [key in string]: TableEntity }, };
+presets: Array<string>, 
+/**
+ * Entity names, once each, in the order of `RulesInfo.entities`.
+ */
+entities: Array<string>, 
+/**
+ * Real table → the entity its rows open as.
+ */
+tableEntities: { [key in string]: TableEntity }, legacyEntitiesFile: string | null, };
 
 /**
  * The list screens of WordPress mode.

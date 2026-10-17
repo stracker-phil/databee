@@ -5,10 +5,10 @@
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::context::WpContext;
-use super::entity::{Catalog, EntityDoc};
-use super::hints::{Hint, money};
-use super::rows::{self, cell_str, text};
+use super::catalog::Catalog;
+use super::document::{EntityDoc, Hint};
+use super::rows::{self, cell_str, money, text};
+use super::site::WpContext;
 use super::sql::{paid_statuses_sql, table_ref};
 use super::{fetch, load_docs};
 use crate::db::Database;
@@ -102,7 +102,7 @@ fn fact_from(doc: &EntityDoc, label: &str, names: &[&str]) -> Option<PeekFact> {
     }
     let (value, kind) = match &field.hint {
         Some(Hint::Money { text }) => (text.clone(), FactKind::Money),
-        Some(Hint::Time { unix, .. }) => (unix.to_string(), FactKind::Time),
+        Some(Hint::Time { unix }) => (unix.to_string(), FactKind::Time),
         _ if label == "Status" => (raw, FactKind::Status),
         _ => (raw, FactKind::Text),
     };
@@ -182,9 +182,7 @@ async fn customer_order_facts(
         value: rows::count(&r[0]).unwrap_or(0).to_string(),
         kind: FactKind::Text,
     }];
-    if let Some(spent) =
-        text(&r[1]).and_then(|s| money(&s, ctx.site.currency.as_deref(), ctx.site.price_decimals))
-    {
+    if let Some(spent) = text(&r[1]).and_then(|s| money(&s, None)) {
         facts.push(PeekFact {
             label: "Spent".into(),
             value: spent,

@@ -25,7 +25,8 @@ The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules
   tested by exact string.
 - **Integration tests** need a server, so every one is `#[ignore]`. The core's live in `src-tauri/tests/` and use
   the public `databee_lib` API; a module's live inside the module, so they are deleted with it. The fixture
-  helpers (`servers`, `spec`, `connect_to`, `sessions`) are in `src/test_support.rs`, compiled with `cfg(test)`
+  helpers (`servers`, `spec`, `connect_to`, `sessions`, and `wordpress`, which builds a database's WordPress
+  context and entity catalog from the built-in presets) are in `src/test_support.rs`, compiled with `cfg(test)`
   or the `test-util` feature; `tests/common/mod.rs` re-exports them for the test binaries.
 
   | File | Needs | Run alone |

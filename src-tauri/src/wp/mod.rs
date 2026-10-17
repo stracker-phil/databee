@@ -1,15 +1,12 @@
-//! WordPress lens: detection, PHP value decoding, entity documents and the options
-//! inspector. All WordPress knowledge lives here; the UI only renders the results.
+//! WordPress screens over the effective rules of the `wordpress`, `woocommerce` and
+//! `action-scheduler` presets: documents, lists, detail views and the options inspector.
 
-pub mod cache;
-pub mod catalog_cache;
+pub mod catalog;
 pub mod changes;
 pub mod commands;
-pub mod context;
 pub mod dashboard;
 pub mod detail;
-pub mod entity;
-pub mod hints;
+pub mod document;
 pub mod lists;
 pub mod logs;
 pub mod media;
@@ -18,14 +15,15 @@ pub mod peek;
 pub mod rows;
 #[cfg(test)]
 mod server_tests;
+pub mod site;
 pub mod snapshot;
 pub mod snapshots_store;
 pub mod sql;
-
-pub use self::context::detect;
+#[cfg(test)]
+mod testing;
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -33,13 +31,14 @@ use tauri::plugin::TauriPlugin;
 use tauri::{Manager, Wry};
 use ts_rs::TS;
 
-use self::catalog_cache::CatalogCache;
-use self::context::WpContext;
-use self::entity::{Catalog, EntityDoc, TableEntity};
+use self::catalog::{Catalog, TableEntity};
+use self::document::{EntityDoc, Fetched};
 use self::rows::{string, text};
+use self::site::WpContext;
 use crate::db::Database;
 use crate::db::{ResultSet, escape_like};
 use crate::error::{AppError, AppResult};
+use crate::rules::effective::RulesInfo;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_RELATED: u32 = 100;
@@ -73,23 +72,35 @@ pub const COMMANDS: &[&str] = &[
     "wp_plan_change",
 ];
 
-/// The plugin's managed state; per-session data (the detected contexts) lives in `Session.ext`.
+/// The plugin's managed state.
 pub struct WpState {
     pub snapshots: snapshots_store::SnapshotStore,
-    pub catalogs: CatalogCache,
+    pub legacy_entities: Option<PathBuf>,
 }
 
 impl WpState {
     pub fn open(config_dir: &Path) -> Self {
         Self {
             snapshots: snapshots_store::SnapshotStore::open(config_dir),
-            catalogs: CatalogCache::new(config_dir.join("entities.toml")),
+            legacy_entities: legacy_entities(config_dir),
         }
     }
 }
 
-/// Installs WordPress mode: its commands, the snapshot store and the user's `entities.toml`,
-/// both in `config_dir`.
+/// Pre-preset `entities.toml`: reported, never read.
+fn legacy_entities(config_dir: &Path) -> Option<PathBuf> {
+    let path = config_dir.join("entities.toml");
+    if !path.exists() {
+        return None;
+    }
+    log::warn!(
+        "{} is no longer read; user presets replace it (docs/presets.md)",
+        path.display()
+    );
+    Some(path)
+}
+
+/// Installs WordPress mode: its commands and the snapshot store in `config_dir`.
 pub fn init(config_dir: &Path) -> TauriPlugin<Wry> {
     let config_dir = config_dir.to_path_buf();
     tauri::plugin::Builder::new("wp")
@@ -126,13 +137,6 @@ pub fn init(config_dir: &Path) -> TauriPlugin<Wry> {
         .build()
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct EntitySummary {
-    pub name: String,
-    pub label: String,
-}
-
 /// The list screens of WordPress mode.
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -148,22 +152,35 @@ pub enum WpList {
     Settings,
 }
 
-#[derive(Serialize, Debug, Clone, TS)]
+/// `rules_info` in the shape the WordPress screens read.
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct WpInfo {
-    pub context: WpContext,
-    /// Entities that can be opened by ID.
-    pub entities: Vec<EntitySummary>,
+    pub prefix: String,
+    /// The applied presets, each after the presets it requires.
+    pub presets: Vec<String>,
+    /// Entity names, once each, in the order of `RulesInfo.entities`.
+    pub entities: Vec<String>,
+    /// Real table → the entity its rows open as.
     pub table_entities: BTreeMap<String, TableEntity>,
+    pub legacy_entities_file: Option<String>,
 }
 
 impl WpInfo {
-    pub fn new(context: WpContext, catalog: &Catalog) -> Self {
+    pub fn new(info: RulesInfo, catalog: &Catalog, legacy: Option<&Path>) -> Self {
+        let mut entities: Vec<String> = Vec::new();
+        for applied in info.entities {
+            if !entities.contains(&applied.entity.name) {
+                entities.push(applied.entity.name);
+            }
+        }
         Self {
-            table_entities: catalog.table_entities(&context),
-            entities: catalog.entity_names(),
-            context,
+            prefix: info.prefix,
+            presets: info.applied_presets,
+            entities,
+            table_entities: catalog.table_entities(),
+            legacy_entities_file: legacy.map(|p| p.display().to_string()),
         }
     }
 }
@@ -184,27 +201,24 @@ pub async fn load_docs(
 ) -> AppResult<Vec<EntityDoc>> {
     let dialect = db.dialect();
     let def = catalog.get(entity)?;
-    let ids = entity::parse_ids(ids)?;
+    let ids = catalog::parse_ids(ids)?;
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let rows = fetch(db, &entity::rows_sql(dialect, database, ctx, def, &ids)).await?;
+    let rows = fetch(db, &catalog::rows_sql(dialect, database, def, &ids)).await?;
     let meta = match (&def.meta, rows.rows.is_empty()) {
         (Some(meta), false) => {
-            Some(fetch(db, &entity::meta_sql(dialect, database, ctx, meta, &ids)).await?)
+            Some(fetch(db, &catalog::meta_sql(dialect, database, meta, &ids)).await?)
         }
         _ => None,
     };
     let mut counts = HashMap::new();
-    for rel in def.relations.iter().filter(|r| r.when.applies(ctx)) {
+    for rel in &def.relations {
         let Ok(target) = catalog.get(&rel.entity) else {
             continue;
         };
-        let rs = fetch(
-            db,
-            &entity::relation_count_sql(dialect, database, ctx, rel, target, &ids),
-        )
-        .await?;
+        let sql = catalog::relation_count_sql(dialect, database, rel, target, &ids);
+        let rs = fetch(db, &sql).await?;
         let by_id: HashMap<String, u64> = rs
             .rows
             .iter()
@@ -212,10 +226,15 @@ pub async fn load_docs(
             .collect();
         counts.insert(rel.name.clone(), by_id);
     }
-    let mut docs = entity::assemble(catalog, ctx, def, &rows, meta.as_ref(), &counts);
+    let fetched = Fetched {
+        rows: &rows,
+        meta: meta.as_ref(),
+        counts: &counts,
+    };
+    let mut docs = document::assemble(&ctx.rules, catalog, def, fetched);
     docs.sort_by_key(|d| ids.iter().position(|id| id.to_string() == d.id));
     resolve_links(db, ctx, catalog, database, &mut docs).await?;
-    if def.table == "posts" {
+    if def.table == ctx.table("posts") {
         let ids: Vec<String> = docs.iter().map(|d| d.id.clone()).collect();
         let images = post_images(db, ctx, database, &ids).await?;
         for doc in &mut docs {
@@ -225,10 +244,9 @@ pub async fn load_docs(
     Ok(docs)
 }
 
-/// `id → title` for entities of one kind, in one query.
+/// `id → summary` of one entity's rows, in one query.
 pub async fn titles(
     db: &dyn Database,
-    ctx: &WpContext,
     catalog: &Catalog,
     database: &str,
     entity: &str,
@@ -236,25 +254,25 @@ pub async fn titles(
 ) -> AppResult<HashMap<String, String>> {
     let dialect = db.dialect();
     let def = catalog.get(entity)?;
-    let (Some(title), Ok(ids)) = (&def.title, entity::parse_ids(ids)) else {
+    let Ok(ids) = catalog::parse_ids(ids) else {
         return Ok(HashMap::new());
     };
-    if ids.is_empty() {
+    if ids.is_empty() || def.summary_columns.is_empty() {
         return Ok(HashMap::new());
     }
+    let columns: Vec<String> = def
+        .summary_columns
+        .iter()
+        .map(|c| dialect.quote_ident(c))
+        .collect();
     let rs = fetch(
         db,
         &format!(
-            "SELECT {}, {} FROM {}.{} WHERE {} IN ({})",
-            dialect.quote_ident(&def.id),
-            dialect.quote_ident(title),
-            dialect.quote_ident(database),
-            dialect.quote_ident(&ctx.table(&def.table)),
-            dialect.quote_ident(&def.id),
-            ids.iter()
-                .map(u64::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
+            "SELECT {id}, CONCAT_WS(' · ', {columns}) FROM {table} WHERE {id} IN ({ids})",
+            id = dialect.quote_ident(&def.id),
+            columns = columns.join(", "),
+            table = dialect.table_ref(database, &def.table),
+            ids = catalog::id_list(&ids),
         ),
     )
     .await?;
@@ -265,8 +283,8 @@ pub async fn titles(
         .collect())
 }
 
-/// Featured-image thumbnail URL per post ID (posts without one are left out). The uploads base
-/// is `upload_url_path` when set, else what each attachment's `guid` proves.
+/// Featured-image thumbnail URL per post ID (posts without one are left out). Each
+/// attachment's uploads base is what its `guid` proves for its file.
 pub async fn post_images(
     db: &dyn Database,
     ctx: &WpContext,
@@ -274,28 +292,18 @@ pub async fn post_images(
     post_ids: &[String],
 ) -> AppResult<HashMap<String, String>> {
     let dialect = db.dialect();
-    let Ok(ids) = entity::parse_ids(post_ids) else {
+    let Ok(ids) = catalog::parse_ids(post_ids) else {
         return Ok(HashMap::new());
     };
     if ids.is_empty() {
         return Ok(HashMap::new());
     }
-    let postmeta = format!(
-        "{}.{}",
-        dialect.quote_ident(database),
-        dialect.quote_ident(&ctx.table("postmeta"))
-    );
-    let list = |ids: &[u64]| {
-        ids.iter()
-            .map(u64::to_string)
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
+    let postmeta = sql::table_ref(dialect, database, ctx, "postmeta");
     let thumbs = fetch(
         db,
         &format!(
             "SELECT post_id, meta_value FROM {postmeta} WHERE meta_key = '_thumbnail_id' AND post_id IN ({})",
-            list(&ids)
+            catalog::id_list(&ids)
         ),
     )
     .await?;
@@ -308,12 +316,12 @@ pub async fn post_images(
     if attachment_ids.is_empty() {
         return Ok(HashMap::new());
     }
+    let id_list = catalog::id_list(&attachment_ids);
     let files = fetch(
         db,
         &format!(
             "SELECT post_id, meta_key, meta_value FROM {postmeta} \
-             WHERE meta_key IN ('_wp_attached_file', '_wp_attachment_metadata') AND post_id IN ({})",
-            list(&attachment_ids)
+             WHERE meta_key IN ('_wp_attached_file', '_wp_attachment_metadata') AND post_id IN ({id_list})"
         ),
     )
     .await?;
@@ -329,39 +337,15 @@ pub async fn post_images(
             slot.1 = string(&r[2]);
         }
     }
-    let bases = uploads_bases(db, ctx, database, &list(&attachment_ids), &attached).await?;
+    let guids = attachment_guids(db, ctx, database, &id_list).await?;
     Ok(thumb_of
         .into_iter()
         .filter_map(|(post, att)| {
             let att = att.to_string();
             let (file, meta) = attached.get(&att)?;
-            let url = media::attachment_url(bases.get(&att)?, file.as_deref()?, meta.as_deref());
-            Some((post, url))
-        })
-        .collect())
-}
-
-/// The uploads base per attachment ID in `attached` (`ID → (attached file, metadata)`):
-/// `upload_url_path` when set, else what each attachment's `guid` proves for its file.
-async fn uploads_bases(
-    db: &dyn Database,
-    ctx: &WpContext,
-    database: &str,
-    id_list: &str,
-    attached: &HashMap<String, (Option<String>, Option<String>)>,
-) -> AppResult<HashMap<String, String>> {
-    if let Some(uploads) = &ctx.site.uploads_url {
-        return Ok(attached
-            .keys()
-            .map(|id| (id.clone(), uploads.url.clone()))
-            .collect());
-    }
-    let guids = attachment_guids(db, ctx, database, id_list).await?;
-    Ok(attached
-        .iter()
-        .filter_map(|(id, (file, _))| {
-            let base = media::uploads_base_from_guid(guids.get(id)?, file.as_deref()?)?;
-            Some((id.clone(), base.to_string()))
+            let file = file.as_deref()?;
+            let base = media::uploads_base_from_guid(guids.get(&att)?, file)?;
+            Some((post, media::attachment_url(base, file, meta.as_deref())))
         })
         .collect())
 }
@@ -411,8 +395,8 @@ async fn resolve_links(
     for (entity, mut ids) in wanted {
         ids.sort();
         ids.dedup();
-        let names = titles(db, ctx, catalog, database, &entity, &ids).await?;
-        let images = if catalog.get(&entity)?.table == "posts" {
+        let names = titles(db, catalog, database, &entity, &ids).await?;
+        let images = if catalog.get(&entity)?.table == ctx.table("posts") {
             post_images(db, ctx, database, &ids).await?
         } else {
             HashMap::new()
@@ -446,10 +430,10 @@ pub async fn expand(
         .find(|r| r.name == relation)
         .ok_or_else(|| AppError::InvalidInput(format!("Unknown relation '{relation}'")))?;
     let target = catalog.get(&rel.entity)?;
-    let id = entity::parse_ids(&[id.to_string()])?[0];
+    let id = catalog::parse_ids(&[id.to_string()])?[0];
     let rs = fetch(
         db,
-        &entity::relation_ids_sql(dialect, database, ctx, rel, target, id, MAX_RELATED),
+        &catalog::relation_ids_sql(dialect, database, rel, target, id, MAX_RELATED),
     )
     .await?;
     let ids: Vec<String> = rs.rows.iter().filter_map(|r| string(&r[0])).collect();
@@ -463,11 +447,7 @@ pub async fn options_overview(
 ) -> AppResult<options::OptionsOverview> {
     let dialect = db.dialect();
     let table = ctx.table("options");
-    let from = format!(
-        "{}.{}",
-        dialect.quote_ident(database),
-        dialect.quote_ident(&table)
-    );
+    let from = sql::table_ref(dialect, database, ctx, "options");
     let rows = fetch(
         db,
         &format!("SELECT option_name, LENGTH(option_value), autoload FROM {from}"),
@@ -506,15 +486,15 @@ pub async fn options_overview(
     ))
 }
 
-/// Options whose name starts with `prefix` (or all transients for `transients`), as
-/// annotated fields with decoded values.
+/// Options whose name starts with `prefix` (or all transients for `transients`), as fields
+/// with decoded values and the kinds of the options' `[[meta]]` rules.
 pub async fn options_group(
     db: &dyn Database,
     ctx: &WpContext,
     catalog: &Catalog,
     database: &str,
     prefix: &str,
-) -> AppResult<Vec<entity::DocField>> {
+) -> AppResult<Vec<document::DocField>> {
     let dialect = db.dialect();
     let either = |a: &str, b: &str| {
         format!(
@@ -534,27 +514,24 @@ pub async fn options_group(
             either(&format!("{p}%"), &format!(r"\_{p}%"))
         }
     };
+    let table = ctx.table("options");
     let rs = fetch(
         db,
         &format!(
-            "SELECT option_name, option_value, autoload FROM {}.{} WHERE {filter} ORDER BY option_name LIMIT 500",
-            dialect.quote_ident(database),
-            dialect.quote_ident(&ctx.table("options"))
+            "SELECT option_name, option_value, autoload FROM {} WHERE {filter} ORDER BY option_name LIMIT 500",
+            sql::table_ref(dialect, database, ctx, "options"),
         ),
     )
     .await?;
-    let hints = hints::HintContext {
-        currency: ctx.site.currency.clone(),
-        zone: ctx.site.zone,
-        price_decimals: ctx.site.price_decimals,
-    };
+    let meta = ctx.rules.meta_table(&table);
     Ok(rs
         .rows
         .iter()
         .filter_map(|r| {
             let name = string(&r[0])?;
-            let mut f = entity::field(catalog, &hints, name, r[1].clone(), None);
-            f.autoload = string(&r[2]).map(|value| entity::Autoload {
+            let rule = meta.and_then(|m| ctx.rules.meta_kind_rule(m, &name));
+            let mut f = document::field(catalog, rule, (&[], &[]), name, r[1].clone(), None);
+            f.autoload = string(&r[2]).map(|value| document::Autoload {
                 on: options::is_autoloaded(&value),
                 value,
             });
@@ -565,18 +542,31 @@ pub async fn options_group(
 
 #[cfg(test)]
 mod tests {
+    use tempfile::tempdir;
+
+    use super::document::{Autoload, Hint, Sensitive};
+    use super::testing::{HPOS, site, site_with};
     use super::*;
     use crate::db::{Cell, ColumnMeta, FakeDatabase};
-    use crate::wp::entity::definitions;
 
-    fn ctx() -> WpContext {
-        WpContext {
-            prefix: "wp_".into(),
-            version: None,
-            sites: vec![],
-            wc: None,
-            site: Default::default(),
-            tables: ["wp_options".to_string(), "wp_users".to_string()].into(),
+    fn info_of(ctx: &WpContext, catalog: &Catalog, legacy: Option<&Path>) -> WpInfo {
+        let loaded = ctx.rules.applied.presets.clone();
+        WpInfo::new(RulesInfo::new(&ctx.rules, &loaded), catalog, legacy)
+    }
+
+    fn options_result(rows: Vec<Vec<Cell>>) -> ResultSet {
+        ResultSet {
+            columns: ["option_name", "option_value", "autoload"]
+                .iter()
+                .map(|name| ColumnMeta {
+                    name: name.to_string(),
+                    type_name: "TEXT".into(),
+                    origin: None,
+                })
+                .collect(),
+            rows,
+            returns_rows: true,
+            ..Default::default()
         }
     }
 
@@ -612,45 +602,121 @@ mod tests {
     }
 
     #[test]
-    fn wp_info_lists_openable_entities_with_name_and_label() {
-        let ctx = ctx();
-        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+    fn wp_info_names_each_entity_once_with_filtered_ones_first() {
+        let (ctx, catalog) = site_with("wp_", HPOS, &["wordpress", "woocommerce"]);
 
-        let info = serde_json::to_value(WpInfo::new(ctx, &catalog)).unwrap();
+        let info = info_of(&ctx, &catalog, None);
 
-        assert!(
-            info["entities"]
-                .as_array()
-                .unwrap()
-                .contains(&serde_json::json!({ "name": "user", "label": "User" })),
-            "{info}"
+        assert_eq!(info.prefix, "wp_");
+        assert_eq!(info.presets, ["wordpress", "woocommerce"]);
+        assert_eq!(
+            info.entities,
+            [
+                "order",
+                "product",
+                "post",
+                "user",
+                "comment",
+                "option",
+                "order_item",
+                "order_address"
+            ]
+        );
+        assert_eq!(info.table_entities, catalog.table_entities());
+    }
+
+    #[test]
+    fn wp_info_serializes_with_camel_case_fields_and_the_legacy_file_path() {
+        let (ctx, catalog) = site_with("wp_", &["options", "posts", "users"], &["wordpress"]);
+
+        let with_file = info_of(&ctx, &catalog, Some(Path::new("/cfg/entities.toml")));
+        let without = info_of(&ctx, &catalog, None);
+
+        assert_eq!(
+            serde_json::to_value(&with_file).unwrap(),
+            serde_json::json!({
+                "prefix": "wp_",
+                "presets": ["wordpress"],
+                "entities": ["post", "user", "option"],
+                "tableEntities": {
+                    "wp_options": { "entity": "option", "idColumn": "option_id" },
+                    "wp_posts": { "entity": "post", "idColumn": "ID" },
+                    "wp_users": { "entity": "user", "idColumn": "ID" },
+                },
+                "legacyEntitiesFile": "/cfg/entities.toml",
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&without).unwrap()["legacyEntitiesFile"],
+            serde_json::Value::Null
+        );
+    }
+
+    #[test]
+    fn an_old_entities_file_in_the_config_dir_is_reported_and_not_read() {
+        let dir = tempdir().unwrap();
+        assert_eq!(WpState::open(dir.path()).legacy_entities, None);
+
+        std::fs::write(dir.path().join("entities.toml"), "[[entity]]").unwrap();
+
+        assert_eq!(
+            WpState::open(dir.path()).legacy_entities,
+            Some(dir.path().join("entities.toml"))
+        );
+    }
+
+    #[tokio::test]
+    async fn options_group_masks_secret_options_and_reads_unix_timeouts() {
+        let (ctx, catalog) = site(&["options"]);
+        let cell = |s: &str| Cell::Text(s.into());
+        let db = FakeDatabase::new().on(
+            "SELECT option_name, option_value, autoload FROM",
+            options_result(vec![
+                vec![cell("blogname"), cell("Shop"), cell("yes")],
+                vec![cell("gateway_api_key"), cell("sk_test"), cell("no")],
+                vec![
+                    cell("_transient_timeout_fresh"),
+                    cell("4102444800"),
+                    cell("no"),
+                ],
+            ]),
+        );
+
+        let fields = options_group(&db, &ctx, &catalog, "wp", "transients")
+            .await
+            .unwrap();
+
+        let kinds: Vec<_> = fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.hint.clone(), f.sensitive))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("blogname", None, None),
+                ("gateway_api_key", None, Some(Sensitive::Secret)),
+                (
+                    "_transient_timeout_fresh",
+                    Some(Hint::Time {
+                        unix: 4_102_444_800
+                    }),
+                    None
+                ),
+            ]
         );
     }
 
     #[tokio::test]
     async fn options_group_reports_each_options_stored_autoload_and_whether_it_is_on() {
-        let ctx = ctx();
-        let catalog = Catalog::new(&definitions(None).unwrap(), &ctx);
+        let (ctx, catalog) = site(&["options"]);
         let cell = |s: &str| Cell::Text(s.into());
         let db = FakeDatabase::new().on(
             "SELECT option_name, option_value, autoload FROM",
-            ResultSet {
-                columns: ["option_name", "option_value", "autoload"]
-                    .iter()
-                    .map(|name| ColumnMeta {
-                        name: name.to_string(),
-                        type_name: "TEXT".into(),
-                        origin: None,
-                    })
-                    .collect(),
-                rows: vec![
-                    vec![cell("woocommerce_a"), cell("1"), cell("yes")],
-                    vec![cell("woocommerce_b"), cell("2"), cell("auto-off")],
-                    vec![cell("woocommerce_c"), cell("3"), cell("on")],
-                ],
-                returns_rows: true,
-                ..Default::default()
-            },
+            options_result(vec![
+                vec![cell("woocommerce_a"), cell("1"), cell("yes")],
+                vec![cell("woocommerce_b"), cell("2"), cell("auto-off")],
+                vec![cell("woocommerce_c"), cell("3"), cell("on")],
+            ]),
         );
 
         let fields = options_group(&db, &ctx, &catalog, "wp", "woocommerce")
@@ -662,7 +728,7 @@ mod tests {
             .map(|f| (f.name.as_str(), f.autoload.clone()))
             .collect();
         let autoload = |value: &str, on: bool| {
-            Some(entity::Autoload {
+            Some(Autoload {
                 value: value.into(),
                 on,
             })

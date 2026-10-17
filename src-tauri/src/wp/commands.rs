@@ -4,51 +4,62 @@ use std::sync::Arc;
 
 use tauri::State;
 
-use super::cache;
+use super::catalog::Catalog;
 use super::changes::{self, WpChangeRequest};
-use super::context::WpContext;
 use super::dashboard::{self, ActionHistogram, BrowserSection, Dashboard};
 use super::detail::{self, EntityView, SearchHit};
-use super::entity::{Catalog, DocField};
+use super::document::DocField;
 use super::lists::{
     self, ActionSummary, ListQuery, OrderSummary, OrderType, Page, PostSummary, ProductSummary,
     SessionSummary, UserSummary,
 };
 use super::options::OptionsOverview;
 use super::peek::{self, FindGroup, PeekFact};
+use super::site::WpContext;
 use super::snapshot::{self, CompareRow, DiffEntry, Scope};
 use super::snapshots_store::SnapshotInfo;
 use super::{self as lens, WpInfo, WpState};
 use crate::db::plans::PlannedChange;
 use crate::error::{AppError, AppResult};
+use crate::rules::effective::{self, RulesInfo};
+use crate::schema;
 use crate::session::Session;
 use crate::state::AppState;
 
-/// What every WordPress-mode command needs: the detected context, the entity catalog for it
-/// and the session.
+/// What every WordPress-mode command needs: the database's rules as a context, the entity
+/// catalog read from them and the session.
 struct WpEnv {
     ctx: WpContext,
     catalog: Catalog,
     session: Arc<Session>,
 }
 
-async fn wp_env(
+/// The rules of `database` as the WordPress screens read them; `None` unless the `wordpress`
+/// preset applies.
+async fn load(
     state: &AppState,
-    wp: &WpState,
-    session_id: &str,
+    session: &Session,
     database: &str,
-) -> AppResult<WpEnv> {
+) -> AppResult<Option<(WpContext, Catalog)>> {
+    let schema = schema::database(session, database).await?;
+    let rules = effective::effective(session, database, &schema, state.rules());
+    let catalog = Catalog::new(&rules, &schema);
+    Ok(WpContext::new(rules).map(|ctx| (ctx, catalog)))
+}
+
+async fn wp_env(state: &AppState, session_id: &str, database: &str) -> AppResult<WpEnv> {
     let session = state.sessions.get(session_id)?;
-    let ctx = cache::detect(&session, database, false)
+    let (ctx, catalog) = load(state, &session, database)
         .await?
         .ok_or_else(|| AppError::InvalidInput(format!("{database} is not a WordPress database")))?;
     Ok(WpEnv {
-        catalog: wp.catalogs.catalog(&ctx)?,
-        session,
         ctx,
+        catalog,
+        session,
     })
 }
 
+/// `rules_info` in the old `WpInfo` shape; `None` unless the `wordpress` preset applies.
 #[tauri::command]
 pub async fn wp_detect(
     state: State<'_, AppState>,
@@ -58,54 +69,58 @@ pub async fn wp_detect(
     refresh: bool,
 ) -> AppResult<Option<WpInfo>> {
     let session = state.sessions.get(&session_id)?;
-    let Some(ctx) = cache::detect(&session, &database, refresh).await? else {
+    if refresh {
+        schema::refresh(&session);
+    }
+    let Some((ctx, catalog)) = load(&state, &session, &database).await? else {
         return Ok(None);
     };
-    let catalog = wp.catalogs.catalog(&ctx)?;
-    Ok(Some(WpInfo::new(ctx, &catalog)))
+    let loaded = effective::loaded_presets(&state.presets.entries());
+    let info = RulesInfo::new(&ctx.rules, &loaded);
+    Ok(Some(WpInfo::new(
+        info,
+        &catalog,
+        wp.legacy_entities.as_deref(),
+    )))
 }
 
 #[tauri::command]
 pub async fn wp_options(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
 ) -> AppResult<OptionsOverview> {
-    let env = wp_env(&state, &wp, &session_id, &database).await?;
+    let env = wp_env(&state, &session_id, &database).await?;
     lens::options_overview(env.session.db.as_ref(), &env.ctx, &database).await
 }
 
 #[tauri::command]
 pub async fn wp_dashboard(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
 ) -> AppResult<Dashboard> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     dashboard::dashboard(s.db.as_ref(), &ctx, &database).await
 }
 
 #[tauri::command]
 pub async fn wp_browser(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
 ) -> AppResult<Vec<BrowserSection>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     dashboard::browser(s.db.as_ref(), &ctx, &database).await
 }
 
 #[tauri::command]
 pub async fn wp_orders(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     order_type: OrderType,
@@ -113,7 +128,7 @@ pub async fn wp_orders(
 ) -> AppResult<Page<OrderSummary>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     lists::orders(
         s.db.as_ref(),
         &ctx,
@@ -127,14 +142,13 @@ pub async fn wp_orders(
 #[tauri::command]
 pub async fn wp_users(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     query: ListQuery,
 ) -> AppResult<Page<UserSummary>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     lists::users(
         s.db.as_ref(),
         &ctx,
@@ -148,90 +162,83 @@ pub async fn wp_users(
 #[tauri::command]
 pub async fn wp_products(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     query: ListQuery,
 ) -> AppResult<Page<ProductSummary>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     lists::products(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
 pub async fn wp_actions(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     query: ListQuery,
 ) -> AppResult<Page<ActionSummary>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     lists::actions(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
 pub async fn wp_failed_by_hook(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
 ) -> AppResult<Vec<lists::HookFailures>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     lists::failed_by_hook(s.db.as_ref(), &ctx, &database).await
 }
 
 #[tauri::command]
 pub async fn wp_action_histogram(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     hook: Option<String>,
 ) -> AppResult<ActionHistogram> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     dashboard::action_histogram(s.db.as_ref(), &ctx, &database, hook.as_deref()).await
 }
 
 #[tauri::command]
 pub async fn wp_sessions(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     query: ListQuery,
 ) -> AppResult<Page<SessionSummary>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     lists::sessions(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
 pub async fn wp_content(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     query: ListQuery,
 ) -> AppResult<Page<PostSummary>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     lists::content(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
 pub async fn wp_view(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     entity: String,
@@ -241,7 +248,7 @@ pub async fn wp_view(
         ctx,
         catalog,
         session: s,
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     detail::entity_view(
         s.db.as_ref(),
         &ctx,
@@ -257,7 +264,6 @@ pub async fn wp_view(
 #[tauri::command]
 pub async fn wp_peek(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     entity: String,
@@ -267,42 +273,39 @@ pub async fn wp_peek(
         ctx,
         catalog,
         session: s,
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     peek::peek(s.db.as_ref(), &ctx, &catalog, &database, &entity, &id).await
 }
 
 #[tauri::command]
 pub async fn wp_find_value(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     value: String,
 ) -> AppResult<Vec<FindGroup>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     peek::find_value(s.db.as_ref(), &ctx, &database, &value).await
 }
 
 #[tauri::command]
 pub async fn wp_search(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     query: String,
 ) -> AppResult<Vec<SearchHit>> {
     let WpEnv {
         ctx, session: s, ..
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     detail::search(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]
 pub async fn wp_options_group(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     prefix: String,
@@ -311,14 +314,13 @@ pub async fn wp_options_group(
         ctx,
         catalog,
         session: s,
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     lens::options_group(s.db.as_ref(), &ctx, &catalog, &database, &prefix).await
 }
 
 #[tauri::command]
 pub async fn wp_order_logs(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     id: String,
@@ -327,7 +329,7 @@ pub async fn wp_order_logs(
         ctx,
         catalog,
         session: s,
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     detail::order_logs(s.db.as_ref(), &ctx, &catalog, &database, &id).await
 }
 
@@ -344,7 +346,7 @@ pub async fn wp_snapshot_take(
         ctx,
         catalog,
         session: s,
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     let values = snapshot::capture(s.db.as_ref(), &ctx, &catalog, &database, &scope).await?;
     wp.snapshots
         .take(label, s.spec.account(), database, scope, values)
@@ -375,7 +377,7 @@ pub async fn wp_snapshot_diff(
         ctx,
         catalog,
         session: s,
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     snapshot::diff_against_now(s.db.as_ref(), &ctx, &catalog, &database, &taken).await
 }
 
@@ -387,7 +389,6 @@ pub async fn wp_snapshot_delete(wp: State<'_, WpState>, id: String) -> AppResult
 #[tauri::command]
 pub async fn wp_compare(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     database: String,
     entity: String,
@@ -398,18 +399,17 @@ pub async fn wp_compare(
         ctx,
         catalog,
         session: s,
-    } = wp_env(&state, &wp, &session_id, &database).await?;
+    } = wp_env(&state, &session_id, &database).await?;
     snapshot::compare(s.db.as_ref(), &ctx, &catalog, &database, &entity, &a, &b).await
 }
 
 #[tauri::command]
 pub async fn wp_plan_change(
     state: State<'_, AppState>,
-    wp: State<'_, WpState>,
     session_id: String,
     change: WpChangeRequest,
 ) -> AppResult<PlannedChange> {
-    let env = wp_env(&state, &wp, &session_id, change.database()).await?;
+    let env = wp_env(&state, &session_id, change.database()).await?;
     let plan = changes::plan(env.session.db.as_ref(), &env.ctx, &env.catalog, &change).await?;
     Ok(env.session.plans.add(plan))
 }

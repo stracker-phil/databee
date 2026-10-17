@@ -218,7 +218,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `Inspector` + `ValueTree` (PHP/JSON decode) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `CommandPalette`, `ContextMenu`, `Toasts` |
-| WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens) |
+| WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens-until-u12) |
 
 ### Settings pages
 
@@ -264,7 +264,7 @@ one of them.
   each name (`Connection` only with several sessions, `Database` always) opens the picker. `SearchField` is a
   button styled as a field (label "Go to") that opens the palette; its key cap follows `palette.open`.
 - **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (WordPress mode: the
-  site facts; otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
+  table prefix; otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
   typed SQL filter applies; a query tab adds rows, time and statement count, with the row-limit warning), spacer, `PendingCount` (`pending n`, a button to the tray when n > 0).
   The theme and dock chips are gone: both stay in Settings and the palette.
 - **Sidebar:** the Tables/History switch, the filter (`InsetField`, key cap from `sidebar.focusFilter`), a

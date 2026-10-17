@@ -363,13 +363,11 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::super::actions::{ActionEffect, DeleteSpec, Param, ParamType, SetValue, UpdateStep};
+    use super::super::catalog::BUILT_IN;
     use super::super::kinds::{Money, StyleColor, StyleMatch, ValueRule, Zone};
     use super::super::queries::Home;
     use super::super::types::{ColumnGlob, Conditions, FindMatch, Match};
     use super::*;
-
-    const WORDPRESS_DRAFT: &str = include_str!("fixtures/wordpress.draft.toml");
-    const WOOCOMMERCE_DRAFT: &str = include_str!("fixtures/woocommerce.draft.toml");
 
     /// A file whose `[preset]` header takes lines 1 to 3, so `body` starts on line 4.
     fn file(body: &str) -> String {
@@ -1250,28 +1248,91 @@ columns = ["email"]
         assert_eq!(again, preset);
     }
 
+    fn built_in(file: &str) -> Preset {
+        let (_, src) = BUILT_IN
+            .iter()
+            .find(|(name, _)| *name == file)
+            .unwrap_or_else(|| panic!("no built-in {file}"));
+        parse(file, src).unwrap_or_else(|e| panic!("{e}"))
+    }
+
     #[test]
-    fn drafts_parse_and_round_trip() {
-        for (name, src) in [
-            ("wordpress.draft.toml", WORDPRESS_DRAFT),
-            ("woocommerce.draft.toml", WOOCOMMERCE_DRAFT),
-        ] {
-            let preset = parse(name, src).unwrap_or_else(|e| panic!("{e}"));
+    fn built_in_presets_parse_and_round_trip() {
+        assert_eq!(
+            BUILT_IN.iter().map(|(file, _)| *file).collect::<Vec<_>>(),
+            [
+                "wordpress.toml",
+                "woocommerce.toml",
+                "action-scheduler.toml"
+            ]
+        );
+        for (file, src) in BUILT_IN {
+            let preset = parse(file, src).unwrap_or_else(|e| panic!("{e}"));
             let written = to_toml(&preset).unwrap();
-            let again = parse(name, &written).unwrap_or_else(|e| panic!("{name}: {e}\n{written}"));
-            assert_eq!(again, preset, "{name}");
+            let again = parse(file, &written).unwrap_or_else(|e| panic!("{file}: {e}\n{written}"));
+            assert_eq!(again, preset, "{file}");
         }
     }
 
     #[test]
-    fn woocommerce_draft_requires_wordpress_and_disambiguates_item_references() {
-        let preset = parse("woocommerce.draft.toml", WOOCOMMERCE_DRAFT).unwrap();
-        assert_eq!(preset.name, "woocommerce");
-        assert_eq!(preset.requires, strings(&["wordpress"]));
+    fn built_in_presets_name_what_they_need_and_where_they_apply() {
+        let cases = [
+            (
+                "wordpress.toml",
+                "wordpress",
+                vec![],
+                vec!["options", "posts", "users"],
+            ),
+            (
+                "woocommerce.toml",
+                "woocommerce",
+                vec!["wordpress"],
+                vec!["woocommerce_order_items"],
+            ),
+            (
+                "action-scheduler.toml",
+                "action-scheduler",
+                vec!["wordpress"],
+                vec!["actionscheduler_actions"],
+            ),
+        ];
+        for (file, name, requires, markers) in cases {
+            let preset = built_in(file);
+            assert_eq!(preset.name, name, "{file}");
+            assert_eq!(preset.requires, requires, "{file}");
+            assert_eq!(preset.marker_tables, markers, "{file}");
+        }
+    }
+
+    #[test]
+    fn woocommerce_disambiguates_the_item_references_to_both_order_shapes() {
+        let preset = built_in("woocommerce.toml");
         let ids: Vec<&str> = preset.references.iter().map(|r| r.id.as_str()).collect();
         assert!(ids.contains(&"woocommerce_order_items.order_id->wc_orders.id"));
         assert!(ids.contains(&"woocommerce_order_items.order_id->posts.ID"));
         assert!(ids.contains(&"guest_orders"));
+    }
+
+    #[test]
+    fn wordpress_declares_its_meta_tables_with_their_owners() {
+        let preset = built_in("wordpress.toml");
+        let owners: Vec<(&str, Option<&str>, Option<&str>)> = preset
+            .meta
+            .iter()
+            .map(|m| (m.table.as_str(), m.owner.as_deref(), m.fk.as_deref()))
+            .collect();
+        assert_eq!(
+            owners,
+            [
+                ("postmeta", Some("posts"), Some("post_id")),
+                ("usermeta", Some("users"), Some("user_id")),
+                ("commentmeta", Some("comments"), Some("comment_id")),
+                ("termmeta", Some("terms"), Some("term_id")),
+                ("sitemeta", Some("site"), Some("site_id")),
+                ("blogmeta", Some("blogs"), Some("blog_id")),
+                ("options", None, None),
+            ]
+        );
     }
 
     const ROUND_TRIP: &str = r#"

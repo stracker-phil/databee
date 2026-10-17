@@ -6,9 +6,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::context::WpContext;
-use super::hints::money;
-use super::rows::{count, facets, int, text};
+use super::rows::{count, facets, int, money, text};
+use super::site::WpContext;
 use super::sql::{Filter, id_match, paid_statuses_sql, table_ref};
 use super::{fetch, post_images};
 use crate::db::Database;
@@ -280,21 +279,18 @@ pub fn orders_sql(
     }
 }
 
-pub fn order_rows(
-    rs: &ResultSet,
-    fallback_currency: Option<&str>,
-    decimals: u32,
-) -> Vec<OrderSummary> {
+/// Totals show as stored, with the order's own currency.
+pub fn order_rows(rs: &ResultSet) -> Vec<OrderSummary> {
     rs.rows
         .iter()
         .filter(|r| r.len() > ORDER_COLS)
         .map(|r| {
-            let currency = text(&r[4]).or_else(|| fallback_currency.map(String::from));
+            let currency = text(&r[4]);
             OrderSummary {
                 id: text(&r[0]).unwrap_or_default(),
                 kind: text(&r[1]).unwrap_or_default(),
                 status: text(&r[2]).unwrap_or_default(),
-                total: text(&r[3]).and_then(|v| money(&v, currency.as_deref(), decimals)),
+                total: text(&r[3]).and_then(|v| money(&v, currency.as_deref())),
                 gateway: text(&r[5]),
                 gateway_title: text(&r[6]),
                 email: text(&r[7]),
@@ -370,10 +366,7 @@ pub async fn orders(
 ) -> AppResult<Page<OrderSummary>> {
     let dialect = session.dialect();
     let rs = fetch(session, &orders_sql(dialect, db, ctx, order_type, q)).await?;
-    let (items, has_more) = page_split(
-        order_rows(&rs, ctx.site.currency.as_deref(), ctx.site.price_decimals),
-        q.limit(),
-    );
+    let (items, has_more) = page_split(order_rows(&rs), q.limit());
     let (status_sql, gateway_sql) = order_facets_sql(dialect, db, ctx, order_type);
     let statuses = fetch(session, &status_sql).await?;
     let gateways = fetch(session, &gateway_sql).await?;
@@ -489,7 +482,7 @@ pub fn guests_sql(
     }
 }
 
-pub fn guest_rows(rs: &ResultSet, currency: Option<&str>, decimals: u32) -> Vec<UserSummary> {
+pub fn guest_rows(rs: &ResultSet) -> Vec<UserSummary> {
     rs.rows
         .iter()
         .filter_map(|r| {
@@ -501,7 +494,7 @@ pub fn guest_rows(rs: &ResultSet, currency: Option<&str>, decimals: u32) -> Vec<
                 registered: int(&r[4]),
                 roles: vec!["Guest".into()],
                 order_count: count(&r[1]).unwrap_or(0),
-                total_spent: text(&r[2]).and_then(|v| money(&v, currency, decimals)),
+                total_spent: text(&r[2]).and_then(|v| money(&v, None)),
                 last_order: int(&r[3]),
                 avatar: None,
                 email: Some(email),
@@ -523,7 +516,7 @@ pub fn customer_stats_sql(
         .map(|n| n.to_string())
         .collect::<Vec<_>>()
         .join(", ");
-    if list.is_empty() || ctx.wc.is_none() {
+    if list.is_empty() || !ctx.woocommerce() {
         return None;
     }
     Some(if ctx.hpos() {
@@ -548,13 +541,20 @@ pub fn customer_stats_sql(
     })
 }
 
+/// Role names from a serialized capabilities array (`a:1:{s:8:"customer";b:1;}`).
 pub fn roles_of(capabilities: Option<&str>) -> Vec<String> {
-    match capabilities
-        .map(|c| super::hints::annotate("capabilities", Some(c), &Default::default()).hint)
-    {
-        Some(Some(super::hints::Hint::Roles { roles })) => roles,
-        _ => Vec::new(),
-    }
+    use crate::decode::php::{self, PhpKey, PhpValue};
+    let Some(Ok(PhpValue::Array(items))) = capabilities.map(|c| php::parse(c.as_bytes())) else {
+        return Vec::new();
+    };
+    items
+        .into_iter()
+        .filter(|(_, v)| matches!(v, PhpValue::Bool(true)))
+        .filter_map(|(k, _)| match k {
+            PhpKey::Str(s) => String::from_utf8(s).ok(),
+            PhpKey::Int(_) => None,
+        })
+        .collect()
 }
 
 /// Gravatar URL (SHA-256 of the trimmed, lower-cased email). Only used when enabled.
@@ -607,8 +607,7 @@ pub async fn users(
         for c in &mut items {
             if let Some(r) = by_id.get(&c.id) {
                 c.order_count = count(&r[1]).unwrap_or(0);
-                c.total_spent = text(&r[2])
-                    .and_then(|v| money(&v, ctx.site.currency.as_deref(), ctx.site.price_decimals));
+                c.total_spent = text(&r[2]).and_then(|v| money(&v, None));
                 c.last_order = int(&r[3]);
             }
         }
@@ -734,17 +733,6 @@ pub fn products_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) 
     )
 }
 
-fn price_text(raw: &str, currency: Option<&str>, decimals: u32) -> String {
-    match raw.split_once('–') {
-        Some((a, b)) => format!(
-            "{}–{}",
-            money(a, currency, decimals).unwrap_or_else(|| a.into()),
-            money(b, currency, decimals).unwrap_or_else(|| b.into())
-        ),
-        None => money(raw, currency, decimals).unwrap_or_else(|| raw.into()),
-    }
-}
-
 pub async fn products(
     session: &dyn Database,
     ctx: &WpContext,
@@ -753,7 +741,6 @@ pub async fn products(
 ) -> AppResult<Page<ProductSummary>> {
     let dialect = session.dialect();
     let rs = fetch(session, &products_sql(dialect, db, ctx, q)).await?;
-    let currency = ctx.site.currency.as_deref();
     let rows: Vec<ProductSummary> = rs
         .rows
         .iter()
@@ -763,7 +750,7 @@ pub async fn products(
             status: text(&r[2]).unwrap_or_default(),
             kind: text(&r[3]),
             sku: text(&r[4]),
-            price: text(&r[5]).map(|p| price_text(&p, currency, ctx.site.price_decimals)),
+            price: text(&r[5]),
             stock_status: text(&r[6]),
             stock: text(&r[7]),
             total_sales: count(&r[8]).unwrap_or(0),
@@ -986,11 +973,7 @@ pub struct SessionSummary {
 
 /// Cart summary from a `woocommerce_sessions.session_value` (serialized array whose
 /// `cart`, `cart_totals` and `customer` entries are serialized strings themselves).
-pub fn session_summary(
-    value: &str,
-    currency: Option<&str>,
-    decimals: u32,
-) -> (u64, Option<String>, Option<String>) {
+pub fn session_summary(value: &str) -> (u64, Option<String>, Option<String>) {
     use crate::decode::php::{PhpValue, parse};
     let Ok(top) = parse(value.as_bytes()) else {
         return (0, None, None);
@@ -1014,7 +997,7 @@ pub fn session_summary(
     };
     let total = inner("cart_totals")
         .and_then(|t| t.text_at("total"))
-        .and_then(|v| money(&v, currency, decimals));
+        .and_then(|v| money(&v, None));
     let email = inner("customer")
         .and_then(|c| c.text_at("email"))
         .filter(|e| !e.is_empty());
@@ -1044,7 +1027,7 @@ pub async fn sessions(
         .map(|r| {
             let key = text(&r[0]).unwrap_or_default();
             let (items, total, email) = text(&r[2])
-                .map(|v| session_summary(&v, ctx.site.currency.as_deref(), ctx.site.price_decimals))
+                .map(|v| session_summary(&v))
                 .unwrap_or((0, None, None));
             SessionSummary {
                 customer_id: key.parse::<u64>().ok().map(|n| n.to_string()),
@@ -1235,20 +1218,38 @@ mod tests {
     }
 
     use crate::db::ColumnMeta;
-    use crate::wp::context::{HposMode, WcContext};
+    use crate::wp::testing::site;
 
-    fn ctx(hpos: HposMode) -> WpContext {
-        WpContext {
-            prefix: "wp_".into(),
-            version: None,
-            sites: vec![],
-            wc: Some(WcContext {
-                version: None,
-                hpos,
-                has_action_scheduler: true,
-            }),
-            site: Default::default(),
-            tables: ["wp_wc_product_meta_lookup".to_string()].into(),
+    /// A WooCommerce site; `hpos` adds the `wc_orders` table.
+    fn ctx(hpos: bool) -> WpContext {
+        let mut tables = vec![
+            "options",
+            "posts",
+            "users",
+            "woocommerce_order_items",
+            "wc_product_meta_lookup",
+        ];
+        if hpos {
+            tables.push("wc_orders");
+        }
+        site(&tables).0
+    }
+
+    fn t(s: &str) -> Cell {
+        Cell::Text(s.into())
+    }
+
+    fn result(width: usize, rows: Vec<Vec<Cell>>) -> ResultSet {
+        ResultSet {
+            columns: (0..width)
+                .map(|i| ColumnMeta {
+                    name: i.to_string(),
+                    type_name: "TEXT".into(),
+                    origin: None,
+                })
+                .collect(),
+            rows,
+            ..Default::default()
         }
     }
 
@@ -1259,7 +1260,7 @@ mod tests {
             status: Some("wc-processing".into()),
             ..Default::default()
         };
-        let sql = orders_sql(Dialect::MYSQL, "db", &ctx(HposMode::On), "shop_order", &q);
+        let sql = orders_sql(Dialect::MYSQL, "db", &ctx(true), "shop_order", &q);
         assert!(sql.contains("FROM `db`.`wp_wc_orders` o"));
         assert!(sql.contains("o.id = 3088 OR o.billing_email LIKE '%#3088%'"));
         assert!(sql.contains("o.status = 'wc-processing'"));
@@ -1272,7 +1273,7 @@ mod tests {
             kind: Some("ppcp-gateway".into()),
             ..Default::default()
         };
-        let sql = orders_sql(Dialect::MYSQL, "db", &ctx(HposMode::Off), "shop_order", &q);
+        let sql = orders_sql(Dialect::MYSQL, "db", &ctx(false), "shop_order", &q);
         assert!(sql.contains("FROM `db`.`wp_posts` p LEFT JOIN `db`.`wp_postmeta` m"));
         assert!(sql.contains("HAVING MAX(CASE WHEN m.meta_key = '_payment_method' THEN m.meta_value END) = 'ppcp-gateway'"));
     }
@@ -1283,51 +1284,165 @@ mod tests {
             search: Some("o'neil 100%".into()),
             ..Default::default()
         };
-        let sql = orders_sql(Dialect::MYSQL, "db", &ctx(HposMode::On), "shop_order", &q);
+        let sql = orders_sql(Dialect::MYSQL, "db", &ctx(true), "shop_order", &q);
         assert!(sql.contains("'%o''neil 100\\\\%%'"), "{sql}");
     }
 
     #[test]
-    fn order_rows_format_money_and_drop_guest_ids() {
-        let cell = |s: &str| Cell::Text(s.into());
-        let rs = ResultSet {
-            columns: (0..12)
-                .map(|i| ColumnMeta {
-                    name: i.to_string(),
-                    type_name: "TEXT".into(),
-                    origin: None,
-                })
-                .collect(),
-            rows: vec![vec![
-                cell("3229"),
-                cell("shop_order"),
-                cell("wc-processing"),
-                cell("95.40000000"),
-                cell("USD"),
-                cell("ppcp-gateway"),
-                cell("PayPal"),
-                cell("a@b.c"),
-                cell("Jay Dee"),
-                cell("0"),
-                cell("1791906926"),
-                cell("2"),
+    fn order_rows_show_the_stored_amount_with_its_currency_code_and_drop_guest_ids() {
+        let rs = result(
+            12,
+            vec![vec![
+                t("3229"),
+                t("shop_order"),
+                t("wc-processing"),
+                t("95.40000000"),
+                t("USD"),
+                t("ppcp-gateway"),
+                t("PayPal"),
+                t("a@b.c"),
+                t("Jay Dee"),
+                t("0"),
+                t("1791906926"),
+                t("2"),
             ]],
-            ..Default::default()
-        };
-        let o = &order_rows(&rs, None, 2)[0];
-        assert_eq!(o.total.as_deref(), Some("$95.40"));
-        assert_eq!(o.customer_id, None);
-        assert_eq!(o.item_count, 2);
-        assert_eq!(o.created, Some(1791906926));
+        );
+
+        let rows = order_rows(&rs);
+
+        assert_eq!(
+            rows,
+            [OrderSummary {
+                id: "3229".into(),
+                kind: "shop_order".into(),
+                status: "wc-processing".into(),
+                total: Some("95.40000000 USD".into()),
+                gateway: Some("ppcp-gateway".into()),
+                gateway_title: Some("PayPal".into()),
+                email: Some("a@b.c".into()),
+                name: Some("Jay Dee".into()),
+                customer_id: None,
+                created: Some(1791906926),
+                item_count: 2,
+            }]
+        );
     }
 
     #[test]
-    fn product_prices_render_ranges() {
-        assert_eq!(
-            price_text("10.0000–24.5000", Some("EUR"), 2),
-            "€10.00–€24.50"
+    fn order_totals_without_a_currency_show_the_bare_amount() {
+        let mut row = vec![
+            t("1"),
+            t("shop_order"),
+            t("wc-pending"),
+            t("12.50"),
+            Cell::Null,
+            t(""),
+            t(""),
+            t(""),
+            t(""),
+            t("7"),
+            t("1"),
+            t("0"),
+        ];
+        let rs = result(12, vec![row.clone()]);
+        row[3] = Cell::Null;
+        let no_total = result(12, vec![row]);
+
+        assert_eq!(order_rows(&rs)[0].total.as_deref(), Some("12.50"));
+        assert_eq!(order_rows(&rs)[0].customer_id.as_deref(), Some("7"));
+        assert_eq!(order_rows(&no_total)[0].total, None);
+    }
+
+    #[test]
+    fn order_rows_with_too_few_columns_are_skipped() {
+        assert!(order_rows(&result(11, vec![vec![t("1"); 11]])).is_empty());
+    }
+
+    #[test]
+    fn roles_are_the_capabilities_granted_as_true() {
+        for (stored, expected) in [
+            (r#"a:1:{s:8:"customer";b:1;}"#, vec!["customer"]),
+            (
+                r#"a:2:{s:13:"administrator";b:1;s:6:"editor";b:1;}"#,
+                vec!["administrator", "editor"],
+            ),
+            (
+                r#"a:2:{s:8:"customer";b:1;s:6:"editor";b:0;}"#,
+                vec!["customer"],
+            ),
+            (r#"a:1:{i:0;b:1;}"#, vec![]),
+            (r#"s:8:"customer";"#, vec![]),
+            ("garbage", vec![]),
+            ("", vec![]),
+        ] {
+            assert_eq!(roles_of(Some(stored)), expected, "{stored:?}");
+        }
+        assert!(roles_of(None).is_empty());
+    }
+
+    #[test]
+    fn guests_are_addressed_by_their_billing_email() {
+        let rs = result(
+            6,
+            vec![
+                vec![
+                    t("gail@guest.test"),
+                    Cell::Number("2".into()),
+                    t("30.00"),
+                    Cell::Number("200".into()),
+                    Cell::Number("100".into()),
+                    t("Gail Guest"),
+                ],
+                vec![
+                    t("anon@guest.test"),
+                    Cell::Number("1".into()),
+                    Cell::Null,
+                    Cell::Number("300".into()),
+                    Cell::Number("300".into()),
+                    t("  "),
+                ],
+                vec![
+                    Cell::Null,
+                    Cell::Number("1".into()),
+                    Cell::Null,
+                    Cell::Null,
+                    Cell::Null,
+                    Cell::Null,
+                ],
+            ],
         );
-        assert_eq!(price_text("5", Some("USD"), 2), "$5.00");
+
+        let guests = guest_rows(&rs);
+
+        assert_eq!(
+            guests,
+            [
+                UserSummary {
+                    id: "guest:gail@guest.test".into(),
+                    login: "gail@guest.test".into(),
+                    email: Some("gail@guest.test".into()),
+                    name: Some("Gail Guest".into()),
+                    registered: Some(100),
+                    roles: vec!["Guest".into()],
+                    order_count: 2,
+                    total_spent: Some("30.00".into()),
+                    last_order: Some(200),
+                    avatar: None,
+                },
+                UserSummary {
+                    id: "guest:anon@guest.test".into(),
+                    login: "anon@guest.test".into(),
+                    email: Some("anon@guest.test".into()),
+                    name: None,
+                    registered: Some(300),
+                    roles: vec!["Guest".into()],
+                    order_count: 1,
+                    total_spent: None,
+                    last_order: Some(300),
+                    avatar: None,
+                },
+            ]
+        );
     }
 
     #[test]
@@ -1345,10 +1460,10 @@ mod tests {
             customer
         );
         assert_eq!(
-            session_summary(&value, Some("EUR"), 2),
-            (3, Some("€42.00".into()), Some("j@x.at".into()))
+            session_summary(&value),
+            (3, Some("42.00".into()), Some("j@x.at".into()))
         );
-        assert_eq!(session_summary("garbage", None, 2), (0, None, None));
+        assert_eq!(session_summary("garbage"), (0, None, None));
     }
 
     #[test]

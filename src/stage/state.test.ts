@@ -5,7 +5,26 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { resetStore, useStore } from "../state/store";
 import { connectedStore } from "../test/fixtures";
 import { wpStore } from "../test/wpFixtures";
-import { stageUi } from "./state";
+import { stageState, stageUi } from "./state";
+
+describe("stageState WordPress facts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+  });
+
+  it("reports the prefix and the applied presets", () => {
+    wpStore();
+    expect(stageState()).toMatchObject({ prefix: "wp_", presets: "wordpress, woocommerce" });
+  });
+
+  it("reports neither for a database without WordPress info", () => {
+    connectedStore();
+    const state = stageState();
+    expect(state).not.toHaveProperty("prefix");
+    expect(state).not.toHaveProperty("presets");
+  });
+});
 
 describe("stageUi sidebar", () => {
   beforeEach(() => {

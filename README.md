@@ -39,14 +39,15 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
   - **Orders:** addresses, line items, totals, a PayPal fee waterfall, attribution, and a timeline that merges
     notes, actions, logs and refunds.
   - **Customers, products, actions and sessions:** each has a page of its own.
-- **Raw first:** real column names, meta keys and status slugs, with readable values (money, times, flags,
-  countries) next to them. Secrets stay masked until clicked.
+- **Raw first:** real column names, meta keys and status slugs, with amounts and times next to them where a
+  preset says what they are. Secrets stay masked until clicked.
 - **Exploration:** hover peeks on linked records, "find this value everywhere", snapshots with diffs,
   side-by-side comparison, and a live mode that highlights changing fields.
 - **No silent writes:** every edit lands in a pending tray with its SQL. Edits include fields, serialized
   values edited as a tree (re-serialized with correct byte lengths), order status and autoload. The tray
   applies everything in one transaction (⌘S), and you can undo it.
-- **Custom entities:** describe your plugin's tables in a TOML file, and they get pages, links and search.
+- **Presets:** WordPress, WooCommerce and Action Scheduler are TOML presets; describe your plugin's tables in
+  a preset of your own.
 
 **Presentations:** an optional local API lets the [Stage](docs/stage.md) presenter app drive the UI in a
 demo.
@@ -103,25 +104,31 @@ Every shortcut can be rebound or unbound in Settings → Shortcuts. Overrides ar
 ## Files
 
 Config and data live in `~/Library/Application Support/com.philippstracker.databee/`: settings, keybindings,
-recent connections, favorites, history, snapshots, UI state, and the optional `entities.toml`. Logs are in
+recent connections, favorites, history, snapshots, UI state, projects and user presets. Logs are in
 `~/Library/Logs/com.philippstracker.databee/`. Details are in [docs/backend.md](docs/backend.md#persistence).
 
-### Custom entities
+### Presets
 
-Add an `entities.toml` to the config directory, in the format of
-[`src-tauri/src/wp/entities.toml`](src-tauri/src/wp/entities.toml):
+What tables mean (references, kinds, entities, queries) comes from presets. WordPress, WooCommerce and Action
+Scheduler are built in; a TOML file in `presets/` in the config directory adds a preset or replaces a built-in
+of the same name. See [docs/presets.md](docs/presets.md) for the format and
+[docs/wordpress.md](docs/wordpress.md) for the built-ins. The old `entities.toml` is no longer read.
 
 ```toml
+[preset]
+name = "ppcp-vault"
+requires = ["wordpress"]
+marker_tables = ["ppcp_vault_tokens"]   # without prefix
+
+[[reference]]
+from = "ppcp_vault_tokens.user_id"
+to = "users.ID"
+
 [[entity]]
 name = "vault_token"
-label = "PayPal vault token"
-table = "ppcp_vault_tokens"     # without prefix
-id = "id"
-title = "customer_id"
-links = { user_id = "user" }
+table = "ppcp_vault_tokens"
+summary = ["customer_id"]
 ```
-
-See [docs/wordpress.md](docs/wordpress.md#entities) for every key.
 
 ## Development
 

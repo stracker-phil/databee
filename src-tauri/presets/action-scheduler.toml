@@ -1,0 +1,143 @@
+# The Action Scheduler preset (docs/presets.md, docs/wordpress.md). Action Scheduler ships with
+# WooCommerce and with other plugins, so it applies on its own marker table.
+
+[preset]
+name = "action-scheduler"
+requires = ["wordpress"]
+marker_tables = ["actionscheduler_actions"]
+
+# ---------------------------------------------------------------------------------------------
+# References (declared, although same-name inference would find most of them)
+# ---------------------------------------------------------------------------------------------
+
+[[reference]]
+from = "actionscheduler_actions.group_id"
+to = "actionscheduler_groups.group_id"
+
+[[reference]]
+from = "actionscheduler_actions.claim_id"
+to = "actionscheduler_claims.claim_id"
+
+[[reference]]
+from = "actionscheduler_logs.action_id"
+to = "actionscheduler_actions.action_id"
+label = "logs"
+columns = ["log_id", "log_date_gmt", "message"]
+
+# ---------------------------------------------------------------------------------------------
+# Entities
+# ---------------------------------------------------------------------------------------------
+
+[[entity]]
+name = "action"
+table = "actionscheduler_actions"
+summary = ["hook", "status", "scheduled_date_gmt", "attempts"]
+created = "scheduled_date_gmt"
+search = ["hook"]
+
+# ---------------------------------------------------------------------------------------------
+# Kinds
+# ---------------------------------------------------------------------------------------------
+
+[[kind]]
+columns = ["actionscheduler_actions.status", "actionscheduler_actions.hook"]
+enum = true
+
+[[kind]]
+columns = ["actionscheduler_logs.log_date_gmt"]
+timestamp = "utc"
+
+[[kind]]
+columns = ["actionscheduler_actions.scheduled_date_local", "actionscheduler_actions.last_attempt_local", "actionscheduler_logs.log_date_local"]
+timestamp = "local"
+
+# ---------------------------------------------------------------------------------------------
+# Value styles: shipped off; a project switches them on.
+# ---------------------------------------------------------------------------------------------
+
+[[style]]
+columns = ["actionscheduler_actions.status"]
+match = "="
+value = "failed"
+color = "red"
+enabled = false
+
+[[style]]
+columns = ["actionscheduler_actions.status"]
+match = "="
+value = "complete"
+color = "green"
+enabled = false
+
+# ---------------------------------------------------------------------------------------------
+# Pinned queries
+# ---------------------------------------------------------------------------------------------
+
+[[pinned]]
+id = "actions"
+title = "{p}actionscheduler_actions"
+sql = '''
+SELECT a.action_id, a.hook, a.status, a.scheduled_date_gmt, a.last_attempt_gmt, a.attempts, a.args, a.group_id,
+  (SELECT l.message FROM {p}actionscheduler_logs l WHERE l.action_id = a.action_id ORDER BY l.log_id DESC LIMIT 1) AS last_log_message
+FROM {p}actionscheduler_actions a ORDER BY a.action_id DESC'''
+
+[[pinned]]
+id = "actions_failed_by_hook"
+title = "{p}actionscheduler_actions failed by hook"
+sql = '''
+SELECT hook, COUNT(*) AS failed, MAX(last_attempt_gmt) AS last_attempt_gmt, MAX(action_id) AS last_action_id
+FROM {p}actionscheduler_actions WHERE status = 'failed'
+GROUP BY hook ORDER BY last_action_id DESC'''
+
+[[pinned]]
+id = "actions_overdue"
+title = "{p}actionscheduler_actions pending, overdue"
+sql = '''
+SELECT action_id, hook, scheduled_date_gmt, attempts, args FROM {p}actionscheduler_actions
+WHERE status = 'pending' AND scheduled_date_gmt > '1000-01-01'
+  AND scheduled_date_gmt < UTC_TIMESTAMP() - INTERVAL 10 MINUTE
+ORDER BY scheduled_date_gmt'''
+
+# ---------------------------------------------------------------------------------------------
+# Anomalies
+# ---------------------------------------------------------------------------------------------
+
+[[anomaly]]
+id = "actions_failed"
+sql = "SELECT COUNT(*) FROM {p}actionscheduler_actions WHERE status = 'failed'"
+text = "{p}actionscheduler_actions status = failed"
+open = { table = "actionscheduler_actions", where = "status = 'failed'" }
+
+[[anomaly]]
+id = "actions_overdue"
+sql = '''
+SELECT COUNT(*) FROM {p}actionscheduler_actions
+WHERE status = 'pending' AND scheduled_date_gmt > '1000-01-01'
+  AND scheduled_date_gmt < UTC_TIMESTAMP() - INTERVAL 10 MINUTE'''
+text = "{p}actionscheduler_actions status = pending, scheduled_date_gmt < now - 10 min"
+open = { pinned = "actions_overdue" }
+
+# ---------------------------------------------------------------------------------------------
+# Actions
+# ---------------------------------------------------------------------------------------------
+
+[[action]]
+name = "retry"
+table = "actionscheduler_actions"
+when = { status = ["failed", "canceled"] }
+update = [{ set = { status = "pending", scheduled_date_gmt = { sql = "UTC_TIMESTAMP()" }, claim_id = "0" } }]
+
+[[action]]
+name = "cancel"
+table = "actionscheduler_actions"
+when = { status = "pending" }
+update = [{ set = { status = "canceled" } }]
+
+# ---------------------------------------------------------------------------------------------
+# Find everywhere
+# ---------------------------------------------------------------------------------------------
+
+[[find]]
+table = "actionscheduler_actions"
+columns = ["args", "extended_args"]
+match = "contains"
