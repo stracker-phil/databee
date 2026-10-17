@@ -223,6 +223,29 @@ export type CompareRow = { path: string, a: string | null, b: string | null, };
  */
 export type ConnectionSpec = { name?: string | null, host: string, port: number, socket?: string | null, user: string, database?: string | null, };
 
+export type Coverage = { 
+/**
+ * Source rows the reference applies to (its `when` holds).
+ */
+total: number, 
+/**
+ * Rows with a target row.
+ */
+resolved: number, 
+/**
+ * Rows whose value is NULL or `0`: no reference, not an orphan.
+ */
+zeroOrNull: number, 
+/**
+ * Up to `SAMPLE_LIMIT` distinct values without a target; composite values joined by `,`.
+ */
+sampleUnresolved: Array<string>, 
+/**
+ * The count hit the query timeout: the counts are 0. When only the sample did, the counts
+ * stand and the sample is empty.
+ */
+timedOut: boolean, };
+
 export type CustomerView = { doc: EntityDoc, name: string, login: string | null, email: string | null, avatar: string | null, roles: Array<string>, registered: number | null, lastActive: number | null, billing: PostalAddress | null, shipping: PostalAddress | null, orderCount: number, totalSpent: string | null, averageOrder: string | null, orders: Array<OrderSummary>, subscriptions: Array<OrderSummary>, tokens: Array<PaymentToken>, session: EntityLink | null, related: Array<RelatedChip>, };
 
 export type Dashboard = { orders: OrderStats | null, recentOrders: Array<OrderSummary>, autoloadBytes: number, autoloadHealthy: boolean, transientsExpired: number, actions: ActionStats | null, 

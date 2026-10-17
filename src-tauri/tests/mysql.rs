@@ -84,10 +84,18 @@ async fn lists_databases_tables_and_views() {
         let names: Vec<_> = tables.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(
             names,
-            ["authors", "books", "published", "types", "wp_posts"]
+            [
+                "authors",
+                "books",
+                "cov_children",
+                "cov_parents",
+                "published",
+                "types",
+                "wp_posts"
+            ]
         );
-        assert!(tables[2].is_view);
-        assert_eq!(tables[4].comment, "Posts");
+        assert!(tables[4].is_view);
+        assert_eq!(tables[6].comment, "Posts");
     }
 }
 

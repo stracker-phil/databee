@@ -52,6 +52,8 @@ import type {
   TableReferences,
   PresetInfo,
   RulesInfo,
+  Coverage,
+  ResolvedReference,
   Project,
   ProjectChange,
   TableStructure,
@@ -114,6 +116,9 @@ export const api = {
     invoke<Project>("project_update", { sessionId, database, change }),
   /** The project's rules as a preset file (TOML). */
   projectExport: (sessionId: string, database: string) => invoke<string>("project_export", { sessionId, database }),
+  /** How many source rows of a reference (as `tableReferences` returned it) find a target row; read-only. */
+  referenceCoverage: (sessionId: string, database: string, reference: ResolvedReference) =>
+    invoke<Coverage>("reference_coverage", { sessionId, database, reference }),
   /** The "New query" SQL for a table, quoted by Rust. */
   tableSelectSql: (sessionId: string, database: string, table: string) =>
     invoke<string>("table_select_sql", { sessionId, database, table }),

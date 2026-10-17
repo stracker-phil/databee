@@ -8,7 +8,7 @@ mod schema_lens;
 
 use std::sync::Arc;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub use annotate::{annotate_browse, annotate_execute};
@@ -43,7 +43,7 @@ pub struct TableColumns<'a> {
 }
 
 /// Columns of one table; a reference's two ends pair up by position.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct ColumnsRef {
     pub table: String,
@@ -61,7 +61,7 @@ impl ColumnsRef {
 
 /// A reference from `from` to `to` and why it exists. An ambiguous inferred column gives one
 /// reference per target table.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct ResolvedReference {
     pub from: ColumnsRef,

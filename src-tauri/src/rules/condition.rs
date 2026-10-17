@@ -65,11 +65,13 @@ impl Matcher {
     }
 }
 
-/// One compiled `column = match` of a condition list.
+/// One compiled `column = match` of a condition list. `rule` keeps the match as written, so
+/// coverage can say it in SQL (a compiled LIKE and REGEXP look the same).
 #[derive(Debug, Clone)]
 pub struct Condition {
     pub column: String,
     pub matcher: Matcher,
+    pub rule: Match,
 }
 
 /// All of `conditions`, compiled; the error names the column.
@@ -81,6 +83,7 @@ pub fn compile(conditions: &Conditions) -> Result<Vec<Condition>, String> {
             Ok(Condition {
                 column: column.clone(),
                 matcher,
+                rule: rule.clone(),
             })
         })
         .collect()

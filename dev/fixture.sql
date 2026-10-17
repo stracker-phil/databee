@@ -58,6 +58,21 @@ CREATE TABLE books (
 INSERT INTO authors VALUES (1, 'Ada'), (2, 'Grace');
 INSERT INTO books VALUES (1, 1, 'Notes'), (2, 2, 'Compilers'), (3, NULL, 'Anonymous');
 
+-- Reference coverage: one resolved child, a zero and a NULL (no reference), two orphans.
+-- No declared foreign key, so the same-name inference finds the reference.
+CREATE TABLE cov_parents (
+  parent_id int NOT NULL PRIMARY KEY
+) ENGINE=InnoDB;
+
+CREATE TABLE cov_children (
+  child_id int NOT NULL PRIMARY KEY,
+  parent_id int,
+  KEY parent_id (parent_id)
+) ENGINE=InnoDB;
+
+INSERT INTO cov_parents VALUES (1), (2);
+INSERT INTO cov_children VALUES (1, 1), (2, 0), (3, NULL), (4, 98), (5, 99);
+
 -- WordPress + WooCommerce (HPOS with sync) install for the WP lens tests.
 CREATE DATABASE wp_test CHARACTER SET utf8mb4;
 USE wp_test;

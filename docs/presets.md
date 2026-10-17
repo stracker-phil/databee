@@ -7,8 +7,9 @@ knowledge lives only in preset files. Rules follow [`.claude/rules/presets.md`](
 
 Status: presets are parsed, checked and listed (`presets_list`); projects are stored and edited
 (`project_get`, `project_update`, `project_export`); references, kinds and value styles apply to browse
-pages, query results and `table_references` ([Effective rules](#effective-rules)), and `rules_info` reports
-the prefixes, presets and entities. Entities, patterns, pinned queries, anomalies, actions and find sources
+pages, query results and `table_references` ([Effective rules](#effective-rules)), `rules_info` reports
+the prefixes, presets and entities, and `reference_coverage` counts how many rows of a reference resolve
+([Coverage](#coverage)). Entities, patterns, pinned queries, anomalies, actions and find sources
 are parsed but not used yet.
 
 ## Where presets live
@@ -301,6 +302,12 @@ changes (DDL, refresh), a preset file changes or the project changes.
 3. preset references, the last applied preset first (a preset refines the presets it requires);
 4. same-name inference.
 
+**A table's own key.** Same-name inference never starts at a table's own single-column primary key. A
+project or preset rule may: one-to-one extension tables share the key of the row they extend (a lookup
+table whose primary key is the order id). Such a rule shows in `table_references` (both ends list it and
+coverage counts it), while the column's kind stays the primary key: the row's identity is the stronger
+fact, and the cell still opens its own row.
+
 Within one source, conditional references come before unconditional ones. The column's kind is the first
 unconditional reference; a conditional reference that comes before it decides per row (see below). Rules
 of one source with the same `from` and `when` (one column pointing at two tables) become one reference with
@@ -339,7 +346,12 @@ by the value, plus the `=` conditions of `to_when` (other `to_when` operators ca
 and apply where documents query the target).
 
 **Value styles** apply only when `enabled`; preset styles ship switched off, and a project switches one on
-by adding it (with `enabled = true`) to its own `styles`.
+by adding it (with `enabled = true`) to its own `styles` (`project_update` with `addStyle`). The path: the
+project's and the applied presets' enabled styles (project first) become `EffectiveRules.styles`;
+`RulesLens::cells` matches each cell of a covered column (or of a meta value column whose row key matches
+`meta_keys`, with the key column in the result) and adds `{ row, col, style }` to `ResultSet.styles` of browse
+pages and query results; `valueAt` (`src/lib/values.ts`) puts it on the cell's `Value.style`. The first
+matching style wins. The style is the scheme color name; no value is colored without a rule.
 
 ## `rules_info`
 
@@ -348,3 +360,43 @@ appliedPresets, availablePresets, entities, tableEntities }`. `entities` are `{ 
 real table name; `tableEntities` maps a real table to its entity names. Entities with a `filter` come first
 on their table: a row takes the first entity whose filter holds.
 
+
+## Coverage
+
+`reference_coverage(session_id, database, reference)` (`rules/coverage.rs`) counts how well one reference
+resolves:
+
+| Field | Means |
+|---|---|
+| `total` | source rows the reference applies to (its `when` holds) |
+| `resolved` | of those, rows with a target row |
+| `zeroOrNull` | rows whose value is NULL or `0`: "no reference", not orphans (a composite reference: any NULL part) |
+| `sampleUnresolved` | up to ten distinct values without a target (composite values joined by `,`) |
+| `timedOut` | the count hit the query timeout (counts are 0), or only the sample did (counts stand, sample empty) |
+
+Orphans are `total - resolved - zeroOrNull`.
+
+**Naming a reference.** The argument is a `ResolvedReference` exactly as `table_references` returned it
+(`from`, `to`, `by`). That covers every source with one shape: declared foreign keys (by constraint), project
+and preset rules (by rule id; a column with two targets has one reference per target), and inferred
+references (one per target table). The reference must be among the current `references_from` of its
+source table, else the command fails; so every table and column in the SQL comes from the schema, and a
+disabled or replaced rule has no coverage.
+
+**SQL.** Read-only `SELECT`s on the metadata pool, tables qualified with the database, each bounded by the
+session query timeout (on timeout the server query is killed, as for other pooled queries):
+- one pass counts the total, `zeroOrNull` and the rows for which `EXISTS` finds a target row (not a
+  `LEFT JOIN` count, so a non-key target that matches several rows counts its source row once);
+- only when orphans exist, a second query reads the sample.
+
+The join compares with the columns' collation, like following the reference does, so the counts match what
+a click finds. Conditions are said in SQL with the same meaning as in memory:
+- `when` filters the source rows, `to_when` joins on the target row;
+- `=`, IN, `glob` (as LIKE) and `like` test the plain column (an index still narrows) and the column cast
+  to binary (exact, whatever the collation);
+- `regexp` runs as `REGEXP '(?-i)<pattern>'` (MySQL rejects a binary operand), in the server's regular
+  expression dialect (ICU on MySQL, PCRE on MariaDB), which agrees with the in-memory one on common patterns;
+- `not` wraps the test in `NOT (...)`, so NULL matches neither the test nor its negation.
+
+A reference from a column to the same column of its table (shared emails, external ids) counts a row as
+resolved only when another row matches (by primary key); a table without one finds the row itself.

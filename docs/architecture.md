@@ -76,7 +76,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/value/               Value, ValueKind, ColumnKind, RowKey: what a cell is and where it came from
   src/lens/                the lens seam: SchemaLens (keys, foreign keys, same-name inference), result kinds
   src/rules/               presets and projects: rule types, TOML parsing, the preset catalog, projects.json,
-                           effective rules and the rules lens
+                           effective rules, the rules lens and reference coverage
   src/commands.rs          settings, keybindings, favorites, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
@@ -206,6 +206,8 @@ WordPress and WooCommerce are preset files.
   DDL, a refresh, a preset file change or a project change rebuilds it. `RuleSources` (from
   `AppState::rules`) is what `Session::browse`, `Session::execute` and `table_references` take.
 - `lens.rs`: `RulesLens` (see the lens seam above).
+- `coverage.rs`: `reference_coverage`, read-only counts of how many rows of one reference resolve
+  (`CoverageQuery` builds the SQL from the reference and its rule's conditions).
 
 ## A request, end to end
 

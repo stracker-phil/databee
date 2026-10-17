@@ -9,7 +9,7 @@ mod rows;
 mod serialized;
 mod time;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub use rows::{ResultValues, page_value_at, row_keys, value_at};
@@ -79,7 +79,7 @@ pub enum ValueKind {
 }
 
 /// Why a column counts as a reference.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ReferenceSource {

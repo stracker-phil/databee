@@ -7,6 +7,7 @@ pub mod applied;
 pub mod catalog;
 pub mod commands;
 pub mod condition;
+pub mod coverage;
 pub mod effective;
 pub mod kinds;
 pub mod lens;

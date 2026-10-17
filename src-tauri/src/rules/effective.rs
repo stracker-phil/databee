@@ -51,6 +51,8 @@ pub struct RuleReference {
     pub from: ColumnRef,
     pub when: Vec<Condition>,
     pub to: ColumnRef,
+    /// On the target row; coverage joins on all of them.
+    pub to_when: Vec<Condition>,
     /// The `=` conditions of `to_when`, which the target's address carries as a filter.
     pub to_filter: Vec<ColumnEquals>,
 }
@@ -193,6 +195,7 @@ impl EffectiveRules {
             from,
             when,
             to,
+            to_when,
             to_filter,
         })
     }

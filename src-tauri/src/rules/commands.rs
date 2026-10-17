@@ -1,10 +1,12 @@
 use tauri::State;
 
 use super::PresetInfo;
+use super::coverage::{self, Coverage};
 use super::effective::{self, RulesInfo};
 use super::project::Project;
 use super::project_change::{self, ChangeContext, ProjectChange};
 use crate::error::AppResult;
+use crate::lens::ResolvedReference;
 use crate::schema;
 use crate::state::AppState;
 
@@ -66,4 +68,17 @@ pub fn project_export(
 ) -> AppResult<String> {
     let session = state.sessions.get(&session_id)?;
     state.projects.get(&session.slug(), &database).export()
+}
+
+/// How many source rows of `reference` (as `table_references` returned it) find a target row.
+#[tauri::command]
+pub async fn reference_coverage(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    reference: ResolvedReference,
+) -> AppResult<Coverage> {
+    let session = state.sessions.get(&session_id)?;
+    let timeout = state.settings.get().query_timeout();
+    coverage::reference_coverage(&session, &database, &reference, state.rules(), timeout).await
 }
