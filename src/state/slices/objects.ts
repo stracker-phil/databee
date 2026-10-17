@@ -3,10 +3,13 @@ import { api, toAppError, type Address, type AppError, type Document, type Prove
 import { sameAddress } from "../../lib/address";
 import { objectColumn, type ObjectColumn } from "../../lib/columns";
 import { documentText, objectAddress, objectTitle, type ObjectView } from "../../lib/document";
+import { fail } from "../requests";
+import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
 import { EMPTY_NAV, pushed, restacked } from "./nav";
 import { withoutSession } from "./session";
 import { activate, newTabId, placed, previewTab, type ObjectTab } from "./tabs";
+import { remembered } from "./ui";
 
 /** A `document` reply for one `dataVersion`; the previous document stays while reloading. */
 export interface DocumentEntry {
@@ -24,6 +27,8 @@ export interface ObjectsSlice {
   keepDocument(sessionId: string, document: Document): void;
   /** Opens a row address as an object tab; a tab that opened with the same row is reused. */
   openObject(address: Address, opts?: { preview?: boolean }): void;
+  /** Opens an entity record (`order 4711`) as an object tab; Rust picks the table that holds the key. */
+  openEntity(entity: string, id: string): Promise<void>;
   /**
    * Shows the document or the rows in column `index` (default: the active one), recording the address being
    * left; `focus` moves the focused value along.
@@ -82,7 +87,7 @@ export const objectsSlice: Slice<ObjectsSlice> = {
       const session = get().sessions.find((x) => x.slug === address.connection);
       if (!session) return get().toast("error", `No open connection is named ${address.connection}`);
       if (get().activeSessionId !== session.id) get().setActiveSession(session.id);
-      get().setMode("db");
+      void api.rememberObject(session.id, documentText(address)).catch((e) => fail(e, "Could not keep the recent object"));
       const root = objectColumn(address);
       const existing = get().tabs.find((t): t is ObjectTab => t.kind === "object" && t.sessionId === session.id && t.columns[0]?.kind === "object" && sameRow(t.columns[0].address, address));
       if (existing) {
@@ -107,6 +112,19 @@ export const objectsSlice: Slice<ObjectsSlice> = {
         };
         return { tabs: placed(s.tabs, tab, replacedTab), ...activate(s, tab.id) };
       });
+    },
+
+    async openEntity(entity, id) {
+      const session = selectActiveSession(get());
+      if (!session?.database) return;
+      try {
+        const document = await api.document(session.id, `${entity} ${id}`, session.database);
+        get().keepDocument(session.id, document);
+        get().openObject(document.address);
+        set((s) => remembered(s, { kind: "entity", entity, id, title: `${entity} #${id}` }));
+      } catch (e) {
+        fail(e, `Could not open ${entity} #${id}`);
+      }
     },
 
     setObjectView(tabId, view, focus, index) {

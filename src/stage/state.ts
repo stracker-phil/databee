@@ -2,7 +2,8 @@
 import { formatAddress } from "../lib/address";
 import type { StageInfoReply, StageRect, StageSurface } from "./types";
 import { resolveSettingsPage, settingsPages } from "../registry/settingsPages";
-import { selectActiveSession, selectActiveTab, selectSidebarHidden, selectWp, selectWpRoute, useStore, type ObjectTab } from "../state/store";
+import { projectKey } from "../state/slices/project";
+import { selectActiveSession, selectActiveTab, selectSidebarHidden, useStore, type ObjectTab } from "../state/store";
 
 type Flat = StageInfoReply["state"];
 
@@ -12,15 +13,9 @@ function rectOf(element: Element | null): StageRect | null {
   return r.width > 0 && r.height > 0 ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
 }
 
-/** What the main window shows: connect, db, or wp:<screen>. */
+/** What the main window shows: connect or db. */
 export function stageView(): string {
-  const s = useStore.getState();
-  if (s.sessions.length === 0) return "connect";
-  if (s.mode === "wp" && selectWp(s)) {
-    const route = selectWpRoute(s);
-    return `wp:${route.screen}`;
-  }
-  return "db";
+  return useStore.getState().sessions.length === 0 ? "connect" : "db";
 }
 
 /** The Settings pages as the settings window's sections, in nav order. */
@@ -60,7 +55,7 @@ function valueColumnState(): "open" | "closed" {
   return tab && (tab.kind === "table" || tab.kind === "query") && tab.valueColumn ? "open" : "closed";
 }
 
-/** The database sidebar; WordPress mode and the connect screen have none. */
+/** The database sidebar; the connect screen has none. */
 function sidebarState(): "open" | "closed" {
   const s = useStore.getState();
   return stageView() === "db" && !selectSidebarHidden(s) ? "open" : "closed";
@@ -77,10 +72,9 @@ export function stageState(): Flat {
   const s = useStore.getState();
   const session = selectActiveSession(s);
   const tab = selectActiveTab(s);
-  const wp = selectWp(s);
+  const info = session?.database ? s.rulesInfo[projectKey(session.id, session.database)] : undefined;
   const state: Flat = {
     view: stageView(),
-    mode: s.mode,
     connections: s.sessions.length,
     connection: session?.identity ?? null,
     server: session?.serverVersion ?? null,
@@ -97,10 +91,11 @@ export function stageState(): Flat {
   if (tab?.kind === "table") state.table = `${tab.database}.${tab.table} (${tab.view})`;
   if (tab?.kind === "object") state.object = objectState(tab);
   if (tab?.kind === "project") state.project = tab.form ? `${tab.database} (${tab.form.type} form)` : tab.database;
+  if (tab?.kind === "readout") state.readout = tab.database;
   if (tab?.kind === "query") state.query = tab.running ? "running" : tab.error ? "failed" : tab.response ? "done" : "not run";
-  if (wp) {
-    state.prefix = wp.prefix;
-    state.presets = wp.presets.join(", ");
+  if (info) {
+    state.prefix = info.prefix;
+    state.presets = info.appliedPresets.join(", ");
   }
   return state;
 }

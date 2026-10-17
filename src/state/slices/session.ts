@@ -5,8 +5,6 @@ import { fail } from "../requests";
 import { structureKey } from "../selectors";
 import { sessionClosedPatch, type Slice, type Store } from "../store";
 import { activate, resetSelection } from "./tabs";
-import { resetMode } from "./ui";
-import { resetWpForDatabase, resetWpNav } from "./wp";
 
 /** A table's `describeTable` reply for one `dataVersion`; the previous structure stays while reloading. */
 export interface StructureEntry {
@@ -81,14 +79,13 @@ export const sessionSlice: Slice<SessionSlice> = {
           sessions: [...s.sessions.filter((x) => x.id !== session.id), session],
           activeSessionId: session.id,
           dialog: null,
-          ...resetWpNav(),
-          ...resetMode(),
           ...resetSelection(),
         }));
         // Reconnecting the same identity (e.g. a second launch) keeps its query tab.
         const queryTab = get().tabs.find((t) => t.kind === "query" && t.sessionId === session.id);
         if (queryTab) get().activateTab(queryTab.id);
         else get().openQueryTab();
+        get().openReadout({ sessionId: session.id });
         void get().loadDatabases(session.id);
         void get().loadUiState(session.identity);
         get().toast("success", `Connected to ${session.displayName}`);
@@ -125,7 +122,7 @@ export const sessionSlice: Slice<SessionSlice> = {
 
     setActiveSession(sessionId) {
       const tab = get().tabs.find((t) => t.sessionId === sessionId);
-      set((s) => ({ activeSessionId: sessionId, ...resetWpNav(), ...activate(s, tab?.id ?? null) }));
+      set((s) => ({ activeSessionId: sessionId, ...activate(s, tab?.id ?? null) }));
     },
 
     async switchDatabase(sessionId, database) {
@@ -134,8 +131,8 @@ export const sessionSlice: Slice<SessionSlice> = {
         set((s) => ({
           sessions: s.sessions.map((x) => (x.id === sessionId ? { ...x, database } : x)),
           ...resetSelection(),
-          ...resetWpForDatabase(s, sessionId, database),
         }));
+        get().openReadout({ sessionId, database, activate: false });
         void get().loadTables(sessionId, database);
         emitSessionEvent({ type: "databaseChanged", sessionId, database });
       } catch (e) {

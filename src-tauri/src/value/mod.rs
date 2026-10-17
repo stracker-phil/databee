@@ -65,7 +65,7 @@ pub enum ValueKind {
         /// Whether the target row exists; `None` until someone checks.
         exists: Option<bool>,
     },
-    /// `0` or NULL in a reference column: no target, as WordPress stores "none".
+    /// `0` or NULL in a reference column: no target.
     NoReference,
     Enum,
     /// Text that the PHP or JSON decoder reads.

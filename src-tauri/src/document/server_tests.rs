@@ -678,3 +678,139 @@ async fn a_project_reference_adds_an_incoming_group_with_its_label_and_columns()
         );
     }
 }
+
+/// Read-only checks against a real database of your own. They panic unless
+/// `DATABEE_WP_TEST=mysql://user:pass@host:port/db` is set, so `bun run test:db` skips them
+/// (`--skip real_data`). Run them by name:
+///
+///   DATABEE_WP_TEST=mysql://root:root@127.0.0.1:52958/db cargo test --lib -- --ignored --nocapture real_data
+mod real_data {
+    use std::time::Duration;
+
+    use super::Rig;
+    use crate::cli::{self, CliOutcome, Launch};
+    use crate::db::Cell;
+    use crate::db::mysql::MySqlSession;
+    use crate::decode::php;
+    use crate::rules::effective;
+    use crate::schema;
+    use crate::session::Session;
+
+    const TIMEOUT: Duration = Duration::from_secs(10);
+    const PAGE: usize = 2000;
+
+    /// The database named by `DATABEE_WP_TEST` (a `databee` connection URL), connected.
+    async fn real_session() -> (Session, String) {
+        let url = std::env::var("DATABEE_WP_TEST").unwrap_or_else(|_| {
+            panic!("DATABEE_WP_TEST=mysql://user:pass@host:port/db must name a database")
+        });
+        let outcome = cli::parse(
+            ["databee", url.as_str()],
+            3306,
+            &mut std::io::empty(),
+            &|_| None,
+        );
+        let Ok(CliOutcome::Run {
+            launch: Some(Launch { spec, password, .. }),
+            ..
+        }) = outcome
+        else {
+            panic!("DATABEE_WP_TEST is not a connection URL: {outcome:?}");
+        };
+        let database = spec
+            .database
+            .clone()
+            .expect("DATABEE_WP_TEST names a database");
+        let db = MySqlSession::connect(&spec, password.as_ref(), TIMEOUT, TIMEOUT)
+            .await
+            .unwrap();
+        let session = Session::new("real".into(), spec, "real".into(), Box::new(db));
+        (session, database)
+    }
+
+    fn unhex(hex: &str) -> Vec<u8> {
+        hex.as_bytes()
+            .chunks(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect()
+    }
+
+    /// Every serialized value in the value column of every `[[meta]]` table the presets apply
+    /// to parses and serializes back to the same bytes.
+    #[tokio::test]
+    #[ignore]
+    async fn every_serialized_meta_value_round_trips() {
+        let rig = Rig::new();
+        let (session, database) = real_session().await;
+        let database_schema = schema::database(&session, &database).await.unwrap();
+        let rules = effective::effective(&session, &database, &database_schema, rig.sources());
+        let dialect = session.db.dialect();
+
+        let (mut checked, mut lenient, mut broken, mut skipped) = (0, 0, 0, 0);
+        for meta in &rules.meta {
+            let Some([key]) = database_schema
+                .keys(&meta.table)
+                .map(|k| k.primary_key.as_slice())
+            else {
+                continue;
+            };
+            let qualified = dialect.table_ref(&database, &meta.table);
+            let (id, col) = (dialect.quote_ident(key), dialect.quote_ident(&meta.value));
+            let mut offset = 0;
+            loop {
+                let sql = format!(
+                    "SELECT HEX({col}) FROM {qualified} WHERE {col} REGEXP '^(a|O|s|i|b|d|C|E):' OR {col} = 'N;' \
+                     ORDER BY {id} LIMIT {PAGE} OFFSET {offset}"
+                );
+                let rs = session
+                    .db
+                    .fetch(&sql, Duration::from_secs(60))
+                    .await
+                    .unwrap();
+                assert!(
+                    !rs.truncated,
+                    "a page of {PAGE} rows stays under the fetch cap"
+                );
+                for row in &rs.rows {
+                    let Cell::Text(hex) = &row[0] else {
+                        skipped += 1;
+                        continue;
+                    };
+                    let bytes = unhex(hex);
+                    match php::parse(&bytes) {
+                        Ok(parsed) => {
+                            checked += 1;
+                            assert_eq!(
+                                php::serialize(&parsed),
+                                bytes,
+                                "round trip failed in {}: {}",
+                                meta.table,
+                                String::from_utf8_lossy(&bytes)
+                            );
+                        }
+                        Err(_) if php::parse_lenient(&bytes).is_ok() => lenient += 1,
+                        Err(e) => {
+                            broken += 1;
+                            eprintln!(
+                                "unparseable in {} ({e}): {}",
+                                meta.table,
+                                String::from_utf8_lossy(&bytes)
+                                    .chars()
+                                    .take(120)
+                                    .collect::<String>()
+                            );
+                        }
+                    }
+                }
+                if rs.rows.len() < PAGE {
+                    break;
+                }
+                offset += PAGE;
+            }
+        }
+        eprintln!(
+            "round-tripped {checked} values; {lenient} needed lenient parsing; {broken} unparseable; {skipped} cells skipped (not text)"
+        );
+        assert!(checked > 0);
+    }
+}

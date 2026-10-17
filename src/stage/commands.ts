@@ -5,7 +5,8 @@
  */
 import type { StageCommand } from "./types";
 import { activeScopes, allCommands, bindingFor, getCommand, resolveKeydown, runCommand, type KeyLike } from "../commands";
-import { selectActiveSession, selectWp, useStore } from "../state/store";
+import { projectKey } from "../state/slices/project";
+import { selectActiveSession, useStore } from "../state/store";
 import { settingsSections } from "./state";
 
 const MAX_CHOICES = 30;
@@ -45,6 +46,14 @@ function tablesOfCurrentDatabase(): string[] {
   return db && session ? (s.schema[session.id]?.tables[db] ?? []).map((t) => t.name) : [];
 }
 
+/** The rules of the current database name entities, so `<entity> <key>` opens a row. */
+function hasEntities(): boolean {
+  const s = useStore.getState();
+  const session = selectActiveSession(s);
+  const info = session?.database ? s.rulesInfo[projectKey(session.id, session.database)] : undefined;
+  return (info?.entities.length ?? 0) > 0;
+}
+
 const FAMILIES: Family[] = [
   {
     id: "settings:open:",
@@ -68,16 +77,15 @@ const FAMILIES: Family[] = [
       const s = useStore.getState();
       const db = selectActiveSession(s)?.database;
       if (!db || !tablesOfCurrentDatabase().includes(table)) return false;
-      s.setMode("db");
       s.openTableTab(db, table);
       return true;
     },
   },
   {
-    id: "wp:open:",
-    help: "Open a WordPress record, e.g. wp:open:order:4711",
+    id: "entity:open:",
+    help: "Open a row by entity and key, e.g. entity:open:order:4711",
     arg: "<entity>:<id>",
-    enabled: () => !!selectWp(useStore.getState()),
+    enabled: hasEntities,
     choices: () =>
       useStore
         .getState()
@@ -86,7 +94,7 @@ const FAMILIES: Family[] = [
       const [entity, ...rest] = target.split(":");
       const id = rest.join(":");
       const s = useStore.getState();
-      if (!entity || !id || !selectWp(s)) return false;
+      if (!entity || !id || !hasEntities()) return false;
       void s.openEntity(entity, id);
       return true;
     },

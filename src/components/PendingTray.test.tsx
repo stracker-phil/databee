@@ -67,16 +67,6 @@ describe("PendingTray", () => {
       expect(statements.map((li) => li.textContent)).toEqual(["UPDATE `wp_posts` SET `post_title` = 'x' WHERE `ID` = 1", "-- second"]);
     });
 
-    it("plans row edits through planChange and WordPress edits through wpPlanChange", async () => {
-      await useStore.getState().queueChange({ type: "deleteRow", database: "db", table: "wp_posts", keyColumn: "ID", key: "1" });
-      await useStore.getState().queueChange({ type: "setAutoload", database: "db", option: "x", on: false });
-
-      expect(mocked.planChange).toHaveBeenCalledWith("s1", { type: "deleteRow", database: "db", table: "wp_posts", keyColumn: "ID", key: "1" });
-      expect(mocked.wpPlanChange).toHaveBeenCalledWith("s1", { type: "setAutoload", database: "db", option: "x", on: false });
-      expect(mocked.planChange).toHaveBeenCalledTimes(1);
-      expect(mocked.wpPlanChange).toHaveBeenCalledTimes(1);
-    });
-
     it("marks changes without automatic undo", () => {
       useStore.setState({ pending: [pendingChange({ id: 1, description: "Delete row", canUndo: false }), pendingChange({ id: 2, description: "Set x" })] });
       renderTray();

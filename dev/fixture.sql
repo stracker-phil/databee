@@ -298,7 +298,8 @@ INSERT INTO wp_write.wp_actionscheduler_actions (action_id, hook, status, schedu
   (9202, 'zz_cancel_hook', 'pending', '2030-01-01 00:00:00', '[]', 0, 0);
 INSERT INTO wp_write.wp_postmeta (meta_id, post_id, meta_key, meta_value) VALUES
   (9301, 123, 'zz_null_meta', NULL),
-  (9302, 123, 'zz_duplicate_me', 'v');
+  (9302, 123, 'zz_duplicate_me', 'v'),
+  (9303, 123, 'zz_sql_mode', 'before');
 INSERT INTO wp_write.wp_usermeta (user_id, meta_key, meta_value) VALUES
   (9501, 'dup_key', 'a'),
   (9501, 'dup_key', 'b');

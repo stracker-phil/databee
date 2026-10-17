@@ -5,12 +5,12 @@ import { dataSlice, type DataSlice } from "./slices/data";
 import { navSlice, type NavSlice } from "./slices/nav";
 import { objectsSlice, type ObjectsSlice } from "./slices/objects";
 import { projectSlice, type ProjectSlice } from "./slices/project";
+import { readoutSlice, type ReadoutSlice } from "./slices/readout";
 import { savedSlice, type SavedSlice } from "./slices/saved";
 import { sessionSlice, type SessionSlice } from "./slices/session";
 import { settingsSlice, type SettingsSlice } from "./slices/settings";
 import { tabsSlice, type TabsSlice } from "./slices/tabs";
 import { uiSlice, type UiSlice } from "./slices/ui";
-import { wpSlice, type WpSlice } from "./slices/wp";
 
 export { fail } from "./requests";
 export { flushUiState, NO_HOVER } from "./slices/ui";
@@ -28,20 +28,17 @@ export {
   selectSidebarHidden,
   selectStructure,
   selectVisibleDatabases,
-  selectWp,
-  isWpView,
-  selectWpRoute,
 } from "./selectors";
 export type { TabNav, TableLocation } from "./slices/nav";
 export type { SchemaState, StructureEntry } from "./slices/session";
 export type { DocumentEntry } from "./slices/objects";
-export type { ObjectTab, ProjectTab, QueryTab, SelectedCell, Tab, TableTab } from "./slices/tabs";
+export type { ObjectTab, ProjectTab, QueryTab, ReadoutTab, SelectedCell, Tab, TableTab } from "./slices/tabs";
 export type { ProjectRulesEntry } from "./slices/project";
-export type { Dialog, Mode, RecentNav, Toast, ValueHover } from "./slices/ui";
-export type { WpRoute } from "./slices/wp";
+export type { Dialog, RecentNav, Toast, ValueHover } from "./slices/ui";
+export type { ReadoutEntry } from "./slices/readout";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
-export interface Store extends SettingsSlice, SessionSlice, TabsSlice, ChangesSlice, DataSlice, SavedSlice, UiSlice, WpSlice, NavSlice, ObjectsSlice, ColumnsSlice, ProjectSlice {}
+export interface Store extends SettingsSlice, SessionSlice, TabsSlice, ChangesSlice, DataSlice, SavedSlice, UiSlice, NavSlice, ObjectsSlice, ColumnsSlice, ProjectSlice, ReadoutSlice {}
 
 type SetStore = StoreApi<Store>["setState"];
 type GetStore = StoreApi<Store>["getState"];
@@ -82,8 +79,8 @@ registerSlice(changesSlice);
 registerSlice(dataSlice);
 registerSlice(savedSlice);
 registerSlice(uiSlice);
-registerSlice(wpSlice);
 registerSlice(navSlice);
 registerSlice(objectsSlice);
 registerSlice(columnsSlice);
 registerSlice(projectSlice);
+registerSlice(readoutSlice);

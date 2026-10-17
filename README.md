@@ -7,9 +7,7 @@ is not a tool for site admins or shop owners.
 Built with Tauri 2, Rust and React 19. Runs on macOS (Apple Silicon). The code is documented so you can
 point a coding agent at it and adapt it to your platform or needs. See [Adapt it](#adapt-it).
 
-![WordPress mode: dashboard of a local WooCommerce store](docs/images/wordpress-dashboard.png)
-
-![Database mode: wp_options in the table view](docs/images/database-table.png)
+![wp_options in the table view](docs/images/database-table.png)
 
 ## Features
 
@@ -33,25 +31,27 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
   filters the table, or adds a `WHERE` to a plain single-table query.
 - **Passwords** live in the macOS Keychain and never in files or logs.
 
-**WordPress mode** (on by default for WordPress databases)
-- **Dashboard:** orders, autoload weight, failed scheduled actions and expired transients, with one-click
-  fixes that you review first.
+**Rows as objects** (WordPress, WooCommerce and Action Scheduler come as presets)
+- **Readout:** the home page of every database, opened on connect. A status line (host, database, prefix,
+  presets, server version, and values the presets pin, such as the site URL or the autoloaded bytes), the
+  anomalies the presets report (failed or overdue scheduled actions, expired transients, HPOS drift, log
+  errors) with their fix, which you review first, the newest rows of each entity (orders, posts, users), your
+  pinned queries with their counts or rows, and the rows you opened last. Counts refresh after every apply.
+- **Documents:** any row with a primary key opens as a document: its columns, its meta rows, every row that
+  references it, rows matched by preset patterns (logs, scheduled actions) and its timestamps as events.
+  References open as a stack of columns; ⌥ peeks.
 - **Pinned queries** from the presets replace the old lists: orders, subscriptions, users, customers, guests,
   products, sessions, scheduled actions, content and the options queries open as query tabs with their SQL
   (`q:` in the palette); value counts replace the facets.
-- **Purpose-built pages.**
-  - **Orders:** addresses, line items, totals, a PayPal fee waterfall, attribution, and a timeline that merges
-    notes, actions, logs and refunds.
-  - **Customers, products, actions and sessions:** each has a page of its own.
 - **Raw first:** real column names, meta keys and status slugs, with amounts and times next to them where a
   preset says what they are. Secrets stay masked until clicked.
-- **Exploration:** hover peeks on linked records, "find this value everywhere", snapshots with diffs,
-  side-by-side comparison, and a live mode that highlights changing fields.
-- **No silent writes:** every edit lands in a pending tray with its SQL. Edits include fields, serialized
-  values edited as a tree (re-serialized with correct byte lengths), order status and autoload. The tray
-  applies everything in one transaction (⌘S), and you can undo it.
-- **Presets:** WordPress, WooCommerce and Action Scheduler are TOML presets; describe your plugin's tables in
-  a preset of your own.
+- **Find:** `#4711`, `@jane` and `=<value>` in the palette find rows by id, people and any stored value.
+- **No silent writes:** every edit lands in a pending tray with its SQL. Edits include fields, meta rows,
+  serialized values edited as a tree (re-serialized with correct byte lengths) and the presets' actions
+  (order status, autoload, retry or cancel a scheduled action). The tray applies everything in one
+  transaction (⌘S), and you can undo it.
+- **Presets:** describe your plugin's tables in a preset of your own; the Project page adds references,
+  kinds and value styles per database.
 
 **Presentations:** an optional local API lets the [Stage](docs/stage.md) presenter app drive the UI in a
 demo.
@@ -135,8 +135,7 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | Shortcut | Command | Where |
 |---|---|---|
 | ⌘K / ⌘P | Command palette / open table or record | everywhere |
-| ⌘1 / ⌘2 | WordPress / Database mode | everywhere |
-| ⌘[ / ⌘] | Back / forward | WordPress |
+| ⌘[ / ⌘] | Back / forward in the tab's history | everywhere |
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset | everywhere |
 | ⌘R | Refresh the current view | everywhere |
 | ⌘S | Apply pending changes; in a query tab with nothing pending, save the query | everywhere / editor |
@@ -145,14 +144,13 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | ⌘T / ⌘W | New query tab / close tab | Database |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab | Database |
 | ⌘↵ / ⇧⌘↵ | Run statement / run all | editor |
-| ⌘E / ⌘⇧S | Open source row / take snapshot | WordPress record |
 
 Every shortcut can be rebound or unbound in Settings → Shortcuts. Overrides are stored in `keybindings.json`.
 
 ## Files
 
 Config and data live in `~/Library/Application Support/com.philippstracker.databee/`: settings, keybindings,
-recent connections, history, snapshots, UI state, projects (with saved queries) and user presets. Logs are in
+recent connections, history, UI state, projects (with saved queries and recent objects) and user presets. Logs are in
 `~/Library/Logs/com.philippstracker.databee/`. Details are in [docs/backend.md](docs/backend.md#persistence).
 
 ### Presets
@@ -160,7 +158,7 @@ recent connections, history, snapshots, UI state, projects (with saved queries) 
 What tables mean (references, kinds, entities, queries) comes from presets. WordPress, WooCommerce and Action
 Scheduler are built in; a TOML file in `presets/` in the config directory adds a preset or replaces a built-in
 of the same name. See [docs/presets.md](docs/presets.md) for the format and
-[docs/wordpress.md](docs/wordpress.md) for the built-ins. The old `entities.toml` is no longer read.
+[Built-in presets](docs/presets.md#built-in-presets) for the built-ins. The old `entities.toml` is no longer read.
 
 ```toml
 [preset]
@@ -196,7 +194,7 @@ The repo is set up for coding agents:
 - A `ship-step` skill tests, builds and commits each step. Before every commit, a `clean-up-code` skill
   keeps the code self-explanatory.
 - [docs/adapting.md](docs/adapting.md) lists every place that is specific to macOS, the name or the
-  WordPress layer.
+  WordPress presets.
 
 Open the repo in [Claude Code](https://claude.com/claude-code) and ask for what you need:
 

@@ -1,9 +1,8 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type BrowsePage, type Coverage, type Dashboard, type Document,type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Resolved, type RuleDraft, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type BrowsePage, type Coverage, type Document, type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Readout, type Resolved, type RuleDraft, type RulesInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
 import { parseAddress } from "../lib/address";
-import { NOW } from "./now";
 import { session } from "./session";
 import { settings } from "./settings";
 
@@ -11,16 +10,18 @@ function emptyProject(database: string): Project {
   return { connection: "local", database, prefix: null, network_prefix: null, presets: null, references: [], disabled: [], kinds: [], styles: [], saved: [] };
 }
 
-const emptyDashboard: Dashboard = {
-  orders: null,
-  autoloadBytes: 0,
-  autoloadHealthy: true,
-  transientsExpired: 0,
-  actions: null,
-  hposDrift: null,
-  tables: [],
-  insights: [],
-};
+/** A readout with nothing in it, as for a database without presets, pins or recent objects. */
+function emptyReadout(database: string): Readout {
+  const none = { items: [], error: null };
+  return {
+    address: { connection: session.slug, database, target: { kind: "home" }, view: null, compare: null },
+    status: { host: session.spec.host, slug: session.slug, database, prefix: "", presets: [], serverVersion: session.serverVersion, values: none },
+    anomalies: none,
+    newObjects: none,
+    pinned: none,
+    recent: none,
+  };
+}
 
 /** An `api` where every call resolves to a minimal valid value of its return type; override per test with mockResolvedValue. */
 export function createApiMock(): typeof realApi {
@@ -87,20 +88,15 @@ export function createApiMock(): typeof realApi {
     tableSelectSql: vi.fn().mockResolvedValue("SELECT * FROM `db`.`table` LIMIT 100;"),
     listHistory: vi.fn().mockResolvedValue([]),
     clearHistory: vi.fn().mockResolvedValue(undefined),
-    wpDetect: vi.fn().mockResolvedValue(null),
+    readout: vi.fn(async (_s, database) => emptyReadout(database)),
+    rememberObject: vi.fn().mockResolvedValue(undefined),
     decodeValue: vi.fn().mockResolvedValue(null),
-    wpDashboard: vi.fn().mockResolvedValue(emptyDashboard),
     paletteSearch: vi.fn().mockResolvedValue([]),
     planChange: vi.fn(async (_s, change) => planned(change.type)),
-    wpPlanChange: vi.fn(async (_s, change) => planned(change.type)),
     discardChange: vi.fn().mockResolvedValue(undefined),
     applyChanges: vi.fn().mockResolvedValue({ batchId: 1, affected: 1, canUndo: true }),
     undoBatch: vi.fn().mockResolvedValue(1),
     editSerialized: vi.fn().mockResolvedValue("edited"),
-    wpSnapshotTake: vi.fn(async (_s, _d, scope, label): Promise<SnapshotInfo> => ({ id: "snap-1", label, scope, created: new Date(NOW).toISOString(), paths: 0 })),
-    wpSnapshots: vi.fn().mockResolvedValue([]),
-    wpSnapshotDiff: vi.fn().mockResolvedValue([]),
-    wpSnapshotDelete: vi.fn().mockResolvedValue(undefined),
     onLaunch: vi.fn().mockResolvedValue(() => {}),
     onCommand: vi.fn().mockResolvedValue(() => {}),
     onRemote: vi.fn().mockResolvedValue(() => {}),

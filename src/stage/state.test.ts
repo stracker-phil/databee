@@ -4,25 +4,23 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { resetStore, useStore } from "../state/store";
 import { connectedStore } from "../test/fixtures";
-import { wpStore } from "../test/wpFixtures";
+import { readoutTab } from "../test/fixtures";
 import { stageState, stageUi } from "./state";
 
-describe("stageState WordPress facts", () => {
+describe("stageState readout", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    resetStore();
   });
 
-  it("reports the prefix and the applied presets", () => {
-    wpStore();
-    expect(stageState()).toMatchObject({ prefix: "wp_", presets: "wordpress, woocommerce" });
+  it("names the database of the active readout tab", () => {
+    const tab = readoutTab();
+    connectedStore({ tabs: [tab] });
+    expect(stageState()).toMatchObject({ tab: "readout: readout", readout: "db" });
   });
 
-  it("reports neither for a database without WordPress info", () => {
+  it("reports no readout while another tab is active", () => {
     connectedStore();
-    const state = stageState();
-    expect(state).not.toHaveProperty("prefix");
-    expect(state).not.toHaveProperty("presets");
+    expect(stageState().readout).toBeUndefined();
   });
 });
 
@@ -40,11 +38,6 @@ describe("stageUi sidebar", () => {
   it("is closed after the sidebar is toggled away", () => {
     connectedStore();
     useStore.getState().toggleSidebar();
-    expect(stageUi().sidebar).toBe("closed");
-  });
-
-  it("is closed in WordPress mode", () => {
-    wpStore();
     expect(stageUi().sidebar).toBe("closed");
   });
 });

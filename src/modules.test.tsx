@@ -25,6 +25,5 @@ describe("installModules", () => {
     for (const label of ["Appearance", "Shortcuts", "Queries", "Logging", "Presentations"]) {
       expect(within(nav).getByRole("button", { name: label })).toBeInTheDocument();
     }
-    expect(within(nav).queryByRole("button", { name: "WordPress" })).not.toBeInTheDocument();
   });
 });

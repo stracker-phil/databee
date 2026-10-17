@@ -5,14 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import App from "../App";
-import { api, type ExecuteResponse, type SessionInfo, type WpInfo } from "../api";
+import { api, type ExecuteResponse, type SessionInfo } from "../api";
 import { installCommands, runCommand } from "../commands";
 import { StatusBar } from "../components/StatusBar";
 import { TabBar } from "../components/Tabs";
 import { Toasts } from "../components/Toasts";
 import { Toolbar } from "../components/Toolbar";
 import { columnMeta, connectedStore, pendingChange, queryTab, resultSet, session, text } from "../test/fixtures";
-import { orderDocument, wpInfo, wpStore } from "../test/wpFixtures";
+import { objectDocument } from "../test/objectFixtures";
 import { documentKey } from "./slices/objects";
 import { useStore, type QueryTab } from "./store";
 
@@ -56,7 +56,6 @@ const planned = (description: string) => ({ description, statements: [`-- ${desc
 describe("store behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocked.wpDetect.mockReset().mockResolvedValue(null);
     mocked.execute.mockReset();
     connectedStore();
   });
@@ -88,22 +87,20 @@ describe("store behavior", () => {
       beforeEach(() => {
         twoSessions([queryTab({ id: "a", title: "Shop scratch" }), queryTab({ id: "b", sessionId: "s2", title: "Blog scratch" })], { session: "s1", tab: "a" });
         inspect("a");
-        useStore.setState((s) => ({
+        useStore.setState({
           pending: [pendingChange({ id: 1, sessionId: "s1" }), pendingChange({ id: 2, sessionId: "s1" }), pendingChange({ id: 3, sessionId: "s2" })],
           applied: [
             { sessionId: "s1", batchId: 10, canUndo: true },
             { sessionId: "s2", batchId: 11, canUndo: true },
           ],
-          wp: { ...s.wp, "s1/db": wpInfo, "s2/other": wpInfo },
-          wpNav: { stack: [{ screen: "dashboard" }, { screen: "snapshots" }], index: 1 },
           documents: {
-            [documentKey("s1", "order 4711")]: { version: 0, document: orderDocument(), error: null },
-            [documentKey("s2", "order 4711")]: { version: 0, document: orderDocument(), error: null },
+            [documentKey("s1", "order 4711")]: { version: 0, document: objectDocument(), error: null },
+            [documentKey("s2", "order 4711")]: { version: 0, document: objectDocument(), error: null },
           },
-        }));
+        });
       });
 
-      it("removes the closed active session's changes, cell, WordPress info and navigation and keeps the other session's", async () => {
+      it("removes the closed active session's changes, cell and documents and keeps the other session's", async () => {
         render(
           <>
             <StatusBar />
@@ -112,19 +109,15 @@ describe("store behavior", () => {
           </>,
         );
         expect(screen.getByRole("button", { name: "2 pending changes" })).toBeInTheDocument();
-        expect(screen.getByRole("group", { name: "Mode" })).toBeInTheDocument();
 
         await act(() => useStore.getState().disconnect("s1"));
 
         expect(screen.getByRole("button", { name: "1 pending change" })).toBeInTheDocument();
         expect(tabTitles()).toEqual(["Blog scratch"]);
-        expect(screen.queryByRole("group", { name: "Mode" })).not.toBeInTheDocument();
         const state = useStore.getState();
         expect(state.pending.map((p) => p.sessionId)).toEqual(["s2"]);
         expect(state.applied.map((a) => a.sessionId)).toEqual(["s2"]);
         expect(state.selectedCell).toBeNull();
-        expect(Object.keys(state.wp)).toEqual(["s2/other"]);
-        expect(state.wpNav).toEqual({ stack: [{ screen: "dashboard" }], index: 0 });
         expect(Object.keys(state.documents)).toEqual([documentKey("s2", "order 4711")]);
       });
 
@@ -143,8 +136,6 @@ describe("store behavior", () => {
         const state = useStore.getState();
         expect(state.applied.map((a) => a.sessionId)).toEqual(["s1"]);
         expect(state.selectedCell?.tabId).toBe("a");
-        expect(Object.keys(state.wp)).toEqual(["s1/db"]);
-        expect(state.wpNav.index).toBe(1);
         expect(Object.keys(state.documents)).toEqual([documentKey("s1", "order 4711")]);
       });
     });
@@ -157,62 +148,6 @@ describe("store behavior", () => {
       await act(() => useStore.getState().disconnect("s1"));
 
       expect(useStore.getState().selectedCell).toBeNull();
-    });
-  });
-
-  describe("loadWp", () => {
-    it("switches to WordPress mode when the active database is detected as WordPress", async () => {
-      await useStore.getState().loadWp("s1", "db");
-      expect(useStore.getState().mode).toBe("db");
-
-      mocked.wpDetect.mockResolvedValue(wpInfo);
-      await useStore.getState().loadWp("s1", "db");
-      expect(useStore.getState().mode).toBe("wp");
-    });
-
-    it("stays in Database mode when the user switched to a non-WordPress database before the detection of the old one replied", async () => {
-      const a = deferred<WpInfo | null>();
-      mocked.wpDetect.mockImplementation((_session, database) => (database === "A" ? a.promise : Promise.resolve(null)));
-      useStore.setState({ sessions: [{ ...session, database: "A" }] });
-
-      const loading = useStore.getState().loadWp("s1", "A");
-      await act(() => useStore.getState().switchDatabase("s1", "B"));
-      a.resolve(wpInfo);
-      await act(() => loading);
-
-      expect(useStore.getState().mode).toBe("db");
-    });
-
-    it("stores only the reply of the later request for the same database", async () => {
-      const first = deferred<WpInfo | null>();
-      const later = deferred<WpInfo | null>();
-      mocked.wpDetect.mockReturnValueOnce(first.promise).mockReturnValueOnce(later.promise);
-
-      const a = useStore.getState().loadWp("s1", "db");
-      const b = useStore.getState().loadWp("s1", "db", true);
-      later.resolve({ ...wpInfo, prefix: "later_" });
-      await b;
-      first.resolve({ ...wpInfo, prefix: "first_" });
-      await a;
-
-      expect(useStore.getState().wp["s1/db"]?.prefix).toBe("later_");
-    });
-
-    it("toasts once that the legacy entities file is no longer read, however often detection runs", async () => {
-      mocked.wpDetect.mockResolvedValue({ ...wpInfo, legacyEntitiesFile: "/config/entities.toml" });
-      render(<Toasts />);
-
-      await act(() => useStore.getState().loadWp("s1", "db"));
-      await act(() => useStore.getState().loadWp("s1", "db", true));
-
-      expect(await screen.findAllByText(/\/config\/entities\.toml is no longer read/)).toHaveLength(1);
-    });
-
-    it("does not toast without a legacy entities file", async () => {
-      mocked.wpDetect.mockResolvedValue(wpInfo);
-      render(<Toasts />);
-      await act(() => useStore.getState().loadWp("s1", "db"));
-      expect(screen.queryByText(/no longer read/)).not.toBeInTheDocument();
     });
   });
 
@@ -282,39 +217,6 @@ describe("store behavior", () => {
     });
   });
 
-  describe("switchDatabase", () => {
-    it("shows Database mode after switching from WordPress mode to a database that is not WordPress", async () => {
-      wpStore();
-      useStore.setState((s) => ({ wp: { ...s.wp, "s1/plain": null } }));
-
-      await useStore.getState().switchDatabase("s1", "plain");
-      render(<App />);
-
-      expect(useStore.getState().mode).toBe("db");
-      expect(screen.getByRole("tablist")).toBeInTheDocument();
-    });
-
-    it("keeps WordPress mode when switching to a known WordPress database", async () => {
-      wpStore();
-      useStore.setState((s) => ({ wp: { ...s.wp, "s1/other": wpInfo } }));
-
-      await useStore.getState().switchDatabase("s1", "other");
-
-      expect(useStore.getState().mode).toBe("wp");
-    });
-
-  });
-
-  describe("navigate", () => {
-    it("adds no history entry for the same route with a different key order", () => {
-      const { navigate } = useStore.getState();
-      navigate({ screen: "snapshots" });
-      navigate({ screen: "snapshots" });
-
-      expect(useStore.getState().wpNav.stack).toHaveLength(2);
-    });
-  });
-
   describe("view.refresh", () => {
     beforeEach(() => {
       mocked.refreshSchema.mockReset().mockResolvedValue(undefined);
@@ -365,7 +267,7 @@ describe("store behavior", () => {
 
       await act(() => useStore.getState().connect({ spec: session.spec }));
 
-      expect(useStore.getState().tabs.filter((t) => t.sessionId === "s1")).toHaveLength(1);
+      expect(useStore.getState().tabs.filter((t) => t.kind === "query" && t.sessionId === "s1")).toHaveLength(1);
       expect(useStore.getState().sessions).toHaveLength(1);
     });
   });

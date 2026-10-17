@@ -1,7 +1,7 @@
 # Backend (Rust core)
 
-This page covers `src-tauri/`, the Rust side of DataBee. The database driver, the WordPress lens and the
-Stage hook each have their own page.
+This page covers `src-tauri/`, the Rust side of DataBee. The database driver, the presets and rules
+layer and the Stage hook each have their own page.
 
 ## Startup
 
@@ -80,8 +80,7 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `config_dir` | `PathBuf` | handed to the plugins in `start_app` |
 | `log_override` | `Option<LogLevel>` | the CLI `--log-level`; wins over the stored level (`settings_effects`) |
 
-Plugins manage their own state (`stage::Stage`, see [stage.md](stage.md); `wp::WpState`, see
-[wordpress.md](wordpress.md)).
+Plugins manage their own state (`stage::Stage`, see [stage.md](stage.md)).
 
 ### Plugins
 
@@ -97,7 +96,6 @@ the plugin checks that list against its handler (`crate::test_support::build_rs_
 | Plugin | Installed by | State | Commands |
 |---|---|---|---|
 | `stage` | `stage::init` | `Stage` | `stage::commands::COMMANDS` ([stage.md](stage.md)) |
-| `wp` | `wp::init` | `WpState` (snapshot store, path of a legacy `entities.toml`) | `wp::COMMANDS` ([wordpress.md](wordpress.md)) |
 
 ## Tauri commands
 
@@ -112,6 +110,7 @@ use the same names in camelCase.
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
 | `saved/commands.rs` | `saved_queries(sessionId, database)` (the project's saved queries, the global ones and the applied presets' `[[pinned]]` queries as `SavedEntry { id, title, sql, pin, origin, readOnly }`, `{p}`/`{np}` replaced; `origin` is a `SavedOrigin`: `project`, `global` or `preset { preset }`; the routing between project and global lives in `saved/mod.rs`: `add_to_project`, `update`, `remove`), `save_query(sessionId, database, title, sql, pin)` (a new project query with a fresh id), `update_saved_query(sessionId, database, query)` (replaces the project or global query with that id; preset queries are refused), `remove_saved_query(sessionId, database, id)`, `copy_preset_query_to_project(sessionId, database, preset, id)` (the preset query, prefixes replaced, as a new project query); see [presets.md](presets.md#pinned-queries) |
 | `value_counts.rs` | `value_counts(sessionId, database, table, column, equals, limit)`: the most frequent values of one column among the rows a structured filter selects, as `ValueCount { value, count }` (the value with the column's kind, no provenance); `limit` is capped at `MAX_LIMIT` (500); runs with the query timeout, at most 5 s |
+| `readout/commands.rs` | `readout(sessionId, database)`: the home page of a database (status line, anomalies, new objects, pinned queries, recent objects; each part with its own timeout and error, see [presets.md](presets.md#the-readout)); `remember_object(sessionId, address)`: a row address becomes the newest of the project's recent objects (at most 20) |
 | `search/commands.rs` | `palette_search(sessionId, database, query)`: the palette's row hits for `#id`, `@name`, `=value` or free text (see [Palette search](architecture.md#palette-search)) |
 | `rules/commands.rs` | `presets_list` (every known preset with its source and, for a file that does not load, the error; see [presets.md](presets.md)), `project_get` (the project of the session's slug and a database; an empty one when none is stored), `project_update` (applies one `ProjectChange` after checking it against the schema cache, returns the project), `project_export` (the project as preset TOML), `project_export_to(sessionId, database, path)` (writes it to a chosen path); see [presets.md](presets.md#projects); `project_rules`, `rule_draft(sessionId, database, provenance)` and `coverage_preview(sessionId, database, reference, replacing)` for the Project page ([presets.md](presets.md#the-project-page)); `rules_info` (prefixes, applied presets, entities); `reference_coverage(sessionId, database, reference)` (counts for a `ResolvedReference` as `table_references` returned it: total, resolved, NULL or `0`, a sample of unresolved values, `timedOut`; read-only, bounded by the query timeout; see [presets.md](presets.md#coverage)) |
 
@@ -320,9 +319,9 @@ async commands never wait on the disk: under a write gate it applies the closure
 and only then swaps it in, so a failed save leaves memory unchanged instead of showing a change that vanishes
 on restart. Readers take the lock only for the clone and the swap, never during the save. The synchronous
 `update` does the same on the calling thread, for startup code and sync commands (Stage settings, the
-snapshot migration). Store methods that write are `async` and the commands calling them are async commands.
+favorites migration). Store methods that write are `async` and the commands calling them are async commands.
 `JsonStore::open_with` normalizes the loaded value (settings use it for `Settings::sanitized`);
-`JsonStore::from_loaded` takes a value the caller parsed itself (the snapshot index). The file itself is
+`JsonStore::from_loaded` takes a value the caller parsed itself. The file itself is
 `JsonFile` (`store/json_file.rs`), which:
 
 - writes pretty-printed JSON to `<name>.tmp` (mode 0600), `sync_all`s it and renames it over the target;
@@ -341,11 +340,11 @@ snapshot migration). Store methods that write are `async` and the commands calli
 | `favorites.json` | retired. On startup `AppState::open` runs `saved::migrate::migrate_favorites(config_dir)` once: a query favorite scoped to a server account goes to the project of the most recent saved connection of that account that names a database; a table favorite to the project of its database (a connection to that database first, else any of the account) as `SELECT * FROM <table>`; global favorites and those without a matching saved connection to the global saved queries of `projects.json` (table favorites qualified with their database). The file is then renamed to `favorites.migrated.json`, so the move happens once |
 | `history.json` | executed queries per account, with time, duration and error. At most 500 entries across all accounts. SQL over 64 KiB is stored cut on a char boundary with `truncated: true`. Each entry stores a `hash` of the full SQL (first 8 bytes of SHA-256, computed on load for older files); rerunning the same SQL on the same account replaces its entry. Written behind, see below |
 | `stage.json` | Stage's own settings (`stage::settings::StageStore`, see [stage.md](stage.md)); not part of `settings.json` |
-| `snapshots.json` | WordPress plugin: index of snapshots (id, label, account, database, scope, created, `paths` count), 30 per account and database (`MAX_PER_DATABASE`); adding one evicts the oldest of that database only and deletes its values file |
-| `snapshots/<id>.json` | one snapshot's `path → value` map (0600, dir 0700) |
+| `snapshots.json`, `snapshots/<id>.json` | snapshots of the removed WordPress mode; no code reads or deletes them since U12, U13 decides their migration |
 | `ui_state.json` | per connection: column widths, `detailPaneWidth`, `sqlEditorHeight`, `sidebarHidden`, `collapsedGroups` (by database: `<document table>::<group id>` keys) (older names load via serde aliases; missing fields take their defaults; the retired `inspectorWidth` and `bottomPaneHeight` are ignored). `UiStateStore::forget` drops a connection's entry |
-| `entities.toml` | no longer read; when it exists, the log warns once and the page shows a toast ([wordpress.md](wordpress.md#the-presets)) |
+| `entities.toml` | not read; user presets replace it ([presets.md](presets.md#built-in-presets)) |
 | `projects.json` | `{ "projects": { "<slug>/<database>": Project }, "global": [SavedQuery] }`, snake_case like the rule types ([presets.md](presets.md#projects)); `global` holds saved queries offered in every project. `ProjectsStore::update` runs the change inside the store's update, so a failed check stores nothing (`update_global` likewise for the global list); `rename_connection` moves every `<old>/…` key to the new slug; `import_saved` appends migrated favorites in one save |
+| `recent_objects.json` | rows opened in the app per project (`<slug>/<database>` → newest first, each address once, at most 20, with the time in Unix seconds), for the readout (`store::recent_objects`); `rename_connection` moves them with a slug rename |
 | `presets/*.toml` | user presets; one with the name of a built-in replaces it ([presets.md](presets.md)) |
 | `databee.sock` | the IPC socket |
 | `databee.lock` | the instance lock |
@@ -355,14 +354,6 @@ and a writer task (`HistoryStore::start_writer`, started in `setup`) saves at mo
 on a blocking thread. A failed write is logged and retried after the next change. `flush` saves right away;
 it runs on `RunEvent::Exit` and from `clear`. History is best-effort: a crash can lose the last half second of
 queries.
-
-**Snapshots** (`wp/snapshots_store.rs`, the WordPress plugin's store): `list` reads only the index; `get` reads one values file on a blocking
-thread. `add` writes the values file before the index, `delete` removes the index entry before the file, so
-the index never names a snapshot without values (a stray file is harmless). Ids name files, so only uuid
-characters are accepted. Older versions kept every snapshot with its values in `snapshots.json`; `open`
-recognizes that format (entries without `paths`), copies it to `snapshots.json.legacy`, writes every snapshot
-to its file, rewrites `snapshots.json` as the index and then deletes the copy. If any step fails, the legacy
-file stays, snapshots are served from memory and `add`/`delete` refuse until a restart migrates again.
 
 Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.databee/`.
 
@@ -419,7 +410,7 @@ gives up its value only through `expose()`.
 | `cancelled` | MySQL error 1317, or the user cancelled |
 | `confirmation_required` | a destructive statement without `confirmed` |
 | `session_not_found` | a stale session id |
-| `invalid_input` | bad arguments, a bad filter, a database that is not WordPress for a WordPress command |
+| `invalid_input` | bad arguments, a bad filter, an address that names no row where one is needed |
 | `keychain` | Keychain failures |
 | `io` | file errors |
 
@@ -480,8 +471,8 @@ stable in `rust-toolchain.toml` at the repo root. The crate uses edition 2024 an
 content:
 
 - `default-src 'self'`: scripts, fonts and frames come from the bundle only;
-- `img-src 'self' data: https: http:`: Gravatar avatars and WordPress thumbnails, which come from the site's own
-  uploads URL (any local host, such as `*.ddev.site`);
+- `img-src 'self' data: https: http:`: was for avatars and thumbnails from a site's own uploads URL; no view
+  loads a remote image since U12, so it can narrow to `'self' data:`;
 - `style-src 'self' 'unsafe-inline'`: React `style` attributes;
 - `connect-src ipc: http://ipc.localhost`: Tauri IPC (commands and events).
 

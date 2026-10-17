@@ -35,7 +35,7 @@ function plainKind(cell: Cell): ValueKind {
 
 const cellText = (cell: Cell): string | null => (cell.t === "number" || cell.t === "text" || cell.t === "temporal" || cell.t === "json" ? cell.v : null);
 
-/** WordPress stores "no target" as `0`; NULL means the same in a reference column. */
+/** `0` stores "no target"; NULL means the same in a reference column. */
 const isNoReference = (cell: Cell) => cell.t === "null" || cellText(cell) === "0";
 
 function cellKind(result: ResultSet, row: number, col: number, cell: Cell, column: ColumnKind, source: Provenance | null): ValueKind {

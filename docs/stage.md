@@ -62,8 +62,8 @@ The page side lives in `src/stage/`:
 | `anchors.ts` | The anchors, read from the `data-stage*` attributes: `collectAnchors` (rects, visibility, role, list and states), `findAnchor`, `labelOf`, `roleOf`, `detailsOf`, `clipsOf`. `MAX_LABEL` (80) is the hook's only label limit; Rust passes labels through. |
 | `actions.ts` | What an act does to the page: `reveal`, `click`, `typeInto` (replace or append; CodeMirror too), `scroll`, `press` (keys), `sheet` (open or close settings and the palette), `nextFrame` |
 | `hooks.ts` | Dispatch only: answers `stage:collect` (`stage_anchors`), `stage:info` (`stage_info`) and `stage:act` with `perform`, an exhaustive `switch` on `kind` with one handler per kind, then `stage_done` |
-| `state.ts` | `stageView()` (`connect`, `db`, `wp:<screen>`; an object tab is `db` with `state.object` set to its address and view, a project tab `db` with `state.project` set to its database and open form), `stageSurfaces()` (the settings window's sections are `settingsSections()`, from the settings page registry), `stageUi()` and the flat `stageState()`. `stageState()` never includes SQL text or passwords. |
-| `commands.ts` | The registry's commands in Stage form, with shortcuts in Stage notation. Conventional ids: `app:settings`, `view:palette`. Families: `settings:open:<page>`, `table:open:<table>`, `wp:open:<entity>:<id>` |
+| `state.ts` | `stageView()` (`connect` or `db`; an object tab is `db` with `state.object` set to its address and view, a project tab `db` with `state.project` set to its database and open form, the readout tab `db` with `state.readout` set to its database; `state.prefix` and `state.presets` come from `rules_info`), `stageSurfaces()` (the settings window's sections are `settingsSections()`, from the settings page registry), `stageUi()` and the flat `stageState()`. `stageState()` never includes SQL text or passwords. |
+| `commands.ts` | The registry's commands in Stage form, with shortcuts in Stage notation. Conventional ids: `app:settings`, `view:palette`. Families: `settings:open:<page>`, `table:open:<table>`, `entity:open:<entity>:<id>` (the entity shorthand of the current database; enabled while its rules name entities) |
 | `rect.ts` | Rectangle math (`intersectRect`, `visiblePart`, `isInView`, `centerOf`) |
 
 One verb, for example `act kind=click anchor=toolbar:settings`:
@@ -83,7 +83,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
 - **Anchors** are `data-stage` attributes, with optional `-label`, `-role` and `-list`. Ids follow the data
   where rows have stable ids:
   - `table:<db>.<table>` (list `tables`)
-  - `tab:table:<db>.<table>`, `tab:object:<row address>`, `tab:project:<db>`
+  - `tab:table:<db>.<table>`, `tab:object:<row address>`, `tab:project:<db>`, `tab:readout:<db>`
   - object tabs: `object` (the panel), `object-header`, `object-actions` (the actions menu button),
     `view-toggle` with `view-toggle:document` and `view-toggle:rows`, `group-<table>` on each section band's
     table name (list `groups`; a second band of the same table is `group-<table>:<group id>`), `collapse:<group id>` (the band's
@@ -109,6 +109,10 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `:enable`, `:promote`; value styles `style:<index>` or `style:<preset>:<scope>:<value>` (list `styles`) with
     `:edit`, `:remove`, `:on`; kinds `kind:<index>` or `kind:<preset>:<scope>` (list `kinds`) with `:edit`,
     `:remove`
+  - the readout: `readout` (the panel), `readout:value:<id>` (a value-pinned query's title in the status
+    line), `readout:anomaly:<id>` (`→ rows`), `readout:fix:<id>` (the anomaly's fix action),
+    `readout:new:<entity>` (an entity's new rows), `readout:pinned:<id>` (a pinned query's title),
+    `readout:recent:<row address>` (a recent object's `#key`)
   - `palette:search` and the palette results (list `palette:results`): `palette:item:<key>` with the keys
     `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `saved:<origin>:<id>` (a saved query), `cmd:<id>`
     and `recent:<title>`; holding ⌥ shows the selected hit's `peek`
@@ -120,7 +124,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   - `value:<table>.<column>:<key>` for values that act on click or reveal (primary keys, references, enums,
     serialized data, secrets) and have a provenance (list `values`; label: the raw value)
   - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:search` (opens the palette),
-    `toolbar:mode:<wp|db>`, `statusbar:sidebar` (the ▤ toggle), `statusbar:presets` (opens the Project page),
+    `statusbar:sidebar` (the ▤ toggle), `statusbar:presets` (opens the Project page),
     `statusbar:pending`
 
   Sheets are marked with `data-stage-window`.
@@ -141,6 +145,11 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   palette's `q:`; the WordPress navigation keeps `wp:nav:dashboard` and `wp:nav:snapshots`), the options
   screen, and the favorites bar `favorites`, `favorites:add` and `favorite:<id>` (list `favorites`; saved
   queries replace it). The views `wp:<list>` (`wp:orders`, …) and the `go.*` list commands are gone with them.
+  U12 removed WordPress mode: the mode switch `toolbar:mode`, `toolbar:mode:wp` and `toolbar:mode:db`; the
+  WordPress shell `wp:nav`, `wp:nav:dashboard`, `wp:nav:snapshots`, `wp:header`, `wp:back`, `wp:forward`,
+  `wp:crumbs`, `wp:search` and `wp:content`; the views `wp:dashboard` and `wp:snapshots` (the view is `connect`
+  or `db`); `state.mode`; the commands `view.wp`, `view.db`, `go.dashboard` and `go.snapshots`. The command
+  family `wp:open:<entity>:<id>` is now `entity:open:<entity>:<id>`. The readout replaces the dashboard.
 - **Commands** come from the in-app registry, with `shortcut` and `enabled`.
 - **Keys.** When a key combination is a command's shortcut, that command runs in the current view, even
   without focus. So ⌘, ⌘K and ⌘T behave like their menu items. Other keys go to the focused element;

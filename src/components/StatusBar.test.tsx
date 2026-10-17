@@ -8,7 +8,6 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import { installCommands } from "../commands";
 import { selectSidebarHidden, useStore } from "../state/store";
 import { columnMeta, connectedStore, num, pendingChange, queryTab, tableTab, value } from "../test/fixtures";
-import { wpStore } from "../test/wpFixtures";
 import { StatusBar } from "./StatusBar";
 import { Toasts } from "./Toasts";
 import { useValueHover } from "./value/useValueHover";
@@ -148,23 +147,6 @@ describe("StatusBar", () => {
       render(<StatusBar />);
       act(() => useStore.getState().selectCell({ row: 0, col: 0, column: columnMeta("c", "text"), cell: num("5"), source: { sessionId: "s1", resultId: 1 }, value: value() }));
       expect(screen.getByRole("button", { name: "databee://shop/db/wp_posts" })).toBeInTheDocument();
-    });
-  });
-
-  describe("in WordPress mode", () => {
-    beforeEach(() => wpStore());
-
-    it("shows only the table prefix", () => {
-      render(<StatusBar />);
-      expect(screen.getByText("prefix wp_")).toBeInTheDocument();
-      expect(screen.queryByText(/WooCommerce|HPOS/)).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /Shop|shop\.test/ })).not.toBeInTheDocument();
-    });
-
-    it("shows no prefix in Database mode", () => {
-      useStore.setState({ mode: "db" });
-      render(<StatusBar />);
-      expect(screen.queryByText(/^prefix /)).not.toBeInTheDocument();
     });
   });
 

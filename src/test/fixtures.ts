@@ -1,9 +1,9 @@
-import type { BrowsePage, Cell, ColumnMeta, PlannedChange, ResultSet, Settings, TableInfo, Value } from "../api";
+import type { BrowsePage, Cell, ColumnMeta, PlannedChange, Readout, ResultSet, Settings, TableInfo, Value } from "../api";
 import { session } from "./session";
 import { settings } from "./settings";
 
 export { session, settings };
-import { resetStore, type QueryTab, type Tab, type TableTab } from "../state/store";
+import { resetStore, type QueryTab, type ReadoutTab, type Tab, type TableTab } from "../state/store";
 
 export function table(name: string, patch: Partial<TableInfo> = {}): TableInfo {
   return { name, isView: false, rowsEstimate: 10, sizeBytes: 16384, comment: "", ...patch };
@@ -72,6 +72,33 @@ export function tableTab(patch: Partial<TableTab> = {}): TableTab {
     where: [],
     address: { connection: session.slug, database: "db", target: { kind: "table", table, filter: [] }, view: null, compare: null },
     nav: { back: [], forward: [] },
+    ...patch,
+  };
+}
+
+export function readoutTab(patch: Partial<ReadoutTab> = {}): ReadoutTab {
+  return {
+    id: "r1",
+    kind: "readout",
+    sessionId: "s1",
+    title: "readout",
+    database: "db",
+    address: { connection: session.slug, database: "db", target: { kind: "home" }, view: null, compare: null },
+    nav: { back: [], forward: [] },
+    ...patch,
+  };
+}
+
+/** A readout of database `db` with nothing in it, as for a database without presets, pins or recent objects. */
+export function readoutOf(patch: Partial<Readout> = {}): Readout {
+  const none = { items: [], error: null };
+  return {
+    address: { connection: session.slug, database: "db", target: { kind: "home" }, view: null, compare: null },
+    status: { host: session.spec.host, slug: session.slug, database: "db", prefix: "", presets: [], serverVersion: session.serverVersion, values: none },
+    anomalies: none,
+    newObjects: none,
+    pinned: none,
+    recent: none,
     ...patch,
   };
 }

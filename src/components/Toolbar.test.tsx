@@ -28,6 +28,11 @@ describe("Toolbar", () => {
     expect(await screen.findByLabelText("Search everything")).toBeInTheDocument();
   });
 
+  it("has no mode toggle, only connection, search and the action buttons", () => {
+    render(<Toolbar />);
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Disconnect", "Go to", "New connection", "New query", "Settings"]);
+  });
+
   it("shows the palette shortcut as a key cap", () => {
     render(<Toolbar />);
     expect(screen.getByRole("button", { name: "Go to" })).toHaveTextContent("⌘K");

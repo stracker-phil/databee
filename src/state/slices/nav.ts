@@ -5,7 +5,7 @@
 import { api, type Address, type ColumnEquals } from "../../api";
 import { AddressError, formatAddress, parseAddress, sameAddress } from "../../lib/address";
 import { fail } from "../requests";
-import { isWpView, selectActiveTab, selectStructure } from "../selectors";
+import { selectActiveTab, selectStructure } from "../selectors";
 import type { Slice, Store } from "../store";
 import { objectColumnAt, type ColumnStack, type StackColumn } from "../../lib/columns";
 import { documentText, objectAddress, objectTitle } from "../../lib/document";
@@ -37,7 +37,7 @@ export interface NavSlice {
   filterRows(tabId: string, match: ColumnEquals): void;
   /** Applies a typed WHERE filter to table tab `tabId`; not addressable, so no history entry. */
   setTableFilter(tabId: string, filter: string): void;
-  /** Back and forward in the active tab; in WordPress mode through `wpNav`. */
+  /** Back and forward in the active tab. */
   navBack(): Promise<void>;
   navForward(): Promise<void>;
   /** Stores a renamed connection slug and rewrites the addresses of that connection's tabs. */
@@ -170,7 +170,7 @@ export const navSlice: Slice<NavSlice> = {
     const travel = async (direction: "back" | "forward") => {
       const tab = selectActiveTab(get());
       const target = tab?.nav[direction].at(-1);
-      if (!tab || !target || tab.kind === "query" || tab.kind === "project") return;
+      if (!tab || !target || tab.kind === "query" || tab.kind === "project" || tab.kind === "readout") return;
       if (tab.kind === "object") {
         if (target.target.kind === "row") set((st) => ({ ...withTab(st, reobjected(tab, target, stepped(tab, direction))), selectedCell: null }));
         return;
@@ -189,6 +189,7 @@ export const navSlice: Slice<NavSlice> = {
           const session = get().sessions.find((x) => x.slug === address.connection);
           if (!session) return get().toast("error", `No open connection is named ${address.connection}`);
           const kind = address.target.kind;
+          if (kind === "home") return get().openReadout({ sessionId: session.id, database: address.database });
           if (kind === "project") return get().openProject({ sessionId: session.id, database: address.database });
           if (address.target.kind === "find") return get().setPaletteOpen(true, `=${address.target.value}`);
           if (address.target.kind === "query") {
@@ -197,12 +198,10 @@ export const navSlice: Slice<NavSlice> = {
             if (!entry) return get().toast("error", `${formatAddress(address)} names no saved query`);
             return get().openSavedQuery(session.id, address.database, entry);
           }
-          if (kind !== "table" && kind !== "row") return get().toast("info", `${formatAddress(address)} cannot be opened yet: only table, row, query, find and project addresses open so far`);
           if (kind === "row") return get().openObject(address, { preview: opts.preview });
           if (get().activeSessionId !== session.id) get().setActiveSession(session.id);
           const location = await locationOf(get, session.id, address);
           if (!location) return;
-          get().setMode("db");
           get().openTableTab(location.database, location.table, "data", undefined, { where: location.where, preview: opts.preview });
         } catch (e) {
           if (e instanceof AddressError) get().toast("error", e.message);
@@ -235,12 +234,10 @@ export const navSlice: Slice<NavSlice> = {
       },
 
       async navBack() {
-        if (isWpView(get())) return get().goBack();
         await travel("back");
       },
 
       async navForward() {
-        if (isWpView(get())) return get().goForward();
         await travel("forward");
       },
 

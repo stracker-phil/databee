@@ -2,6 +2,7 @@ pub mod history;
 pub mod json_file;
 pub mod json_store;
 pub mod keybindings;
+pub mod recent_objects;
 pub mod recents;
 pub mod settings;
 pub mod slug;

@@ -357,6 +357,100 @@ async fn delete_expired_transients_through_a_table_address_deletes_by_key_and_un
     }
 }
 
+const PROBE_STATE: &str =
+    "SELECT option_id, autoload FROM wp_write.wp_options WHERE option_name = 'zz_autoload_probe'";
+
+async fn reset_autoload_probe(ctx: &Ctx<'_>) -> String {
+    run(
+        ctx,
+        &["UPDATE wp_write.wp_options SET autoload = 'yes' WHERE option_name = 'zz_autoload_probe'"],
+    )
+    .await;
+    snapshot(ctx, PROBE_STATE).await[0][0].clone().unwrap()
+}
+
+#[tokio::test]
+#[ignore]
+async fn set_autoload_plans_an_update_of_the_option_with_undo_to_the_old_value() {
+    let rig = Rig::new();
+    for (server, session) in sessions().await {
+        let ctx = ctx(&session, &rig).await;
+        let id = reset_autoload_probe(&ctx).await;
+        let address = ctx.row_address("wp_options", &id);
+
+        let plan = plan(&ctx, &address, "set_autoload", &param("autoload", "no"))
+            .await
+            .unwrap_or_else(|e| panic!("{server}: {e:?}"));
+
+        assert_eq!(
+            plan.description, "set_autoload: Update 1 wp_options row",
+            "{server}"
+        );
+        assert_eq!(
+            plan.statements,
+            [format!(
+                "UPDATE `wp_write`.`wp_options` SET `autoload` = 'no' WHERE `option_id` IN ('{id}')"
+            )],
+            "{server}"
+        );
+        assert_eq!(
+            plan.undo,
+            [format!(
+                "UPDATE `wp_write`.`wp_options` SET `autoload` = 'yes' WHERE `option_id` = '{id}'"
+            )],
+            "{server}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn applying_set_autoload_and_undoing_it_restores_the_options_autoload() {
+    let rig = Rig::new();
+    for (server, session) in sessions().await {
+        let ctx = ctx(&session, &rig).await;
+        let id = reset_autoload_probe(&ctx).await;
+        let before = snapshot(&ctx, PROBE_STATE).await;
+        let address = ctx.row_address("wp_options", &id);
+        let plan = plan(&ctx, &address, "set_autoload", &param("autoload", "no"))
+            .await
+            .unwrap();
+
+        apply(&ctx, &plan).await;
+        let applied = snapshot(&ctx, PROBE_STATE).await;
+        undo(&ctx, &plan).await;
+        let restored = snapshot(&ctx, PROBE_STATE).await;
+
+        assert_eq!(applied[0][1].as_deref(), Some("no"), "{server}");
+        assert_eq!(restored, before, "{server}");
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn set_autoload_refuses_a_value_that_is_not_one_of_the_stored_autoload_values() {
+    let rig = Rig::new();
+    for (server, session) in sessions().await {
+        let ctx = ctx(&session, &rig).await;
+        let id = reset_autoload_probe(&ctx).await;
+        let address = ctx.row_address("wp_options", &id);
+
+        let err = plan(&ctx, &address, "set_autoload", &param("autoload", "maybe"))
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&err, AppError::InvalidInput(m) if m == "`maybe` is not one of the choices of `autoload`"),
+            "{server}: {err:?}"
+        );
+        assert_eq!(
+            snapshot(&ctx, PROBE_STATE).await[0][1].as_deref(),
+            Some("yes"),
+            "{server}"
+        );
+    }
+}
+
 #[tokio::test]
 #[ignore]
 async fn delete_logs_before_has_no_undo_and_its_description_carries_the_preview_count() {

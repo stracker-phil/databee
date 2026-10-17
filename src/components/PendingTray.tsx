@@ -22,7 +22,7 @@ export function PendingTray() {
     <section className="tray" aria-label="Pending changes" data-stage="tray">
       <header className="tray-head">
         <strong>{pending.length ? `${pending.length} pending ${pending.length === 1 ? "change" : "changes"}` : "No pending changes"}</strong>
-        <span className="muted small">Raw SQL writes: no WordPress hooks run.</span>
+        <span className="muted small">Raw SQL writes: no application hooks run.</span>
         <div className="spacer" />
         {canUndo && (
           <button data-stage="tray:undo" className="btn" disabled={applying} aria-busy={applying} onClick={() => void undoLast()}>

@@ -5,9 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 vi.mock("./api", async () => ({ stageApi: (await import("./apiMock")).createStageApiMock() }));
 
+import { api } from "../api";
 import { installCommands } from "../commands";
+import { projectKey } from "../state/slices/project";
 import { resetStore, useStore } from "../state/store";
 import { connectedStore } from "../test/fixtures";
+import { activeObject, objectDocument } from "../test/objectFixtures";
 import { registerCoreSettingsPages } from "../components/settings/pages";
 import { stageApi } from "./api";
 import { perform } from "./hooks";
@@ -15,6 +18,7 @@ import { installStage } from "./install";
 import type { StageAct, StageActRequest, StageKeys } from "./types";
 
 const mocked = vi.mocked(stageApi, true);
+const mocked_api = vi.mocked(api, true);
 
 /** jsdom has no layout: elements take their box from a `data-rect="x,y,width,height"` attribute. */
 function stubLayout() {
@@ -63,7 +67,7 @@ describe("Stage page hooks", () => {
       <div>
         <button data-stage="toolbar:settings" aria-label="Settings" data-rect="10,8,24,24" />
         <button data-stage="toolbar:settings" aria-label="Duplicate" data-rect="50,8,24,24" />
-        <button data-stage="toolbar:mode:db" aria-pressed="true" data-rect="80,8,60,24">Database</button>
+        <button data-stage="toolbar:sidebar" aria-pressed="true" data-rect="80,8,60,24">Sidebar</button>
         <div data-stage="table:db.wp_posts" data-stage-list="tables" aria-selected="true" data-rect="0,2000,240,24">
           <span data-stage-label="wp_posts">wp_posts 12k</span>
         </div>
@@ -77,7 +81,7 @@ describe("Stage page hooks", () => {
     hooks().collect();
     expect(mocked.anchors).toHaveBeenCalledWith("c1", "main", [
       { id: "toolbar:settings", label: "Settings", window: "main", rect: { x: 10, y: 8, width: 24, height: 24 }, inView: true, visible: { x: 10, y: 8, width: 24, height: 24 }, role: "button" },
-      { id: "toolbar:mode:db", label: "Database", window: "main", rect: { x: 80, y: 8, width: 60, height: 24 }, inView: true, visible: { x: 80, y: 8, width: 60, height: 24 }, role: "toggle", checked: true },
+      { id: "toolbar:sidebar", label: "Sidebar", window: "main", rect: { x: 80, y: 8, width: 60, height: 24 }, inView: true, visible: { x: 80, y: 8, width: 60, height: 24 }, role: "toggle", checked: true },
       { id: "table:db.wp_posts", label: "wp_posts", window: "main", rect: { x: 0, y: 2000, width: 240, height: 24 }, inView: false, visible: null, role: "item", list: "tables", selected: true },
       { id: "sidebar:filter", label: "Filter tables", window: "main", rect: { x: 0, y: 40, width: 200, height: 24 }, inView: true, visible: { x: 0, y: 40, width: 200, height: 24 }, role: "field", disabled: true },
       { id: "settings-nav:queries", label: "Queries", window: "settings", rect: { x: 210, y: 140, width: 150, height: 26 }, inView: true, visible: { x: 210, y: 140, width: 150, height: 26 }, role: "item", list: "settings-nav", selected: true },
@@ -200,6 +204,26 @@ describe("Stage page hooks", () => {
     expect(await act({ kind: "command", command: "changes.apply" })).toMatchObject({ ok: false, error: "“changes.apply” can't run in the current view" });
   });
 
+  describe("entity:open: family", () => {
+    beforeEach(() => {
+      connectedStore();
+      installCommands();
+      mocked_api.document.mockResolvedValue(objectDocument());
+    });
+
+    it("opens the row the entity and id name", async () => {
+      useStore.setState({ rulesInfo: { [projectKey("s1", "db")]: { prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [{ preset: "woocommerce", entity: { name: "order", table: "wp_wc_orders" } }], tableEntities: {} } } });
+      expect(await hooks().act({ kind: "command", command: "entity:open:order:4711" })).toMatchObject({ ok: true });
+      await vi.waitFor(() => expect(activeObject().title).toBe("wp_wc_orders #4711"));
+      expect(mocked_api.document).toHaveBeenCalledWith("s1", "order 4711", "db");
+    });
+
+    it("cannot run when the rules name no entity", async () => {
+      expect(await hooks().act({ kind: "command", command: "entity:open:order:4711" })).toMatchObject({ ok: false, status: 409 });
+      expect(useStore.getState().tabs.some((t) => t.kind === "object")).toBe(false);
+    });
+  });
+
   it("opens and closes the settings and palette sheets", async () => {
     connectedStore();
     const { act } = hooks();
@@ -273,7 +297,7 @@ describe("Stage page hooks", () => {
     render(<div role="dialog" data-stage-window="settings" data-rect="200,100,700,600" />);
     const reply = hooks().info();
     expect(reply).toMatchObject({ request: "i1", page: "main", view: "db", ui: { valueColumn: "closed" } });
-    expect(reply.state).toMatchObject({ mode: "db", connection: "root@127.0.0.1:52958/db", tab: "query: Query 1", settings: "shortcuts", palette: "closed" });
+    expect(reply.state).toMatchObject({ connection: "root@127.0.0.1:52958/db", tab: "query: Query 1", settings: "shortcuts", palette: "closed" });
     const settings = reply.surfaces.find((s) => s.id === "settings")!;
     expect(settings).toMatchObject({ title: "Settings", rect: { x: 200, y: 100, width: 700, height: 600 }, section: "shortcuts" });
     expect(settings.sections).toContainEqual({ id: "presentations", title: "Presentations" });

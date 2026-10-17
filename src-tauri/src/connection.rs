@@ -119,7 +119,7 @@ mod tests {
             port: 3306,
             socket: None,
             user: "wp".into(),
-            database: Some("wordpress".into()),
+            database: Some("site".into()),
         }
     }
 
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn identity_distinguishes_databases() {
-        assert_eq!(spec().identity(), "wp@127.0.0.1:3306/wordpress");
+        assert_eq!(spec().identity(), "wp@127.0.0.1:3306/site");
     }
 
     #[test]
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn display_name_prefers_explicit_name() {
-        assert_eq!(spec().display_name(), "wordpress on 127.0.0.1:3306");
+        assert_eq!(spec().display_name(), "site on 127.0.0.1:3306");
         let named = ConnectionSpec {
             name: Some("Shop (Docker)".into()),
             ..spec()
@@ -170,7 +170,7 @@ mod tests {
             socket: Some("/tmp/mysql.sock".into()),
             ..spec()
         };
-        assert_eq!(socket.display_name(), "wordpress on /tmp/mysql.sock");
+        assert_eq!(socket.display_name(), "site on /tmp/mysql.sock");
         let bare = ConnectionSpec {
             database: None,
             ..spec()

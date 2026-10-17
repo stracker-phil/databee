@@ -4,19 +4,14 @@ import type {
   AppliedBatch,
   ChangeRequest,
   ColumnEquals,
-  DiffEntry,
   NewValue,
   PlannedChange,
-  WpChangeRequest,
-  SnapshotInfo,
-  SnapshotScope,
-  Dashboard,
   ErrorKind,
   AppError,
   DecodedValue,
   Peek,
+  Readout,
   PaletteHit,
-  WpInfo,
   BrowsePage,
   BrowseRequest,
   OpenArgs,
@@ -169,22 +164,17 @@ export const api = {
   listHistory: (account: string) => invoke<HistoryEntry[]>("list_history", { account }),
   clearHistory: (account: string) => invoke<void>("clear_history", { account }),
 
-  wpDetect: (sessionId: string, database: string, refresh = false) =>
-    invoke<WpInfo | null>("plugin:wp|wp_detect", { sessionId, database, refresh }),
+  /** The home page of `database`; a part that fails carries its error instead of failing the readout. */
+  readout: (sessionId: string, database: string) => invoke<Readout>("readout", { sessionId, database }),
+  /** Records a row address as the newest recent object of its project. */
+  rememberObject: (sessionId: string, address: string) => invoke<void>("remember_object", { sessionId, address }),
   decodeValue: (text: string) => invoke<DecodedValue | null>("decode_value", { text }),
-  wpDashboard: (sessionId: string, database: string) => invoke<Dashboard>("plugin:wp|wp_dashboard", { sessionId, database }),
 
   planChange: (sessionId: string, change: ChangeRequest) => invoke<PlannedChange>("plan_change", { sessionId, change }),
-  wpPlanChange: (sessionId: string, change: WpChangeRequest) => invoke<PlannedChange>("plugin:wp|wp_plan_change", { sessionId, change }),
   discardChange: (sessionId: string, id: number) => invoke<void>("discard_change", { sessionId, id }),
   applyChanges: (sessionId: string, ids: number[]) => invoke<AppliedBatch>("apply_changes", { sessionId, ids }),
   undoBatch: (sessionId: string, batchId: number) => invoke<number>("undo_batch", { sessionId, batchId }),
   editSerialized: (raw: string, path: number[], value: NewValue) => invoke<string>("edit_serialized", { raw, path, value }),
-  wpSnapshotTake: (sessionId: string, database: string, scope: SnapshotScope, label: string) =>
-    invoke<SnapshotInfo>("plugin:wp|wp_snapshot_take", { sessionId, database, scope, label }),
-  wpSnapshots: (sessionId: string, database: string) => invoke<SnapshotInfo[]>("plugin:wp|wp_snapshots", { sessionId, database }),
-  wpSnapshotDiff: (sessionId: string, database: string, id: string) => invoke<DiffEntry[]>("plugin:wp|wp_snapshot_diff", { sessionId, database, id }),
-  wpSnapshotDelete: (id: string) => invoke<void>("plugin:wp|wp_snapshot_delete", { id }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
   /** Native menu items emit the id of the command they run. */

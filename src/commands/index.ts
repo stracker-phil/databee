@@ -1,5 +1,5 @@
 import { TEXT_SIZES } from "../api";
-import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, selectWp, useStore, type Store, type Tab, type WpRoute } from "../state/store";
+import { selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, useStore, type Tab } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
 import { COLUMN_COMMANDS } from "./columns";
@@ -16,19 +16,14 @@ export const EVENTS = {
   runQuery: "databee:run-query",
 } as const;
 
-function dbViewActive(s: Store): boolean {
-  return !isWpView(s);
-}
-
 function activeTabIs(kind: Tab["kind"]): boolean {
-  const s = useStore.getState();
-  return dbViewActive(s) && selectActiveTab(s)?.kind === kind;
+  return selectActiveTab(useStore.getState())?.kind === kind;
 }
 
 /** Registers the core scopes; safe to call again (tests and re-installs do). */
 export function registerCoreScopes() {
   registerScope({ id: "global", parent: null, label: "Everywhere", isActive: () => true });
-  registerScope({ id: "db", parent: "global", label: "Database", isActive: () => dbViewActive(useStore.getState()) });
+  registerScope({ id: "db", parent: "global", label: "Database", isActive: () => true });
   registerScope({ id: "table", parent: "db", label: "Table", isActive: () => activeTabIs("table") });
   registerScope({ id: "editor", parent: "db", label: "Editor", isActive: () => activeTabIs("query") });
   registerScope({ id: "object", parent: "global", label: "Object", isActive: () => activeTabIs("object") });
@@ -62,26 +57,11 @@ function withQueryTab(run: (tab: Extract<Tab, { kind: "query" }>) => unknown) {
 
 /** The keyboard focus is in a query tab's results grid. */
 const inResults = () => !!document.activeElement?.closest(".results [role='grid']");
-const hasWp = () => !!selectWp(useStore.getState());
-
-const go = (id: string, title: string, route: WpRoute): Command => ({
-  id,
-  title,
-  scope: "wp",
-  when: hasWp,
-  run: () => useStore.getState().navigate(route),
-});
-
-const SCREENS: Command[] = [
-  go("go.dashboard", "Dashboard", { screen: "dashboard" }),
-  go("go.snapshots", "Snapshots & diff", { screen: "snapshots" }),
-];
+const hasDatabase = () => !!selectActiveSession(useStore.getState())?.database;
 
 export const APP_COMMANDS: Command[] = [
   { id: "palette.open", title: "Command palette", scope: "global", defaultBinding: "Mod+K", run: () => useStore.getState().setPaletteOpen(true) },
   { id: "palette.openTable", title: "Open table or entity", scope: "global", defaultBinding: "Mod+P", run: () => useStore.getState().setPaletteOpen(true, "t:") },
-  { id: "view.wp", title: "Switch to WordPress view", scope: "global", defaultBinding: "Mod+1", when: hasWp, run: () => useStore.getState().setMode("wp") },
-  { id: "view.db", title: "Switch to Database view", scope: "global", defaultBinding: "Mod+2", run: () => useStore.getState().setMode("db") },
   // Without history the keys stay with the editor (⌘[ outdents there).
   { id: "nav.back", title: "Back", scope: "global", defaultBinding: "Mod+[", menu: true, when: () => selectCanNav(useStore.getState(), "back"), run: () => useStore.getState().navBack() },
   { id: "nav.forward", title: "Forward", scope: "global", defaultBinding: "Mod+]", menu: true, when: () => selectCanNav(useStore.getState(), "forward"), run: () => useStore.getState().navForward() },
@@ -107,11 +87,7 @@ export const APP_COMMANDS: Command[] = [
     defaultBinding: "Mod+T",
     menu: true,
     when: () => useStore.getState().sessions.length > 0,
-    run: () => {
-      const s = useStore.getState();
-      s.setMode("db");
-      s.openQueryTab();
-    },
+    run: () => useStore.getState().openQueryTab(),
   },
   {
     id: "tabs.close",
@@ -140,13 +116,8 @@ export const APP_COMMANDS: Command[] = [
       if (tab?.kind === "object") useStore.getState().toggleObjectView(tab.id);
     },
   },
-  {
-    id: "project.open",
-    title: "Project",
-    scope: "global",
-    when: () => !!selectActiveSession(useStore.getState())?.database,
-    run: () => useStore.getState().openProject(),
-  },
+  { id: "readout.open", title: "Readout", scope: "global", when: hasDatabase, run: () => useStore.getState().openReadout() },
+  { id: "project.open", title: "Project", scope: "global", when: hasDatabase, run: () => useStore.getState().openProject() },
   { id: "connection.new", title: "New connection…", scope: "global", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "connect" }) },
   {
     id: "settings.open",
@@ -181,12 +152,11 @@ export const APP_COMMANDS: Command[] = [
   ...VALUE_COMMANDS,
   ...OBJECT_VALUE_COMMANDS,
   ...COLUMN_COMMANDS,
-  ...SCREENS,
 ];
 
 /**
  * Registers the core scopes and the app's commands (again after `clearCommands`) and syncs user overrides
- * from the store. Module scopes (WordPress) must be registered first, or their commands throw.
+ * from the store. Module scopes must be registered first, or their commands throw.
  */
 export function installCommands() {
   registerCoreScopes();

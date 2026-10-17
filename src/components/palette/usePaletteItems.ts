@@ -111,7 +111,7 @@ function savedItems(entries: SavedEntry[], sessionId: string | null, database: s
 
 function recentItems(recent: RecentNav[], prefix: Prefix, needle: string): Item[] {
   if (needle || prefix !== null) return [];
-  const { openEntity, openTableTab, setMode } = useStore.getState();
+  const { openEntity, openTableTab } = useStore.getState();
   return recent.map((r) => ({
     key: `recent:${recentTitle(r)}`,
     section: "Recent",
@@ -120,14 +120,14 @@ function recentItems(recent: RecentNav[], prefix: Prefix, needle: string): Item[
     go: () => {
       close();
       if (r.kind === "entity") void openEntity(r.entity, r.id);
-      else (setMode("db"), openTableTab(r.database, r.table));
+      else openTableTab(r.database, r.table);
     },
   }));
 }
 
 function tableItems(tables: TableInfo[], database: string | null, prefix: Prefix, needle: string): Item[] {
   if (prefix !== null && prefix !== "t:") return [];
-  const { openTableTab, setMode } = useStore.getState();
+  const { openTableTab } = useStore.getState();
   return tables
     .map((t) => ({ t, s: score(t.name, needle) }))
     .filter(({ s }) => s > 0 && (needle || prefix === "t:"))
@@ -136,7 +136,6 @@ function tableItems(tables: TableInfo[], database: string | null, prefix: Prefix
     .map(({ t }): Item => {
       const open = (preview: boolean) => {
         close();
-        setMode("db");
         if (database) openTableTab(database, t.name, undefined, undefined, { preview });
       };
       return { key: `table:${t.name}`, section: "Tables", title: t.name, badge: t.isView ? "view" : "table", go: () => open(true), goAlt: () => open(false) };

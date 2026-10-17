@@ -1,8 +1,9 @@
 # DataBee
 
 Minimalistic SQL client for senior WordPress developers working on local sites: MySQL/MariaDB
-(often DDEV/Docker, dummy data), SQLite later. Not for site admins or shop owners; presets and
-projects follow `.claude/rules/presets.md`. See README.md for features and CLI, docs/roadmap.md for ideas.
+(often DDEV/Docker, dummy data), SQLite later. Not for site admins or shop owners. WordPress support is a
+preset (`src-tauri/presets/`), not code; presets and projects follow `.claude/rules/presets.md`. See
+README.md for features and CLI, docs/roadmap.md for ideas.
 
 ## Docs
 Technical docs live in `docs/` (index: `docs/README.md`). Read `docs/architecture.md` and the page of the
@@ -19,9 +20,12 @@ commands, files or extension points change. Document by file and symbol, never b
 - Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen`, one per module
   (`src/<module>/api.ts`; the core's is `src/api/index.ts`). Tests mock them.
 - `src-tauri/src/`: `cli.rs` (argv), `ipc.rs` (single-instance socket), `db/` (lexer, safety, cell decoding,
-  `mysql/` session: dedicated editor connection + metadata pool), `store/` (JSON files), `wp/` (WordPress lens, being replaced by `rules/` presets, see docs/plan/ux:
-  `context` detection, lossless `php` serialize parser, `value` trees, TOML `entities` + resolver, `options`), `stage/` (Stage presentation hook: local HTTP API,
-  registered with `stage register`; the page side is `src/stage/`, anchors are `data-stage` attributes; see docs/stage.md).
+  `mysql/` session: dedicated editor connection + metadata pool), `store/` (JSON files), `rules/` (presets and
+  projects: TOML rule types, the preset catalog, effective rules, the rules lens, coverage), `document/` (a
+  row's document and rule actions), `readout/` (the home page of a database), `search/` (palette),
+  `saved/` (saved and pinned queries), `decode/` (lossless PHP serialize and JSON value trees), `mcp/`
+  (read-only MCP server), `stage/` (Stage presentation hook: local HTTP API, registered with
+  `stage register`; the page side is `src/stage/`, anchors are `data-stage` attributes; see docs/stage.md).
 - Frontend state: zustand store in `src/state/store.ts`; components in `src/components/`.
 - Errors cross the boundary as `{ kind, message, code }` (`error.rs`); passwords use the redacting `Secret` type.
 

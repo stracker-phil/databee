@@ -170,7 +170,7 @@ pub async fn remove_recent(state: State<'_, AppState>, identity: String) -> AppR
 }
 
 /// Renames the saved connection's slug; open sessions of it take the new slug right away and
-/// its projects move along.
+/// its projects and recent objects move along.
 #[tauri::command]
 pub async fn rename_connection_slug(
     state: State<'_, AppState>,
@@ -179,7 +179,8 @@ pub async fn rename_connection_slug(
 ) -> AppResult<()> {
     let old = state.recents.rename_slug(&identity, &slug).await?;
     state.sessions.rename_slug(&identity, &slug);
-    state.projects.rename_connection(&old, &slug).await
+    state.projects.rename_connection(&old, &slug).await?;
+    state.recent_objects.rename_connection(&old, &slug).await
 }
 
 #[tauri::command]

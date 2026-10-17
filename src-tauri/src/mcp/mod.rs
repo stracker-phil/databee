@@ -19,7 +19,7 @@ use crate::secrets::{Keychain, SecretStore};
 use data::Core;
 
 const INSTRUCTIONS: &str = "Read-only access to the databases saved in DataBee, a SQL client for \
-local WordPress and MySQL/MariaDB development. Addresses look like \
+local MySQL/MariaDB development. Addresses look like \
 databee://<connection>/<database>/<table>/<key> (a row) or databee://<connection>/<database>/<table> \
 (a table); `connections` lists the connection slugs. Values carry their provenance (table, column, \
 key). Nothing here writes: `query` refuses anything but SELECT, SHOW, DESCRIBE, EXPLAIN and \

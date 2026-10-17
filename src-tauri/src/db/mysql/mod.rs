@@ -27,7 +27,7 @@ use crate::connection::{ConnectionSpec, Secret};
 use crate::error::{AppError, AppResult};
 
 const META_POOL_SIZE: u32 = 3;
-/// Rows a WordPress or planning read may return.
+/// Rows a metadata or planning read may return.
 const MAX_FETCH_ROWS: usize = 50_000;
 
 /// One logical connection: a dedicated "editor" connection that keeps session state

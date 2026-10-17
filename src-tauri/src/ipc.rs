@@ -324,7 +324,7 @@ mod tests {
             port: 3306,
             socket: None,
             user: "wp".into(),
-            database: Some("wordpress".into()),
+            database: Some("site".into()),
         }
     }
 

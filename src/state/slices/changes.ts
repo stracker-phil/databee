@@ -1,4 +1,4 @@
-import { api, type Address, type ChangeRequest, type PlannedChange, type WpChangeRequest } from "../../api";
+import { api, type Address, type ChangeRequest, type PlannedChange } from "../../api";
 import { formatAddress } from "../../lib/address";
 import { fail } from "../requests";
 import { selectActivePending, selectActiveSession, selectLastBatch } from "../selectors";
@@ -12,7 +12,7 @@ export interface ChangesSlice {
   applying: boolean;
   /** Bumped to move focus to the pending tray's Apply button. */
   trayFocusRequest: number;
-  queueChange(change: ChangeRequest | WpChangeRequest): Promise<boolean>;
+  queueChange(change: ChangeRequest): Promise<boolean>;
   /** Plans rule action `action` on a row address (or a table address for table actions) for review. */
   queueAction(address: Address, action: string, params: Record<string, string>): Promise<boolean>;
   discardChange(id: number): Promise<void>;
@@ -21,11 +21,6 @@ export interface ChangesSlice {
   undoLast(): Promise<void>;
   focusPendingTray(): void;
 }
-
-/** Row edits are planned by the core; every other change by the WordPress lens. */
-const ROW_CHANGES: ChangeRequest["type"][] = ["setCell", "deleteRow", "duplicateRow", "insertRow", "addRow"];
-const isRowChange = (change: ChangeRequest | WpChangeRequest): change is ChangeRequest =>
-  (ROW_CHANGES as string[]).includes(change.type);
 
 export const changesSlice: Slice<ChangesSlice> = {
   create: (set, get) => {
@@ -60,7 +55,7 @@ export const changesSlice: Slice<ChangesSlice> = {
       async queueChange(change) {
         const session = selectActiveSession(get());
         if (!session) return false;
-        return queue(session.id, () => (isRowChange(change) ? api.planChange(session.id, change) : api.wpPlanChange(session.id, change)));
+        return queue(session.id, () => api.planChange(session.id, change));
       },
 
       async queueAction(address, action, params) {

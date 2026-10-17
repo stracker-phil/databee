@@ -98,7 +98,7 @@ impl CoverageQuery<'_> {
     }
 
     /// NULL in any column (a composite key with a NULL part is not checked, as in SQL), or a
-    /// single column whose text is `0` (how WordPress stores "no target"), as `valueAt` reads it.
+    /// single column whose text is `0` (a common way to store "no target"), as `valueAt` reads it.
     fn no_reference(&self, dialect: Dialect) -> String {
         let mut parts: Vec<String> = self
             .from

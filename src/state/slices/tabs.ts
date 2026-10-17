@@ -3,7 +3,7 @@ import type { CellSource } from "../../lib/cells";
 import type { ColumnStack, StackColumn, ValueColumn } from "../../lib/columns";
 import type { ProjectForm } from "../../lib/ruleForms";
 import { fail } from "../requests";
-import { isWpView, selectActiveSession, selectActiveTab } from "../selectors";
+import { selectActiveSession, selectActiveTab } from "../selectors";
 import type { Slice, Store } from "../store";
 import { EMPTY_NAV, homeAddress, pushed, tableAddress, tableTitle, type TabNav } from "./nav";
 import { nextActiveSessionId } from "./session";
@@ -88,7 +88,18 @@ export interface ProjectTab {
   nav: TabNav;
 }
 
-export type Tab = QueryTab | TableTab | ObjectTab | ProjectTab;
+/** The readout of one database: its home address (`databee://<slug>/<db>/`); one per session. */
+export interface ReadoutTab {
+  id: string;
+  kind: "readout";
+  sessionId: string;
+  title: string;
+  database: string;
+  address: Address;
+  nav: TabNav;
+}
+
+export type Tab = QueryTab | TableTab | ObjectTab | ProjectTab | ReadoutTab;
 
 /** The preview tab of a session (table or object), which the next preview replaces. */
 export function previewTab(s: Store, sessionId: string): TableTab | ObjectTab | undefined {
@@ -128,11 +139,11 @@ export interface TabsSlice {
   openQueryTab(sql?: string, title?: string, saved?: SavedRef): void;
   /** An open tab of the same table is activated; `view` and `preview: false` (pin) apply to it only when given. */
   openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean; where?: ColumnEquals[] }): void;
-  /** Switches to the Database view and opens `table` of the active database filtered by `where`. */
+  /** Opens `table` of the active database filtered by `where`. */
   openInDatabase(table: string, where?: ColumnEquals[]): void;
   /**
-   * Opens the rows of `table` where `column` equals `value`: in the active table tab while the Database view shows
-   * one (back returns), else in the preview tab of the Database view.
+   * Opens the rows of `table` where `column` equals `value`: in the active table tab (back returns), else in the
+   * preview tab.
    */
   openRow(table: string, column: string, value: string | null): void;
   pinTab(id: string): void;
@@ -239,7 +250,6 @@ export const tabsSlice: Slice<TabsSlice> = {
     openInDatabase(table, where) {
       const database = selectActiveSession(get())?.database;
       if (!database) return;
-      get().setMode("db");
       get().openTableTab(database, table, "data", undefined, { where });
     },
 
@@ -248,11 +258,10 @@ export const tabsSlice: Slice<TabsSlice> = {
       const database = selectActiveSession(s)?.database;
       if (!database) return;
       const active = selectActiveTab(s);
-      if (!isWpView(s) && active?.kind === "table" && active.sessionId === s.activeSessionId) {
+      if (active?.kind === "table" && active.sessionId === s.activeSessionId) {
         s.showRows(active.id, { database, table, where: [{ column, value }] });
         return;
       }
-      s.setMode("db");
       s.openTableTab(database, table, "data", undefined, { preview: true, where: [{ column, value }] });
     },
 

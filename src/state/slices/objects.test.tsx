@@ -89,6 +89,17 @@ describe("object tabs", () => {
       expect(activeObject().preview).toBe(false);
     });
 
+    it("tells Rust to remember the row as a recent object", () => {
+      store().openObject(orderAddress);
+      expect(mocked.rememberObject).toHaveBeenCalledWith("s1", "databee://shop/db/wp_wc_orders/4711");
+    });
+
+    it("toasts when Rust cannot keep the recent object", async () => {
+      mocked.rememberObject.mockRejectedValueOnce({ kind: "io", message: "disk full", code: null });
+      store().openObject(orderAddress);
+      await vi.waitFor(() => expect(store().toasts.at(-1)?.message).toContain("disk full"));
+    });
+
     it("ignores an address that is not a row", () => {
       store().openObject(address("shop", "db", { kind: "table", table: "wp_posts", filter: [] }));
       expect(store().tabs).toEqual([]);

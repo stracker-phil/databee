@@ -29,8 +29,6 @@ error: string | null, };
 
 export type ActionScope = "row" | "table";
 
-export type ActionStats = { total: number, byStatus: Array<Facet>, overdue: number, };
-
 export type Address = { 
 /**
  * The connection slug (`RecentConnection::slug`).
@@ -53,6 +51,28 @@ export type Anomaly = { id: string, sql: string, text: string, open?: AnomalyOpe
  * A `scope = "table"` action of the same preset, offered next to the anomaly.
  */
 fix?: string | null, };
+
+/**
+ * A `scope = "table"` action offered next to an anomaly; `address` is the table to plan it on.
+ */
+export type AnomalyFix = { action: string, address: Address, };
+
+/**
+ * An `[[anomaly]]` whose value is a non-zero number, or whose query failed.
+ */
+export type AnomalyLine = { id: string, preset: string, text: string, 
+/**
+ * The value as the query returned it.
+ */
+count: string | null, 
+/**
+ * What the line opens: a saved query or a table.
+ */
+address: Address | null, 
+/**
+ * The `where` of `open = { table, where }`, as SQL on that table (not addressable).
+ */
+filter: string | null, fix: AnomalyFix | null, error: string | null, };
 
 /**
  * What an anomaly opens: a pinned query of the same preset, or table rows with a SQL filter.
@@ -91,12 +111,6 @@ export type AppliedFilter = { kind: FilterKind, sql: string,
  * Human label, e.g. `ID in (3229, 3227)`.
  */
 label: string, };
-
-export type Autoload = { 
-/**
- * As stored: `yes`/`no`, or since WordPress 6.6 `on`/`off`/`auto`/`auto-on`/`auto-off`.
- */
-value: string, on: boolean, };
 
 export type BrowsePage = { 
 /**
@@ -232,15 +246,7 @@ sampleUnresolved: Array<string>,
  */
 timedOut: boolean, };
 
-export type Dashboard = { orders: OrderStats | null, autoloadBytes: number, autoloadHealthy: boolean, transientsExpired: number, actions: ActionStats | null, 
-/**
- * Orders whose posts copy differs from `wc_orders` (only with HPOS sync on).
- */
-hposDrift: number | null, tables: Array<TableTile>, insights: Array<Insight>, };
-
 export type DatabaseInfo = { name: string, isSystem: boolean, };
-
-export type DayBucket = { date: string, completed: number, processing: number, failed: number, other: number, };
 
 export type DecodedValue = { format: Format, root: ValueNode | null, warning: string | null, error: string | null, };
 
@@ -248,14 +254,6 @@ export type DecodedValue = { format: Format, root: ValueNode | null, warning: st
  * Rows are selected first and deleted by primary key, so undo can re-insert them.
  */
 export type DeleteSpec = { where?: string | null, };
-
-export type DiffEntry = { path: string, before: string | null, after: string | null, };
-
-export type DocField = { name: string, label: string | null, value: Cell, decoded: DecodedValue | null, link: EntityLink | null, hint: Hint | null, sensitive: Sensitive | null, 
-/**
- * An option's stored `autoload` value; `None` for other fields.
- */
-autoload: Autoload | null, };
 
 export type Document = { 
 /**
@@ -305,8 +303,6 @@ search_exact?: Array<string>,
  */
 people?: boolean, };
 
-export type EntityLink = { entity: string, id: string, };
-
 export type ErrorKind = "database" | "connection" | "auth_failed" | "password_required" | "timeout" | "cancelled" | "confirmation_required" | "session_not_found" | "invalid_input" | "keychain" | "io";
 
 export type ExecuteResponse = { results: Array<ResultSet>, elapsedMs: number, 
@@ -318,8 +314,6 @@ database: string | null,
  * Set when a statement after the first failed; `results` holds the ones before it.
  */
 failure: StatementFailure | null, };
-
-export type Facet = { value: string, label: string, count: number, };
 
 export type FilterKind = "ids" | "sql" | "columns";
 
@@ -340,8 +334,6 @@ export type ForeignKey = {
 name: string, columns: Array<string>, refTable: string, refColumns: Array<string>, };
 
 export type Format = "php" | "json";
-
-export type Granularity = "day" | "hour";
 
 export type Group = { 
 /**
@@ -383,11 +375,6 @@ key: RowKey | null, fields: Array<[string, Value]>, };
 
 export type GroupShape = "fields" | "meta" | "rows";
 
-/**
- * What a kind rule says about a stored value, next to it; never instead of it.
- */
-export type Hint = { "type": "money", text: string, } | { "type": "time", unix: number, };
-
 export type HistoryEntry = { account: string, database: string | null, sql: string, 
 /**
  * Set by `record` when `sql` was cut to `MAX_SQL_BYTES`.
@@ -400,15 +387,6 @@ truncated: boolean, executedAt: string, elapsedMs: number, error: string | null,
 export type Home = { "show": "rows", limit?: number | null, } | { "show": "count" } | { "show": "value" };
 
 export type IndexInfo = { name: string, unique: boolean, columns: Array<string>, };
-
-export type Insight = { level: InsightLevel, text: string, action: InsightAction | null, };
-
-/**
- * A reviewed change an alert offers; it goes through the pending tray.
- */
-export type InsightAction = { label: string, change: WpChangeRequest, };
-
-export type InsightLevel = "info" | "warning" | "danger";
 
 /**
  * How a child is keyed: array keys, or the visibility of an object property.
@@ -465,6 +443,11 @@ export type MetaTable = { table: string, owner?: string | null, fk?: string | nu
  */
 export type Money = { currency?: Array<string>, };
 
+/**
+ * The newest rows of one entity, by its `created` column.
+ */
+export type NewObjects = { entity: string, preset: string, table: string, sql: string, columns: Array<string>, rows: Array<ReadoutRow>, error: string | null, };
+
 export type NewValue = { "kind": "string", "text": string } | { "kind": "int", "text": string } | { "kind": "float", "text": string } | { "kind": "bool", "text": boolean } | { "kind": "null" };
 
 export type NodeKind = "null" | "bool" | "int" | "float" | "string" | "array" | "object" | "ref" | "enum" | "custom";
@@ -486,12 +469,6 @@ export type OpenArgs = { spec: ConnectionSpec, password?: string,
  * A CLI launch request whose password should be used.
  */
 requestId?: string, savePassword?: boolean, };
-
-export type OrderStats = { total: number, today: number, byStatus: Array<Facet>, days: Array<DayBucket>, 
-/**
- * `day` (14 days) or `hour` (last 24 h, used when fewer than 3 days have orders).
- */
-granularity: Granularity, };
 
 export type PaletteHit = { 
 /**
@@ -532,6 +509,11 @@ free?: boolean, type?: ParamType, default?: string | null, optional?: boolean, }
 export type ParamType = "text" | "int";
 
 /**
+ * One section's lines, or why the section could not be read.
+ */
+export type Part<T> = { items: Array<T>, error: string | null, };
+
+/**
  * Rows of `table` shown as a group on an `owner` row's document. Rules with the same `name`
  * and `owner` are one group (OR); a rule whose `{owner.…}`/`{meta.…}` value is NULL or `''`
  * is skipped.
@@ -556,6 +538,13 @@ export type Pinned = { id: string,
  * May name tables with `{p}`/`{np}` (`{p}orders`), so it is checked like SQL.
  */
 title?: string | null, sql: string, home?: Home | null, };
+
+/**
+ * A saved query pinned with `show = "count"` or `"rows"`.
+ */
+export type PinnedLine = { id: string, title: string, sql: string, origin: SavedOrigin, address: Address, result: PinnedResult | null, error: string | null, };
+
+export type PinnedResult = { "show": "count", count: number, } | { "show": "rows", columns: Array<string>, rows: Array<ReadoutRow>, };
 
 /**
  * What the page renders for review; `statements` are for display only.
@@ -638,6 +627,14 @@ export type ProjectRules = { project: Project, prefix: string, suggestedPrefix: 
  */
 export type Provenance = { table: string, column: string, row: RowKey, };
 
+export type Readout = { address: Address, status: Status, anomalies: Part<AnomalyLine>, newObjects: Part<NewObjects>, pinned: Part<PinnedLine>, recent: Part<RecentLine>, };
+
+export type ReadoutRow = { 
+/**
+ * The row, when its table has a single-column primary key in the result.
+ */
+address: Address | null, values: Array<Value>, };
+
 export type RecentConnection = { identity: string, 
 /**
  * Derived from `spec` when listed; older files lack it.
@@ -647,6 +644,15 @@ account: string, spec: ConnectionSpec, lastUsed: string,
  * The connection part of an address, unique within the store (filled on open for older files).
  */
 slug: string, };
+
+/**
+ * A row opened in the app, newest first, with the values a peek shows of it.
+ */
+export type RecentLine = { address: Address, 
+/**
+ * Unix seconds.
+ */
+at: number, summary: Array<SummaryValue>, error: string | null, };
 
 /**
  * A virtual foreign key. `when` holds on the source row, `to_when` on the target row (for
@@ -811,8 +817,6 @@ export type SavedQuery = { id: string, title: string, sql: string, pin?: Home | 
  */
 export type Secondary = { text: string, source: Provenance | null, };
 
-export type Sensitive = "secret";
-
 /**
  * A cell whose text decodes as PHP-serialized data or JSON.
  */
@@ -868,28 +872,6 @@ maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSyste
 gravatar: boolean, };
 
 /**
- * A snapshot without its values, for lists.
- */
-export type SnapshotInfo = { id: string, label: string, scope: SnapshotScope, created: string, paths: number, };
-
-/**
- * What a snapshot watches.
- */
-export type SnapshotScope = { entity: string | null, id: string | null, 
-/**
- * Also capture directly related documents (items, notes, refunds, …).
- */
-includeRelated: boolean, 
-/**
- * Options whose name matches this SQL LIKE pattern, e.g. `woocommerce_ppcp%`.
- */
-optionPattern: string | null, 
-/**
- * Scheduled actions referencing the entity ID.
- */
-includeActions: boolean, };
-
-/**
  * The statement of a script that failed, after the earlier ones succeeded.
  */
 export type StatementFailure = { 
@@ -897,6 +879,26 @@ export type StatementFailure = {
  * 0-based position of the statement in the script.
  */
 index: number, error: AppError, };
+
+export type Status = { 
+/**
+ * The server's host, or its socket path.
+ */
+host: string, slug: string, database: string, prefix: string, 
+/**
+ * The applied presets, in apply order.
+ */
+presets: Array<string>, serverVersion: string, 
+/**
+ * Saved queries pinned with `show = "value"`.
+ */
+values: Part<StatusValue>, };
+
+export type StatusValue = { id: string, title: string, sql: string, address: Address, 
+/**
+ * The first column of the first row; `None` without a row.
+ */
+value: Value | null, error: string | null, };
 
 /**
  * The scheme's style colors (`--style-<name>`).
@@ -917,7 +919,10 @@ export type StyleRule = { columns?: Array<ColumnGlob>, meta_keys?: Array<string>
  */
 enabled: boolean, };
 
-export type TableEntity = { entity: string, idColumn: string, };
+/**
+ * A value of a recent object's peek, under its column or meta key.
+ */
+export type SummaryValue = { column: string, value: Value, };
 
 export type TableInfo = { name: string, isView: boolean, rowsEstimate: number | null, sizeBytes: number | null, comment: string, };
 
@@ -936,12 +941,6 @@ foreignKeys: Array<ForeignKey>,
  * `None` when `SHOW CREATE TABLE` returned no row.
  */
 ddl: string | null, };
-
-export type TableTile = { name: string, rows: number, bytes: number, 
-/**
- * core, woocommerce, action_scheduler, logs, plugins
- */
-category: string, };
 
 export type TableUi = { widths: { [key in string]: number }, };
 
@@ -1006,25 +1005,6 @@ exists: boolean | null, } | { "kind": "noReference" } | { "kind": "enum" } | { "
 export type ValueNode = { kind: NodeKind, text?: string, class?: string, children?: Array<ValueChild>, note?: string, };
 
 export type View = "document" | "rows";
-
-export type WpChangeRequest = { "type": "setAutoload", database: string, option: string, on: boolean, } | { "type": "deleteExpiredTransients", database: string, } | { "type": "deleteLogsBefore", database: string, days: number, source?: string | null, };
-
-/**
- * `rules_info` in the shape the WordPress screens read.
- */
-export type WpInfo = { prefix: string, 
-/**
- * The applied presets, each after the presets it requires.
- */
-presets: Array<string>, 
-/**
- * Entity names, once each, in the order of `RulesInfo.entities`.
- */
-entities: Array<string>, 
-/**
- * Real table → the entity its rows open as.
- */
-tableEntities: { [key in string]: TableEntity }, legacyEntitiesFile: string | null, };
 
 /**
  * Which zone a timestamp is stored in. `local` is the site's zone, which is not stored, so such

@@ -100,12 +100,6 @@ describe("SettingsDialog", () => {
     expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ confirmDestructive: !settings().confirmDestructive }));
   });
 
-  it("lists no WordPress page", () => {
-    render(<SettingsDialog />);
-    const nav = screen.getByRole("navigation", { name: "Settings pages" });
-    expect(within(nav).queryByRole("button", { name: "WordPress" })).not.toBeInTheDocument();
-  });
-
   it("closes without saving anything when nothing changed", async () => {
     render(<SettingsDialog />);
     await userEvent.click(screen.getByRole("button", { name: "Close settings" }));

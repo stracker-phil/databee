@@ -3,15 +3,15 @@
 DataBee is a single-window desktop app built with Tauri 2. A Rust process owns every piece of logic:
 connections, SQL, rules and presets, persistence, secrets, and the CLI. A React 19 webview renders
 state and forwards user intent. This page covers the overall shape. The layer pages go into detail:
-[backend](backend.md), [database](database.md), [WordPress](wordpress.md), [frontend](frontend.md),
+[backend](backend.md), [database](database.md), [presets](presets.md), [frontend](frontend.md),
 [Stage hook](stage.md).
 
 ## Design rules
 
 These rules hold everywhere in the code. Keep them when you change things.
 
-1. **Rust owns the logic; React only renders.** SQL is built in Rust, and so are planned edits, WordPress
-   parsing and safety checks. The frontend never assembles a write statement on its own. It asks Rust to
+1. **Rust owns the logic; React only renders.** SQL is built in Rust, and so are planned edits, decoding of
+   serialized values and safety checks. The frontend never assembles a write statement on its own. It asks Rust to
    *plan* a change, shows the planned SQL, and sends it back to be applied.
 2. **IPC only in `api.ts` files, one per module.** Only a module's API file imports `@tauri-apps/api` or a
    `@tauri-apps/plugin-*` package and calls `invoke` or `listen`. The core's file is `src/api/index.ts`;
@@ -26,8 +26,8 @@ These rules hold everywhere in the code. Keep them when you change things.
    request id.
 5. **Show what is stored.** Values travel losslessly: numbers and dates as strings, binary values as a hex
    preview, PHP-serialized data byte for byte. Labels may be shown next to a raw value, never instead of it.
-   Presets, projects and the WordPress layer follow [`.claude/rules/presets.md`](../.claude/rules/presets.md).
-6. **No silent writes.** Grid edits, WordPress edits and maintenance actions all go through the same
+   Presets, projects and every view of their results follow [`.claude/rules/presets.md`](../.claude/rules/presets.md).
+6. **No silent writes.** Grid edits, document edits and rule actions all go through the same
    *plan → review → apply in one transaction → undo* pipeline. Destructive SQL typed in the editor asks
    for confirmation first.
 
@@ -40,11 +40,11 @@ These rules hold everywhere in the code. Keep them when you change things.
 │  ┌──────────────────────┐   invoke    ┌───────────────────────────┐  │
 │  │ components/          │ ──────────▶ │ #[tauri::command]s        │  │
 │  │ state/store.ts       │             │  commands.rs  db_commands │  │
-│  │ commands/ (registry) │ ◀────────── │  wp/commands  stage/cmds  │  │
+│  │ commands/ (registry) │ ◀────────── │  readout/     stage/cmds  │  │
 │  │ api/index.ts, api.ts │   events    ├───────────────────────────┤  │
 │  └──────────────────────┘ launch,     │ AppState: stores, sessions│  │
 │                           command,    │ db/ (dyn Database)       │  │
-│                           stage:*     │ wp/ (lens)  store/ (JSON) │  │
+│                           stage:*     │ rules/      store/ (JSON) │  │
 │                                       │ secrets (Keychain)        │  │
 │                                       └──────┬───────┬────────┬───┘  │
 └──────────────────────────────────────────────┼───────┼────────┼──────┘
@@ -88,7 +88,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
   src/decode/              PHP serialize and JSON value trees, leaf edits
-  src/wp/                  WordPress screens over the presets (until U12): documents, views, commands, snapshots
+  src/readout/             the readout: the home page of a database (status, anomalies, new, pinned, recent)
   src/store/               JSON stores in the config dir
   src/stage/               Stage plugin: HTTP API, request hub, commands
   src/test_support.rs      fixture-server helpers for tests (`test-util`)
@@ -97,8 +97,8 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/window.rs            window theme and bring-to-front
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
   src/lock.rs              poison-tolerant std lock access
-  presets/                 built-in presets: wordpress, woocommerce, action-scheduler (docs/wordpress.md)
-  tests/                   core integration tests (Docker, #[ignore]); the WordPress screens' are in src/wp/
+  presets/                 built-in presets: wordpress, woocommerce, action-scheduler (docs/presets.md)
+  tests/                   integration tests of the database layer (Docker, #[ignore]); the others sit next to their module
   tauri.conf.json          window, bundle and identifier config
 src/                       React app
   main.tsx modules.ts       boot; the install list (core, then one line per module)
@@ -106,7 +106,7 @@ src/                       React app
   state/                   zustand store: store.ts (composition root), slices/, selectors, session events
   commands/                command registry, scopes, default shortcuts
   registry/                extension points modules register into (settingsPages.ts)
-  components/              UI; components/wp/ is WordPress mode, components/settings/ the Settings dialog
+  components/              UI; components/readout/ the home page, components/settings/ the Settings dialog
   stage/                   page side of the Stage hook, its Settings page, installStage()
   lib/                     pure helpers (formatting, SQL ranges, theme, addresses, values)
   styles/                  schemes/ (one file per color scheme), theme.css (derived tokens), fonts.css, app.css
@@ -119,23 +119,20 @@ scripts/                   install links; dev/ drives the app headlessly
 
 ## Modules
 
-A module is an optional capability (Stage, the WordPress lens) that the core works without. It keeps its
+A module is an optional capability (Stage) that the core works without. It keeps its
 code in its own folder and contributes to the core only through registries, so removing it is deleting the
 folder and its install line. The core never imports a module; modules import the core.
 
 - **Frontend.** `src/modules.ts` is the install list: `installModules()` runs the core's install, then one
-  call per module (`installStage()` from `src/stage/install.ts`, `installWp()` from
-  `src/components/wp/install.ts`), then `installCommands()`. `main.tsx` calls it once before the first
+  call per module (`installStage()` from `src/stage/install.ts`), then `installCommands()`. `main.tsx` calls it once before the first
   render. The registries a module can add to:
   - store slices: `registerSlice(slice)` in `src/state/store.ts`, typed by augmenting `Store`;
   - Settings pages: `registerSettingsPage(page)` in `src/registry/settingsPages.ts`;
   - command scopes: `registerScope(def)` in `src/commands/scopes.ts`.
 - **Backend.** A module is an inline Tauri plugin with one install line in `lib.rs`
-  ([ADR 0010](adr/0010-inline-tauri-plugins.md), [backend](backend.md#plugins)): `stage` and `wp`.
+  ([ADR 0010](adr/0010-inline-tauri-plugins.md), [backend](backend.md#plugins)): `stage`.
 
-Not yet separated: the `wp` store slice and the WordPress commands live in the core (`src/state/slices/wp.ts`,
-`src/commands/index.ts`), and `App.tsx` renders `WpWorkspace`.
-See [ADR 0015](adr/0015-frontend-registries.md).
+See [ADR 0015](adr/0015-frontend-registries.md). WordPress is no module: it is three preset files.
 
 ## Addresses
 
@@ -188,7 +185,7 @@ status kind: color comes only from value styles.
 `src-tauri/src/rules/` is the generic configuration layer ([presets.md](presets.md)). A preset is a TOML file
 of rules for tables named without their prefix: key/value tables, references, entities, kinds, value styles,
 patterns, pinned queries, anomalies, actions and find sources. No application name appears in its Rust code;
-WordPress, WooCommerce and Action Scheduler are preset files ([wordpress.md](wordpress.md)).
+WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](presets.md#built-in-presets)).
 
 - `types.rs`, `kinds.rs`, `queries.rs`, `actions.rs`: the rule types. Each has one serialized form, the TOML
   shape, shared by preset files, projects and the page (exported to `types.gen.ts`). Shapes with exclusive
@@ -302,6 +299,18 @@ row address, or on a table address without a filter for a table action, and retu
 `plan_change`, so the pending tray applies and undoes it (`actions/plan.rs`, see
 [presets.md](presets.md#action)).
 
+## Readout
+
+`src-tauri/src/readout/` builds the home page of a database (`databee://<slug>/<db>/`):
+`readout(session_id, database) -> Readout { address, status, anomalies, newObjects, pinned, recent }`. Every
+part is a `Part { items, error }` with its own timeout, so a slow anomaly or a broken pinned query shows as an
+error line and the rest stands. The status line comes from the session and the effective rules plus the saved
+queries pinned as values; anomalies are the applied presets' `[[anomaly]]` rules with a non-zero value; new
+objects are the newest rows of each entity with a `created` column; pinned are the saved queries pinned as
+count or rows; recent are the row addresses `remember_object` kept per project in `recent_objects.json` (`store::recent_objects`, at most 20), each with
+its peek values. Details: [presets.md](presets.md#the-readout). The page shows it in the readout tab
+(`src/components/readout/Readout.tsx`, [frontend.md](frontend.md#readout)), opened on connect.
+
 ## Palette search
 
 `src-tauri/src/search/` answers the palette's row searches (`palette_search(session_id, database, query)`,
@@ -345,5 +354,5 @@ returns `{description, statements, undo}`. The plan appears in the pending tray,
 
 The code base targets **macOS on Apple Silicon** only. The platform-specific parts are listed in
 [adapting.md](adapting.md#platform-specific-code): the Keychain, the config path, Unix sockets, window vibrancy
-and the dev scripts. Most of the code is portable: the database layer, the WordPress layer, the stores and
+and the dev scripts. Most of the code is portable: the database layer, the rules layer, the stores and
 nearly all of the UI.

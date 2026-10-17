@@ -127,7 +127,7 @@ fn parse_with(input: &[u8], mode: Mode) -> Result<PhpValue, ParseError> {
     Ok(value)
 }
 
-/// Mirrors WordPress `is_serialized()` (strict), plus `C:` objects: a cheap check before
+/// Mirrors a strict `is_serialized()`, plus `C:` objects: a cheap check before
 /// trying to parse.
 pub fn looks_serialized(text: &str) -> bool {
     let t = text.trim();
@@ -576,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn looks_serialized_follows_wordpress_is_serialized() {
+    fn looks_serialized_follows_strict_is_serialized() {
         for (text, expected) in [
             ("a:0:{}", true),
             ("s:3:\"abc\";", true),

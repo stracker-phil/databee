@@ -145,7 +145,7 @@ mod tests {
 
     fn req() -> BrowseRequest {
         BrowseRequest {
-            database: "wordpress".into(),
+            database: "site".into(),
             table: "wp_posts".into(),
             limit: 100,
             ..Default::default()
@@ -164,7 +164,7 @@ mod tests {
             )
             .unwrap()
             .0,
-            "SELECT * FROM `wordpress`.`wp_posts` LIMIT 101 OFFSET 200"
+            "SELECT * FROM `site`.`wp_posts` LIMIT 101 OFFSET 200"
         );
     }
 
@@ -183,7 +183,7 @@ mod tests {
         .0;
         assert_eq!(
             sql,
-            "SELECT * FROM `wordpress`.`wp_posts` WHERE (post_type = 'page'\n) ORDER BY `post_date` DESC LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE (post_type = 'page'\n) ORDER BY `post_date` DESC LIMIT 101 OFFSET 0"
         );
     }
 
@@ -204,22 +204,22 @@ mod tests {
             (
                 "ID > 0 # note",
                 None,
-                "SELECT * FROM `wordpress`.`wp_posts` WHERE (ID > 0 # note\n) LIMIT 101 OFFSET 0",
+                "SELECT * FROM `site`.`wp_posts` WHERE (ID > 0 # note\n) LIMIT 101 OFFSET 0",
             ),
             (
                 "ID > 0 -- x",
                 None,
-                "SELECT * FROM `wordpress`.`wp_posts` WHERE (ID > 0 -- x\n) LIMIT 101 OFFSET 0",
+                "SELECT * FROM `site`.`wp_posts` WHERE (ID > 0 -- x\n) LIMIT 101 OFFSET 0",
             ),
             (
                 "ID > 0 # note",
                 Some("ID"),
-                "SELECT * FROM `wordpress`.`wp_posts` WHERE (ID > 0 # note\n) ORDER BY `ID` ASC LIMIT 101 OFFSET 0",
+                "SELECT * FROM `site`.`wp_posts` WHERE (ID > 0 # note\n) ORDER BY `ID` ASC LIMIT 101 OFFSET 0",
             ),
             (
                 "ID > 0 -- x",
                 Some("ID"),
-                "SELECT * FROM `wordpress`.`wp_posts` WHERE (ID > 0 -- x\n) ORDER BY `ID` ASC LIMIT 101 OFFSET 0",
+                "SELECT * FROM `site`.`wp_posts` WHERE (ID > 0 -- x\n) ORDER BY `ID` ASC LIMIT 101 OFFSET 0",
             ),
         ] {
             assert_eq!(sql_for(filter, order_by).unwrap().0, expected, "{filter}");
@@ -248,7 +248,7 @@ mod tests {
     fn order_by_column_backticks_are_doubled() {
         assert_eq!(
             sql_for("1", Some("a`b")).unwrap().0,
-            "SELECT * FROM `wordpress`.`wp_posts` WHERE (1\n) ORDER BY `a``b` ASC LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE (1\n) ORDER BY `a``b` ASC LIMIT 101 OFFSET 0"
         );
     }
 
@@ -265,7 +265,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             sql,
-            "SELECT * FROM `wordpress`.`wp_posts` WHERE (`I``D` = 3229\n) LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE (`I``D` = 3229\n) LIMIT 101 OFFSET 0"
         );
     }
 
@@ -276,7 +276,7 @@ mod tests {
             assert_eq!(page_limit(&r), page, "{limit}");
             assert_eq!(
                 browse_sql(&r, Dialect::MYSQL).unwrap().0,
-                format!("SELECT * FROM `wordpress`.`wp_posts` LIMIT {fetched} OFFSET 0"),
+                format!("SELECT * FROM `site`.`wp_posts` LIMIT {fetched} OFFSET 0"),
                 "{limit}"
             );
         }
@@ -317,7 +317,7 @@ mod tests {
         let (sql, applied) = browse_sql(&with_pk, Dialect::MYSQL).unwrap();
         assert_eq!(
             sql,
-            "SELECT * FROM `wordpress`.`wp_posts` WHERE ((`ID` BETWEEN 3220 AND 3225 OR `ID` = 3229)\n) LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE ((`ID` BETWEEN 3220 AND 3225 OR `ID` = 3229)\n) LIMIT 101 OFFSET 0"
         );
         let applied = applied.unwrap();
         assert_eq!(applied.kind, FilterKind::Ids);
@@ -334,7 +334,7 @@ mod tests {
         let (sql, applied) = browse_sql(&without, Dialect::MYSQL).unwrap();
         assert_eq!(
             sql,
-            "SELECT * FROM `wordpress`.`wp_posts` WHERE (3229\n) LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE (3229\n) LIMIT 101 OFFSET 0"
         );
         assert_eq!(applied.unwrap().kind, FilterKind::Sql);
     }
@@ -372,7 +372,7 @@ mod tests {
     fn structured_where_renders_a_quoted_string_comparison() {
         assert_eq!(
             where_sql(vec![eq("ID", Some("007"))], Dialect::MYSQL),
-            "SELECT * FROM `wordpress`.`wp_posts` WHERE (`ID` = '007') LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE (`ID` = '007') LIMIT 101 OFFSET 0"
         );
     }
 
@@ -380,7 +380,7 @@ mod tests {
     fn structured_where_with_no_value_renders_is_null() {
         assert_eq!(
             where_sql(vec![eq("post_parent", None)], Dialect::MYSQL),
-            "SELECT * FROM `wordpress`.`wp_posts` WHERE (`post_parent` IS NULL) LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE (`post_parent` IS NULL) LIMIT 101 OFFSET 0"
         );
     }
 
@@ -391,7 +391,7 @@ mod tests {
                 vec![eq("ID", Some("7")), eq("post_parent", None)],
                 Dialect::MYSQL
             ),
-            "SELECT * FROM `wordpress`.`wp_posts` WHERE (`ID` = '7' AND `post_parent` IS NULL) LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE (`ID` = '7' AND `post_parent` IS NULL) LIMIT 101 OFFSET 0"
         );
     }
 
@@ -403,11 +403,11 @@ mod tests {
         for (dialect, expected) in [
             (
                 Dialect::MYSQL,
-                r"SELECT * FROM `wordpress`.`wp_posts` WHERE (`c` = 'a''b\\c') LIMIT 101 OFFSET 0",
+                r"SELECT * FROM `site`.`wp_posts` WHERE (`c` = 'a''b\\c') LIMIT 101 OFFSET 0",
             ),
             (
                 no_backslash,
-                r"SELECT * FROM `wordpress`.`wp_posts` WHERE (`c` = 'a''b\c') LIMIT 101 OFFSET 0",
+                r"SELECT * FROM `site`.`wp_posts` WHERE (`c` = 'a''b\c') LIMIT 101 OFFSET 0",
             ),
         ] {
             assert_eq!(
@@ -472,7 +472,7 @@ mod tests {
         .0;
         assert_eq!(
             sql,
-            "SELECT * FROM `wordpress`.`wp_posts` WHERE (`ID` = '7') AND (post_type = 'page' # note\n) LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE (`ID` = '7') AND (post_type = 'page' # note\n) LIMIT 101 OFFSET 0"
         );
     }
 

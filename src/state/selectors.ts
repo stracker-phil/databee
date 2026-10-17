@@ -1,8 +1,7 @@
-import type { Address, DatabaseInfo, Value, WpInfo } from "../api";
+import type { Address, DatabaseInfo, Value } from "../api";
 import { documentText, findValue } from "../lib/document";
 import { documentKey, type DocumentEntry } from "./slices/objects";
 import type { StructureEntry } from "./slices/session";
-import type { WpRoute } from "./slices/wp";
 import type { Store } from "./store";
 
 export const structureKey = (sessionId: string, database: string, table: string) => `${sessionId}/${database}/${table}`;
@@ -50,11 +49,8 @@ export const selectCollapsedGroups = (s: Store, owner: Address): string[] => {
   return (identity ? s.uiState[identity]?.collapsedGroups?.[owner.database] : undefined) ?? NO_GROUPS;
 };
 
-/** Back or forward has somewhere to go: the active tab's history, or WordPress mode's own. */
-export const selectCanNav = (s: Store, direction: "back" | "forward"): boolean => {
-  if (isWpView(s)) return direction === "back" ? s.wpNav.index > 0 : s.wpNav.index < s.wpNav.stack.length - 1;
-  return (selectActiveTab(s)?.nav[direction].length ?? 0) > 0;
-};
+/** Back or forward has somewhere to go in the active tab's history. */
+export const selectCanNav = (s: Store, direction: "back" | "forward"): boolean => (selectActiveTab(s)?.nav[direction].length ?? 0) > 0;
 
 /** Databases of the active session, without system schemas unless shown or current. */
 export const selectVisibleDatabases = (s: Store): DatabaseInfo[] => {
@@ -72,14 +68,3 @@ export const selectLastBatch = (s: Store) => [...s.applied].reverse().find((a) =
 
 /** The newest applied batch of the active session can be undone. */
 export const selectCanUndo = (s: Store) => selectLastBatch(s)?.canUndo ?? false;
-
-export const selectWpRoute = (s: Store): WpRoute => s.wpNav.stack[s.wpNav.index] ?? { screen: "dashboard" };
-
-/** WordPress info for the active session's current database (undefined = not probed yet). */
-export const selectWp = (s: Store): WpInfo | null | undefined => {
-  const session = selectActiveSession(s);
-  return session?.database ? s.wp[`${session.id}/${session.database}`] : null;
-};
-
-/** The WordPress view replaces the database view only while a WordPress install is detected. */
-export const isWpView = (s: Store) => s.mode === "wp" && !!selectWp(s);

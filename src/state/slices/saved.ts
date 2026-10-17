@@ -87,7 +87,6 @@ export const savedSlice: Slice<SavedSlice> = {
           if (open) return s.activateTab(open.id);
         }
         if (s.activeSessionId !== sessionId) s.setActiveSession(sessionId);
-        s.setMode("db");
         const title = entry.readOnly ? `copy of ${entry.title}` : entry.title;
         s.openQueryTab(entry.sql, title, { id: entry.id, origin: entry.origin, database, pin: entry.pin });
         const tab = selectActiveTab(get());

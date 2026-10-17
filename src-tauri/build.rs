@@ -10,18 +10,6 @@ const STAGE_COMMANDS: &[&str] = &[
     "stage_new_token",
 ];
 
-/// WordPress mode's commands (`wp::COMMANDS`); granted to the main window through
-/// `capabilities/wp.json`.
-const WP_COMMANDS: &[&str] = &[
-    "wp_detect",
-    "wp_dashboard",
-    "wp_snapshot_take",
-    "wp_snapshots",
-    "wp_snapshot_diff",
-    "wp_snapshot_delete",
-    "wp_plan_change",
-];
-
 fn inlined(commands: &'static [&'static str]) -> tauri_build::InlinedPlugin {
     tauri_build::InlinedPlugin::new()
         .commands(commands)
@@ -29,10 +17,6 @@ fn inlined(commands: &'static [&'static str]) -> tauri_build::InlinedPlugin {
 }
 
 fn main() {
-    tauri_build::try_build(
-        tauri_build::Attributes::new()
-            .plugin("stage", inlined(STAGE_COMMANDS))
-            .plugin("wp", inlined(WP_COMMANDS)),
-    )
-    .expect("tauri build");
+    tauri_build::try_build(tauri_build::Attributes::new().plugin("stage", inlined(STAGE_COMMANDS)))
+        .expect("tauri build");
 }

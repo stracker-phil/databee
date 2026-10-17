@@ -13,9 +13,8 @@ import { answerRemote } from "./commands/remote";
 import { PendingTray } from "./components/PendingTray";
 import { PeekOverlay } from "./components/value/Peek";
 import { useValueHover } from "./components/value/useValueHover";
-import { WpWorkspace } from "./components/wp/WpWorkspace";
 import { applyAppearance, syncRowHeight, useSystemDark } from "./lib/theme";
-import { flushUiState, selectSidebarHidden, selectWp, useStore } from "./state/store";
+import { flushUiState, selectSidebarHidden, useStore } from "./state/store";
 import "./styles/fonts.css";
 import "./styles/schemes/ayu-mirage.css";
 import "./styles/schemes/ayu-light.css";
@@ -53,7 +52,7 @@ function useBackendEvents() {
  * Sidebar and tabs. Hiding the sidebar removes it entirely (no rail); its child slot stays (as `false`), so
  * `main` keeps its tree position and the editors and table pages survive.
  */
-function DbWorkspace() {
+function Workspace() {
   const sidebarHidden = useStore(selectSidebarHidden);
   return (
     <div className={sidebarHidden ? "workspace no-sidebar" : "workspace"}>
@@ -80,20 +79,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Workspace() {
+function Main() {
   const hasSessions = useStore((s) => s.sessions.length > 0);
-  const wpMode = useStore((s) => s.mode === "wp" && !!selectWp(s));
   if (!hasSessions) return <ConnectScreen />;
-  if (wpMode) {
-    return (
-      <AppShell>
-        <WpWorkspace />
-      </AppShell>
-    );
-  }
   return (
     <AppShell>
-      <DbWorkspace />
+      <Workspace />
     </AppShell>
   );
 }
@@ -112,7 +103,7 @@ export default function App() {
 
   return (
     <>
-      <Workspace />
+      <Main />
       <Dialogs />
       <CommandPalette />
       <Toasts />

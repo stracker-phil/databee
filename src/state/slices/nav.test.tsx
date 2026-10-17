@@ -10,8 +10,7 @@ import { installCommands, runCommand } from "../../commands";
 import { Toasts } from "../../components/Toasts";
 import { formatAddress } from "../../lib/address";
 import { browsePage, connectedStore, queryTab, session, tableTab } from "../../test/fixtures";
-import { wpStore } from "../../test/wpFixtures";
-import { selectActiveTab, selectWpRoute, useStore } from "../store";
+import { selectActiveTab, useStore } from "../store";
 
 const mocked = vi.mocked(api, true);
 
@@ -108,24 +107,6 @@ describe("tab history", () => {
     expect(activeTable().filter).toBeUndefined();
   });
 
-  describe("in WordPress mode", () => {
-    beforeEach(() => {
-      wpStore();
-      installCommands();
-    });
-
-    it("moves through the WordPress history instead", () => {
-      act(() => useStore.getState().navigate({ screen: "snapshots" }));
-      expect(runCommand("nav.back")).toBe(true);
-      expect(selectWpRoute(useStore.getState())).toEqual({ screen: "dashboard" });
-      expect(runCommand("nav.forward")).toBe(true);
-      expect(selectWpRoute(useStore.getState())).toEqual({ screen: "snapshots" });
-    });
-
-    it("is not runnable on the first screen", () => {
-      expect(runCommand("nav.back")).toBe(false);
-    });
-  });
 });
 
 describe("history with the rendered table view", () => {
@@ -213,11 +194,6 @@ describe("openAddress", () => {
     mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["a", "b"], foreignKeys: [], ddl: null });
     await act(() => useStore.getState().openAddress("databee://shop/db/wp_postmeta/7"));
     expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_postmeta", key: "7" } } });
-  });
-
-  it("says that other address kinds do not open yet", async () => {
-    await act(() => useStore.getState().openAddress("databee://shop/db/"));
-    expect(await screen.findByRole("status")).toHaveTextContent("cannot be opened yet");
   });
 
   describe("a saved query address", () => {

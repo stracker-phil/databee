@@ -80,7 +80,6 @@ export const projectSlice: Slice<ProjectSlice> = {
       if (!target) return s.toast("info", "Choose a database first: the Project page belongs to one");
       const { session, database } = target;
       if (s.activeSessionId !== session.id) s.setActiveSession(session.id);
-      s.setMode("db");
       const fresh = get();
       const existing = fresh.tabs.find((t): t is ProjectTab => t.kind === "project" && t.sessionId === session.id && t.database === database);
       if (existing) {

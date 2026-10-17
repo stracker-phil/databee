@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import { columnName, type StackColumn } from "../lib/columns";
 import { documentText } from "../lib/document";
 import { projectKey } from "../state/slices/project";
-import { isWpView, selectActiveTab, selectDocument, useStore, type ObjectTab } from "../state/store";
+import { selectActiveTab, selectDocument, useStore, type ObjectTab } from "../state/store";
 
 /** The entity the rules name the row by (its document's, else its table's only one); chrome, so the table name is the fallback. */
 function useCrumbName(sessionId: string, column: StackColumn): string {
@@ -54,7 +54,7 @@ function Crumb({ tab, column, index }: { tab: ObjectTab; column: StackColumn; in
 export function Path() {
   const tab = useStore((s) => {
     const active = selectActiveTab(s);
-    return active?.kind === "object" && !isWpView(s) ? active : null;
+    return active?.kind === "object" ? active : null;
   });
   if (!tab) return null;
   return (

@@ -1,4 +1,4 @@
-import { FileCode2, FileText, Loader2, Plus, SlidersHorizontal, Table2, X } from "lucide-react";
+import { FileCode2, FileText, Home, Loader2, Plus, SlidersHorizontal, Table2, X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useBindingLabel } from "../commands";
 import { useStore, type QueryTab as QueryTabState, type Tab, type TableTab as TableTabState } from "../state/store";
@@ -8,6 +8,7 @@ import { documentText } from "../lib/document";
 import { ObjectPanel } from "./object/ObjectPanel";
 import { ProjectPanel } from "./project/ProjectPanel";
 import { QueryTab } from "./QueryTab";
+import { Readout } from "./readout/Readout";
 import { TableTab } from "./TableTab";
 import { ValueColumnView } from "./value/ValueColumnView";
 
@@ -17,6 +18,7 @@ function tabIcon(tab: Tab) {
   if (tab.kind === "table") return <Table2 size="0.923rem" />;
   if (tab.kind === "object") return <FileText size="0.923rem" />;
   if (tab.kind === "project") return <SlidersHorizontal size="0.923rem" />;
+  if (tab.kind === "readout") return <Home size="0.923rem" />;
   if (tab.running) return <Loader2 size="0.923rem" className="spin" />;
   return <FileCode2 size="0.923rem" />;
 }
@@ -26,7 +28,7 @@ const PREVIEW_HINT = " · preview (double-click to keep)";
 function tabTooltip(tab: Tab): string {
   if (tab.kind === "query") return tab.title;
   if (tab.kind === "object") return `${formatAddress(tab.address)}${tab.preview ? PREVIEW_HINT : ""}`;
-  if (tab.kind === "project") return formatAddress(tab.address);
+  if (tab.kind === "project" || tab.kind === "readout") return formatAddress(tab.address);
   const columns = tab.where.map((w) => ` · ${w.column}: ${w.value ?? "NULL"}`).join("");
   const filter = tab.filter ? ` · ${tab.filter}` : "";
   const preview = tab.preview ? PREVIEW_HINT : "";
@@ -37,6 +39,7 @@ function tabStage(tab: Tab): string {
   if (tab.kind === "table") return `tab:table:${tab.database}.${tab.table}`;
   if (tab.kind === "object") return `tab:object:${documentText(objectColumnAt(tab.columns, 0)?.address ?? tab.address)}`;
   if (tab.kind === "project") return `tab:project:${tab.database}`;
+  if (tab.kind === "readout") return `tab:readout:${tab.database}`;
   return `tab:query:${tab.id}`;
 }
 
@@ -58,6 +61,7 @@ function WithValueColumn({ tab, children }: { tab: QueryTabState | TableTabState
 function TabPanel({ tab }: { tab: Tab }) {
   if (tab.kind === "object") return <ObjectPanel tab={tab} />;
   if (tab.kind === "project") return <ProjectPanel tab={tab} />;
+  if (tab.kind === "readout") return <Readout tab={tab} />;
   return <WithValueColumn tab={tab}>{tab.kind === "query" ? <QueryTab tab={tab} /> : <TableTab tab={tab} />}</WithValueColumn>;
 }
 

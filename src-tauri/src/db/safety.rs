@@ -98,7 +98,7 @@ mod tests {
     fn unscoped_or_dropping_statements_need_confirmation() {
         for sql in [
             "DROP TABLE wp_posts",
-            "drop database wordpress",
+            "drop database site",
             "TRUNCATE wp_actionscheduler_logs",
             "DELETE FROM wp_postmeta",
             "update wp_options set autoload = 'no'",

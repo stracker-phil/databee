@@ -40,7 +40,7 @@ impl Cell {
 pub struct CellLimit(pub usize);
 
 impl CellLimit {
-    /// For internal reads (WordPress, change planning) that need every value in full.
+    /// For internal reads (documents, change planning) that need every value in full.
     pub const NONE: CellLimit = CellLimit(usize::MAX);
 }
 
@@ -61,7 +61,7 @@ fn decode_full(family: Family, raw: Option<&[u8]>) -> Cell {
     };
     match family {
         Family::Number => text(raw).map_or_else(|| bytes(raw), Cell::Number),
-        // Kept as text: WordPress uses zero dates like 0000-00-00 00:00:00.
+        // Kept as text: zero dates like 0000-00-00 00:00:00 are stored values.
         Family::Temporal => text(raw).map_or_else(|| bytes(raw), Cell::Temporal),
         Family::Json => text(raw).map_or_else(|| bytes(raw), Cell::Json),
         Family::Bit => bytes(raw),

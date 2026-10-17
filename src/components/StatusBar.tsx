@@ -6,14 +6,7 @@ import { copyText } from "../lib/clipboard";
 import { formatCount } from "../lib/format";
 import { provenanceText } from "../lib/provenance";
 import { projectKey } from "../state/slices/project";
-import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectFocusedValue, selectSidebarHidden, selectWp, useStore, type QueryTab, type Tab } from "../state/store";
-
-/** WordPress mode: the table prefix the presets apply under. */
-function WpFacts() {
-  const wp = useStore(selectWp);
-  if (!wp) return null;
-  return <span>prefix {wp.prefix}</span>;
-}
+import { selectActivePending, selectActiveSession, selectActiveTab, selectFocusedValue, selectSidebarHidden, useStore, type QueryTab, type Tab } from "../state/store";
 
 /** The tab's address as text; click copies it. A typed SQL filter is not part of it and shows as a hint. */
 function AddressText({ tab }: { tab: Tab }) {
@@ -62,13 +55,12 @@ function useProvenance(): string | null {
 /** The address slot: the provenance of the hovered or focused value, else where the active tab is, and a query tab's result summary. */
 function Address() {
   const tab = useStore(selectActiveTab);
-  const wpMode = useStore(isWpView);
   const provenance = useProvenance();
-  const place = provenance ? <span className="address mono">{provenance}</span> : wpMode ? <WpFacts /> : tab && <AddressText tab={tab} />;
+  const place = provenance ? <span className="address mono">{provenance}</span> : tab && <AddressText tab={tab} />;
   return (
     <>
       {place}
-      {!wpMode && tab?.kind === "query" && <QuerySummary tab={tab} />}
+      {tab?.kind === "query" && <QuerySummary tab={tab} />}
     </>
   );
 }
@@ -127,13 +119,12 @@ function PresetsText() {
 
 /** Left to right: sidebar toggle, address, spacer, presets, pending count. */
 export function StatusBar() {
-  const wpMode = useStore(isWpView);
   return (
     <footer className="statusbar" data-stage="statusbar" data-stage-label="Status bar">
-      {!wpMode && <SidebarToggle />}
+      <SidebarToggle />
       <Address />
       <div className="spacer" />
-      {!wpMode && <PresetsText />}
+      <PresetsText />
       <PendingCount />
     </footer>
   );

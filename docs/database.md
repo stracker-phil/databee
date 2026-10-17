@@ -45,8 +45,10 @@ Every connection opens **two channels**:
   `USE` runs on it, so session state survives between runs: `USE`, `@vars`, `SET`, open transactions and
   temporary tables all persist. Its server thread id comes from `CONNECTION_ID()` and is kept for cancelling.
 - **The metadata pool.** This is a `MySqlPool` of 3 connections. It serves schema introspection, table
-  browsing, WordPress reads and applying planned changes. Pool connections don't share the editor's
-  `USE`, so these queries always use qualified `` `db`.`table` `` names.
+  browsing, documents, the readout and applying planned changes. Pool connections don't share the editor's
+  `USE`, so these queries always use qualified `` `db`.`table` `` names. The one exception is the readout's
+  saved queries, written without a database: they run as `USE <db>; <query>` (`readout/sql.rs`), so a pool
+  connection may keep another default database afterwards, which no other pool query relies on.
 
 `connect` opens the pool and the editor connection concurrently (`tokio::try_join!`) under one
 `connect_timeout`. The editor connection has no statement cache (`statement_cache_capacity(0)`), so the
@@ -58,7 +60,7 @@ Other details:
   pool and the first editor connection, the current database on reconnect, none for `KILL`. Server defaults are left alone on purpose: sqlx is told not to change `sql_mode`, `time_zone` or
   `PIPES_AS_CONCAT`. Instead the editor connection reads `@@SESSION.sql_mode` on connect and reconnect, and
   `Database::dialect` reports whether backslashes escape (`NO_BACKSLASH_ESCAPES`); browse and every
-  WordPress literal and identifier use it ([ADR 0018](adr/0018-escaping-follows-sql-mode.md)). A user's own
+  planned literal and identifier use it ([ADR 0018](adr/0018-escaping-follows-sql-mode.md)). A user's own
   `SET sql_mode` on the editor connection is picked up only on the next reconnect.
 - **Timeouts:** every server call is bounded, so a half-dead connection can't hang a command.
   - `connect_timeout_secs` covers connecting, reconnecting the editor and the one-off `KILL` connection
@@ -164,7 +166,7 @@ Full binary values never cross IPC. Only the first 16 bytes are sent, as hex.
 `Settings::cell_limit`, passed into `Database::execute` and `Database::browse`). A `text` value longer than
 the limit becomes `longText { len, preview }`: `len` counts characters, `preview` is the first `limit`
 characters (cut at a character boundary). `number`, `temporal` and `json` cells are never cut. `fetch` uses
-`CellLimit::NONE`, because its callers (WordPress reads, change planning) need every value in full.
+`CellLimit::NONE`, because its callers (documents, the readout, change planning) need every value in full.
 
 The full text does not cross IPC with the result. `run_script` records it in `ResultSet.full_texts` (skipped by
 serde and ts-rs), and `Session::execute` / `Session::browse` (behind the `execute` and `browse_table` commands)
@@ -303,7 +305,7 @@ value.
   protocol's `org_table` and `org_name`, which sqlx exposes as `Column::origin`; also through an alias),
   the kind that table's lens gives, and per-cell kinds and styles for the columns of each origin table.
   Expressions keep their type kind. Query results have no provenance.
-- `fetch` results (WordPress reads, change planning) carry no kinds.
+- `fetch` results (documents, the readout, change planning) carry no kinds until their caller annotates them.
 
 `table_references(sessionId, database, table)` returns `{ outgoing, incoming }`, each a
 `ResolvedReference { from, to, by }` with the columns of both ends, rule references (conditional ones too)
@@ -340,7 +342,7 @@ session's dialect and returns the narrowed SQL, or `invalid_input` with the refu
 
 ## Editing rows
 
-Grid edits are core (`db/changes.rs`) and work without the WordPress module. Every write goes plan, review,
+Grid edits are core (`db/changes.rs`). Every write goes plan, review,
 apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/0012-plans-applied-by-id.md)):
 
 1. `TableTab` queues a `ChangeRequest` (`queueChange` in the store): `setCell`, `deleteRow`, `duplicateRow`,
@@ -382,14 +384,14 @@ reviewed.
 ## Adding another database engine
 
 Callers only know `&dyn Database` and the `Dialect` it returns, so an engine is one folder and one factory
-arm; nothing in `wp/` changes:
+arm; nothing in `rules/` changes:
 
 1. **Driver.** `src-tauri/src/db/<engine>/mod.rs` implementing `Database`.
 2. **Dialect.** An `Engine` variant with its `Dialect`. These are MySQL-specific today and need a per-engine
    version: `quote_ident` and `table_ref` (backticks); `sql_string` and `like` (backslash escaping unless
    `NO_BACKSLASH_ESCAPES`); `system_schemas`. Outside the dialect: the lexer (`#` comments, backslash
    escapes), the cancel SQL (`KILL QUERY` → `pg_cancel_backend`; SQLite uses an interrupt), `DELETE … LIMIT 1`,
-   and `UTC_TIMESTAMP()` and `INTERVAL` in the WordPress plans.
+   and `UTC_TIMESTAMP()` and `INTERVAL` in preset SQL.
 3. **Connection spec.** A `kind` (and a file `path`) on `ConnectionSpec`, the URL schemes in `cli.rs`, the
    keychain account format, and one arm in `db::open`.
 4. **Cell decoding.** A `decode` per engine that maps into the same `Cell` enum.
@@ -404,7 +406,7 @@ The roadmap lists SQLite as the next driver.
 
 ## Integration tests
 
-The integration tests are `src-tauri/tests/mysql.rs` and the WordPress tests (see [testing.md](testing.md)).
+The integration tests are `src-tauri/tests/mysql.rs`, `changes.rs`, `sql_mode.rs` and the `server_tests.rs` of the modules (see [testing.md](testing.md)).
 Each test runs against every server in `DATABEE_TEST_SERVERS`. The default is the two Docker fixtures,
 MariaDB 11.4 on `127.0.0.1:33306` and MySQL 8.4 on `127.0.0.1:33307` (user `root`, password `root`), so
 driver behavior is checked on both engines.

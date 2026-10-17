@@ -8,9 +8,8 @@ use it, see the [project README](../README.md).
 | [architecture.md](architecture.md) | Design rules, process model, repository map, one request end to end |
 | [backend.md](backend.md) | Rust core: startup, `AppState`, Tauri commands, events, CLI and single-instance IPC, persistence, secrets, errors, native menu |
 | [database.md](database.md) | MySQL driver: connection model, query execution, cell decoding, browsing, edits, adding an engine |
-| [presets.md](presets.md) | Presets and rules: the TOML format, placeholders, where user presets live, loading and errors |
+| [presets.md](presets.md) | Presets and rules: the TOML format, placeholders, where user presets live, loading and errors, the readout, the built-in WordPress, WooCommerce and Action Scheduler presets |
 | [decode.md](decode.md) | Decoding and editing stored values: PHP serialize, JSON, value trees |
-| [wordpress.md](wordpress.md) | The WordPress, WooCommerce and Action Scheduler presets, and the WordPress screens until U12 |
 | [ux.md](ux.md) | Design language: surfaces, color schemes and tokens, type, rows, inputs, overlays, value grammar, keys, palette |
 | [frontend.md](frontend.md) | React app: boot, store, API boundary, command registry, components, styling, tests |
 | [stage.md](stage.md) | Optional local HTTP API for the Stage presenter app |

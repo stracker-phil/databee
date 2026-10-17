@@ -2,7 +2,7 @@
 import { collapseKey, documentText, focusOrder, provenanceKey } from "../lib/document";
 import { objectColumnAt } from "../lib/columns";
 import { drillable, openValueAt } from "../components/value/open";
-import { isWpView, selectActiveTab, selectCollapsedGroups, selectDocument, selectFocusedValue, useStore, type ObjectTab } from "../state/store";
+import { selectActiveTab, selectCollapsedGroups, selectDocument, selectFocusedValue, useStore, type ObjectTab } from "../state/store";
 import { isTextInput, type Command } from "./registry";
 
 const focused = () => document.activeElement;
@@ -74,9 +74,8 @@ function canDrill(): boolean {
 
 /** A column to close: one of several in an object tab, or a table or query tab's value column. */
 function canClose(): boolean {
-  const s = useStore.getState();
-  const tab = selectActiveTab(s);
-  if (!tab || isWpView(s) || typing() || menuOpen()) return false;
+  const tab = selectActiveTab(useStore.getState());
+  if (!tab || typing() || menuOpen()) return false;
   if (tab.kind === "object") return tab.columns.length > 1;
   return (tab.kind === "table" || tab.kind === "query") && !!tab.valueColumn;
 }

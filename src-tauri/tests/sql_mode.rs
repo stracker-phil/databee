@@ -1,4 +1,4 @@
-//! Writes under `NO_BACKSLASH_ESCAPES`. The dialect is read when a session connects, so the
+//! Writes to a meta row under `NO_BACKSLASH_ESCAPES`. The dialect is read when a session connects, so the
 //! server's global `sql_mode` is switched for the new session and put back afterwards. This is
 //! its own test binary so no other test connects while the global mode is changed.
 
@@ -28,16 +28,16 @@ struct Outcome {
     restored: String,
 }
 
-async fn edit_title(host: &str, port: u16) -> AppResult<Outcome> {
+async fn edit_meta_value(host: &str, port: u16) -> AppResult<Outcome> {
     let db = connect_to(host, port, "wp_write").await;
-    let read = "SELECT post_title FROM wp_posts WHERE ID = 9601";
+    let read = "SELECT meta_value FROM wp_postmeta WHERE meta_id = 9303";
 
     let change = ChangeRequest::SetCell {
         database: "wp_write".into(),
-        table: "wp_posts".into(),
-        key_column: "ID".into(),
-        key: "9601".into(),
-        column: "post_title".into(),
+        table: "wp_postmeta".into(),
+        key_column: "meta_id".into(),
+        key: "9303".into(),
+        column: "meta_value".into(),
         value: Some(VALUE.into()),
     };
     let plan = changes::plan(&db, &change, TIMEOUT).await?;
@@ -59,13 +59,14 @@ async fn edit_title(host: &str, port: u16) -> AppResult<Outcome> {
 
 #[tokio::test]
 #[ignore]
-async fn set_cell_with_quote_and_backslash_round_trips_under_no_backslash_escapes() {
+async fn set_cell_on_a_meta_value_with_quote_and_backslash_round_trips_under_no_backslash_escapes()
+{
     for (host, port) in servers() {
         let admin = connect_to(&host, port, "wp_write").await;
         let previous = scalar(&admin, "SELECT @@GLOBAL.sql_mode").await;
         let original = scalar(
             &admin,
-            "SELECT post_title FROM wp_write.wp_posts WHERE ID = 9601",
+            "SELECT meta_value FROM wp_write.wp_postmeta WHERE meta_id = 9303",
         )
         .await;
         let mode = if previous.is_empty() {
@@ -79,7 +80,7 @@ async fn set_cell_with_quote_and_backslash_round_trips_under_no_backslash_escape
             .await
             .unwrap();
 
-        let outcome = edit_title(&host, port).await;
+        let outcome = edit_meta_value(&host, port).await;
 
         admin
             .execute(&set(&previous), 1, CellLimit::NONE, TIMEOUT)
@@ -90,13 +91,15 @@ async fn set_cell_with_quote_and_backslash_round_trips_under_no_backslash_escape
         assert!(!outcome.backslash_escapes, "{host}:{port}");
         assert_eq!(
             outcome.statements,
-            ["UPDATE `wp_write`.`wp_posts` SET `post_title` = 'it''s\\x' WHERE `ID` = '9601'"],
+            [
+                "UPDATE `wp_write`.`wp_postmeta` SET `meta_value` = 'it''s\\x' WHERE `meta_id` = '9303'"
+            ],
             "{host}:{port}"
         );
         assert_eq!(
             outcome.undo,
             [format!(
-                "UPDATE `wp_write`.`wp_posts` SET `post_title` = '{}' WHERE `ID` = '9601'",
+                "UPDATE `wp_write`.`wp_postmeta` SET `meta_value` = '{}' WHERE `meta_id` = '9303'",
                 original.replace('\'', "''")
             )],
             "{host}:{port}"

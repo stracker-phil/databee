@@ -1,11 +1,11 @@
 # Decode
 
-`src-tauri/src/decode/` turns stored text into a value tree for value columns, inline trees and the WordPress field views,
-and edits one leaf of it. It is core: the WordPress lens builds on it, never the other way round.
+`src-tauri/src/decode/` turns stored text into a value tree for value columns and inline trees,
+and edits one leaf of it. It is core and knows no application.
 
 | File | Responsibility |
 |---|---|
-| `php.rs` | Lossless parser and serializer for PHP `serialize()` data; `PhpValue::get` and `as_text` for lookups; `looks_serialized` (WordPress `is_serialized`, plus `C:`); `is_php_float` |
+| `php.rs` | Lossless parser and serializer for PHP `serialize()` data; `PhpValue::get` and `as_text` for lookups; `looks_serialized` (a strict `is_serialized`, plus `C:`); `is_php_float` |
 | `value.rs` | Turns stored text (PHP or JSON) into a generic `ValueNode` tree. Serialized strings inside other values are decoded up to 3 levels deep |
 | `edit.rs` | `edit_serialized`: replaces one leaf and re-serializes |
 | `commands.rs` | The `decode_value` and `edit_serialized` Tauri commands |
@@ -13,7 +13,7 @@ and edits one leaf of it. It is core: the WordPress lens builds on it, never the
 ## PHP serialize
 
 `php.rs` round-trips exactly: `serialize(parse(x)) == x` for every value it accepts. The test suite checks
-this, and `every_serialized_value_round_trips` (`src-tauri/src/wp/server_tests.rs`) checks it against every serialized value of a real database. The parser:
+this, and `every_serialized_meta_value_round_trips` (`mod real_data` in `src-tauri/src/document/server_tests.rs`) checks it against every serialized value in the `[[meta]]` tables of a real database. The parser:
 
 - keeps **strings as bytes**, because `s:N` counts bytes; invalid UTF-8 is preserved;
 - keeps **floats as their source text**, accepting only PHP's float syntax (digits with optional sign,

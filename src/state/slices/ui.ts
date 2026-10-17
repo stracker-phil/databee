@@ -3,8 +3,6 @@ import { fail } from "../requests";
 import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
 
-export type Mode = "wp" | "db";
-
 export interface Toast {
   id: number;
   kind: "error" | "info" | "success";
@@ -53,11 +51,8 @@ export interface UiSlice {
   uiState: Record<string, UiState>;
   /** Recently opened entities and tables, newest first. */
   recentNav: RecentNav[];
-  mode: Mode;
   /** Shown in the status bar instead of the address while set. */
   hover: ValueHover;
-  /** The user picked a mode explicitly; don't switch automatically anymore. */
-  modeChosen: boolean;
   toast(kind: Toast["kind"], message: string): void;
   dismissToast(id: number): void;
   openDialog(dialog: Dialog): void;
@@ -72,14 +67,10 @@ export interface UiSlice {
   toggleSidebar(): void;
   /** Collapses or expands an object view group (`<document table>::<group id>`) in one database and persists it. */
   toggleGroupCollapsed(identity: string, database: string, key: string): void;
-  setMode(mode: Mode): void;
   setHover(hover: ValueHover): void;
 }
 
 let nextToastId = 1;
-
-/** Back to the Database view; a WordPress database switches again until the user picks a mode. */
-export const resetMode = () => ({ mode: "db" as Mode, modeChosen: false });
 
 const recentKey = (r: RecentNav) => JSON.stringify(r.kind === "entity" ? [r.kind, r.entity, r.id] : [r.kind, r.database, r.table]);
 
@@ -108,7 +99,6 @@ export const uiSlice: Slice<UiSlice> = {
       uiState: {},
       recentNav: [],
       hover: NO_HOVER,
-      ...resetMode(),
 
       toast(kind, message) {
         if (kind === "error") void api.logError(message).catch(() => {});
@@ -170,10 +160,6 @@ export const uiSlice: Slice<UiSlice> = {
           const next = keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key];
           return { collapsedGroups: { ...current.collapsedGroups, [database]: next } };
         });
-      },
-
-      setMode(mode) {
-        set({ mode, modeChosen: true });
       },
 
       setHover(hover) {

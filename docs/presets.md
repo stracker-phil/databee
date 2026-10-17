@@ -11,15 +11,15 @@ Status: presets are parsed, checked and listed (`presets_list`); projects are st
 pages, query results and `table_references` ([Effective rules](#effective-rules)), `rules_info` reports
 the prefixes, presets and entities, and `reference_coverage` counts how many rows of a reference resolve
 ([Coverage](#coverage)). `document` builds a row's document from meta tables, references, entities,
-patterns and kinds ([Documents](#documents)). The WordPress screens read entities, meta tables and kinds
-through adapters ([wordpress.md](wordpress.md#screens-until-u12)); pinned queries, anomalies, actions and
-find sources are parsed but not used yet.
+patterns and kinds ([Documents](#documents)). Pinned queries, anomalies, entities with a `created` column and
+the recent objects of a project make up the [readout](#the-readout); actions plan on rows and tables; find
+sources feed the palette.
 
 ## Where presets live
 
 | Source | Location | Notes |
 |---|---|---|
-| Built-in | `src-tauri/presets/*.toml`, compiled in (`rules::catalog::BUILT_IN`) | `wordpress`, `woocommerce`, `action-scheduler` ([wordpress.md](wordpress.md)) |
+| Built-in | `src-tauri/presets/*.toml`, compiled in (`rules::catalog::BUILT_IN`) | `wordpress`, `woocommerce`, `action-scheduler` ([Built-in presets](#built-in-presets)) |
 | User | `~/Library/Application Support/com.philippstracker.databee/presets/*.toml` | reread when a file is added, removed or saved |
 
 - A user preset whose `name` equals a built-in's **replaces** that built-in.
@@ -191,12 +191,13 @@ title and SQL are replaced with the project's prefixes (`placeholder::with_prefi
 shown. The palette's `q:` lists them; a pinned query opens as an unsaved query tab titled `copy of <title>`.
 `copy_preset_query_to_project(session_id, database, preset, id)` stores it, prefixes replaced, as a project
 query with a fresh id, which can then be changed and pinned like any saved query (`update_saved_query`;
-`save_query` adds one, `remove_saved_query` removes a project or global one). `home` is shown on the readout
-(U12). Favorites from before U11 were moved into saved queries ([backend.md](backend.md#persistence)).
+`save_query` adds one, `remove_saved_query` removes a project or global one). `home` is shown on the
+[readout](#the-readout). Favorites from before U11 were moved into saved queries ([backend.md](backend.md#persistence)).
 
 ### `[[anomaly]]`
 
-Shown on the readout while `sql` returns a non-zero number.
+Shown on the [readout](#the-readout) while `sql` returns a non-zero number; NULL, no row or text that is no
+number hides it.
 
 ```toml
 [[anomaly]]
@@ -484,6 +485,30 @@ matching style wins. The style is the scheme color name; no value is colored wit
 Declared foreign keys and same-name inference add incoming groups without any rule, so every table with a
 primary key has a document.
 
+## The readout
+
+`readout(session_id, database)` (`src-tauri/src/readout/`) is the home page of a database
+(`databee://<slug>/<db>/`), built from the effective rules, the saved queries and the project:
+
+| Part | From |
+|---|---|
+| `status` | host (or socket), slug, database, prefix, applied presets, server version; `values`: saved queries pinned with `show = "value"`, the first column of their first row as a `Value` |
+| `anomalies` | each applied preset's `[[anomaly]]` whose value is a non-zero number (or whose query failed), with `count`, `text`, the `address` `open` names (a saved query, or a table address with the `where` as `filter`) and `fix` (the `scope = "table"` action of the same preset and the table address to plan it on) |
+| `newObjects` | per entity with a `created` column: its key, the `summary` names that are columns and `created`, newest 5 by `created` (the entity's `filter` applies), as `Value` rows with provenance, and the SQL |
+| `pinned` | saved queries pinned with `show = "count"` (`COUNT(*)` of the query) or `"rows"` (the query with `LIMIT <limit>`, 5 by default, unless it has a `LIMIT`) |
+| `recent` | the project's recent objects (`store::recent_objects`), newest first: each row address with when it was opened and its peek values |
+
+Each part is a `Part { items, error }`: it runs with its own timeout (10 s for the part, each query at most
+5 s or the query timeout when lower), and a part or a line whose query fails carries the error while the rest
+of the readout stands. Saved-query SQL runs as one statement on the metadata pool after `USE <database>`, so
+its unqualified table names resolve in the readout's database; its columns get kinds by origin as query
+results do. Rule SQL (anomalies, entity filters) is qualified with the database.
+
+`remember_object(session_id, address)` records a row address as the newest recent object of its project
+(`readout::remember` into `RecentObjectsStore`, `recent_objects.json` keyed by `<slug>/<database>`: at most 20,
+each once, with the time in Unix seconds; a slug rename moves them). The page calls it whenever it opens an
+object. Recent objects are no rules: projects and their exports do not hold them.
+
 ## `rules_info`
 
 `rules_info(session_id, database)` returns `RulesInfo { prefix, networkPrefix, suggestedPrefix,
@@ -531,3 +556,76 @@ a click finds. Conditions are said in SQL with the same meaning as in memory:
 
 A reference from a column to the same column of its table (shared emails, external ids) counts a row as
 resolved only when another row matches (by primary key); a table without one finds the row itself.
+
+## Built-in presets
+
+WordPress knowledge is configuration: three built-in presets in `src-tauri/presets/`, written in this format
+and governed by [`.claude/rules/presets.md`](../.claude/rules/presets.md). The engine knows no WordPress names.
+
+| Preset | Marker tables | Requires |
+|---|---|---|
+| `wordpress` | `options`, `posts`, `users` | |
+| `woocommerce` | `woocommerce_order_items` | `wordpress` |
+| `action-scheduler` | `actionscheduler_actions` | `wordpress` |
+
+Action Scheduler is its own preset because it ships with plugins other than WooCommerce. The prefix is the
+shortest one under which a preset's marker tables exist, so multisite sub-sites (no users table) never win;
+`users`, `usermeta`, `blogs`, `blogmeta`, `site`, `sitemeta`, `signups` and `registration_log` are network tables
+(`{np}`).
+
+**`wordpress.toml`**
+- Key/value tables: `postmeta`, `usermeta`, `commentmeta`, `termmeta`, `sitemeta`, `blogmeta` (owned), and
+  `options` (standalone, so meta-key kinds apply to option rows). Each owned table declares `fk → owner`.
+- References: authors, parents, comments, featured images (`_thumbnail_id`), `_edit_last`, terms, links and
+  the network tables. Labelled groups: `children`, `comments`, `replies`, `terms`.
+- Entities: `post`, `user` (`people`), `comment`, `term`, `option`, `blog`.
+- Kinds: `user_pass`, `user_activation_key` and key globs such as `*password*`, `*api_key*`, `*_token` are
+  secrets; `*.*_gmt` and registration dates are UTC timestamps; `post_date`, `post_modified`, `comment_date`,
+  `link_updated` are local (zone not stored, shown raw); transient timeouts, `last_update` and `_edit_lock` are
+  unix; status, type and taxonomy columns are enums.
+- Pinned queries: `site_url`, `db_version`, `autoload_bytes` (readout values), `site_options`,
+  `network_plugins`, `content`, `users`, `options_by_prefix`, `options_largest_autoload`, `transients`.
+- Anomalies `autoload_heavy` and `transients_expired` (fix: `delete_expired_transients`); actions
+  `set_autoload` and `delete_expired_transients`; find source `options`.
+
+**`woocommerce.toml`**
+- Both order shapes: HPOS (`wc_orders`, its meta, addresses, operational data) and posts (`shop_order*` posts
+  with their meta). Whichever holds rows shows up; there is no HPOS or version detection.
+- References: customers, parents (`children`), `guest_orders` (same `billing_email`, `customer_id = 0`),
+  `addresses`, `items` (to both shapes, with the item meta `_qty`, `_line_total`, `_product_id`,
+  `_variation_id` as group columns), `notes` (`comment_type = order_note`), PayPal order ids, subscription
+  links, lookup tables, `tokens`, logged-in sessions (`session_key` only when numeric), download permissions.
+- Entities: `order` on `wc_orders` and, filtered by `post_type`, on `posts`; `product` (filtered posts),
+  `order_item`, `order_address` (`people`), `payment_token`, `session`.
+- Kinds: money with the currency of the row (`currency`) or the document (`_order_currency`), amounts without
+  a stored currency (item meta, product prices, lookup tables); timestamps (`_date_paid` unix,
+  `_paid_date` local, `_schedule_*` UTC, `_wc_*_sent` unix, `_wc_order_attribution_session_start_time` local);
+  secrets (`order_key`, payment tokens, API keys); enums (statuses, gateways, item types, log levels).
+- Value styles for order statuses, shipped off.
+- Patterns: `woocommerce_log` (the order id in the message or context, PayPal and transaction ids, within a day
+  before to 90 days after creation) and `actionscheduler_actions` (the order id in `args` or
+  `extended_args`), for both order shapes.
+- Pinned queries: `woocommerce_version`, `hpos_options`, `orders`, `orders_posts`, `subscriptions`,
+  `customers`, `guests`, `guests_posts`, `products`, `sessions`, `hpos_drift`.
+- Anomalies `hpos_drift` (only while data sync is on, checked in its SQL) and `log_errors`; actions
+  `set_status` (on both shapes, each also updating the other table) and `delete_logs_before`; find sources for
+  log messages and order ids.
+
+**`action-scheduler.toml`**
+- References `group_id`, `claim_id` and `logs`; entity `action`; enums `status` and `hook`; timestamps
+  (`log_date_gmt` UTC, `*_local` local; the other `*_gmt` columns are UTC through `wordpress`); value styles
+  for `failed` and `complete`, shipped off.
+- Pinned queries `actions`, `actions_failed_by_hook`, `actions_overdue`; anomalies `actions_failed`,
+  `actions_overdue`; actions `retry` and `cancel`; find source `args`/`extended_args`.
+
+To change a preset for one machine, copy it to `<config dir>/presets/` and edit it: a user preset with the same
+`name` replaces the built-in ([Where presets live](#where-presets-live)). The pre-preset
+`<config dir>/entities.toml` is not read; nothing is converted.
+
+WordPress has no code of its own: no detection, screens or commands. A WordPress database shows the readout,
+documents, rows and saved queries like any other, with these rules applied. Removing WordPress support is
+deleting the three files and their lines in `BUILT_IN` ([adapting.md](adapting.md#removing-the-wordpress-presets)).
+
+The preset tests (`src-tauri/src/rules/server_tests.rs`, `rules/coverage.rs`, `rules/effective.rs`,
+`document/server_tests.rs`, `document/actions/server_tests.rs`, `search/server_tests.rs`) run the built-in files
+on the fixtures `wp_test`, `wp_write`, `wp_legacy`, `wp_custom` (prefix `xy_`), `wp_multi` and `databee_test`.

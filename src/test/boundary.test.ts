@@ -43,16 +43,14 @@ describe("module boundaries", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("keeps the core from importing Stage or the WordPress components", () => {
-    const isCore = (file: string) =>
-      (inside(file, "/src/components") && !inside(file, "/src/components/wp")) ||
-      ["/src/state", "/src/commands", "/src/registry", "/src/lib"].some((folder) => inside(file, folder));
+  it("keeps the core from importing Stage", () => {
+    const isCore = (file: string) => ["/src/components", "/src/state", "/src/commands", "/src/registry", "/src/lib"].some((folder) => inside(file, folder));
     const offenders = files
       .filter(([file]) => isCore(file))
       .flatMap(([file, source]) =>
         specifiers(source)
           .map((s) => resolve(file, s))
-          .filter((target) => inside(target, "/src/stage") || inside(target, "/src/components/wp"))
+          .filter((target) => inside(target, "/src/stage"))
           .map((target) => `${file} -> ${target}`),
       );
     expect(offenders).toEqual([]);

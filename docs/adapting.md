@@ -13,7 +13,7 @@ Add SQLite support: open .sqlite files from the CLI and the connect screen.
 Rebrand the app as "ShopLens" under com.example.shoplens and drop the Stage integration.
 ```
 ```text
-Remove the WordPress layer; I only need the plain SQL client.
+Remove the WordPress presets; I only need the plain SQL client.
 ```
 
 `CLAUDE.md` is loaded automatically. It points the agent to the rules in `.claude/rules/` and to these docs.
@@ -55,7 +55,7 @@ Objective-C or NSWindow calls. The macOS behavior comes from dependencies, paths
 | **Window chrome**: `titleBarStyle: Overlay`, `hiddenTitle`, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; the Cargo feature `macos-private-api` | Ignored by Tauri. The CSS expects transparent chrome, so give `html`/`.app` an opaque `--bg-chrome` | `windowEffects: ["mica"]` works; otherwise use an opaque background |
 | **Traffic-light space** and drag regions | `.toolbar` `padding-left` in `app.css`; `data-tauri-drag-region` in `Toolbar.tsx` and `ConnectScreen.tsx` | Remove the padding. With native decorations, drag regions are optional | Same; or set `decorations: false` and draw your own window controls |
 | **Menu**: the app menu with Services, Hide and Show All | `menu.rs` | The menu bar renders inside the window. Drop the app menu and move Settings and Quit into File | Same |
-| **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs, `bindingFromEvent` assumes a Mac | `src/commands/registry.ts`; `metaKey` checks in `ResultsGrid`, `Sidebar`, `CommandPalette`, `FieldValue` and `WpWorkspace` | Map `Mod` to Ctrl, and render labels as `Ctrl+Shift+K` | Same |
+| **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs, `bindingFromEvent` assumes a Mac | `src/commands/registry.ts`; `metaKey` checks in `ResultsGrid`, `Sidebar`, `CommandPalette` and `FieldValue` | Map `Mod` to Ctrl, and render labels as `Ctrl+Shift+K` | Same |
 | **Fonts**: bundled Geist and JetBrains Mono, with `-apple-system` and `Menlo` fallbacks | `fonts.css`, `theme.css` (`--font-*-bundled`) | Works; drop the macOS fallbacks or add `Cantarell` and `DejaVu Sans Mono` | Works; `Segoe UI`, `Cascadia Mono` as fallbacks |
 | **Bundle targets**: only `app` | `tauri.conf.json` `bundle.targets`; `package.json` scripts open `bundle/macos/DataBee.app` | `deb`, `appimage`, `rpm` | `nsis`, `msi`; `icons/icon.ico` exists but `bundle.icon` doesn't list it; `main.rs` needs the `windows_subsystem` attribute so release builds open no console |
 | **Install and dev scripts** (zsh, Swift, CoreGraphics, `screencapture`, `pkill`) | `scripts/` | Rewrite with `xdotool`/`wmctrl` plus `grim`/`import`, or drop `launch.sh` and use `bun tauri dev` | PowerShell |
@@ -75,7 +75,7 @@ can do all of this:
 | Goal | Start here |
 |---|---|
 | Add a database engine (SQLite, Postgres) | [database.md: adding another database engine](database.md#adding-another-database-engine) |
-| Add rules for WordPress, a plugin or another application | [presets.md](presets.md); the built-ins are in [wordpress.md](wordpress.md) |
+| Add rules for WordPress, a plugin or another application | [presets.md](presets.md); the built-ins are in [Built-in presets](presets.md#built-in-presets) |
 | Add a command or shortcut | [frontend.md: commands](frontend.md#commands-shortcuts-palette-menu) |
 | Add a menu item | [backend.md: native menu](backend.md#native-menu) |
 | Add a setting | [backend.md: persistence](backend.md#persistence) |
@@ -86,7 +86,7 @@ can do all of this:
 ### Add a driver
 
 `src-tauri/src/db/<engine>/mod.rs` implementing `Database`; an `Engine` variant with its `Dialect`; a `kind`
-on `ConnectionSpec`; one arm in `db::open`. Nothing in `wp/` changes. Details:
+on `ConnectionSpec`; one arm in `db::open`. Nothing in `rules/` changes. Details:
 [database.md](database.md#adding-another-database-engine).
 
 ### Swap the secret store
@@ -99,29 +99,13 @@ Add `src-tauri/src/secrets/<impl>.rs` implementing `SecretStore` (`get`, `set`, 
 
 Stage is a module on both sides ([stage.md](stage.md)). **Remove Stage**: `git rm -r src-tauri/src/stage src/stage src-tauri/capabilities/stage.json docs/stage.md`; delete `pub mod stage;` and `.plugin(stage::init(&config_dir))` in `lib.rs`; delete the `.plugin("stage", …)` line and `STAGE_COMMANDS` in `build.rs`; delete the `installStage` import and call in `src/modules.ts`; optionally strip `data-stage*` attributes; run `bun run lint && bun run test`.
 
-### Removing the WordPress layer
+### Removing the WordPress presets
 
-WordPress, WooCommerce and Action Scheduler are presets: delete `src-tauri/presets/wordpress.toml`,
-`woocommerce.toml` and `action-scheduler.toml` and their lines in `rules::catalog::BUILT_IN`. The rules engine
-has no WordPress code. Until U12 removes them, the WordPress screens remain a module on both sides
-([wordpress.md](wordpress.md#screens-until-u12)); grid edits don't depend on them (`ChangeRequest` and its
-planning are core, in `db/changes.rs`). To remove them as well:
-
-1. `git rm -r src-tauri/src/wp src-tauri/capabilities/wp.json`; delete `pub mod wp;`
-   and `.plugin(wp::init(&config_dir))` in `lib.rs`; delete the `.plugin("wp", …)` line and `WP_COMMANDS` in
-   `build.rs`; delete the `wordpress` settings page. The plugin takes its commands, snapshot store and
-   integration tests with it.
-2. In the frontend:
-   - delete `src/components/wp/` (its `install.ts` registers the `wp` and `document` scopes) and
-     drop the `installWp()` line in `src/modules.ts`;
-   - delete the `wp`, `wpNav` and `mode` store slices;
-   - delete the `go.dashboard` and `go.snapshots`, `document.*` and `wp.*` commands and the WordPress palette search;
-   - remove the mode toggle in `Toolbar`, and render `DbWorkspace` directly in `App.tsx`.
-3. Delete the `wp_test`/`wp_write`/`wp_legacy`/`wp_custom`/`wp_multi` sections of `dev/fixture.sql` and the
-   preset tests in `src-tauri/tests/rules.rs`, then run `bun run lint && bun run test`.
-
-The value column's decoding and editing of PHP-serialized and JSON values is core (`src-tauri/src/decode/`) and
-stays, and so do grid edits (`db/changes.rs`).
+WordPress, WooCommerce and Action Scheduler are presets, nothing else: delete `src-tauri/presets/wordpress.toml`,
+`woocommerce.toml` and `action-scheduler.toml` and their lines in `rules::catalog::BUILT_IN`. The rules engine,
+the readout, documents and the palette have no WordPress code, so nothing else changes. Optionally delete the
+`wp_*` databases of `dev/fixture.sql` and the tests that read them (the preset tests listed in
+[presets.md](presets.md#built-in-presets)), then run `bun run lint && bun run test`.
 
 ## Conventions to keep
 

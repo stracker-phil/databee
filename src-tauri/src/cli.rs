@@ -17,7 +17,7 @@ const DEFAULT_USER: &str = "root";
     version,
     about = "Minimalistic SQL client",
     args_conflicts_with_subcommands = true,
-    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/wordpress --password-env DB_PASS\n  echo secret | databee -u wp -d wordpress --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/wordpress/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar\n  claude mcp add databee -- databee mcp"
+    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/site --password-env DB_PASS\n  echo secret | databee -u wp -d site --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/site/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar\n  claude mcp add databee -- databee mcp"
 )]
 struct Args {
     #[command(subcommand)]
@@ -369,17 +369,17 @@ mod tests {
 
     #[test]
     fn url_provides_all_connection_parts() {
-        let l = launch(&["mysql://wp:s%40cret@db.local:3307/wordpress"]);
+        let l = launch(&["mysql://wp:s%40cret@db.local:3307/site"]);
         assert_eq!(l.spec.host, "db.local");
         assert_eq!(l.spec.port, 3307);
         assert_eq!(l.spec.user, "wp");
-        assert_eq!(l.spec.database.as_deref(), Some("wordpress"));
+        assert_eq!(l.spec.database.as_deref(), Some("site"));
         assert_eq!(l.password, Some(Secret::new("s@cret")));
     }
 
     #[test]
     fn flags_override_url_parts() {
-        let l = launch(&["mysql://wp@db.local/wordpress", "-d", "shop", "-P", "33306"]);
+        let l = launch(&["mysql://wp@db.local/site", "-d", "shop", "-P", "33306"]);
         assert_eq!(l.spec.database.as_deref(), Some("shop"));
         assert_eq!(l.spec.port, 33306);
         assert_eq!(l.spec.host, "db.local");
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn missing_parts_use_defaults() {
-        let l = launch(&["-d", "wordpress"]);
+        let l = launch(&["-d", "site"]);
         assert_eq!(l.spec.host, "127.0.0.1");
         assert_eq!(l.spec.port, 3306);
         assert_eq!(l.spec.user, "root");
@@ -598,7 +598,7 @@ mod tests {
 
     #[test]
     fn open_with_an_address_sends_it_and_focuses() {
-        let address = "databee://shop/wordpress/wp_posts/42";
+        let address = "databee://shop/site/wp_posts/42";
         assert_eq!(remote(&["open", address]), open(address, None, true));
     }
 

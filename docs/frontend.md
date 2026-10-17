@@ -11,8 +11,7 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    1. `installCore()`: `registerCoreSettingsPages()` and `registerCoreScopes()`.
    2. `installStage()` (`src/stage/install.ts`): the Presentations Settings page and the Stage event
       listeners, which stay subscribed for the app's lifetime.
-   3. `installWp()` (`src/components/wp/install.ts`): the `wp` scope.
-   4. `installCommands()`: the command registry. It runs last because some core commands use WordPress scopes.
+   3. `installCommands()`: the command registry. It runs last so module scopes exist before their commands.
 3. `main.tsx` calls `installNativeMenuGuard()` (`src/lib/nativeMenu.ts`): a right-click that no app menu
    handled shows nothing, so the WebView's own Reload and Inspect Element never appear; text fields and the
    SQL editor keep the native Cut/Copy/Paste menu.
@@ -30,18 +29,17 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 
 Layout:
 - Without a session, the window shows `ConnectScreen`.
-- With sessions, it shows `Toolbar`, `WpWorkspace` or `DbWorkspace`,
-  `PendingTray` and `StatusBar`.
+- With sessions, it shows `Toolbar`, `Workspace`, `PendingTray` and `StatusBar`.
 - `Dialogs`, `CommandPalette` and `Toasts` always render on top.
 
 ```
 App
 ├─ ConnectScreen                       (no session)
 └─ .app grid
-   ├─ Toolbar                          connection / database text (pickers), mode switch, Path, search field (palette), icon buttons
-   ├─ WpWorkspace                      (WordPress mode, see wordpress.md)
-   │  or DbWorkspace: [Sidebar |] TabBar + TabPanels
-   │       TabPanels → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel) [| value column]
+   ├─ Toolbar                          connection / database text (pickers), Path, search field (palette), icon buttons
+   ├─ Workspace: [Sidebar |] TabBar + TabPanels
+   │       TabPanels → Readout (status line, anomalies, new, pinned, recent; [Readout](#readout))
+   │                 → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel) [| value column]
    │                 → TableTab (filter bar + ResultsGrid | StructureView) [| value column]
    │                 → ObjectPanel: Strip | column (ObjectColumnView: ObjectHeader, DocumentView | RowsView,
    │                                or ValueColumnView) per stack column
@@ -59,7 +57,7 @@ root: it creates the store, keeps the slice registry and re-exports the selector
 and the state types, so components import everything from `state/store`.
 
 - `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs`, `changes`, `data`,
-  `saved`, `ui`, `nav`, `objects`, `columns`, `project`, and the temporary `wp` until it moves to the WordPress module). Each exports its
+  `saved`, `ui`, `nav`, `objects`, `columns`, `project`, `readout`). Each exports its
   member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
   the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
 - `Store` is an interface extending every core slice's interface. A module adds its members with
@@ -68,23 +66,21 @@ and the state types, so components import everything from `state/store`.
 - `resetStore(patch)` (tests) re-runs every registered slice's `create`, then applies `patch`.
 - `src/state/events.ts`: `onSessionEvent(handler)` (returns the unsubscribe function) and
   `emitSessionEvent`. `databaseChanged { sessionId, database }` fires after `switchDatabase` and when
-  `loadDatabases` reloads the list of a session with a current database; the `wp` slice subscribes and
-  runs `loadWp`. `sessionClosed { sessionId }` fires after `disconnect`'s update.
+  `loadDatabases` reloads the list of a session with a current database. `sessionClosed { sessionId }` fires
+  after `disconnect`'s update.
 - `src/state/selectors.ts`: the selectors; `src/state/requests.ts`: `fail` and the request tokens.
-- Slices import each other's reset helpers (`resetSelection`, `resetMode`, `resetWpNav`,
-  `resetWpForDatabase`) and pure helpers (`activate`, `remembered`, `nextActiveSessionId`), never the store
-  object, except where a module-level helper needs it (`fail`, the `wp` event subscription).
+- Slices import each other's reset helpers (`resetSelection`) and pure helpers (`activate`, `remembered`,
+  `nextActiveSessionId`), never the store object, except where a module-level helper needs it (`fail`).
 
 | Key | Meaning |
 |---|---|
 | `settings` | `Settings \| null`; null until loaded |
 | `sessions`, `activeSessionId` | open connections (`SessionInfo`, with the connection `slug`) |
-| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error, `valueColumn?`), `TableTab` (database, table, data/structure view, filter, structured `where`, preview, `valueColumn?`) `ObjectTab` (the column stack `columns`, the `active` index, the recorded `stacks`, preview; [Column stack](#column-stack)) or `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
+| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error, `valueColumn?`), `TableTab` (database, table, data/structure view, filter, structured `where`, preview, `valueColumn?`) `ObjectTab` (the column stack `columns`, the `active` index, the recorded `stacks`, preview; [Column stack](#column-stack)) `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)) or `ReadoutTab` (database; one per session, [Readout](#readout)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
 | `documents` | `document` replies by `session/<address or shorthand>`, tagged with their `dataVersion` (`loadDocument`, `keepDocument`, `selectDocument`) |
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
-| `mode`, `modeChosen` | `"wp" \| "db"`. A WordPress database switches to `wp` until the user picks a mode |
-| `wp`, `wpNav` | detection results per `session/db`; navigation stack (max 100) of the WordPress screens |
+| `readouts` | `readout` replies by `session/database`, tagged with their `dataVersion` (`loadReadout`, `openReadout`) |
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
 | `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`, the selected grid cell of a tab (in an object tab: of its active column). `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets a value column and the value commands fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
@@ -93,7 +89,7 @@ and the state types, so components import everything from `state/store`.
 | `dataVersion` | bumped by ⌘R (`refreshView`, which first drops the session's schema cache with `refreshSchema`) and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
 | `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar's `pending n` button uses it) |
-| `uiState` | per connection identity: column widths, pane sizes (the WordPress detail pane, the SQL editor), `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group (`selectCollapsedGroups` reads them) |
+| `uiState` | per connection identity: column widths, pane sizes (the SQL editor), `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group (`selectCollapsedGroups` reads them) |
 | `savedQueries` | by `session/database`: the `SavedEntry` list of `saved_queries` (`loadSavedQueries`, read on every palette opening) |
 | `paletteOpen`, `keybindings`, `toasts`, `recentNav` | as named |
 
@@ -102,8 +98,7 @@ Conventions:
 - Event handlers call actions through `useStore.getState()`.
 - Selectors live in `selectors.ts`: `selectActiveSession`, `selectActiveTab`, `selectCanNav`, `selectStructure`,
   `selectActivePending`, `selectCanUndo`, `selectSidebarHidden`, `selectVisibleDatabases` (the active session's databases without
-  system schemas unless shown or current; use with `useShallow`), `selectWp`, `selectWpRoute`. For
-  `selectWp`, `undefined` means not probed yet and `null` means not WordPress.
+  system schemas unless shown or current; use with `useShallow`).
 - Store actions wrap API errors in `fail(e, context)`, which shows an error toast and writes the message to
   the Rust log. Components that call `api` directly use the exported `fail` too, and update the UI only
   after the call succeeded (removing a recent connection, clearing history).
@@ -117,25 +112,23 @@ Conventions:
   Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]`
   pass through). The palette renders inside `Modal` too. `ContextMenu` focuses its first item, moves
   with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
-- Writes: `queueChange` asks Rust to plan (`planChange` for row edits, `wpPlanChange` for the WordPress screens'
-  edits) and keeps the returned plan; `queueAction(address, action, params)` plans a rule action (`planAction`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
+- Writes: `queueChange` asks Rust to plan a row edit (`planChange`) and keeps the returned plan; `queueAction(address, action, params)` plans a rule action (`planAction`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
   (`undoBatch`); `discardChange` / `discardAll` drop plans in Rust too. The page never sends SQL to write.
 - In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
   refuses a tab that is already `running`.
 - Request tokens (`beginRequest(key)` / `isLatest(key, token)`): only the newest request per key writes its
-  reply. `loadWp` uses `wp:<session>/<database>` and switches
-  to WordPress mode only while that session and database are still active.
+  reply.
 - Selection: `selectCell` tags the cell with the active tab. `clearSelectionFor(state, tabId)` drops it when
   its tab closes or is left (`activate`); a `dataVersion` bump (`bumpData`) clears it outright.
 - `disconnect(sessionId)` closes the session in Rust, then applies one `set` that merges every registered
   slice's `sessionClosed` result: the session and the next active session (`session`), its schema and
   `structures` keys (`session`), its tabs, `queryCounter` and the selection if its tab was closed (`tabs`),
-  its `pending` and `applied` entries (`changes`), its `documents` (`objects`), its `savedQueries` (`saved`), its `wp` keys, and `wpNav` when it
-  was active (`wp`). A slice that keys data by session implements `sessionClosed`.
-- `switchDatabase` resets `wpNav` and the selection; unless the target is known WordPress it
-  also resets `mode` to `db` and `modeChosen`. `connect` resets `wpNav`, `mode` and the selection and reuses
-  the session's query tab on reconnect.
+  its `pending` and `applied` entries (`changes`), its `documents` (`objects`), its `savedQueries` (`saved`), its `projectRules` and `rulesInfo` (`project`)
+  and its `readouts` (`readout`). A slice that keys data by session implements `sessionClosed`.
+- `switchDatabase` resets the selection and moves the session's readout tab, if it has one, to the new database
+  without activating it. `connect` resets the selection, reuses the session's query tab on reconnect (else
+  opens one) and then opens the readout of the session's database ([Readout](#readout)).
 - Tab updates are typed: `updateQueryTab` and `updateTableTab` only patch tabs of their kind.
 - UI state (`setTableWidths`, `setPaneSize`, `toggleSidebar`) is written debounced; `flushUiState` writes it on
   `beforeunload` (registered in `App.tsx`).
@@ -174,8 +167,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   isAncestor(a, scope), specificity(scope), scopeLabel(id)
   ```
   The core registers `global` → `db` → `table` / `editor` and `global` → `object` (`registerCoreScopes()`,
-  called by `installCommands`); the WordPress lens registers `global` → `wp` from
-  `components/wp/install.ts` (`installWp()`, called by `installModules()` before `installCommands`). Registering a
+  called by `installCommands`); a module registers its scopes before `installCommands` runs. Registering a
   command with an unregistered scope throws, which catches typos. When several commands match a key, the
   most specific active scope wins; specificity is the depth in the parent chain (`global` is 0). The
   `label` names the scope in Settings → Shortcuts.
@@ -209,7 +201,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
     else opens an object tab; ⌘↵ (`goAlt`) always opens a tab. A hit whose address is not a row opens with
     `openAddress`. Tables open in the preview tab, pinned with ⌘↵. Holding ⌥ peeks the selected hit
     (`PeekCard` under its row). `openAddress` of a `?find=<value>` address opens the palette with `=<value>`,
-    and so does "Find everywhere" on a WordPress field.
+    and so does "Find everywhere" on a value.
 - **Menu.** Native menu items emit `command` events. See [backend.md](backend.md#native-menu) for the Rust side
   of `menu: true`.
 
@@ -245,10 +237,10 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; its hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
-| Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
+| Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `PresetsSection`, `ReferenceForm`, `KindStyleForms`, `ReferencesSection`, `RuleSections`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `PaletteList`), `ContextMenu`, `Toasts` |
-| WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens-until-u12) |
+| Readout | `readout/Readout.tsx`, see [Readout](#readout) |
 
 ### Saved queries
 
@@ -319,8 +311,8 @@ registerSettingsPage({ id: "presentations", group: "System", label: "Presentatio
 
 ### Workspace layout
 
-`App.tsx`: `Workspace` returns the connect screen, the WordPress shell or the database shell (`AppShell`
-wraps the toolbar, pending tray, status bar and `PeekOverlay`). In `DbWorkspace`, `main` (`TabBar` +
+`App.tsx`: `Main` returns the connect screen or the workspace (`AppShell` wraps the toolbar, pending tray,
+status bar and `PeekOverlay`). In `Workspace`, `main` (`TabBar` +
 `TabPanels`) keeps the same tree position whatever the sidebar does: a hidden sidebar (`view.sidebar`,
 `selectSidebarHidden`) leaves an empty slot and adds `no-sidebar`, so CodeMirror history and table pages
 survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There are no inset panels: chrome
@@ -331,8 +323,7 @@ survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There 
   active object tab's stack (see [Column stack](#column-stack)). `SearchField` is a
   button styled as a field (label "Go to") that opens the palette; its key cap follows `palette.open`.
 - **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (the provenance of
-  the hovered or selected value while there is one, see [Values](#values); else in WordPress mode the
-  table prefix; otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
+  the hovered or selected value while there is one, see [Values](#values); otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
   typed SQL filter applies; a query tab adds rows, time and statement count, with the row-limit warning), spacer, `PendingCount` (`pending n`, a button to the tray when n > 0).
   The theme chip is gone: the theme stays in Settings and the palette.
 - **Sidebar:** the Tables/History switch, the filter (`InsetField`, key cap from `sidebar.focusFilter`), a
@@ -431,7 +422,7 @@ titled "Statement N failed" above the results of the statements before it. A `ti
 filter always has the primary key. `useBrowse` drops replies that are not the latest request, and the
 `Pager` moves by `BrowsePage.limit` (Rust's clamped page size). A failed structure shows an alert and
 leaves editing off. `FilterBar` and `useRowEditing` hold the filter input and the row menu and cell edits;
-primary-key and WordPress id columns match case-insensitively. The typed filter and `where` live on the
+primary-key and id columns match case-insensitively. The typed filter and `where` live on the
 tab, not in `useBrowse` (which keeps only offset and sort), so back and forward can change them; other
 rows start at the first page. Applying the filter calls `setTableFilter` (no history entry: a free SQL
 filter is not addressable). The tab's `where` goes into every browse request next to the typed filter;
@@ -444,10 +435,9 @@ The page never builds SQL conditions. Opening rows in the Database view passes s
 (`ColumnEquals`: `{ column, value }`, a `null` value means `IS NULL`), and Rust renders and quotes them
 ([Browsing tables](database.md#browsing-tables)):
 
-- `openRow(table, column, value)` (tabs slice): while the Database view shows a table tab of the active
-  session, that tab moves to the rows (`showRows`, so ⌘[ returns). Otherwise it switches to Database mode
-  (`setMode("db")`) and opens `table` of the active database with `where: [{ column, value }]` in the
-  preview tab. Option rows use it.
+- `openRow(table, column, value)` (tabs slice): while a table tab of the active session is active, that tab
+  moves to the rows (`showRows`, so ⌘[ returns). Otherwise it opens `table` of the active database with
+  `where: [{ column, value }]` in the preview tab. Option rows use it.
 - `openInDatabase(table, where?)`: the same with any number of matches, in a kept tab. `RowSource.where`
   (`FieldValue.tsx`) carries the matches for a field's "Open row in Database view".
 - `openTableTab(database, table, view?, filter?, { preview?, where? })`: an open tab is reused only when
@@ -464,8 +454,10 @@ reuses the tab whose first column is that row (and makes that column active) and
 preview tab when asked: a preview of either kind (table or object) replaces the session's
 previous preview and takes over its history (`previewTab`, `placed`). Rows open as objects from a primary key
 click, from a grid's double-click or Enter on a primary key cell, from `openAddress` with a row address, from
-the table tab's row menu ("Open as object") and from `openEntity(entity, id)` (WordPress records, see
-[wordpress.md](wordpress.md)).
+the table tab's row menu ("Open as object") and from `openEntity(entity, id)` (`objects` slice: the entity
+shorthand `order 4711` through `document`, kept with `keepDocument`, opened at its canonical row address).
+Every `openObject` records the row as the newest recent object of its project (`api.rememberObject`), which
+the [readout](#readout) lists.
 
 - **Loading:** each column (`ObjectColumnView`) calls `useDocument(sessionId, text, database)`, which reads
   `documents` and calls `loadDocument` once per `dataVersion`, so ⌘R and applied writes refresh it; the previous
@@ -589,13 +581,13 @@ address call it. It has no history (`nav` stays empty).
   left and clear `forward`; an unchanged address pushes nothing. `navBack` / `navForward` (commands
   `nav.back` ⌘[ and `nav.forward` ⌘], global scope) move the active tab and restore its table and `where`;
   a row address needs the primary key, so they load the structure first. They are enabled only while
-  `selectCanNav` finds history, so ⌘[ still outdents in the editor. In WordPress mode both delegate to
-  `wpNav` (`goBack` / `goForward`) until WordPress mode is removed. An object tab restores the stack its
+  `selectCanNav` finds history, so ⌘[ still outdents in the editor. An object tab restores the stack its
   target address had ([Column stack](#column-stack)).
 - **`openAddress(text, { preview? })`:** parses, finds the open session by slug, opens a row address as an
   object tab (`openObject`), a table address in a table tab (`openTableTab` with the matching `where`), in
-  the preview tab when asked, and `?project` as the Project page (`openProject`). Other targets (home, saved
-  query, find) answer with a toast until their views exist. The dev hook reaches it as
+  the preview tab when asked, the home address as the readout (`openReadout`), `?project` as the Project page
+  (`openProject`), a saved query as a query tab (`openSavedQuery`) and `?find=` as the palette. The dev hook
+  reaches it as
   `window.databee.getState().openAddress("databee://…")`.
 - **Slug renames:** `renameConnectionSlug(identity, slug)` calls Rust, then rewrites `slug` on the sessions
   and the connection part of every address of their tabs. Settings → Connections lists the saved
@@ -623,8 +615,31 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `codeTheme.ts` | CodeMirror theme and syntax colors from the scheme's `--code-*` tokens |
 | `document.ts` | object addresses (`objectAddress`, `documentText`, `objectTitle`), `findValue` / `provenanceKey`, group texts (`relationText`, `originText`, `countText`, `moreText`), `groupAnchors`, `collapseKey`, `focusOrder` |
 | `columns.ts` | the column stack's types (`ObjectColumn`, `ValueColumn`, `StackColumn`, `ColumnStack`), `objectColumn`, `objectColumnAt`, `columnName` / `columnLabel`, `shownColumns` (see [Column stack](#column-stack)) |
-| `crumbs.ts` | WordPress breadcrumbs |
-| `wpFormat.ts` | WordPress formatting (absolute times, flags, initials, `shorten`) |
+
+### Readout
+
+The readout tab (`ReadoutTab`, one per session, first in the tab bar; `readout` slice) shows the home address of
+a database (`databee://<slug>/<db>/`, [presets.md](presets.md#the-readout)). `connect` opens it for the
+session's database, `openAddress` for a home address, the `readout.open` command for the active database;
+`switchDatabase` moves an existing one to the new database. `Readout.tsx` (`components/readout/`) loads it
+through `loadReadout(sessionId, database, force?)`: once per `dataVersion`, so counts refresh after every
+apply, and again (`force`) whenever the tab is shown, since recent objects change without a data change. A
+failed load shows `ErrorPanel`; a failed part or line shows its error in its place.
+
+One column of at most 900px (mock `Readout`):
+- **Status line** (`section` "Status"): host, database, prefix, applied presets, server version, then each
+  value-pinned query as its title (opens the saved query) and its `Value`.
+- **anomalies** band, only when there are lines: the count right-aligned and uncolored, the rule text, the
+  `fix` action (queued with `queueAction` on the table address, so it lands in the pending tray) and `→ rows`,
+  which opens the saved query or the table with the anomaly's `where` as the typed filter.
+- **new** band, only when there are rows: per entity its rows as `Value`s (a primary key opens the row), the
+  SQL in tertiary text below.
+- **pinned** band, always: count lines (count, title, SQL) and row blocks (title, rows, SQL); a title opens
+  the saved query. A hint says how to pin.
+- **recent** band, only when there are objects: table, `#key` (opens the row), the peek values, relative time.
+
+Anchors: `readout`, `readout:value:<id>`, `readout:anomaly:<id>`, `readout:fix:<id>`, `readout:new:<entity>`,
+`readout:pinned:<id>`, `readout:recent:<address>`, and the tab `tab:readout:<db>`.
 
 ## Styling
 
@@ -646,8 +661,8 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
   a `color-mix()` of tokens.
 - **Derived tokens.** `theme.css` derives the opacity levels (`--o2`, `--o3`), the accent mixes (`--cell`,
   `--sel`, `--lit`), `--accent` from `html[data-accent]` (default orange), the type sizes (`--fs-*`) and the
-  row height `--row-h` from `--pad`. Old names that the WordPress screens still read remain as aliases
-  marked `/* alias: removed in U2b/U12 */`; core CSS and components use only the new names.
+  row height `--row-h` from `--pad`. Old names that older rules in `app.css` still read remain as aliases
+  marked `/* alias: removed in U2b/U12 */` until the CSS pass of U15; new CSS and components use only the new names.
 - **Sizing.** Everything is in rem. `html { font-size: var(--ui-font-size) }`, so ⌘= and ⌘- scale the whole UI.
   `--data-font-size` sizes the grid, the editor and the value trees. The row-padding setting (steps 1 to 4)
   sets `--pad` (1, 3, 5 or 8px); `--row-h` is a 20px line (more for large data sizes) plus twice `--pad`.
@@ -678,6 +693,7 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
 
   `createApiMock()` returns every `api` function as a `vi.fn()` with harmless defaults.
 - **Fixtures.** `src/test/fixtures.ts` provides `connectedStore()`, `resultSet()`, `queryTab()` and cell helpers.
-  `src/test/settings.ts` provides default settings, and `src/test/wpFixtures.ts` the WordPress data.
+  `src/test/settings.ts` provides default settings; `objectFixtures.ts`, `projectFixtures.ts`,
+  `paletteFixtures.ts` and `columnFixtures.tsx` the data of their views.
 - **Style.** Query by role or text, drive the UI with `userEvent`, and assert what is visible or which API
   call was made. Reset with `resetStore()` or `connectedStore()` in `beforeEach`.

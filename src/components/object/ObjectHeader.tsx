@@ -14,11 +14,11 @@ import { actionMenu } from "./actions";
 interface Props {
   document: Document;
   owner: Address;
-  /** The Document/Rows control; left out where the document shows alone (WordPress list pane). */
-  view?: { current: ObjectView; onChange(view: ObjectView): void };
+  /** The Document/Rows control. */
+  view: { current: ObjectView; onChange(view: ObjectView): void };
 }
 
-function ViewToggle({ current, onChange }: NonNullable<Props["view"]>) {
+function ViewToggle({ current, onChange }: Props["view"]) {
   const keys = useBindingLabel("object.toggleView");
   return (
     <>
@@ -53,7 +53,7 @@ export function ObjectHeader({ document, owner, view }: Props) {
         <span className="tn">{table}</span>
         <span className="key">#{key}</span>
         <span className="spacer" />
-        {view && <ViewToggle {...view} />}
+        <ViewToggle {...view} />
         <button
           className="icon-btn"
           aria-label="Actions"

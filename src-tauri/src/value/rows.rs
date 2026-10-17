@@ -210,7 +210,7 @@ impl<'a> ResultValues<'a> {
     }
 }
 
-/// WordPress stores "no target" as `0`; NULL means the same in a reference column.
+/// `0` stores "no target"; NULL means the same in a reference column.
 fn is_no_reference(cell: &Cell) -> bool {
     matches!(cell, Cell::Null) || cell.as_text() == Some("0")
 }

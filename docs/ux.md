@@ -85,9 +85,9 @@ Derived tokens in `src/styles/theme.css`, the same for every scheme:
 
 Status colors (`--success`, `--warning`, `--danger`, `--info` and their `-soft` variants), `--type-*`,
 `--chart-*`, `--category-*` and `--tile-*` are removed. Core components use only the tokens above (an error
-or warning background is a `color-mix()` of a `--style-*` color). The WordPress screens still read a few old
-names (`--danger`, `--chart-*`, `--category-*`, `--border`, `--text-secondary`, …); they survive as aliases onto
-scheme tokens in `theme.css`, marked `/* alias: removed in U2b/U12 */`, until U12 deletes those screens.
+or warning background is a `color-mix()` of a `--style-*` color). Older rules in `app.css` still read a few old
+names (`--chart-*`, `--border`, `--text-secondary`, …); they survive as aliases onto scheme tokens in
+`theme.css`, marked `/* alias: removed in U2b/U12 */`, until the CSS pass of U15.
 
 **Fonts:** Geist (400, 500, 600) and JetBrains Mono (400, 500, 600, italic 400) are bundled (SIL OFL).
 Settings → Appearance "UI font" and "Mono font" take any installed family name; empty means the bundled one.
@@ -185,8 +185,8 @@ Palette, peek, popovers, context menus, toasts and dialogs: `--pop` background, 
 
 ## Value grammar
 
-One component (`src/components/value/Value.tsx`) renders every value: grids and the WordPress column fields
-today, documents, peek, the palette, the readout and the Project page as they are built. Hover never
+One component (`src/components/value/Value.tsx`) renders every value: grids, documents, peek, the
+palette, the readout and the Project page. Hover never
 opens a tooltip: the status bar shows the provenance of the hovered value, else of the focused (selected)
 value, else the current address. The Hover column is what the status bar shows. Built in U5 except where a
 cell says otherwise.
@@ -228,10 +228,10 @@ cell says otherwise.
 
 - **Toolbar** (`--chrome`): connection and database as plain mono text (`wc-pp / db`; a click opens the
   connection or database picker), the path of the column stack (`order #4711 › user #12 › payment_token #7`),
-  the search field on the right, then icon buttons. The WordPress/Database mode switch stays as a
-  segmented control until U12.
+  the search field on the right, then icon buttons. There is no mode switch: WordPress is a preset.
 - **Tab bar** (`--chrome`): tabs are cells separated by `--line`; the active tab takes `--bg` and joins the
-  content; preview tabs show italic titles. Tabs: query, table, object, project.
+  content; preview tabs show italic titles. Tabs: readout (first, one per connection), query, table, object,
+  project.
 - **Sidebar** (`--chrome`): the Tables/History switch, the filter field, a `db · N tables` caption, then the
   database tree. `view.sidebar` (⌘\, the palette, or the ▤ button) hides it entirely (no rail); the state
   is persisted per connection (`sidebarHidden` in `ui_state.json`).
@@ -287,6 +287,20 @@ behavior: [presets.md](presets.md#the-project-page).
 - **Kinds:** column or meta key, kind (`money · currency from currency`, `timestamp · unix`), origin.
 - Actions are plain accent text buttons separated by ` · `; no chips or icons.
 
+## Readout
+
+The readout tab (`databee://<slug>/<db>/`, mock `Readout`) is the home of a database, opened on connect: one
+column of at most 900px on `--bg`. First the status line in mono (host · database · prefix · presets in
+`--o2` · server version in `--o2` · each value-pinned query as `title value`), then section bands with rows:
+- **anomalies**: count right-aligned and uncolored, the rule text, the `fix` action and `→ rows` in `--o3`;
+  the band shows only while an anomaly's value is above 0;
+- **new**: the newest rows of each entity with a `created` column, the SQL in `--o3` below;
+- **pinned**: count lines (count, title, SQL in `--o3`) and row blocks; a hint says how to pin;
+- **recent**: table in `--o2`, `#key` in the accent, the peek values, the relative time in `--o3`.
+
+Every line opens its address; counts refresh after every apply. A failed part or line shows its error in
+`--style-red` in its place; the rest stands.
+
 ## Keys
 
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys fire only in
@@ -302,7 +316,7 @@ rebindable.
 | `h` / `l`, ← / → | object | move the active column (a focused grid keeps ← / →) |
 | `Enter` | object, grid | drill into the focused reference or another row's key (next column), open serialized data as a value column; grids: open the row as an object, a reference's target, a value column for serialized data or long text |
 | `Esc` | object, table, query | close the rightmost column (a stack's or a tab's value column); overlays, menus and inputs take `Esc` first |
-| ⌘[ / ⌘] | global | back / forward through the active tab's address history (WordPress mode: its own history until U12); without history the keys stay with the editor |
+| ⌘[ / ⌘] | global | back / forward through the active tab's address history; without history the keys stay with the editor |
 | `⌥` (held) | object, grid | peek the hovered or focused reference; ↵ opens it |
 | `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (grid: the `table` scope; documents and Rows grids: the `object` scope) |
 | `r` | object, grid | add a reference from this column or meta key: opens the Project page with the form prefilled (context menu: "Add reference…", "Kind…", "Style…") |

@@ -16,6 +16,7 @@ mod lens;
 mod lock;
 mod mcp;
 mod menu;
+mod readout;
 mod remote;
 pub mod rules;
 pub mod saved;
@@ -31,7 +32,6 @@ pub mod test_support;
 pub mod value;
 mod value_counts;
 mod window;
-pub mod wp;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -252,7 +252,6 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(stage::init(&config_dir))
-        .plugin(wp::init(&config_dir))
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
         .setup(move |app| {
             log::info!("DataBee {} started", env!("CARGO_PKG_VERSION"));
@@ -330,6 +329,8 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             saved::commands::remove_saved_query,
             saved::commands::copy_preset_query_to_project,
             value_counts::value_counts,
+            readout::commands::readout,
+            readout::commands::remember_object,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
