@@ -9,7 +9,6 @@ use ts_rs::TS;
 use super::super::context::Ctx;
 use crate::error::{AppError, AppResult};
 use crate::rules::actions::{Param, ParamType};
-use crate::rules::placeholder::with_prefixes;
 
 /// A parameter as the page asks for it.
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
@@ -82,14 +81,7 @@ async fn fetch_choices(ctx: &Ctx<'_>, param: &Param) -> AppResult<Vec<String>> {
     let Some(sql) = &param.choices_sql else {
         return Ok(Vec::new());
     };
-    let applied = &ctx.rules.applied;
-    let result = ctx
-        .fetch(&with_prefixes(
-            &ctx.qualified(sql),
-            &applied.prefix,
-            &applied.network_prefix,
-        ))
-        .await?;
+    let result = ctx.fetch(&ctx.preset_sql(sql)).await?;
     Ok(result
         .rows
         .iter()

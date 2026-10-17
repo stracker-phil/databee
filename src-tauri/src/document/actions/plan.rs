@@ -16,7 +16,7 @@ use crate::error::{AppError, AppResult};
 use crate::rules::actions::{ActionEffect, ActionScope, DeleteSpec, SetValue, UpdateStep};
 use crate::rules::condition::{conditions_sql, holds};
 use crate::rules::effective::RuleAction;
-use crate::rules::placeholder::{Placeholder, scan};
+use crate::rules::placeholder::{Placeholder, render, scan};
 
 /// What an action's SQL is rendered with.
 struct Scope<'a> {
@@ -244,29 +244,16 @@ impl Scope<'_> {
 
     fn render(&self, sql: &str, literals: bool) -> AppResult<String> {
         let sql = if literals {
-            self.ctx.qualified(sql)
+            self.ctx.preset_sql(sql)
         } else {
-            sql.to_string()
+            self.ctx.rules.applied.expand(sql)
         };
-        let mut out = String::with_capacity(sql.len());
-        let mut last = 0;
-        for (range, placeholder) in scan(&sql) {
-            let value = self.value(placeholder, literals).ok_or_else(|| {
-                AppError::InvalidInput(format!("`{}` has no value here", &sql[range.clone()]))
-            })?;
-            out.push_str(&sql[last..range.start]);
-            out.push_str(&value);
-            last = range.end;
-        }
-        out.push_str(&sql[last..]);
-        Ok(out)
+        render(&sql, |placeholder| self.value(placeholder, literals))
+            .map_err(|missing| AppError::InvalidInput(format!("`{missing}` has no value here")))
     }
 
     fn value(&self, placeholder: Placeholder<'_>, literal: bool) -> Option<String> {
-        let applied = &self.ctx.rules.applied;
         match placeholder {
-            Placeholder::Prefix => Some(applied.prefix.clone()),
-            Placeholder::NetworkPrefix => Some(applied.network_prefix.clone()),
             Placeholder::Id if literal => self.id_literal().ok(),
             Placeholder::Id => self.id.clone(),
             Placeholder::Param(name) => {
@@ -277,7 +264,10 @@ impl Scope<'_> {
                     value.text()
                 })
             }
-            Placeholder::Owner(_) | Placeholder::Meta(_) => None,
+            Placeholder::Prefix
+            | Placeholder::NetworkPrefix
+            | Placeholder::Owner(_)
+            | Placeholder::Meta(_) => None,
         }
     }
 

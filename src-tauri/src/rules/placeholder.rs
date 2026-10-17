@@ -145,18 +145,22 @@ pub fn qualify_prefixes(sql: &str, qualifier: &str) -> String {
     out
 }
 
-/// `sql` with every placeholder replaced by what `value` gives for it; `None` as soon as one has
-/// no value, so the caller can skip the SQL.
-pub fn render(sql: &str, value: impl Fn(Placeholder<'_>) -> Option<String>) -> Option<String> {
+/// `sql` with every placeholder replaced by what `value` gives for it; the first placeholder
+/// without a value, as written, is the error.
+pub fn render(
+    sql: &str,
+    value: impl Fn(Placeholder<'_>) -> Option<String>,
+) -> Result<String, &str> {
     let mut out = String::with_capacity(sql.len());
     let mut last = 0;
     for (range, placeholder) in scan(sql) {
+        let text = value(placeholder).ok_or(&sql[range.clone()])?;
         out.push_str(&sql[last..range.start]);
-        out.push_str(&value(placeholder)?);
+        out.push_str(&text);
         last = range.end;
     }
     out.push_str(&sql[last..]);
-    Some(out)
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -292,23 +296,26 @@ mod tests {
                 "SELECT * FROM {p}t WHERE id = {id} AND k = {meta._key}",
                 known
             ),
-            Some("SELECT * FROM wp_t WHERE id = 7 AND k = 'k'".to_string())
+            Ok("SELECT * FROM wp_t WHERE id = 7 AND k = 'k'".to_string())
         );
     }
 
     #[test]
-    fn render_gives_none_when_one_placeholder_has_no_value() {
-        assert_eq!(render("id = {id} AND c = {owner.total}", known), None);
-        assert_eq!(render("{meta.other}", known), None);
+    fn render_fails_with_the_first_placeholder_that_has_no_value() {
+        assert_eq!(
+            render("id = {id} AND c = {owner.total} AND d = {owner.x}", known),
+            Err("{owner.total}")
+        );
+        assert_eq!(render("{meta.other}", known), Err("{meta.other}"));
     }
 
     #[test]
     fn render_keeps_braces_that_are_not_placeholders() {
         assert_eq!(
             render("h REGEXP '^[0-9a-f]{32}$' AND id = {id}", known),
-            Some("h REGEXP '^[0-9a-f]{32}$' AND id = 7".to_string())
+            Ok("h REGEXP '^[0-9a-f]{32}$' AND id = 7".to_string())
         );
-        assert_eq!(render("SELECT 1", |_| None), Some("SELECT 1".to_string()));
+        assert_eq!(render("SELECT 1", |_| None), Ok("SELECT 1".to_string()));
     }
 
     #[test]
@@ -318,7 +325,7 @@ mod tests {
             _ => None,
         };
 
-        assert_eq!(render("{id}", value), Some("{p}".to_string()));
+        assert_eq!(render("{id}", value), Ok("{p}".to_string()));
     }
 
     #[test]

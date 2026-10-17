@@ -4,6 +4,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use super::catalog::requires_order;
+use super::placeholder::with_prefixes;
 use super::prefix::{markers_exist, suggest_prefix};
 use super::project::Project;
 use super::types::Preset;
@@ -71,6 +72,11 @@ impl Applied {
 
     pub fn preset_names(&self) -> Vec<String> {
         self.presets.iter().map(|p| p.name.clone()).collect()
+    }
+
+    /// Preset text with `{p}` and `{np}` filled in; the other placeholders stay.
+    pub fn expand(&self, text: &str) -> String {
+        with_prefixes(text, &self.prefix, &self.network_prefix)
     }
 
     /// Where `name` (written without prefix) would be: under the network prefix for a network

@@ -5,7 +5,6 @@
 use futures_util::future::join_all;
 
 use super::context::Ctx;
-use super::own::entity_filter;
 use crate::address::Address;
 use crate::error::{AppError, AppResult};
 use crate::rules::effective::AppliedEntity;
@@ -60,7 +59,7 @@ async fn holds(ctx: &Ctx<'_>, entity: &AppliedEntity, key: &str) -> bool {
         .entity
         .filter
         .as_ref()
-        .map(|f| format!(" AND ({})", entity_filter(ctx, f)))
+        .map(|f| format!(" AND ({})", ctx.preset_sql(f)))
         .unwrap_or_default();
     let sql = format!(
         "SELECT 1 FROM {} WHERE {} = {}{filter} LIMIT 1",

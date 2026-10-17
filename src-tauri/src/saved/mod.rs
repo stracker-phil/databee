@@ -9,8 +9,8 @@ use ts_rs::TS;
 
 use crate::error::{AppError, AppResult};
 use crate::rules::ProjectsStore;
+use crate::rules::applied::Applied;
 use crate::rules::effective::EffectiveRules;
-use crate::rules::placeholder::with_prefixes;
 use crate::rules::project::{Project, SavedQuery};
 use crate::rules::queries::{Home, Pinned};
 
@@ -40,68 +40,50 @@ pub struct SavedEntry {
     pub read_only: bool,
 }
 
-struct Prefixes<'a> {
-    prefix: &'a str,
-    network_prefix: &'a str,
+fn saved(applied: &Applied, query: &SavedQuery, origin: SavedOrigin) -> SavedEntry {
+    SavedEntry {
+        id: query.id.clone(),
+        title: applied.expand(&query.title),
+        sql: applied.expand(&query.sql),
+        pin: query.pin.clone(),
+        origin,
+        read_only: false,
+    }
 }
 
-impl<'a> Prefixes<'a> {
-    fn of(rules: &'a EffectiveRules) -> Self {
-        Self {
-            prefix: &rules.applied.prefix,
-            network_prefix: &rules.applied.network_prefix,
-        }
-    }
+fn pinned_title(applied: &Applied, pinned: &Pinned) -> String {
+    applied.expand(pinned.title.as_deref().unwrap_or(&pinned.id))
+}
 
-    fn apply(&self, text: &str) -> String {
-        with_prefixes(text, self.prefix, self.network_prefix)
-    }
-
-    fn saved(&self, query: &SavedQuery, origin: SavedOrigin) -> SavedEntry {
-        SavedEntry {
-            id: query.id.clone(),
-            title: self.apply(&query.title),
-            sql: self.apply(&query.sql),
-            pin: query.pin.clone(),
-            origin,
-            read_only: false,
-        }
-    }
-
-    fn pinned_title(&self, pinned: &Pinned) -> String {
-        self.apply(pinned.title.as_deref().unwrap_or(&pinned.id))
-    }
-
-    fn pinned(&self, pinned: &Pinned, preset: &str) -> SavedEntry {
-        SavedEntry {
-            id: pinned.id.clone(),
-            title: self.pinned_title(pinned),
-            sql: self.apply(&pinned.sql),
-            pin: pinned.home.clone(),
-            origin: SavedOrigin::Preset {
-                preset: preset.to_string(),
-            },
-            read_only: true,
-        }
+fn pinned(applied: &Applied, pinned: &Pinned, preset: &str) -> SavedEntry {
+    SavedEntry {
+        id: pinned.id.clone(),
+        title: pinned_title(applied, pinned),
+        sql: applied.expand(&pinned.sql),
+        pin: pinned.home.clone(),
+        origin: SavedOrigin::Preset {
+            preset: preset.to_string(),
+        },
+        read_only: true,
     }
 }
 
 /// The project's queries, then the global ones, then each applied preset's pinned queries in
 /// preset order.
 pub fn list(project: &Project, global: &[SavedQuery], rules: &EffectiveRules) -> Vec<SavedEntry> {
-    let prefixes = Prefixes::of(rules);
+    let applied = &rules.applied;
     let own = project
         .saved
         .iter()
-        .map(|q| prefixes.saved(q, SavedOrigin::Project));
+        .map(|q| saved(applied, q, SavedOrigin::Project));
     let shared = global
         .iter()
-        .map(|q| prefixes.saved(q, SavedOrigin::Global));
-    let presets = rules.applied.presets.iter().flat_map(|preset| {
+        .map(|q| saved(applied, q, SavedOrigin::Global));
+    let presets = applied.presets.iter().flat_map(|preset| {
         preset
             .pinned
             .iter()
-            .map(|pinned| prefixes.pinned(pinned, &preset.name))
+            .map(|p| pinned(applied, p, &preset.name))
             .collect::<Vec<_>>()
     });
     own.chain(shared).chain(presets).collect()
@@ -119,11 +101,10 @@ pub fn preset_copy(rules: &EffectiveRules, preset: &str, id: &str) -> AppResult<
         .ok_or_else(|| {
             AppError::InvalidInput(format!("The preset {preset} has no pinned query {id}"))
         })?;
-    let prefixes = Prefixes::of(rules);
     Ok(SavedQuery {
         id: new_id(),
-        title: prefixes.pinned_title(pinned),
-        sql: prefixes.apply(&pinned.sql),
+        title: pinned_title(&rules.applied, pinned),
+        sql: rules.applied.expand(&pinned.sql),
         pin: pinned.home.clone(),
     })
 }

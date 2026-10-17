@@ -42,7 +42,7 @@ pub use build::referencing;
 #[cfg(test)]
 pub(crate) use context::testing;
 pub use context::{Ctx, KeyOrder, Rows};
-pub use own::{Own, entity_filter, resolve};
+pub use own::{Own, resolve};
 pub use peek::Peek;
 
 /// Meta rows shown before the group is capped.

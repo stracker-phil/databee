@@ -90,9 +90,10 @@ fn condition_sql(ctx: &Ctx<'_>, own: &Own, meta: &MetaValues, rules: &[&RulePatt
         .iter()
         .filter(|p| condition::holds(&p.owner_when, |c| own.rows.text(0, c)))
         .filter_map(|p| {
-            render(&ctx.qualified(&p.rule.r#where), |placeholder| {
+            render(&ctx.preset_sql(&p.rule.r#where), |placeholder| {
                 value(ctx, own, meta, placeholder)
             })
+            .ok()
         })
         .map(|sql| format!("({})", sql.trim()))
         .collect::<Vec<_>>()
@@ -121,18 +122,15 @@ pub fn split(found: Vec<PatternGroup>) -> (Vec<Group>, HashMap<String, Option<St
     (groups, orders)
 }
 
-/// A placeholder as SQL: prefixes as text, values as literals. `None` skips the rule.
+/// A value placeholder as an SQL literal. `None` skips the rule.
 fn value(
     ctx: &Ctx<'_>,
     own: &Own,
     meta: &MetaValues,
     placeholder: Placeholder<'_>,
 ) -> Option<String> {
-    let applied = &ctx.rules.applied;
     let literal = |text: &str| (!text.is_empty()).then(|| ctx.literal(text));
     match placeholder {
-        Placeholder::Prefix => Some(applied.prefix.clone()),
-        Placeholder::NetworkPrefix => Some(applied.network_prefix.clone()),
         Placeholder::Id => {
             let id = own.id(ctx)?;
             match id.parse::<u64>() {
@@ -142,7 +140,7 @@ fn value(
         }
         Placeholder::Owner(column) => literal(own.text(column)?),
         Placeholder::Meta(key) => literal(meta.get(key)?.raw.as_text()?),
-        Placeholder::Param(_) => None,
+        Placeholder::Prefix | Placeholder::NetworkPrefix | Placeholder::Param(_) => None,
     }
 }
 

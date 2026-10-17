@@ -8,7 +8,7 @@ use futures_util::future::{join, join_all};
 
 use super::hits;
 use super::{PaletteHit, SECTION_CAP};
-use crate::document::{Ctx, entity_filter};
+use crate::document::Ctx;
 use crate::rules::condition::conditions_sql;
 use crate::rules::effective::{AppliedEntity, MetaRef, RuleReference};
 use crate::rules::types::Entity;
@@ -80,7 +80,7 @@ fn select_entities(ctx: &Ctx<'_>, entity: &Entity, predicate: &str) -> String {
     let filter = entity
         .filter
         .as_ref()
-        .map(|filter| format!("({}) AND ", entity_filter(ctx, filter)))
+        .map(|filter| format!("({}) AND ", ctx.preset_sql(filter)))
         .unwrap_or_default();
     let order = ctx.single_key(table).map_or_else(
         || "1".to_string(),

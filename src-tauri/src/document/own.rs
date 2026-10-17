@@ -7,7 +7,6 @@ use crate::db::ColumnEquals;
 use crate::db::browse::aliased_equals_sql;
 use crate::error::{AppError, AppResult};
 use crate::rules::effective::AppliedEntity;
-use crate::rules::placeholder::with_prefixes;
 
 const ENTITY_COLUMN: &str = "__databee_entity_";
 
@@ -72,18 +71,13 @@ fn covers_key(key: &[String], filter: &[ColumnEquals]) -> bool {
 }
 
 pub async fn load(ctx: &Ctx<'_>, table: &str, filter: &[ColumnEquals]) -> AppResult<Own> {
-    let entities: Vec<&AppliedEntity> = ctx
-        .rules
-        .entities
-        .iter()
-        .filter(|e| e.entity.table == table)
-        .collect();
+    let entities: Vec<&AppliedEntity> = ctx.rules.entities_of(table).collect();
     let tests: Vec<String> = entities
         .iter()
         .enumerate()
         .map(|(i, e)| {
             let test = match &e.entity.filter {
-                Some(filter) => format!("({})", entity_filter(ctx, filter)),
+                Some(filter) => format!("({})", ctx.preset_sql(filter)),
                 None => "1".into(),
             };
             format!(", {test} AS {}", ctx.ident(&format!("{ENTITY_COLUMN}{i}")))
@@ -118,16 +112,6 @@ pub async fn load(ctx: &Ctx<'_>, table: &str, filter: &[ColumnEquals]) -> AppRes
         rows: ctx.annotate(table, result),
         entity,
     })
-}
-
-/// An entity `filter` with the prefixes filled in, its tables qualified with the database.
-pub fn entity_filter(ctx: &Ctx<'_>, filter: &str) -> String {
-    let applied = &ctx.rules.applied;
-    with_prefixes(
-        &ctx.qualified(filter),
-        &applied.prefix,
-        &applied.network_prefix,
-    )
 }
 
 #[cfg(test)]

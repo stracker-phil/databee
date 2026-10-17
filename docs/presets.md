@@ -187,7 +187,7 @@ A pinned query is a read-only saved query of its preset. `saved_queries(session_
 (`saved/mod.rs`, `list`) returns the project's saved queries, then the global ones, then the pinned queries of
 every applied preset in preset order, each as `SavedEntry { id, title, sql, pin, origin, read_only }`:
 `origin` is a `SavedOrigin` (`project`, `global` or `preset { preset }`, shown as `preset:<name>`), `title` defaults to the `id`, and `{p}`/`{np}` in the
-title and SQL are replaced with the project's prefixes (`placeholder::with_prefixes`), so the SQL runs as
+title and SQL are replaced with the project's prefixes (`Applied::expand`), so the SQL runs as
 shown. The palette's `q:` lists them; a pinned query opens as an unsaved query tab titled `copy of <title>`.
 `copy_preset_query_to_project(session_id, database, preset, id)` stores it, prefixes replaced, as a project
 query with a fresh id, which can then be changed and pinned like any saved query (`update_saved_query`;
@@ -279,9 +279,14 @@ Braces with any other content are SQL and stay as written (`'^[0-9a-f]{32}$'`).
 
 The metadata pool has no default database, so in SQL that documents and actions run (pattern `where`,
 entity `filter`, action SQL, `choices_sql`, `preview_sql`) every `{p}` and `{np}` outside quotes is qualified
-with the database (`placeholder::qualify_prefixes`, `Ctx::qualified`): `{p}options` reads and writes
+with the database (`placeholder::qualify_prefixes`): `{p}options` reads and writes
 `` `db`.wp_options `` whatever the connection's default database is. Inside quotes (`'{p}capabilities'`)
 they stay plain text.
+
+Prefixes are filled in one way: `Applied::expand` replaces `{p}` and `{np}` in any preset text (titles,
+saved and pinned queries, anomaly text and `where`), and `Ctx::preset_sql` qualifies SQL a document runs, then
+expands it. The value placeholders are filled in afterwards by `placeholder::render`, which names the first
+placeholder without a value (patterns skip the rule, actions refuse with "`…` has no value here").
 
 ## Errors
 

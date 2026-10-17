@@ -185,7 +185,7 @@ status kind: color comes only from value styles.
   rules of presets and the project; `lens::build` picks it when the rules change anything.
   `lens::annotate_execute` gives query results their kinds by column origin, loading a lens per database;
   `lens::annotate_query` does the same for one result with a lens the caller already holds (the readout's
-  saved queries use the document `Ctx`'s).
+  saved queries and snapshots of saved queries use the document `Ctx`'s).
 
 ## Rules and presets
 
@@ -200,8 +200,9 @@ WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](prese
 - `preset.rs`: `parse(file, src)` reads every rule on its own, so a `PresetError` names the file, the rule
   (`[[reference]] #3 (line 40)`) and the field; `Check` covers what serde cannot (placeholders, names that
   must exist in the preset). `to_toml` writes a preset back.
-- `placeholder.rs`: `{p}`, `{np}`, `{id}`, `{owner.<column>}`, `{meta.<key>}`, `{param.<name>}`, and which
-  of them a piece of SQL may use.
+- `placeholder.rs`: `{p}`, `{np}`, `{id}`, `{owner.<column>}`, `{meta.<key>}`, `{param.<name>}`, which
+  of them a piece of SQL may use, and `render` for the value placeholders. Prefixes are filled in only by
+  `Applied::expand` (`applied.rs`) and `Ctx::preset_sql` (qualified with the database first).
 - `catalog.rs`: `PresetCatalog` in `AppState`: the built-ins (`BUILT_IN`, `include_str!` of
   `src-tauri/presets/*.toml`) plus `<config dir>/presets/*.toml`, reread when the directory's files or
   mtimes change; `requires_order` resolves `requires`.

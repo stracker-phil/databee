@@ -10,9 +10,9 @@ use super::diff::{DocDelta, FlatDocument, FlatField, FlatGroup, FlatRow, diff_do
 use super::{Ctx, Document, GroupShape, parse_address};
 use crate::address::{Address, Target};
 use crate::db::classify::is_read_only;
-use crate::db::{Cell, ExecuteResponse, ResultSet};
+use crate::db::{Cell, ResultSet};
 use crate::error::{AppError, AppResult};
-use crate::lens::annotate_execute;
+use crate::lens::annotate_query;
 use crate::readout::sql::{in_database, limited, single_statement};
 use crate::rules::effective::RuleSources;
 use crate::session::Session;
@@ -130,14 +130,16 @@ async fn saved_query(ctx: &Ctx<'_>, sources: RuleSources<'_>, id: &str) -> AppRe
     let statement = single_statement(&entry.sql).map_err(AppError::InvalidInput)?;
     is_read_only(statement).map_err(AppError::InvalidInput)?;
     let sql = in_database(ctx.dialect, &ctx.database, &limited(statement, QUERY_ROWS));
-    let mut response = ExecuteResponse {
-        results: vec![ctx.fetch(&sql).await?],
-        elapsed_ms: 0,
-        database: Some(ctx.database.clone()),
-        failure: None,
-    };
-    annotate_execute(ctx.session, &mut response, Some(sources)).await;
-    Ok(response.results.remove(0))
+    let mut result = ctx.fetch(&sql).await?;
+    annotate_query(
+        ctx.session,
+        &ctx.database,
+        ctx.lens.clone(),
+        &mut result,
+        Some(sources),
+    )
+    .await;
+    Ok(result)
 }
 
 /// Where a result column was read: its table in this database and the positions of that table's

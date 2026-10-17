@@ -288,7 +288,7 @@ impl EffectiveRules {
             .iter()
             .filter_map(|meta| {
                 let (owner, fk) = (meta.owner.as_ref()?, meta.fk.as_ref()?);
-                let key = single_key(schema, &self.applied.existing_table(owner)?)?;
+                let key = schema.single_key(&self.applied.existing_table(owner)?)?;
                 let from = ColumnRef {
                     table: meta.table.clone(),
                     column: fk.clone(),
@@ -466,13 +466,6 @@ impl EffectiveRules {
 pub fn meta_keys_match(globs: &[String], in_meta: &[String], meta: &MetaRef, key: &str) -> bool {
     let in_scope = in_meta.is_empty() || in_meta.contains(&meta.name);
     in_scope && globs.iter().any(|glob| glob_match(glob, key))
-}
-
-fn single_key<'s>(schema: &'s DatabaseSchema, table: &str) -> Option<&'s str> {
-    match schema.keys(table)?.primary_key.as_slice() {
-        [key] => Some(key),
-        _ => None,
-    }
 }
 
 /// A project reference with the same `from` and `when` replaces the preset rule.

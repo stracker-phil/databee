@@ -16,7 +16,6 @@ use crate::error::AppResult;
 use crate::lens::annotate_query;
 use crate::rules::actions::ActionScope;
 use crate::rules::effective::{AppliedEntity, RuleSources};
-use crate::rules::placeholder::with_prefixes;
 use crate::rules::queries::{Anomaly, AnomalyOpen, Home};
 use crate::saved::SavedEntry;
 use crate::store::recent_objects::RecentObject;
@@ -181,7 +180,7 @@ pub async fn anomalies(ctx: &Ctx<'_>) -> AppResult<Vec<AnomalyLine>> {
 
 /// The line of an anomaly that shows: its value is a non-zero number, or its query failed.
 async fn anomaly(ctx: &Ctx<'_>, preset: &str, rule: &Anomaly) -> Option<AnomalyLine> {
-    let (count, error) = match ctx.fetch(&prefixed(ctx, &ctx.qualified(&rule.sql))).await {
+    let (count, error) = match ctx.fetch(&ctx.preset_sql(&rule.sql)).await {
         Ok(result) => {
             let count = result
                 .rows
@@ -198,7 +197,7 @@ async fn anomaly(ctx: &Ctx<'_>, preset: &str, rule: &Anomaly) -> Option<AnomalyL
     Some(AnomalyLine {
         id: rule.id.clone(),
         preset: preset.to_string(),
-        text: prefixed(ctx, &rule.text),
+        text: ctx.rules.applied.expand(&rule.text),
         count,
         address,
         filter,
@@ -214,11 +213,6 @@ fn is_non_zero(text: &str) -> bool {
     text.trim().parse::<f64>().is_ok_and(|n| n != 0.0)
 }
 
-fn prefixed(ctx: &Ctx<'_>, text: &str) -> String {
-    let applied = &ctx.rules.applied;
-    with_prefixes(text, &applied.prefix, &applied.network_prefix)
-}
-
 fn anomaly_open(ctx: &Ctx<'_>, open: Option<&AnomalyOpen>) -> (Option<Address>, Option<String>) {
     match open {
         Some(AnomalyOpen::Pinned { pinned }) => (Some(query_address(ctx, pinned)), None),
@@ -230,7 +224,10 @@ fn anomaly_open(ctx: &Ctx<'_>, open: Option<&AnomalyOpen>) -> (Option<Address>, 
                 table,
                 filter: Vec::new(),
             });
-            (Some(address), r#where.as_deref().map(|w| prefixed(ctx, w)))
+            (
+                Some(address),
+                r#where.as_deref().map(|w| ctx.rules.applied.expand(w)),
+            )
         }
         None => (None, None),
     }
@@ -285,7 +282,7 @@ fn newest_sql(ctx: &Ctx<'_>, applied: &AppliedEntity, columns: &[String], create
     let filter = entity
         .filter
         .as_deref()
-        .map(|f| format!(" WHERE {}", crate::document::entity_filter(ctx, f)))
+        .map(|f| format!(" WHERE {}", ctx.preset_sql(f)))
         .unwrap_or_default();
     let list = columns
         .iter()

@@ -87,7 +87,10 @@ impl AppError {
 
     pub fn field(&self) -> Option<FieldJson<'_>> {
         match self {
-            AppError::InvalidField { field, message } => Some(FieldJson { path: field, message }),
+            AppError::InvalidField { field, message } => Some(FieldJson {
+                path: field,
+                message,
+            }),
             _ => None,
         }
     }

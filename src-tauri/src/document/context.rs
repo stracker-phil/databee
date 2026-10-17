@@ -67,9 +67,12 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// Preset SQL whose `{p}`/`{np}` tables are qualified with this database.
-    pub fn qualified(&self, sql: &str) -> String {
-        qualify_prefixes(sql, &format!("{}.", self.ident(&self.database)))
+    /// Preset SQL with its prefixes filled in and its tables qualified with this database.
+    pub fn preset_sql(&self, sql: &str) -> String {
+        let qualifier = format!("{}.", self.ident(&self.database));
+        self.rules
+            .applied
+            .expand(&qualify_prefixes(sql, &qualifier))
     }
 
     pub fn literal(&self, value: &str) -> String {
@@ -83,10 +86,7 @@ impl<'a> Ctx<'a> {
     }
 
     pub fn single_key(&self, table: &str) -> Option<&str> {
-        match self.primary_key(table) {
-            [key] => Some(key),
-            _ => None,
-        }
+        self.schema.single_key(table)
     }
 
     pub fn address(&self, target: Target) -> Address {

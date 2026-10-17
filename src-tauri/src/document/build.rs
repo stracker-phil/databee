@@ -51,11 +51,7 @@ pub async fn document(ctx: &Ctx<'_>, address: &Address) -> AppResult<Document> {
 /// The incoming reference and pattern groups of a row without its document; meta rows are read
 /// only when a pattern of the table needs them.
 pub async fn referencing(ctx: &Ctx<'_>, own: &Own) -> Vec<Group> {
-    let has_patterns = ctx
-        .rules
-        .patterns
-        .iter()
-        .any(|p| p.rule.owner == own.table());
+    let has_patterns = ctx.rules.patterns_of(own.table()).next().is_some();
     let meta_rows = if has_patterns {
         meta::load(ctx, own, &needed_meta_keys(ctx, own)).await
     } else {
@@ -124,10 +120,7 @@ pub(super) fn needed_meta_keys(ctx: &Ctx<'_>, own: &Own) -> Vec<String> {
             names.push(name);
         }
     }
-    for pattern in &ctx.rules.patterns {
-        if pattern.rule.owner != own.table() {
-            continue;
-        }
+    for pattern in ctx.rules.patterns_of(own.table()) {
         for (_, placeholder) in scan(&pattern.rule.r#where) {
             if let Placeholder::Meta(key) = placeholder {
                 names.push(key);
