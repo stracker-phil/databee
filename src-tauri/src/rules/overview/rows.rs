@@ -1,6 +1,7 @@
 use serde::Serialize;
 use ts_rs::TS;
 
+use super::changes::ProjectChangeLine;
 use crate::lens::{ColumnsRef, ResolvedReference};
 use crate::rules::actions::ActionScope;
 use crate::rules::kinds::{KindRule, StyleRule};
@@ -151,6 +152,8 @@ pub struct ProjectRules {
     pub presets: Vec<PresetRow>,
     pub foreign_keys: usize,
     pub tables: Vec<RuleTable>,
+    /// What the project changes about the presets as they ship.
+    pub changes: Vec<ProjectChangeLine>,
     /// By real table name, then the group without a table.
     pub groups: Vec<TableRules>,
 }

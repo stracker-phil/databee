@@ -12,10 +12,11 @@ use ts_rs::TS;
 
 use super::own::Own;
 use crate::query::Ctx;
-use crate::rules::actions::{ActionEffect, ActionScope};
+use crate::rules::actions::{ActionEffect, ActionScope, writes};
 use crate::rules::condition::holds;
 use crate::rules::effective::RuleAction;
 
+pub use crate::rules::actions::ActionWrite;
 pub use params::ActionParam;
 pub use plan::{plan, planned};
 pub use preview::{ActionPreview, Previews};
@@ -30,16 +31,6 @@ pub struct ObjectAction {
     pub undo: bool,
     pub params: Vec<ActionParam>,
     pub writes: Vec<ActionWrite>,
-}
-
-/// What one step of an action writes, on the table as stored (with its prefix).
-#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(tag = "write", rename_all = "camelCase")]
-pub enum ActionWrite {
-    Set { table: String, columns: Vec<String> },
-    DeleteRows { table: String },
-    FreeSql { table: String },
 }
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
@@ -104,28 +95,7 @@ async fn describe(ctx: &Ctx<'_>, action: &RuleAction) -> ObjectAction {
         kind,
         undo: kind.can_undo(),
         params: params::describe(ctx, &action.rule.params).await,
-        writes: writes(ctx, action),
-    }
-}
-
-/// The steps in planning order; an update step on a table this database lacks is left out, as
-/// planning skips it.
-fn writes(ctx: &Ctx<'_>, action: &RuleAction) -> Vec<ActionWrite> {
-    let table = action.rule.table.clone();
-    match &action.rule.effect {
-        ActionEffect::Update(steps) => steps
-            .iter()
-            .filter_map(|step| {
-                let table = match &step.table {
-                    None => table.clone(),
-                    Some(name) => ctx.rules.applied.existing_table(name)?,
-                };
-                let columns = step.set.keys().cloned().collect();
-                Some(ActionWrite::Set { table, columns })
-            })
-            .collect(),
-        ActionEffect::Delete(_) => vec![ActionWrite::DeleteRows { table }],
-        ActionEffect::Sql { .. } => vec![ActionWrite::FreeSql { table }],
+        writes: writes(&action.rule, &ctx.rules.applied),
     }
 }
 

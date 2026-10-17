@@ -17,6 +17,7 @@ pub mod overview;
 pub mod placeholder;
 pub mod prefix;
 pub mod preset;
+pub mod profile;
 pub mod project;
 pub mod project_change;
 pub mod queries;

@@ -1,8 +1,9 @@
-//! What the Project page lists, grouped by table: every reference of a database with its origin
-//! (project, preset, foreign key, inferred), switched off and edited ones included, the value styles
-//! and kinds whose scope covers the table, its entities and actions, plus the presets and the
-//! tables rules can name.
+//! What the Project page lists: the project's changes to the presets (`changes`), and grouped by
+//! table every reference of a database with its origin (project, preset, foreign key, inferred),
+//! switched off and edited ones included, the value styles and kinds whose scope covers the table,
+//! its entities and actions, plus the presets and the tables rules can name.
 
+mod changes;
 mod rows;
 
 use std::collections::{BTreeMap, HashSet};
@@ -63,13 +64,15 @@ pub fn project_rules(
         rules: &rules,
         active: &active,
     };
+    let references = overview.references();
     ProjectRules {
         prefix: rules.applied.prefix.clone(),
         suggested_prefix: rules.applied.suggested_prefix.clone(),
         presets: preset_rows(&rules, loaded),
         foreign_keys: active.iter().filter(|r| is_foreign_key(&r.by)).count(),
         tables: overview.rule_tables(),
-        groups: overview.groups(),
+        changes: overview.changes(&references, loaded),
+        groups: overview.groups(references),
         project,
     }
 }
@@ -102,10 +105,10 @@ struct Overview<'a> {
 }
 
 impl Overview<'_> {
-    fn groups(&self) -> Vec<TableRules> {
+    fn groups(&self, references: Vec<ReferenceRow>) -> Vec<TableRules> {
         let mut tables = BTreeMap::<String, TableRules>::new();
         let mut nowhere = TableRules::default();
-        for row in self.references() {
+        for row in references {
             if row.to.table != row.from.table {
                 let incoming = ReferencedBy {
                     from: row.from.clone(),

@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::applied::Applied;
@@ -17,7 +17,7 @@ use crate::schema::{self, DatabaseSchema};
 use crate::session::Session;
 
 /// Kind rules have no id, so they are addressed by their index in the project.
-#[derive(Deserialize, Debug, Clone, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum ProjectChange {

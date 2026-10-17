@@ -43,6 +43,8 @@ rows: Array<PreviewRow>,
  */
 sql: Array<string>, };
 
+export type ActionProfile = { preset: string, name: string, scope: ActionScope, writes: Array<ActionWrite>, };
+
 export type ActionScope = "row" | "table";
 
 /**
@@ -194,7 +196,14 @@ export type CellStyle = { row: number, col: number,
  */
 style: string, };
 
+export type ChangeAction = "added" | "edited" | "switchedOff" | "switchedOn" | "set";
+
 export type ChangeRequest = { "type": "setCell", database: string, table: string, keyColumn: string, key: string, column: string, value: string | null, } | { "type": "deleteRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "duplicateRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "insertRow", database: string, table: string, values: Array<[string, string | null]>, } | { "type": "addRow", database: string, table: string, keyColumn: string, values: Array<[string, string | null]>, };
+
+/**
+ * `Unknown`: a switched-off id that names no rule of this database.
+ */
+export type ChangedRule = "reference" | "valueStyle" | "kind" | "prefix" | "networkPrefix" | "presets" | "unknown";
 
 /**
  * `column = value`, or `column IS NULL` for a `None` value.
@@ -205,6 +214,11 @@ export type ColumnEquals = { column: string, value: string | null, };
  * `table.column` where either side may hold `*` globs (`*.*_gmt`).
  */
 export type ColumnGlob = string;
+
+/**
+ * An index that holds the column; `position` counts from 1.
+ */
+export type ColumnIndex = { name: string, unique: boolean, position: number, };
 
 export type ColumnInfo = { name: string, columnType: string, nullable: boolean, default: string | null, key: string, extra: string, comment: string, autoIncrement: boolean, 
 /**
@@ -217,6 +231,16 @@ generated: boolean, };
  * serialized text and "no reference" are per cell.
  */
 export type ColumnKind = { "kind": "text" } | { "kind": "number" } | { "kind": "timestamp", zone: Zone | null, } | { "kind": "money", currency: Array<string>, } | { "kind": "enum" } | { "kind": "secret" } | { "kind": "primaryKey", table: Address, columns: Array<string>, } | { "kind": "reference", targets: Array<ReferenceTarget>, by: ReferenceSource, };
+
+export type ColumnKindRule = { row: KindRow, 
+/**
+ * The glob of the rule that matched the column, when it is one (`*.*_gmt`).
+ */
+pattern: string | null, 
+/**
+ * The first rule for the column, the one values get.
+ */
+applies: boolean, };
 
 export type ColumnMeta = { name: string, typeName: string, 
 /**
@@ -235,10 +259,22 @@ export type ColumnOrigin = {
  */
 database: string | null, table: string, column: string, };
 
+export type ColumnProfile = { column: ColumnInfo, primaryKey: boolean, indexes: Array<ColumnIndex>, 
+/**
+ * In precedence order: the first one applies.
+ */
+kinds: Array<ColumnKindRule>, 
+/**
+ * References from this column (the first column of a composite key), switched off ones too.
+ */
+references: Array<ReferenceRow>, styles: Array<ColumnStyleRule>, };
+
 /**
  * `table.column`, split at the first dot, with no `*`.
  */
 export type ColumnRef = string;
+
+export type ColumnStyleRule = { row: StyleRow, pattern: string | null, };
 
 export type ColumnWrite = { column: string, old: Value, new: Value, };
 
@@ -282,7 +318,20 @@ sampleUnresolved: Array<string>,
  * The count hit the query timeout: the counts are 0. When only the sample did, the counts
  * stand and the sample is empty.
  */
-timedOut: boolean, };
+timedOut: boolean, rows?: CoverageRows, };
+
+/**
+ * Filters on the source table (as a table tab's free WHERE) that list the counted rows.
+ */
+export type CoverageRows = { 
+/**
+ * Rows that hold a value without a target.
+ */
+unresolved: string, 
+/**
+ * Rows whose value is NULL or `0`.
+ */
+zeroOrNull: string, };
 
 /**
  * One entity's newest rows by its `created` column.
@@ -357,6 +406,11 @@ alternatives: Array<Address>,
 actions: Array<ObjectAction>, };
 
 /**
+ * The project rule a line opens in its form.
+ */
+export type EditRule = { "type": "reference", id: string, } | { "type": "style", id: string, } | { "type": "kind", index: number, };
+
+/**
  * A name, header and search columns for rows of one table. A `filter` (SQL) narrows the rows;
  * filtered entities win over unfiltered ones on the same table.
  */
@@ -379,6 +433,8 @@ search_exact?: Array<string>,
 people?: boolean, };
 
 export type EntityLine = { preset: string, name: string, filter: string | null, };
+
+export type EntityProfile = { preset: string, name: string, filter: string | null, summary: Array<string>, created: string | null, };
 
 export type ErrorKind = "database" | "connection" | "auth_failed" | "password_required" | "timeout" | "cancelled" | "confirmation_required" | "session_not_found" | "invalid_input" | "keychain" | "io";
 
@@ -497,6 +553,12 @@ export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 export type Match = string | Array<string> | { glob: string, } | { like: string, } | { regexp: string, } | { not: Match, };
 
 export type MetaDraft = { table: string, keyColumn: string, key: string, };
+
+/**
+ * The rules of one meta table that name meta keys: kinds and value styles by `meta_keys`, and
+ * the references from its value column under a condition (on the key, as presets write them).
+ */
+export type MetaKeyRules = { table: string, keyColumn: string, valueColumn: string, kinds: Array<KindRow>, styles: Array<StyleRow>, references: Array<ReferenceRow>, };
 
 /**
  * A key/value table. With `owner` and `fk` it describes the owner's rows and declares the
@@ -703,7 +765,33 @@ styles: Array<StyleRule>, saved: Array<SavedQuery>, };
  */
 export type ProjectChange = { "op": "addReference", reference: Reference, } | { "op": "updateReference", id: string, reference: Reference, } | { "op": "removeReference", id: string, } | { "op": "addKind", rule: KindRule, } | { "op": "updateKind", index: number, rule: KindRule, } | { "op": "removeKind", index: number, } | { "op": "addStyle", rule: StyleRule, } | { "op": "updateStyle", id: string, rule: StyleRule, } | { "op": "removeStyle", id: string, } | { "op": "enableStyle", id: string, } | { "op": "disableStyle", id: string, } | { "op": "disable", id: string, } | { "op": "enable", id: string, } | { "op": "setPrefix", prefix: string | null, } | { "op": "setNetworkPrefix", prefix: string | null, } | { "op": "setPresets", presets: Array<string> | null, };
 
+export type ProjectChangeLine = { action: ChangeAction, rule: ChangedRule, 
+/**
+ * The preset or inferred rule the change is about; `None` for added rules and settings.
+ */
+origin: RuleOrigin | null, id: string | null, 
+/**
+ * The rule or setting as it applies now, with real table names where the tables exist.
+ */
+text: string, 
+/**
+ * What the preset ships, or what the setting would be without the project's value.
+ */
+was: string | null, 
+/**
+ * An added rule stored switched off.
+ */
+off: boolean, 
+/**
+ * The real table the rule is about (for a value style or kind, the first its scope covers).
+ */
+table: string | null, undo: ProjectChange, edit: EditRule | null, };
+
 export type ProjectRules = { project: Project, prefix: string, suggestedPrefix: string | null, presets: Array<PresetRow>, foreignKeys: number, tables: Array<RuleTable>, 
+/**
+ * What the project changes about the presets as they ship.
+ */
+changes: Array<ProjectChangeLine>, 
 /**
  * By real table name, then the group without a table.
  */
@@ -1102,6 +1190,21 @@ export type SummaryValue = {
 name: string, value: Value, };
 
 export type TableInfo = { name: string, isView: boolean, rowsEstimate: number | null, sizeBytes: number | null, comment: string, };
+
+export type TableProfile = { table: string, 
+/**
+ * The name rules write the table as (without prefix); `None` outside the prefix.
+ */
+ruleName: string | null, columns: Array<ColumnProfile>, 
+/**
+ * The table's own meta-key rules when it is a meta table, then those of the meta tables
+ * that describe its rows.
+ */
+meta: Array<MetaKeyRules>, 
+/**
+ * References from other tables to this one.
+ */
+referencedBy: Array<ReferenceRow>, entities: Array<EntityProfile>, actions: Array<ActionProfile>, ddl: string | null, };
 
 export type TableReferences = { outgoing: Array<ResolvedReference>, incoming: Array<ResolvedReference>, };
 

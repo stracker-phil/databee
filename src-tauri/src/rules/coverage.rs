@@ -41,6 +41,20 @@ pub struct Coverage {
     /// The count hit the query timeout: the counts are 0. When only the sample did, the counts
     /// stand and the sample is empty.
     pub timed_out: bool,
+    #[ts(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rows: Option<CoverageRows>,
+}
+
+/// Filters on the source table (as a table tab's free WHERE) that list the counted rows.
+#[derive(Serialize, Debug, Clone, Default, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct CoverageRows {
+    /// Rows that hold a value without a target.
+    pub unresolved: String,
+    /// Rows whose value is NULL or `0`.
+    pub zero_or_null: String,
 }
 
 /// One reference in SQL terms: real tables, paired columns and the rule's conditions.
@@ -68,10 +82,10 @@ impl CoverageQuery<'_> {
              COALESCE(SUM({none}), 0) AS zero_or_null, \
              COALESCE(SUM(CASE WHEN {none} THEN 0 WHEN {exists} THEN 1 ELSE 0 END), 0) AS resolved \
              FROM {from} AS s{filter}",
-            none = self.no_reference(dialect),
-            exists = self.exists(dialect),
+            none = self.no_reference(dialect, "s"),
+            exists = self.exists(dialect, "s"),
             from = dialect.table_ref(self.database, &self.from.table),
-            filter = where_clause(&self.source_filter(dialect)),
+            filter = where_clause(&self.source_filter(dialect, "s")),
         )
     }
 
@@ -82,9 +96,9 @@ impl CoverageQuery<'_> {
             .iter()
             .map(|c| format!("CAST({} AS CHAR)", column(dialect, "s", c)))
             .collect();
-        let mut filter = self.source_filter(dialect);
-        filter.push(format!("NOT ({})", self.no_reference(dialect)));
-        filter.push(format!("NOT {}", self.exists(dialect)));
+        let mut filter = self.source_filter(dialect, "s");
+        filter.push(format!("NOT ({})", self.no_reference(dialect, "s")));
+        filter.push(format!("NOT {}", self.exists(dialect, "s")));
         format!(
             "SELECT DISTINCT CONCAT_WS(',', {values}) AS value FROM {from} AS s{filter} LIMIT {SAMPLE_LIMIT}",
             values = values.join(", "),
@@ -93,23 +107,38 @@ impl CoverageQuery<'_> {
         )
     }
 
-    fn source_filter(&self, dialect: Dialect) -> Vec<String> {
-        conditions_sql(dialect, "s", self.when)
+    /// The filters on the source table itself, which the table view selects without an alias.
+    fn rows(&self, dialect: Dialect) -> CoverageRows {
+        let source = dialect.quote_ident(&self.from.table);
+        let none = self.no_reference(dialect, &source);
+        let mut unresolved = self.source_filter(dialect, &source);
+        unresolved.push(format!("NOT {none}"));
+        unresolved.push(format!("NOT {}", self.exists(dialect, &source)));
+        let mut zero_or_null = self.source_filter(dialect, &source);
+        zero_or_null.push(none);
+        CoverageRows {
+            unresolved: unresolved.join(" AND "),
+            zero_or_null: zero_or_null.join(" AND "),
+        }
+    }
+
+    fn source_filter(&self, dialect: Dialect, source: &str) -> Vec<String> {
+        conditions_sql(dialect, source, self.when)
     }
 
     /// NULL in any column (a composite key with a NULL part is not checked, as in SQL), or a
     /// single column whose text is `0` (a common way to store "no target"), as `valueAt` reads it.
-    fn no_reference(&self, dialect: Dialect) -> String {
+    fn no_reference(&self, dialect: Dialect, source: &str) -> String {
         let mut parts: Vec<String> = self
             .from
             .columns
             .iter()
-            .map(|c| format!("{} IS NULL", column(dialect, "s", c)))
+            .map(|c| format!("{} IS NULL", column(dialect, source, c)))
             .collect();
         if let [single] = self.from.columns.as_slice() {
             parts.push(format!(
                 "CAST({} AS BINARY) = '0'",
-                column(dialect, "s", single)
+                column(dialect, source, single)
             ));
         }
         format!("({})", parts.join(" OR "))
@@ -117,7 +146,7 @@ impl CoverageQuery<'_> {
 
     /// Compares with the column's collation, as following the reference does (its address
     /// filters the target by `=`), so the counts match what a click finds.
-    fn exists(&self, dialect: Dialect) -> String {
+    fn exists(&self, dialect: Dialect, source: &str) -> String {
         let mut on: Vec<String> = self
             .from
             .columns
@@ -127,7 +156,7 @@ impl CoverageQuery<'_> {
                 format!(
                     "{} = {}",
                     column(dialect, "t", to),
-                    column(dialect, "s", from)
+                    column(dialect, source, from)
                 )
             })
             .collect();
@@ -136,7 +165,13 @@ impl CoverageQuery<'_> {
             let same: Vec<String> = self
                 .self_key
                 .iter()
-                .map(|k| format!("{} = {}", column(dialect, "t", k), column(dialect, "s", k)))
+                .map(|k| {
+                    format!(
+                        "{} = {}",
+                        column(dialect, "t", k),
+                        column(dialect, source, k)
+                    )
+                })
                 .collect();
             on.push(format!("NOT ({})", same.join(" AND ")));
         }
@@ -241,17 +276,22 @@ async fn count(
         self_key,
     };
     let dialect = session.db.dialect();
+    let rows = Some(query.rows(dialect));
     let counts = match session.db.fetch(&query.counts_sql(dialect), timeout).await {
         Ok(result) => result,
         Err(AppError::Timeout { .. }) => {
             return Ok(Coverage {
                 timed_out: true,
+                rows,
                 ..Coverage::default()
             });
         }
         Err(e) => return Err(e),
     };
-    let mut coverage = read_counts(&counts)?;
+    let mut coverage = Coverage {
+        rows,
+        ..read_counts(&counts)?
+    };
     if coverage.total == coverage.resolved + coverage.zero_or_null {
         return Ok(coverage);
     }
@@ -511,6 +551,69 @@ mod tests {
         );
     }
 
+    #[test]
+    fn rows_of_a_plain_reference_filter_the_source_table_by_its_quoted_name() {
+        let from = cols("books", &["author_id"]);
+        let to = cols("authors", &["id"]);
+
+        assert_eq!(
+            query(&from, &to).rows(Dialect::MYSQL),
+            CoverageRows {
+                unresolved: "NOT (`books`.`author_id` IS NULL OR CAST(`books`.`author_id` AS BINARY) = '0') \
+                     AND NOT EXISTS (SELECT 1 FROM `shop`.`authors` AS t WHERE t.`id` = `books`.`author_id`)"
+                    .into(),
+                zero_or_null:
+                    "(`books`.`author_id` IS NULL OR CAST(`books`.`author_id` AS BINARY) = '0')"
+                        .into(),
+            }
+        );
+    }
+
+    #[test]
+    fn rows_of_a_conditional_reference_carry_the_when_and_to_when() {
+        let from = cols("threads", &["author"]);
+        let to = cols("people", &["person_id"]);
+        let when = [cond("kind", Match::Eq("a".into()))];
+        let to_when = [cond("active", Match::Eq("1".into()))];
+        let query = CoverageQuery {
+            when: &when,
+            to_when: &to_when,
+            ..query(&from, &to)
+        };
+
+        assert_eq!(
+            query.rows(Dialect::MYSQL),
+            CoverageRows {
+                unresolved: "(`threads`.`kind` = 'a' AND CAST(`threads`.`kind` AS BINARY) = 'a') \
+                     AND NOT (`threads`.`author` IS NULL OR CAST(`threads`.`author` AS BINARY) = '0') \
+                     AND NOT EXISTS (SELECT 1 FROM `shop`.`people` AS t WHERE t.`person_id` = `threads`.`author` \
+                     AND (t.`active` = '1' AND CAST(t.`active` AS BINARY) = '1'))"
+                    .into(),
+                zero_or_null: "(`threads`.`kind` = 'a' AND CAST(`threads`.`kind` AS BINARY) = 'a') \
+                     AND (`threads`.`author` IS NULL OR CAST(`threads`.`author` AS BINARY) = '0')"
+                    .into(),
+            }
+        );
+    }
+
+    #[test]
+    fn rows_of_a_self_reference_exclude_the_row_itself_by_the_outer_table() {
+        let from = cols("orders", &["billing_email"]);
+        let to = cols("orders", &["billing_email"]);
+        let self_key = ["id".to_string()];
+        let query = CoverageQuery {
+            self_key: &self_key,
+            ..query(&from, &to)
+        };
+
+        assert_eq!(
+            query.rows(Dialect::MYSQL).unresolved,
+            "NOT (`orders`.`billing_email` IS NULL OR CAST(`orders`.`billing_email` AS BINARY) = '0') \
+             AND NOT EXISTS (SELECT 1 FROM `shop`.`orders` AS t WHERE t.`billing_email` = `orders`.`billing_email` \
+             AND NOT (t.`id` = `orders`.`id`))"
+        );
+    }
+
     fn structure(
         columns: &[&str],
         primary_key: &str,
@@ -609,6 +712,16 @@ mod tests {
         }
     }
 
+    fn books_author_rows() -> CoverageRows {
+        CoverageRows {
+            unresolved: "NOT (`books`.`author_id` IS NULL OR CAST(`books`.`author_id` AS BINARY) = '0') \
+                 AND NOT EXISTS (SELECT 1 FROM `wp`.`authors` AS t WHERE t.`id` = `books`.`author_id`)"
+                .into(),
+            zero_or_null:
+                "(`books`.`author_id` IS NULL OR CAST(`books`.`author_id` AS BINARY) = '0')".into(),
+        }
+    }
+
     const LINKS: &str = r#"
 [preset]
 name = "links"
@@ -692,7 +805,7 @@ to_when = { active = "1" }
     }
 
     #[tokio::test]
-    async fn a_count_that_times_out_reports_timed_out_with_zero_counts_and_skips_the_sample() {
+    async fn a_count_that_times_out_reports_timed_out_with_zero_counts_but_still_carries_rows() {
         let rig =
             Rig::new(shop().failing("COUNT(*)", AppError::timeout(Duration::from_millis(200))));
 
@@ -702,6 +815,7 @@ to_when = { active = "1" }
             coverage,
             Coverage {
                 timed_out: true,
+                rows: Some(books_author_rows()),
                 ..Coverage::default()
             }
         );
@@ -725,6 +839,7 @@ to_when = { active = "1" }
                 zero_or_null: 2,
                 sample_unresolved: Vec::new(),
                 timed_out: true,
+                rows: coverage.rows.clone(),
             }
         );
     }
@@ -747,6 +862,7 @@ to_when = { active = "1" }
                 zero_or_null: 2,
                 sample_unresolved: vec!["98".into(), "99".into()],
                 timed_out: false,
+                rows: Some(books_author_rows()),
             }
         );
         assert_eq!(rig.db.queries().len(), 2);
@@ -766,6 +882,7 @@ to_when = { active = "1" }
                 zero_or_null: 1,
                 sample_unresolved: Vec::new(),
                 timed_out: false,
+                rows: coverage.rows.clone(),
             }
         );
         assert_eq!(rig.db.queries().len(), 1);
@@ -801,6 +918,7 @@ to_when = { active = "1" }
                 zero_or_null: 1,
                 sample_unresolved: Vec::new(),
                 timed_out: false,
+                rows: coverage.rows.clone(),
             }
         );
         assert_eq!(
@@ -956,6 +1074,7 @@ to_when = { active = "1" }
                     zero_or_null: 2,
                     sample_unresolved: vec!["98".into(), "99".into()],
                     timed_out: false,
+                    rows: coverage.rows.clone(),
                 },
                 "{host}:{port}"
             );
@@ -990,6 +1109,7 @@ to_when = { active = "1" }
                     zero_or_null: 1,
                     sample_unresolved: Vec::new(),
                     timed_out: false,
+                    rows: coverage.rows.clone(),
                 },
                 "{host}:{port}"
             );
@@ -1036,6 +1156,7 @@ to_when = { active = "1" }
                 Coverage {
                     total: 1,
                     resolved: 1,
+                    rows: thumbnail.rows.clone(),
                     ..Coverage::default()
                 },
                 "{host}:{port}"
@@ -1046,6 +1167,7 @@ to_when = { active = "1" }
                     total: 4,
                     resolved: 2,
                     zero_or_null: 2,
+                    rows: customer.rows.clone(),
                     ..Coverage::default()
                 },
                 "{host}:{port}"
@@ -1121,6 +1243,7 @@ to_when = { active = "1" }
                     zero_or_null: 2,
                     sample_unresolved: vec!["98".into(), "99".into()],
                     timed_out: false,
+                    rows: preview.rows.clone(),
                 },
                 "{host}:{port}"
             );
@@ -1269,14 +1392,17 @@ to_when = { active = "1" }
                 .await;
 
             unlocked.unwrap();
+            let blocked = blocked.unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
             assert_eq!(
-                blocked.unwrap_or_else(|e| panic!("{host}:{port}: {e:?}")),
+                blocked,
                 Coverage {
                     timed_out: true,
+                    rows: blocked.rows.clone(),
                     ..Coverage::default()
                 },
                 "{host}:{port}"
             );
+            assert!(blocked.rows.is_some(), "{host}:{port}");
         }
     }
 }

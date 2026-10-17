@@ -5,6 +5,7 @@ use super::coverage::{self, Coverage};
 use super::draft::{self, RuleDraft};
 use super::effective::{self, RulesInfo};
 use super::overview::{self, ProjectRules};
+use super::profile::{self, TableProfile};
 use super::project::Project;
 use super::project_change::{self, ChangeContext, ProjectChange};
 use super::types::Reference;
@@ -89,6 +90,19 @@ pub async fn project_rules(
 ) -> AppResult<ProjectRules> {
     let session = state.sessions.get(&session_id)?;
     overview::for_database(&session, &database, state.rules()).await
+}
+
+/// What a table's Structure view lists: per column its kinds, references and value styles, then
+/// the table's meta-key rules, incoming references, entities and actions.
+#[tauri::command]
+pub async fn table_rules(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    table: String,
+) -> AppResult<TableProfile> {
+    let session = state.sessions.get(&session_id)?;
+    profile::for_table(&session, &database, &table, state.rules()).await
 }
 
 #[tauri::command]

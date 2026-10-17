@@ -517,14 +517,34 @@ async fn a_subsite_project_resolves_the_users_table_under_the_network_prefix() {
         let coverage = reference_coverage(&session, "wp_multi", author, rig.sources(), TIMEOUT)
             .await
             .unwrap_or_else(|e| panic!("{server}: {e:?}"));
+        let rows = coverage
+            .rows
+            .clone()
+            .unwrap_or_else(|| panic!("{server}: {coverage:?}"));
         assert_eq!(
-            coverage,
+            Coverage {
+                rows: None,
+                ..coverage
+            },
             Coverage {
                 total: 1,
                 resolved: 1,
                 ..Coverage::default()
             },
             "{server}"
+        );
+        assert!(
+            rows.unresolved
+                .contains("`wp_2_posts`.`post_author` IS NULL")
+                && rows.unresolved.contains("`wp_multi`.`wp_users` AS t"),
+            "{server}: {}",
+            rows.unresolved
+        );
+        assert!(
+            rows.zero_or_null
+                .contains("`wp_2_posts`.`post_author` IS NULL"),
+            "{server}: {}",
+            rows.zero_or_null
         );
     }
 }

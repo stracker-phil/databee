@@ -7,6 +7,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use ts_rs::TS;
 
+use super::applied::Applied;
 use super::placeholder::Allowed;
 use super::queries::checked_field;
 use super::types::{Check, Conditions, FieldError};
@@ -248,6 +249,37 @@ impl Check for Action {
                 })
             }
         }
+    }
+}
+
+/// What one step of an action writes, on the table as stored (with its prefix).
+#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(tag = "write", rename_all = "camelCase")]
+pub enum ActionWrite {
+    Set { table: String, columns: Vec<String> },
+    DeleteRows { table: String },
+    FreeSql { table: String },
+}
+
+/// The steps of `action` (its `table` real) in planning order; an update step on a table this
+/// database lacks is left out, as planning skips it.
+pub fn writes(action: &Action, applied: &Applied) -> Vec<ActionWrite> {
+    let table = action.table.clone();
+    match &action.effect {
+        ActionEffect::Update(steps) => steps
+            .iter()
+            .filter_map(|step| {
+                let table = match &step.table {
+                    None => table.clone(),
+                    Some(name) => applied.existing_table(name)?,
+                };
+                let columns = step.set.keys().cloned().collect();
+                Some(ActionWrite::Set { table, columns })
+            })
+            .collect(),
+        ActionEffect::Delete(_) => vec![ActionWrite::DeleteRows { table }],
+        ActionEffect::Sql { .. } => vec![ActionWrite::FreeSql { table }],
     }
 }
 

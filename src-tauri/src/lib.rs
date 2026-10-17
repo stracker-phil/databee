@@ -318,6 +318,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             rules::commands::project_export,
             rules::commands::project_export_to,
             rules::commands::project_rules,
+            rules::commands::table_rules,
             rules::commands::rule_draft,
             rules::commands::coverage_preview,
             rules::commands::reference_coverage,
