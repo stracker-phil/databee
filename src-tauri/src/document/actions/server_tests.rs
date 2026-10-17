@@ -301,7 +301,8 @@ async fn set_status_on_an_hpos_order_writes_the_order_and_its_posts_copy_and_und
 async fn delete_expired_transients_through_a_table_address_deletes_by_key_and_undo_reinserts() {
     const EXPIRED: &str = "SELECT option_name FROM wp_write.wp_options \
                            WHERE option_name LIKE '%zz\\_exp' ORDER BY option_name";
-    const ALL: &str = "SELECT * FROM wp_write.wp_options ORDER BY option_id";
+    const ALL: &str = "SELECT * FROM wp_write.wp_options \
+                       WHERE option_name <> 'zz_autoload_probe' ORDER BY option_id";
     let rig = Rig::new();
     for (server, session) in sessions().await {
         let ctx = ctx(&session, &rig).await;

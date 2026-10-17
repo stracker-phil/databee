@@ -268,8 +268,10 @@ column of the owner row (for meta rows the document's row; for pivoted values th
 key of the document. Outgoing references get `exists` from one `SELECT DISTINCT` per target table for all
 values that point into it.
 
-**Queries** are bounded by the rules, never by the rows: one for the row, one per group (a `COUNT(*)` more
-when it is capped), one per pivoted group and one per referenced table. Each uses the session's query
+**Queries** are bounded by the rules, never by the rows: one for the row, one per meta table, one per
+source table of the incoming groups (several references from one table share a `UNION ALL`,
+`Ctx::capped_each`), one per pattern group (a `COUNT(*)` more for each capped group), one per pivoted group
+and one per referenced table. The measured counts are in [database.md](database.md#statement-counts). Each uses the session's query
 timeout on the metadata pool.
 
 **Peek** (`peek.rs`): `peek(session_id, address)` returns `Peek { key_column, values }` for a row address
@@ -326,7 +328,7 @@ the MCP `find` tool) from the effective rules and the schema alone. `search::par
 | `#<digits>` | `Id` (`ids.rs`) | `objects with id <n>`: each entity table with a single-column key that holds the key (one `own` query per table, the summary as a peek reads it); `rows that reference <n>`: the incoming reference and pattern groups of the first 5 found rows (`document::linked::referencing`; meta rows only when a pattern of the table needs them) |
 | `@<text>` (2+ characters) | `People` (`text.rs`) | `people matching <text>`: entities with `people = true`, on their `search` columns (`LIKE` contains) and `search_exact` columns (`=`); names that are no column are keys of the entity's own `[[meta]]` table (`pk IN (SELECT fk … )`) |
 | free text (6+ characters, no prefix) | `Text` (`text.rs`) | `external id <text>`: the targets of rule references that are not the target table's key (`=` plus the `to_when` conditions), a meta row as its owner row; then `objects matching <text>`: every entity's `search`/`search_exact` |
-| `=<value>` (2+ characters) | `Find` (`find.rs`) | one section per `table.column`: the value column of every `[[meta]]` table (exact), the `[[find]]` sources (their `match`), the entities' `search` (contains) and `search_exact` columns |
+| `=<value>` (2+ characters) | `Find` (`find.rs`) | one section per `table.column`: the value column of every `[[meta]]` table (exact), the `[[find]]` sources (their `match`), the entities' `search` (contains) and `search_exact` columns; the sources of one table share one `UNION ALL` (`Ctx::rows_per_filter`) |
 
 Without entities, `#` reads every base table with a single-column key and fewer than 1M estimated rows
 (`PLAIN_TABLE_ROWS`). Each query runs with `QUERY_TIMEOUT` (3 s, or the query timeout when lower); a failed

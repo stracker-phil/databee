@@ -2,8 +2,9 @@
 //! "Documents"). Built only from the effective rules and the schema, for any table with a
 //! primary key: the own row, its meta rows, incoming references, pattern groups and `events`.
 //!
-//! The number of queries is bounded by the rules, never by the rows: one per group (two when it
-//! is capped), one per pivoted group, one per referenced table for `exists`.
+//! The number of queries is bounded by the rules, never by the rows: one per meta table, one per
+//! source table of the incoming groups, one per pattern group (and a count for each capped group),
+//! one per pivoted group, one per referenced table for `exists`.
 
 pub mod actions;
 mod build;
@@ -39,7 +40,7 @@ use crate::value::{RowKey, Value};
 
 #[cfg(test)]
 pub(crate) use context::testing;
-pub use context::{Ctx, Rows};
+pub use context::{Ctx, KeyOrder, Rows};
 pub use own::{Own, entity_filter};
 pub use peek::Peek;
 

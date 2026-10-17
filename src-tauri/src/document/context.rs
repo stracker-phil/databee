@@ -4,6 +4,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::future::join_all;
+
 use crate::address::{Address, Target};
 use crate::db::{Cell, Dialect, ResultSet};
 use crate::error::AppResult;
@@ -129,15 +131,51 @@ impl<'a> Ctx<'a> {
         order: &str,
         cap: usize,
     ) -> AppResult<Capped> {
-        let from = match alias {
-            Some(alias) => format!("{} AS {alias}", self.table_ref(table)),
-            None => self.table_ref(table),
-        };
+        let from = self.from(table, alias);
         let sql = format!(
             "SELECT * FROM {from} WHERE {filter} ORDER BY {order} LIMIT {}",
             cap + 1
         );
-        let mut result = self.fetch(&sql).await?;
+        let result = self.fetch(&sql).await?;
+        self.finish_capped(table, &from, filter, result, cap).await
+    }
+
+    /// `capped` for several filters on one table, in key order: one query for the rows of all of
+    /// them, then a count for each that has more.
+    pub async fn capped_each(
+        &self,
+        table: &str,
+        alias: &str,
+        filters: &[String],
+        cap: usize,
+    ) -> Vec<AppResult<Capped>> {
+        let order = KeyOrder {
+            columns: self.primary_key(table),
+            descending: false,
+        };
+        let results = match self
+            .rows_per_filter(table, alias, filters, &order, cap + 1)
+            .await
+        {
+            Ok(results) => results,
+            Err(e) => return filters.iter().map(|_| Err(e.clone())).collect(),
+        };
+        let from = self.from(table, Some(alias));
+        let finished = results
+            .into_iter()
+            .zip(filters)
+            .map(|(result, filter)| self.finish_capped(table, &from, filter, result, cap));
+        join_all(finished).await
+    }
+
+    async fn finish_capped(
+        &self,
+        table: &str,
+        from: &str,
+        filter: &str,
+        mut result: ResultSet,
+        cap: usize,
+    ) -> AppResult<Capped> {
         let capped = result.rows.len() > cap;
         result.rows.truncate(cap);
         let total = if capped {
@@ -151,6 +189,50 @@ impl<'a> Ctx<'a> {
             total,
             capped,
         })
+    }
+
+    /// At most `limit` rows of `table` (as `alias`) for each of `filters`, one result per filter.
+    /// Several filters run as one `UNION ALL`, so the statement count is one per table.
+    pub async fn rows_per_filter(
+        &self,
+        table: &str,
+        alias: &str,
+        filters: &[String],
+        order: &KeyOrder<'_>,
+        limit: usize,
+    ) -> AppResult<Vec<ResultSet>> {
+        let from = self.from(table, Some(alias));
+        let inner = order.sql(|c| self.column(Some(alias), c));
+        if let [filter] = filters {
+            let sql = format!("SELECT * FROM {from} WHERE {filter} ORDER BY {inner} LIMIT {limit}");
+            return Ok(vec![self.fetch(&sql).await?]);
+        }
+        let part = self.ident(PART_COLUMN);
+        let branches: Vec<String> = filters
+            .iter()
+            .enumerate()
+            .map(|(i, filter)| {
+                format!(
+                    "(SELECT {alias}.*, {i} AS {part} FROM {from} WHERE {filter} \
+                     ORDER BY {inner} LIMIT {limit})"
+                )
+            })
+            .collect();
+        let outer = order.sql(|c| self.ident(c));
+        let outer = if order.columns.is_empty() {
+            part
+        } else {
+            format!("{part}, {outer}")
+        };
+        let sql = format!("{} ORDER BY {outer}", branches.join(" UNION ALL "));
+        Ok(split_parts(self.fetch(&sql).await?, filters.len()))
+    }
+
+    fn from(&self, table: &str, alias: Option<&str>) -> String {
+        match alias {
+            Some(alias) => format!("{} AS {alias}", self.table_ref(table)),
+            None => self.table_ref(table),
+        }
     }
 
     pub async fn count(&self, sql: &str) -> AppResult<u64> {
@@ -173,6 +255,46 @@ impl<'a> Ctx<'a> {
             .collect::<Vec<_>>()
             .join(", ")
     }
+}
+
+/// The column a `UNION ALL` of `rows_per_filter` tells its filters apart by.
+const PART_COLUMN: &str = "__databee_part";
+
+/// Rows sorted by key columns; unsorted without any.
+pub struct KeyOrder<'k> {
+    pub columns: &'k [String],
+    pub descending: bool,
+}
+
+impl KeyOrder<'_> {
+    fn sql(&self, column: impl Fn(&str) -> String) -> String {
+        if self.columns.is_empty() {
+            return "1".into();
+        }
+        let direction = if self.descending { " DESC" } else { "" };
+        self.columns
+            .iter()
+            .map(|c| format!("{}{direction}", column(c)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// The rows of a `UNION ALL` by the part number in their last column, without that column.
+fn split_parts(mut result: ResultSet, parts: usize) -> Vec<ResultSet> {
+    let rows = std::mem::take(&mut result.rows);
+    result.columns.pop();
+    let mut out = vec![result; parts];
+    for mut row in rows {
+        let part = row.pop().and_then(|c| c.as_text()?.parse::<usize>().ok());
+        if let Some(target) = part.and_then(|i| out.get_mut(i)) {
+            target.rows.push(row);
+        }
+    }
+    for part in &mut out {
+        part.total_rows = part.rows.len() as u64;
+    }
+    out
 }
 
 pub struct Capped {
@@ -465,6 +587,7 @@ value = "v"
 mod tests {
     use super::testing::{Rig, count, num, result, shop, text};
     use super::*;
+    use crate::error::AppError;
     use crate::value::{ColumnKind, Provenance, RowKey};
 
     fn log_rows(n: usize) -> ResultSet {
@@ -568,6 +691,101 @@ mod tests {
                 "SELECT COUNT(*) FROM `wp`.`f_log` AS s WHERE s.`order_id` = '1'",
             ]
         );
+    }
+
+    fn log_parts(parts: &[usize]) -> ResultSet {
+        let rows = parts
+            .iter()
+            .enumerate()
+            .map(|(i, part)| {
+                vec![
+                    num(&(i + 1).to_string()),
+                    num("1"),
+                    text(""),
+                    num(&part.to_string()),
+                ]
+            })
+            .collect();
+        result(&["log_id", "order_id", "msg", "__databee_part"], rows)
+    }
+
+    fn order_filters() -> Vec<String> {
+        vec!["s.`order_id` = '1'".into(), "s.`order_id` = '2'".into()]
+    }
+
+    const UNION: &str = "(SELECT s.*, 0 AS `__databee_part` FROM `wp`.`f_log` AS s WHERE s.`order_id` = '1' ORDER BY s.`log_id` LIMIT 4) \
+UNION ALL (SELECT s.*, 1 AS `__databee_part` FROM `wp`.`f_log` AS s WHERE s.`order_id` = '2' ORDER BY s.`log_id` LIMIT 4) \
+ORDER BY `__databee_part`, `log_id`";
+
+    #[tokio::test]
+    async fn capped_each_reads_all_filters_of_a_table_in_one_statement() {
+        let rig = Rig::new(shop().on("UNION ALL", log_parts(&[0, 0, 1])), "");
+        let ctx = rig.ctx().await;
+
+        let each = ctx.capped_each("f_log", "s", &order_filters(), 3).await;
+
+        assert_eq!(rig.db.queries(), [UNION]);
+        let shape: Vec<_> = each
+            .iter()
+            .map(|c| {
+                let c = c.as_ref().ok().unwrap();
+                (c.rows.names(), c.rows.len(), c.total, c.capped)
+            })
+            .collect();
+        let columns = vec!["log_id".to_string(), "order_id".into(), "msg".into()];
+        assert_eq!(
+            shape,
+            [(columns.clone(), 2, 2, false), (columns, 1, 1, false)]
+        );
+    }
+
+    #[tokio::test]
+    async fn capped_each_counts_only_the_filter_beyond_the_cap() {
+        let rig = Rig::new(
+            shop()
+                .on("SELECT COUNT(*)", count(9))
+                .on("UNION ALL", log_parts(&[0, 0, 0, 0, 1])),
+            "",
+        );
+        let ctx = rig.ctx().await;
+
+        let each = ctx.capped_each("f_log", "s", &order_filters(), 3).await;
+
+        assert_eq!(
+            rig.db.queries(),
+            [
+                UNION,
+                "SELECT COUNT(*) FROM `wp`.`f_log` AS s WHERE s.`order_id` = '1'"
+            ]
+        );
+        let shape: Vec<_> = each
+            .iter()
+            .map(|c| {
+                let c = c.as_ref().ok().unwrap();
+                (c.rows.len(), c.total, c.capped)
+            })
+            .collect();
+        assert_eq!(shape, [(3, 9, true), (1, 1, false)]);
+    }
+
+    #[tokio::test]
+    async fn capped_each_gives_every_filter_the_error_of_a_failing_statement() {
+        let rig = Rig::new(
+            shop().failing("UNION ALL", AppError::InvalidInput("boom".into())),
+            "",
+        );
+        let ctx = rig.ctx().await;
+
+        let each = ctx.capped_each("f_log", "s", &order_filters(), 3).await;
+
+        assert_eq!(each.len(), 2);
+        for c in &each {
+            assert!(
+                matches!(c.as_ref().err(), Some(AppError::InvalidInput(m)) if m == "boom"),
+                "{:?}",
+                c.as_ref().err()
+            );
+        }
     }
 
     #[tokio::test]

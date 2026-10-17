@@ -234,9 +234,31 @@ match = "contains"
         assert_eq!(keys, expected);
     }
 
+    fn log_row_in_parts(parts: &[&str]) -> crate::db::ResultSet {
+        let rows = parts
+            .iter()
+            .map(|part| {
+                vec![
+                    num("1"),
+                    num("4711"),
+                    text(""),
+                    text("sandbox ok"),
+                    num(part),
+                ]
+            })
+            .collect();
+        result(
+            &["log_id", "order_id", "at_gmt", "msg", "__databee_part"],
+            rows,
+        )
+    }
+
     #[tokio::test]
     async fn a_row_found_by_two_sections_is_listed_once_in_the_first() {
-        let rig = Rig::new(shop().on("`f_log`", log_rows(1)), FIND_TWO_LOG_COLUMNS);
+        let rig = Rig::new(
+            shop().on("`f_log`", log_row_in_parts(&["0", "1"])),
+            FIND_TWO_LOG_COLUMNS,
+        );
 
         let found = search(&rig.session, "wp", "=sandbox", rig.sources(), TIMEOUT)
             .await
@@ -244,6 +266,28 @@ match = "contains"
 
         let sections: Vec<_> = found.iter().map(|hit| hit.section.as_str()).collect();
         assert_eq!(sections, ["f_log.msg"]);
+    }
+
+    #[tokio::test]
+    async fn sources_on_one_table_are_read_in_one_query() {
+        let rig = Rig::new(
+            shop().on("`f_log`", log_row_in_parts(&["1"])),
+            FIND_TWO_LOG_COLUMNS,
+        );
+
+        let found = search(&rig.session, "wp", "=sandbox", rig.sources(), TIMEOUT)
+            .await
+            .unwrap();
+
+        let queries = rig.db.queries();
+        let reads = queries.iter().filter(|q| q.contains("`f_log`")).count();
+        assert_eq!(reads, 1, "{queries:?}");
+        assert!(
+            queries.iter().any(|q| q.contains(" UNION ALL ")),
+            "{queries:?}"
+        );
+        let sections: Vec<_> = found.iter().map(|hit| hit.section.as_str()).collect();
+        assert_eq!(sections, ["f_log.order_id"]);
     }
 
     #[tokio::test]

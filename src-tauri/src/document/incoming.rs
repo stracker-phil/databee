@@ -5,14 +5,17 @@
 //! conditional rule that comes first takes the rows its `when` holds on, and a rule after an
 //! unconditional one never decides a row.
 
+use std::collections::BTreeMap;
+
 use futures_util::future::join_all;
 
-use super::context::Ctx;
+use super::context::{Capped, Ctx};
 use super::own::Own;
 use super::pivot;
 use super::{Group, GroupLink, GroupShape, ROWS_CAP};
 use crate::address::{Address, Target};
 use crate::db::ColumnEquals;
+use crate::error::AppResult;
 use crate::lens::ResolvedReference;
 use crate::rules::condition::{self, Condition};
 use crate::rules::coverage::conditions;
@@ -40,7 +43,45 @@ pub async fn groups(ctx: &Ctx<'_>, own: &Own) -> Vec<Group> {
         .filter(|r| !is_meta_of(ctx, r, own.table()))
         .filter_map(|r| plan(ctx, own, r))
         .collect();
-    join_all(incoming.iter().map(|i| group(ctx, own, i))).await
+    let rows = source_rows(ctx, own, &incoming).await;
+    join_all(
+        incoming
+            .iter()
+            .zip(rows)
+            .map(|(i, rows)| group(ctx, own, i, rows)),
+    )
+    .await
+}
+
+/// The capped source rows of each reference that can point at the row, one query per source
+/// table; `None` for a reference whose target columns are empty in the row.
+async fn source_rows(
+    ctx: &Ctx<'_>,
+    own: &Own,
+    incoming: &[Incoming<'_>],
+) -> Vec<Option<AppResult<Capped>>> {
+    let mut by_table: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    for (i, reference) in incoming.iter().enumerate() {
+        if has_values(reference) {
+            by_table
+                .entry(&reference.reference.from.table)
+                .or_default()
+                .push(i);
+        }
+    }
+    let queries = by_table.into_iter().map(|(table, members)| async move {
+        let filters: Vec<String> = members
+            .iter()
+            .map(|&i| filter_sql(ctx, own, &incoming[i]))
+            .collect();
+        let rows = ctx.capped_each(table, ALIAS, &filters, ROWS_CAP).await;
+        members.into_iter().zip(rows)
+    });
+    let mut out: Vec<Option<AppResult<Capped>>> = incoming.iter().map(|_| None).collect();
+    for (i, rows) in join_all(queries).await.into_iter().flatten() {
+        out[i] = Some(rows);
+    }
+    out
 }
 
 /// The `fk → owner` reference of a meta table, which the meta group shows.
@@ -138,7 +179,12 @@ fn group_id(reference: &ResolvedReference) -> String {
     }
 }
 
-async fn group(ctx: &Ctx<'_>, own: &Own, incoming: &Incoming<'_>) -> Group {
+async fn group(
+    ctx: &Ctx<'_>,
+    own: &Own,
+    incoming: &Incoming<'_>,
+    rows: Option<AppResult<Capped>>,
+) -> Group {
     let reference = &incoming.reference;
     let source = &reference.from.table;
     let via = GroupLink::Incoming {
@@ -148,32 +194,21 @@ async fn group(ctx: &Ctx<'_>, own: &Own, incoming: &Incoming<'_>) -> Group {
     let mut group = Group::new(group_id(reference), source, via, GroupShape::Rows);
     group.columns = columns(ctx, source, incoming.rule);
     group.rows_address = rows_address(ctx, own, incoming);
-    if !has_values(incoming) {
-        return group;
+    match rows {
+        Some(Ok(capped)) => {
+            group.total = capped.total;
+            group.capped = capped.capped;
+            group.rows = pivot::rows(ctx, &capped.rows, &group.columns).await;
+            group
+        }
+        Some(Err(e)) => group.failed(e),
+        None => group,
     }
-    fill_rows(ctx, own, incoming, group).await
 }
 
 /// The row has a non-empty value in every target column, so source rows can point at it.
 fn has_values(incoming: &Incoming<'_>) -> bool {
     !incoming.values.is_empty() && incoming.values.iter().all(|(_, v)| !v.is_empty())
-}
-
-async fn fill_rows(ctx: &Ctx<'_>, own: &Own, incoming: &Incoming<'_>, mut group: Group) -> Group {
-    let source = &incoming.reference.from.table;
-    let filter = filter_sql(ctx, own, incoming);
-    let order = ctx.key_order(source, Some(ALIAS));
-    let capped = match ctx
-        .capped(source, Some(ALIAS), &filter, &order, ROWS_CAP)
-        .await
-    {
-        Ok(capped) => capped,
-        Err(e) => return group.failed(e),
-    };
-    group.total = capped.total;
-    group.capped = capped.capped;
-    group.rows = pivot::rows(ctx, &capped.rows, &group.columns).await;
-    group
 }
 
 /// The rule's `columns`, else every column of the source table.

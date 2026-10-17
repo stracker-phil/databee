@@ -404,9 +404,44 @@ arm; nothing in `rules/` changes:
 
 The roadmap lists SQLite as the next driver.
 
+## Statement counts
+
+`src-tauri/src/statement_counts.rs` measures what the object view, the palette, the readout and the
+Project page send to the server on `wp_test` with the built-in presets, on every fixture server. Its
+`#[ignore]` tests wrap the session's database in `test_support::Counting`, load the schema first (as a
+session does once per database: `tables`, `keys` and `completion`, four statements) and assert the number
+of `Database` calls each command makes afterwards. Each call is one round trip; a saved query's `USE` rides
+along with its `SELECT`. Unit tests count with `FakeDatabase::queries()`.
+
+| Command | Measured on | Before | After |
+|---|---|---|---|
+| `document` | order 4711 (`wp_wc_orders`) | 18 | 18 |
+| `peek` | order 4711 | 1 | 1 |
+| `palette_search` | `#4711` | 37 | 35 |
+| `palette_search` | `=sandbox` | 28 | 16 |
+| `readout` | `wp_test` | 19 | 19 |
+| `reference_coverage` | each of the 40 references of the Project page | 43 | 43 |
+
+What was batched: the find sources of one table (`search/find.rs`) and the incoming reference groups from
+one source table (`document/incoming.rs`) run as one `UNION ALL` of the per-filter `SELECT`s, each tagged
+with `__databee_part` and ordered by it and the key (`Ctx::rows_per_filter`, `Ctx::capped_each`); a capped
+group still counts on its own. Order 4711's document has no two incoming groups on one table, so its count
+stays; `#4711` saves two (the synced post's `wp_postmeta` and `wp_wc_order_product_lookup` groups).
+
+What stays one query each, and why:
+- `exists` already runs one query per target table. One statement over several tables would need every key
+  cast to text, which changes the outcome for binary keys and fails on mixed collations.
+- Readout parts, anomalies and value pins are preset or saved SQL of their own: batched, one broken
+  statement would fail every line instead of its own.
+- `reference_coverage` is one call per reference from the Project page: a count, plus the sample of
+  unresolved values only when some are unresolved (3 of the 40).
+- `#4711` reads the row by key in each of the 11 entity tables with a single-column key, then the
+  references of each found row; rows found in two tables repeat some identical group queries, whose hits
+  the palette drops as duplicates.
+
 ## Integration tests
 
-The integration tests are `src-tauri/tests/mysql.rs`, `changes.rs`, `sql_mode.rs` and the `server_tests.rs` of the modules (see [testing.md](testing.md)).
+The integration tests are `src-tauri/tests/mysql.rs`, `changes.rs`, `sql_mode.rs`, the `server_tests.rs` of the modules and `src/statement_counts.rs` (see [testing.md](testing.md)).
 Each test runs against every server in `DATABEE_TEST_SERVERS`. The default is the two Docker fixtures,
 MariaDB 11.4 on `127.0.0.1:33306` and MySQL 8.4 on `127.0.0.1:33307` (user `root`, password `root`), so
 driver behavior is checked on both engines.

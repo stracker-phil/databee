@@ -26,6 +26,8 @@ pub mod secrets;
 mod session;
 pub mod stage;
 mod state;
+#[cfg(test)]
+mod statement_counts;
 pub mod store;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_support;

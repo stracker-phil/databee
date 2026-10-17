@@ -1,12 +1,15 @@
 //! `=<value>`, find everywhere: the value column of every `[[meta]]` table (exact), the `[[find]]`
 //! sources, and the entities' `search` (contains) and `search_exact` (exact) columns, one section
-//! per table and column.
+//! per table and column. The sources of one table share one query.
+
+use std::collections::BTreeMap;
 
 use futures_util::future::join_all;
 
 use super::hits;
 use super::{PaletteHit, SECTION_CAP};
-use crate::document::Ctx;
+use crate::db::ResultSet;
+use crate::document::{Ctx, KeyOrder};
 use crate::rules::types::FindMatch;
 
 const ALIAS: &str = "t";
@@ -21,8 +24,19 @@ struct Source {
 
 pub async fn everywhere(ctx: &Ctx<'_>, value: &str) -> Vec<PaletteHit> {
     let sources = sources(ctx);
-    let found = join_all(sources.iter().map(|source| source_hits(ctx, source, value))).await;
-    found.into_iter().flatten().collect()
+    let mut by_table: BTreeMap<&str, Vec<&Source>> = BTreeMap::new();
+    for source in &sources {
+        by_table.entry(&source.table).or_default().push(source);
+    }
+    let found = join_all(
+        by_table
+            .into_values()
+            .map(|same_table| table_hits(ctx, same_table, value)),
+    )
+    .await;
+    let mut found: Vec<(&Source, Vec<PaletteHit>)> = found.into_iter().flatten().collect();
+    found.sort_by_key(|(source, _)| sources.iter().position(|s| s == *source));
+    found.into_iter().flat_map(|(_, hits)| hits).collect()
 }
 
 fn sources(ctx: &Ctx<'_>) -> Vec<Source> {
@@ -66,24 +80,44 @@ fn sources(ctx: &Ctx<'_>) -> Vec<Source> {
     sources
 }
 
-async fn source_hits(ctx: &Ctx<'_>, source: &Source, value: &str) -> Vec<PaletteHit> {
+/// The hits of sources on one table, read in one query.
+async fn table_hits<'s>(
+    ctx: &Ctx<'_>,
+    sources: Vec<&'s Source>,
+    value: &str,
+) -> Vec<(&'s Source, Vec<PaletteHit>)> {
+    let table = &sources[0].table;
+    let filters: Vec<String> = sources.iter().map(|s| held(ctx, s, value)).collect();
+    let key: Vec<String> = ctx
+        .single_key(table)
+        .map(str::to_string)
+        .into_iter()
+        .collect();
+    let order = KeyOrder {
+        columns: &key,
+        descending: true,
+    };
+    let results = ctx
+        .rows_per_filter(table, ALIAS, &filters, &order, SECTION_CAP)
+        .await
+        .unwrap_or_default();
+    sources
+        .into_iter()
+        .zip(results)
+        .map(|(source, result)| (source, source_hits(ctx, source, result)))
+        .collect()
+}
+
+fn held(ctx: &Ctx<'_>, source: &Source, value: &str) -> String {
     let column = ctx.column(Some(ALIAS), &source.column);
-    let held = if source.contains {
+    if source.contains {
         format!("{column} LIKE {}", ctx.dialect.like_contains(value))
     } else {
         format!("{column} = {}", ctx.literal(value))
-    };
-    let order = ctx.single_key(&source.table).map_or_else(
-        || "1".to_string(),
-        |key| format!("{} DESC", ctx.column(Some(ALIAS), key)),
-    );
-    let sql = format!(
-        "SELECT * FROM {} AS {ALIAS} WHERE {held} ORDER BY {order} LIMIT {SECTION_CAP}",
-        ctx.table_ref(&source.table)
-    );
-    let Ok(result) = ctx.fetch(&sql).await else {
-        return Vec::new();
-    };
+    }
+}
+
+fn source_hits(ctx: &Ctx<'_>, source: &Source, result: ResultSet) -> Vec<PaletteHit> {
     let rows = ctx.annotate(&source.table, result);
     let section = format!("{}.{}", source.table, source.column);
     match ctx.rules.meta_table(&source.table) {
