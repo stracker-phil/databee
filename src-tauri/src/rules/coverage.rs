@@ -13,11 +13,12 @@ use ts_rs::TS;
 
 use super::condition::{Condition, conditions_sql};
 use super::effective::{self, EffectiveRules, RuleSources};
+use super::lens;
 use super::project_change::{self, ChangeContext};
 use super::types::Reference;
 use crate::db::{Dialect, ResultSet};
 use crate::error::{AppError, AppResult};
-use crate::lens::{self, ColumnsRef, ResolvedReference};
+use crate::lens::{ColumnsRef, ResolvedReference};
 use crate::schema::{self, DatabaseSchema};
 use crate::session::Session;
 use crate::value::ReferenceSource;

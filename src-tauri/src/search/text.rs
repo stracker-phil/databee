@@ -8,7 +8,7 @@ use futures_util::future::{join, join_all};
 
 use super::hits;
 use super::{PaletteHit, SECTION_CAP};
-use crate::document::Ctx;
+use crate::query::Ctx;
 use crate::rules::condition::conditions_sql;
 use crate::rules::effective::{AppliedEntity, MetaRef, RuleReference};
 use crate::rules::types::Entity;
@@ -224,7 +224,7 @@ async fn external_ids(ctx: &Ctx<'_>, text: &str) -> Vec<PaletteHit> {
 mod tests {
     use super::*;
     use crate::db::ResultSet;
-    use crate::document::testing::{Rig, num, result, shop, text};
+    use crate::query::testing::{Rig, num, result, shop, text};
 
     fn numbered(columns: &[&str; 2], count: usize) -> ResultSet {
         let rows = (1..=count)

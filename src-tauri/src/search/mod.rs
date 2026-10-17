@@ -13,8 +13,8 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::address::Address;
-use crate::document::Ctx;
 use crate::error::AppResult;
+use crate::query::Ctx;
 use crate::rules::effective::RuleSources;
 use crate::session::Session;
 use crate::value::Value;
@@ -106,8 +106,8 @@ mod server_tests;
 mod tests {
     use super::*;
     use crate::address::Target;
-    use crate::document::testing::{Rig, num, result, shop, text};
     use crate::error::AppError;
+    use crate::query::testing::{Rig, num, result, shop, text};
 
     const TIMEOUT: Duration = Duration::from_secs(30);
 

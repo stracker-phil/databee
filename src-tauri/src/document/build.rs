@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use futures_util::future::join;
 
-use super::context::{Ctx, non_empty};
 use super::meta::{self, MetaValues};
+use super::non_empty;
 use super::own::{self, Own};
 use super::{
     Document, Group, GroupLink, GroupRow, GroupShape, actions, events, exists, incoming, patterns,
@@ -14,6 +14,7 @@ use super::{
 use crate::address::{Address, Target};
 use crate::db::ColumnEquals;
 use crate::error::AppResult;
+use crate::query::Ctx;
 use crate::rules::kinds::ValueRule;
 use crate::rules::placeholder::{Placeholder, scan};
 use crate::value::Value;

@@ -10,11 +10,11 @@ use super::{
 };
 use crate::address::{Address, Target};
 use crate::db::ResultSet;
-use crate::document::Ctx;
 use crate::document::peek;
 use crate::error::AppResult;
-use crate::lens::annotate_query;
+use crate::query::Ctx;
 use crate::rules::actions::ActionScope;
+use crate::rules::annotate::annotate_query;
 use crate::rules::effective::{AppliedEntity, RuleSources};
 use crate::rules::queries::{Anomaly, AnomalyOpen, Home};
 use crate::saved::SavedEntry;
@@ -354,8 +354,8 @@ mod tests {
     use super::super::testing::Rig;
     use super::*;
     use crate::db::{Cell, FakeDatabase};
-    use crate::document::testing::{num, result, shop, text};
     use crate::error::AppError;
+    use crate::query::testing::{num, result, shop, text};
     use crate::rules::project::{Project, SavedQuery};
     use crate::saved;
 

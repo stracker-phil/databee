@@ -4,13 +4,13 @@ use tauri::State;
 
 use super::actions::{self, ObjectAction};
 use super::compare::Comparison;
-use super::context::Ctx;
 use super::diff::FlatDocument;
 use super::snapshot::{self, SnapshotDiff};
 use super::watch::{WatchPoll, Watches};
 use super::{Document, Peek, parse_address};
 use crate::db::plans::PlannedChange;
 use crate::error::AppResult;
+use crate::query::Ctx;
 use crate::state::AppState;
 use crate::store::snapshots::SnapshotInfo;
 

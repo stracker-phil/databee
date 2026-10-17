@@ -1,18 +1,23 @@
 //! `RulesLens`: the schema lens with the effective rules on top. Per column the strongest
 //! reference wins: declared foreign key, then project, then preset, then same-name inference.
 //! Kind rules apply where no key or reference does. Conditions, meta-key kinds and value styles
-//! are decided per row (`cells`), in memory over the page.
+//! are decided per row (`cells`), in memory over the page. `build` picks it when the rules change
+//! anything; `for_database` and `table_references` load the lens of a database.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::condition::{self, Condition};
 use super::effective::{
-    EffectiveRules, GroupKey, MetaRef, RuleReference, RuleStyle, inferred_id, meta_keys_match,
+    self, EffectiveRules, GroupKey, MetaRef, RuleReference, RuleSources, RuleStyle, inferred_id,
+    meta_keys_match,
 };
 use super::kinds::ValueRule;
 use crate::db::{Cell, ColumnMeta, ResultSet};
-use crate::lens::{Lens, ResolvedReference, SchemaLens, TableColumns};
+use crate::error::AppResult;
+use crate::lens::{Lens, ResolvedReference, SchemaLens, TableColumns, TableReferences};
+use crate::schema::{self, DatabaseSchema};
+use crate::session::Session;
 use crate::value::{
     CellAnnotations, CellKind, CellStyle, ColumnKind, ReferenceSource, ReferenceTarget,
 };
@@ -20,6 +25,49 @@ use crate::value::{
 pub struct RulesLens {
     schema: SchemaLens,
     rules: Arc<EffectiveRules>,
+}
+
+/// The rules lens when rules change anything, else the schema lens alone.
+pub fn build(
+    schema: Arc<DatabaseSchema>,
+    connection: &str,
+    database: &str,
+    rules: Option<Arc<EffectiveRules>>,
+) -> Box<dyn Lens> {
+    let schema_lens = SchemaLens::new(schema, connection, database);
+    match rules {
+        Some(rules) if !rules.is_empty() => Box::new(RulesLens::new(schema_lens, rules)),
+        _ => Box::new(schema_lens),
+    }
+}
+
+/// The lens of `database` as the session sees it now; without `rules`, the schema's alone.
+pub async fn for_database(
+    session: &Session,
+    database: &str,
+    rules: Option<RuleSources<'_>>,
+) -> AppResult<Box<dyn Lens>> {
+    let (schema, effective) = match rules {
+        Some(sources) => {
+            let (schema, rules) = effective::load(session, database, sources).await?;
+            (schema, Some(rules))
+        }
+        None => (schema::database(session, database).await?, None),
+    };
+    Ok(build(schema, &session.slug(), database, effective))
+}
+
+pub async fn table_references(
+    session: &Session,
+    database: &str,
+    table: &str,
+    rules: Option<RuleSources<'_>>,
+) -> AppResult<TableReferences> {
+    let lens = for_database(session, database, rules).await?;
+    Ok(TableReferences {
+        outgoing: lens.references_from(table),
+        incoming: lens.references_to(table),
+    })
 }
 
 /// Rule references of one source, column and condition: one reference with all their targets.
@@ -359,7 +407,7 @@ mod tests {
         forum, forum_schema, preset, project, reference, schema, with_foreign_key,
     };
     use crate::rules::types::{ColumnGlob, Preset};
-    use crate::schema::DatabaseSchema;
+    use crate::test_support::{connect_to, servers, spec};
     use crate::value::{ValueKind, value_at};
 
     fn lens_over(schema: DatabaseSchema, project: &Project, presets: &[Arc<Preset>]) -> RulesLens {
@@ -1105,5 +1153,86 @@ mod tests {
 
     fn num(value: &str) -> Cell {
         Cell::Number(value.into())
+    }
+
+    async fn fixture_sessions(database: &str) -> Vec<(String, Session)> {
+        let mut out = Vec::new();
+        for (host, port) in servers() {
+            let db = connect_to(&host, port, database).await;
+            let session = Session::new(
+                "it".into(),
+                spec(&host, port, database),
+                format!("it-{port}"),
+                Box::new(db),
+            );
+            out.push((format!("{host}:{port}"), session));
+        }
+        out
+    }
+
+    fn declared_books_author() -> ResolvedReference {
+        ResolvedReference {
+            from: ColumnsRef::new("books", vec!["author_id".into()]),
+            to: ColumnsRef::new("authors", vec!["id".into()]),
+            by: ReferenceSource::ForeignKey {
+                constraint: "books_author".into(),
+            },
+        }
+    }
+
+    fn same_name_from(refs: &[ResolvedReference], from: ColumnsRef, to: ColumnsRef) -> bool {
+        refs.iter().any(|r| {
+            r.from == from
+                && r.to == to
+                && matches!(&r.by, ReferenceSource::SameName { column, .. } if Some(column) == from.columns.first())
+        })
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn declared_foreign_key_shows_outgoing_from_books_and_incoming_to_authors() {
+        for (server, session) in fixture_sessions("databee_test").await {
+            let books = table_references(&session, "databee_test", "books", None)
+                .await
+                .unwrap_or_else(|e| panic!("{server}: {e:?}"));
+            let authors = table_references(&session, "databee_test", "authors", None)
+                .await
+                .unwrap();
+
+            assert_eq!(books.outgoing, [declared_books_author()], "{server}");
+            assert_eq!(authors.incoming, [declared_books_author()], "{server}");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn same_name_references_show_on_both_ends_on_the_wp_fixture() {
+        for (server, session) in fixture_sessions("wp_test").await {
+            let logs = table_references(&session, "wp_test", "wp_actionscheduler_logs", None)
+                .await
+                .unwrap_or_else(|e| panic!("{server}: {e:?}"));
+            let terms = table_references(&session, "wp_test", "wp_terms", None)
+                .await
+                .unwrap();
+
+            assert!(
+                same_name_from(
+                    &logs.outgoing,
+                    ColumnsRef::new("wp_actionscheduler_logs", vec!["action_id".into()]),
+                    ColumnsRef::new("wp_actionscheduler_actions", vec!["action_id".into()]),
+                ),
+                "{server}: {:?}",
+                logs.outgoing
+            );
+            assert!(
+                same_name_from(
+                    &terms.incoming,
+                    ColumnsRef::new("wp_term_taxonomy", vec!["term_id".into()]),
+                    ColumnsRef::new("wp_terms", vec!["term_id".into()]),
+                ),
+                "{server}: {:?}",
+                terms.incoming
+            );
+        }
     }
 }

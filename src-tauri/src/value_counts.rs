@@ -8,8 +8,8 @@ use ts_rs::TS;
 
 use crate::db::ColumnEquals;
 use crate::db::browse::equals_sql;
-use crate::document::Ctx;
 use crate::error::{AppError, AppResult};
+use crate::query::Ctx;
 use crate::rules::effective::RuleSources;
 use crate::session::Session;
 use crate::state::AppState;
@@ -124,8 +124,8 @@ pub async fn value_counts(
 mod tests {
     use super::*;
     use crate::db::Cell;
-    use crate::document::testing::{Rig, num, result, shop, text};
     use crate::error::ErrorKind;
+    use crate::query::testing::{Rig, num, result, shop, text};
     use crate::rules::PresetCatalog;
     use crate::rules::ProjectsStore;
     use crate::test_support::{connect_to, servers, spec};

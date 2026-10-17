@@ -78,9 +78,13 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/state.rs session.rs  AppState, open sessions
   src/schema.rs            per-session schema cache: tables, columns, keys, foreign keys, structures
   src/value/               Value, ValueKind, ColumnKind, RowKey: what a cell is and where it came from
-  src/lens/                the lens seam: SchemaLens (keys, foreign keys, same-name inference), result kinds
+  src/lens/                the lens seam: the Lens trait, SchemaLens (keys, foreign keys, same-name inference),
+                           kinds of a one-table result; knows nothing of rules
   src/rules/               presets and projects: rule types, TOML parsing, the preset catalog, projects.json,
-                           effective rules, the rules lens and reference coverage
+                           effective rules, the rules lens (and which lens a database gets), result kinds by
+                           column origin, reference coverage
+  src/query/               Ctx and Rows: bounded reads of one database through its schema, rules and lens,
+                           shared by documents, search, the readout and value counts
   src/document/            documents: one row with its meta rows, incoming references, patterns and events
   src/search/              the palette's search: ids, people, external ids, find everywhere
   src/saved/               saved queries: project, global and preset pinned ones; the favorites migration
@@ -182,10 +186,16 @@ status kind: color comes only from value styles.
   `references_to(table)` and `cells(columns, result)` (per-row kinds and styles). `SchemaLens` answers
   from the schema cache: primary keys, declared foreign keys and same-name inference
   ([database.md](database.md#references-and-kinds)). `rules::lens::RulesLens` wraps it with the effective
-  rules of presets and the project; `lens::build` picks it when the rules change anything.
-  `lens::annotate_execute` gives query results their kinds by column origin, loading a lens per database;
-  `lens::annotate_query` does the same for one result with a lens the caller already holds (the readout's
-  saved queries and snapshots of saved queries use the document `Ctx`'s).
+  rules of presets and the project; `rules::lens::build` picks it when the rules change anything, and
+  `rules::lens::for_database` and `table_references` load the lens of a database.
+  `lens::annotate_table` gives a result whose columns all come from one table its kinds with a lens the
+  caller holds. `rules::annotate::annotate_browse` does that for a browse page and adds its row keys;
+  `rules::annotate::annotate_execute` gives query results their kinds by column origin, loading a lens per
+  database; `rules::annotate::annotate_query` does the same for one result with a lens the caller already
+  holds (the readout's saved queries and snapshots of saved queries use the `query::Ctx`'s).
+- **Dependencies.** `lens/` depends on the schema and values only; `rules/` builds on `lens/`, and
+  `query/` on both. `document/`, `search/`, `readout/` and `value_counts.rs` read through `query::Ctx`;
+  `document/` exports only what it owns.
 
 ## Rules and presets
 
@@ -202,7 +212,7 @@ WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](prese
   must exist in the preset). `to_toml` writes a preset back.
 - `placeholder.rs`: `{p}`, `{np}`, `{id}`, `{owner.<column>}`, `{meta.<key>}`, `{param.<name>}`, which
   of them a piece of SQL may use, and `render` for the value placeholders. Prefixes are filled in only by
-  `Applied::expand` (`applied.rs`) and `Ctx::preset_sql` (qualified with the database first).
+  `Applied::expand` (`applied.rs`) and `query::Ctx::preset_sql` (qualified with the database first).
 - `catalog.rs`: `PresetCatalog` in `AppState`: the built-ins (`BUILT_IN`, `include_str!` of
   `src-tauri/presets/*.toml`) plus `<config dir>/presets/*.toml`, reread when the directory's files or
   mtimes change; `requires_order` resolves `requires`.
@@ -223,7 +233,8 @@ WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](prese
   DDL, a refresh, a preset file change or a project change rebuilds it. `effective::load` returns a
   database's schema and its effective rules; `rules_info` builds `RulesInfo` from them. `RuleSources` (from
   `AppState::rules`) is what `Session::browse`, `Session::execute` and `table_references` take.
-- `lens.rs`: `RulesLens` (see the lens seam above).
+- `lens.rs`: `RulesLens`, `build`, `for_database`, `table_references` (see the lens seam above).
+- `annotate.rs`: kinds, row keys, per-cell kinds and styles of browse pages and query results.
 - `coverage.rs`: `reference_coverage`, read-only counts of how many rows of one reference resolve
   (`CoverageQuery` builds the SQL from the reference and its rule's conditions), and `coverage_preview`,
   the same count for an unsaved rule on a checked copy of the project (`project_change::put_reference`
@@ -282,7 +293,7 @@ values that point into it.
 
 **Queries** are bounded by the rules, never by the rows: one for the row, one per meta table, one per
 source table of the incoming groups (several references from one table share a `UNION ALL`,
-`Ctx::capped_each`), one per pattern group (a `COUNT(*)` more for each capped group), one per pivoted group
+`query::Ctx::capped_each`), one per pattern group (a `COUNT(*)` more for each capped group), one per pivoted group
 and one per referenced table. The measured counts are in [database.md](database.md#statement-counts). Each uses the session's query
 timeout on the metadata pool.
 

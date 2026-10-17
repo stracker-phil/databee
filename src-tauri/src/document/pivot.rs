@@ -4,8 +4,9 @@
 use std::collections::HashMap;
 
 use super::GroupRow;
-use super::context::{Ctx, Rows, non_empty};
+use super::non_empty;
 use crate::db::Cell;
+use crate::query::{Ctx, KeyOrder, Rows};
 use crate::rules::effective::MetaRef;
 use crate::value::{Value, ValueKind};
 
@@ -127,7 +128,7 @@ async fn fetch_meta(
         ids.join(", "),
         ctx.ident(&meta.key),
         names.join(", "),
-        ctx.key_order(&meta.table, None)
+        KeyOrder::primary(ctx, &meta.table).sql(ctx, None)
     );
     match ctx.rows(&meta.table, &sql).await {
         Ok(found) => Some(found),
@@ -145,7 +146,7 @@ fn meta_of<'r>(ctx: &'r Ctx<'_>, owner: &str) -> Option<&'r MetaRef> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::testing::{Rig, num, result, shop, text};
+    use crate::query::testing::{Rig, num, result, shop, text};
     use crate::value::{KeyPart, Provenance, RowKey};
 
     #[tokio::test]

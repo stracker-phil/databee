@@ -9,8 +9,8 @@ mod server_tests;
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::context::Ctx;
 use super::own::Own;
+use crate::query::Ctx;
 use crate::rules::actions::{ActionEffect, ActionScope};
 use crate::rules::condition::holds;
 use crate::rules::effective::RuleAction;

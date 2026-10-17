@@ -4,9 +4,9 @@
 
 use futures_util::future::join_all;
 
-use super::context::Ctx;
 use crate::address::Address;
 use crate::error::{AppError, AppResult};
+use crate::query::Ctx;
 use crate::rules::effective::AppliedEntity;
 
 pub struct Named {
@@ -80,7 +80,7 @@ async fn holds(ctx: &Ctx<'_>, entity: &AppliedEntity, key: &str) -> bool {
 mod tests {
     use super::*;
     use crate::db::{ResultSet, TableStructure};
-    use crate::document::testing::{Rig, num, result, shop};
+    use crate::query::testing::{Rig, num, result, shop};
 
     const FILTERED_ORDER: &str = r#"
 [[entity]]

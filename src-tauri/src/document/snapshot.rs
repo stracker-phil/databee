@@ -12,8 +12,8 @@ use crate::address::{Address, Target};
 use crate::db::classify::is_read_only;
 use crate::db::{Cell, ResultSet};
 use crate::error::{AppError, AppResult};
-use crate::lens::annotate_query;
 use crate::readout::sql::{in_database, limited, single_statement};
+use crate::rules::annotate::annotate_query;
 use crate::rules::effective::RuleSources;
 use crate::session::Session;
 use crate::store::snapshots::{SnapshotInfo, SnapshotStore};
@@ -251,8 +251,8 @@ mod tests {
     use super::*;
     use crate::db::{ColumnMeta, ColumnOrigin};
     use crate::document::diff::fixtures::{key, number, prov, text};
-    use crate::document::testing::{Rig, result, shop};
     use crate::error::ErrorKind;
+    use crate::query::testing::{Rig, result, shop};
     use crate::rules::project::SavedQuery;
 
     fn column(name: &str, table: &str, origin_column: &str) -> ColumnMeta {

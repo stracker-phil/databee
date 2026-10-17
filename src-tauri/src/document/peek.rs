@@ -5,12 +5,12 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::build::{currency_lookup, needed_meta_keys};
-use super::context::Ctx;
 use super::meta::{self, MetaValues};
 use super::own::{self, Own};
 use crate::address::Address;
 use crate::db::Cell;
 use crate::error::AppResult;
+use crate::query::Ctx;
 use crate::value::{Value, ValueKind};
 
 /// Columns shown for a row whose table has no entity summary.
@@ -99,8 +99,8 @@ async fn summary_values(ctx: &Ctx<'_>, own: &Own, summary: &[String]) -> Vec<(St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::context::testing::{Rig, num, result, shop, text};
     use crate::error::AppError;
+    use crate::query::testing::{Rig, num, result, shop, text};
     use crate::value::{KeyPart, Provenance, RowKey};
 
     const SUMMARY: &str = r#"

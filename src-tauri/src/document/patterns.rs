@@ -6,10 +6,10 @@ use std::collections::HashMap;
 
 use futures_util::future::join_all;
 
-use super::context::{Ctx, Rows};
 use super::meta::MetaValues;
 use super::own::Own;
 use super::{Group, GroupLink, GroupRow, GroupShape, ROWS_CAP};
+use crate::query::{Ctx, KeyOrder, Rows};
 use crate::rules::condition;
 use crate::rules::effective::RulePattern;
 use crate::rules::placeholder::{Placeholder, render};
@@ -64,7 +64,7 @@ async fn group(
     if sql.is_empty() {
         return PatternGroup { group, order };
     }
-    let key_order = ctx.key_order(table, None);
+    let key_order = KeyOrder::primary(ctx, table).sql(ctx, None);
     let order_sql = match &order {
         Some(column) => format!("{}, {key_order}", ctx.ident(column)),
         None => key_order,
@@ -148,8 +148,10 @@ fn value(
 mod tests {
     use super::*;
     use crate::db::{Cell, ResultSet};
-    use crate::document::context::testing::{Rig, count, num, order, result, shop, text};
+    use crate::query::testing::{Rig, count, num, result, shop, text};
+
     use crate::document::meta;
+    use crate::document::testing::order;
     use crate::error::AppError;
     use crate::value::{KeyPart, RowKey};
 

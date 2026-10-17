@@ -3,12 +3,12 @@
 
 use std::collections::HashMap;
 
-use super::context::{Capped, Ctx, CurrencyLookup, Rows};
 use super::own::Own;
 use super::{Group, GroupLink, GroupRow, GroupShape, META_CAP};
 use crate::address::Target;
 use crate::db::ColumnEquals;
 use crate::error::AppResult;
+use crate::query::{Capped, Ctx, CurrencyLookup, KeyOrder, Rows};
 use crate::rules::effective::MetaRef;
 use crate::value::Value;
 
@@ -31,7 +31,7 @@ pub async fn load(ctx: &Ctx<'_>, own: &Own, needed: &[String]) -> Vec<MetaRows> 
             continue;
         };
         let filter = format!("{} = {}", ctx.ident(&fk), ctx.literal(id));
-        let order = ctx.key_order(&meta.table, None);
+        let order = KeyOrder::primary(ctx, &meta.table).sql(ctx, None);
         let loaded = ctx
             .capped(&meta.table, None, &filter, &order, META_CAP)
             .await;
@@ -170,7 +170,9 @@ mod tests {
     use super::*;
     use crate::db::{Cell, ResultSet};
     use crate::document::build;
-    use crate::document::context::testing::{Rig, count, num, order, result, shop, text};
+    use crate::query::testing::{Rig, count, num, result, shop, text};
+
+    use crate::document::testing::order;
     use crate::error::AppError;
     use crate::value::{KeyPart, RowKey, ValueKind};
 

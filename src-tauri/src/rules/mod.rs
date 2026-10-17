@@ -3,6 +3,7 @@
 //! generic; application knowledge lives only in preset files (docs/presets.md).
 
 pub mod actions;
+pub mod annotate;
 pub mod applied;
 pub mod catalog;
 pub mod commands;

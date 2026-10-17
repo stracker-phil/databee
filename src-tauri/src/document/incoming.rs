@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 
 use futures_util::future::join_all;
 
-use super::context::{Capped, Ctx};
 use super::own::Own;
 use super::pivot;
 use super::{Group, GroupLink, GroupShape, ROWS_CAP};
@@ -17,6 +16,7 @@ use crate::address::{Address, Target};
 use crate::db::ColumnEquals;
 use crate::error::AppResult;
 use crate::lens::ResolvedReference;
+use crate::query::{Capped, Ctx};
 use crate::rules::condition::{self, Condition, conditions_sql};
 use crate::rules::effective::{RuleReference, inferred_id};
 use crate::value::ReferenceSource;
@@ -286,7 +286,9 @@ fn rows_address(ctx: &Ctx<'_>, own: &Own, incoming: &Incoming<'_>) -> Option<Add
 mod tests {
     use super::*;
     use crate::db::{Cell, ResultSet};
-    use crate::document::testing::{Rig, count, num, order, result, shop, text};
+    use crate::query::testing::{Rig, count, num, result, shop, text};
+
+    use crate::document::testing::order;
     use crate::error::AppError;
 
     const LOG_REFERENCES: &str = r#"

@@ -9,9 +9,10 @@ use std::sync::Arc;
 pub use rows::{KindRow, PresetRow, ProjectRules, ReferenceRow, RuleOrigin, RuleTable, StyleRow};
 
 use crate::error::AppResult;
-use crate::lens::{self, ColumnsRef, Lens, ResolvedReference, SchemaLens};
+use crate::lens::{ColumnsRef, Lens, ResolvedReference, SchemaLens};
 use crate::rules::condition::conditions_text;
 use crate::rules::effective::{self, EffectiveRules, RuleSources, inferred_id};
+use crate::rules::lens;
 use crate::rules::project::Project;
 use crate::rules::types::{ColumnRef, Conditions, Preset, Reference};
 use crate::schema::DatabaseSchema;
@@ -320,7 +321,7 @@ fn inferred_column_id(reference: &ResolvedReference) -> Option<String> {
 mod tests {
     use super::*;
     use crate::db::ForeignKey;
-    use crate::document::testing::{Rig, shop};
+    use crate::query::testing::{Rig, shop};
     use crate::rules::testing::{preset, project, reference, schema, with_foreign_key};
 
     const KIT: &str = r#"

@@ -1,11 +1,11 @@
 //! The row itself: read with the filter of every entity of its table, so the row picks its entity
 //! in the same query (the first entity whose filter holds; filtered ones come first).
 
-use super::context::{Ctx, Rows};
 use crate::address::{Address, Target};
 use crate::db::ColumnEquals;
 use crate::db::browse::aliased_equals_sql;
 use crate::error::{AppError, AppResult};
+use crate::query::{Ctx, Rows};
 use crate::rules::effective::AppliedEntity;
 
 const ENTITY_COLUMN: &str = "__databee_entity_";
@@ -119,7 +119,7 @@ mod tests {
     use super::*;
     use crate::db::{Cell, TableStructure};
     use crate::document::build;
-    use crate::document::testing::{Rig, num, result, shop, text};
+    use crate::query::testing::{Rig, num, result, shop, text};
 
     const ORDER_COLUMNS: [&str; 5] = ["id", "status", "total", "currency", "created_gmt"];
 

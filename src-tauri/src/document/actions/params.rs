@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::super::context::Ctx;
 use crate::error::{AppError, AppResult};
+use crate::query::Ctx;
 use crate::rules::actions::{Param, ParamType};
 
 /// A parameter as the page asks for it.
@@ -148,7 +148,7 @@ fn checked(param: &Param, raw: &str, choices: Option<&[String]>) -> AppResult<Pa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::context::testing::{Rig, result, shop, text};
+    use crate::query::testing::{Rig, result, shop, text};
 
     fn param(name: &str) -> Param {
         Param {

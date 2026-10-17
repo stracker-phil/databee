@@ -13,8 +13,9 @@ use crate::db::classify::is_read_only;
 use crate::db::{BrowsePage, BrowseRequest, Connector, ExecuteResponse, MySqlConnector};
 use crate::document::{self, Document};
 use crate::error::{AppError, AppResult};
-use crate::lens::{self, ResolvedReference};
+use crate::lens::ResolvedReference;
 use crate::rules::effective::RuleSources;
+use crate::rules::lens::for_database;
 use crate::rules::{PresetCatalog, ProjectsStore};
 use crate::schema;
 use crate::search::{self, PaletteHit};
@@ -192,7 +193,7 @@ impl Core {
     ) -> AppResult<Vec<ResolvedReference>> {
         self.with_rules(connection, async |session, sources, _| {
             let schema = schema::database(session, database).await?;
-            let lens = lens::for_database(session, database, Some(sources)).await?;
+            let lens = for_database(session, database, Some(sources)).await?;
             Ok(schema
                 .tables
                 .iter()

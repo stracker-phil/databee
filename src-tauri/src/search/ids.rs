@@ -4,7 +4,8 @@ use futures_util::future::join_all;
 
 use super::hits::{self, Place};
 use super::{PLAIN_TABLE_ROWS, PaletteHit, SECTION_CAP};
-use crate::document::{self, Ctx, Own, peek};
+use crate::document::{self, Own, peek};
+use crate::query::Ctx;
 
 /// Found rows whose referencing rows are read.
 const LINKED_ROWS: usize = 5;
@@ -92,7 +93,7 @@ mod tests {
 
     use super::*;
     use crate::db::TableInfo;
-    use crate::document::testing::{Rig, shop};
+    use crate::query::testing::{Rig, shop};
     use crate::schema::DatabaseSchema;
 
     async fn read_without_entities(adjust: fn(&mut DatabaseSchema)) -> Vec<String> {

@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use tempfile::{TempDir, tempdir};
 
-use crate::document::{self, Ctx};
+use crate::document;
+use crate::query::Ctx;
 use crate::rules::catalog::PresetCatalog;
 use crate::rules::coverage::reference_coverage;
 use crate::rules::effective::RuleSources;

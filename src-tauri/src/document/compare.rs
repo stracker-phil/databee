@@ -62,7 +62,7 @@ pub async fn compare(
 mod tests {
     use super::*;
     use crate::db::Cell;
-    use crate::document::testing::{Rig, TIMEOUT, num, result, shop, text};
+    use crate::query::testing::{Rig, TIMEOUT, num, result, shop, text};
 
     const ORDER_COLUMNS: [&str; 5] = ["id", "status", "total", "currency", "created_gmt"];
 

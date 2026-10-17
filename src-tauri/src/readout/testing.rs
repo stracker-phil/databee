@@ -4,15 +4,15 @@ use std::sync::Arc;
 use tempfile::{TempDir, tempdir};
 
 use crate::db::FakeDatabase;
-use crate::document::Ctx;
-use crate::document::testing::{BASE, TIMEOUT};
+use crate::query::Ctx;
+use crate::query::testing::{BASE, TIMEOUT};
 use crate::rules::ProjectsStore;
 use crate::rules::catalog::PresetCatalog;
 use crate::rules::effective::RuleSources;
 use crate::session::Session;
 use crate::test_support::spec;
 
-/// A session over a fake `wp` database (`document::testing::shop`) with presets in a tempdir:
+/// A session over a fake `wp` database (`query::testing::shop`) with presets in a tempdir:
 /// `doc` is `BASE` plus the given rules, `others` are written as they are.
 pub struct Rig {
     _dir: TempDir,

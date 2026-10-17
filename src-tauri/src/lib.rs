@@ -17,6 +17,7 @@ mod lock;
 mod mcp;
 mod menu;
 mod pending;
+mod query;
 mod readout;
 mod remote;
 pub mod rules;

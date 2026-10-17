@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use super::{PaletteHit, SECTION_CAP};
 use crate::address::{Address, Target};
 use crate::db::{Cell, ColumnEquals};
-use crate::document::{Ctx, Group, GroupLink, Rows};
+use crate::document::{Group, GroupLink};
+use crate::query::{Ctx, Rows};
 use crate::rules::effective::MetaRef;
 use crate::rules::types::Entity;
 use crate::value::{KeyPart, RowKey, Value, ValueKind};
@@ -250,7 +251,7 @@ fn owner_of(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::testing::{Rig, shop};
+    use crate::query::testing::{Rig, shop};
 
     const TWO_FILTERED: &str = r#"
 [[entity]]

@@ -1,25 +1,20 @@
 //! The lens seam: what a column holds and which references a table has. `SchemaLens` answers
 //! from the schema cache (primary keys, declared foreign keys, same-name inference);
-//! `rules::lens::RulesLens` wraps it with the effective rules of presets and the project.
+//! `rules::lens::RulesLens` wraps it with the effective rules of presets and the project, and
+//! `rules::lens::build` picks between them.
 
 mod annotate;
 mod cells;
 mod schema_lens;
 
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-pub use annotate::{annotate_browse, annotate_execute, annotate_query, annotate_table};
+pub use annotate::{annotate_kinds, annotate_table, type_kinds};
+pub use cells::{IndexedColumns, add_cells, table_columns};
 pub use schema_lens::SchemaLens;
 
 use crate::db::{ColumnMeta, ResultSet};
-use crate::error::AppResult;
-use crate::rules::effective::{self, EffectiveRules, RuleSources};
-use crate::rules::lens::RulesLens;
-use crate::schema::{self, DatabaseSchema};
-use crate::session::Session;
 use crate::value::{CellAnnotations, ColumnKind, ReferenceSource};
 
 pub trait Lens: Send + Sync {
@@ -74,134 +69,4 @@ pub struct ResolvedReference {
 pub struct TableReferences {
     pub outgoing: Vec<ResolvedReference>,
     pub incoming: Vec<ResolvedReference>,
-}
-
-/// The rules lens when rules change anything, else the schema lens alone.
-pub fn build(
-    schema: Arc<DatabaseSchema>,
-    connection: &str,
-    database: &str,
-    rules: Option<Arc<EffectiveRules>>,
-) -> Box<dyn Lens> {
-    let schema_lens = SchemaLens::new(schema, connection, database);
-    match rules {
-        Some(rules) if !rules.is_empty() => Box::new(RulesLens::new(schema_lens, rules)),
-        _ => Box::new(schema_lens),
-    }
-}
-
-/// The lens of `database` as the session sees it now; without `rules`, the schema's alone.
-pub async fn for_database(
-    session: &Session,
-    database: &str,
-    rules: Option<RuleSources<'_>>,
-) -> AppResult<Box<dyn Lens>> {
-    let (schema, effective) = match rules {
-        Some(sources) => {
-            let (schema, rules) = effective::load(session, database, sources).await?;
-            (schema, Some(rules))
-        }
-        None => (schema::database(session, database).await?, None),
-    };
-    Ok(build(schema, &session.slug(), database, effective))
-}
-
-pub async fn table_references(
-    session: &Session,
-    database: &str,
-    table: &str,
-    rules: Option<RuleSources<'_>>,
-) -> AppResult<TableReferences> {
-    let lens = for_database(session, database, rules).await?;
-    Ok(TableReferences {
-        outgoing: lens.references_from(table),
-        incoming: lens.references_to(table),
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::{connect_to, servers, spec};
-
-    async fn fixture_sessions(database: &str) -> Vec<(String, Session)> {
-        let mut out = Vec::new();
-        for (host, port) in servers() {
-            let db = connect_to(&host, port, database).await;
-            let session = Session::new(
-                "it".into(),
-                spec(&host, port, database),
-                format!("it-{port}"),
-                Box::new(db),
-            );
-            out.push((format!("{host}:{port}"), session));
-        }
-        out
-    }
-
-    fn declared_books_author() -> ResolvedReference {
-        ResolvedReference {
-            from: ColumnsRef::new("books", vec!["author_id".into()]),
-            to: ColumnsRef::new("authors", vec!["id".into()]),
-            by: ReferenceSource::ForeignKey {
-                constraint: "books_author".into(),
-            },
-        }
-    }
-
-    fn same_name_from(refs: &[ResolvedReference], from: ColumnsRef, to: ColumnsRef) -> bool {
-        refs.iter().any(|r| {
-            r.from == from
-                && r.to == to
-                && matches!(&r.by, ReferenceSource::SameName { column, .. } if Some(column) == from.columns.first())
-        })
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn declared_foreign_key_shows_outgoing_from_books_and_incoming_to_authors() {
-        for (server, session) in fixture_sessions("databee_test").await {
-            let books = table_references(&session, "databee_test", "books", None)
-                .await
-                .unwrap_or_else(|e| panic!("{server}: {e:?}"));
-            let authors = table_references(&session, "databee_test", "authors", None)
-                .await
-                .unwrap();
-
-            assert_eq!(books.outgoing, [declared_books_author()], "{server}");
-            assert_eq!(authors.incoming, [declared_books_author()], "{server}");
-        }
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn same_name_references_show_on_both_ends_on_the_wp_fixture() {
-        for (server, session) in fixture_sessions("wp_test").await {
-            let logs = table_references(&session, "wp_test", "wp_actionscheduler_logs", None)
-                .await
-                .unwrap_or_else(|e| panic!("{server}: {e:?}"));
-            let terms = table_references(&session, "wp_test", "wp_terms", None)
-                .await
-                .unwrap();
-
-            assert!(
-                same_name_from(
-                    &logs.outgoing,
-                    ColumnsRef::new("wp_actionscheduler_logs", vec!["action_id".into()]),
-                    ColumnsRef::new("wp_actionscheduler_actions", vec!["action_id".into()]),
-                ),
-                "{server}: {:?}",
-                logs.outgoing
-            );
-            assert!(
-                same_name_from(
-                    &terms.incoming,
-                    ColumnsRef::new("wp_term_taxonomy", vec!["term_id".into()]),
-                    ColumnsRef::new("wp_terms", vec!["term_id".into()]),
-                ),
-                "{server}: {:?}",
-                terms.incoming
-            );
-        }
-    }
 }

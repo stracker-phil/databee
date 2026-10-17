@@ -18,8 +18,8 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::address::{Address, Target};
-use crate::document::Ctx;
 use crate::error::{AppError, AppResult};
+use crate::query::Ctx;
 use crate::rules::effective::RuleSources;
 use crate::saved::SavedOrigin;
 use crate::session::Session;
@@ -317,8 +317,8 @@ mod tests {
     use super::testing::Rig;
     use super::*;
     use crate::db::{Cell, FakeDatabase};
-    use crate::document::testing::{TIMEOUT, num, result, shop};
     use crate::error::ErrorKind;
+    use crate::query::testing::{TIMEOUT, num, result, shop};
     use crate::rules::project::SavedQuery;
     use crate::rules::queries::Home;
 

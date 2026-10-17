@@ -14,7 +14,8 @@ use crate::db::{
     BrowsePage, BrowseRequest, DatabaseInfo, ExecuteResponse, TableInfo, TableStructure,
 };
 use crate::error::{AppError, AppResult};
-use crate::lens::{self, TableReferences};
+use crate::lens::TableReferences;
+use crate::rules::lens;
 use crate::schema;
 use crate::session::{self, OpenArgs, SessionInfo};
 use crate::state::AppState;

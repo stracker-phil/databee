@@ -4,7 +4,6 @@
 
 use std::collections::BTreeMap;
 
-use super::super::context::Ctx;
 use super::super::own;
 use super::params::{self, ParamValue};
 use super::rules;
@@ -13,6 +12,7 @@ use crate::db::browse::equals_sql;
 use crate::db::changes::Plan;
 use crate::db::where_changes::{self, RowsDelete, RowsUpdate};
 use crate::error::{AppError, AppResult};
+use crate::query::Ctx;
 use crate::rules::actions::{ActionEffect, ActionScope, DeleteSpec, SetValue, UpdateStep};
 use crate::rules::condition::{conditions_sql, holds};
 use crate::rules::effective::RuleAction;
@@ -298,7 +298,7 @@ impl Scope<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::context::testing::{Rig, count, num, result, shop, text};
+    use crate::query::testing::{Rig, count, num, result, shop, text};
 
     const ACTIONS: &str = r#"
 [[action]]

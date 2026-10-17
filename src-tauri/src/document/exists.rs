@@ -6,10 +6,10 @@ use std::collections::{BTreeMap, HashMap};
 use futures_util::future::join_all;
 
 use super::Group;
-use super::context::Ctx;
 use crate::address::{Address, Target};
 use crate::db::browse::equals_sql;
 use crate::db::{ColumnEquals, ResultSet};
+use crate::query::Ctx;
 use crate::value::{Value, ValueKind};
 
 /// The conditions that select a target row.
@@ -167,9 +167,9 @@ fn matches(found: &ResultSet, lookup: &Lookup) -> bool {
 mod tests {
     use super::*;
     use crate::db::{Cell, ColumnEquals};
-    use crate::document::context::testing::{Rig, num, result, shop, text};
     use crate::document::{GroupLink, GroupRow, GroupShape};
     use crate::error::AppError;
+    use crate::query::testing::{Rig, num, result, shop, text};
     use crate::value::ReferenceSource;
 
     const PEOPLE: &str = "FROM `wp`.`f_people`";

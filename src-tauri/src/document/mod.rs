@@ -10,7 +10,6 @@ pub mod actions;
 mod build;
 pub mod commands;
 pub mod compare;
-mod context;
 pub mod diff;
 mod events;
 mod exists;
@@ -24,6 +23,8 @@ mod pivot;
 mod server_tests;
 mod shorthand;
 pub mod snapshot;
+#[cfg(test)]
+mod testing;
 pub mod watch;
 
 use std::time::Duration;
@@ -34,14 +35,12 @@ use ts_rs::TS;
 use crate::address::{Address, SCHEME};
 use crate::error::{AppError, AppResult};
 use crate::lens::ResolvedReference;
+use crate::query::Ctx;
 use crate::rules::effective::RuleSources;
 use crate::session::Session;
 use crate::value::{RowKey, Value};
 
 pub use build::referencing;
-#[cfg(test)]
-pub(crate) use context::testing;
-pub use context::{Ctx, KeyOrder, Rows};
 pub use own::{Own, resolve};
 pub use peek::Peek;
 
@@ -146,7 +145,7 @@ pub async fn open(
 ) -> AppResult<Document> {
     if text.starts_with(SCHEME) {
         let address = parse_address(session, text)?;
-        let ctx = context::Ctx::load(session, &address.database, sources, timeout).await?;
+        let ctx = Ctx::load(session, &address.database, sources, timeout).await?;
         return build::document(&ctx, &address).await;
     }
     let (entity, key) = shorthand::parse(text).ok_or_else(|| {
@@ -155,7 +154,7 @@ pub async fn open(
     let database = database
         .or_else(|| session.db.current_database())
         .ok_or_else(|| AppError::InvalidInput("No database selected".into()))?;
-    let ctx = context::Ctx::load(session, &database, sources, timeout).await?;
+    let ctx = Ctx::load(session, &database, sources, timeout).await?;
     let named = shorthand::resolve(&ctx, entity, key).await?;
     let mut document = build::document(&ctx, &named.address).await?;
     document.alternatives = named.alternatives;
@@ -197,11 +196,17 @@ impl Group {
     }
 }
 
+/// A currency value only counts with text in it.
+fn non_empty(value: &Value) -> bool {
+    value.raw.as_text().is_some_and(|text| !text.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::FakeDatabase;
-    use crate::document::testing::{Rig, TIMEOUT, shop};
+    use crate::db::{Cell, FakeDatabase};
+    use crate::query::testing::{Rig, TIMEOUT, shop, text};
+    use crate::value::ValueKind;
 
     async fn open_text(rig: &Rig, text: &str, database: Option<&str>) -> AppError {
         open(
@@ -252,5 +257,27 @@ mod tests {
             "{err:?}"
         );
         assert_eq!(rig.db.queries(), Vec::<String>::new());
+    }
+
+    fn eur() -> Value {
+        Value {
+            raw: text("EUR"),
+            kind: ValueKind::Text,
+            source: None,
+            style: None,
+            secondary: None,
+        }
+    }
+
+    #[test]
+    fn only_text_counts_as_a_currency() {
+        let mut empty = eur();
+        empty.raw = text("");
+        let mut null = eur();
+        null.raw = Cell::Null;
+
+        assert!(non_empty(&eur()));
+        assert!(!non_empty(&empty));
+        assert!(!non_empty(&null));
     }
 }

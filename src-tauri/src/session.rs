@@ -13,8 +13,8 @@ use crate::db::classify::changes_schema;
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
 use crate::db::{BrowsePage, BrowseRequest, CellLimit, Connector, Database, ExecuteResponse};
 use crate::error::{AppError, AppResult};
-use crate::lens;
 use crate::lock::{MutexExt, RwLockExt};
+use crate::rules::annotate;
 use crate::rules::effective::{self, RuleSources};
 use crate::schema;
 use crate::secrets::{PasswordSource, SecretStore, resolve_password};
@@ -167,7 +167,7 @@ impl Session {
             self.ddl_writes.fetch_add(1, Ordering::SeqCst);
         }
         let mut response = response?;
-        lens::annotate_execute(self, &mut response, rules).await;
+        annotate::annotate_execute(self, &mut response, rules).await;
         for result in &mut response.results {
             self.cells.keep(result);
         }
@@ -198,7 +198,7 @@ impl Session {
             )),
             _ => None,
         };
-        lens::annotate_browse(self, &mut page, &request.database, schema, effective);
+        annotate::annotate_browse(self, &mut page, &request.database, schema, effective);
         self.cells.keep(&mut page.result);
         Ok(page)
     }

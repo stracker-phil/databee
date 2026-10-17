@@ -9,7 +9,7 @@ use futures_util::future::join_all;
 use super::hits;
 use super::{PaletteHit, SECTION_CAP};
 use crate::db::ResultSet;
-use crate::document::{Ctx, KeyOrder};
+use crate::query::{Ctx, KeyOrder};
 use crate::rules::types::FindMatch;
 
 const ALIAS: &str = "t";
@@ -132,7 +132,7 @@ fn source_hits(ctx: &Ctx<'_>, source: &Source, result: ResultSet) -> Vec<Palette
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::testing::{Rig, num, result, shop, text};
+    use crate::query::testing::{Rig, num, result, shop, text};
 
     const FIND_LOG_MESSAGES: &str = r#"
 [[find]]

@@ -259,7 +259,8 @@ Users: `address::resolve` (table names, primary keys, filter columns), the lens
 
 `src-tauri/src/lens/` reads what a column holds and which references a table has (the `Lens` trait;
 [architecture](architecture.md#values-and-the-lens)). `SchemaLens` answers from `schema::database`, so a
-browse page or `table_references` call needs no structure query per table.
+browse page or `table_references` call needs no structure query per table. `rules::lens` picks the lens of a
+database and `rules::annotate` fills browse pages and query results with it.
 
 **Declared references** are the foreign keys (`ReferenceSource::ForeignKey { constraint }`).
 
