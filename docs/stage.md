@@ -94,6 +94,11 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     the last crumb is no button), `peek` on the peek card while ⌥ is held
   - value columns: `value-column` (a table or query tab's), `value-column:tree`, `value-column:raw`,
     `value-column:copy`, `value-column:close`
+  - query tabs: `query:save`, `query:pin`, `query:copy-to-project` (a preset query's tab), `query:origin` (where
+    the tab's saved query is stored); the pin dialog's `dialog:pin:none`, `dialog:pin:count`, `dialog:pin:rows`
+    and `dialog:pin:limit`
+  - value counts: `grid:value-counts` (the popover, label `Value counts of <table>.<column>`) with its rows
+    `grid:value-count:<index>` (list `grid:value-counts`, most frequent first)
   - `shortcuts:close` in the shortcut overview (`?`)
   - the Project page: `project` (the panel), `project:prefix`, `project:preset:<name>` (list `presets`, the
     switches), `project:presets-auto`, `project:export`, `project:check-all`; the rule form `project:form` with
@@ -104,11 +109,9 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `:enable`, `:promote`; value styles `style:<index>` or `style:<preset>:<scope>:<value>` (list `styles`) with
     `:edit`, `:remove`, `:on`; kinds `kind:<index>` or `kind:<preset>:<scope>` (list `kinds`) with `:edit`,
     `:remove`
-  - `<entity>:<id>` for WordPress rows (list `wp:<list>`)
-  - `wp:nav:<list>`
   - `palette:search` and the palette results (list `palette:results`): `palette:item:<key>` with the keys
-    `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `cmd:<id>` and
-    `recent:<title>`; holding ⌥ shows the selected hit's `peek`
+    `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `saved:<origin>:<id>` (a saved query), `cmd:<id>`
+    and `recent:<title>`; holding ⌥ shows the selected hit's `peek`
   - `settings:<page>` and `settings-nav:<page>`
   - `appearance:<control>` on Settings → Appearance (`theme`, `light-scheme`, `dark-scheme`, `row-padding`,
     `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are
@@ -133,6 +136,11 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   U7 removed the WordPress entity pages (they had no anchors of their own) and the view `wp:<entity>`: an
   entity opens as an object tab in the `db` view, which `stageState()` reports as `object`;
   `wp:open:<entity>:<id>` opens that object tab.
+  U11 removed the WordPress list screens with their anchors `<entity>:<id>` (list `wp:<list>`),
+  `list:search`, `list:previous-page`, `list:next-page` and `wp:nav:<list>` (lists are pinned queries in the
+  palette's `q:`; the WordPress navigation keeps `wp:nav:dashboard` and `wp:nav:snapshots`), the options
+  screen, and the favorites bar `favorites`, `favorites:add` and `favorite:<id>` (list `favorites`; saved
+  queries replace it). The views `wp:<list>` (`wp:orders`, …) and the `go.*` list commands are gone with them.
 - **Commands** come from the in-app registry, with `shortcut` and `enabled`.
 - **Keys.** When a key combination is a command's shortcut, that command runs in the current view, even
   without focus. So ⌘, ⌘K and ⌘T behave like their menu items. Other keys go to the focused element;

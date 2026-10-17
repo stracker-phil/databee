@@ -33,7 +33,7 @@ impl ConnectionSpec {
         }
     }
 
-    /// Stable key for recents, favorites and history: endpoint plus database.
+    /// Stable key for recents and history: endpoint plus database.
     pub fn identity(&self) -> String {
         format!(
             "{}/{}",

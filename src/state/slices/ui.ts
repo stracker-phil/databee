@@ -1,4 +1,4 @@
-import { EMPTY_UI_STATE, api, type AppError, type ColumnInfo, type ConnectionSpec, type PaneSize, type UiState } from "../../api";
+import { EMPTY_UI_STATE, api, type AppError, type ColumnInfo, type ConnectionSpec, type Home, type PaneSize, type UiState } from "../../api";
 import { fail } from "../requests";
 import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
@@ -21,6 +21,8 @@ export type Dialog =
   | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }
   | { type: "prompt"; title: string; value: string; onSubmit: (value: string) => void }
   | { type: "insertRow"; database: string; table: string; columns: ColumnInfo[] }
+  /** How a saved query shows on the readout; `null` is not pinned. */
+  | { type: "pin"; title: string; pin: Home | null; onSubmit: (pin: Home | null) => void }
   /** The shortcut overview of the scopes that were active when it opened. */
   | { type: "shortcuts"; scopes: string[] };
 

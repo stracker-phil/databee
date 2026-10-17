@@ -183,6 +183,17 @@ sql = "SELECT id, status FROM {p}orders ORDER BY id DESC"
 home = { show = "rows", limit = 5 }  # or { show = "count" }, { show = "value" }; omit: palette only
 ```
 
+A pinned query is a read-only saved query of its preset. `saved_queries(session_id, database)`
+(`saved/mod.rs`, `list`) returns the project's saved queries, then the global ones, then the pinned queries of
+every applied preset in preset order, each as `SavedEntry { id, title, sql, pin, origin, read_only }`:
+`origin` is a `SavedOrigin` (`project`, `global` or `preset { preset }`, shown as `preset:<name>`), `title` defaults to the `id`, and `{p}`/`{np}` in the
+title and SQL are replaced with the project's prefixes (`placeholder::with_prefixes`), so the SQL runs as
+shown. The palette's `q:` lists them; a pinned query opens as an unsaved query tab titled `copy of <title>`.
+`copy_preset_query_to_project(session_id, database, preset, id)` stores it, prefixes replaced, as a project
+query with a fresh id, which can then be changed and pinned like any saved query (`update_saved_query`;
+`save_query` adds one, `remove_saved_query` removes a project or global one). `home` is shown on the readout
+(U12). Favorites from before U11 were moved into saved queries ([backend.md](backend.md#persistence)).
+
 ### `[[anomaly]]`
 
 Shown on the readout while `sql` returns a non-zero number.
@@ -296,7 +307,7 @@ connection's slug moves its keys. A database without a stored project gets an em
 | `presets` | enabled presets by name; `null`: every preset whose marker tables exist |
 | `references`, `kinds`, `styles` | rules in the preset shape above |
 | `disabled` | ids of preset or inferred rules switched off |
-| `saved` | saved queries `{ id, title, sql, pin }`; `pin` has the shape of `[[pinned]] home` |
+| `saved` | saved queries `{ id, title, sql, pin }`; `pin` has the shape of `[[pinned]] home`. Saved queries for every project are `global` in `projects.json`, beside `projects` |
 
 **Editing.** `project_update(session_id, database, change)` applies one `ProjectChange` (`op`):
 `addReference`, `updateReference` and `removeReference` by id; `addKind`, `updateKind`, `removeKind`,

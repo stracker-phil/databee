@@ -45,6 +45,7 @@ function PlainRow({ item }: { item: Item }) {
       <span className="grow-text">
         {item.title}
         {item.subtitle && <span className="muted"> · {item.subtitle}</span>}
+        {item.note && <span className="o2 palette-note"> {item.note}</span>}
       </span>
       <KeyCap keys={item.binding ?? ""} />
     </>

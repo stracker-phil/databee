@@ -4,9 +4,9 @@ use std::sync::Arc;
 use crate::launch::LaunchQueue;
 use crate::rules::effective::RuleSources;
 use crate::rules::{PresetCatalog, ProjectsStore};
+use crate::saved::migrate::migrate_favorites;
 use crate::secrets::SecretStore;
 use crate::session::Sessions;
-use crate::store::favorites::FavoritesStore;
 use crate::store::history::HistoryStore;
 use crate::store::keybindings::KeybindingsStore;
 use crate::store::recents::RecentsStore;
@@ -17,7 +17,6 @@ pub struct AppState {
     pub settings: SettingsStore,
     pub keybindings: KeybindingsStore,
     pub recents: RecentsStore,
-    pub favorites: FavoritesStore,
     pub history: HistoryStore,
     pub ui_state: UiStateStore,
     pub presets: PresetCatalog,
@@ -33,11 +32,13 @@ pub struct AppState {
 
 impl AppState {
     pub fn open(config_dir: &Path, secrets: Arc<dyn SecretStore>) -> Self {
+        if let Err(e) = migrate_favorites(config_dir) {
+            log::warn!("Favorites were not moved to saved queries: {e}");
+        }
         Self {
             settings: SettingsStore::open(config_dir),
             keybindings: KeybindingsStore::open(config_dir),
             recents: RecentsStore::open(config_dir),
-            favorites: FavoritesStore::open(config_dir),
             history: HistoryStore::open(config_dir),
             ui_state: UiStateStore::open(config_dir),
             presets: PresetCatalog::open(config_dir),

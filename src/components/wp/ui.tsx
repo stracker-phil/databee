@@ -1,57 +1,4 @@
 import type { ReactNode } from "react";
-import { relativeTime } from "../../lib/format";
-import { initials, absoluteFromUnix } from "../../lib/wpFormat";
-
-const STATUS_TONES: Record<string, string> = {
-  completed: "green",
-  complete: "green",
-  active: "green",
-  publish: "green",
-  instock: "green",
-  processing: "blue",
-  "in-progress": "blue",
-  pending: "gray",
-  draft: "gray",
-  "checkout-draft": "gray",
-  "on-hold": "orange",
-  onbackorder: "orange",
-  failed: "red",
-  cancelled: "red",
-  canceled: "red",
-  outofstock: "red",
-  expired: "red",
-  refunded: "purple",
-  "pending-cancel": "orange",
-  private: "purple",
-};
-
-export function statusTone(status: string): string {
-  return STATUS_TONES[status.replace(/^wc-/, "")] ?? "gray";
-}
-
-/** A stored status slug (`wc-on-hold`), colored by what it means. */
-export function StatusPill({ status, label }: { status: string; label?: string }) {
-  return <span className={`pill tone-${statusTone(status)}`}>{label ?? status}</span>;
-}
-
-export function Ago({ unix }: { unix: number | null | undefined }) {
-  if (unix == null) return <span className="muted">—</span>;
-  return <span title={absoluteFromUnix(unix)}>{relativeTime(unix)}</span>;
-}
-
-// Scheme colors only (no literals outside a scheme); the name picks one so a person keeps their color.
-const AVATAR_COLORS = ["--style-red", "--style-green", "--style-yellow", "--style-blue", "--style-purple", "--a-orange", "--a-graphite"];
-
-export function Avatar({ name, src, size = "2.154rem" }: { name: string; src?: string | null; size?: string }) {
-  const hash = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 9973, 7);
-  const color = AVATAR_COLORS[hash % AVATAR_COLORS.length];
-  return (
-    <span className="avatar" style={{ width: size, height: size, fontSize: `calc(${size} * 0.38)`, background: `var(${color})` }}>
-      {src ? <img src={src} alt="" onError={(e) => (e.currentTarget.style.display = "none")} /> : null}
-      <span>{initials(name)}</span>
-    </span>
-  );
-}
 
 export function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: string }) {
   return (
@@ -74,14 +21,6 @@ export function Card({ title, aside, children, className = "" }: { title?: React
       )}
       {children}
     </section>
-  );
-}
-
-export function Thumb({ src, size = "2.769rem" }: { src: string | null | undefined; size?: string }) {
-  return src ? (
-    <img className="thumb" src={src} alt="" loading="lazy" style={{ width: size, height: size }} />
-  ) : (
-    <span className="thumb thumb-empty" style={{ width: size, height: size }} />
   );
 }
 

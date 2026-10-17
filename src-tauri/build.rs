@@ -14,18 +14,7 @@ const STAGE_COMMANDS: &[&str] = &[
 /// `capabilities/wp.json`.
 const WP_COMMANDS: &[&str] = &[
     "wp_detect",
-    "wp_options",
     "wp_dashboard",
-    "wp_browser",
-    "wp_orders",
-    "wp_users",
-    "wp_products",
-    "wp_actions",
-    "wp_action_histogram",
-    "wp_failed_by_hook",
-    "wp_sessions",
-    "wp_content",
-    "wp_options_group",
     "wp_snapshot_take",
     "wp_snapshots",
     "wp_snapshot_diff",

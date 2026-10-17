@@ -99,8 +99,8 @@ pub async fn plan(
         }
         WpChangeRequest::DeleteExpiredTransients { database } => {
             let t = table_ref(dialect, database, ctx, "options");
-            let overview = super::options_overview(session, ctx, database).await?;
-            let names = expired_transient_rows(&overview);
+            let timeouts = fetch(session, &transient_timeouts_sql(dialect, &t)).await?;
+            let names = expired_transient_rows(&timeouts, chrono::Utc::now().timestamp());
             if names.is_empty() {
                 return Err(AppError::InvalidInput(
                     "There are no expired transients".into(),
@@ -167,23 +167,26 @@ pub fn build_set_autoload(
     }
 }
 
-/// The option names of every expired transient: its value row and its timeout row.
-fn expired_transient_rows(overview: &super::options::OptionsOverview) -> Vec<String> {
-    overview
-        .transients
+fn transient_timeouts_sql(dialect: Dialect, table: &str) -> String {
+    format!(
+        "SELECT option_name, option_value FROM {table} WHERE option_name LIKE {} OR option_name LIKE {}",
+        dialect.like(r"\_transient\_timeout\_%"),
+        dialect.like(r"\_site\_transient\_timeout\_%"),
+    )
+}
+
+/// The value and timeout row names of every transient whose timeout is before `now`.
+fn expired_transient_rows(timeouts: &ResultSet, now: i64) -> Vec<String> {
+    timeouts
+        .rows
         .iter()
-        .filter(|tr| tr.expired)
-        .flat_map(|tr| {
-            let (value, timeout) = if tr.site_wide {
-                ("_site_transient_", "_site_transient_timeout_")
-            } else {
-                ("_transient_", "_transient_timeout_")
-            };
-            [
-                format!("{value}{}", tr.name),
-                format!("{timeout}{}", tr.name),
-            ]
+        .filter_map(|row| {
+            let timeout = text(&row[0])?;
+            let expires: i64 = text(&row[1])?.trim().parse().ok()?;
+            let value = timeout.replacen("_timeout_", "_", 1);
+            (expires < now).then_some([value, timeout])
         })
+        .flatten()
         .collect()
 }
 
@@ -493,5 +496,102 @@ mod tests {
 
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert_eq!(err.to_string(), "This site has no woocommerce_log table");
+    }
+
+    fn timeouts(rows: &[(&str, &str)]) -> ResultSet {
+        rs(
+            &["option_name", "option_value"],
+            rows.iter().map(|(n, v)| vec![cell(n), cell(v)]).collect(),
+        )
+    }
+
+    fn delete_expired() -> WpChangeRequest {
+        WpChangeRequest::DeleteExpiredTransients {
+            database: "wp".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn planning_expired_transients_deletes_value_and_timeout_rows_of_the_expired_ones() {
+        let (ctx, _) = site(&["options"]);
+        let names = [
+            "_transient_old",
+            "_transient_timeout_old",
+            "_site_transient_gone",
+            "_site_transient_timeout_gone",
+        ];
+        let stored = rs(
+            &["option_id", "option_name", "option_value"],
+            names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| vec![Cell::Number((i + 1).to_string()), cell(n), cell("v")])
+                .collect(),
+        );
+        let db = FakeDatabase::new()
+            .on(
+                &transient_timeouts_sql(D, OPTIONS),
+                timeouts(&[
+                    ("_transient_timeout_old", "100"),
+                    ("_site_transient_timeout_gone", " 200 "),
+                    ("_transient_timeout_fresh", "99999999999"),
+                    ("_transient_timeout_junk", "soon"),
+                ]),
+            )
+            .on("SELECT * FROM", stored);
+
+        let plan = plan(&db, &ctx, &delete_expired()).await.unwrap();
+
+        let in_list = "'_transient_old', '_transient_timeout_old', '_site_transient_gone', '_site_transient_timeout_gone'";
+        assert_eq!(
+            db.queries(),
+            [
+                transient_timeouts_sql(D, OPTIONS),
+                format!("SELECT * FROM {OPTIONS} WHERE option_name IN ({in_list})"),
+            ]
+        );
+        assert_eq!(
+            plan.statements,
+            [format!(
+                "DELETE FROM {OPTIONS} WHERE option_name IN ({in_list})"
+            )]
+        );
+        assert_eq!(plan.description, "Delete 2 expired transients");
+        assert_eq!(plan.database, "wp");
+        assert_eq!(
+            plan.undo,
+            [
+                format!(
+                    "INSERT INTO {OPTIONS} (`option_id`, `option_name`, `option_value`) VALUES ('1', '_transient_old', 'v')"
+                ),
+                format!(
+                    "INSERT INTO {OPTIONS} (`option_id`, `option_name`, `option_value`) VALUES ('2', '_transient_timeout_old', 'v')"
+                ),
+                format!(
+                    "INSERT INTO {OPTIONS} (`option_id`, `option_name`, `option_value`) VALUES ('3', '_site_transient_gone', 'v')"
+                ),
+                format!(
+                    "INSERT INTO {OPTIONS} (`option_id`, `option_name`, `option_value`) VALUES ('4', '_site_transient_timeout_gone', 'v')"
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn planning_expired_transients_without_any_expired_is_refused_after_one_read() {
+        let (ctx, _) = site(&["options"]);
+        let db = FakeDatabase::new().on(
+            &transient_timeouts_sql(D, OPTIONS),
+            timeouts(&[
+                ("_transient_timeout_fresh", "99999999999"),
+                ("_transient_timeout_junk", "soon"),
+            ]),
+        );
+
+        let err = plan(&db, &ctx, &delete_expired()).await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(err.to_string(), "There are no expired transients");
+        assert_eq!(db.queries(), [transient_timeouts_sql(D, OPTIONS)]);
     }
 }

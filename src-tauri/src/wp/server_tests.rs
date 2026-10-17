@@ -11,7 +11,6 @@
 //!
 //! Every test that writes owns its rows in `wp_write` (see `dev/fixture.sql`), so tests never share one.
 
-use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::db::changes::{ChangeRequest, Plan, plan as plan_row_change};
@@ -20,11 +19,10 @@ use crate::db::{Cell, Database};
 use crate::test_support::{sessions, wordpress};
 use crate::wp::catalog::Catalog;
 use crate::wp::changes::{WpChangeRequest, plan as plan_wp_change};
-use crate::wp::dashboard::{Granularity, action_histogram, browser, dashboard};
+use crate::wp::dashboard::{Granularity, dashboard};
 use crate::wp::document::Sensitive;
-use crate::wp::lists::{self, ListQuery};
 use crate::wp::site::WpContext;
-use crate::wp::{WpList, expand, load_docs, options_overview, post_images};
+use crate::wp::{expand, load_docs};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -143,29 +141,6 @@ async fn expands_relations_lazily_and_follows_meta_links() {
     }
 }
 
-#[tokio::test]
-#[ignore]
-async fn options_overview_reports_groups_and_expired_transients() {
-    for db in sessions("wp_test").await {
-        let (ctx, _) = site(&db, "wp_test").await;
-        let o = options_overview(&db, &ctx, "wp_test").await.unwrap();
-        assert_eq!(o.total_count, 17);
-        assert!(
-            o.groups
-                .iter()
-                .any(|g| g.prefix == "woocommerce" && g.count == 5)
-        );
-        let old = o.transients.iter().find(|t| t.name == "old_cache").unwrap();
-        assert!(old.expired);
-        let fresh = o
-            .transients
-            .iter()
-            .find(|t| t.name == "fresh_cache")
-            .unwrap();
-        assert!(!fresh.expired);
-    }
-}
-
 /// One session per fixture server, each with the context and catalog of `database`.
 async fn envs(database: &str) -> Vec<(MySqlSession, WpContext, Catalog)> {
     let mut out = Vec::new();
@@ -190,14 +165,7 @@ async fn dashboard_summarizes_orders_actions_and_health() {
         // The fixture has orders on fewer than 3 days, so the chart falls back to 24 hourly buckets.
         assert_eq!(orders.granularity, Granularity::Hour);
         assert_eq!(orders.days.len(), 24);
-        assert_eq!(d.recent_orders[0].id, "4711");
-        assert_eq!(d.recent_orders[0].total.as_deref(), Some("49.90000000 EUR"));
         let actions = d.actions.unwrap();
-        assert_eq!(actions.recent_failed[0].hook, "ppcp_check_payment_status");
-        assert_eq!(
-            actions.recent_failed[0].message.as_deref(),
-            Some("action failed via WP Cron: PayPal API returned 500")
-        );
         assert_eq!(actions.overdue, 1);
         assert_eq!(d.transients_expired, 1);
         assert_eq!(
@@ -250,257 +218,6 @@ async fn network_tables_count_as_core_in_the_dashboard() {
                 "{table}"
             );
         }
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn action_histogram_covers_fourteen_utc_days_ending_today() {
-    for (db, ctx, _) in env().await {
-        let now = scalar(&db, "SELECT UTC_TIMESTAMP()").await.unwrap();
-        let today = chrono::NaiveDateTime::parse_from_str(&now, "%Y-%m-%d %H:%M:%S")
-            .unwrap()
-            .date()
-            .format("%Y-%m-%d")
-            .to_string();
-
-        let histogram = action_histogram(&db, &ctx, "wp_test", None).await.unwrap();
-        assert_eq!(histogram.days.len(), 14);
-        assert_eq!(histogram.days.last().unwrap().date, today);
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn lists_sort_by_whitelisted_keys() {
-    fn query(sort: Option<&str>, descending: Option<bool>) -> ListQuery {
-        ListQuery {
-            sort: sort.map(String::from),
-            descending,
-            ..Default::default()
-        }
-    }
-    for (db, ctx, _) in env().await {
-        // Orders: 4711 totals 49.90 and was created a day ago, 4713 totals 18.90 and three days ago.
-        for (sort, descending, expected) in [
-            (Some("total"), Some(false), ["4713", "4711"]),
-            (Some("total"), Some(true), ["4711", "4713"]),
-            (Some("total"), None, ["4711", "4713"]),
-            (Some("id"), Some(false), ["4711", "4713"]),
-            (Some("id"), None, ["4713", "4711"]),
-            (None, None, ["4711", "4713"]),
-            (Some("no-such-key"), None, ["4711", "4713"]),
-        ] {
-            let page = lists::orders(&db, &ctx, "wp_test", "shop_order", &query(sort, descending))
-                .await
-                .unwrap();
-            let ids: Vec<&str> = page.items.iter().map(|o| o.id.as_str()).collect();
-            assert_eq!(ids, expected, "orders {sort:?} {descending:?}");
-        }
-
-        // Actions 1..4 by hook: ppcp_check_payment_status, woocommerce_cleanup_draft_orders,
-        // wc-admin_import_orders, woocommerce_run_on_woocommerce_admin_updated.
-        // Scheduled: 1 a day ago, 2 two days ago, 3 in an hour, 4 an hour ago.
-        for (sort, descending, expected) in [
-            (Some("hook"), None, ["1", "3", "2", "4"]),
-            (Some("hook"), Some(true), ["4", "2", "3", "1"]),
-            (Some("scheduled"), Some(false), ["2", "1", "4", "3"]),
-            (None, None, ["3", "4", "1", "2"]),
-        ] {
-            let page = lists::actions(&db, &ctx, "wp_test", &query(sort, descending))
-                .await
-                .unwrap();
-            let ids: Vec<&str> = page.items.iter().map(|a| a.id.as_str()).collect();
-            assert_eq!(ids, expected, "actions {sort:?} {descending:?}");
-        }
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn failed_actions_group_by_hook_with_last_message() {
-    for (db, ctx, _) in env().await {
-        let groups = crate::wp::lists::failed_by_hook(&db, &ctx, "wp_test")
-            .await
-            .unwrap();
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].hook, "ppcp_check_payment_status");
-        assert_eq!(groups[0].count, 1);
-        assert_eq!(
-            groups[0].last_message.as_deref(),
-            Some("action failed via WP Cron: PayPal API returned 500")
-        );
-        assert!(groups[0].last_failure.is_some());
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn entity_browser_counts_sections() {
-    for (db, ctx, _) in env().await {
-        let sections = browser(&db, &ctx, "wp_test").await.unwrap();
-        let count = |list: WpList| sections.iter().find(|s| s.list == list).map(|s| s.count);
-        assert_eq!(count(WpList::Orders), Some(2));
-        assert_eq!(count(WpList::Subscriptions), Some(1));
-        assert_eq!(count(WpList::Users), Some(2));
-        assert_eq!(count(WpList::Products), Some(2));
-        assert_eq!(count(WpList::Actions), Some(4));
-        assert_eq!(count(WpList::Sessions), Some(2));
-        let content = sections.iter().find(|s| s.list == WpList::Content).unwrap();
-        assert!(content.breakdown.iter().any(|f| f.value == "post"));
-        assert!(
-            content
-                .breakdown
-                .iter()
-                .all(|f| f.value != "shop_order" && f.value != "product")
-        );
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn lists_filter_and_search() {
-    for (db, ctx, _) in env().await {
-        let q = |status: Option<&str>, search: Option<&str>| ListQuery {
-            status: status.map(String::from),
-            search: search.map(String::from),
-            ..Default::default()
-        };
-        let all = lists::orders(&db, &ctx, "wp_test", "shop_order", &q(None, None))
-            .await
-            .unwrap();
-        assert_eq!(
-            all.items.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
-            ["4711", "4713"]
-        );
-        assert_eq!(all.items[0].name.as_deref(), Some("Jane Doe"));
-        assert_eq!(all.items[0].item_count, 1);
-        assert!(
-            all.facets
-                .iter()
-                .any(|f| f.value == "wc-failed" && f.label == "wc-failed")
-        );
-        assert!(
-            all.kinds
-                .iter()
-                .any(|g| g.value == "ppcp-gateway" && g.label == "ppcp-gateway")
-        );
-        let failed = lists::orders(
-            &db,
-            &ctx,
-            "wp_test",
-            "shop_order",
-            &q(Some("wc-failed"), None),
-        )
-        .await
-        .unwrap();
-        assert_eq!(failed.items.len(), 1);
-        let by_tx = lists::orders(
-            &db,
-            &ctx,
-            "wp_test",
-            "shop_order",
-            &q(None, Some("61P3809224872131H")),
-        )
-        .await
-        .unwrap();
-        assert_eq!(by_tx.items[0].id, "4711");
-        let subs = lists::orders(&db, &ctx, "wp_test", "shop_subscription", &q(None, None))
-            .await
-            .unwrap();
-        assert_eq!(subs.items[0].id, "4714");
-
-        let users = lists::users(&db, &ctx, "wp_test", &q(None, None), false)
-            .await
-            .unwrap();
-        let jane = users.items.iter().find(|c| c.id == "12").unwrap();
-        assert_eq!(jane.roles, ["customer"]);
-        assert_eq!(jane.order_count, 1);
-        assert_eq!(jane.total_spent.as_deref(), Some("49.90000000"));
-        assert!(users.kinds.iter().any(|k| k.value == "administrator"));
-
-        let products = lists::products(&db, &ctx, "wp_test", &q(None, Some("MUG")))
-            .await
-            .unwrap();
-        let mug = &products.items[0];
-        assert_eq!(
-            (mug.name.as_str(), mug.kind.as_deref(), mug.price.as_deref()),
-            ("Mug", Some("simple"), Some("24.9500"))
-        );
-        assert_eq!(
-            mug.image.as_deref(),
-            Some("https://shop.test/wp-content/uploads/2026/01/mug-150x150.jpg")
-        );
-        let shirt = lists::products(&db, &ctx, "wp_test", &q(None, Some("Shirt")))
-            .await
-            .unwrap();
-        assert_eq!(shirt.items[0].variations, 2);
-        assert_eq!(shirt.items[0].price.as_deref(), Some("20.0000–22.0000"));
-
-        let actions = lists::actions(&db, &ctx, "wp_test", &q(Some("pending"), None))
-            .await
-            .unwrap();
-        assert_eq!(actions.items.len(), 2);
-        let sessions = lists::sessions(&db, &ctx, "wp_test", &q(None, None))
-            .await
-            .unwrap();
-        let s = sessions.items.iter().find(|s| s.key == "12").unwrap();
-        assert_eq!(
-            (s.items, s.total.as_deref(), s.customer_id.as_deref()),
-            (2, Some("49.90"), Some("12"))
-        );
-        let content = lists::content(&db, &ctx, "wp_test", &q(None, None))
-            .await
-            .unwrap();
-        assert_eq!(content.items[0].title.as_deref(), Some("Hello world"));
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn content_without_a_kind_lists_every_visible_post_type() {
-    for (db, ctx, _) in env().await {
-        let q = |kind: Option<&str>| ListQuery {
-            kind: kind.map(String::from),
-            ..Default::default()
-        };
-        let all = lists::content(&db, &ctx, "wp_test", &q(None))
-            .await
-            .unwrap();
-        let mut kinds: Vec<_> = all.items.iter().map(|p| p.kind.as_str()).collect();
-        kinds.sort();
-        assert_eq!(kinds, ["attachment", "post"]);
-
-        let mut facet_kinds: Vec<_> = all
-            .kinds
-            .iter()
-            .map(|f| (f.value.as_str(), f.count))
-            .collect();
-        facet_kinds.sort();
-        assert_eq!(facet_kinds, [("attachment", 1), ("post", 1)]);
-
-        let mut statuses: Vec<_> = all
-            .facets
-            .iter()
-            .map(|f| (f.value.as_str(), f.count))
-            .collect();
-        statuses.sort();
-        assert_eq!(statuses, [("inherit", 1), ("publish", 1)]);
-
-        let posts = lists::content(&db, &ctx, "wp_test", &q(Some("post")))
-            .await
-            .unwrap();
-        assert_eq!(posts.items.len(), 1);
-        assert_eq!(posts.items[0].title.as_deref(), Some("Hello world"));
-        assert_eq!(posts.kinds, all.kinds);
-        assert_eq!(
-            posts
-                .facets
-                .iter()
-                .map(|f| f.value.as_str())
-                .collect::<Vec<_>>(),
-            ["publish"]
-        );
     }
 }
 
@@ -1093,26 +810,6 @@ async fn legacy_order_document_counts_its_order_notes_as_comments() {
     }
 }
 
-#[tokio::test]
-#[ignore]
-async fn product_images_use_the_uploads_base_the_attachment_guid_proves() {
-    for (db, ctx, _) in env().await {
-        let images = post_images(&db, &ctx, "wp_test", &["123".into(), "200".into()])
-            .await
-            .unwrap();
-        assert_eq!(
-            images,
-            HashMap::from([(
-                "123".to_string(),
-                "https://shop.test/wp-content/uploads/2026/01/mug-150x150.jpg".to_string()
-            )]),
-            "the shirt has no featured image"
-        );
-    }
-}
-
-/// Read-only checks against a real WordPress database of your own (`DATABEE_WP_TEST`). Kept in a
-/// module so `bun run test:db` can leave them out with `--skip real_data`.
 mod real_data {
     use std::time::Duration;
 
@@ -1250,15 +947,14 @@ mod real_data {
     #[tokio::test]
     #[ignore]
     async fn wordpress_mode_queries_work_on_real_data() {
-        use crate::wp::lists::{self, ListQuery};
-        use crate::wp::{dashboard, options_group};
+        use crate::wp::dashboard;
 
         fn non_empty<T>(what: &str, items: &[T]) {
             assert!(!items.is_empty(), "the {what} list is empty on this site");
         }
 
         let (db, database) = real_site().await;
-        let (ctx, catalog) = real_context(&db, &database).await;
+        let (ctx, _) = real_context(&db, &database).await;
         let started = std::time::Instant::now();
         let lap = |what: &str| eprintln!("{what:<28} {:>6} ms", started.elapsed().as_millis());
 
@@ -1269,40 +965,5 @@ mod real_data {
             d.insights.iter().map(|i| &i.text).collect::<Vec<_>>()
         );
         non_empty("dashboard tables", &d.tables);
-        non_empty("dashboard recent orders", &d.recent_orders);
-        non_empty(
-            "entity browser",
-            &dashboard::browser(&db, &ctx, &database).await.unwrap(),
-        );
-        lap("browser");
-
-        let q = ListQuery::default();
-        let orders = lists::orders(&db, &ctx, &database, "shop_order", &q)
-            .await
-            .unwrap();
-        non_empty("orders", &orders.items);
-        let subscriptions = lists::orders(&db, &ctx, &database, "shop_subscription", &q)
-            .await
-            .unwrap();
-        non_empty("subscriptions", &subscriptions.items);
-        let customers = lists::users(&db, &ctx, &database, &q, false).await.unwrap();
-        non_empty("customers", &customers.items);
-        let products = lists::products(&db, &ctx, &database, &q).await.unwrap();
-        non_empty("products", &products.items);
-        let content = lists::content(&db, &ctx, &database, &q).await.unwrap();
-        non_empty("content", &content.items);
-        let actions = lists::actions(&db, &ctx, &database, &q).await.unwrap();
-        non_empty("scheduled actions", &actions.items);
-        let sessions = lists::sessions(&db, &ctx, &database, &q).await.unwrap();
-        non_empty("sessions", &sessions.items);
-        lap("lists");
-
-        non_empty(
-            "woocommerce options",
-            &options_group(&db, &ctx, &catalog, &database, "woocommerce")
-                .await
-                .unwrap(),
-        );
-        lap("options group");
     }
 }

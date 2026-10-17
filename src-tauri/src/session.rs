@@ -75,7 +75,7 @@ pub struct SessionInfo {
     pub id: String,
     pub spec: ConnectionSpec,
     pub identity: String,
-    /// The Keychain account, which also scopes favorites.
+    /// The Keychain account, which also scopes history.
     pub account: String,
     pub display_name: String,
     pub server_version: String,

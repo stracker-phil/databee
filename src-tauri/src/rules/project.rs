@@ -114,11 +114,20 @@ pub fn project_key(connection: &str, database: &str) -> String {
     format!("{connection}/{database}")
 }
 
-/// The file: an object so later sections (saved queries for every connection) fit beside it.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct ProjectsFile {
     #[serde(default)]
     projects: BTreeMap<String, Project>,
+    /// Saved queries offered in every project.
+    #[serde(default)]
+    global: Vec<SavedQuery>,
+}
+
+/// Saved queries for one project, keyed by connection slug and database.
+pub struct ProjectQueries {
+    pub connection: String,
+    pub database: String,
+    pub queries: Vec<SavedQuery>,
 }
 
 pub struct ProjectsStore {
@@ -138,6 +147,17 @@ impl ProjectsStore {
         self.store
             .read(|file| file.projects.get(&key).cloned())
             .unwrap_or_else(|| Project::new(connection, database))
+    }
+
+    /// `read` of the stored project, `None` when there is none; nothing is cloned.
+    pub fn with_project<R>(
+        &self,
+        connection: &str,
+        database: &str,
+        read: impl FnOnce(Option<&Project>) -> R,
+    ) -> R {
+        let key = project_key(connection, database);
+        self.store.read(|file| read(file.projects.get(&key)))
     }
 
     /// Applies `change` to the project (an empty one if none is stored) and saves it. When
@@ -164,6 +184,44 @@ impl ProjectsStore {
                 Ok(project)
             })
             .await?
+    }
+
+    pub fn global(&self) -> Vec<SavedQuery> {
+        self.store.read(|file| file.global.clone())
+    }
+
+    /// Applies `change` to the global saved queries and saves them; a failed change saves nothing new.
+    pub async fn update_global<R: Send + 'static>(
+        &self,
+        change: impl FnOnce(&mut Vec<SavedQuery>) -> AppResult<R> + Send + 'static,
+    ) -> AppResult<R> {
+        self.store
+            .update_async(move |file| {
+                let mut global = file.global.clone();
+                let result = change(&mut global)?;
+                file.global = global;
+                Ok(result)
+            })
+            .await?
+    }
+
+    /// Appends saved queries to projects and to the global list in one save; blocks on the disk.
+    pub fn import_saved(
+        &self,
+        projects: Vec<ProjectQueries>,
+        global: Vec<SavedQuery>,
+    ) -> AppResult<()> {
+        self.store.update(move |file| {
+            for entry in projects {
+                let key = project_key(&entry.connection, &entry.database);
+                file.projects
+                    .entry(key)
+                    .or_insert_with(|| Project::new(&entry.connection, &entry.database))
+                    .saved
+                    .extend(entry.queries);
+            }
+            file.global.extend(global);
+        })
     }
 
     /// Moves every project of the connection `old` to `new` after a slug rename. A project
@@ -515,5 +573,161 @@ mod tests {
         store.rename_connection("shop", "shop").await.unwrap();
 
         assert_eq!(store.get("shop", "wp"), project);
+    }
+
+    fn saved(id: &str) -> SavedQuery {
+        SavedQuery {
+            id: id.into(),
+            title: id.to_uppercase(),
+            sql: format!("SELECT '{id}'"),
+            pin: None,
+        }
+    }
+
+    #[test]
+    fn there_are_no_global_queries_before_any_is_stored() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert!(ProjectsStore::open(dir.path()).global().is_empty());
+    }
+
+    #[tokio::test]
+    async fn updating_the_global_queries_returns_the_changes_result_and_survives_a_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+
+        let count = store
+            .update_global(|global| {
+                global.extend([saved("a"), saved("b")]);
+                Ok(global.len())
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(count, 2);
+        assert_eq!(store.global(), [saved("a"), saved("b")]);
+        assert_eq!(
+            ProjectsStore::open(dir.path()).global(),
+            [saved("a"), saved("b")]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_global_change_leaves_the_list_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+        store
+            .update_global(|global| {
+                global.push(saved("a"));
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        let err = store
+            .update_global(|global| {
+                global.clear();
+                global.push(saved("changed"));
+                Err::<(), _>(AppError::InvalidInput("nope".into()))
+            })
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(store.global(), [saved("a")]);
+        assert_eq!(ProjectsStore::open(dir.path()).global(), [saved("a")]);
+    }
+
+    #[tokio::test]
+    async fn global_queries_do_not_touch_the_projects() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = full_project();
+        let store = store_with(dir.path(), vec![project.clone()]).await;
+
+        store
+            .update_global(|global| {
+                global.push(saved("a"));
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(ProjectsStore::open(dir.path()).get("shop", "wp"), project);
+    }
+
+    #[tokio::test]
+    async fn imported_queries_are_appended_to_projects_and_the_global_list_and_survive_a_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = full_project();
+        let existing = project.saved.clone();
+        let store = store_with(dir.path(), vec![project.clone()]).await;
+        store
+            .update_global(|global| {
+                global.push(saved("old"));
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        store
+            .import_saved(
+                vec![
+                    ProjectQueries {
+                        connection: "shop".into(),
+                        database: "wp".into(),
+                        queries: vec![saved("a")],
+                    },
+                    ProjectQueries {
+                        connection: "blog".into(),
+                        database: "db".into(),
+                        queries: vec![saved("b"), saved("c")],
+                    },
+                ],
+                vec![saved("g")],
+            )
+            .unwrap();
+
+        for store in [&store, &ProjectsStore::open(dir.path())] {
+            let mut expected = existing.clone();
+            expected.push(saved("a"));
+            assert_eq!(
+                store.get("shop", "wp"),
+                Project {
+                    saved: expected,
+                    ..project.clone()
+                }
+            );
+            assert_eq!(
+                store.get("blog", "db"),
+                Project {
+                    saved: vec![saved("b"), saved("c")],
+                    ..Project::new("blog", "db")
+                }
+            );
+            assert_eq!(store.global(), [saved("old"), saved("g")]);
+        }
+    }
+
+    #[test]
+    fn importing_nothing_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+
+        store.import_saved(Vec::new(), Vec::new()).unwrap();
+
+        assert_eq!(store.get("shop", "wp"), Project::new("shop", "wp"));
+        assert!(store.global().is_empty());
+    }
+
+    #[tokio::test]
+    async fn with_project_sees_the_stored_project_or_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with(dir.path(), vec![full_project()]).await;
+
+        let stored = store.with_project("shop", "wp", |p| p.map(|p| p.database.clone()));
+        let missing = store.with_project("shop", "other", |p| p.is_none());
+
+        assert_eq!(stored.as_deref(), Some("wp"));
+        assert!(missing);
     }
 }

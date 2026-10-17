@@ -1,15 +1,11 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Coverage, type Dashboard, type Document,type Keybindings, type Page, type Peek, type PlannedChange, type Project, type ProjectRules, type Resolved, type RuleDraft, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type BrowsePage, type Coverage, type Dashboard, type Document,type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Resolved, type RuleDraft, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { NOW } from "./now";
 import { session } from "./session";
 import { settings } from "./settings";
-
-function emptyPage(): Page<never> {
-  return { items: [], hasMore: false, limit: 50, facets: [], kinds: [] };
-}
 
 function emptyProject(database: string): Project {
   return { connection: "local", database, prefix: null, network_prefix: null, presets: null, references: [], disabled: [], kinds: [], styles: [], saved: [] };
@@ -17,7 +13,6 @@ function emptyProject(database: string): Project {
 
 const emptyDashboard: Dashboard = {
   orders: null,
-  recentOrders: [],
   autoloadBytes: 0,
   autoloadHealthy: true,
   transientsExpired: 0,
@@ -70,6 +65,14 @@ export function createApiMock(): typeof realApi {
     cancelQuery: vi.fn().mockResolvedValue(undefined),
     fetchCell: vi.fn().mockResolvedValue(""),
     valueCondition: vi.fn().mockResolvedValue(""),
+    savedQueries: vi.fn().mockResolvedValue([]),
+    saveQuery: vi.fn(async (_s, _d, title, sql, pin) => ({ id: "saved-1", title, sql, pin })),
+    updateSavedQuery: vi.fn(async (_s, _d, query) => query),
+    removeSavedQuery: vi.fn().mockResolvedValue(undefined),
+    copyPresetQueryToProject: vi.fn(async (_s, _d, _preset, id) => ({ id: `copy-${id}`, title: id, sql: "SELECT 1", pin: null })),
+    valueCounts: vi.fn().mockResolvedValue([]),
+    narrowRefusal: vi.fn().mockResolvedValue(null),
+    narrowQuery: vi.fn(async (_s, sql, column, value) => `${sql} WHERE ${column} ${value === null ? "IS NULL" : `= '${value}'`}`),
     browseTable: vi.fn(
       async (_s, req): Promise<BrowsePage> => ({
         table: req.table,
@@ -82,28 +85,12 @@ export function createApiMock(): typeof realApi {
       }),
     ),
     tableSelectSql: vi.fn().mockResolvedValue("SELECT * FROM `db`.`table` LIMIT 100;"),
-    listFavorites: vi.fn().mockResolvedValue([]),
-    createFavorite: vi.fn(async (f) => ({ ...f, id: "new-id" })),
-    updateFavorite: vi.fn(async (f) => f),
-    removeFavorite: vi.fn().mockResolvedValue(undefined),
-    reorderFavorites: vi.fn().mockResolvedValue(undefined),
     listHistory: vi.fn().mockResolvedValue([]),
     clearHistory: vi.fn().mockResolvedValue(undefined),
     wpDetect: vi.fn().mockResolvedValue(null),
-    wpOptions: vi.fn().mockResolvedValue({ table: "wp_options", totalCount: 0, autoloadBytes: 0, groups: [], largestAutoload: [], transients: [] }),
     decodeValue: vi.fn().mockResolvedValue(null),
     wpDashboard: vi.fn().mockResolvedValue(emptyDashboard),
-    wpBrowser: vi.fn().mockResolvedValue([]),
-    wpOrders: vi.fn(async () => emptyPage()),
-    wpUsers: vi.fn(async () => emptyPage()),
-    wpProducts: vi.fn(async () => emptyPage()),
-    wpActions: vi.fn(async () => emptyPage()),
-    wpActionHistogram: vi.fn().mockResolvedValue({ days: [], labels: { completed: "complete", processing: "in-progress", failed: "failed", other: "other" } } satisfies ActionHistogram),
-    wpSessions: vi.fn(async () => emptyPage()),
-    wpContent: vi.fn(async () => emptyPage()),
     paletteSearch: vi.fn().mockResolvedValue([]),
-    wpFailedByHook: vi.fn().mockResolvedValue([]),
-    wpOptionsGroup: vi.fn().mockResolvedValue([]),
     planChange: vi.fn(async (_s, change) => planned(change.type)),
     wpPlanChange: vi.fn(async (_s, change) => planned(change.type)),
     discardChange: vi.fn().mockResolvedValue(undefined),

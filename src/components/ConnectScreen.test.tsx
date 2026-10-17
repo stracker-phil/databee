@@ -94,14 +94,6 @@ describe("ConnectScreen", () => {
     expect(recent).toHaveTextContent("wp@db.test:3307 / db");
   });
 
-  it("loads favorites for the account of the connected session", async () => {
-    mocked.connect.mockResolvedValue({ ...session, account: "wp@db.test:3307" });
-    mocked.listFavorites.mockResolvedValue([]);
-    render(<ConnectScreen />);
-    await userEvent.click(screen.getByRole("button", { name: "Connect" }));
-    await vi.waitFor(() => expect(mocked.listFavorites).toHaveBeenCalledWith("wp@db.test:3307"));
-  });
-
   it("shows the configured default port in the Port field", () => {
     resetStore({ settings: settings({ defaultPort: 3307 }) });
     render(<ConnectScreen />);

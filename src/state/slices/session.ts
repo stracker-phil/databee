@@ -90,7 +90,6 @@ export const sessionSlice: Slice<SessionSlice> = {
         if (queryTab) get().activateTab(queryTab.id);
         else get().openQueryTab();
         void get().loadDatabases(session.id);
-        void get().loadFavorites();
         void get().loadUiState(session.identity);
         get().toast("success", `Connected to ${session.displayName}`);
         return true;
@@ -122,13 +121,11 @@ export const sessionSlice: Slice<SessionSlice> = {
       // One update, so no render shows a closed session's leftovers.
       set((s) => sessionClosedPatch(sessionId, s));
       emitSessionEvent({ type: "sessionClosed", sessionId });
-      void get().loadFavorites();
     },
 
     setActiveSession(sessionId) {
       const tab = get().tabs.find((t) => t.sessionId === sessionId);
       set((s) => ({ activeSessionId: sessionId, ...resetWpNav(), ...activate(s, tab?.id ?? null) }));
-      void get().loadFavorites();
     },
 
     async switchDatabase(sessionId, database) {

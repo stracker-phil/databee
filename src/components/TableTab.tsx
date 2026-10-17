@@ -11,6 +11,7 @@ import type { MenuEntry } from "./ContextMenu";
 import { ErrorPanel } from "./ErrorPanel";
 import { InsetField } from "./Field";
 import { ResultsGrid } from "./ResultsGrid";
+import { ValueCounts, type ValueCountsTarget } from "./ValueCounts";
 
 /** Rust's default `rowLimit`, for the moment before settings load; Rust clamps the page size anyway. */
 const DEFAULT_ROW_LIMIT = 1000;
@@ -219,6 +220,15 @@ function DataView({ tab }: { tab: TableTabState }) {
   const [showFilterSql, setShowFilterSql] = useState(false);
   const identity = useStore((s) => s.sessions.find((x) => x.id === tab.sessionId)?.identity ?? null);
   const [savedWidths, saveWidths] = useColumnWidths(identity, tab);
+  const [counts, setCounts] = useState<ValueCountsTarget | null>(null);
+  const filterRows = useStore((s) => s.filterRows);
+
+  const columnMenu = (col: number, at: { x: number; y: number }): MenuEntry[] => {
+    const column = page?.result.columns[col]?.name;
+    if (!column) return [];
+    const target = { sessionId: tab.sessionId, database: tab.database, table: tab.table, column, equals: tab.where, ...at };
+    return [{ label: "Value counts", action: () => setCounts(target) }];
+  };
 
   const sortBy = (column: string) =>
     setBrowse((b) => ({
@@ -281,10 +291,12 @@ function DataView({ tab }: { tab: TableTabState }) {
           onColumnWidthsChange={saveWidths}
           rowActions={rowActions}
           onEditCell={onEditCell}
+          columnMenu={columnMenu}
         />
       ) : (
         <div className="empty-state">Loading…</div>
       )}
+      {counts && <ValueCounts target={counts} onPick={(value) => filterRows(tab.id, { column: counts.column, value })} onClose={() => setCounts(null)} />}
     </>
   );
 }

@@ -26,15 +26,19 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
 - **Results grid:** virtualized and typed, with inline editing. Copy cells or rows as TSV or JSON.
 - **Value column:** Enter on serialized data or long text opens it as a column with a tree of PHP-serialized
   or JSON values, including serialized data nested in strings, whose leaves you can edit. Values with broken string lengths are decoded leniently, with a warning.
-- **Favorites**, per-server **query history**, and a **⌘K command palette** for commands, tables, records and
-  recent items.
+- **Saved queries** (⌘S in a query tab, `q:` in the palette; pinned with Count or Rows), per-server **query
+  history**, and a **⌘K command palette** for commands, tables, records, saved queries and recent items. Older
+  favorites move into saved queries on the first start.
+- **Value counts** on every grid column (right-click its header): each stored value with its count; a click
+  filters the table, or adds a `WHERE` to a plain single-table query.
 - **Passwords** live in the macOS Keychain and never in files or logs.
 
 **WordPress mode** (on by default for WordPress databases)
 - **Dashboard:** orders, autoload weight, failed scheduled actions and expired transients, with one-click
   fixes that you review first.
-- **Lists** that follow wp-admin: content, users (including guest customers), options, orders,
-  subscriptions, products, sessions and scheduled actions. Each has facets, search and a side pane.
+- **Pinned queries** from the presets replace the old lists: orders, subscriptions, users, customers, guests,
+  products, sessions, scheduled actions, content and the options queries open as query tabs with their SQL
+  (`q:` in the palette); value counts replace the facets.
 - **Purpose-built pages.**
   - **Orders:** addresses, line items, totals, a PayPal fee waterfall, attribution, and a timeline that merges
     notes, actions, logs and refunds.
@@ -135,12 +139,12 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | ⌘[ / ⌘] | Back / forward | WordPress |
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset | everywhere |
 | ⌘R | Refresh the current view | everywhere |
-| ⌘S | Apply pending changes | everywhere |
+| ⌘S | Apply pending changes; in a query tab with nothing pending, save the query | everywhere / editor |
+| P | Pin the saved query (focus in the results) | editor |
 | ⌘F / ⌘⇧F | WHERE filter / filter tables | Database |
 | ⌘T / ⌘W | New query tab / close tab | Database |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab | Database |
 | ⌘↵ / ⇧⌘↵ | Run statement / run all | editor |
-| ⌘D | Add to favorites | Database |
 | ⌘E / ⌘⇧S | Open source row / take snapshot | WordPress record |
 
 Every shortcut can be rebound or unbound in Settings → Shortcuts. Overrides are stored in `keybindings.json`.
@@ -148,7 +152,7 @@ Every shortcut can be rebound or unbound in Settings → Shortcuts. Overrides ar
 ## Files
 
 Config and data live in `~/Library/Application Support/com.philippstracker.databee/`: settings, keybindings,
-recent connections, favorites, history, snapshots, UI state, projects and user presets. Logs are in
+recent connections, history, snapshots, UI state, projects (with saved queries) and user presets. Logs are in
 `~/Library/Logs/com.philippstracker.databee/`. Details are in [docs/backend.md](docs/backend.md#persistence).
 
 ### Presets

@@ -30,7 +30,7 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 
 Layout:
 - Without a session, the window shows `ConnectScreen`.
-- With sessions, it shows `Toolbar`, `FavoritesBar` (Database mode), `WpWorkspace` or `DbWorkspace`,
+- With sessions, it shows `Toolbar`, `WpWorkspace` or `DbWorkspace`,
   `PendingTray` and `StatusBar`.
 - `Dialogs`, `CommandPalette` and `Toasts` always render on top.
 
@@ -39,7 +39,6 @@ App
 ├─ ConnectScreen                       (no session)
 └─ .app grid
    ├─ Toolbar                          connection / database text (pickers), mode switch, Path, search field (palette), icon buttons
-   ├─ FavoritesBar                     (Database mode)
    ├─ WpWorkspace                      (WordPress mode, see wordpress.md)
    │  or DbWorkspace: [Sidebar |] TabBar + TabPanels
    │       TabPanels → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel) [| value column]
@@ -60,7 +59,7 @@ root: it creates the store, keeps the slice registry and re-exports the selector
 and the state types, so components import everything from `state/store`.
 
 - `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs`, `changes`, `data`,
-  `favorites`, `ui`, `nav`, `objects`, `columns`, `project`, and the temporary `wp` until it moves to the WordPress module). Each exports its
+  `saved`, `ui`, `nav`, `objects`, `columns`, `project`, and the temporary `wp` until it moves to the WordPress module). Each exports its
   member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
   the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
 - `Store` is an interface extending every core slice's interface. A module adds its members with
@@ -95,7 +94,8 @@ and the state types, so components import everything from `state/store`.
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
 | `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar's `pending n` button uses it) |
 | `uiState` | per connection identity: column widths, pane sizes (the WordPress detail pane, the SQL editor), `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group (`selectCollapsedGroups` reads them) |
-| `paletteOpen`, `keybindings`, `favorites`, `toasts`, `recentNav` | as named |
+| `savedQueries` | by `session/database`: the `SavedEntry` list of `saved_queries` (`loadSavedQueries`, read on every palette opening) |
+| `paletteOpen`, `keybindings`, `toasts`, `recentNav` | as named |
 
 Conventions:
 - Components subscribe with narrow selectors (`useStore((s) => s.x)`), and `useShallow` for derived arrays.
@@ -124,14 +124,14 @@ Conventions:
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
   refuses a tab that is already `running`.
 - Request tokens (`beginRequest(key)` / `isLatest(key, token)`): only the newest request per key writes its
-  reply. `loadFavorites` uses one key for all sessions; `loadWp` uses `wp:<session>/<database>` and switches
+  reply. `loadWp` uses `wp:<session>/<database>` and switches
   to WordPress mode only while that session and database are still active.
 - Selection: `selectCell` tags the cell with the active tab. `clearSelectionFor(state, tabId)` drops it when
   its tab closes or is left (`activate`); a `dataVersion` bump (`bumpData`) clears it outright.
 - `disconnect(sessionId)` closes the session in Rust, then applies one `set` that merges every registered
   slice's `sessionClosed` result: the session and the next active session (`session`), its schema and
   `structures` keys (`session`), its tabs, `queryCounter` and the selection if its tab was closed (`tabs`),
-  its `pending` and `applied` entries (`changes`), its `documents` (`objects`), its `wp` keys, and `wpNav` when it
+  its `pending` and `applied` entries (`changes`), its `documents` (`objects`), its `savedQueries` (`saved`), its `wp` keys, and `wpNav` when it
   was active (`wp`). A slice that keys data by session implements `sessionClosed`.
 - `switchDatabase` resets `wpNav` and the selection; unless the target is known WordPress it
   also resets `mode` to `db` and `modeChosen`. `connect` resets `wpNav`, `mode` and the selection and reuses
@@ -153,7 +153,7 @@ stale. `src/api/types.ts` re-exports the generated types plus the few frontend-o
 `ACCENTS`, `SCHEMES`, `BUNDLED_FONTS`). `ACCENTS` and `SCHEMES` mirror Rust's lists of the same name. `TEXT_SIZES` and `SETTINGS_LIMITS` mirror the clamps in Rust's `Settings::sanitized`, which stays the
 source of truth; change both together. Command signatures in
 `api` stay hand-written. `toAppError(e)` normalizes rejections to `AppError` and accepts only a known `kind`. Derived connection facts come from Rust and are never recomputed in the page: the
-Keychain `account` (which also scopes favorites and history) is on `SessionInfo`, `RecentConnection` and login
+Keychain `account` (which also scopes history) is on `SessionInfo`, `RecentConnection` and login
 errors (`AppError.account`).
 
 ## Commands, shortcuts, palette, menu
@@ -161,7 +161,7 @@ errors (`AppError.account`).
 Every user action that has a shortcut or appears in the palette is a `Command` (`src/commands/registry.ts`):
 
 ```ts
-{ id, title, scope, defaultBinding?, when?, run, menu? }
+{ id, title, scope, defaultBinding?, when?, run, menu?, fallbackFor? }
 ```
 
 - **Bindings** are strings like `Mod+Shift+K`, where `Mod` means ⌘. They are normalized to the order
@@ -191,10 +191,10 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 - **Overrides** come from `keybindings.json` (`null` unbinds). Settings → Shortcuts records new bindings and
   flags conflicts in overlapping scopes.
 - **Palette** (`CommandPalette.tsx`, `components/palette/`) is the main navigation. Its sections, in order:
-  Recent, row hits (an `Address` item for `databee://…`, then Rust's sections), Tables, Commands (those
+  Recent, row hits (an `Address` item for `databee://…`, then Rust's sections), Saved queries (`q:`), Tables, Commands (those
   whose `when()` passes, plus the active object's rule actions, `objectActionCommands()`).
-  - `parsePrefix` (`palette/parse.ts`) reads `>` (commands), `t:` (tables), `q:` (saved queries; none until
-    U11), `#`, `@`, `=` and `databee://` (the whole text is the needle). `searchesRows` says when Rust is asked:
+  - `parsePrefix` (`palette/parse.ts`) reads `>` (commands), `t:` (tables), `q:` (saved queries, see
+    [Saved queries](#saved-queries)), `#`, `@`, `=` and `databee://` (the whole text is the needle). `searchesRows` says when Rust is asked:
     `#<digits>`, `@`/`=` with 2+ characters, free text with 6+ (`MIN_TEXT`); shorter text matches only tables
     and commands (substring `score`).
   - `useRowHits` calls `api.paletteSearch` 200 ms after the last keystroke; a newer input drops older
@@ -241,14 +241,52 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 
 | Area | Components |
 |---|---|
-| Shell | `Toolbar`, `Path` (the column stack's crumbs), `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`) |
+| Shell | `Toolbar`, `Path` (the column stack's crumbs), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit; its hooks and `fitWidth` in `gridHooks.ts`), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; its hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `PresetsSection`, `ReferenceForm`, `KindStyleForms`, `ReferencesSection`, `RuleSections`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
-| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `PaletteList`), `ContextMenu`, `Toasts` |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `PaletteList`), `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens-until-u12) |
+
+### Saved queries
+
+Saved queries replace the favorites bar. `saved_queries` lists, for the active session's database, the
+project's queries (`origin: { kind: "project" }`), the global ones (`global`, from migrated favorites, offered in
+every project) and the `[[pinned]]` queries of the applied presets (`{ kind: "preset", preset }`, `readOnly`;
+`originText` shows `preset:<name>`), `{p}` and `{np}`
+replaced. The `saved` slice keeps them by `session/database`.
+
+- `q:` in the palette lists them (`savedItems` in `usePaletteItems.ts`, scored by title, then id): the title,
+  the origin in `--o2` (`Item.note`), `pinned` as the badge when the query has a pin. Enter runs
+  `openSavedQuery`: a query tab with the SQL, run at once. A project or global query that is already open is
+  activated instead; a preset query opens as an unsaved tab titled `copy of <title>`.
+- A query tab remembers where it came from (`QueryTab.saved: SavedRef { id, origin, database, pin }`). The
+  action bar shows the origin, **Save** (`query.save`, declared `fallbackFor: "changes.apply"`: it takes ⌘S, the binding of
+  `changes.apply`, and runs while nothing is pending; the conflict check skips such a pair) and **Pin** (`query.pin`, `p` while the focus is in the results grid). Save
+  updates a project or global query in place (`update_saved_query`), else asks for a title and stores a new
+  project query (`save_query`). Pin opens the pin dialog and stores `pin` (`{ show: "count" }`, `{ show: "value" }` or
+  `{ show: "rows", limit }`, the shape of `[[pinned]] home`; `lib/pins.ts` maps it to the dialog's choices and the
+  button label); an unsaved or preset tab is told to save first.
+- On a preset query's tab, **Copy to project** (`copyPresetQuery`, `copy_preset_query_to_project`) stores the
+  preset query as a project query; the tab then saves to that copy.
+- `databee://<connection>/<database>/q/<id>` opens the saved query with that id (`openAddress`).
+
+### Value counts
+
+Every grid column header has a menu (right-click, `ResultsGrid`'s `columnMenu`) with **Value counts**: a `--pop`
+popover (`ValueCounts`) listing the column's most frequent stored values (`value_counts`, top 50) with their
+counts. Each value renders with `Value`; a click (or Enter) on its row filters:
+
+- in a table tab, it adds `column = value` to the tab's structured filter (`filterRows`; NULL is `IS NULL`),
+  and the counts stay inside the tab's current structured filter;
+- in a query tab, the counts are of the column's origin table (`ColumnMeta.origin`), and a click asks Rust to
+  add `column = value` to the tab's SQL (`narrow_query`), then runs it. The menu item is disabled, with the
+  reason as its tooltip, when the column is not read from a table or when the SQL is not a single plain
+  single-table `SELECT` (`narrow_refusal`).
+
+Binary and long text values show but cannot filter.
 
 ### Settings pages
 
@@ -355,10 +393,6 @@ Bare keys never fire in inputs or the editor (`resolveKeydown`).
 Binary cells offer none of `Y`, `e`, `f` and the rule commands, since their cell holds only a preview. The grid's
 cell menu and the Document view's value menu (right-click) list `RULE_MENU`: "Add reference…", "Kind…",
 "Style…".
-
-**WordPress options screen (until U12).** `FieldValue` renders an option field through `Value` when its kind has
-a form there (NULL, `""`, secrets, money and time hints, short text); entity links (a reference-style button that
-runs `openEntity`), editable trees and collapsed long text keep the old rendering.
 
 ### Results grid
 

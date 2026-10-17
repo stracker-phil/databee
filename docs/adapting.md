@@ -113,9 +113,9 @@ planning are core, in `db/changes.rs`). To remove them as well:
    integration tests with it.
 2. In the frontend:
    - delete `src/components/wp/` (its `install.ts` registers the `wp` and `document` scopes) and
-     `src/lib/wpFormat.ts`, and drop the `installWp()` line in `src/modules.ts`;
+     drop the `installWp()` line in `src/modules.ts`;
    - delete the `wp`, `wpNav` and `mode` store slices;
-   - delete the `go.*`, `document.*` and `wp.*` commands and the WordPress palette search;
+   - delete the `go.dashboard` and `go.snapshots`, `document.*` and `wp.*` commands and the WordPress palette search;
    - remove the mode toggle in `Toolbar`, and render `DbWorkspace` directly in `App.tsx`.
 3. Delete the `wp_test`/`wp_write`/`wp_legacy`/`wp_custom`/`wp_multi` sections of `dev/fixture.sql` and the
    preset tests in `src-tauri/tests/rules.rs`, then run `bun run lint && bun run test`.

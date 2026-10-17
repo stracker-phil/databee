@@ -82,7 +82,9 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
                            effective rules, the rules lens and reference coverage
   src/document/            documents: one row with its meta rows, incoming references, patterns and events
   src/search/              the palette's search: ids, people, external ids, find everywhere
-  src/commands.rs          settings, keybindings, favorites, history, misc
+  src/saved/               saved queries: project, global and preset pinned ones; the favorites migration
+  src/value_counts.rs      value counts of one column
+  src/commands.rs          settings, keybindings, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
   src/decode/              PHP serialize and JSON value trees, leaf edits

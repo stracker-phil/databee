@@ -11,17 +11,6 @@ export type Action = { name: string, table: string, scope?: ActionScope, when?: 
 export type ActionFields = { name: string, table: string, scope?: ActionScope, when?: { [key in string]: Match }, params?: Array<Param>, update?: Array<UpdateStep>, delete?: DeleteSpec | null, sql?: string | null, preview_sql?: string | null, };
 
 /**
- * Action Scheduler statuses per day, folded into the `DayBucket` series; `labels` names the
- * stored statuses behind each series.
- */
-export type ActionHistogram = { days: Array<DayBucket>, labels: SeriesLabels, };
-
-/**
- * One button per alert: open a filtered list, or queue a reviewed change.
- */
-export type ActionKind = "navigate" | "change";
-
-/**
  * A parameter as the page asks for it.
  */
 export type ActionParam = { name: string, type: ParamType, 
@@ -40,17 +29,7 @@ error: string | null, };
 
 export type ActionScope = "row" | "table";
 
-export type ActionStats = { total: number, byStatus: Array<Facet>, recentFailed: Array<ActionSummary>, 
-/**
- * Failed actions grouped by hook, newest first.
- */
-byHook: Array<HookFailures>, overdue: number, };
-
-export type ActionSummary = { id: string, hook: string, status: string, scheduled: number | null, lastAttempt: number | null, attempts: number, args: string | null, group: string | null, 
-/**
- * Last log message (failure reason for failed actions).
- */
-message: string | null, };
+export type ActionStats = { total: number, byStatus: Array<Facet>, overdue: number, };
 
 export type Address = { 
 /**
@@ -148,8 +127,6 @@ filter?: string | null, primaryKey?: string | null,
  * Exact column matches (`openRow`), built into SQL by Rust; combined with `filter` by `AND`.
  */
 where?: Array<ColumnEquals>, };
-
-export type BrowserSection = { list: WpList, label: string, count: number, breakdown: Array<Facet>, };
 
 /**
  * A value as the UI displays it. Numbers stay strings so 64-bit IDs and decimals
@@ -255,7 +232,7 @@ sampleUnresolved: Array<string>,
  */
 timedOut: boolean, };
 
-export type Dashboard = { orders: OrderStats | null, recentOrders: Array<OrderSummary>, autoloadBytes: number, autoloadHealthy: boolean, transientsExpired: number, actions: ActionStats | null, 
+export type Dashboard = { orders: OrderStats | null, autoloadBytes: number, autoloadHealthy: boolean, transientsExpired: number, actions: ActionStats | null, 
 /**
  * Orders whose posts copy differs from `wc_orders` (only with HPOS sync on).
  */
@@ -344,14 +321,6 @@ failure: StatementFailure | null, };
 
 export type Facet = { value: string, label: string, count: number, };
 
-export type Favorite = { id: string, name: string, 
-/**
- * Server account (`user@host:port`) the favorite belongs to; `None` shows it everywhere.
- */
-scope: string | null, target: FavoriteTarget, };
-
-export type FavoriteTarget = { "kind": "table", database: string, table: string, } | { "kind": "query", sql: string, };
-
 export type FilterKind = "ids" | "sql" | "columns";
 
 export type FindMatch = "exact" | "contains";
@@ -430,16 +399,14 @@ truncated: boolean, executedAt: string, elapsedMs: number, error: string | null,
  */
 export type Home = { "show": "rows", limit?: number | null, } | { "show": "count" } | { "show": "value" };
 
-/**
- * Failed actions grouped by hook, newest failure first.
- */
-export type HookFailures = { hook: string, count: number, lastFailure: number | null, lastMessage: string | null, };
-
 export type IndexInfo = { name: string, unique: boolean, columns: Array<string>, };
 
 export type Insight = { level: InsightLevel, text: string, action: InsightAction | null, };
 
-export type InsightAction = { label: string, kind: ActionKind, list: WpList | null, status: string | null, change: WpChangeRequest | null, };
+/**
+ * A reviewed change an alert offers; it goes through the pending tray.
+ */
+export type InsightAction = { label: string, change: WpChangeRequest, };
 
 export type InsightLevel = "info" | "warning" | "danger";
 
@@ -473,16 +440,6 @@ export type KindRuleFields = { columns?: Array<ColumnGlob>, meta_keys?: Array<st
  */
 export type LaunchEvent = { "type": "connect", requestId: string, spec: ConnectionSpec, hasPassword: boolean, savePassword: boolean, } | { "type": "error", message: string, } | { "type": "open", address: string, connection: string | null, };
 
-export type ListQuery = { status?: string | null, 
-/**
- * Orders: gateway id; products: product type; users: role; content: post type.
- */
-kind?: string | null, search?: string | null, offset?: number, limit?: number, 
-/**
- * Sort key from the list's whitelist (see `order_by`); unknown keys use the default.
- */
-sort?: string | null, descending?: boolean | null, };
-
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
 /**
@@ -508,8 +465,6 @@ export type MetaTable = { table: string, owner?: string | null, fk?: string | nu
  */
 export type Money = { currency?: Array<string>, };
 
-export type NewFavorite = { name: string, scope?: string | null, target: FavoriteTarget, };
-
 export type NewValue = { "kind": "string", "text": string } | { "kind": "int", "text": string } | { "kind": "float", "text": string } | { "kind": "bool", "text": boolean } | { "kind": "null" };
 
 export type NodeKind = "null" | "bool" | "int" | "float" | "string" | "array" | "object" | "ref" | "enum" | "custom";
@@ -532,42 +487,11 @@ export type OpenArgs = { spec: ConnectionSpec, password?: string,
  */
 requestId?: string, savePassword?: boolean, };
 
-export type OptionGroup = { prefix: string, 
-/**
- * The literal name pattern the group covers, e.g. `woocommerce*`.
- */
-label: string, count: number, bytes: number, autoloadCount: number, autoloadBytes: number, };
-
-export type OptionSize = { name: string, bytes: number, };
-
-export type OptionsOverview = { table: string, totalCount: number, autoloadBytes: number, groups: Array<OptionGroup>, 
-/**
- * The heaviest autoloaded options, largest first.
- */
-largestAutoload: Array<OptionSize>, transients: Array<TransientInfo>, };
-
 export type OrderStats = { total: number, today: number, byStatus: Array<Facet>, days: Array<DayBucket>, 
 /**
  * `day` (14 days) or `hour` (last 24 h, used when fewer than 3 days have orders).
  */
 granularity: Granularity, };
-
-export type OrderSummary = { id: string, kind: string, status: string, total: string | null, gateway: string | null, gatewayTitle: string | null, email: string | null, name: string | null, customerId: string | null, created: number | null, itemCount: number, };
-
-/**
- * The order list screens; each lists one post type.
- */
-export type OrderType = "shop_order" | "shop_subscription";
-
-export type Page<T> = { items: Array<T>, hasMore: boolean, 
-/**
- * Page size after the clamp to `PAGE_MAX`; the next page starts at `offset + limit`.
- */
-limit: number, 
-/**
- * Status (or kind) counts for filter chips, independent of the current filter.
- */
-facets: Array<Facet>, kinds: Array<Facet>, };
 
 export type PaletteHit = { 
 /**
@@ -638,8 +562,6 @@ title?: string | null, sql: string, home?: Home | null, };
  */
 export type PlannedChange = { id: number, description: string, statements: Array<string>, canUndo: boolean, };
 
-export type PostSummary = { id: string, title: string | null, kind: string, status: string, author: string | null, date: number | null, modified: number | null, };
-
 /**
  * One preset: rules for tables named without the prefix.
  */
@@ -673,8 +595,6 @@ export type PresetRow = { name: string,
 markerTables: Array<string>, applied: boolean, };
 
 export type PresetSource = { "kind": "builtIn" } | { "kind": "user", path: string, };
-
-export type ProductSummary = { id: string, name: string, status: string, kind: string | null, sku: string | null, price: string | null, stockStatus: string | null, stock: string | null, totalSales: number, variations: number, image: string | null, };
 
 /**
  * One database of one connection. Fields use the snake_case of the rule types, so the stored
@@ -873,6 +793,14 @@ availablePresets: Array<string>, entities: Array<AppliedEntity>,
 tableEntities: { [key in string]: Array<string> }, };
 
 /**
+ * A saved query as the palette offers it, with `{p}`/`{np}` replaced. Preset queries are
+ * read-only: copying one to the project makes it editable.
+ */
+export type SavedEntry = { id: string, title: string, sql: string, pin: Home | null, origin: SavedOrigin, readOnly: boolean, };
+
+export type SavedOrigin = { "kind": "project" } | { "kind": "global" } | { "kind": "preset", preset: string, };
+
+/**
  * A query the user saved, optionally pinned to the readout home. `pin` shares the shape of a
  * preset's `[[pinned]] home`, so a project query exports as a pinned query.
  */
@@ -894,19 +822,15 @@ export type SerializedCell = { row: number, col: number, format: Format,
  */
 preview: string, };
 
-export type SeriesLabels = { completed: string, processing: string, failed: string, other: string, };
-
 export type SessionInfo = { id: string, spec: ConnectionSpec, identity: string, 
 /**
- * The Keychain account, which also scopes favorites.
+ * The Keychain account, which also scopes history.
  */
 account: string, displayName: string, serverVersion: string, database: string | null, 
 /**
  * The connection slug (`databee://<slug>/…`).
  */
 slug: string, };
-
-export type SessionSummary = { key: string, expires: number | null, customerId: string | null, email: string | null, items: number, total: string | null, };
 
 /**
  * A `set` value: text as an SQL literal, or `{ sql = "…" }` as an SQL expression.
@@ -1025,12 +949,6 @@ export type Target = { "kind": "home" } | { "kind": "table", table: string, filt
 
 export type Theme = "system" | "light" | "dark";
 
-export type TransientInfo = { name: string, siteWide: boolean, bytes: number, 
-/**
- * Unix timestamp; `None` means the transient never expires.
- */
-expiresAt: number | null, expired: boolean, };
-
 export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: number | null, sqlEditorHeight: number | null, sidebarHidden: boolean, 
 /**
  * Collapsed object view groups by database, each as `<document table>::<group id>`.
@@ -1041,8 +959,6 @@ collapsedGroups: { [key in string]: Array<string> }, };
  * One `UPDATE`: `table` defaults to the action's, `key` to its primary key, matched to `{id}`.
  */
 export type UpdateStep = { table?: string | null, key?: string | null, where?: string | null, set: { [key in string]: SetValue }, };
-
-export type UserSummary = { id: string, login: string, email: string | null, name: string | null, registered: number | null, roles: Array<string>, orderCount: number, totalSpent: string | null, lastOrder: number | null, avatar: string | null, };
 
 export type Value = { raw: Cell, kind: ValueKind, 
 /**
@@ -1071,6 +987,12 @@ declaringClass?: string,
  * The stored key bytes as hex when they are not valid UTF-8.
  */
 rawHex?: string, node: ValueNode, };
+
+export type ValueCount = { 
+/**
+ * A group has no row, so the value has no provenance.
+ */
+value: Value, count: number, };
 
 /**
  * There is no status kind: status values are enums, and color comes only from value styles.
@@ -1103,11 +1025,6 @@ entities: Array<string>,
  * Real table → the entity its rows open as.
  */
 tableEntities: { [key in string]: TableEntity }, legacyEntitiesFile: string | null, };
-
-/**
- * The list screens of WordPress mode.
- */
-export type WpList = "orders" | "subscriptions" | "users" | "products" | "actions" | "sessions" | "content" | "settings";
 
 /**
  * Which zone a timestamp is stored in. `local` is the site's zone, which is not stored, so such

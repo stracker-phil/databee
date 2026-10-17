@@ -1,12 +1,12 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE, type BrowsePage, type TableStructure } from "../api";
+import { api, EMPTY_UI_STATE, type BrowsePage, type Cell, type TableStructure, type ValueCount } from "../api";
 import { useStore, type TableTab as TableTabState } from "../state/store";
-import { browsePage, connectedStore, num, resultSet, session, tableTab, text } from "../test/fixtures";
+import { browsePage, connectedStore, num, resultSet, session, tableTab, text, value } from "../test/fixtures";
 import { TableTab } from "./TableTab";
 
 const mocked = vi.mocked(api, true);
@@ -210,6 +210,84 @@ describe("TableTab", () => {
       fireEvent.contextMenu(await screen.findByText("Hello world"));
       await userEvent.click(screen.getByRole("menuitem", { name: "Open as object" }));
       expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "object", address: { connection: "shop", target: { kind: "row", table: "wp_posts", key: "1" } } });
+    });
+  });
+
+  describe("value counts", () => {
+    const pages = [{ column: "post_type", value: "page" }];
+    const orders = tableTab({ table: "wp_wc_orders", where: pages });
+    const statusPage = browsePage({
+      table: "wp_wc_orders",
+      result: resultSet({ columns: [{ name: "status", typeName: "VARCHAR", origin: null }], rows: [[text("wc-failed")]], totalRows: 1 }),
+    });
+    const counted = (raw: Cell, count: number): ValueCount => ({ value: value({ raw }), count });
+    const Live = () => <TableTab tab={useStore((s) => s.tabs[0]) as TableTabState} />;
+
+    async function showCounts() {
+      useStore.setState({ tabs: [orders], activeTabId: orders.id });
+      mocked.browseTable.mockResolvedValue(statusPage);
+      render(<Live />);
+      fireEvent.contextMenu(await screen.findByRole("columnheader", { name: /status/ }));
+      await userEvent.click(await screen.findByRole("menuitem", { name: "Value counts" }));
+    }
+    const openCounts = async () => {
+      await showCounts();
+      return screen.findByRole("listbox", { name: "Values" });
+    };
+
+    it("counts the column inside the tab's filter and lists each value with its count", async () => {
+      mocked.valueCounts.mockResolvedValue([counted(text("wc-completed"), 1200), counted(text("wc-failed"), 3)]);
+      const list = await openCounts();
+
+      expect(mocked.valueCounts).toHaveBeenCalledWith("s1", "db", "wp_wc_orders", "status", pages, 50);
+      expect(within(list).getByRole("option", { name: /wc-completed/ })).toHaveTextContent("1,200");
+      expect(within(list).getByRole("option", { name: /wc-failed/ })).toHaveTextContent("3");
+    });
+
+    it("adds a filter on the clicked value to the rows already filtered", async () => {
+      mocked.valueCounts.mockResolvedValue([counted(text("wc-failed"), 3)]);
+      const list = await openCounts();
+      await userEvent.click(within(list).getByRole("option", { name: /wc-failed/ }));
+
+      const filter = [...pages, { column: "status", value: "wc-failed" }];
+      expect(useStore.getState().tabs[0]).toMatchObject({ where: filter });
+      await waitFor(() => expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ table: "wp_wc_orders", where: filter })));
+      expect(screen.queryByRole("dialog", { name: /Value counts/ })).not.toBeInTheDocument();
+    });
+
+    it("filters on NULL when the NULL row is clicked", async () => {
+      mocked.valueCounts.mockResolvedValue([counted({ t: "null" }, 5)]);
+      const list = await openCounts();
+      await userEvent.click(within(list).getByRole("option", { name: /NULL/ }));
+      expect(useStore.getState().tabs[0]).toMatchObject({ where: [...pages, { column: "status", value: null }] });
+    });
+
+    it("disables binary and long values, which cannot filter", async () => {
+      mocked.valueCounts.mockResolvedValue([
+        counted({ t: "bytes", v: { len: 16, hexPreview: "deadbeef" } }, 2),
+        counted({ t: "longText", v: { len: 9000, preview: "lorem ipsum" } }, 1),
+      ]);
+      const list = await openCounts();
+      const options = within(list).getAllByRole("option");
+      expect(options).toHaveLength(2);
+      for (const option of options) {
+        expect(option).toHaveAttribute("aria-disabled", "true");
+        expect(option).toHaveAttribute("title", "Binary and long values cannot filter");
+        await userEvent.click(option);
+      }
+      expect(useStore.getState().tabs[0]).toMatchObject({ where: pages });
+    });
+
+    it("says so when the filtered table has no rows", async () => {
+      mocked.valueCounts.mockResolvedValue([]);
+      await showCounts();
+      expect(await screen.findByText("No rows.")).toBeInTheDocument();
+    });
+
+    it("shows the error when counting fails", async () => {
+      mocked.valueCounts.mockRejectedValue({ kind: "database", message: "Unknown column 'status'", code: "1054" });
+      await showCounts();
+      expect(await screen.findByText("Unknown column 'status'")).toBeInTheDocument();
     });
   });
 

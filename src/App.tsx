@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { api, toAppError } from "./api";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { Dialogs } from "./components/Dialogs";
-import { FavoritesBar } from "./components/FavoritesBar";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TabBar, TabPanels } from "./components/Tabs";
@@ -94,7 +93,6 @@ function Workspace() {
   }
   return (
     <AppShell>
-      <FavoritesBar />
       <DbWorkspace />
     </AppShell>
   );

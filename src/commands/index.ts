@@ -1,5 +1,5 @@
 import { TEXT_SIZES } from "../api";
-import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, selectWp, useStore, type Store, type Tab, type WpList, type WpRoute } from "../state/store";
+import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, selectWp, useStore, type Store, type Tab, type WpRoute } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
 import { COLUMN_COMMANDS } from "./columns";
@@ -54,6 +54,14 @@ function toggleShortcuts() {
   if (!s.dialog) s.openDialog({ type: "shortcuts", scopes: activeScopes() });
 }
 const inDb = inScope("db");
+
+function withQueryTab(run: (tab: Extract<Tab, { kind: "query" }>) => unknown) {
+  const tab = selectActiveTab(useStore.getState());
+  if (tab?.kind === "query") return run(tab);
+}
+
+/** The keyboard focus is in a query tab's results grid. */
+const inResults = () => !!document.activeElement?.closest(".results [role='grid']");
 const hasWp = () => !!selectWp(useStore.getState());
 
 const go = (id: string, title: string, route: WpRoute): Command => ({
@@ -66,16 +74,6 @@ const go = (id: string, title: string, route: WpRoute): Command => ({
 
 const SCREENS: Command[] = [
   go("go.dashboard", "Dashboard", { screen: "dashboard" }),
-  go("go.orders", "Orders", { screen: "list", list: "orders" }),
-  go("go.failedOrders", "Failed orders", { screen: "list", list: "orders", params: { status: "wc-failed" } }),
-  go("go.subscriptions", "Subscriptions", { screen: "list", list: "subscriptions" }),
-  go("go.users", "Users", { screen: "list", list: "users" }),
-  go("go.products", "Products", { screen: "list", list: "products" }),
-  go("go.actions", "Scheduled actions", { screen: "list", list: "actions" }),
-  go("go.failedActions", "Failed actions", { screen: "list", list: "actions", params: { status: "failed" } }),
-  go("go.sessions", "Sessions", { screen: "list", list: "sessions" }),
-  go("go.content", "Content", { screen: "list", list: "content" }),
-  go("go.settings", "Options", { screen: "list", list: "settings" }),
   go("go.snapshots", "Snapshots & diff", { screen: "snapshots" }),
 ];
 
@@ -162,7 +160,22 @@ export const APP_COMMANDS: Command[] = [
       else s.openDialog({ type: "settings" });
     },
   },
-  { id: "favorites.add", title: "Add to favorites", scope: "global", defaultBinding: "Mod+D", menu: true, when: () => inDb() && !!selectActiveTab(useStore.getState()), run: () => useStore.getState().addCurrentTabToFavorites() },
+  {
+    id: "query.save",
+    title: "Save query",
+    scope: "editor",
+    fallbackFor: "changes.apply",
+    when: () => selectActivePending(useStore.getState()).length === 0,
+    run: () => void withQueryTab((tab) => useStore.getState().saveQueryTab(tab.id)),
+  },
+  {
+    id: "query.pin",
+    title: "Pin query…",
+    scope: "editor",
+    defaultBinding: "P",
+    when: inResults,
+    run: () => void withQueryTab((tab) => useStore.getState().pinQueryTab(tab.id)),
+  },
   { id: "changes.apply", title: "Apply pending changes", scope: "global", defaultBinding: "Mod+S", menu: true, when: () => selectActivePending(useStore.getState()).length > 0, run: () => void useStore.getState().applyChanges() },
   { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => selectCanUndo(useStore.getState()), run: () => void useStore.getState().undoLast() },
   ...VALUE_COMMANDS,
@@ -170,17 +183,6 @@ export const APP_COMMANDS: Command[] = [
   ...COLUMN_COMMANDS,
   ...SCREENS,
 ];
-
-export const LIST_LABELS: Record<WpList, string> = {
-  orders: "Orders",
-  subscriptions: "Subscriptions",
-  users: "Users",
-  products: "Products",
-  actions: "Scheduled actions",
-  sessions: "Sessions",
-  content: "Content",
-  settings: "Options",
-};
 
 /**
  * Registers the core scopes and the app's commands (again after `clearCommands`) and syncs user overrides

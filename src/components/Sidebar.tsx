@@ -93,7 +93,7 @@ function TablesPanel() {
   const activeTable = tableOf(activeTab);
   const hoverTable = useStore((s) => s.hover.table);
   const hoverLinked = useStore((s) => s.hover.linked);
-  const { loadTables, loadDatabases, openTableTab, openQueryTab, addFavorite } = useStore.getState();
+  const { loadTables, loadDatabases, openTableTab, openQueryTab } = useStore.getState();
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
@@ -150,7 +150,6 @@ function TablesPanel() {
         { label: "Show structure", action: () => openTableTab(db, t.name, "structure") },
         { label: "New query: SELECT …", action: () => void openSelectQuery(db, t.name) },
         "separator",
-        { label: "Add to favorites", action: () => void addFavorite(t.name, { kind: "table", database: db, table: t.name }) },
         { label: "Copy name", action: () => void copyText(t.name, "name") },
       ],
     });

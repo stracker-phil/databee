@@ -7,6 +7,7 @@ use crate::address::Address;
 use crate::address::resolve::{self, Resolved};
 use crate::db::browse::select_all_sql;
 use crate::db::changes::{self, ChangeRequest};
+use crate::db::narrow;
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, PlannedChange};
 use crate::db::safety::destructive_reason;
 use crate::db::{
@@ -255,6 +256,26 @@ pub async fn value_condition(
         timeout,
     )
     .await
+}
+
+/// Why the query in `sql` cannot take one more condition (`narrow_query`), or `None`.
+#[tauri::command]
+pub fn narrow_refusal(sql: String) -> Option<String> {
+    narrow::refusal(&sql)
+}
+
+/// `sql` with `column = value` (`IS NULL` for no value) added to the `WHERE` of its only
+/// statement, a plain single-table `SELECT`.
+#[tauri::command]
+pub fn narrow_query(
+    state: State<'_, AppState>,
+    session_id: String,
+    sql: String,
+    column: String,
+    value: Option<String>,
+) -> AppResult<String> {
+    let dialect = state.sessions.get(&session_id)?.db.dialect();
+    narrow::narrow_to_value(dialect, &sql, column, value).map_err(AppError::InvalidInput)
 }
 
 /// The full text of a cell that a result set sent as a `LongText` preview.

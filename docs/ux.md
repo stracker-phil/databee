@@ -309,7 +309,8 @@ rebindable.
 | `w` | object | live mode on/off (from U13) |
 | `s` | object | snapshot (from U13) |
 | `x` | object | dismiss change marks in the focused column (from U13) |
-| `p` | query, table | pin the current query to the readout (from U11) |
+| `p` | query (focus in the results) | pin the tab's saved query: Not pinned, Count, Value or Rows(n) (`query.pin`) |
+| ⌘S | global, query | `changes.apply` applies pending changes; with nothing pending, `query.save` (its fallback) saves the query tab |
 | ⌘\ | global | toggle the sidebar |
 | ⌘⇧F | db | focus the sidebar filter |
 | ⌘K | global | palette |
@@ -330,6 +331,6 @@ tab; holding ⌥ peeks the selected hit. The footer lists the keys and the prefi
 | `#3297` | every object with that id across the entities, each with its table name, and the rows that reference it (incoming references and patterns). Without entities, the primary keys of every table under 1M estimated rows (the footer says so) |
 | `@john` | entities whose rule marks them `people = true`, searched on their `search` and `search_exact` columns and meta keys |
 | text of 6+ characters | values in the entities' `search` columns and non-key reference targets (external ids); shorter text matches only tables and commands |
-| `q:` | saved and pinned queries (from U11) |
+| `q:` | saved queries: the project's, the global ones and the presets' pinned ones, with their origin |
 | `=value` | find everywhere: every `[[meta]]` value, the `[[find]]` sources and the entities' search columns, one section per table and column |
 | `databee://…` | open the address |

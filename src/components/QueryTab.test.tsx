@@ -1,13 +1,13 @@
 import { EditorView } from "@codemirror/view";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api } from "../api";
-import { useStore } from "../state/store";
-import { connectedStore, queryTab, resultSet, table } from "../test/fixtures";
+import { api, type ColumnMeta } from "../api";
+import { useStore, type QueryTab as QueryTabState } from "../state/store";
+import { connectedStore, pendingChange, queryTab, resultSet, table, text, value } from "../test/fixtures";
 import { Dialogs } from "./Dialogs";
 import { handleKeydown, installCommands } from "../commands";
 import { QueryTab } from "./QueryTab";
@@ -16,8 +16,8 @@ import { Toasts } from "./Toasts";
 
 const mocked = vi.mocked(api, true);
 
-function renderTab(sql: string) {
-  connectedStore({ tabs: [queryTab({ sql })] });
+function renderTab(sql: string, patch: Partial<QueryTabState> = {}) {
+  connectedStore({ tabs: [queryTab({ sql, ...patch })] });
   const Current = () => {
     const tab = useStore((s) => s.tabs[0]);
     return tab.kind === "query" ? <QueryTab tab={tab} /> : null;
@@ -201,6 +201,199 @@ describe("QueryTab", () => {
       await act(() => useStore.getState().saveKeybindings({ "editor.run": null }));
       expect(screen.queryByText(/ statement/)).not.toBeInTheDocument();
       expect(screen.getByText(/⌘⇧↵ all/)).toBeInTheDocument();
+    });
+  });
+
+  describe("saved queries", () => {
+    const sql = "SELECT * FROM wp_wc_orders WHERE status = 'wc-failed'";
+    const project = { id: "failed-orders", origin: { kind: "project" as const }, database: "db", pin: null };
+    const preset = { id: "abandoned-carts", origin: { kind: "preset" as const, preset: "woocommerce" }, database: "db", pin: null };
+    const saveButton = () => screen.getByRole("button", { name: "Save" });
+    const pinButton = () => screen.getByRole("button", { name: /^Pin/ });
+
+    it("asks for a title when saving an unsaved tab, stores the query in the project and shows its origin", async () => {
+      renderTab(sql);
+      await userEvent.click(saveButton());
+      const input = screen.getByRole("textbox", { name: "Save query as" });
+      await userEvent.clear(input);
+      await userEvent.type(input, "Failed orders{Enter}");
+
+      await waitFor(() => expect(mocked.saveQuery).toHaveBeenCalledWith("s1", "db", "Failed orders", sql, null));
+      expect(await screen.findByText("project")).toBeInTheDocument();
+      expect(useStore.getState().tabs[0]).toMatchObject({ title: "Failed orders", saved: { id: "saved-1", origin: { kind: "project" }, database: "db" } });
+      expect(pinButton()).toBeEnabled();
+    });
+
+    it("updates the stored query without asking when saving a saved tab", async () => {
+      renderTab(sql, { title: "Failed orders", saved: project });
+      await userEvent.click(saveButton());
+      await waitFor(() => expect(mocked.updateSavedQuery).toHaveBeenCalledWith("s1", "db", { id: "failed-orders", title: "Failed orders", sql, pin: null }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(mocked.saveQuery).not.toHaveBeenCalled();
+    });
+
+    it("keeps Save off for an empty editor", () => {
+      renderTab("");
+      expect(saveButton()).toBeDisabled();
+    });
+
+    it.each([
+      ["an unsaved tab", {}],
+      ["a preset query", { saved: preset }],
+    ])("disables Pin for %s", (_name, patch) => {
+      renderTab(sql, patch);
+      expect(pinButton()).toBeDisabled();
+    });
+
+    describe("pinning", () => {
+      beforeEach(() => renderTab(sql, { title: "Failed orders", saved: project }));
+
+      it("stores a count", async () => {
+        await userEvent.click(pinButton());
+        const dialog = await screen.findByRole("dialog");
+        expect(dialog).toHaveTextContent("Pin Failed orders");
+        await userEvent.click(within(dialog).getByRole("radio", { name: "Count" }));
+        await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+        await waitFor(() => expect(mocked.updateSavedQuery).toHaveBeenCalledWith("s1", "db", { id: "failed-orders", title: "Failed orders", sql, pin: { show: "count" } }));
+        expect(await screen.findByRole("button", { name: /Pinned · count/ })).toBeInTheDocument();
+      });
+
+      it("stores the first rows with their limit", async () => {
+        await userEvent.click(pinButton());
+        const dialog = await screen.findByRole("dialog");
+        await userEvent.click(within(dialog).getByRole("radio", { name: "Rows" }));
+        const limit = within(dialog).getByLabelText("Rows to show");
+        await userEvent.clear(limit);
+        await userEvent.type(limit, "10");
+        await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+        await waitFor(() => expect(mocked.updateSavedQuery).toHaveBeenCalledWith("s1", "db", { id: "failed-orders", title: "Failed orders", sql, pin: { show: "rows", limit: 10 } }));
+        expect(await screen.findByRole("button", { name: /Pinned · 10 rows/ })).toBeInTheDocument();
+      });
+    });
+
+    describe("a preset query", () => {
+      beforeEach(() => {
+        mocked.copyPresetQueryToProject.mockResolvedValue({ id: "copy-abandoned-carts", title: "Abandoned carts", sql, pin: null });
+        renderTab(sql, { title: "copy of Abandoned carts", saved: preset });
+      });
+
+      it("shows its origin and offers to copy it to the project", () => {
+        expect(screen.getByText("preset:woocommerce")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Copy to project" })).toBeInTheDocument();
+      });
+
+      it("saves to the project's copy once copied", async () => {
+        await userEvent.click(screen.getByRole("button", { name: "Copy to project" }));
+        await waitFor(() => expect(mocked.copyPresetQueryToProject).toHaveBeenCalledWith("s1", "db", "woocommerce", "abandoned-carts"));
+        expect(await screen.findByText("project")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Copy to project" })).not.toBeInTheDocument();
+
+        await userEvent.click(saveButton());
+        await waitFor(() => expect(mocked.updateSavedQuery).toHaveBeenCalledWith("s1", "db", { id: "copy-abandoned-carts", title: "Abandoned carts", sql, pin: null }));
+      });
+
+      it("asks for a title when saved before it was copied, and stores a new project query", async () => {
+        await userEvent.click(saveButton());
+        expect(screen.getByRole("textbox", { name: "Save query as" })).toHaveValue("copy of Abandoned carts");
+        await userEvent.keyboard("{Enter}");
+        await waitFor(() => expect(mocked.saveQuery).toHaveBeenCalledWith("s1", "db", "copy of Abandoned carts", sql, null));
+      });
+    });
+
+    describe("shortcuts", () => {
+      beforeEach(() => {
+        installCommands();
+        window.addEventListener("keydown", handleKeydown, true);
+      });
+      afterEach(() => window.removeEventListener("keydown", handleKeydown, true));
+
+      it("⌘S saves the query of the active tab when nothing is pending", async () => {
+        renderTab(sql);
+        await userEvent.keyboard("{Meta>}s{/Meta}");
+        expect(await screen.findByRole("dialog", { name: "Save query as" })).toBeInTheDocument();
+        expect(mocked.applyChanges).not.toHaveBeenCalled();
+      });
+
+      it("⌘S applies the pending changes first", async () => {
+        renderTab(sql);
+        act(() => useStore.setState({ pending: [pendingChange({ id: 4 })] }));
+        await userEvent.keyboard("{Meta>}s{/Meta}");
+        await waitFor(() => expect(mocked.applyChanges).toHaveBeenCalledWith("s1", [4]));
+        expect(screen.queryByRole("dialog", { name: "Save query as" })).not.toBeInTheDocument();
+      });
+
+      it("P in the results opens the pin dialog of a saved query", async () => {
+        mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 1, database: "db", failure: null });
+        renderTab(sql, { title: "Failed orders", saved: project });
+        await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
+        (await screen.findByRole("grid")).focus();
+        await userEvent.keyboard("p");
+        expect(await screen.findByRole("dialog")).toHaveTextContent("Pin Failed orders");
+      });
+    });
+  });
+
+  describe("value counts", () => {
+    const sql = "SELECT status FROM wp_wc_orders";
+    const statusColumn = { name: "status", typeName: "VARCHAR", origin: { database: "db", table: "wp_wc_orders", column: "status" } };
+    const counts = (...entries: [string, number][]) => entries.map(([v, count]) => ({ value: value({ raw: text(v) }), count }));
+
+    async function openMenu(columns: ColumnMeta[] = [statusColumn]) {
+      mocked.execute.mockResolvedValue({ results: [resultSet({ columns, rows: [[text("wc-failed")]], totalRows: 1 })], elapsedMs: 1, database: "db", failure: null });
+      renderTab(sql);
+      await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
+      fireEvent.contextMenu(await screen.findByRole("columnheader", { name: /status/ }));
+      return screen.findByRole("menuitem", { name: "Value counts" });
+    }
+
+    beforeEach(() => mocked.narrowRefusal.mockResolvedValue(null));
+
+    it("lists the stored values of the column read from a table with their counts", async () => {
+      mocked.valueCounts.mockResolvedValue(counts(["wc-completed", 900], ["wc-failed", 7]));
+      await userEvent.click(await openMenu());
+
+      const list = await screen.findByRole("listbox", { name: "Values" });
+      expect(mocked.valueCounts).toHaveBeenCalledWith("s1", "db", "wp_wc_orders", "status", [], 50);
+      expect(within(list).getByRole("option", { name: /wc-failed/ })).toHaveTextContent("7");
+      expect(within(list).getByRole("option", { name: /wc-completed/ })).toHaveTextContent("900");
+    });
+
+    it("disables the item for a column that is not read from a table", async () => {
+      const item = await openMenu([{ ...statusColumn, origin: null }]);
+      expect(item).toBeDisabled();
+      expect(item).toHaveAttribute("title", "This column is not read from a table");
+    });
+
+    it("disables the item with the reason when the query cannot be narrowed", async () => {
+      mocked.narrowRefusal.mockResolvedValue("A query with GROUP BY cannot be narrowed");
+      const item = await openMenu();
+      expect(item).toBeDisabled();
+      expect(item).toHaveAttribute("title", "A query with GROUP BY cannot be narrowed");
+      expect(mocked.narrowRefusal).toHaveBeenCalledWith(sql);
+    });
+
+    it("narrows the query to the picked value and runs it again", async () => {
+      mocked.valueCounts.mockResolvedValue(counts(["wc-failed", 7]));
+      mocked.narrowQuery.mockResolvedValue("SELECT status FROM wp_wc_orders WHERE `status` = 'wc-failed'");
+      await userEvent.click(await openMenu());
+      await userEvent.click(await screen.findByRole("option", { name: /wc-failed/ }));
+
+      await waitFor(() => expect(mocked.narrowQuery).toHaveBeenCalledWith("s1", sql, "status", "wc-failed"));
+      await waitFor(() => expect(mocked.execute).toHaveBeenLastCalledWith("s1", "SELECT status FROM wp_wc_orders WHERE `status` = 'wc-failed'", false));
+      expect(useStore.getState().tabs[0]).toMatchObject({ sql: "SELECT status FROM wp_wc_orders WHERE `status` = 'wc-failed'" });
+      expect(screen.queryByRole("dialog", { name: /Value counts/ })).not.toBeInTheDocument();
+    });
+
+    it("reports a query that could not be narrowed and keeps the SQL", async () => {
+      mocked.valueCounts.mockResolvedValue(counts(["wc-failed", 7]));
+      mocked.narrowQuery.mockRejectedValue({ kind: "invalid_input", message: "Cannot narrow this query", code: null });
+      render(<Toasts />);
+      await userEvent.click(await openMenu());
+      await userEvent.click(await screen.findByRole("option", { name: /wc-failed/ }));
+      expect(await screen.findByText("Could not filter the query: Cannot narrow this query")).toBeInTheDocument();
+      expect(useStore.getState().tabs[0]).toMatchObject({ sql });
     });
   });
 

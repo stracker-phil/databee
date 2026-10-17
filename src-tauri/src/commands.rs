@@ -6,7 +6,6 @@ use crate::error::{AppError, AppResult};
 use crate::launch::LaunchEvent;
 use crate::menu;
 use crate::state::AppState;
-use crate::store::favorites::{Favorite, NewFavorite};
 use crate::store::history::HistoryEntry;
 use crate::store::keybindings::Keybindings;
 use crate::store::recents::RecentConnection;
@@ -181,37 +180,6 @@ pub async fn rename_connection_slug(
     let old = state.recents.rename_slug(&identity, &slug).await?;
     state.sessions.rename_slug(&identity, &slug);
     state.projects.rename_connection(&old, &slug).await
-}
-
-#[tauri::command]
-pub fn list_favorites(state: State<'_, AppState>, account: String) -> Vec<Favorite> {
-    state.favorites.list(&account)
-}
-
-#[tauri::command]
-pub async fn create_favorite(
-    state: State<'_, AppState>,
-    favorite: NewFavorite,
-) -> AppResult<Favorite> {
-    state.favorites.create(favorite).await
-}
-
-#[tauri::command]
-pub async fn update_favorite(
-    state: State<'_, AppState>,
-    favorite: Favorite,
-) -> AppResult<Favorite> {
-    state.favorites.update(favorite).await
-}
-
-#[tauri::command]
-pub async fn remove_favorite(state: State<'_, AppState>, id: String) -> AppResult<()> {
-    state.favorites.remove(&id).await
-}
-
-#[tauri::command]
-pub async fn reorder_favorites(state: State<'_, AppState>, ids: Vec<String>) -> AppResult<()> {
-    state.favorites.reorder(ids).await
 }
 
 #[tauri::command]

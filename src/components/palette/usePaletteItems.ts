@@ -1,8 +1,9 @@
 import { useEffect, useMemo } from "react";
-import type { PaletteHit, TableInfo } from "../../api";
+import type { PaletteHit, SavedEntry, TableInfo } from "../../api";
 import { allCommands, bindingFor, bindingLabel, type Command } from "../../commands";
 import { AddressError, formatAddress, parseAddress } from "../../lib/address";
 import { projectKey } from "../../state/slices/project";
+import { originText } from "../../state/slices/saved";
 import { selectActiveSession, selectActiveTab, useStore, type RecentNav } from "../../state/store";
 import { objectActionCommands } from "../object/actions";
 import { parsePrefix, score, searchesRows, type Prefix } from "./parse";
@@ -15,6 +16,8 @@ export interface Item {
   title: string;
   subtitle?: string;
   badge?: string;
+  /** Secondary text in --o2, e.g. where a saved query is stored. */
+  note?: string;
   binding?: string;
   /** A row hit, rendered with its values. */
   hit?: PaletteHit;
@@ -87,6 +90,25 @@ function commandItems(prefix: Prefix, needle: string): Item[] {
     }));
 }
 
+function savedItems(entries: SavedEntry[], sessionId: string | null, database: string | null, prefix: Prefix, needle: string): Item[] {
+  if (prefix !== "q:" || !sessionId || !database) return [];
+  return entries
+    .map((entry) => ({ entry, s: score(entry.title, needle) || score(entry.id, needle) }))
+    .filter(({ s }) => s > 0)
+    .sort((a, b) => b.s - a.s)
+    .map(({ entry }): Item => ({
+      key: `saved:${originText(entry.origin)}:${entry.id}`,
+      section: "Saved queries",
+      title: entry.title,
+      note: originText(entry.origin),
+      badge: entry.pin ? "pinned" : undefined,
+      go: () => {
+        close();
+        useStore.getState().openSavedQuery(sessionId, database, entry);
+      },
+    }));
+}
+
 function recentItems(recent: RecentNav[], prefix: Prefix, needle: string): Item[] {
   if (needle || prefix !== null) return [];
   const { openEntity, openTableTab, setMode } = useStore.getState();
@@ -121,20 +143,23 @@ function tableItems(tables: TableInfo[], database: string | null, prefix: Prefix
     });
 }
 
-/** The palette's results for `query` in the order Recent, row hits, Tables, Commands. */
+/** The palette's results for `query` in the order Recent, row hits, saved queries, Tables, Commands. */
 export function usePaletteItems(query: string) {
   const session = useStore(selectActiveSession);
   const database = session?.database ?? null;
   const tables = useStore((s) => (session && database ? s.schema[session.id]?.tables[database] : undefined));
   const info = useStore((s) => (session && database ? s.rulesInfo[projectKey(session.id, database)] : undefined));
+  const saved = useStore((s) => (session && database ? s.savedQueries[projectKey(session.id, database)] : undefined));
   const recent = useStore((s) => s.recentNav);
 
   // Once per opening: the palette is remounted each time it opens.
   useEffect(() => {
-    const { loadTables, loadRulesInfo } = useStore.getState();
+    const { loadTables, loadRulesInfo, loadSavedQueries } = useStore.getState();
     if (!session || !database) return;
     if (!tables) void loadTables(session.id, database);
     if (!info) void loadRulesInfo(session.id, database);
+    // Saved queries change from other tabs and the project; read them fresh on every opening.
+    void loadSavedQueries(session.id, database);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -143,8 +168,9 @@ export function usePaletteItems(query: string) {
 
   const items: Item[] = useMemo(() => {
     const rows = [...addressItems(prefix, needle), ...hitItems(hits)];
-    return [...recentItems(recent, prefix, needle), ...rows, ...tableItems(tables ?? [], database, prefix, needle), ...commandItems(prefix, needle)].slice(0, MAX_ITEMS);
-  }, [hits, needle, prefix, tables, recent, database]);
+    const queries = savedItems(saved ?? [], session?.id ?? null, database, prefix, needle);
+    return [...recentItems(recent, prefix, needle), ...rows, ...queries, ...tableItems(tables ?? [], database, prefix, needle), ...commandItems(prefix, needle)].slice(0, MAX_ITEMS);
+  }, [hits, needle, prefix, tables, recent, database, saved, session?.id]);
 
   const hasEntities = !!info?.entities.length;
   return { items, searching, prefix, needle, rowSearch: searchesRows(prefix, needle), hasEntities };

@@ -86,23 +86,23 @@ preset applies.
 | `site.rs` | `WpContext`: the prefix, `table(name)` (network tables under the network prefix), `has_table`, `woocommerce()` (the preset applies) and `hpos()` (orders are read from `wc_orders` wherever that table exists) |
 | `catalog.rs` | `Catalog` from the rules: one `EntityDef` per entity name (an unfiltered entity wins, so `order` is `wc_orders` where it exists and `posts` otherwise), its owned meta table, `links` (unconditional references to another entity's key), `meta_links` (references from the meta value by meta key), `relations` (labelled references to its key); `table_entities`; the document SQL |
 | `document.rs` | `EntityDoc` and `DocField`; `assemble` adds a `Hint` (money with the currency of the row or the document, time for `unix`/`utc` timestamps) and `Sensitive::Secret` from the kind rules; the title is the entity's summary values |
-| `mod.rs` | `WpInfo` (the `rules_info` shim), `load_docs` and `expand` (only for snapshots: rows, meta and relation counts), featured images (`post_images`, for the lists), options queries |
+| `mod.rs` | `WpInfo` (the `rules_info` shim), `load_docs` and `expand` (only for snapshots: rows, meta and relation counts) |
 | `commands.rs` | The Tauri commands, which only forward; `wp_detect` maps `rules_info` to `WpInfo` |
-| `lists.rs`, `dashboard.rs`, `options.rs`, `snapshot.rs`, `changes.rs` | The list screens, dashboard (UTC days), options inspector, snapshots and writes; the palette's search is the core's `search/` ([architecture](architecture.md#palette-search)) |
-| `sql.rs`, `rows.rs`, `media.rs`, `snapshots_store.rs` | Shared SQL fragments, cell readers (`money`: an amount as stored plus its currency code), thumbnail URLs, the snapshot store |
+| `dashboard.rs`, `snapshot.rs`, `changes.rs` | The dashboard (counts, autoload, expired transients, Action Scheduler statuses, HPOS drift, insights whose only actions are reviewed changes), snapshots and writes; the palette's search is the core's `search/` ([architecture](architecture.md#palette-search)) |
+| `sql.rs`, `rows.rs`, `snapshots_store.rs` | Shared SQL fragments (`epoch`), cell readers (`money`: an amount as stored plus its currency code; `Facet`), the snapshot store |
 
 `wp_detect` returns `WpInfo { prefix, presets, entities, tableEntities, legacyEntitiesFile }` or `null`.
 `entities` are the entity names of `RulesInfo.entities`;
 `tableEntities` maps a real table to the entity its rows open as. `openEntity(entity, id)` (`wp` slice) asks
 `document` for the shorthand `<entity> <id>`, keeps the reply (`keepDocument`) and opens its canonical row address
-as an object tab. A list's side pane shows the same document (`object/EntityDocument.tsx`). The Compare screen
+as an object tab. The Compare screen
 and the entity page's snapshot button are gone until U13; live mode is absent until then. There is no site URL, WooCommerce version,
 HPOS mode, time zone or store currency any more: the status bar shows the prefix, amounts show as stored with
 their own currency, and the dashboard counts days in UTC.
 
 The remaining screens' writes are `WpChangeRequest` variants planned by `wp_plan_change` (`changes::plan`) into
-the session's plans: `SetAutoload` and `DeleteExpiredTransients` (Options screen) and `DeleteLogsBefore` (dashboard
-insights). Meta edits, order status, retry and cancel moved to core edits on the document's rows (`setCell` on
+the session's plans: `SetAutoload`, `DeleteExpiredTransients` (the timeouts before now, read when planned) and
+`DeleteLogsBefore` (both offered by dashboard insights). Meta edits, order status, retry and cancel moved to core edits on the document's rows (`setCell` on
 the provenance row) and to the presets' rule actions (`set_status`, `retry`, `cancel`, `plan_action`). Raw SQL
 writes run no WordPress hooks. Undo restores old values exactly
 (`db::changes::restore_literal`); literals follow the server's `sql_mode` (`Dialect::sql_string`).

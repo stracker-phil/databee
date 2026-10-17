@@ -26,7 +26,6 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("connection.new", "New Connection…", "Mod+N"),
     item("tabs.new", "New Query Tab", "Mod+T"),
     item("tabs.close", "Close Tab", "Mod+W"),
-    item("favorites.add", "Add to Favorites", "Mod+D"),
     item("settings.open", "Settings…", "Mod+,"),
     item("changes.apply", "Apply Pending Changes", "Mod+S"),
     item("nav.back", "Back", "Mod+["),
@@ -86,7 +85,6 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         .paste()
         .select_all()
         .separator()
-        .item(&item("favorites.add")?)
         .build()?;
     let view = SubmenuBuilder::new(app, "View")
         .item(&item("view.refresh")?)

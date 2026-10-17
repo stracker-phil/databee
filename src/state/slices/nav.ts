@@ -191,7 +191,13 @@ export const navSlice: Slice<NavSlice> = {
           const kind = address.target.kind;
           if (kind === "project") return get().openProject({ sessionId: session.id, database: address.database });
           if (address.target.kind === "find") return get().setPaletteOpen(true, `=${address.target.value}`);
-          if (kind !== "table" && kind !== "row") return get().toast("info", `${formatAddress(address)} cannot be opened yet: only table, row, find and project addresses open so far`);
+          if (address.target.kind === "query") {
+            const id = address.target.id;
+            const entry = (await get().loadSavedQueries(session.id, address.database)).find((e) => e.id === id);
+            if (!entry) return get().toast("error", `${formatAddress(address)} names no saved query`);
+            return get().openSavedQuery(session.id, address.database, entry);
+          }
+          if (kind !== "table" && kind !== "row") return get().toast("info", `${formatAddress(address)} cannot be opened yet: only table, row, query, find and project addresses open so far`);
           if (kind === "row") return get().openObject(address, { preview: opts.preview });
           if (get().activeSessionId !== session.id) get().setActiveSession(session.id);
           const location = await locationOf(get, session.id, address);

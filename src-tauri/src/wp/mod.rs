@@ -1,14 +1,11 @@
 //! WordPress screens over the effective rules of the `wordpress`, `woocommerce` and
-//! `action-scheduler` presets: documents, lists, snapshots and the options inspector.
+//! `action-scheduler` presets: documents, the dashboard and snapshots.
 
 pub mod catalog;
 pub mod changes;
 pub mod commands;
 pub mod dashboard;
 pub mod document;
-pub mod lists;
-pub mod media;
-pub mod options;
 pub mod rows;
 #[cfg(test)]
 mod server_tests;
@@ -33,7 +30,7 @@ use self::document::{EntityDoc, Fetched};
 use self::rows::string;
 use self::site::WpContext;
 use crate::db::Database;
-use crate::db::{ResultSet, escape_like};
+use crate::db::ResultSet;
 use crate::error::{AppError, AppResult};
 use crate::rules::effective::RulesInfo;
 
@@ -44,18 +41,7 @@ const MAX_RELATED: u32 = 100;
 /// `capabilities/wp.json`.
 pub const COMMANDS: &[&str] = &[
     "wp_detect",
-    "wp_options",
     "wp_dashboard",
-    "wp_browser",
-    "wp_orders",
-    "wp_users",
-    "wp_products",
-    "wp_actions",
-    "wp_action_histogram",
-    "wp_failed_by_hook",
-    "wp_sessions",
-    "wp_content",
-    "wp_options_group",
     "wp_snapshot_take",
     "wp_snapshots",
     "wp_snapshot_diff",
@@ -97,18 +83,7 @@ pub fn init(config_dir: &Path) -> TauriPlugin<Wry> {
     tauri::plugin::Builder::new("wp")
         .invoke_handler(tauri::generate_handler![
             commands::wp_detect,
-            commands::wp_options,
             commands::wp_dashboard,
-            commands::wp_browser,
-            commands::wp_orders,
-            commands::wp_users,
-            commands::wp_products,
-            commands::wp_actions,
-            commands::wp_action_histogram,
-            commands::wp_failed_by_hook,
-            commands::wp_sessions,
-            commands::wp_content,
-            commands::wp_options_group,
             commands::wp_snapshot_take,
             commands::wp_snapshots,
             commands::wp_snapshot_diff,
@@ -120,21 +95,6 @@ pub fn init(config_dir: &Path) -> TauriPlugin<Wry> {
             Ok(())
         })
         .build()
-}
-
-/// The list screens of WordPress mode.
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum WpList {
-    Orders,
-    Subscriptions,
-    Users,
-    Products,
-    Actions,
-    Sessions,
-    Content,
-    Settings,
 }
 
 /// `rules_info` in the shape the WordPress screens read.
@@ -223,93 +183,6 @@ pub async fn load_docs(
 
 /// Featured-image thumbnail URL per post ID (posts without one are left out). Each
 /// attachment's uploads base is what its `guid` proves for its file.
-pub async fn post_images(
-    db: &dyn Database,
-    ctx: &WpContext,
-    database: &str,
-    post_ids: &[String],
-) -> AppResult<HashMap<String, String>> {
-    let dialect = db.dialect();
-    let Ok(ids) = catalog::parse_ids(post_ids) else {
-        return Ok(HashMap::new());
-    };
-    if ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let postmeta = sql::table_ref(dialect, database, ctx, "postmeta");
-    let thumbs = fetch(
-        db,
-        &format!(
-            "SELECT post_id, meta_value FROM {postmeta} WHERE meta_key = '_thumbnail_id' AND post_id IN ({})",
-            catalog::id_list(&ids)
-        ),
-    )
-    .await?;
-    let thumb_of: HashMap<String, u64> = thumbs
-        .rows
-        .iter()
-        .filter_map(|r| Some((string(&r[0])?, string(&r[1])?.parse().ok()?)))
-        .collect();
-    let attachment_ids: Vec<u64> = thumb_of.values().copied().collect();
-    if attachment_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let id_list = catalog::id_list(&attachment_ids);
-    let files = fetch(
-        db,
-        &format!(
-            "SELECT post_id, meta_key, meta_value FROM {postmeta} \
-             WHERE meta_key IN ('_wp_attached_file', '_wp_attachment_metadata') AND post_id IN ({id_list})"
-        ),
-    )
-    .await?;
-    let mut attached: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
-    for r in &files.rows {
-        let (Some(id), Some(key)) = (string(&r[0]), string(&r[1])) else {
-            continue;
-        };
-        let slot = attached.entry(id).or_default();
-        if key == "_wp_attached_file" {
-            slot.0 = string(&r[2]);
-        } else {
-            slot.1 = string(&r[2]);
-        }
-    }
-    let guids = attachment_guids(db, ctx, database, &id_list).await?;
-    Ok(thumb_of
-        .into_iter()
-        .filter_map(|(post, att)| {
-            let att = att.to_string();
-            let (file, meta) = attached.get(&att)?;
-            let file = file.as_deref()?;
-            let base = media::uploads_base_from_guid(guids.get(&att)?, file)?;
-            Some((post, media::attachment_url(base, file, meta.as_deref())))
-        })
-        .collect())
-}
-
-/// `ID → guid` of attachment posts; `id_list` is a comma-separated list of IDs.
-async fn attachment_guids(
-    db: &dyn Database,
-    ctx: &WpContext,
-    database: &str,
-    id_list: &str,
-) -> AppResult<HashMap<String, String>> {
-    let rs = fetch(
-        db,
-        &format!(
-            "SELECT ID, guid FROM {} WHERE ID IN ({id_list})",
-            sql::table_ref(db.dialect(), database, ctx, "posts")
-        ),
-    )
-    .await?;
-    Ok(rs
-        .rows
-        .iter()
-        .filter_map(|r| Some((string(&r[0])?, string(&r[1])?)))
-        .collect())
-}
-
 pub async fn expand(
     db: &dyn Database,
     ctx: &WpContext,
@@ -337,134 +210,16 @@ pub async fn expand(
     load_docs(db, ctx, catalog, database, &rel.entity, &ids).await
 }
 
-pub async fn options_overview(
-    db: &dyn Database,
-    ctx: &WpContext,
-    database: &str,
-) -> AppResult<options::OptionsOverview> {
-    let dialect = db.dialect();
-    let table = ctx.table("options");
-    let from = sql::table_ref(dialect, database, ctx, "options");
-    let rows = fetch(
-        db,
-        &format!("SELECT option_name, LENGTH(option_value), autoload FROM {from}"),
-    )
-    .await?;
-    let rows: Vec<options::OptionRow> = rows
-        .rows
-        .iter()
-        .filter_map(|r| {
-            Some(options::OptionRow {
-                name: string(&r[0])?,
-                bytes: string(&r[1]).and_then(|b| b.parse().ok()).unwrap_or(0),
-                autoload: string(&r[2]).unwrap_or_default(),
-            })
-        })
-        .collect();
-    let timeouts = fetch(
-        db,
-        &format!(
-            "SELECT option_name, option_value FROM {from} WHERE option_name LIKE {} OR option_name LIKE {}",
-            dialect.like(r"\_transient\_timeout\_%"),
-            dialect.like(r"\_site\_transient\_timeout\_%"),
-        ),
-    )
-    .await?;
-    let timeouts: HashMap<String, i64> = timeouts
-        .rows
-        .iter()
-        .filter_map(|r| Some((string(&r[0])?, string(&r[1])?.trim().parse().ok()?)))
-        .collect();
-    Ok(options::overview(
-        &table,
-        &rows,
-        &timeouts,
-        chrono::Utc::now().timestamp(),
-    ))
-}
-
-/// Options whose name starts with `prefix` (or all transients for `transients`), as fields
-/// with decoded values and the kinds of the options' `[[meta]]` rules.
-pub async fn options_group(
-    db: &dyn Database,
-    ctx: &WpContext,
-    catalog: &Catalog,
-    database: &str,
-    prefix: &str,
-) -> AppResult<Vec<document::DocField>> {
-    let dialect = db.dialect();
-    let either = |a: &str, b: &str| {
-        format!(
-            "option_name LIKE {} OR option_name LIKE {}",
-            dialect.like(a),
-            dialect.like(b)
-        )
-    };
-    let filter = match prefix {
-        "transients" => either(r"\_transient\_%", r"\_site\_transient\_%"),
-        "(single)" => format!(
-            "option_name NOT LIKE {} AND option_name NOT LIKE '%-%'",
-            dialect.like(r"%\_%")
-        ),
-        p => {
-            let p = escape_like(p);
-            either(&format!("{p}%"), &format!(r"\_{p}%"))
-        }
-    };
-    let table = ctx.table("options");
-    let rs = fetch(
-        db,
-        &format!(
-            "SELECT option_name, option_value, autoload FROM {} WHERE {filter} ORDER BY option_name LIMIT 500",
-            sql::table_ref(dialect, database, ctx, "options"),
-        ),
-    )
-    .await?;
-    let meta = ctx.rules.meta_table(&table);
-    Ok(rs
-        .rows
-        .iter()
-        .filter_map(|r| {
-            let name = string(&r[0])?;
-            let rule = meta.and_then(|m| ctx.rules.meta_kind_rule(m, &name));
-            let mut f = document::field(catalog, rule, (&[], &[]), name, r[1].clone(), None);
-            f.autoload = string(&r[2]).map(|value| document::Autoload {
-                on: options::is_autoloaded(&value),
-                value,
-            });
-            Some(f)
-        })
-        .collect())
-}
-
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
 
-    use super::document::{Autoload, Hint, Sensitive};
-    use super::testing::{HPOS, site, site_with};
+    use super::testing::{HPOS, site_with};
     use super::*;
-    use crate::db::{Cell, ColumnMeta, FakeDatabase};
 
     fn info_of(ctx: &WpContext, catalog: &Catalog, legacy: Option<&Path>) -> WpInfo {
         let loaded = ctx.rules.applied.presets.clone();
         WpInfo::new(RulesInfo::new(&ctx.rules, &loaded), catalog, legacy)
-    }
-
-    fn options_result(rows: Vec<Vec<Cell>>) -> ResultSet {
-        ResultSet {
-            columns: ["option_name", "option_value", "autoload"]
-                .iter()
-                .map(|name| ColumnMeta {
-                    name: name.to_string(),
-                    type_name: "TEXT".into(),
-                    origin: None,
-                })
-                .collect(),
-            rows,
-            returns_rows: true,
-            ..Default::default()
-        }
     }
 
     #[test]
@@ -479,22 +234,6 @@ mod tests {
     fn every_wp_command_in_build_rs_is_registered() {
         for name in crate::test_support::build_rs_commands("wp_") {
             assert!(COMMANDS.contains(&name), "{name} missing from COMMANDS");
-        }
-    }
-
-    #[test]
-    fn wp_lists_serialize_to_lowercase_wire_strings() {
-        for (list, wire) in [
-            (WpList::Orders, "orders"),
-            (WpList::Subscriptions, "subscriptions"),
-            (WpList::Users, "users"),
-            (WpList::Products, "products"),
-            (WpList::Actions, "actions"),
-            (WpList::Sessions, "sessions"),
-            (WpList::Content, "content"),
-            (WpList::Settings, "settings"),
-        ] {
-            assert_eq!(serde_json::to_value(list).unwrap(), wire);
         }
     }
 
@@ -559,84 +298,6 @@ mod tests {
         assert_eq!(
             WpState::open(dir.path()).legacy_entities,
             Some(dir.path().join("entities.toml"))
-        );
-    }
-
-    #[tokio::test]
-    async fn options_group_masks_secret_options_and_reads_unix_timeouts() {
-        let (ctx, catalog) = site(&["options"]);
-        let cell = |s: &str| Cell::Text(s.into());
-        let db = FakeDatabase::new().on(
-            "SELECT option_name, option_value, autoload FROM",
-            options_result(vec![
-                vec![cell("blogname"), cell("Shop"), cell("yes")],
-                vec![cell("gateway_api_key"), cell("sk_test"), cell("no")],
-                vec![
-                    cell("_transient_timeout_fresh"),
-                    cell("4102444800"),
-                    cell("no"),
-                ],
-            ]),
-        );
-
-        let fields = options_group(&db, &ctx, &catalog, "wp", "transients")
-            .await
-            .unwrap();
-
-        let kinds: Vec<_> = fields
-            .iter()
-            .map(|f| (f.name.as_str(), f.hint.clone(), f.sensitive))
-            .collect();
-        assert_eq!(
-            kinds,
-            [
-                ("blogname", None, None),
-                ("gateway_api_key", None, Some(Sensitive::Secret)),
-                (
-                    "_transient_timeout_fresh",
-                    Some(Hint::Time {
-                        unix: 4_102_444_800
-                    }),
-                    None
-                ),
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn options_group_reports_each_options_stored_autoload_and_whether_it_is_on() {
-        let (ctx, catalog) = site(&["options"]);
-        let cell = |s: &str| Cell::Text(s.into());
-        let db = FakeDatabase::new().on(
-            "SELECT option_name, option_value, autoload FROM",
-            options_result(vec![
-                vec![cell("woocommerce_a"), cell("1"), cell("yes")],
-                vec![cell("woocommerce_b"), cell("2"), cell("auto-off")],
-                vec![cell("woocommerce_c"), cell("3"), cell("on")],
-            ]),
-        );
-
-        let fields = options_group(&db, &ctx, &catalog, "wp", "woocommerce")
-            .await
-            .unwrap();
-
-        let autoloads: Vec<_> = fields
-            .iter()
-            .map(|f| (f.name.as_str(), f.autoload.clone()))
-            .collect();
-        let autoload = |value: &str, on: bool| {
-            Some(Autoload {
-                value: value.into(),
-                on,
-            })
-        };
-        assert_eq!(
-            autoloads,
-            [
-                ("woocommerce_a", autoload("yes", true)),
-                ("woocommerce_b", autoload("auto-off", false)),
-                ("woocommerce_c", autoload("on", true)),
-            ]
         );
     }
 }

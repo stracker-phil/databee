@@ -5,6 +5,8 @@
 //! backslash is always an escape inside strings (`NO_BACKSLASH_ESCAPES` is ignored), `"` always
 //! quotes a string (`ANSI_QUOTES` is ignored), and `DELIMITER` is not supported.
 
+use std::ops::Range;
+
 /// `Word` is a keyword or unquoted identifier; `Variable` (`@name`, `@@name`, `@'quoted'`) never
 /// matches a keyword.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +35,23 @@ pub struct Piece<'a> {
 impl Piece<'_> {
     pub fn is_keyword(&self, keyword: &str) -> bool {
         self.kind == Kind::Word && self.text.eq_ignore_ascii_case(keyword)
+    }
+
+    pub fn is_comment(&self) -> bool {
+        self.kind == Kind::Comment
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.kind == Kind::Open
+    }
+
+    pub fn is_symbol(&self, symbol: &str) -> bool {
+        self.kind == Kind::Other && self.text == symbol
+    }
+
+    /// Byte offsets of the piece in the scanned SQL.
+    pub fn span(&self) -> Range<usize> {
+        self.start..self.start + self.text.len()
     }
 }
 
@@ -212,14 +231,22 @@ fn line_end(bytes: &[u8], start: usize) -> usize {
 
 /// Splits a script into statements, dropping comment-only ones and surrounding whitespace.
 pub fn split_statements(sql: &str) -> Vec<&str> {
-    let mut statements = Vec::new();
+    statement_ranges(sql)
+        .into_iter()
+        .map(|range| &sql[range])
+        .collect()
+}
+
+/// The byte ranges `split_statements` returns.
+pub fn statement_ranges(sql: &str) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
     let mut start = 0;
     let mut has_code = false;
     for piece in scan(sql) {
         match piece.kind {
             Kind::Semicolon => {
                 if has_code {
-                    statements.push(sql[start..piece.start].trim());
+                    ranges.push(trimmed(sql, start..piece.start));
                 }
                 start = piece.start + 1;
                 has_code = false;
@@ -229,14 +256,25 @@ pub fn split_statements(sql: &str) -> Vec<&str> {
         }
     }
     if has_code {
-        statements.push(sql[start..].trim());
+        ranges.push(trimmed(sql, start..sql.len()));
     }
-    statements
+    ranges
+}
+
+fn trimmed(sql: &str, range: Range<usize>) -> Range<usize> {
+    let text = &sql[range.clone()];
+    let start = range.start + (text.len() - text.trim_start().len());
+    start..start + text.trim().len()
 }
 
 /// Bare words (keywords and unquoted identifiers), in order.
 pub fn words(statement: &str) -> Vec<Piece<'_>> {
     scan(statement).filter(|p| p.kind == Kind::Word).collect()
+}
+
+/// Every piece, comments included, in order.
+pub fn pieces(statement: &str) -> Vec<Piece<'_>> {
+    scan(statement).collect()
 }
 
 /// False when the text ends inside a quote or a comment.
@@ -315,7 +353,7 @@ mod tests {
         assert_eq!(word_texts("SELECT 1--1 FROM t"), ["SELECT", "FROM", "T"]);
     }
 
-    fn pieces(sql: &str) -> Vec<(Kind, &str)> {
+    fn kinds(sql: &str) -> Vec<(Kind, &str)> {
         scan(sql).map(|p| (p.kind, p.text)).collect()
     }
 
@@ -332,7 +370,7 @@ mod tests {
     #[test]
     fn unclosed_quote_is_one_piece_to_the_end() {
         assert_eq!(
-            pieces("a 'bc; d"),
+            kinds("a 'bc; d"),
             [(Kind::Word, "a"), (Kind::Quoted, "'bc; d")]
         );
     }
@@ -372,7 +410,7 @@ mod tests {
     #[test]
     fn non_ascii_text_is_lexed_by_bytes_without_breaking_splits() {
         assert_eq!(split_statements("SELECT 'é;ü'; SELECT 2").len(), 2);
-        assert_eq!(pieces("é'x'"), [(Kind::Word, "é"), (Kind::Quoted, "'x'")]);
+        assert_eq!(kinds("é'x'"), [(Kind::Word, "é"), (Kind::Quoted, "'x'")]);
     }
 
     #[test]
@@ -382,14 +420,14 @@ mod tests {
             ("größe", Kind::Word),
             ("1abc", Kind::Number),
         ] {
-            assert_eq!(pieces(sql), [(kind, sql)], "{sql}");
+            assert_eq!(kinds(sql), [(kind, sql)], "{sql}");
         }
     }
 
     #[test]
     fn variables_are_single_pieces_and_never_keywords() {
         for sql in ["@where", "@@session.sql_mode", "@'q'", "@`q`"] {
-            assert_eq!(pieces(sql), [(Kind::Variable, sql)], "{sql}");
+            assert_eq!(kinds(sql), [(Kind::Variable, sql)], "{sql}");
         }
         let piece = scan("@where").next().unwrap();
         assert!(!piece.is_keyword("WHERE"));

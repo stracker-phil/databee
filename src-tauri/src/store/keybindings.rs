@@ -159,12 +159,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = KeybindingsStore::open(dir.path());
         store
-            .update(overrides(&[("favorites.add", None)]))
+            .update(overrides(&[("view.refresh", None)]))
             .await
             .unwrap();
-        assert_eq!(store.menu_binding("favorites.add"), None);
+        assert_eq!(store.menu_binding("view.refresh"), None);
         assert_eq!(
-            KeybindingsStore::open(dir.path()).menu_binding("favorites.add"),
+            KeybindingsStore::open(dir.path()).menu_binding("view.refresh"),
             None
         );
     }
@@ -214,14 +214,14 @@ mod tests {
             ("c.bad", Some("Mod+K+J")),
             ("bad id!", Some("Mod+K")),
             ("tabs.new", Some("Mod+Shift+T")),
-            ("favorites.add", None),
+            ("view.refresh", None),
             ("view.zoomIn", Some("Mod++")),
         ]));
         assert_eq!(
             cleaned,
             overrides(&[
                 ("tabs.new", Some("Mod+Shift+T")),
-                ("favorites.add", None),
+                ("view.refresh", None),
                 ("view.zoomIn", Some("Mod++")),
             ])
         );

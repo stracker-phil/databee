@@ -1,4 +1,4 @@
-import { api, type WpInfo, type WpList } from "../../api";
+import { api, type WpInfo } from "../../api";
 import { onSessionEvent } from "../events";
 import { beginRequest, fail, isLatest } from "../requests";
 import { selectActiveSession } from "../selectors";
@@ -6,11 +6,8 @@ import { useStore, type Slice, type Store } from "../store";
 import { remembered, resetMode } from "./ui";
 import { withoutSession } from "./session";
 
-export type { WpList };
-
 export type WpRoute =
   | { screen: "dashboard" }
-  | { screen: "list"; list: WpList; params?: Record<string, string>; selected?: { entity: string; id: string } }
   | { screen: "snapshots" };
 
 export interface WpSlice {

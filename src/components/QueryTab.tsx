@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
-import { CheckCircle2, Loader2, Play, PlayCircle, Square } from "lucide-react";
-import { api, toAppError } from "../api";
+import { CheckCircle2, Copy, Loader2, Pin, Play, PlayCircle, Save, Square } from "lucide-react";
+import { api, toAppError, type ResultSet } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { formatCount } from "../lib/format";
+import { pinLabel } from "../lib/pins";
 import { resultValueAt } from "../lib/values";
 import { useResolvedScheme } from "../lib/theme";
-import { useStore, type QueryTab as QueryTabState } from "../state/store";
+import { isPreset, originText } from "../state/slices/saved";
+import { fail, useStore, type QueryTab as QueryTabState } from "../state/store";
+import type { MenuEntry } from "./ContextMenu";
 import { ErrorPanel } from "./ErrorPanel";
 import { currentStatement, QueryEditor } from "./QueryEditor";
 import { ResultsGrid } from "./ResultsGrid";
 import { Splitter, usePaneSize, useWindowSize } from "./Splitter";
+import { ValueCounts, type ValueCountsTarget } from "./ValueCounts";
 
 /** Columns per table for completion; reloads when the table list changes (DDL reloads it). */
 function useCompletionSchema(sessionId: string, database: string | null) {
@@ -51,8 +55,37 @@ function ResultsPane({ tab }: { tab: QueryTabState }) {
   );
 }
 
+/** Value counts of a result column read from a table; a pick narrows the tab's SQL and runs it. */
+function useValueCounts(tab: QueryTabState, result: ResultSet | undefined) {
+  const [counts, setCounts] = useState<ValueCountsTarget | null>(null);
+  const database = tab.response?.database ?? null;
+
+  const columnMenu = async (col: number, at: { x: number; y: number }): Promise<MenuEntry[]> => {
+    const origin = result?.columns[col]?.origin;
+    const originDatabase = origin?.database ?? database;
+    if (!origin || !originDatabase) return [{ label: "Value counts", disabled: true, title: "This column is not read from a table", action: () => {} }];
+    const refusal = await api.narrowRefusal(tab.sql).catch((e) => toAppError(e).message);
+    const target = { sessionId: tab.sessionId, database: originDatabase, table: origin.table, column: origin.column, equals: [], ...at };
+    return [{ label: "Value counts", disabled: !!refusal, title: refusal ?? undefined, action: () => setCounts(target) }];
+  };
+
+  const narrow = async (column: string, value: string | null) => {
+    try {
+      const sql = await api.narrowQuery(tab.sessionId, tab.sql, column, value);
+      useStore.getState().updateQueryTab(tab.id, { sql });
+      void useStore.getState().runQuery(tab.id, sql);
+    } catch (e) {
+      fail(e, "Could not filter the query");
+    }
+  };
+
+  const popover = counts && <ValueCounts target={counts} onPick={(value) => void narrow(counts.column, value)} onClose={() => setCounts(null)} />;
+  return { columnMenu, popover };
+}
+
 function ResultView({ tab }: { tab: QueryTabState }) {
   const result = tab.response?.results[tab.activeResult];
+  const { columnMenu, popover } = useValueCounts(tab, result);
   if (tab.running) {
     return (
       <div className="empty-state">
@@ -64,12 +97,16 @@ function ResultView({ tab }: { tab: QueryTabState }) {
   if (!result) return <div className="empty-state">Run a query to see results here.</div>;
   if (result.returnsRows) {
     return (
-      <ResultsGrid
-        columns={result.columns}
-        rows={result.rows}
-        source={{ sessionId: tab.sessionId, resultId: result.id }}
-        valueAt={(row, col) => resultValueAt(result, row, col)}
-      />
+      <>
+        <ResultsGrid
+          columns={result.columns}
+          rows={result.rows}
+          source={{ sessionId: tab.sessionId, resultId: result.id }}
+          valueAt={(row, col) => resultValueAt(result, row, col)}
+          columnMenu={columnMenu}
+        />
+        {popover}
+      </>
     );
   }
   return (
@@ -78,6 +115,30 @@ function ResultView({ tab }: { tab: QueryTabState }) {
       <div className="big">{formatCount(result.affectedRows)} {result.affectedRows === 1 ? "row" : "rows"} affected</div>
       {result.lastInsertId != null && <div className="muted">Last insert ID: {result.lastInsertId}</div>}
     </div>
+  );
+}
+
+/** Save and Pin, or for a preset query its origin and "Copy to project". */
+function SavedActions({ tab }: { tab: QueryTabState }) {
+  const { saveQueryTab, pinQueryTab, copyPresetQuery } = useStore.getState();
+  const saveKeys = useBindingLabel("query.save");
+  const pinKeys = useBindingLabel("query.pin");
+  const origin = tab.saved?.origin;
+  return (
+    <>
+      {origin && <span className="o2 small mono" data-stage="query:origin">{originText(origin)}</span>}
+      {origin && isPreset(origin) && (
+        <button data-stage="query:copy-to-project" className="btn" onClick={() => void copyPresetQuery(tab.id)}>
+          <Copy size="0.923rem" /> Copy to project
+        </button>
+      )}
+      <button data-stage="query:save" className="btn" disabled={!tab.sql.trim()} title={saveKeys ? `Save query (${saveKeys})` : "Save query"} onClick={() => saveQueryTab(tab.id)}>
+        <Save size="0.923rem" /> Save
+      </button>
+      <button data-stage="query:pin" className="btn" disabled={!tab.saved || isPreset(tab.saved.origin)} title={pinKeys ? `Pin to the readout (${pinKeys} in the results)` : "Pin to the readout"} onClick={() => pinQueryTab(tab.id)}>
+        <Pin size="0.923rem" /> {pinLabel(tab.saved?.pin)}
+      </button>
+    </>
   );
 }
 
@@ -136,6 +197,7 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
         )}
         <RunHint />
         <div className="spacer" />
+        <SavedActions tab={tab} />
         {results.length > 1 && (
           <div className="segmented" aria-label="Results" data-stage="query:results-picker">
             {results.map((_, i) => (

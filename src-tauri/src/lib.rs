@@ -18,6 +18,7 @@ mod mcp;
 mod menu;
 mod remote;
 pub mod rules;
+pub mod saved;
 mod schema;
 mod search;
 pub mod secrets;
@@ -28,6 +29,7 @@ pub mod store;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_support;
 pub mod value;
+mod value_counts;
 mod window;
 pub mod wp;
 
@@ -279,11 +281,6 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             commands::list_recents,
             commands::remove_recent,
             commands::rename_connection_slug,
-            commands::list_favorites,
-            commands::create_favorite,
-            commands::update_favorite,
-            commands::remove_favorite,
-            commands::reorder_favorites,
             commands::list_history,
             commands::clear_history,
             commands::log_frontend_error,
@@ -302,6 +299,8 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::resolve_address,
             db_commands::table_references,
             db_commands::value_condition,
+            db_commands::narrow_refusal,
+            db_commands::narrow_query,
             db_commands::fetch_cell,
             db_commands::table_select_sql,
             db_commands::plan_change,
@@ -325,6 +324,12 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             document::commands::table_actions,
             document::commands::plan_action,
             search::commands::palette_search,
+            saved::commands::saved_queries,
+            saved::commands::save_query,
+            saved::commands::update_saved_query,
+            saved::commands::remove_saved_query,
+            saved::commands::copy_preset_query_to_project,
+            value_counts::value_counts,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

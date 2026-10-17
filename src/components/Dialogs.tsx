@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { KeyRound } from "lucide-react";
-import { type ColumnInfo, type ConnectionSpec } from "../api";
+import { type ColumnInfo, type ConnectionSpec, type Home } from "../api";
+import { DEFAULT_PIN_ROWS, pinChoice, pinOf, type PinChoice } from "../lib/pins";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
 import { CONNECT_TITLE_ID, ConnectForm } from "./ConnectScreen";
@@ -50,6 +51,56 @@ function PromptDialog({ title, value, onSubmit }: { title: string; value: string
         <div className="actions">
           <button data-stage="dialog:cancel" type="button" className="btn" onClick={close}>Cancel</button>
           <button data-stage="dialog:confirm" type="submit" className="btn btn-primary" disabled={!text.trim()}>Save</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+const MAX_PIN_ROWS = 255;
+
+function PinDialog({ title, pin, onSubmit }: { title: string; pin: Home | null; onSubmit: (pin: Home | null) => void }) {
+  const close = useStore((s) => s.closeDialog);
+  const [choice, setChoice] = useState<PinChoice>(pinChoice(pin));
+  const [rows, setRows] = useState(String(pin?.show === "rows" ? (pin.limit ?? DEFAULT_PIN_ROWS) : DEFAULT_PIN_ROWS));
+  const limit = Math.min(MAX_PIN_ROWS, Math.max(1, Math.trunc(Number(rows)) || DEFAULT_PIN_ROWS));
+  const option = (value: PinChoice, label: string) => (
+    <label className="check">
+      <input type="radio" name="pin" data-stage={`dialog:pin:${value}`} checked={choice === value} onChange={() => setChoice(value)} />
+      {label}
+    </label>
+  );
+  return (
+    <Modal onClose={close} labelledBy="pin-title">
+      <form
+        className="form-contents"
+        onSubmit={(e) => {
+          e.preventDefault();
+          close();
+          onSubmit(pinOf(choice, limit));
+        }}
+      >
+        <h2 id="pin-title">Pin {title}</h2>
+        {option("none", "Not pinned")}
+        {option("count", "Count")}
+        {option("value", "Value")}
+        <div className="pin-rows">
+          {option("rows", "Rows")}
+          <input
+            className="input"
+            type="number"
+            min={1}
+            max={MAX_PIN_ROWS}
+            aria-label="Rows to show"
+            data-stage="dialog:pin:limit"
+            value={rows}
+            disabled={choice !== "rows"}
+            onChange={(e) => setRows(e.target.value)}
+          />
+        </div>
+        <div className="actions">
+          <button data-stage="dialog:cancel" type="button" className="btn" onClick={close}>Cancel</button>
+          <button data-stage="dialog:confirm" type="submit" className="btn btn-primary">Save</button>
         </div>
       </form>
     </Modal>
@@ -188,6 +239,8 @@ export function Dialogs() {
       return <ConfirmDialog {...dialog} />;
     case "prompt":
       return <PromptDialog {...dialog} />;
+    case "pin":
+      return <PinDialog {...dialog} />;
     case "password":
       return <PasswordDialog key={dialog.account ?? ""} {...dialog} />;
     case "settings":

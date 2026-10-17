@@ -4,6 +4,8 @@ export interface MenuItem {
   label: string;
   action: () => void;
   disabled?: boolean;
+  /** The tooltip, e.g. why the item is disabled. */
+  title?: string;
 }
 
 export type MenuEntry = MenuItem | "separator";
@@ -71,6 +73,7 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
             key={`${i}-${item.label}`}
             role="menuitem"
             disabled={item.disabled}
+            title={item.title}
             onClick={() => {
               onClose();
               item.action();

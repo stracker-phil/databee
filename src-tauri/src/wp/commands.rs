@@ -6,17 +6,11 @@ use tauri::State;
 
 use super::catalog::Catalog;
 use super::changes::{self, WpChangeRequest};
-use super::dashboard::{self, ActionHistogram, BrowserSection, Dashboard};
-use super::document::DocField;
-use super::lists::{
-    self, ActionSummary, ListQuery, OrderSummary, OrderType, Page, PostSummary, ProductSummary,
-    SessionSummary, UserSummary,
-};
-use super::options::OptionsOverview;
+use super::dashboard::{self, Dashboard};
 use super::site::WpContext;
 use super::snapshot::{self, DiffEntry, Scope};
 use super::snapshots_store::SnapshotInfo;
-use super::{self as lens, WpInfo, WpState};
+use super::{WpInfo, WpState};
 use crate::db::plans::PlannedChange;
 use crate::error::{AppError, AppResult};
 use crate::rules::effective::{self, RulesInfo};
@@ -83,16 +77,6 @@ pub async fn wp_detect(
 }
 
 #[tauri::command]
-pub async fn wp_options(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-) -> AppResult<OptionsOverview> {
-    let env = wp_env(&state, &session_id, &database).await?;
-    lens::options_overview(env.session.db.as_ref(), &env.ctx, &database).await
-}
-
-#[tauri::command]
 pub async fn wp_dashboard(
     state: State<'_, AppState>,
     session_id: String,
@@ -102,151 +86,6 @@ pub async fn wp_dashboard(
         ctx, session: s, ..
     } = wp_env(&state, &session_id, &database).await?;
     dashboard::dashboard(s.db.as_ref(), &ctx, &database).await
-}
-
-#[tauri::command]
-pub async fn wp_browser(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-) -> AppResult<Vec<BrowserSection>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    dashboard::browser(s.db.as_ref(), &ctx, &database).await
-}
-
-#[tauri::command]
-pub async fn wp_orders(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    order_type: OrderType,
-    query: ListQuery,
-) -> AppResult<Page<OrderSummary>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    lists::orders(
-        s.db.as_ref(),
-        &ctx,
-        &database,
-        order_type.post_type(),
-        &query,
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn wp_users(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    query: ListQuery,
-) -> AppResult<Page<UserSummary>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    lists::users(
-        s.db.as_ref(),
-        &ctx,
-        &database,
-        &query,
-        state.settings.get().gravatar,
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn wp_products(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    query: ListQuery,
-) -> AppResult<Page<ProductSummary>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    lists::products(s.db.as_ref(), &ctx, &database, &query).await
-}
-
-#[tauri::command]
-pub async fn wp_actions(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    query: ListQuery,
-) -> AppResult<Page<ActionSummary>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    lists::actions(s.db.as_ref(), &ctx, &database, &query).await
-}
-
-#[tauri::command]
-pub async fn wp_failed_by_hook(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-) -> AppResult<Vec<lists::HookFailures>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    lists::failed_by_hook(s.db.as_ref(), &ctx, &database).await
-}
-
-#[tauri::command]
-pub async fn wp_action_histogram(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    hook: Option<String>,
-) -> AppResult<ActionHistogram> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    dashboard::action_histogram(s.db.as_ref(), &ctx, &database, hook.as_deref()).await
-}
-
-#[tauri::command]
-pub async fn wp_sessions(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    query: ListQuery,
-) -> AppResult<Page<SessionSummary>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    lists::sessions(s.db.as_ref(), &ctx, &database, &query).await
-}
-
-#[tauri::command]
-pub async fn wp_content(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    query: ListQuery,
-) -> AppResult<Page<PostSummary>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    lists::content(s.db.as_ref(), &ctx, &database, &query).await
-}
-
-#[tauri::command]
-pub async fn wp_options_group(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    prefix: String,
-) -> AppResult<Vec<DocField>> {
-    let WpEnv {
-        ctx,
-        catalog,
-        session: s,
-    } = wp_env(&state, &session_id, &database).await?;
-    lens::options_group(s.db.as_ref(), &ctx, &catalog, &database, &prefix).await
 }
 
 #[tauri::command]
@@ -311,31 +150,4 @@ pub async fn wp_plan_change(
     let env = wp_env(&state, &session_id, change.database()).await?;
     let plan = changes::plan(env.session.db.as_ref(), &env.ctx, &change).await?;
     Ok(env.session.plans.add(plan))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn order_types_deserialize_from_their_post_types() {
-        for (wire, order_type) in [
-            ("shop_order", OrderType::ShopOrder),
-            ("shop_subscription", OrderType::ShopSubscription),
-        ] {
-            let parsed: OrderType = serde_json::from_value(serde_json::json!(wire)).unwrap();
-
-            assert_eq!(parsed, order_type, "{wire}");
-            assert_eq!(parsed.post_type(), wire);
-        }
-    }
-
-    #[test]
-    fn unknown_order_type_fails_to_deserialize() {
-        for wire in ["shop_refund", "shopOrder", ""] {
-            let parsed = serde_json::from_value::<OrderType>(serde_json::json!(wire));
-
-            assert!(parsed.is_err(), "{wire:?}");
-        }
-    }
 }

@@ -101,6 +101,11 @@ impl Filter {
     }
 }
 
+/// Seconds since epoch of a UTC DATETIME column, independent of the session time zone.
+pub(crate) fn epoch(col: &str) -> String {
+    format!("TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', {col})")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

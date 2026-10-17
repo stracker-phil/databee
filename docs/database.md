@@ -20,7 +20,8 @@ in `src-tauri/src/db_commands.rs`.
 | `db/mysql/script.rs` | `run_script` (text protocol, one `ResultSet` per statement, column recovery; returns a `ScriptOutcome` of the finished results and the failing statement, `into_results` for callers that need all of it), `scalar`, `thread_id`, `read_dialect` |
 | `db/mysql/timeouts.rs` | `connect_within`, `query_within`, and `pooled_within`, which reads the pool connection's thread id, kills its query on timeout and closes the connection |
 | `db/fake.rs` | `FakeDatabase`, an in-memory `Database` for unit tests (canned results matched by SQL fragment, recorded `apply` batches); behind `cfg(any(test, feature = "test-util"))` |
-| `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements`, `words`, `is_terminated`, `is_blank` |
+| `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements`, `words`, `pieces` (comments included; `Piece::span`, `is_comment`, `is_open`, `is_symbol`), `is_terminated`, `is_blank` |
+| `db/narrow.rs` | `refusal` and `narrowed`: one more condition on a plain single-table `SELECT` ([Narrowing a query](#narrowing-a-query)) |
 | `db/classify.rs` | What a statement is: `verb_index` (the deciding word, also after a `WITH` clause), `returns_rows`, `changes_schema` (a script with `CREATE`, `ALTER`, `DROP`, `RENAME` or `TRUNCATE`), and `is_read_only` (every statement is `SELECT`, `SHOW`, `DESCRIBE`/`DESC`, `EXPLAIN` or `WITH … SELECT`; refuses `SELECT … INTO`, `FOR UPDATE`/`FOR SHARE`/`LOCK IN SHARE MODE`, `EXPLAIN ANALYZE` of a non-read, `CALL`, `SET`, `HANDLER` and every other verb, naming the statement and why; functions called by a `SELECT` are not inspected) |
 | `db/safety.rs` | `destructive_reason` (which statements need confirmation) |
 | `db/cell.rs` | `Cell`: decodes text-protocol bytes by column `Family`, computed once per result set from the type name; `CellLimit` cuts long text to a preview |
@@ -316,6 +317,26 @@ the SQL condition the `Y` value command copies. `condition_sql` renders `ColumnE
 `raw: None` is `IS NULL`. On the value column of a `[[meta]]` table of the effective rules, the row's key is
 read first (`SELECT <key> … WHERE <row key> LIMIT 1` with the query timeout), giving
 `` `meta_key` = '…' AND `meta_value` = '…' ``; a meta key column itself is a plain column condition.
+
+## Value counts
+
+`value_counts(sessionId, database, table, column, equals, limit)` (`value_counts.rs`, the grid's "Value
+counts") reads `SELECT <column>, COUNT(*) FROM <table> [WHERE <equals>] GROUP BY <column> ORDER BY COUNT(*)
+DESC, <column> LIMIT <limit>` on the metadata pool, with the query timeout capped at 5 s (`QUERY_TIMEOUT`).
+The table and every named column must be in the schema cache (`invalid_input` otherwise); `equals` renders
+with `equals_sql`. Each value is a `Value` with the column's kind from the lens and no provenance (a group has
+no row); `limit` is clamped to 1..`MAX_LIMIT` (500).
+
+## Narrowing a query
+
+A query tab's value counts add their pick to the tab's SQL (`db/narrow.rs`). `refusal(script)` says why a
+script cannot take one more condition, `narrowed(script, condition)` adds it. Only a script of exactly one
+statement that starts with `SELECT` and reads one table qualifies: no `UNION`/`EXCEPT`/`INTERSECT`, `JOIN`,
+comma join, subquery in `FROM`, `GROUP BY`, `HAVING`, `WINDOW` or `INTO` at the top level. An existing
+`WHERE` becomes `(<where>) AND <condition>`; without one, `WHERE <condition>` goes after the table, before
+`ORDER BY`, `LIMIT`, `FOR`, `LOCK` or `PROCEDURE`. Comments and the rest of the text stay as written.
+`narrow_query(sessionId, sql, column, value)` renders `column = value` (`IS NULL` for none) with the
+session's dialect and returns the narrowed SQL, or `invalid_input` with the refusal.
 
 ## Editing rows
 

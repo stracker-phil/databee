@@ -1,15 +1,14 @@
-//! The WordPress dashboard and the counts shown in the entity browser.
+//! The WordPress dashboard.
 
 use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
 use serde::Serialize;
 use ts_rs::TS;
 
 use super::changes::WpChangeRequest;
-use super::lists::{self, ActionSummary, Facet, HookFailures, ListQuery, OrderSummary};
-use super::rows::{count, facets, text};
+use super::fetch;
+use super::rows::{Facet, count, facets, text};
 use super::site::WpContext;
 use super::sql::{autoload_on_sql, table_ref};
-use super::{WpList, fetch};
 use crate::db::Database;
 use crate::db::TableInfo;
 use crate::error::{AppError, AppResult};
@@ -65,19 +64,7 @@ pub struct OrderStats {
 pub struct ActionStats {
     pub total: u64,
     pub by_status: Vec<Facet>,
-    pub recent_failed: Vec<ActionSummary>,
-    /// Failed actions grouped by hook, newest first.
-    pub by_hook: Vec<HookFailures>,
     pub overdue: u64,
-}
-
-/// One button per alert: open a filtered list, or queue a reviewed change.
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum ActionKind {
-    Navigate,
-    Change,
 }
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
@@ -92,12 +79,10 @@ pub enum InsightLevel {
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
+/// A reviewed change an alert offers; it goes through the pending tray.
 pub struct InsightAction {
     pub label: String,
-    pub kind: ActionKind,
-    pub list: Option<WpList>,
-    pub status: Option<&'static str>,
-    pub change: Option<WpChangeRequest>,
+    pub change: WpChangeRequest,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
@@ -109,23 +94,10 @@ pub struct Insight {
     pub action: Option<InsightAction>,
 }
 
-fn go(label: &str, list: WpList, status: Option<&'static str>) -> Option<InsightAction> {
-    Some(InsightAction {
-        label: label.into(),
-        kind: ActionKind::Navigate,
-        list: Some(list),
-        status,
-        change: None,
-    })
-}
-
 fn change(label: &str, change: WpChangeRequest) -> Option<InsightAction> {
     Some(InsightAction {
         label: label.into(),
-        kind: ActionKind::Change,
-        list: None,
-        status: None,
-        change: Some(change),
+        change,
     })
 }
 
@@ -246,7 +218,6 @@ pub fn hour_buckets(rows: &[(String, String, u64)], now: DateTime<Utc>) -> Vec<D
 #[serde(rename_all = "camelCase")]
 pub struct Dashboard {
     pub orders: Option<OrderStats>,
-    pub recent_orders: Vec<OrderSummary>,
     pub autoload_bytes: u64,
     pub autoload_healthy: bool,
     pub transients_expired: u64,
@@ -370,7 +341,7 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
                 "Autoloaded options weigh {} KB; every request loads them.",
                 d.autoload_bytes / 1024
             ),
-            action: go("Review", WpList::Settings, None),
+            action: None,
         });
     }
     if let Some(a) = &d.actions {
@@ -383,7 +354,7 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
             out.push(Insight {
                 level: InsightLevel::Danger,
                 text: format!("{failed} scheduled actions failed."),
-                action: go("Review", WpList::Actions, Some("failed")),
+                action: None,
             });
         }
         if a.overdue > 0 {
@@ -393,7 +364,7 @@ pub fn insights(d: &Dashboard, db: &str) -> Vec<Insight> {
                     "{} pending actions are overdue by more than 10 minutes.",
                     a.overdue
                 ),
-                action: go("Review", WpList::Actions, Some("pending")),
+                action: None,
             });
         }
     }
@@ -449,7 +420,7 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
     )
     .await?;
 
-    let (orders, recent_orders, hpos_drift) = if ctx.woocommerce() {
+    let (orders, hpos_drift) = if ctx.woocommerce() {
         let now = server_now(session).await?;
         let today = now.date_naive();
         let (table, status_col, date_col, type_filter) = if ctx.hpos() {
@@ -540,17 +511,6 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
             days: buckets,
             granularity,
         };
-        let recent = lists::orders(
-            session,
-            ctx,
-            db,
-            "shop_order",
-            &ListQuery {
-                limit: 8,
-                ..Default::default()
-            },
-        )
-        .await?;
         // The posts copies only have to match while data sync is on.
         let drift = if ctx.hpos() {
             let rs = fetch(
@@ -568,9 +528,9 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
         } else {
             None
         };
-        (Some(stats), recent.items, drift)
+        (Some(stats), drift)
     } else {
-        (None, Vec::new(), None)
+        (None, None)
     };
 
     let actions = if ctx.has_table("actionscheduler_actions") {
@@ -581,17 +541,6 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
         )
         .await?;
         let status_facets = facets(&by_status, 0, 1);
-        let failed = lists::actions(
-            session,
-            ctx,
-            db,
-            &ListQuery {
-                status: Some("failed".into()),
-                limit: 5,
-                ..Default::default()
-            },
-        )
-        .await?;
         let overdue = fetch(
             session,
             &format!(
@@ -603,12 +552,6 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
         Some(ActionStats {
             total: status_facets.iter().map(|f| f.count).sum(),
             by_status: status_facets,
-            recent_failed: failed.items,
-            by_hook: lists::failed_by_hook(session, ctx, db)
-                .await?
-                .into_iter()
-                .take(6)
-                .collect(),
             overdue: overdue.rows.first().and_then(|r| count(&r[0])).unwrap_or(0),
         })
     } else {
@@ -617,7 +560,6 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
 
     let mut dash = Dashboard {
         orders,
-        recent_orders,
         autoload_bytes,
         autoload_healthy: autoload_bytes < AUTOLOAD_HEALTHY_BYTES,
         transients_expired: expired.rows.first().and_then(|r| count(&r[0])).unwrap_or(0),
@@ -630,243 +572,13 @@ pub async fn dashboard(session: &dyn Database, ctx: &WpContext, db: &str) -> App
     Ok(dash)
 }
 
-// ---------- entity browser counts ----------
-
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "camelCase")]
-pub struct BrowserSection {
-    pub list: WpList,
-    pub label: &'static str,
-    pub count: u64,
-    pub breakdown: Vec<Facet>,
-}
-
-pub async fn browser(
-    session: &dyn Database,
-    ctx: &WpContext,
-    db: &str,
-) -> AppResult<Vec<BrowserSection>> {
-    let dialect = session.dialect();
-    let section = |list, label, breakdown: Vec<Facet>| BrowserSection {
-        list,
-        label,
-        count: breakdown.iter().map(|f| f.count).sum(),
-        breakdown,
-    };
-    let mut out = Vec::new();
-    if ctx.woocommerce() {
-        let (table, status, ty) = if ctx.hpos() {
-            (table_ref(dialect, db, ctx, "wc_orders"), "status", "type")
-        } else {
-            (
-                table_ref(dialect, db, ctx, "posts"),
-                "post_status",
-                "post_type",
-            )
-        };
-        for (order_type, list, label) in [
-            ("shop_order", WpList::Orders, "Orders"),
-            ("shop_subscription", WpList::Subscriptions, "Subscriptions"),
-        ] {
-            let rs = fetch(
-                session,
-                &format!(
-                    "SELECT {status}, COUNT(*) FROM {table} WHERE {ty} = {} GROUP BY {status}",
-                    dialect.sql_string(order_type)
-                ),
-            )
-            .await?;
-            let s = section(list, label, facets(&rs, 0, 1));
-            if list == WpList::Orders || s.count > 0 {
-                out.push(s);
-            }
-        }
-    }
-    let users = fetch(
-        session,
-        &format!(
-            "SELECT COUNT(*) FROM {}",
-            table_ref(dialect, db, ctx, "users")
-        ),
-    )
-    .await?;
-    out.push(BrowserSection {
-        list: WpList::Users,
-        label: "Users",
-        count: users.rows.first().and_then(|r| count(&r[0])).unwrap_or(0),
-        breakdown: Vec::new(),
-    });
-    if ctx.woocommerce() {
-        let rs = fetch(
-            session,
-            &format!(
-                "SELECT post_status, COUNT(*) FROM {} WHERE post_type = 'product' AND post_status NOT IN ('trash', 'auto-draft') GROUP BY post_status",
-                table_ref(dialect, db, ctx, "posts")
-            ),
-        )
-        .await?;
-        out.push(section(WpList::Products, "Products", facets(&rs, 0, 1)));
-    }
-    if ctx.has_table("actionscheduler_actions") {
-        let rs = fetch(
-            session,
-            &format!(
-                "SELECT status, COUNT(*) FROM {} GROUP BY status",
-                table_ref(dialect, db, ctx, "actionscheduler_actions")
-            ),
-        )
-        .await?;
-        out.push(section(
-            WpList::Actions,
-            "Scheduled actions",
-            facets(&rs, 0, 1),
-        ));
-    }
-    if ctx.has_table("woocommerce_sessions") {
-        let rs = fetch(
-            session,
-            &format!(
-                "SELECT IF(session_expiry < UNIX_TIMESTAMP(), 'expired', 'active'), COUNT(*) FROM {} GROUP BY 1",
-                table_ref(dialect, db, ctx, "woocommerce_sessions")
-            ),
-        )
-        .await?;
-        out.push(section(WpList::Sessions, "Sessions", facets(&rs, 0, 1)));
-    }
-    let hidden = lists::HIDDEN_POST_TYPES
-        .iter()
-        .map(|h| dialect.sql_string(h))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let rs = fetch(
-        session,
-        &format!(
-            "SELECT post_type, COUNT(*) FROM {} WHERE post_type NOT IN ({hidden}) AND post_status <> 'auto-draft' GROUP BY post_type",
-            table_ref(dialect, db, ctx, "posts")
-        ),
-    )
-    .await?;
-    out.push(section(WpList::Content, "Content", facets(&rs, 0, 1)));
-    let rs = fetch(
-        session,
-        &format!(
-            "SELECT COUNT(*) FROM {}",
-            table_ref(dialect, db, ctx, "options")
-        ),
-    )
-    .await?;
-    out.push(BrowserSection {
-        list: WpList::Settings,
-        label: "Options",
-        count: rs.rows.first().and_then(|r| count(&r[0])).unwrap_or(0),
-        breakdown: Vec::new(),
-    });
-    Ok(out)
-}
-
-/// Action Scheduler statuses per day, folded into the `DayBucket` series; `labels` names the
-/// stored statuses behind each series.
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct ActionHistogram {
-    pub days: Vec<DayBucket>,
-    pub labels: SeriesLabels,
-}
-
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-pub struct SeriesLabels {
-    pub completed: String,
-    pub processing: String,
-    pub failed: String,
-    pub other: String,
-}
-
-pub async fn action_histogram(
-    session: &dyn Database,
-    ctx: &WpContext,
-    db: &str,
-    hook: Option<&str>,
-) -> AppResult<ActionHistogram> {
-    let dialect = session.dialect();
-    let hook_filter = hook
-        .map(|h| format!(" AND hook = {}", dialect.sql_string(h)))
-        .unwrap_or_default();
-    let today = server_now(session).await?.date_naive();
-    let (day_case, day_range) = span_sql("scheduled_date_gmt", &day_spans(today));
-    let rs = fetch(
-        session,
-        &format!(
-            "SELECT {day_case}, status, COUNT(*) FROM {} WHERE {day_range}{hook_filter} GROUP BY 1, 2",
-            table_ref(dialect, db, ctx, "actionscheduler_actions"),
-        ),
-    )
-    .await?;
-    let mut others: Vec<String> = Vec::new();
-    let rows: Vec<(String, String, u64)> = rs
-        .rows
-        .iter()
-        .filter_map(|r| {
-            let stored = text(&r[1])?;
-            let series = match stored.as_str() {
-                "complete" => "completed",
-                "pending" | "in-progress" => "processing",
-                "failed" => "failed",
-                _ => {
-                    if !others.contains(&stored) {
-                        others.push(stored.clone());
-                    }
-                    "other"
-                }
-            };
-            Some((text(&r[0])?, series.to_string(), count(&r[2])?))
-        })
-        .collect();
-    others.sort();
-    Ok(ActionHistogram {
-        days: day_buckets(&rows, today),
-        labels: SeriesLabels {
-            completed: "complete".into(),
-            processing: "pending, in-progress".into(),
-            failed: "failed".into(),
-            other: if others.is_empty() {
-                "other".into()
-            } else {
-                others.join(", ")
-            },
-        },
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{Cell, ColumnMeta, FakeDatabase, ResultSet};
     use crate::wp::testing::site;
 
     fn ctx() -> WpContext {
         site(&["actionscheduler_actions"]).0
-    }
-
-    fn result(columns: &[&str], rows: Vec<Vec<Cell>>) -> ResultSet {
-        ResultSet {
-            columns: columns
-                .iter()
-                .map(|name| ColumnMeta {
-                    name: name.to_string(),
-                    type_name: "TEXT".into(),
-                    origin: None,
-                })
-                .collect(),
-            rows,
-            returns_rows: true,
-            ..Default::default()
-        }
-    }
-
-    fn row(cells: &[&str]) -> Vec<Cell> {
-        cells.iter().map(|c| Cell::Text(c.to_string())).collect()
     }
 
     fn table(name: &str, rows: u64) -> TableInfo {
@@ -913,7 +625,6 @@ mod tests {
         let c = ctx();
         let mut d = Dashboard {
             orders: None,
-            recent_orders: vec![],
             autoload_bytes: 900 * 1024,
             autoload_healthy: false,
             transients_expired: 11,
@@ -924,8 +635,6 @@ mod tests {
                     label: "Failed".into(),
                     count: 3,
                 }],
-                recent_failed: vec![],
-                by_hook: vec![],
                 overdue: 0,
             }),
             hpos_drift: Some(2),
@@ -956,24 +665,11 @@ mod tests {
         assert!(texts.iter().any(|t| t.contains("11 expired transients")));
 
         let retention = d.insights[0].action.as_ref().unwrap();
-        assert_eq!(
-            (retention.label.as_str(), retention.kind),
-            ("Set retention", ActionKind::Change)
-        );
+        assert_eq!(retention.label, "Set retention");
         assert!(matches!(
             retention.change,
-            Some(WpChangeRequest::DeleteLogsBefore { days: 30, .. })
+            WpChangeRequest::DeleteLogsBefore { days: 30, .. }
         ));
-        let failed = d
-            .insights
-            .iter()
-            .find(|i| i.text.contains("actions failed"))
-            .unwrap();
-        let a = failed.action.as_ref().unwrap();
-        assert_eq!(
-            (a.kind, a.list, a.status),
-            (ActionKind::Navigate, Some(WpList::Actions), Some("failed"))
-        );
         let cleanup = d
             .insights
             .iter()
@@ -981,18 +677,12 @@ mod tests {
             .unwrap();
         assert!(matches!(
             cleanup.action.as_ref().unwrap().change,
-            Some(WpChangeRequest::DeleteExpiredTransients { .. })
+            WpChangeRequest::DeleteExpiredTransients { .. }
         ));
     }
 
     #[test]
-    fn insight_actions_and_levels_serialize_to_their_wire_strings() {
-        for (kind, wire) in [
-            (ActionKind::Navigate, "navigate"),
-            (ActionKind::Change, "change"),
-        ] {
-            assert_eq!(serde_json::to_value(kind).unwrap(), wire);
-        }
+    fn insight_levels_serialize_to_their_wire_strings() {
         for (level, wire) in [
             (InsightLevel::Info, "info"),
             (InsightLevel::Warning, "warning"),
@@ -1060,98 +750,5 @@ mod tests {
         assert_eq!((b[0].date.as_str(), b[0].failed), ("01:00", 2));
         assert_eq!((b[23].date.as_str(), b[23].failed), ("00:00", 3));
         assert_eq!(b.iter().map(|x| x.failed).sum::<u64>(), 5);
-    }
-
-    fn histogram_db(now: &str, rows: Vec<Vec<Cell>>) -> FakeDatabase {
-        FakeDatabase::new()
-            .on(
-                "SELECT UTC_TIMESTAMP()",
-                result(&["now"], vec![row(&[now])]),
-            )
-            .on(
-                "FROM `wp`.`wp_actionscheduler_actions`",
-                result(&["day", "status", "n"], rows),
-            )
-    }
-
-    #[tokio::test]
-    async fn action_histogram_spans_the_fourteen_utc_days_ending_on_the_servers_utc_day() {
-        let ctx = ctx();
-        let db = histogram_db(
-            "2026-10-15 23:30:00",
-            vec![
-                row(&["2026-10-15", "complete", "3"]),
-                row(&["2026-10-15", "failed", "1"]),
-                row(&["2026-10-14", "pending", "2"]),
-                row(&["2026-10-14", "canceled", "4"]),
-            ],
-        );
-
-        let histogram = action_histogram(&db, &ctx, "wp", None).await.unwrap();
-
-        assert_eq!(histogram.days.len(), 14);
-        assert_eq!(histogram.days[0].date, "2026-10-02");
-        assert_eq!(histogram.days[13].date, "2026-10-15");
-        assert_eq!(
-            (histogram.days[13].completed, histogram.days[13].failed),
-            (3, 1)
-        );
-        assert_eq!(
-            (histogram.days[12].processing, histogram.days[12].other),
-            (2, 4)
-        );
-        assert_eq!(histogram.labels.other, "canceled");
-        let query = &db.queries()[1];
-        assert!(
-            query.starts_with(
-                "SELECT CASE WHEN scheduled_date_gmt >= '2026-10-02 00:00:00' \
-                 AND scheduled_date_gmt < '2026-10-03 00:00:00' THEN '2026-10-02'"
-            ),
-            "{query}"
-        );
-        assert!(
-            query.ends_with(
-                " FROM `wp`.`wp_actionscheduler_actions` \
-                 WHERE scheduled_date_gmt >= '2026-10-02 00:00:00' \
-                 AND scheduled_date_gmt < '2026-10-16 00:00:00' GROUP BY 1, 2"
-            ),
-            "{query}"
-        );
-        assert!(!query.contains("CONVERT_TZ"), "{query}");
-    }
-
-    #[tokio::test]
-    async fn action_histogram_of_one_hook_adds_the_hook_to_the_condition() {
-        let ctx = ctx();
-        let db = histogram_db("2026-10-15 08:00:00", Vec::new());
-
-        let histogram = action_histogram(&db, &ctx, "wp", Some("it's_a_hook"))
-            .await
-            .unwrap();
-
-        let counted: u64 = histogram
-            .days
-            .iter()
-            .map(|d| d.completed + d.processing + d.failed + d.other)
-            .sum();
-        assert_eq!(counted, 0);
-        assert_eq!(histogram.labels.other, "other");
-        assert!(
-            db.queries()[1].ends_with(
-                "AND scheduled_date_gmt < '2026-10-16 00:00:00' AND hook = 'it''s_a_hook' GROUP BY 1, 2"
-            ),
-            "{}",
-            db.queries()[1]
-        );
-    }
-
-    #[tokio::test]
-    async fn action_histogram_without_a_server_time_is_a_database_error() {
-        let ctx = ctx();
-        let db = FakeDatabase::new().on("SELECT UTC_TIMESTAMP()", result(&["now"], Vec::new()));
-
-        let err = action_histogram(&db, &ctx, "wp", None).await.unwrap_err();
-
-        assert_eq!(err.kind(), crate::error::ErrorKind::Database);
     }
 }

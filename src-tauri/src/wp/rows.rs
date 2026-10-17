@@ -1,7 +1,18 @@
 //! Cell readers for WordPress query results.
 
-use super::lists::Facet;
+use serde::Serialize;
+use ts_rs::TS;
+
 use crate::db::{Cell, ResultSet};
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct Facet {
+    pub value: String,
+    pub label: String,
+    pub count: u64,
+}
 
 /// The stored text: NULL (and binary) is `None`, an empty string stays `Some("")`.
 pub fn cell_str(cell: &Cell) -> Option<&str> {
@@ -36,14 +47,6 @@ pub(crate) fn money(raw: &str, currency: Option<&str>) -> Option<String> {
         Some(currency) => format!("{raw} {currency}"),
         None => raw.to_string(),
     })
-}
-
-/// Exact for any `i64`; `"12.0"`-style text is truncated through `f64`.
-pub(crate) fn int(cell: &Cell) -> Option<i64> {
-    let s = cell_str(cell)?.trim();
-    s.parse::<i64>()
-        .ok()
-        .or_else(|| s.parse::<f64>().ok().map(|f| f as i64))
 }
 
 /// Case-insensitive.
@@ -168,27 +171,6 @@ mod tests {
                 "{raw:?} {currency:?}"
             );
         }
-    }
-
-    #[test]
-    fn int_is_exact_beyond_f64_precision() {
-        assert_eq!(int(&n("9007199254740993")), Some(9_007_199_254_740_993));
-        assert_eq!(int(&n("-9223372036854775808")), Some(i64::MIN));
-    }
-
-    #[test]
-    fn int_truncates_decimal_text_and_trims() {
-        for (input, expected) in [
-            ("12.0", Some(12)),
-            ("12.9", Some(12)),
-            (" 7 ", Some(7)),
-            ("-3", Some(-3)),
-            ("abc", None),
-            ("", None),
-        ] {
-            assert_eq!(int(&t(input)), expected, "{input:?}");
-        }
-        assert_eq!(int(&Cell::Null), None);
     }
 
     #[test]

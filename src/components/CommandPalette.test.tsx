@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, type PaletteHit, type RulesInfo } from "../api";
+import { api, type PaletteHit, type RulesInfo, type SavedEntry } from "../api";
 import { installCommands } from "../commands";
 import { formatAddress } from "../lib/address";
 import { projectKey } from "../state/slices/project";
@@ -239,6 +239,46 @@ describe("CommandPalette", () => {
       expect(await screen.findByRole("complementary", { name: "Peek wp_wc_orders 4712" })).toBeInTheDocument();
       await user.keyboard("{/Alt}");
       await vi.waitFor(() => expect(screen.queryByRole("complementary", { name: /Peek/ })).not.toBeInTheDocument());
+    });
+  });
+
+  describe("saved queries", () => {
+    const failed: SavedEntry = { id: "failed-orders", title: "Failed orders", sql: "SELECT * FROM wp_wc_orders WHERE status = 'wc-failed'", pin: { show: "count" }, origin: { kind: "project" }, readOnly: false };
+    const stale: SavedEntry = { id: "stale-sessions", title: "Stale sessions", sql: "SELECT * FROM wp_usermeta", pin: null, origin: { kind: "global" }, readOnly: false };
+    const preset: SavedEntry = { id: "abandoned-carts", title: "Abandoned carts", sql: "SELECT * FROM wp_woocommerce_sessions", pin: null, origin: { kind: "preset", preset: "woocommerce" }, readOnly: true };
+
+    beforeEach(() => mocked.savedQueries.mockResolvedValue([failed, stale, preset]));
+
+    it("lists each query with where it is stored and a badge for pinned ones", async () => {
+      await userEvent.type(openPalette(), "q:");
+      const pinned = await screen.findByRole("option", { name: /Failed orders/ });
+      expect(pinned).toHaveTextContent("project");
+      expect(pinned).toHaveTextContent("pinned");
+      expect(screen.getByRole("option", { name: /Stale sessions/ })).toHaveTextContent("global");
+      expect(screen.getByRole("option", { name: /Stale sessions/ })).not.toHaveTextContent("pinned");
+      expect(screen.getByRole("option", { name: /Abandoned carts/ })).toHaveTextContent("preset:woocommerce");
+    });
+
+    it("narrows the list to titles matching the text after q:", async () => {
+      await userEvent.type(openPalette(), "q:stale");
+      expect(await screen.findByRole("option", { name: /Stale sessions/ })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /Failed orders/ })).not.toBeInTheDocument();
+    });
+
+    it("opens the selected query in a query tab with its SQL and runs it on Enter", async () => {
+      await userEvent.type(openPalette(), "q:failed");
+      await screen.findByRole("option", { name: /Failed orders/ });
+      await userEvent.keyboard("{Enter}");
+      expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "query", title: "Failed orders", sql: failed.sql });
+      expect(useStore.getState().paletteOpen).toBe(false);
+      await vi.waitFor(() => expect(mocked.execute).toHaveBeenCalledWith("s1", failed.sql, false));
+    });
+
+    it("opens a preset query as an unsaved copy", async () => {
+      await userEvent.type(openPalette(), "q:carts");
+      await screen.findByRole("option", { name: /Abandoned carts/ });
+      await userEvent.keyboard("{Enter}");
+      expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "query", title: "copy of Abandoned carts", sql: preset.sql, saved: { origin: { kind: "preset", preset: "woocommerce" } } });
     });
   });
 

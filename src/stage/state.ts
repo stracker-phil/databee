@@ -18,7 +18,7 @@ export function stageView(): string {
   if (s.sessions.length === 0) return "connect";
   if (s.mode === "wp" && selectWp(s)) {
     const route = selectWpRoute(s);
-    return `wp:${route.screen === "list" ? route.list : route.screen}`;
+    return `wp:${route.screen}`;
   }
   return "db";
 }

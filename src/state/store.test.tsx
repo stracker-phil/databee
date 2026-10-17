@@ -1,13 +1,12 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import App from "../App";
-import { api, type ExecuteResponse, type Favorite, type SessionInfo, type WpInfo } from "../api";
+import { api, type ExecuteResponse, type SessionInfo, type WpInfo } from "../api";
 import { installCommands, runCommand } from "../commands";
-import { FavoritesBar } from "../components/FavoritesBar";
 import { StatusBar } from "../components/StatusBar";
 import { TabBar } from "../components/Tabs";
 import { Toasts } from "../components/Toasts";
@@ -59,7 +58,6 @@ describe("store behavior", () => {
     vi.clearAllMocks();
     mocked.wpDetect.mockReset().mockResolvedValue(null);
     mocked.execute.mockReset();
-    mocked.reorderFavorites.mockReset().mockResolvedValue(undefined);
     connectedStore();
   });
 
@@ -97,7 +95,7 @@ describe("store behavior", () => {
             { sessionId: "s2", batchId: 11, canUndo: true },
           ],
           wp: { ...s.wp, "s1/db": wpInfo, "s2/other": wpInfo },
-          wpNav: { stack: [{ screen: "dashboard" }, { screen: "list", list: "orders", selected: { entity: "order", id: "4711" } }], index: 1 },
+          wpNav: { stack: [{ screen: "dashboard" }, { screen: "snapshots" }], index: 1 },
           documents: {
             [documentKey("s1", "order 4711")]: { version: 0, document: orderDocument(), error: null },
             [documentKey("s2", "order 4711")]: { version: 0, document: orderDocument(), error: null },
@@ -261,50 +259,6 @@ describe("store behavior", () => {
     });
   });
 
-  describe("favorites", () => {
-    const favorites: Favorite[] = [
-      { id: "f1", name: "wp_options", scope: null, target: { kind: "table", database: "db", table: "wp_options" } },
-      { id: "f2", name: "PPCP settings", scope: null, target: { kind: "query", sql: "SELECT 1" } },
-    ];
-    const names = () => screen.getAllByRole("button", { name: /^(wp_options|PPCP settings)$/ }).map((b) => b.textContent);
-
-    it("restores the previous order and shows an error toast when reordering is rejected", async () => {
-      useStore.setState({ favorites });
-      mocked.reorderFavorites.mockRejectedValue({ kind: "io", message: "disk full", code: null });
-      render(
-        <>
-          <FavoritesBar />
-          <Toasts />
-        </>,
-      );
-      const [a, b] = [screen.getByRole("button", { name: "wp_options" }), screen.getByRole("button", { name: "PPCP settings" })];
-
-      fireEvent.dragStart(b);
-      fireEvent.dragOver(a);
-      fireEvent.drop(a);
-
-      expect(await screen.findByRole("alert")).toHaveTextContent("Could not reorder favorites: disk full");
-      expect(names()).toEqual(["wp_options", "PPCP settings"]);
-    });
-
-    it("opens a query favorite as a new tab named after it and leaves the active tab's title alone", async () => {
-      useStore.setState({ favorites });
-      render(
-        <>
-          <FavoritesBar />
-          <TabBar />
-        </>,
-      );
-
-      await userEvent.click(screen.getByRole("button", { name: "PPCP settings" }));
-      expect(tabTitles()).toEqual(["Query 1", "PPCP settings"]);
-      expect(screen.getByRole("tab", { name: /PPCP settings/ })).toHaveAttribute("aria-selected", "true");
-
-      await userEvent.click(screen.getByRole("button", { name: "New query tab" }));
-      expect(tabTitles()).toEqual(["Query 1", "PPCP settings", "Query 2"]);
-    });
-  });
-
   describe("query tab titles", () => {
     it("never reuses a number of a closed query tab", async () => {
       render(<TabBar />);
@@ -354,8 +308,8 @@ describe("store behavior", () => {
   describe("navigate", () => {
     it("adds no history entry for the same route with a different key order", () => {
       const { navigate } = useStore.getState();
-      navigate({ screen: "list", list: "orders", params: { status: "paid", page: "2" } });
-      navigate({ params: { page: "2", status: "paid" }, list: "orders", screen: "list" });
+      navigate({ screen: "snapshots" });
+      navigate({ screen: "snapshots" });
 
       expect(useStore.getState().wpNav.stack).toHaveLength(2);
     });

@@ -1,4 +1,4 @@
-import { api, toAppError, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse, type Value } from "../../api";
+import { api, toAppError, type Home, type SavedOrigin, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse, type Value } from "../../api";
 import type { CellSource } from "../../lib/cells";
 import type { ColumnStack, StackColumn, ValueColumn } from "../../lib/columns";
 import type { ProjectForm } from "../../lib/ruleForms";
@@ -8,6 +8,15 @@ import type { Slice, Store } from "../store";
 import { EMPTY_NAV, homeAddress, pushed, tableAddress, tableTitle, type TabNav } from "./nav";
 import { nextActiveSessionId } from "./session";
 import { remembered } from "./ui";
+
+/** The saved query a query tab was opened from or saved as. */
+export interface SavedRef {
+  id: string;
+  /** Preset queries are read-only. */
+  origin: SavedOrigin;
+  database: string;
+  pin: Home | null;
+}
 
 export interface QueryTab {
   id: string;
@@ -24,6 +33,7 @@ export interface QueryTab {
   nav: TabNav;
   /** A value opened to the right of the results (Enter on serialized data or long text). */
   valueColumn?: ValueColumn;
+  saved?: SavedRef;
 }
 
 export interface TableTab {
@@ -115,7 +125,7 @@ export interface TabsSlice {
   selectedCell: SelectedCell | null;
   /** Query tabs opened per session, for unique default titles. */
   queryCounter: Record<string, number>;
-  openQueryTab(sql?: string, title?: string): void;
+  openQueryTab(sql?: string, title?: string, saved?: SavedRef): void;
   /** An open tab of the same table is activated; `view` and `preview: false` (pin) apply to it only when given. */
   openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean; where?: ColumnEquals[] }): void;
   /** Switches to the Database view and opens `table` of the active database filtered by `where`. */
@@ -162,7 +172,7 @@ export const tabsSlice: Slice<TabsSlice> = {
     queryCounter: {},
     ...resetSelection(),
 
-    openQueryTab(sql = "", title) {
+    openQueryTab(sql = "", title, saved) {
       const session = selectActiveSession(get());
       if (!session) return;
       set((s) => {
@@ -179,6 +189,7 @@ export const tabsSlice: Slice<TabsSlice> = {
           activeResult: 0,
           address: homeAddress(s, session.id, session.database),
           nav: EMPTY_NAV,
+          saved,
         };
         return { tabs: [...s.tabs, tab], queryCounter: { ...s.queryCounter, [session.id]: count }, ...activate(s, tab.id) };
       });

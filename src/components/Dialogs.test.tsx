@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, type ColumnInfo } from "../api";
+import { api, type ColumnInfo, type Home } from "../api";
 import { useStore } from "../state/store";
 import { connectedStore } from "../test/fixtures";
 import { Dialogs } from "./Dialogs";
@@ -103,5 +103,70 @@ describe("InsertRowDialog", () => {
     await queue();
     expect(useStore.getState().dialog).toMatchObject({ type: "insertRow" });
     expect(useStore.getState().toasts.at(-1)?.message).toContain("Column post_title cannot be NULL");
+  });
+});
+
+describe("PinDialog", () => {
+  const onSubmit = vi.fn();
+  const open = (pin: Home | null) => {
+    connectedStore();
+    useStore.getState().openDialog({ type: "pin", title: "Failed orders", pin, onSubmit });
+    render(<Dialogs />);
+  };
+  const save = () => userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it("starts on the current pin", () => {
+    open({ show: "rows", limit: 12 });
+    expect(screen.getByRole("heading", { name: "Pin Failed orders" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Rows" })).toBeChecked();
+    expect(screen.getByLabelText("Rows to show")).toHaveValue(12);
+  });
+
+  it("starts on Value for a value pin and keeps it on Save", async () => {
+    open({ show: "value" });
+    expect(screen.getByRole("radio", { name: "Value" })).toBeChecked();
+    await save();
+    expect(onSubmit).toHaveBeenCalledWith({ show: "value" });
+  });
+
+  it("starts unpinned for a query without a pin", () => {
+    open(null);
+    expect(screen.getByRole("radio", { name: "Not pinned" })).toBeChecked();
+    expect(screen.getByLabelText("Rows to show")).toBeDisabled();
+  });
+
+  it("submits null when the pin is removed", async () => {
+    open({ show: "count" });
+    await userEvent.click(screen.getByRole("radio", { name: "Not pinned" }));
+    await save();
+    expect(onSubmit).toHaveBeenCalledWith(null);
+    expect(useStore.getState().dialog).toBeNull();
+  });
+
+  it("submits the default of five rows when Rows is chosen without a limit", async () => {
+    open(null);
+    await userEvent.click(screen.getByRole("radio", { name: "Rows" }));
+    await save();
+    expect(onSubmit).toHaveBeenCalledWith({ show: "rows", limit: 5 });
+  });
+
+  it.each(["999", "0", "-3"])("does not submit a limit of %s, outside 1 to 255", async (typed) => {
+    open(null);
+    await userEvent.click(screen.getByRole("radio", { name: "Rows" }));
+    const limit = screen.getByLabelText("Rows to show");
+    await userEvent.clear(limit);
+    await userEvent.type(limit, typed);
+    await save();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(useStore.getState().dialog).not.toBeNull();
+  });
+
+  it("does not submit when cancelled", async () => {
+    open(null);
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(useStore.getState().dialog).toBeNull();
   });
 });

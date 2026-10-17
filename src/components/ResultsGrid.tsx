@@ -37,6 +37,8 @@ interface Props {
   owner?: Address;
   /** A cell to select and scroll to, e.g. the focused value carried over from the Document view. */
   focus?: CellPos | null;
+  /** The menu of a column header (right-click), opened where the pointer is. */
+  columnMenu?: (col: number, at: { x: number; y: number }) => MenuEntry[] | Promise<MenuEntry[]>;
 }
 
 const MIN_WIDTH_REM = 3;
@@ -83,7 +85,7 @@ const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value));
 
 const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 13;
 
-export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus }: Props) {
+export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus, columnMenu }: Props) {
   const nullLabel = useStore(selectNullLabel);
   const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
   const selectCell = useStore((s) => s.selectCell);
@@ -238,6 +240,14 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
     });
   };
 
+  const openColumnMenu = async (e: React.MouseEvent, col: number) => {
+    if (!columnMenu) return;
+    e.preventDefault();
+    const at = { x: e.clientX, y: e.clientY };
+    const items = await columnMenu(col, at);
+    if (items.length > 0) setMenu({ ...at, items });
+  };
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     const action = KEY_ACTIONS[e.metaKey ? `Mod+${e.key.toLowerCase()}` : e.key];
     if (!action || !selected || rows.length === 0) return;
@@ -286,6 +296,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
               title={`${c.name} · ${c.typeName}`}
               aria-sort={sorted ? (sort?.descending ? "descending" : "ascending") : undefined}
               onClick={() => onSort?.(c.name)}
+              onContextMenu={(e) => void openColumnMenu(e, i)}
             >
               <span className="name">
                 {c.name}

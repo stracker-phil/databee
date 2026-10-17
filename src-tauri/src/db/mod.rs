@@ -9,6 +9,7 @@ mod fake;
 pub mod id_filter;
 pub mod lexer;
 pub mod mysql;
+pub mod narrow;
 pub mod plans;
 pub mod safety;
 mod types;

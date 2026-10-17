@@ -15,6 +15,8 @@ export interface Command {
   run: () => void | Promise<void>;
   /** Also bound as a native menu accelerator (rebinding takes effect after a restart). */
   menu?: boolean;
+  /** Has no key of its own: it takes this command's binding and runs while that one is disabled, so the two never conflict. */
+  fallbackFor?: string;
 }
 
 export type Overrides = Record<string, string | null>;
@@ -64,6 +66,8 @@ export function setOverrides(next: Overrides) {
 
 /** The effective binding: user override, else the default, else none. */
 export function bindingFor(id: string, custom: Overrides = overrides): string | null {
+  const fallbackFor = commands.get(id)?.fallbackFor;
+  if (fallbackFor) return bindingFor(fallbackFor, custom);
   if (Object.prototype.hasOwnProperty.call(custom, id)) return custom[id] === null ? null : normalizeBinding(custom[id] as string);
   const def = commands.get(id)?.defaultBinding;
   return def ? normalizeBinding(def) : null;
@@ -216,7 +220,8 @@ export function conflicts(custom: Overrides = overrides): Conflict[] {
     const ba = bindingFor(list[i].id, custom);
     if (!ba) continue;
     for (let j = i + 1; j < list.length; j++) {
-      if (bindingFor(list[j].id, custom) === ba && scopesOverlap(list[i].scope, list[j].scope)) {
+      const fallback = list[i].fallbackFor === list[j].id || list[j].fallbackFor === list[i].id;
+      if (!fallback && bindingFor(list[j].id, custom) === ba && scopesOverlap(list[i].scope, list[j].scope)) {
         out.push({ binding: ba, a: list[i], b: list[j] });
       }
     }

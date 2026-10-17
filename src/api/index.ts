@@ -3,40 +3,25 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppliedBatch,
   ChangeRequest,
+  ColumnEquals,
   DiffEntry,
   NewValue,
   PlannedChange,
   WpChangeRequest,
   SnapshotInfo,
   SnapshotScope,
-  ActionSummary,
-  BrowserSection,
-  UserSummary,
   Dashboard,
-  ActionHistogram,
   ErrorKind,
-  DocField,
-  HookFailures,
-  ListQuery,
-  OrderSummary,
-  OrderType,
-  Page,
-  PostSummary,
-  ProductSummary,
-  SessionSummary,
   AppError,
   DecodedValue,
   Peek,
   PaletteHit,
-  OptionsOverview,
   WpInfo,
   BrowsePage,
   BrowseRequest,
   OpenArgs,
   DatabaseInfo,
   ExecuteResponse,
-  Favorite,
-  NewFavorite,
   HistoryEntry,
   Keybindings,
   LaunchEvent,
@@ -59,6 +44,10 @@ import type {
   ProjectRules,
   Reference,
   RuleDraft,
+  SavedEntry,
+  SavedQuery,
+  Home,
+  ValueCount,
   TableStructure,
   UiState,
 } from "./types";
@@ -156,38 +145,34 @@ export const api = {
   tableSelectSql: (sessionId: string, database: string, table: string) =>
     invoke<string>("table_select_sql", { sessionId, database, table }),
 
-  listFavorites: (account: string) => invoke<Favorite[]>("list_favorites", { account }),
-  createFavorite: (favorite: NewFavorite) => invoke<Favorite>("create_favorite", { favorite }),
-  updateFavorite: (favorite: Favorite) => invoke<Favorite>("update_favorite", { favorite }),
-  removeFavorite: (id: string) => invoke<void>("remove_favorite", { id }),
-  reorderFavorites: (ids: string[]) => invoke<void>("reorder_favorites", { ids }),
+  /** The project's saved queries, the global ones and the applied presets' pinned queries, `{p}` replaced. */
+  savedQueries: (sessionId: string, database: string) => invoke<SavedEntry[]>("saved_queries", { sessionId, database }),
+  /** Stores a new query in the project; Rust refuses an empty title. */
+  saveQuery: (sessionId: string, database: string, title: string, sql: string, pin: Home | null) =>
+    invoke<SavedQuery>("save_query", { sessionId, database, title, sql, pin }),
+  /** Replaces the project or global query with the same id; preset queries are read-only. */
+  updateSavedQuery: (sessionId: string, database: string, query: SavedQuery) =>
+    invoke<SavedQuery>("update_saved_query", { sessionId, database, query }),
+  removeSavedQuery: (sessionId: string, database: string, id: string) => invoke<void>("remove_saved_query", { sessionId, database, id }),
+  /** Copies a preset's pinned query into the project, where it can be changed. */
+  copyPresetQueryToProject: (sessionId: string, database: string, preset: string, id: string) =>
+    invoke<SavedQuery>("copy_preset_query_to_project", { sessionId, database, preset, id }),
+  /** The most frequent values of `table.column` among the rows `equals` selects, with their counts. */
+  valueCounts: (sessionId: string, database: string, table: string, column: string, equals: ColumnEquals[], limit: number) =>
+    invoke<ValueCount[]>("value_counts", { sessionId, database, table, column, equals, limit }),
+  /** Why the SQL cannot take one more condition (only a single plain single-table SELECT can), or null. */
+  narrowRefusal: (sql: string) => invoke<string | null>("narrow_refusal", { sql }),
+  /** The SQL with `column = value` (IS NULL for null) added to its WHERE. */
+  narrowQuery: (sessionId: string, sql: string, column: string, value: string | null) =>
+    invoke<string>("narrow_query", { sessionId, sql, column, value }),
 
   listHistory: (account: string) => invoke<HistoryEntry[]>("list_history", { account }),
   clearHistory: (account: string) => invoke<void>("clear_history", { account }),
 
   wpDetect: (sessionId: string, database: string, refresh = false) =>
     invoke<WpInfo | null>("plugin:wp|wp_detect", { sessionId, database, refresh }),
-  wpOptions: (sessionId: string, database: string) => invoke<OptionsOverview>("plugin:wp|wp_options", { sessionId, database }),
   decodeValue: (text: string) => invoke<DecodedValue | null>("decode_value", { text }),
   wpDashboard: (sessionId: string, database: string) => invoke<Dashboard>("plugin:wp|wp_dashboard", { sessionId, database }),
-  wpBrowser: (sessionId: string, database: string) => invoke<BrowserSection[]>("plugin:wp|wp_browser", { sessionId, database }),
-  wpOrders: (sessionId: string, database: string, orderType: OrderType, query: ListQuery) =>
-    invoke<Page<OrderSummary>>("plugin:wp|wp_orders", { sessionId, database, orderType, query }),
-  wpUsers: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<UserSummary>>("plugin:wp|wp_users", { sessionId, database, query }),
-  wpProducts: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<ProductSummary>>("plugin:wp|wp_products", { sessionId, database, query }),
-  wpActions: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<ActionSummary>>("plugin:wp|wp_actions", { sessionId, database, query }),
-  wpFailedByHook: (sessionId: string, database: string) => invoke<HookFailures[]>("plugin:wp|wp_failed_by_hook", { sessionId, database }),
-  wpActionHistogram: (sessionId: string, database: string, hook: string | null) =>
-    invoke<ActionHistogram>("plugin:wp|wp_action_histogram", { sessionId, database, hook }),
-  wpSessions: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<SessionSummary>>("plugin:wp|wp_sessions", { sessionId, database, query }),
-  wpContent: (sessionId: string, database: string, query: ListQuery) =>
-    invoke<Page<PostSummary>>("plugin:wp|wp_content", { sessionId, database, query }),
-  wpOptionsGroup: (sessionId: string, database: string, prefix: string) =>
-    invoke<DocField[]>("plugin:wp|wp_options_group", { sessionId, database, prefix }),
 
   planChange: (sessionId: string, change: ChangeRequest) => invoke<PlannedChange>("plan_change", { sessionId, change }),
   wpPlanChange: (sessionId: string, change: WpChangeRequest) => invoke<PlannedChange>("plugin:wp|wp_plan_change", { sessionId, change }),

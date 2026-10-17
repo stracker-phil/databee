@@ -115,11 +115,11 @@ describe("tab history", () => {
     });
 
     it("moves through the WordPress history instead", () => {
-      act(() => useStore.getState().navigate({ screen: "list", list: "orders" }));
+      act(() => useStore.getState().navigate({ screen: "snapshots" }));
       expect(runCommand("nav.back")).toBe(true);
       expect(selectWpRoute(useStore.getState())).toEqual({ screen: "dashboard" });
       expect(runCommand("nav.forward")).toBe(true);
-      expect(selectWpRoute(useStore.getState())).toEqual({ screen: "list", list: "orders" });
+      expect(selectWpRoute(useStore.getState())).toEqual({ screen: "snapshots" });
     });
 
     it("is not runnable on the first screen", () => {
@@ -218,6 +218,24 @@ describe("openAddress", () => {
   it("says that other address kinds do not open yet", async () => {
     await act(() => useStore.getState().openAddress("databee://shop/db/"));
     expect(await screen.findByRole("status")).toHaveTextContent("cannot be opened yet");
+  });
+
+  describe("a saved query address", () => {
+    const failed = { id: "failed-orders", title: "Failed orders", sql: "SELECT * FROM wp_wc_orders WHERE status = 'wc-failed'", pin: null, origin: { kind: "project" as const }, readOnly: false };
+
+    it("opens the saved query in a query tab and runs it", async () => {
+      mocked.savedQueries.mockResolvedValue([failed]);
+      await act(() => useStore.getState().openAddress("databee://shop/db/q/failed-orders"));
+      expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "query", title: "Failed orders", sql: failed.sql });
+      await waitFor(() => expect(mocked.execute).toHaveBeenCalledWith("s1", failed.sql, false));
+    });
+
+    it("reports an id that names no saved query", async () => {
+      mocked.savedQueries.mockResolvedValue([failed]);
+      await act(() => useStore.getState().openAddress("databee://shop/db/q/nope"));
+      expect(await screen.findByRole("alert")).toHaveTextContent("names no saved query");
+      expect(useStore.getState().tabs).toEqual([]);
+    });
   });
 });
 
