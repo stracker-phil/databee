@@ -1,0 +1,753 @@
+# Test fixture: a copy of the U4a paper-port draft of the WooCommerce preset. It is not shipped;
+# `preset.rs` tests assert that it parses and round-trips.
+#
+# Draft (U4a paper port): the WooCommerce preset, including Action Scheduler, WooCommerce PayPal
+# Payments meta keys and WooCommerce Subscriptions keys.
+# Format: ux-redesign.md 4.5 as amended by paper-port.md. `# GAP: Gn` = engine feature Gn.
+# Both order shapes are defined (HPOS `wc_orders`, posts with post_type shop_order); whichever
+# holds rows shows up (spec decision 8). No HPOS or version detection.
+
+[preset]
+name = "woocommerce"
+requires = ["wordpress"]
+marker_tables = ["woocommerce_order_items"]
+# OPEN QUESTION Q3: Action Scheduler ships without WooCommerce too; split it into its own preset
+# (`action-scheduler`, marker `actionscheduler_actions`)?
+
+# ---------------------------------------------------------------------------------------------
+# Key/value tables
+# ---------------------------------------------------------------------------------------------
+
+[[meta]]
+table = "wc_orders_meta"
+owner = "wc_orders"
+fk = "order_id"
+key = "meta_key"
+value = "meta_value"
+
+[[meta]]
+table = "woocommerce_order_itemmeta"
+owner = "woocommerce_order_items"
+fk = "order_item_id"
+key = "meta_key"
+value = "meta_value"
+
+[[meta]]
+table = "woocommerce_payment_tokenmeta"
+owner = "woocommerce_payment_tokens"
+fk = "payment_token_id"
+key = "meta_key"
+value = "meta_value"
+
+# ---------------------------------------------------------------------------------------------
+# References: HPOS orders
+# ---------------------------------------------------------------------------------------------
+
+[[reference]]
+from = "wc_orders.customer_id"   # 0 = guest: core "no reference" (section 13), no rule needed
+to = "users.ID"
+
+[[reference]]
+from = "wc_orders.parent_order_id"   # refunds, renewals and subscriptions of an order
+to = "wc_orders.id"
+label = "children"
+columns = ["id", "status", "type", "total_amount", "currency", "date_created_gmt"]
+
+# Guests: every order placed with the same billing email (a non-key target, like external ids).
+[[reference]]
+id = "guest_orders"
+from = "wc_orders.billing_email"
+when = { customer_id = "0" }
+to = "wc_orders.billing_email"
+to_when = { customer_id = "0" }
+label = "same billing_email"
+columns = ["id", "status", "type", "total_amount", "currency", "date_created_gmt"]
+
+[[reference]]
+from = "wc_order_addresses.order_id"
+to = "wc_orders.id"
+label = "addresses"
+columns = ["id", "address_type", "first_name", "last_name", "company", "address_1", "city", "postcode", "country", "email", "phone"]
+
+[[reference]]
+from = "wc_order_operational_data.order_id"
+to = "wc_orders.id"
+
+[[reference]]
+from = "woocommerce_order_items.order_id"
+to = "wc_orders.id"
+label = "items"
+# `_qty`, `_line_total`, `_product_id`, `_variation_id` are keys of the item's own meta rows,
+# shown as columns of the group (GAP: G3).
+columns = ["order_item_id", "order_item_type", "order_item_name", "_qty", "_line_total", "_product_id", "_variation_id"]
+
+# The posts shape of the same items: order_id points at the posts row in legacy storage.
+[[reference]]
+from = "woocommerce_order_items.order_id"
+to = "posts.ID"
+to_when = { post_type = ["shop_order", "shop_order_refund", "shop_subscription"] }
+label = "items"
+columns = ["order_item_id", "order_item_type", "order_item_name", "_qty", "_line_total", "_product_id", "_variation_id"]
+
+[[reference]]
+from = "woocommerce_order_itemmeta.meta_value"
+when = { meta_key = ["_product_id", "_variation_id"] }
+to = "posts.ID"
+
+[[reference]]
+from = "comments.comment_post_ID"
+when = { comment_type = "order_note" }
+to = "wc_orders.id"
+label = "notes"
+columns = ["comment_ID", "comment_date_gmt", "comment_author", "comment_content"]
+
+[[reference]]
+from = "wc_orders_meta.meta_value"
+when = { meta_key = "_ppcp_paypal_order_id" }
+to = "wc_orders_meta.meta_value"
+to_when = { meta_key = "_ppcp_paypal_order_id" }
+
+[[reference]]
+from = "wc_orders_meta.meta_value"
+when = { meta_key = ["_subscription_renewal", "_subscription_resubscribe", "_subscription_switch"] }
+to = "wc_orders.id"
+
+# ---------------------------------------------------------------------------------------------
+# References: posts-storage orders (legacy, or the synced copy)
+# ---------------------------------------------------------------------------------------------
+
+[[reference]]
+from = "postmeta.meta_value"
+when = { meta_key = "_customer_user" }
+to = "users.ID"
+
+[[reference]]
+from = "postmeta.meta_value"
+when = { meta_key = "_ppcp_paypal_order_id" }
+to = "postmeta.meta_value"
+to_when = { meta_key = "_ppcp_paypal_order_id" }
+
+[[reference]]
+from = "postmeta.meta_value"
+when = { meta_key = ["_subscription_renewal", "_subscription_resubscribe", "_subscription_switch"] }
+to = "posts.ID"
+
+# ---------------------------------------------------------------------------------------------
+# References: lookup tables, tokens, sessions
+# ---------------------------------------------------------------------------------------------
+
+[[reference]]
+from = "wc_order_product_lookup.order_id"
+to = "wc_orders.id"
+
+[[reference]]
+from = "wc_order_product_lookup.order_item_id"
+to = "woocommerce_order_items.order_item_id"
+
+[[reference]]
+from = "wc_order_product_lookup.product_id"
+to = "posts.ID"
+label = "wc_order_product_lookup"
+
+[[reference]]
+from = "wc_order_product_lookup.variation_id"
+to = "posts.ID"
+
+[[reference]]
+from = "wc_order_product_lookup.customer_id"
+to = "wc_customer_lookup.customer_id"
+
+[[reference]]
+from = "wc_order_stats.order_id"
+to = "wc_orders.id"
+
+[[reference]]
+from = "wc_order_stats.parent_id"
+to = "wc_orders.id"
+
+[[reference]]
+from = "wc_order_stats.customer_id"
+to = "wc_customer_lookup.customer_id"
+
+[[reference]]
+from = "wc_customer_lookup.user_id"
+to = "users.ID"
+
+[[reference]]
+from = "wc_product_meta_lookup.product_id"
+to = "posts.ID"
+
+[[reference]]
+from = "woocommerce_payment_tokens.user_id"
+to = "users.ID"
+label = "tokens"
+columns = ["token_id", "gateway_id", "type", "is_default"]
+
+# Logged-in sessions use the user ID as key; guest keys are random strings, not references.
+[[reference]]
+from = "woocommerce_sessions.session_key"
+when = { session_key = { regexp = "^[0-9]+$" } }   # GAP: G5
+to = "users.ID"
+
+[[reference]]
+from = "woocommerce_downloadable_product_permissions.order_id"
+to = "wc_orders.id"
+
+[[reference]]
+from = "woocommerce_downloadable_product_permissions.product_id"
+to = "posts.ID"
+
+[[reference]]
+from = "woocommerce_downloadable_product_permissions.user_id"
+to = "users.ID"
+
+# ---------------------------------------------------------------------------------------------
+# References: Action Scheduler (declared, although same-name inference would find most of them)
+# ---------------------------------------------------------------------------------------------
+
+[[reference]]
+from = "actionscheduler_actions.group_id"
+to = "actionscheduler_groups.group_id"
+
+[[reference]]
+from = "actionscheduler_actions.claim_id"
+to = "actionscheduler_claims.claim_id"
+
+[[reference]]
+from = "actionscheduler_logs.action_id"
+to = "actionscheduler_actions.action_id"
+label = "logs"
+columns = ["log_id", "log_date_gmt", "message"]
+
+# ---------------------------------------------------------------------------------------------
+# Entities
+# ---------------------------------------------------------------------------------------------
+
+[[entity]]
+name = "order"
+table = "wc_orders"
+summary = ["type", "status", "payment_method", "total_amount", "date_created_gmt"]
+created = "date_created_gmt"
+search = ["billing_email"]
+search_exact = ["transaction_id", "_ppcp_paypal_order_id"]   # a meta key: GAP: G15
+
+# The posts shape. A filtered entity wins over the unfiltered `post` on the same table (GAP: G4).
+[[entity]]
+name = "order"
+table = "posts"
+filter = "post_type IN ('shop_order', 'shop_order_refund', 'shop_subscription')"
+summary = ["post_type", "post_status", "_payment_method", "_order_total", "post_date_gmt"]
+created = "post_date_gmt"
+search_exact = ["_billing_email", "_transaction_id", "_ppcp_paypal_order_id"]
+
+[[entity]]
+name = "product"
+table = "posts"
+filter = "post_type IN ('product', 'product_variation')"
+summary = ["post_type", "post_status", "post_title", "_sku", "_price", "_stock_status"]
+created = "post_date_gmt"
+search = ["post_title"]
+search_exact = ["_sku"]
+
+[[entity]]
+name = "order_item"
+table = "woocommerce_order_items"
+summary = ["order_item_type", "order_item_name", "order_id"]
+
+[[entity]]
+name = "order_address"
+table = "wc_order_addresses"
+summary = ["address_type", "first_name", "last_name", "email", "order_id"]
+search = ["email", "first_name", "last_name", "phone"]
+people = true
+
+[[entity]]
+name = "payment_token"
+table = "woocommerce_payment_tokens"
+summary = ["gateway_id", "type", "user_id", "is_default"]
+
+[[entity]]
+name = "action"
+table = "actionscheduler_actions"
+summary = ["hook", "status", "scheduled_date_gmt", "attempts"]
+created = "scheduled_date_gmt"
+search = ["hook"]
+
+[[entity]]
+name = "session"
+table = "woocommerce_sessions"
+summary = ["session_key", "session_expiry"]
+search_exact = ["session_key"]
+
+# ---------------------------------------------------------------------------------------------
+# Kinds (from meta_keys.toml; flag, roles, user_agent, country, email and url renders are dropped)
+# ---------------------------------------------------------------------------------------------
+
+[[kind]]
+columns = [
+  "wc_orders.status", "wc_orders.type", "wc_orders.payment_method", "wc_orders.currency",
+  "wc_order_operational_data.created_via", "wc_order_addresses.address_type",
+  "woocommerce_order_items.order_item_type", "woocommerce_payment_tokens.gateway_id",
+  "woocommerce_payment_tokens.type", "actionscheduler_actions.status", "actionscheduler_actions.hook",
+  "woocommerce_log.source", "woocommerce_log.level", "wc_product_meta_lookup.stock_status",
+]
+enum = true
+
+[[kind]]
+meta_keys = ["_payment_method", "_order_currency", "_created_via", "_stock_status"]
+in = ["postmeta"]
+enum = true
+
+# Money. `currency` names a column of the same row, else of the owner row, else a meta key of the
+# same document; the first one that holds a value wins (GAP: G6).
+[[kind]]
+columns = [
+  "wc_orders.total_amount", "wc_orders.tax_amount",
+  "wc_order_operational_data.shipping_total_amount", "wc_order_operational_data.shipping_tax_amount",
+  "wc_order_operational_data.discount_total_amount", "wc_order_operational_data.discount_tax_amount",
+]
+money = { currency = ["currency"] }
+
+[[kind]]
+meta_keys = ["_order_total", "_order_tax", "_order_shipping", "_order_shipping_tax", "_cart_discount", "_cart_discount_tax", "PayPal Transaction Fee"]
+in = ["postmeta", "wc_orders_meta"]
+money = { currency = ["currency", "_order_currency"] }
+
+# No stored currency on the row or its document: amount only.
+[[kind]]
+meta_keys = ["_line_total", "_line_subtotal", "_line_*tax", "cost", "total_tax", "discount_amount", "tax_amount", "shipping_tax_amount"]
+in = ["woocommerce_order_itemmeta"]
+money = {}
+
+[[kind]]
+meta_keys = ["_price", "_regular_price", "_sale_price", "_money_spent"]
+in = ["postmeta", "usermeta"]
+money = {}
+
+[[kind]]
+columns = ["wc_product_meta_lookup.min_price", "wc_product_meta_lookup.max_price", "wc_order_product_lookup.product_net_revenue", "wc_order_product_lookup.product_gross_revenue", "wc_order_stats.total_sales", "wc_order_stats.net_total"]
+money = {}
+
+# Timestamps (GAP: G7)
+[[kind]]
+columns = ["woocommerce_log.timestamp", "actionscheduler_logs.log_date_gmt"]
+timestamp = "utc"
+
+[[kind]]
+columns = ["actionscheduler_actions.scheduled_date_local", "actionscheduler_actions.last_attempt_local", "actionscheduler_logs.log_date_local", "wc_order_stats.date_created", "wc_order_stats.date_paid", "wc_order_stats.date_completed"]
+timestamp = "local"
+
+[[kind]]
+columns = ["woocommerce_sessions.session_expiry"]
+timestamp = "unix"
+
+[[kind]]
+meta_keys = ["_date_paid", "_date_completed", "wc_last_active", "_sale_price_dates_*", "_wc_*_sent", "_wc_push_notification_*"]
+timestamp = "unix"
+
+[[kind]]
+meta_keys = ["_schedule_*"]   # WooCommerce Subscriptions stores these in GMT; "0" means none
+timestamp = "utc"
+
+[[kind]]
+meta_keys = ["_paid_date", "_completed_date", "_wc_order_attribution_session_start_time"]
+timestamp = "local"
+
+# Secrets
+[[kind]]
+meta_keys = ["order_key", "_order_key"]
+secret = true
+
+[[kind]]
+columns = ["wc_order_operational_data.order_key", "woocommerce_payment_tokens.token", "woocommerce_api_keys.consumer_key", "woocommerce_api_keys.consumer_secret"]
+secret = true
+
+# ---------------------------------------------------------------------------------------------
+# Value styles: today's status tones (ui.tsx STATUS_TONES), shipped off.
+# ---------------------------------------------------------------------------------------------
+
+[[style]]
+columns = ["wc_orders.status", "posts.post_status"]
+match = "="
+value = "wc-failed"
+color = "red"
+enabled = false
+
+[[style]]
+columns = ["wc_orders.status", "posts.post_status"]
+match = "="
+value = "wc-on-hold"
+color = "yellow"
+enabled = false
+
+[[style]]
+columns = ["wc_orders.status", "posts.post_status"]
+match = "="
+value = "wc-processing"
+color = "blue"
+enabled = false
+
+[[style]]
+columns = ["wc_orders.status", "posts.post_status"]
+match = "="
+value = "wc-completed"
+color = "green"
+enabled = false
+
+[[style]]
+columns = ["wc_orders.status", "posts.post_status"]
+match = "="
+value = "wc-refunded"
+color = "purple"
+enabled = false
+
+[[style]]
+columns = ["actionscheduler_actions.status"]
+match = "="
+value = "failed"
+color = "red"
+enabled = false
+
+[[style]]
+columns = ["actionscheduler_actions.status"]
+match = "="
+value = "complete"
+color = "green"
+enabled = false
+
+# ---------------------------------------------------------------------------------------------
+# Patterns: groups matched by SQL (GAP: G1 for placeholders other than {id} and {p}).
+# Rules with the same `name` and `owner` merge into one group (OR); a rule whose placeholder
+# resolves to NULL or '' is skipped. `{owner.<column>}` and `{meta.<key>}` render as SQL literals.
+# ---------------------------------------------------------------------------------------------
+
+[[pattern]]
+name = "woocommerce_log"
+owner = "wc_orders"
+table = "woocommerce_log"
+where = '''
+(message REGEXP CONCAT('#', {id}, '([^0-9]|$)')
+  OR context REGEXP CONCAT('"order": ?', {id}, '[^0-9]')
+  OR context LIKE CONCAT('%s:5:"order";i:', {id}, ';%')
+  OR context LIKE CONCAT('%s:5:"order";s:', CHAR_LENGTH({id}), ':"', {id}, '";%'))
+AND timestamp BETWEEN {owner.date_created_gmt} - INTERVAL 1 DAY AND {owner.date_created_gmt} + INTERVAL 90 DAY'''
+order = "timestamp"
+limit = 100
+
+[[pattern]]
+name = "woocommerce_log"
+owner = "wc_orders"
+table = "woocommerce_log"
+where = '''
+message LIKE CONCAT('%', {meta._ppcp_paypal_order_id}, '%')
+AND timestamp BETWEEN {owner.date_created_gmt} - INTERVAL 1 DAY AND {owner.date_created_gmt} + INTERVAL 90 DAY'''
+order = "timestamp"
+limit = 100
+
+[[pattern]]
+name = "woocommerce_log"
+owner = "wc_orders"
+table = "woocommerce_log"
+where = '''
+message LIKE CONCAT('%', {owner.transaction_id}, '%')
+AND timestamp BETWEEN {owner.date_created_gmt} - INTERVAL 1 DAY AND {owner.date_created_gmt} + INTERVAL 90 DAY'''
+order = "timestamp"
+limit = 100
+
+# The posts shape: `owner_when` restricts the owner rows (GAP: G1).
+[[pattern]]
+name = "woocommerce_log"
+owner = "posts"
+owner_when = { post_type = ["shop_order", "shop_order_refund", "shop_subscription"] }
+table = "woocommerce_log"
+where = '''
+(message REGEXP CONCAT('#', {id}, '([^0-9]|$)')
+  OR context REGEXP CONCAT('"order": ?', {id}, '[^0-9]')
+  OR context LIKE CONCAT('%s:5:"order";i:', {id}, ';%')
+  OR context LIKE CONCAT('%s:5:"order";s:', CHAR_LENGTH({id}), ':"', {id}, '";%'))
+AND timestamp BETWEEN {owner.post_date_gmt} - INTERVAL 1 DAY AND {owner.post_date_gmt} + INTERVAL 90 DAY'''
+order = "timestamp"
+limit = 100
+
+[[pattern]]
+name = "woocommerce_log"
+owner = "posts"
+owner_when = { post_type = ["shop_order", "shop_order_refund", "shop_subscription"] }
+table = "woocommerce_log"
+where = '''
+message LIKE CONCAT('%', {meta._ppcp_paypal_order_id}, '%')
+AND timestamp BETWEEN {owner.post_date_gmt} - INTERVAL 1 DAY AND {owner.post_date_gmt} + INTERVAL 90 DAY'''
+order = "timestamp"
+limit = 100
+
+[[pattern]]
+name = "woocommerce_log"
+owner = "posts"
+owner_when = { post_type = ["shop_order", "shop_order_refund", "shop_subscription"] }
+table = "woocommerce_log"
+where = '''
+message LIKE CONCAT('%', {meta._transaction_id}, '%')
+AND timestamp BETWEEN {owner.post_date_gmt} - INTERVAL 1 DAY AND {owner.post_date_gmt} + INTERVAL 90 DAY'''
+order = "timestamp"
+limit = 100
+
+# Scheduled actions whose args name the order ID as a whole number. Hashed `args` (long argument
+# lists) are skipped; their JSON is in `extended_args`.
+[[pattern]]
+name = "actionscheduler_actions"
+owner = "wc_orders"
+table = "actionscheduler_actions"
+where = '''
+(args REGEXP CONCAT('(^|[^0-9])', {id}, '([^0-9]|$)') AND args NOT REGEXP '^[0-9a-f]{32}$')
+OR extended_args REGEXP CONCAT('(^|[^0-9])', {id}, '([^0-9]|$)')'''
+order = "scheduled_date_gmt"
+limit = 200
+
+[[pattern]]
+name = "actionscheduler_actions"
+owner = "posts"
+owner_when = { post_type = ["shop_order", "shop_order_refund", "shop_subscription"] }
+table = "actionscheduler_actions"
+where = '''
+(args REGEXP CONCAT('(^|[^0-9])', {id}, '([^0-9]|$)') AND args NOT REGEXP '^[0-9a-f]{32}$')
+OR extended_args REGEXP CONCAT('(^|[^0-9])', {id}, '([^0-9]|$)')'''
+order = "scheduled_date_gmt"
+limit = 200
+
+# ---------------------------------------------------------------------------------------------
+# Pinned queries (lists, readout values)
+# ---------------------------------------------------------------------------------------------
+
+[[pinned]]
+id = "woocommerce_version"
+title = "{p}options woocommerce_version"
+sql = "SELECT option_value FROM {p}options WHERE option_name = 'woocommerce_version'"
+home = { show = "value" }
+
+[[pinned]]
+id = "hpos_options"
+title = "{p}options custom orders table"
+sql = '''
+SELECT option_id, option_name, option_value FROM {p}options
+WHERE option_name IN ('woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled',
+  'woocommerce_currency', 'woocommerce_price_num_decimals')
+ORDER BY option_name'''
+
+[[pinned]]
+id = "orders"
+title = "{p}wc_orders"
+sql = "SELECT id, type, status, payment_method, total_amount, currency, customer_id, billing_email, date_created_gmt FROM {p}wc_orders ORDER BY id DESC"
+home = { show = "rows", limit = 5 }
+
+[[pinned]]
+id = "orders_posts"
+title = "{p}posts shop_order*"
+sql = '''
+SELECT p.ID, p.post_type, p.post_status,
+  MAX(CASE WHEN m.meta_key = '_payment_method' THEN m.meta_value END) AS _payment_method,
+  MAX(CASE WHEN m.meta_key = '_order_total' THEN m.meta_value END) AS _order_total,
+  MAX(CASE WHEN m.meta_key = '_order_currency' THEN m.meta_value END) AS _order_currency,
+  MAX(CASE WHEN m.meta_key = '_customer_user' THEN m.meta_value END) AS _customer_user,
+  MAX(CASE WHEN m.meta_key = '_billing_email' THEN m.meta_value END) AS _billing_email,
+  p.post_date_gmt
+FROM {p}posts p
+LEFT JOIN {p}postmeta m ON m.post_id = p.ID
+  AND m.meta_key IN ('_payment_method', '_order_total', '_order_currency', '_customer_user', '_billing_email')
+WHERE p.post_type IN ('shop_order', 'shop_order_refund', 'shop_subscription')
+GROUP BY p.ID ORDER BY p.ID DESC'''
+
+[[pinned]]
+id = "subscriptions"
+title = "{p}wc_orders shop_subscription"
+sql = "SELECT id, status, parent_order_id, total_amount, currency, customer_id, date_created_gmt FROM {p}wc_orders WHERE type = 'shop_subscription' ORDER BY id DESC"
+
+[[pinned]]
+id = "customers"
+title = "{p}wc_orders by customer_id"
+sql = '''
+SELECT customer_id, COUNT(*) AS orders,
+  SUM(CASE WHEN status IN ('wc-completed', 'wc-processing') THEN total_amount ELSE 0 END) AS completed_or_processing_total,
+  MAX(date_created_gmt) AS last_created
+FROM {p}wc_orders WHERE type = 'shop_order' AND customer_id <> 0
+GROUP BY customer_id ORDER BY last_created DESC'''
+
+[[pinned]]
+id = "guests"
+title = "{p}wc_orders customer_id = 0 by billing_email"
+sql = '''
+SELECT billing_email, COUNT(*) AS orders, MIN(id) AS first_order, MAX(id) AS last_order, MAX(date_created_gmt) AS last_created
+FROM {p}wc_orders WHERE customer_id = 0 AND type = 'shop_order'
+GROUP BY billing_email ORDER BY last_created DESC'''
+
+[[pinned]]
+id = "guests_posts"
+title = "{p}postmeta _customer_user = 0 by _billing_email"
+sql = '''
+SELECT e.meta_value AS _billing_email, COUNT(*) AS orders, MIN(p.ID) AS first_order, MAX(p.ID) AS last_order
+FROM {p}posts p
+JOIN {p}postmeta e ON e.post_id = p.ID AND e.meta_key = '_billing_email'
+LEFT JOIN {p}postmeta c ON c.post_id = p.ID AND c.meta_key = '_customer_user'
+WHERE p.post_type = 'shop_order' AND COALESCE(c.meta_value, '0') = '0'
+GROUP BY e.meta_value ORDER BY last_order DESC'''
+
+[[pinned]]
+id = "products"
+title = "{p}posts product"
+sql = '''
+SELECT p.ID, p.post_title, p.post_status, pt.slug AS product_type, l.sku, l.min_price, l.max_price,
+  l.stock_status, l.stock_quantity, l.total_sales,
+  (SELECT COUNT(*) FROM {p}posts v WHERE v.post_parent = p.ID AND v.post_type = 'product_variation') AS variations
+FROM {p}posts p
+LEFT JOIN {p}wc_product_meta_lookup l ON l.product_id = p.ID
+LEFT JOIN (SELECT tr.object_id, te.slug FROM {p}term_relationships tr
+  JOIN {p}term_taxonomy tt ON tt.term_taxonomy_id = tr.term_taxonomy_id AND tt.taxonomy = 'product_type'
+  JOIN {p}terms te ON te.term_id = tt.term_id) pt ON pt.object_id = p.ID
+WHERE p.post_type = 'product'
+ORDER BY p.ID DESC'''
+
+[[pinned]]
+id = "actions"
+title = "{p}actionscheduler_actions"
+sql = '''
+SELECT a.action_id, a.hook, a.status, a.scheduled_date_gmt, a.last_attempt_gmt, a.attempts, a.args, a.group_id,
+  (SELECT l.message FROM {p}actionscheduler_logs l WHERE l.action_id = a.action_id ORDER BY l.log_id DESC LIMIT 1) AS last_log_message
+FROM {p}actionscheduler_actions a ORDER BY a.action_id DESC'''
+
+[[pinned]]
+id = "actions_failed_by_hook"
+title = "{p}actionscheduler_actions failed by hook"
+sql = '''
+SELECT hook, COUNT(*) AS failed, MAX(last_attempt_gmt) AS last_attempt_gmt, MAX(action_id) AS last_action_id
+FROM {p}actionscheduler_actions WHERE status = 'failed'
+GROUP BY hook ORDER BY last_action_id DESC'''
+
+[[pinned]]
+id = "actions_overdue"
+title = "{p}actionscheduler_actions pending, overdue"
+sql = '''
+SELECT action_id, hook, scheduled_date_gmt, attempts, args FROM {p}actionscheduler_actions
+WHERE status = 'pending' AND scheduled_date_gmt > '1000-01-01'
+  AND scheduled_date_gmt < UTC_TIMESTAMP() - INTERVAL 10 MINUTE
+ORDER BY scheduled_date_gmt'''
+
+[[pinned]]
+id = "sessions"
+title = "{p}woocommerce_sessions"
+sql = '''
+SELECT session_id, session_key, session_expiry, session_expiry < UNIX_TIMESTAMP() AS expired, LENGTH(session_value) AS bytes
+FROM {p}woocommerce_sessions ORDER BY session_expiry DESC'''
+
+[[pinned]]
+id = "hpos_drift"
+title = "{p}wc_orders differing from their {p}posts copy"
+sql = '''
+SELECT o.id, o.type, p.post_type, o.date_updated_gmt, p.post_modified_gmt
+FROM {p}wc_orders o LEFT JOIN {p}posts p ON p.ID = o.id
+WHERE o.type IN ('shop_order', 'shop_order_refund')
+  AND (p.ID IS NULL OR p.post_type <> o.type OR p.post_modified_gmt <> o.date_updated_gmt)
+ORDER BY o.id DESC'''
+
+# ---------------------------------------------------------------------------------------------
+# Anomalies (GAP: G10)
+# ---------------------------------------------------------------------------------------------
+
+[[anomaly]]
+id = "actions_failed"
+sql = "SELECT COUNT(*) FROM {p}actionscheduler_actions WHERE status = 'failed'"
+text = "{p}actionscheduler_actions status = failed"
+open = { table = "actionscheduler_actions", where = "status = 'failed'" }
+
+[[anomaly]]
+id = "actions_overdue"
+sql = '''
+SELECT COUNT(*) FROM {p}actionscheduler_actions
+WHERE status = 'pending' AND scheduled_date_gmt > '1000-01-01'
+  AND scheduled_date_gmt < UTC_TIMESTAMP() - INTERVAL 10 MINUTE'''
+text = "{p}actionscheduler_actions status = pending, scheduled_date_gmt < now - 10 min"
+open = { pinned = "actions_overdue" }
+
+# Only meaningful while sync is on: without it the posts rows are placeholders.
+[[anomaly]]
+id = "hpos_drift"
+sql = '''
+SELECT COUNT(*) FROM {p}wc_orders o LEFT JOIN {p}posts p ON p.ID = o.id
+WHERE o.type IN ('shop_order', 'shop_order_refund')
+  AND (p.ID IS NULL OR p.post_type <> o.type OR p.post_modified_gmt <> o.date_updated_gmt)
+  AND EXISTS (SELECT 1 FROM {p}options WHERE option_name = 'woocommerce_custom_orders_table_data_sync_enabled' AND option_value = 'yes')'''
+text = "{p}wc_orders differ from {p}posts while data sync is on"
+open = { pinned = "hpos_drift" }
+
+# Replaces the "big table" insight (which classified tables by name); from the mock.
+[[anomaly]]
+id = "log_errors"
+sql = "SELECT COUNT(*) FROM {p}woocommerce_log WHERE level >= 400 AND timestamp > UTC_TIMESTAMP() - INTERVAL 1 DAY"
+text = "{p}woocommerce_log level >= 400, last 24 h"
+open = { table = "woocommerce_log", where = "level >= 400 AND timestamp > UTC_TIMESTAMP() - INTERVAL 1 DAY" }
+
+# ---------------------------------------------------------------------------------------------
+# Actions (GAP: G9)
+# ---------------------------------------------------------------------------------------------
+
+# Order status in wc_orders and the posts copy, when there is one. Undo restores both from the
+# before-image the core captures.
+[[action]]
+name = "set_status"
+table = "wc_orders"
+params = [{ name = "status", choices_sql = "SELECT DISTINCT status FROM {p}wc_orders ORDER BY status", free = true }]
+update = [
+  { set = { status = "{param.status}", date_updated_gmt = { sql = "UTC_TIMESTAMP()" } } },
+  { table = "posts", key = "ID", where = "post_type IN ('shop_order', 'shop_order_refund', 'shop_subscription')", set = { post_status = "{param.status}", post_modified_gmt = { sql = "UTC_TIMESTAMP()" }, post_modified = { sql = "NOW()" } } },
+]
+
+[[action]]
+name = "set_status"
+table = "posts"
+when = { post_type = ["shop_order", "shop_order_refund", "shop_subscription"] }
+params = [{ name = "status", choices_sql = "SELECT DISTINCT post_status FROM {p}posts WHERE post_type LIKE 'shop\\_%' ORDER BY post_status", free = true }]
+update = [
+  { set = { post_status = "{param.status}", post_modified_gmt = { sql = "UTC_TIMESTAMP()" }, post_modified = { sql = "NOW()" } } },
+  { table = "wc_orders", key = "id", set = { status = "{param.status}", date_updated_gmt = { sql = "UTC_TIMESTAMP()" } } },
+]
+
+[[action]]
+name = "retry"
+table = "actionscheduler_actions"
+when = { status = ["failed", "canceled"] }
+update = [{ set = { status = "pending", scheduled_date_gmt = { sql = "UTC_TIMESTAMP()" }, claim_id = "0" } }]
+
+[[action]]
+name = "cancel"
+table = "actionscheduler_actions"
+when = { status = "pending" }
+update = [{ set = { status = "canceled" } }]
+
+# Retention. Free SQL: reviewed as written, marked "no undo".
+[[action]]
+name = "delete_logs_before"
+table = "woocommerce_log"
+scope = "table"
+params = [
+  { name = "days", type = "int", default = "30" },
+  { name = "source", choices_sql = "SELECT DISTINCT source FROM {p}woocommerce_log ORDER BY source", optional = true },
+]
+sql = "DELETE FROM {p}woocommerce_log WHERE timestamp < UTC_TIMESTAMP() - INTERVAL {param.days} DAY AND ({param.source} IS NULL OR source = {param.source})"
+preview_sql = "SELECT COUNT(*) FROM {p}woocommerce_log WHERE timestamp < UTC_TIMESTAMP() - INTERVAL {param.days} DAY AND ({param.source} IS NULL OR source = {param.source})"
+
+# ---------------------------------------------------------------------------------------------
+# Find everywhere: containment searches on top of the default exact meta/search lookups (G13)
+# ---------------------------------------------------------------------------------------------
+
+[[find]]
+table = "actionscheduler_actions"
+columns = ["args", "extended_args"]
+match = "contains"
+
+[[find]]
+table = "woocommerce_log"
+columns = ["message", "context"]
+match = "contains"
+
+[[find]]
+table = "wc_orders"
+columns = ["transaction_id", "billing_email"]
+match = "exact"

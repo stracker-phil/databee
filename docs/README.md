@@ -8,6 +8,7 @@ use it, see the [project README](../README.md).
 | [architecture.md](architecture.md) | Design rules, process model, repository map, one request end to end |
 | [backend.md](backend.md) | Rust core: startup, `AppState`, Tauri commands, events, CLI and single-instance IPC, persistence, secrets, errors, native menu |
 | [database.md](database.md) | MySQL driver: connection model, query execution, cell decoding, browsing, edits, adding an engine |
+| [presets.md](presets.md) | Presets and rules: the TOML format, placeholders, where user presets live, loading and errors |
 | [decode.md](decode.md) | Decoding and editing stored values: PHP serialize, JSON, value trees |
 | [wordpress.md](wordpress.md) | WordPress lens: detection, entities (TOML), screens, writes, extending |
 | [ux.md](ux.md) | Design language: surfaces, color schemes and tokens, type, rows, inputs, overlays, value grammar, keys, palette |

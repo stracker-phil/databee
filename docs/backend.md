@@ -63,6 +63,7 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 | `favorites` | `FavoritesStore` | `favorites.json` |
 | `history` | `HistoryStore` | `history.json` (last 500 queries, written behind) |
 | `ui_state` | `UiStateStore` | `ui_state.json` (column widths, pane sizes, sidebar hidden per connection) |
+| `presets` | `PresetCatalog` | built-in and user presets, reread when `presets/*.toml` change ([presets.md](presets.md)) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
@@ -99,6 +100,7 @@ use the same names in camelCase.
 | `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `rename_connection_slug` (validates, stores, renames the slug of open sessions of that connection), `list_favorites`, `create_favorite`, `update_favorite`, `remove_favorite`, `reorder_favorites`, `list_history`, `clear_history` |
 | `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `refresh_schema` (see [Schema cache](database.md#schema-cache)), `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `resolve_address` (see [Addresses](#addresses)), `table_references` (declared and inferred references from and to a table, see [database.md](database.md#references-and-kinds)), `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
+| `rules/commands.rs` | `presets_list` (every known preset with its source and, for a file that does not load, the error; see [presets.md](presets.md)) |
 
 `session::open` is the connect service: it peeks the launch password, resolves the password
 (`resolve_password`, in `spawn_blocking` because the Keychain may block on a dialog), calls `db::open`, maps a
@@ -115,7 +117,8 @@ the set and keeps the full text of its `longText` cells.
 
 **Adding a command:**
 1. Write a `#[tauri::command]` function that returns `AppResult<T>`. `T` must be `Serialize` with
-   `#[serde(rename_all = "camelCase")]`.
+   `#[serde(rename_all = "camelCase")]` (except rule types, which keep the preset TOML keys; see
+   [presets.md](presets.md#format)).
 2. Register it in `lib.rs`.
 3. Derive `ts_rs::TS` with `#[ts(export, export_to = "src/api/types.gen.ts")]` on every argument and result
    type (and the types they contain), run `bun run types` and commit the regenerated file. 64-bit integers
@@ -239,6 +242,7 @@ snapshot migration). Store methods that write are `async` and the commands calli
 | `snapshots/<id>.json` | one snapshot's `path → value` map (0600, dir 0700) |
 | `ui_state.json` | per connection: column widths, `detailPaneWidth`, `inspectorWidth`, `bottomPaneHeight`, `sqlEditorHeight`, `sidebarHidden` (older names load via serde aliases; missing fields take their defaults). `UiStateStore::forget` drops a connection's entry |
 | `entities.toml` | WordPress plugin: optional user entity definitions ([wordpress.md](wordpress.md#entities)) |
+| `presets/*.toml` | user presets; one with the name of a built-in replaces it ([presets.md](presets.md)) |
 | `databee.sock` | the IPC socket |
 | `databee.lock` | the instance lock |
 
@@ -355,7 +359,7 @@ To add a menu item:
 | `zeroize` | `Secret` is zeroed on drop |
 | `thiserror` | `AppError` |
 | `chrono`, `uuid`, `url`, `percent-encoding`, `futures-util` | time stamps, ids, URL parsing, result streaming |
-| `toml` | `entities.toml`, `meta_keys.toml` |
+| `toml` | presets, `entities.toml`, `meta_keys.toml` |
 | `sha2` | Gravatar hashes |
 | `libc` | `getuid` for the IPC peer check |
 | `tempfile` (dev) | store and socket tests |

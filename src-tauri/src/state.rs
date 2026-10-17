@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::launch::LaunchQueue;
+use crate::rules::PresetCatalog;
 use crate::secrets::SecretStore;
 use crate::session::Sessions;
 use crate::store::favorites::FavoritesStore;
@@ -18,6 +19,7 @@ pub struct AppState {
     pub favorites: FavoritesStore,
     pub history: HistoryStore,
     pub ui_state: UiStateStore,
+    pub presets: PresetCatalog,
     pub launches: LaunchQueue,
     /// Shared so Keychain calls can run in blocking tasks.
     pub secrets: Arc<dyn SecretStore>,
@@ -36,6 +38,7 @@ impl AppState {
             favorites: FavoritesStore::open(config_dir),
             history: HistoryStore::open(config_dir),
             ui_state: UiStateStore::open(config_dir),
+            presets: PresetCatalog::open(config_dir),
             launches: LaunchQueue::default(),
             secrets,
             sessions: Sessions::default(),

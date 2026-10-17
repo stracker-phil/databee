@@ -50,6 +50,7 @@ import type {
   Settings,
   TableInfo,
   TableReferences,
+  PresetInfo,
   TableStructure,
   UiState,
 } from "./types";
@@ -100,6 +101,7 @@ export const api = {
   /** Declared foreign keys and same-name references from and to a table. */
   tableReferences: (sessionId: string, database: string, table: string) =>
     invoke<TableReferences>("table_references", { sessionId, database, table }),
+  presetsList: () => invoke<PresetInfo[]>("presets_list"),
   /** The "New query" SQL for a table, quoted by Rust. */
   tableSelectSql: (sessionId: string, database: string, table: string) =>
     invoke<string>("table_select_sql", { sessionId, database, table }),

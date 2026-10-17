@@ -17,6 +17,8 @@ These rules hold everywhere in the code. Keep them when you change things.
    `@tauri-apps/plugin-*` package and calls `invoke` or `listen`. The core's file is `src/api/index.ts`;
    a module's is `src/<module>/api.ts`. The rest of the frontend imports `api` from there, which is also
    what UI tests mock. Stage's is `src/stage/api.ts` (`stageApi`).
+   IPC types are camelCase, with one deliberate exception: rule types (`src-tauri/src/rules/`) keep the
+   snake_case keys of the preset TOML format, so projects, exports and the page store a rule verbatim.
 3. **Errors are data.** Every command returns `Result<T, AppError>`, which serializes as `{ kind, message, code, account }`.
    The UI branches on `kind` (e.g. `password_required`, `confirmation_required`).
 4. **Passwords never touch files, logs or the webview.** They live in the `Secret` type. It redacts in
@@ -73,6 +75,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/schema.rs            per-session schema cache: tables, columns, keys, foreign keys, structures
   src/value/               Value, ValueKind, ColumnKind, RowKey: what a cell is and where it came from
   src/lens/                the lens seam: SchemaLens (keys, foreign keys, same-name inference), result kinds
+  src/rules/               presets: rule types, TOML parsing, the preset catalog, prefix suggestion
   src/commands.rs          settings, keybindings, favorites, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
@@ -168,6 +171,26 @@ status kind: color comes only from value styles.
   `references_to(table)`. `SchemaLens` answers from the schema cache: primary keys, declared foreign keys
   and same-name inference ([database.md](database.md#references-and-kinds)). The rules lens of presets and
   projects wraps it and adds or overrides references and kinds.
+
+## Rules and presets
+
+`src-tauri/src/rules/` is the generic configuration layer ([presets.md](presets.md)). A preset is a TOML file
+of rules for tables named without their prefix: key/value tables, references, entities, kinds, value styles,
+patterns, pinned queries, anomalies, actions and find sources. No application name appears in its Rust code;
+WordPress and WooCommerce are preset files.
+
+- `types.rs`, `kinds.rs`, `queries.rs`, `actions.rs`: the rule types. Each has one serialized form, the TOML
+  shape, shared by preset files, projects and the page (exported to `types.gen.ts`). Shapes with exclusive
+  fields (`KindRule`, `Action`) read a flat `*Fields` struct and convert with `try_from`.
+- `preset.rs`: `parse(file, src)` reads every rule on its own, so a `PresetError` names the file, the rule
+  (`[[reference]] #3 (line 40)`) and the field; `Check` covers what serde cannot (placeholders, names that
+  must exist in the preset). `to_toml` writes a preset back.
+- `placeholder.rs`: `{p}`, `{np}`, `{id}`, `{owner.<column>}`, `{meta.<key>}`, `{param.<name>}`, and which
+  of them a piece of SQL may use.
+- `catalog.rs`: `PresetCatalog` in `AppState`: the built-ins (`BUILT_IN`, `include_str!` of
+  `src-tauri/presets/*.toml`) plus `<config dir>/presets/*.toml`, reread when the directory's files or
+  mtimes change; `requires_order` resolves `requires`.
+- `prefix.rs`: `suggest_prefix`, the shortest prefix under which a preset's marker tables exist.
 
 ## A request, end to end
 

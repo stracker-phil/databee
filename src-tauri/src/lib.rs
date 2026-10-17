@@ -13,6 +13,7 @@ mod launch;
 mod lens;
 mod lock;
 mod menu;
+pub mod rules;
 mod schema;
 pub mod secrets;
 mod session;
@@ -265,6 +266,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::undo_batch,
             decode::commands::decode_value,
             decode::commands::edit_serialized,
+            rules::commands::presets_list,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -1,0 +1,367 @@
+# Test fixture: a copy of the U4a paper-port draft of the WordPress core preset. It is not shipped;
+# `preset.rs` tests assert that it parses and round-trips.
+#
+# Draft (U4a paper port): the WordPress core preset.
+# Format: ux-redesign.md 4.5 as amended by paper-port.md ("Format changes to 4.5").
+# Lines marked `# GAP: Gn` need the engine feature Gn from paper-port.md ("Engine features required").
+# Table names are written without the prefix. In SQL, `{p}` is the project prefix and `{np}` the network
+# prefix (equal to `{p}` on single sites; GAP: G12). Preset SQL is MySQL/MariaDB.
+
+[preset]
+name = "wordpress"
+marker_tables = ["options", "posts", "users"]
+# Multisite: these tables exist once per network, under the network prefix (wp_), while every
+# sub-site has its own prefix (wp_2_). GAP: G12
+network_tables = ["users", "usermeta", "blogs", "blogmeta", "site", "sitemeta", "signups", "registration_log"]
+
+# ---------------------------------------------------------------------------------------------
+# Key/value tables. Each `[[meta]]` with an owner also declares the reference fk -> owner key.
+# ---------------------------------------------------------------------------------------------
+
+[[meta]]
+table = "postmeta"
+owner = "posts"
+fk = "post_id"
+key = "meta_key"
+value = "meta_value"
+
+[[meta]]
+table = "usermeta"
+owner = "users"
+fk = "user_id"
+key = "meta_key"
+value = "meta_value"
+
+[[meta]]
+table = "commentmeta"
+owner = "comments"
+fk = "comment_id"
+key = "meta_key"
+value = "meta_value"
+
+[[meta]]
+table = "termmeta"
+owner = "terms"
+fk = "term_id"
+key = "meta_key"
+value = "meta_value"
+
+[[meta]]
+table = "sitemeta"
+owner = "site"
+fk = "site_id"
+key = "meta_key"
+value = "meta_value"
+
+[[meta]]
+table = "blogmeta"
+owner = "blogs"
+fk = "blog_id"
+key = "meta_key"
+value = "meta_value"
+
+# No owner: a standalone key/value table, so meta-key kind rules (secrets, timestamps) apply to
+# option rows too. GAP: G8
+[[meta]]
+table = "options"
+key = "option_name"
+value = "option_value"
+
+# ---------------------------------------------------------------------------------------------
+# References. `id` is optional; the default is `<from>[?<meta key>]`. `label` names the incoming
+# group on the target's document. `columns` picks the group's columns (GAP: G3).
+# ---------------------------------------------------------------------------------------------
+
+[[reference]]
+from = "posts.post_author"
+to = "users.ID"
+
+[[reference]]
+from = "posts.post_parent"
+to = "posts.ID"
+label = "children"
+columns = ["ID", "post_type", "post_status", "post_title", "post_date_gmt"]
+
+[[reference]]
+from = "postmeta.meta_value"
+when = { meta_key = "_thumbnail_id" }
+to = "posts.ID"
+
+[[reference]]
+from = "postmeta.meta_value"
+when = { meta_key = "_edit_last" }
+to = "users.ID"
+
+[[reference]]
+from = "comments.comment_post_ID"
+to = "posts.ID"
+label = "comments"
+columns = ["comment_ID", "comment_type", "comment_approved", "comment_author", "comment_date_gmt", "comment_content"]
+
+[[reference]]
+from = "comments.user_id"
+to = "users.ID"
+
+[[reference]]
+from = "comments.comment_parent"
+to = "comments.comment_ID"
+label = "replies"
+
+[[reference]]
+from = "term_relationships.object_id"
+to = "posts.ID"
+label = "terms"
+columns = ["object_id", "term_taxonomy_id", "term_order"]
+
+[[reference]]
+from = "term_relationships.term_taxonomy_id"
+to = "term_taxonomy.term_taxonomy_id"
+
+[[reference]]
+from = "term_taxonomy.term_id"
+to = "terms.term_id"
+
+[[reference]]
+from = "term_taxonomy.parent"
+to = "terms.term_id"
+
+[[reference]]
+from = "links.link_owner"
+to = "users.ID"
+
+# Multisite network tables.
+[[reference]]
+from = "blogs.site_id"
+to = "site.id"
+
+[[reference]]
+from = "registration_log.blog_id"
+to = "blogs.blog_id"
+
+# ---------------------------------------------------------------------------------------------
+# Entities: names, object header (summary), search. The document itself comes from references.
+# ---------------------------------------------------------------------------------------------
+
+[[entity]]
+name = "post"
+table = "posts"
+summary = ["post_type", "post_status", "post_title", "post_date_gmt"]
+created = "post_date_gmt"
+search = ["post_title", "post_name"]   # contains (GAP: G15)
+
+[[entity]]
+name = "user"
+table = "users"
+summary = ["user_login", "display_name", "user_email", "user_registered"]
+created = "user_registered"
+search = ["user_login", "user_email", "display_name"]
+people = true
+
+[[entity]]
+name = "comment"
+table = "comments"
+summary = ["comment_type", "comment_approved", "comment_author", "comment_date_gmt"]
+created = "comment_date_gmt"
+search = ["comment_author_email"]
+
+[[entity]]
+name = "term"
+table = "terms"
+summary = ["name", "slug"]
+search = ["name", "slug"]
+
+[[entity]]
+name = "option"
+table = "options"
+summary = ["option_name", "autoload"]
+search = ["option_name"]
+
+[[entity]]
+name = "blog"
+table = "blogs"
+summary = ["domain", "path", "registered"]
+
+# ---------------------------------------------------------------------------------------------
+# Kinds (GAP: G16 for column globs and `in`). `columns` take `table.column`, `*` globs allowed; `meta_keys` are globs over every
+# `[[meta]]` key column of the applied presets (`in` narrows them to some meta tables).
+# ---------------------------------------------------------------------------------------------
+
+# Secrets (masked until clicked). Former `hidden` columns and `sensitive = "secret"` globs.
+[[kind]]
+columns = ["users.user_pass", "users.user_activation_key"]
+secret = true
+
+[[kind]]
+meta_keys = ["*password*", "*secret*", "*api_key*", "*_token", "session_tokens"]
+secret = true
+
+# Timestamps. DATETIME columns are timestamps by type; the rules say which zone they are in
+# (GAP: G7). WordPress stores `*_gmt` in UTC and the plain columns in the site's local time,
+# whose zone DataBee no longer reads.
+[[kind]]
+columns = ["*.*_gmt", "users.user_registered", "blogs.registered", "blogs.last_updated", "signups.registered", "signups.activated"]
+timestamp = "utc"
+
+[[kind]]
+columns = ["posts.post_date", "posts.post_modified", "comments.comment_date", "links.link_updated"]
+timestamp = "local"
+
+[[kind]]
+meta_keys = ["_transient_timeout_*", "_site_transient_timeout_*", "last_update", "_edit_lock"]
+in = ["options", "usermeta", "postmeta"]
+timestamp = "unix"   # `_edit_lock` is `<unix>:<user id>`; the engine reads the leading number
+
+[[kind]]
+columns = ["posts.post_type", "posts.post_status", "posts.comment_status", "posts.ping_status", "comments.comment_type", "comments.comment_approved", "term_taxonomy.taxonomy", "options.autoload"]
+enum = true
+
+# ---------------------------------------------------------------------------------------------
+# Value styles: shipped off; a project switches them on (section 13).
+# ---------------------------------------------------------------------------------------------
+
+[[style]]
+columns = ["posts.post_status"]
+match = "="
+value = "trash"
+color = "red"
+enabled = false
+
+# ---------------------------------------------------------------------------------------------
+# Pinned queries: lists, the options screen and the readout header values.
+# ---------------------------------------------------------------------------------------------
+
+[[pinned]]
+id = "site_url"
+title = "{p}options siteurl"
+sql = "SELECT option_value FROM {p}options WHERE option_name = 'siteurl'"
+home = { show = "value" }   # GAP: G11
+
+[[pinned]]
+id = "db_version"
+title = "{p}options db_version"
+sql = "SELECT option_value FROM {p}options WHERE option_name = 'db_version'"
+home = { show = "value" }
+
+[[pinned]]
+id = "autoload_bytes"
+title = "{p}options autoloaded bytes"
+sql = "SELECT SUM(LENGTH(option_value)) FROM {p}options WHERE autoload IN ('yes', 'on', 'auto', 'auto-on')"
+home = { show = "value" }
+
+[[pinned]]
+id = "site_options"
+title = "{p}options probed by WordPress mode"
+sql = '''
+SELECT option_id, option_name, option_value, autoload FROM {p}options
+WHERE option_name IN ('siteurl', 'home', 'blogname', 'db_version', 'template', 'stylesheet',
+  'active_plugins', 'timezone_string', 'gmt_offset', 'upload_url_path')
+ORDER BY option_name'''
+
+[[pinned]]
+id = "network_plugins"
+title = "{np}sitemeta active_sitewide_plugins"
+sql = "SELECT meta_id, site_id, meta_value FROM {np}sitemeta WHERE meta_key = 'active_sitewide_plugins'"
+
+[[pinned]]
+id = "content"
+title = "{p}posts"
+sql = "SELECT ID, post_type, post_status, post_title, post_author, post_date_gmt, post_modified_gmt FROM {p}posts ORDER BY ID DESC"
+
+[[pinned]]
+id = "users"
+title = "{np}users"
+sql = '''
+SELECT u.ID, u.user_login, u.user_email, u.display_name, u.user_registered, c.meta_value AS `{p}capabilities`
+FROM {np}users u
+LEFT JOIN {np}usermeta c ON c.user_id = u.ID AND c.meta_key = '{p}capabilities'
+ORDER BY u.ID DESC'''
+
+[[pinned]]
+id = "options_by_prefix"
+title = "{p}options by name prefix"
+sql = '''
+SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(LEADING '_' FROM option_name), '_', 1), '-', 1) AS prefix,
+  COUNT(*) AS options,
+  SUM(LENGTH(option_value)) AS bytes,
+  SUM(CASE WHEN autoload IN ('yes', 'on', 'auto', 'auto-on') THEN LENGTH(option_value) ELSE 0 END) AS autoload_bytes
+FROM {p}options GROUP BY prefix ORDER BY autoload_bytes DESC, bytes DESC'''
+
+[[pinned]]
+id = "options_largest_autoload"
+title = "{p}options largest autoloaded"
+sql = '''
+SELECT option_id, option_name, autoload, LENGTH(option_value) AS bytes FROM {p}options
+WHERE autoload IN ('yes', 'on', 'auto', 'auto-on') ORDER BY bytes DESC, option_name LIMIT 15'''
+
+[[pinned]]
+id = "transients"
+title = "{p}options transients"
+sql = '''
+SELECT v.option_id, v.option_name, LENGTH(v.option_value) AS bytes, t.option_value AS timeout,
+  CAST(t.option_value AS UNSIGNED) < UNIX_TIMESTAMP() AS expired
+FROM {p}options v
+LEFT JOIN {p}options t ON t.option_name = REPLACE(v.option_name, '_transient_', '_transient_timeout_')
+WHERE (v.option_name LIKE '\_transient\_%' OR v.option_name LIKE '\_site\_transient\_%')
+  AND v.option_name NOT LIKE '%\_transient\_timeout\_%'
+ORDER BY expired DESC, bytes DESC'''
+home = { show = "count" }
+
+# ---------------------------------------------------------------------------------------------
+# Anomalies: shown on the readout while `sql` returns a non-zero value (GAP: G10).
+# ---------------------------------------------------------------------------------------------
+
+[[anomaly]]
+id = "autoload_heavy"
+sql = '''
+SELECT SUM(LENGTH(option_value)) FROM {p}options WHERE autoload IN ('yes', 'on', 'auto', 'auto-on')
+HAVING SUM(LENGTH(option_value)) > 819200'''
+text = "{p}options autoloaded bytes > 819200"
+open = { pinned = "options_largest_autoload" }
+
+[[anomaly]]
+id = "transients_expired"
+sql = '''
+SELECT COUNT(*) FROM {p}options
+WHERE (option_name LIKE '\_transient\_timeout\_%' OR option_name LIKE '\_site\_transient\_timeout\_%')
+  AND CAST(option_value AS UNSIGNED) < UNIX_TIMESTAMP()'''
+text = "{p}options _transient_timeout_* < now"
+open = { pinned = "transients" }
+fix = "delete_expired_transients"
+
+# ---------------------------------------------------------------------------------------------
+# Actions (GAP: G9). Meta edits (set, add, delete a key) are core edits on `[[meta]]` rows (G14).
+# ---------------------------------------------------------------------------------------------
+
+[[action]]
+name = "set_autoload"
+table = "options"
+params = [{ name = "autoload", choices_sql = "SELECT DISTINCT autoload FROM {p}options ORDER BY autoload" }]
+update = [{ set = { autoload = "{param.autoload}" } }]
+
+[[action]]
+name = "delete_expired_transients"
+table = "options"
+scope = "table"
+# Selected first, deleted by primary key; undo re-inserts the captured rows.
+delete = { where = '''
+option_id IN (
+  SELECT t.option_id FROM {p}options t
+  WHERE (t.option_name LIKE '\_transient\_timeout\_%' OR t.option_name LIKE '\_site\_transient\_timeout\_%')
+    AND CAST(t.option_value AS UNSIGNED) < UNIX_TIMESTAMP()
+  UNION
+  SELECT v.option_id FROM {p}options v
+  JOIN {p}options t ON t.option_name = REPLACE(v.option_name, '_transient_', '_transient_timeout_')
+  WHERE (v.option_name LIKE '\_transient\_%' OR v.option_name LIKE '\_site\_transient\_%')
+    AND v.option_name NOT LIKE '%\_transient\_timeout\_%'
+    AND CAST(t.option_value AS UNSIGNED) < UNIX_TIMESTAMP()
+)''' }
+
+# ---------------------------------------------------------------------------------------------
+# Find everywhere: every `[[meta]]` value column and every `search` column is searched for an
+# exact match by default; these add containment searches (GAP: G13).
+# ---------------------------------------------------------------------------------------------
+
+[[find]]
+table = "options"
+columns = ["option_name", "option_value"]
+match = "exact"

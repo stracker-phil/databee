@@ -44,6 +44,7 @@ export function createApiMock(): typeof realApi {
     listTables: vi.fn().mockResolvedValue([]),
     describeTable: vi.fn().mockResolvedValue({ columns: [], indexes: [], primaryKey: [], foreignKeys: [], ddl: null } satisfies TableStructure),
     tableReferences: vi.fn().mockResolvedValue({ outgoing: [], incoming: [] } satisfies TableReferences),
+    presetsList: vi.fn().mockResolvedValue([]),
     refreshSchema: vi.fn().mockResolvedValue(undefined),
     completionSchema: vi.fn().mockResolvedValue({}),
     useDatabase: vi.fn().mockResolvedValue(undefined),
