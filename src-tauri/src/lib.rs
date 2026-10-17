@@ -14,6 +14,7 @@ pub mod ipc;
 mod launch;
 mod lens;
 mod lock;
+mod mcp;
 mod menu;
 mod remote;
 pub mod rules;
@@ -183,12 +184,13 @@ pub fn run() {
     let socket = config_dir.join("databee.sock");
     let stored = Settings::peek(&config_dir);
 
-    let (message, log_override) = match cli::parse(
+    let outcome = cli::parse(
         std::env::args_os(),
         stored.default_port,
         &mut std::io::stdin().lock(),
         &|key| std::env::var(key).ok(),
-    ) {
+    );
+    let (message, log_override) = match outcome {
         Ok(CliOutcome::Exit { message }) => {
             print!("{message}");
             std::process::exit(0);
@@ -197,6 +199,7 @@ pub fn run() {
             launch.map(IpcMessage::from).unwrap_or(IpcMessage::Activate),
             log_level,
         ),
+        Ok(CliOutcome::Mcp) => std::process::exit(mcp::run(&config_dir, socket)),
         Ok(CliOutcome::Remote { message }) => {
             ask_running_instance(&socket, &message);
             if !matches!(message, IpcMessage::Open { .. }) {

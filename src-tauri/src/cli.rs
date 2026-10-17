@@ -17,11 +17,11 @@ const DEFAULT_USER: &str = "root";
     version,
     about = "Minimalistic SQL client",
     args_conflicts_with_subcommands = true,
-    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/wordpress --password-env DB_PASS\n  echo secret | databee -u wp -d wordpress --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/wordpress/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar"
+    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/wordpress --password-env DB_PASS\n  echo secret | databee -u wp -d wordpress --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/wordpress/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar\n  claude mcp add databee -- databee mcp"
 )]
 struct Args {
     #[command(subcommand)]
-    command: Option<RemoteCommand>,
+    command: Option<CliCommand>,
     /// Connection URL: mysql://user[:password]@host[:port][/database][?socket=path].
     /// A password in the URL stays visible in the process list while this process runs the
     /// app; prefer --password-stdin or --password-env
@@ -62,7 +62,7 @@ struct Args {
 }
 
 #[derive(Subcommand, Debug)]
-enum RemoteCommand {
+enum CliCommand {
     /// Open an address, or `<entity> <id>`, in the running DataBee
     Open {
         /// A databee:// address, or an entity name such as `order`
@@ -76,6 +76,8 @@ enum RemoteCommand {
         #[arg(long)]
         background: bool,
     },
+    /// Serve a read-only MCP server on stdio (for Claude Code: `claude mcp add databee -- databee mcp`)
+    Mcp,
     /// Run a command of the running DataBee by its id, e.g. `view.sidebar`
     Command {
         /// The command id, as listed in the keybindings file
@@ -103,6 +105,8 @@ pub enum CliOutcome {
     Exit { message: String },
     /// A subcommand for the running app (`open`, `command`).
     Remote { message: IpcMessage },
+    /// `databee mcp`: serve MCP on stdio instead of starting the app.
+    Mcp,
 }
 
 /// Parses the full argv (including the program name).
@@ -131,16 +135,16 @@ where
         }
     };
     if let Some(command) = args.command {
-        return remote_message(command).map(|message| CliOutcome::Remote { message });
+        return subcommand_outcome(command);
     }
     let log_level = args.log_level;
     let launch = build_launch(args, default_port, stdin, env)?;
     Ok(CliOutcome::Run { launch, log_level })
 }
 
-fn remote_message(command: RemoteCommand) -> Result<IpcMessage, String> {
-    match command {
-        RemoteCommand::Open {
+fn subcommand_outcome(command: CliCommand) -> Result<CliOutcome, String> {
+    let message = match command {
+        CliCommand::Open {
             target,
             id,
             connection,
@@ -150,14 +154,16 @@ fn remote_message(command: RemoteCommand) -> Result<IpcMessage, String> {
                 Some(id) => entity_target(&target, &id)?,
                 None => address_target(target, connection.is_some())?,
             };
-            Ok(IpcMessage::Open {
+            IpcMessage::Open {
                 address,
                 connection,
                 focus: !background,
-            })
+            }
         }
-        RemoteCommand::Command { id } => Ok(IpcMessage::Command { id }),
-    }
+        CliCommand::Command { id } => IpcMessage::Command { id },
+        CliCommand::Mcp => return Ok(CliOutcome::Mcp),
+    };
+    Ok(CliOutcome::Remote { message })
 }
 
 fn address_target(target: String, has_connection: bool) -> Result<String, String> {
@@ -631,6 +637,16 @@ mod tests {
                 id: "view.sidebar".into()
             }
         );
+    }
+
+    #[test]
+    fn mcp_subcommand_serves_instead_of_starting_the_app() {
+        assert_eq!(run(&["mcp"]).unwrap(), CliOutcome::Mcp);
+    }
+
+    #[test]
+    fn connection_flags_cannot_be_mixed_with_mcp() {
+        assert!(run(&["-d", "db", "mcp"]).is_err());
     }
 
     #[test]

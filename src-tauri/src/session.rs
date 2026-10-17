@@ -19,6 +19,7 @@ use crate::rules::effective::{self, RuleSources};
 use crate::schema;
 use crate::secrets::{PasswordSource, SecretStore, resolve_password};
 use crate::state::AppState;
+use crate::store::settings::Settings;
 use crate::store::slug::default_slug;
 
 pub struct Session {
@@ -362,6 +363,30 @@ async fn connect(
         }
         Err(e) => Err(e),
     }
+}
+
+/// Connects with the Keychain password (if any) without registering the session or touching the
+/// recents store, for a process other than the app (`databee mcp`).
+pub async fn open_detached(
+    spec: ConnectionSpec,
+    slug: String,
+    secrets: Arc<dyn SecretStore>,
+    settings: &Settings,
+) -> AppResult<Session> {
+    let source = password_source(secrets, None, &spec).await;
+    let db = db::open(
+        &spec,
+        source.secret(),
+        settings.connect_timeout(),
+        settings.query_timeout(),
+    )
+    .await
+    .map_err(|e| match e {
+        AppError::AuthFailed(message) => auth_error(&source, spec.account(), message),
+        e => e,
+    })?;
+    let id = uuid::Uuid::new_v4().to_string();
+    Ok(Session::new(id, spec, slug, db))
 }
 
 /// The Keychain may block on a permission dialog, so it is asked off the async workers.

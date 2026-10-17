@@ -100,6 +100,29 @@ link in another app, opens it in DataBee. When no session of that connection is 
 connection has the slug, DataBee connects first (Keychain password, else it asks). Links need the bundled
 app (`bun run build:app`, then start it once or run `scripts/install-app.sh`); `bun tauri dev` gets none.
 
+## Claude Code
+
+`databee mcp` is a read-only MCP server on stdio. Add it once:
+
+```sh
+claude mcp add databee -- databee mcp
+```
+
+Its tools:
+- `connections`: the saved connections and their slugs;
+- `document(address)`: a row as its document, every value with its provenance;
+- `rows(address, limit)`: the rows of a table or row address;
+- `query(connection, sql, limit)`: SELECT, SHOW, DESCRIBE, EXPLAIN and WITH … SELECT only; anything else
+  is refused before it reaches the server;
+- `references(connection, database)`: every reference between the tables, with its source;
+- `link(address)`: the canonical `databee://` link;
+- `current`, `open(address, focus)` and `command(id)`: act on the running app.
+
+The data tools connect on their own, from the saved connections and the Keychain. They work without
+the app, so `connections` lists only connections that were opened in DataBee once. Nothing writes to a
+database, and project rules cannot be edited from MCP. An agent's answer can be opened in the app with
+`databee open <address>` or as a deep link (see [CLI](#cli)).
+
 ## Shortcuts
 
 | Shortcut | Command | Where |

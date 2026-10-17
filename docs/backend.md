@@ -14,6 +14,8 @@ Stage hook each have their own page.
 2. **CLI.** `cli::parse` returns one of four outcomes:
    - `Exit`: `--help` or `--version`.
    - `Run { launch, log_level }`: an `IpcMessage::Launch` with a connection, or `Activate` without one.
+   - `Mcp`: `databee mcp` serves MCP on stdio through `mcp::run` and exits with its code, before any
+     socket handoff, instance lock or Tauri ([below](#mcp-server)).
    - `Remote { message }`: a subcommand (`open`, `command`) for the running app. `ask_running_instance`
      sends it as a request and exits with its reply. With no instance running, `command` exits 2 ("DataBee
      is not running") and `open` starts the app with the open queued.
@@ -243,6 +245,37 @@ the release build's identifier, socket and lock, so only one of them runs at a t
 to the running one. When the registered bundle is not the one running (two bundles on disk, one of them
 running), macOS starts the other bundle, which only activates the running app through the socket, and the
 link is lost.
+
+### MCP server
+
+`src-tauri/src/mcp/` ([ADR 0025](adr/0025-standalone-mcp-server.md)) is built on `rmcp` (the official SDK;
+`server`, `transport-io`, `macros`, `schemars`). `mcp::run` starts its own Tokio runtime and serves
+`DataBeeServer` over stdin/stdout. It never builds Tauri, opens a window or takes the instance lock, and it
+installs no logger, so stdout carries only JSON-RPC. `cli::parse`'s stdin lock is released before `run`
+starts (`lib.rs` binds the outcome first): tokio's stdin would block on it otherwise.
+
+- **Data tools** (`mcp/data.rs` `Core`) run in the MCP process:
+  - Connections come from the saved connections (`RecentsStore`, read on every call), one detached session
+    per slug, connected on first use and again when the saved spec changed, with `session::open_detached`.
+    That uses the Keychain password and never touches `connections.json` or the history.
+  - Rules: the preset catalog loads at start; `ProjectsStore` and the settings are read on every call, so
+    project edits in the app apply without a restart.
+  - `connections`; `document(address)` (`document::open`); `rows(address, limit)` (`Session::browse`, a
+    row address by its single-column primary key); `query(connection, sql, limit)`, refused unless
+    `db::classify::is_read_only` passes, run with the query timeout from the settings and at most `limit`
+    rows per result (default 200, at most 1000); `references(connection, database)` (the lens's
+    `references_from` of every table); `link(address)` (the canonical form, no connection needed).
+  - No `find` tool yet: the only find-everywhere code is the WordPress layer's `wp/find.rs`, which a generic
+    find replaces.
+- **UI tools** (`mcp/ui.rs`): `current`, `open(address, focus = false)` and `command(id)` go to the app with
+  `ipc::request`. Without a listener they fail with "DataBee is not running".
+- **Read-only:** no tool writes. Plans, actions and project rules are not reachable.
+- **Keychain:** `databee mcp` normally runs the app's own binary (`scripts/install-cli.sh` links
+  `DataBee.app/Contents/MacOS/databee`). The Keychain trusts that binary for the items the app saved, so
+  there is no prompt. After a rebuild (ad-hoc signed debug builds get a new signature) or from another binary
+  (e.g. `target/debug/databee`), macOS shows its "wants to use your confidential information" dialog once
+  per item, as it does for the app. The lookup waits on a blocking thread until it is answered; after "Deny"
+  no password is sent, and the tool's error says why the login failed.
 
 ### Requests the page answers
 
