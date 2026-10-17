@@ -22,6 +22,10 @@ Ideas not built yet. Not ordered by priority. Shipped features are in the [READM
 - Actions listed per table with what they write (the tables and columns of `update`, `delete`, free SQL).
 - Kinds folded into a details disclosure per table.
 - Filter by origin (project, preset, inferred, foreign key, edited).
+- Problems: switched-off or edited rules whose coverage got worse than the shipped rule's.
+- Your changes: list saved queries and pins as additions; "reset all" for a whole section.
+- Your changes: show what a switched-off edited rule shipped as (`was` on the switched-off line too).
+- Your changes: open project references on missing tables in their form (the tables may come back).
 
 ## Core client
 - SQLite driver: a second `Driver` variant; the SQL lexer and value model already apply.

@@ -484,8 +484,9 @@ the page has no dialog permission).
 
 ## The Project page
 
-The Project page (`?project`, a `project` tab; frontend in `src/components/project/`) shows and edits the
-rules of one database, grouped by table. It opens from the `project.open` command (palette `>Project`, no
+The Project page (`?project`, a `project` tab; frontend in `src/components/project/`) shows what a project
+changes about the presets of one database and what looks broken, and behind "All rules…" edits every rule,
+grouped by table. It opens from the `project.open` command (palette `>Project`, no
 default key), the status bar's `presets …` text and the address. `project_rules(session_id, database)`
 (`rules/overview/`; the row types in `rows.rs`) returns everything it lists in one `ProjectRules`:
 
@@ -496,6 +497,7 @@ default key), the status bar's `presets …` text and the address. `project_rule
 | `presets` | every loaded preset: `name`, `markerTables` (real names under the prefix), `applied` |
 | `foreignKeys` | how many declared foreign keys apply |
 | `tables` | `RuleTable { table, name }`: every real table and the name rules write it as (tables outside the prefixes are missing) |
+| `changes` | `ProjectChangeLine`s: every deviation from the presets as they ship ([Your changes](#your-changes)) |
 | `groups` | `TableRules` per real table with any rule, sorted by name, then one with `table: null` for value styles and kinds whose scope covers no table here |
 
 A `TableRules` holds `references` (the `ReferenceRow`s from the table, by source column), `referencedBy`
@@ -524,11 +526,12 @@ project rule (and with it the preset rule it overrides); a switched-off uncondit
 inference on its column off.
 
 Layout:
-1. **Header**, one row: the prefix field (empty: the suggestion applies, shown as `suggested: wp_`), a switch
-   per preset (marker tables in its tooltip; `presets: null` is auto; a switch stores the applied presets as
-   an explicit list, "back to auto" clears it), "Refresh coverage" and "Export as preset…".
-2. **Filter:** narrows the tables by name.
-3. **A band per table** (collapsible, remembered per database like a document group): references (source
+1. **Header**, one row: a switch per preset (marker tables in its tooltip; `presets: null` is auto; a switch
+   stores the applied presets as an explicit list, "back to auto" clears it), the prefix field (empty: the
+   suggestion applies, shown as `suggested: wp_`), "Export as preset…", and a segmented control
+   **Overview | All rules** (`ProjectTab.section`, default the overview).
+2. **Overview:** "Your changes", "Problems", then "All rules…".
+3. **All rules:** a filter that narrows the tables by name, "Refresh coverage", then **a band per table** (collapsible, remembered per database like a document group): references (source
    column and `when`, target and `where`, origin, coverage, switch, actions), a "referenced by" line, value
    styles, kinds, then read-only entity and action lines. Origins read `project`, `preset woocommerce`,
    `inferred · same name · indexed`, `foreign key <constraint>`, with `· edited in project` for an edited row.
@@ -567,6 +570,65 @@ error shows next to the field it names (`reference.from` at the source, `referen
 forms take the scope as rules write it (columns and globs without prefix, meta keys, meta tables).
 
 Every change bumps `dataVersion`, so documents, grids and the page reload with the new rules.
+
+### Your changes
+
+`ProjectRules.changes` (`rules/overview/changes.rs`) lists only what the project changes, one
+`ProjectChangeLine` each, in this order: settings, references, value styles, kinds, then switched-off ids
+that name nothing here.
+
+| Field | Means |
+|---|---|
+| `action`, `rule` | `added`, `edited`, `switchedOff`, `switchedOn` or `set`; `reference`, `valueStyle`, `kind`, `prefix`, `networkPrefix`, `presets` or `unknown` |
+| `origin`, `id` | the preset or inferred rule the change is about (none for added rules and settings), and the rule's id |
+| `text` | the rule or setting as it applies now, with real names: `wp_wc_orders.billing_email when … → wp_users.user_email`, `wc_orders.status = 'wc-failed' · red`, `wc_orders.total · money`, `wp_` |
+| `was` | an edited rule's shipped form; the suggested prefix; the presets auto would apply |
+| `off` | an added rule stored switched off |
+| `table` | the real table the rule is about (a style or kind: the first its scope covers); the line opens its Structure view |
+| `undo` | the `ProjectChange` that undoes it: `removeReference` / `removeStyle` / `removeKind` (added or edited), `enable` / `enableStyle` (switched off), `disableStyle` (a preset style switched on), `setPresets` / `setPrefix` / `setNetworkPrefix` with `null` |
+| `edit` | the project rule the line opens in its form (`reference` / `style` by id, `kind` by index) |
+
+The deviations: an explicit preset list, a prefix or network prefix; a project reference (added; or edited,
+when it overrides a preset rule or replaces an inference); a switched-off preset or inferred reference; a
+project style (added, or edited when its id is a preset style's); a preset style switched on or off; a
+project kind. An edited rule that is also switched off gives two lines. The page renders each line as a
+sentence ("switched off reference · preset woocommerce · guest_orders  wp_wc_orders.billing_email → …
+[reset]") with "edit" where the rule is listed and the undo labelled "remove" (added), "switch off"
+(switched on) or "reset"; without lines it says "No changes — this database uses the presets as shipped."
+
+### Problems
+
+The overview counts coverage like the per-table listing (same cache) but lists only problems: a reference
+with values that point nowhere ("5 of 40 point nowhere (98, 99)"), one whose count failed, and each
+`[[anomaly]]` whose query failed (from the readout's `anomalies`). A share of 0 or NULL is never a problem by
+itself: WordPress stores 0 for "none" (`comment_parent`, a term's `parent`); the per-table listing and the
+Structure view still show it. "Open rows" opens the source table filtered by `Coverage.rows.unresolved`, "Open
+table" the table. Without problems it says "No problems found."
+
+## The Structure view
+
+A table tab's Structure view (frontend in `src/components/structure/`) shows one row per column with the
+rules that apply to it. `table_rules(session_id, database, table)` (`rules/profile.rs`) builds a
+`TableProfile` from the Project page's rows (`overview::project_rules`) and the table's structure, so its
+switches, edits and resets are the Project page's:
+
+| Field | Means |
+|---|---|
+| `table`, `ruleName` | the real table and the name rules write it as (`null` outside the prefixes) |
+| `columns` | a `ColumnProfile` per column in table order: `column` (`ColumnInfo`), `primaryKey`, `indexes` (`{ name, unique, position }` of each index that holds it), `kinds`, `references`, `styles` |
+| `meta` | `MetaKeyRules` of the table when it is a `[[meta]]` table, then of each meta table that describes its rows: `table`, `keyColumn`, `valueColumn`, the `kinds` and `styles` whose `meta_keys` (and `in`) cover it, and the conditional `references` from its value column |
+| `referencedBy` | the `ReferenceRow`s from other tables to it, with origin and controls |
+| `entities` | `{ preset, name, filter, summary, created }` of the table's entities |
+| `actions` | `{ preset, name, scope, writes }`; `writes` is the same `ActionWrite` list documents carry (`rules::actions::writes`) |
+| `ddl` | `SHOW CREATE TABLE`, or `null` |
+
+- **Kinds** per column are the `KindRow`s whose column globs cover it, in precedence order; `applies` marks the
+  first (the one values get), `pattern` names the glob that matched when it is one (`*.*_gmt`).
+- **Value styles** per column are the `StyleRow`s whose column globs cover it, with the same `pattern`.
+- **References** per column are the `ReferenceRow`s from it (a composite key lists under its first column),
+  switched-off ones included; on a meta table, the conditional references from its value column list in its
+  meta-keys block instead.
+- Coverage counts as on the Project page (`reference_coverage`, cached per database).
 
 ## Effective rules
 
@@ -709,6 +771,7 @@ resolves:
 | `zeroOrNull` | rows whose value is NULL or `0`: "no reference", not orphans (a composite reference: any NULL part) |
 | `sampleUnresolved` | up to ten distinct values without a target (composite values joined by `,`) |
 | `timedOut` | the count hit the query timeout (counts are 0), or only the sample did (counts stand, sample empty) |
+| `rows` | `{ unresolved, zeroOrNull }`: the same conditions as WHERE filters on the source table (named by its quoted name, as a table tab's free filter applies them) |
 
 Orphans are `total - resolved - zeroOrNull`.
 

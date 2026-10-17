@@ -282,14 +282,27 @@ value, else the current address. The Hover column is what the status bar shows.
 ## Project page
 
 A `project` tab (`databee://<slug>/<db>/?project`; the `project.open` command, palette `>Project`; the status
-bar's preset text) shows the rules of one database per table. Details and behavior:
-[presets.md](presets.md#the-project-page).
+bar's preset text) answers two questions first: what did I change about the presets, and what looks
+broken. Every rule per table sits one click further. Details and behavior:
+[presets.md](presets.md#the-project-page). The patterns: VS Code's "Modified" settings with reset, Xcode's
+build-setting levels, a Problems panel.
 
-- **Header:** one compact row in `--fs-small`: prefix field with `suggested: wp_` in `--o3`, a switch per
-  preset (marker tables in its tooltip), `auto` in `--o3` or "back to auto", then "Refresh coverage" and
-  "Export as preset…" (a save panel).
-- **Filter:** a mono field "filter tables" with `n of m tables` in `--o3`.
-- **Tables:** a section band per table (chevron, mono table name, counts on the right), collapsible and
+- **Header:** one compact row in `--fs-small`: `presets` in `--o2`, a switch per preset (marker tables in its
+  tooltip), `auto` in `--o3` or "back to auto", the prefix field with `suggested: wp_` in `--o3`, "Export as
+  preset…" (a save panel), and on the right a segmented control **Overview | All rules**.
+- **Overview**, two bands and a link:
+  - **Your changes:** only the project's deviations from the presets, one row each: what in UI type and
+    `--o2` (`switched off reference · preset woocommerce · guest_orders`), the rule in mono with real names
+    (a link to the table's Structure view; `· was …`, `· suggested …`, `· auto …`, `· off` in `--o3`), then
+    edit and the undo ("reset", "remove", "switch off"). Empty: "No changes — this database uses the presets
+    as shipped."
+  - **Problems:** coverage counts on its own (`counting n of m references…` in the band, "Refresh
+    coverage" on the right) but only problems show: `wp_woocommerce_order_items.order_id → wp_posts.ID: 1 of 3
+    point nowhere (4713) · preset woocommerce` with "Open rows" (the table filtered to those rows) and "Open table"; failing
+    anomaly queries too. Empty: "No problems found."
+  - "All rules…" opens the per-table listing.
+- **All rules:** a mono field "filter tables" with `n of m tables` in `--o3` and "Refresh coverage", then
+  **tables:** a section band per table (chevron, mono table name, counts on the right), collapsible and
   remembered like document groups. Inside, small `--o3` captions (references, value styles, kinds) over mono
   rows with the row anatomy:
   - **References:** source column (`when …` in `--o3`), `→ target` (`where …`), origin in UI type
@@ -312,6 +325,25 @@ bar's preset text) shows the rules of one database per table. Details and behavi
   `--style-red` small text under the field it names. ⎋ closes, ⌘↵ saves.
 - Actions are plain accent text buttons separated by ` · `: edit, reset (an edited preset or inferred rule),
   remove (a project rule); no chips or icons.
+
+## Structure view
+
+A table tab's Structure view lists one row per column with everything that applies to it, in the
+Project page's language. Details: [presets.md](presets.md#the-structure-view).
+
+- **Columns grid:** `--fs-small` `--o2` headers (name, type, keys, kind, references, value styles), then a row
+  per column: the mono name in semibold, the mono type over a small `--o3` line `nullable · default NULL` (or `not null`, extras like `auto_increment`, the comment),
+  key marks (`PK` badge, `UNI`/`idx` plus the index name and, past the first, the column's position), then
+  stacked rule items. Each item is a mono main line (`timestamp · utc`, `→ wp_users.ID` with `(rows with …)` for the target's condition and `when this row has …` for the
+  source's in `--o3`; a column referencing itself reads `→ other wp_wc_orders rows with the same billing_email`, `= 'pending' → yellow` in its `--style-*` color) over a small `--o2` meta line: origin in UI type in
+  `--o3` (`preset wordpress: *.*_gmt` names the glob that matched), coverage bar, small switch, actions.
+  Switched-off rules and overridden kinds are struck through in `--o3`; inferred targets are dashed.
+- **Column menu:** right-click or the `⋯` button: "Add reference…", "Add value style…", "Add kind…",
+  separator, "Open rows". The forms open in the Project page's rule sheet.
+- **Blocks below:** `--fs-small` uppercase `--o2` headings: "meta keys · <meta table> (key → value)" with a
+  line per rule (the key condition or scope in mono, then the rule item), "Referenced by" (rule items naming
+  the source), "Entities" (name, `where`, `summary`, `created`, preset), "Actions" (name, scope, what it
+  writes, preset), then the DDL with its copy button.
 
 ## Readout
 

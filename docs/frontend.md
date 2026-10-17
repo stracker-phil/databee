@@ -50,7 +50,7 @@ App
    │                 → TableTab (filter bar + ResultsGrid | StructureView) [| value column]
    │                 → ObjectPanel: Strip | column (ObjectColumnView: ObjectHeader, DocumentView | RowsView,
    │                                or ValueColumnView) per stack column
-   │                 → ProjectPanel (header, table filter, a band per table, rule sheet)
+   │                 → ProjectPanel (header, Overview: changes + problems | all rules: filter, a band per table; rule sheet)
    ├─ PendingTray
    ├─ StatusBar                        ▤ sidebar toggle, provenance or address, presets, pending n, live
    └─ PeekOverlay                      while ⌥ is held
@@ -276,10 +276,10 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 |---|---|
 | Shell | `Toolbar`, `Path` (the column stack's crumbs), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
-| Project | `project/`: `ProjectPanel`, `ProjectHeader`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
+| Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
 | Readout | `readout/Readout.tsx`, see [Readout](#readout) |
 
@@ -472,8 +472,8 @@ titled "Statement N failed" above the results of the statements before it. A `ti
 ### Table tabs
 
 `TableTab.tsx`: `useTableStructure` reads the store's `structures` cache (`loadStructure`, keyed by
-`session/database/table`, one `describeTable` per `dataVersion`, purged on disconnect); `DataView` and
-`StructureView` share it. `DataView` browses only once the structure (or its error) is known, so an ID
+`session/database/table`, one `describeTable` per `dataVersion`, purged on disconnect) for `DataView`.
+`DataView` browses only once the structure (or its error) is known, so an ID
 filter always has the primary key. `useBrowse` drops replies that are not the latest request, and the
 `Pager` moves by `BrowsePage.limit` (Rust's clamped page size). A failed structure shows an alert and
 leaves editing off. `FilterBar` and `useRowEditing` hold the filter input and the row menu and cell edits;
@@ -483,6 +483,34 @@ rows start at the first page. Applying the filter calls `setTableFilter` (no his
 filter is not addressable). The tab's `where` goes into every browse request next to the typed filter;
 `ColumnsFilterChip` shows `BrowsePage.columnsFilter.label` read-only (the SQL as its tooltip), and its clear
 button calls `showRows` with no matches, which records the filtered address for back.
+
+### Structure view
+
+`structure/StructureView.tsx` renders `api.tableRules(sessionId, database, table)` (a `TableProfile`, loaded
+per `dataVersion` with `useApiResult`, the last one kept while the next loads;
+[presets.md](presets.md#the-structure-view)). The page only renders: Rust resolves which rules apply to which
+column. One grid row per column (`role="row"`, Stage anchor `structure:column:<name>`): name, type (`columnFacts`:
+`nullable`/`not null`, `default …`, extras, comment in `--o3`), key marks (`PK`, `UNI`/`idx` with the index name and the column's
+position in it), then the kind, reference and value-style cells, each a stack of rule items. Below:
+a "meta keys" block per `MetaKeyRules`, "Referenced by", "Entities", "Actions" (`writesSummary` from
+`object/actions.ts`) and the DDL.
+
+- **Rule items** (`structure/RuleItems.tsx`): `ReferenceItem`, `KindItem`, `StyleItem`, each a mono main line
+  and a meta line with the origin (`ruleOriginText`, a glob kind or style adds its pattern), coverage
+  (`CoverageCell`), the `RuleSwitch` and `ActionButtons` from `project/`. They decide the controls like the
+  Project page: from the row's `id`, `origin` and `edited`; foreign keys are read-only; a kind that is not the
+  first for its column reads `overridden`. `ReferenceText` keeps the two ends' conditions apart (`when this row has …` on the row's side,
+  `(rows with …)` on the other end; `other <table> rows with the same <column>` for a column that references itself). Reference
+  ends are buttons that open that table's Structure view.
+- **Coverage:** `useAutoCoverage` over every applied reference of the profile, so counts share the Project
+  page's per-database cache.
+- **Forms:** the view keeps its own `form` state and renders the Project page's `ReferenceForm`, `KindForm`
+  and `StyleForm` with a `ProjectContext` built by `useRuleControls`: the store's `projectRules` (loaded with
+  `loadProjectRules`, for `tables`) and a `ProjectTab`-shaped object from the table tab. Until the project's
+  rules load, the controls are hidden and the "Add …" items disabled.
+- **Column menu** (`useContextMenu`, on right-click or the row's `⋯` button): "Add reference…" (a reference
+  form from the column), "Add value style…" and "Add kind…" (scoped to `<ruleName>.<column>`;
+  `structure/forms.ts`), "Open rows" (the Data view).
 
 ### Opening rows
 
@@ -676,6 +704,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 |---|---|
 | `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text (`cellDisplay` only for `Value`), TSV/JSON export, `relativeTime` |
 | `values.ts` | `valueAt`, `resultValueAt`, `cellValue`, `utcSeconds` (see [Addresses and history](#addresses-and-history)) |
+| `coverageProblems.ts` | `coverageProblem(coverage)`: the problem text and row filter of a reference's coverage (values that point nowhere; 0 or NULL never count), `unresolvedCount` |
 | `ruleForms.ts` | the Project page's form state (`ReferenceForm`, `KindForm`, `StyleForm`), prefills from a `RuleDraft` or a listed rule, `referenceRule` / `kindRule` / `styleRule`, `fieldError`, display texts (see [Project tabs](#project-tabs)) |
 | `provenance.ts` | `provenanceText(value)` and `sourceText(provenance)`: the status bar text of a value |
 | `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText`; `columnIndex` (case-insensitive, as MySQL column names are); `singleKey` (a `RowKey` as the `keyColumn` and `key` of a row change; table tabs and Rows view edit by `BrowsePage.keys` from Rust); `DEFAULT_ROW_LIMIT` (the page size before settings load) |
@@ -702,8 +731,15 @@ address call it. It has no history (`nav` stays empty).
 - **Loading:** `loadProjectRules(sessionId, database)` keeps `api.projectRules` per `dataVersion` in
   `projectRules`; `changeProject(sessionId, database, change)` calls `api.projectUpdate`, then `bumpData`, so
   documents and grids reload with the new rules, and returns the `AppError` instead of showing it.
-- **Layout:** `ProjectHeader` (prefix, preset switches, "Refresh coverage", export), a filter over
-  `ProjectRules.groups` by table name (component state), then a `TableSection` per group: a band collapsed
+- **Layout:** `ProjectHeader` (preset switches, prefix, export; its `children` are the section switch), then
+  by `ProjectTab.section` (`setProjectSection`; default `overview`) either `Overview` or the per-table listing.
+  `Overview` (`Overview.tsx`) renders `ProjectRules.changes` as `ChangeLine`s (the text opens
+  `openTableTab(database, table, "structure")`; "edit" finds the listed row by `line.edit` and opens its form;
+  the undo sends `line.undo` through `changeProject`), then the problems: `useAutoCoverage` over every
+  applied reference, `coverageProblem` per counted one, and failing anomalies from the readout
+  (`loadReadout`, the `readouts` cache); "Open rows" opens the source table with the coverage's `rows` filter.
+  The per-table listing is a filter over `ProjectRules.groups` by table name (component state) and "Refresh
+  coverage", then a `TableSection` per group: a band collapsed
   through `useCollapsedGroups(tab.address)` with the id `project:<table>`, `ReferenceLines` (rows and the
   `ReferencedByLine`), and from `RuleSections` `StyleLines`, `KindLines` and `EntityActionLines`. Rows get a
   `RuleSwitch` and `ActionButtons`; the Rust rows decide which (`id`, `origin`, `edited`). They share
