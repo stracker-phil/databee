@@ -9,7 +9,7 @@ import { noConnectionNamed, selectActiveTab, selectSessionBySlug, selectStructur
 import type { Slice, Store } from "../store";
 import { objectColumn, objectColumnAt, type ColumnStack, type StackColumn } from "../../lib/columns";
 import { documentText, objectTitle } from "../../lib/document";
-import { findTab, replaceTab, type ObjectTab, type Tab, type TableTab } from "./tabs";
+import { findTab, replaceTab, type ObjectTab, type Tab, type TableTab, type TabOfKind } from "./tabs";
 
 export const NAV_LIMIT = 50;
 
@@ -19,6 +19,8 @@ export interface TabNav {
 }
 
 export const EMPTY_NAV: TabNav = { back: [], forward: [] };
+
+type Direction = keyof TabNav;
 
 /** What a table tab shows, as far as an address can say it. */
 export interface TableLocation {
@@ -105,7 +107,7 @@ function retargeted(s: Store, tab: TableTab, location: TableLocation, nav: TabNa
 }
 
 /** `tab`'s history after one step in `direction`: the address being left goes onto the other stack. */
-function stepped(tab: Tab & { address: Address }, direction: "back" | "forward"): TabNav {
+function stepped(tab: Tab & { address: Address }, direction: Direction): TabNav {
   const leave = (entries: Address[]) => [...entries, tab.address].slice(-NAV_LIMIT);
   return direction === "back"
     ? { back: tab.nav.back.slice(0, -1), forward: leave(tab.nav.forward) }
@@ -157,19 +159,24 @@ function renamed(tab: Tab, slug: string): Tab {
 
 export const navSlice: Slice<NavSlice> = {
   create: (set, get) => {
-    const travel = async (direction: "back" | "forward") => {
+    const travelers: { [K in Tab["kind"]]?: (tab: TabOfKind<K>, target: Address, direction: Direction) => Promise<void> | void } = {
+      object(tab, target, direction) {
+        if (target.target.kind === "row") set((st) => ({ ...replaceTab(st, reobjected(tab, target, stepped(tab, direction))), selectedCell: null }));
+      },
+      async table(tab, target, direction) {
+        const location = await locationOf(get, tab.sessionId, target);
+        // The tab may have closed or moved on while the structure loaded.
+        const current = findTab(get(), tab.id);
+        if (!location || current !== tab) return;
+        set((st) => replaceTab(st, retargeted(st, tab, location, stepped(tab, direction))));
+      },
+    };
+
+    const travel = async (direction: Direction) => {
       const tab = selectActiveTab(get());
       const target = tab?.nav[direction].at(-1);
-      if (!tab || !target || tab.kind === "query" || tab.kind === "project" || tab.kind === "readout") return;
-      if (tab.kind === "object") {
-        if (target.target.kind === "row") set((st) => ({ ...replaceTab(st, reobjected(tab, target, stepped(tab, direction))), selectedCell: null }));
-        return;
-      }
-      const location = await locationOf(get, tab.sessionId, target);
-      // The tab may have closed or moved on while the structure loaded.
-      const current = findTab(get(), tab.id);
-      if (!location || current !== tab) return;
-      set((st) => replaceTab(st, retargeted(st, tab, location, stepped(tab, direction))));
+      const traveler = tab && (travelers[tab.kind] as ((tab: Tab, target: Address, direction: Direction) => Promise<void> | void) | undefined);
+      if (tab && target && traveler) await traveler(tab, target, direction);
     };
 
     return {

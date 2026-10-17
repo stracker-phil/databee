@@ -3,41 +3,21 @@ import { PanelLeft } from "lucide-react";
 import { useBindingLabel } from "../commands";
 import { formatAddress } from "../lib/address";
 import { copyText } from "../lib/clipboard";
-import { formatCount } from "../lib/format";
 import { provenanceText } from "../lib/provenance";
 import { projectKey } from "../state/slices/project";
-import { selectActiveLive, selectActivePending, selectActiveSession, selectActiveTab, selectFocusedValue, selectSidebarHidden, useStore, type QueryTab, type Tab } from "../state/store";
+import { selectActiveLive, selectActivePending, selectActiveSession, selectActiveTab, selectFocusedValue, selectSidebarHidden, useStore, type Tab } from "../state/store";
+import { tabView } from "./tabViews";
 
 /** The tab's address as text; click copies it. A typed SQL filter is not part of it and shows as a hint. */
 function AddressText({ tab }: { tab: Tab }) {
   if (!tab.address) return null;
   const text = formatAddress(tab.address);
-  const filtered = tab.kind === "table" && !!tab.filter;
   return (
     <>
       <button data-stage="statusbar:address" className="status-text address mono" title="Copy address" onClick={() => void copyText(text, "address")}>
         {text}
       </button>
-      {filtered && <span className="o3" title={`WHERE ${tab.filter}`}>· filtered</span>}
-    </>
-  );
-}
-
-function QuerySummary({ tab }: { tab: QueryTab }) {
-  const rowLimit = useStore((s) => s.settings?.rowLimit ?? 0);
-  if (!tab.response || tab.error) return null;
-  const r = tab.response.results[tab.activeResult];
-  return (
-    <>
-      {r?.returnsRows && (
-        <span className={r.truncated ? "warn" : undefined}>
-          {r.truncated
-            ? `Showing ${formatCount(r.rows.length)} of ${formatCount(r.totalRows)} rows (row limit ${formatCount(rowLimit)})`
-            : `${formatCount(r.rows.length)} ${r.rows.length === 1 ? "row" : "rows"}`}
-        </span>
-      )}
-      <span>{formatCount(tab.response.elapsedMs)} ms</span>
-      {tab.response.results.length > 1 && <span>{tab.response.results.length} statements</span>}
+      {tabView(tab).addressHint?.(tab)}
     </>
   );
 }
@@ -50,15 +30,16 @@ function useProvenance(): string | null {
   return focused ? provenanceText(focused) : null;
 }
 
-/** The address slot: the provenance of the hovered or focused value, else where the active tab is, and a query tab's result summary. */
+/** The address slot: the provenance of the hovered or focused value, else where the active tab is, and the tab's summary (a query's results). */
 function Address() {
   const tab = useStore(selectActiveTab);
   const provenance = useProvenance();
   const place = provenance ? <span className="address mono">{provenance}</span> : tab && <AddressText tab={tab} />;
+  const Summary = tab && tabView(tab).Summary;
   return (
     <>
       {place}
-      {tab?.kind === "query" && <QuerySummary tab={tab} />}
+      {tab && Summary && <Summary tab={tab} />}
     </>
   );
 }

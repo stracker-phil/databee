@@ -5,11 +5,11 @@
 import { createContext } from "react";
 import type { Address, Value } from "../../api";
 import { fullCellText } from "../../lib/cells";
-import { objectColumnAt } from "../../lib/columns";
 import { formatAddress } from "../../lib/address";
 import { documentText } from "../../lib/document";
 import { cellText } from "../../lib/format";
-import { fail, selectActiveSession, selectActiveTab, useStore, type Tab } from "../../state/store";
+import { fail, selectActiveTab, useStore } from "../../state/store";
+import { tabDatabase } from "../../state/tabKinds";
 
 export interface ColumnPlace {
   tabId: string;
@@ -39,12 +39,6 @@ export function openTarget(target: Address, place: ColumnPlace | null) {
   void useStore.getState().openAddress(formatAddress(target), { preview: true });
 }
 
-function databaseOf(tab: Tab, place: ColumnPlace | null): string | null {
-  if (tab.kind === "object") return objectColumnAt(tab.columns, place?.index ?? tab.active)?.address.database ?? null;
-  if (tab.kind === "table") return tab.database;
-  return selectActiveSession(useStore.getState())?.database ?? null;
-}
-
 /** The full text of `value`: a selected grid cell's `longText` is fetched in full. */
 async function fullText(value: Value): Promise<string> {
   const selected = useStore.getState().selectedCell;
@@ -58,7 +52,7 @@ export async function showValue(value: Value, place: ColumnPlace | null, text?: 
   if (!tab) return;
   try {
     const full = text ?? (await fullText(value));
-    useStore.getState().openValueColumn(place?.tabId ?? tab.id, place?.index ?? null, { kind: "value", value, text: full, database: databaseOf(tab, place) });
+    useStore.getState().openValueColumn(place?.tabId ?? tab.id, place?.index ?? null, { kind: "value", value, text: full, database: tabDatabase(useStore.getState(), tab, place?.index) });
   } catch (e) {
     fail(e, "Could not load the value");
   }

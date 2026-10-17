@@ -7,7 +7,8 @@ import { fullCellText } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import { cellText } from "../lib/format";
 import { kindFormFor, referenceFormFor, styleFormFor } from "../lib/ruleForms";
-import { fail, selectActiveSession, selectActiveTab, selectFocusedValue, useStore, type Store, type Tab } from "../state/store";
+import { fail, selectActiveTab, selectFocusedValue, useStore, type Tab } from "../state/store";
+import { tabDatabase } from "../state/tabKinds";
 import type { Command, Scope } from "./registry";
 
 /** Window event: the view holding the focused value (a grid, a document) opens its inline editor there. */
@@ -19,12 +20,6 @@ interface Focused {
   database: string | null;
   /** The full stored text (a grid's `longText` cell fetched first); null for NULL. */
   raw(): Promise<string | null>;
-}
-
-function databaseOf(s: Store, tab: Tab): string | null {
-  if (tab.kind === "table") return tab.database;
-  if (tab.kind === "object") return tab.address.database;
-  return selectActiveSession(s)?.database ?? null;
 }
 
 function focused(): Focused | null {
@@ -39,7 +34,7 @@ function focused(): Focused | null {
     if (selected) return fullCellText(selected.cell, selected.source, selected.row, selected.col);
     return column?.kind === "value" ? column.text : cellText(value.raw);
   };
-  return { value, tab, database: databaseOf(s, tab), raw };
+  return { value, tab, database: tabDatabase(s, tab), raw };
 }
 
 /** A sourced value; a binary cell holds only a preview, which must not become a condition or an edit. */

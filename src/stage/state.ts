@@ -3,7 +3,8 @@ import { formatAddress } from "../lib/address";
 import type { StageInfoReply, StageRect, StageSurface } from "./types";
 import { resolveSettingsPage, settingsPages } from "../registry/settingsPages";
 import { projectKey } from "../state/slices/project";
-import { hasValueColumn, selectActiveSession, selectActiveTab, selectSidebarHidden, useStore, type ObjectTab } from "../state/store";
+import { hasValueColumn, selectActiveSession, selectActiveTab, selectSidebarHidden, useStore, type ObjectTab, type Tab } from "../state/store";
+import type { TabOfKind } from "../state/slices/tabs";
 
 type Flat = StageInfoReply["state"];
 
@@ -68,6 +69,17 @@ function objectState(tab: ObjectTab): string {
   return tab.columns.length > 1 ? `${shown} · column ${tab.active + 1} of ${tab.columns.length}` : shown;
 }
 
+/** The active tab's line in the state, under its kind. */
+const TAB_STATE: { [K in Tab["kind"]]: (tab: TabOfKind<K>) => string } = {
+  table: (tab) => `${tab.database}.${tab.table} (${tab.view})`,
+  object: objectState,
+  project: (tab) => (tab.form ? `${tab.database} (${tab.form.type} form)` : tab.database),
+  readout: (tab) => tab.database,
+  query: (tab) => (tab.running ? "running" : tab.error ? "failed" : tab.response ? "done" : "not run"),
+};
+
+const tabState = (tab: Tab) => (TAB_STATE[tab.kind] as (tab: Tab) => string)(tab);
+
 export function stageState(): Flat {
   const s = useStore.getState();
   const session = selectActiveSession(s);
@@ -88,11 +100,7 @@ export function stageState(): Flat {
     dialog: s.dialog && s.dialog.type !== "settings" ? s.dialog.type : null,
     pendingChanges: s.pending.length,
   };
-  if (tab?.kind === "table") state.table = `${tab.database}.${tab.table} (${tab.view})`;
-  if (tab?.kind === "object") state.object = objectState(tab);
-  if (tab?.kind === "project") state.project = tab.form ? `${tab.database} (${tab.form.type} form)` : tab.database;
-  if (tab?.kind === "readout") state.readout = tab.database;
-  if (tab?.kind === "query") state.query = tab.running ? "running" : tab.error ? "failed" : tab.response ? "done" : "not run";
+  if (tab) state[tab.kind] = tabState(tab);
   if (info) {
     state.prefix = info.prefix;
     state.presets = info.appliedPresets.join(", ");

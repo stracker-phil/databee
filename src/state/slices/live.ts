@@ -8,6 +8,7 @@ import { selectActiveTab } from "../selectors";
 import type { Slice, Store } from "../store";
 import { documentKey } from "./objects";
 import { withoutSession } from "./session";
+import type { Tab, TabOfKind } from "./tabs";
 
 /** A live object column; `id` is the Rust watch, null while it starts. */
 export interface LiveWatch {
@@ -57,21 +58,27 @@ function stopTimer() {
   timer = null;
 }
 
-export function selectChangeTarget(s: Store): ChangeTarget | null {
-  const tab = selectActiveTab(s);
-  if (tab?.kind === "object") {
+const CHANGE_TARGETS: { [K in Tab["kind"]]?: (s: Store, tab: TabOfKind<K>) => ChangeTarget | null } = {
+  object(_, tab) {
     const column = objectColumnAt(tab.columns, tab.active);
     if (!column || column.address.target.kind !== "row") return null;
     const address = documentText(column.address);
     const { table, key } = column.address.target;
     return { key: documentKey(tab.sessionId, address), kind: "object", sessionId: tab.sessionId, database: column.address.database, address, title: `${table} #${key}` };
-  }
-  if (tab?.kind !== "query" || !tab.saved) return null;
-  const connection = s.sessions.find((x) => x.id === tab.sessionId)?.slug;
-  if (!connection) return null;
-  const { database, id } = tab.saved;
-  const address = formatAddress({ connection, database, target: { kind: "query", id }, view: null, compare: null });
-  return { key: queryMarksKey(tab.sessionId, tab.id), kind: "query", sessionId: tab.sessionId, database, address, title: tab.title };
+  },
+  query(s, tab) {
+    const connection = s.sessions.find((x) => x.id === tab.sessionId)?.slug;
+    if (!tab.saved || !connection) return null;
+    const { database, id } = tab.saved;
+    const address = formatAddress({ connection, database, target: { kind: "query", id }, view: null, compare: null });
+    return { key: queryMarksKey(tab.sessionId, tab.id), kind: "query", sessionId: tab.sessionId, database, address, title: tab.title };
+  },
+};
+
+export function selectChangeTarget(s: Store): ChangeTarget | null {
+  const tab = selectActiveTab(s);
+  const target = tab && (CHANGE_TARGETS[tab.kind] as ((s: Store, tab: Tab) => ChangeTarget | null) | undefined);
+  return tab && target ? target(s, tab) : null;
 }
 
 export function selectActiveLive(s: Store): number | null {

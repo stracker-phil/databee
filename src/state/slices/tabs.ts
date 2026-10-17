@@ -3,6 +3,7 @@ import type { CellSource } from "../../lib/cells";
 import type { ColumnStack, StackColumn, ValueColumn } from "../../lib/columns";
 import type { ProjectForm } from "../../lib/ruleForms";
 import { selectActiveSession } from "../selectors";
+import { tabKind } from "../tabKinds";
 import type { Slice, Store } from "../store";
 import { EMPTY_NAV, homeAddress, pushed, tableAddress, tableTitle, type TabNav } from "./nav";
 import { nextActiveSessionId } from "./session";
@@ -97,7 +98,7 @@ export interface ReadoutTab {
 
 export type Tab = QueryTab | TableTab | ObjectTab | ProjectTab | ReadoutTab;
 
-type TabOfKind<K extends Tab["kind"]> = Extract<Tab, { kind: K }>;
+export type TabOfKind<K extends Tab["kind"]> = Extract<Tab, { kind: K }>;
 
 /** Tab `tabId`, when it is of `kind` (any kind when absent). */
 export function findTab<K extends Tab["kind"] = Tab["kind"]>(s: Store, tabId: string, kind?: K): TabOfKind<K> | undefined {
@@ -110,12 +111,14 @@ export function replaceTab(s: Store, tab: Tab): Pick<Store, "tabs"> {
 }
 
 /** A table or query tab with a value column open next to its grid. */
-export const hasValueColumn = (tab: Tab): tab is TabOfKind<"table" | "query"> & { valueColumn: ValueColumn } =>
-  (tab.kind === "table" || tab.kind === "query") && !!tab.valueColumn;
+export const hasValueColumn = (tab: Tab): tab is TabOfKind<"table" | "query"> & { valueColumn: ValueColumn } => "valueColumn" in tab && !!tab.valueColumn;
+
+/** A tab in its session's preview place, which the next preview replaces. */
+export const isPreviewTab = (tab: Tab): tab is TableTab | ObjectTab => tabKind(tab).preview && !!(tab as TableTab | ObjectTab).preview;
 
 /** The preview tab of a session (table or object), which the next preview replaces. */
 export function previewTab(s: Store, sessionId: string): TableTab | ObjectTab | undefined {
-  return s.tabs.find((t): t is TableTab | ObjectTab => (t.kind === "table" || t.kind === "object") && !!t.preview && t.sessionId === sessionId);
+  return s.tabs.find((t): t is TableTab | ObjectTab => isPreviewTab(t) && t.sessionId === sessionId);
 }
 
 /** `tabs` with `tab` in the place of `replaced` (or appended), so a preview keeps its position. */
@@ -259,7 +262,7 @@ export const tabsSlice: Slice<TabsSlice> = {
       pinTab(id) {
         set((s) => {
           const tab = findTab(s, id);
-          return (tab?.kind === "table" || tab?.kind === "object") && tab.preview ? replaceTab(s, { ...tab, preview: false }) : {};
+          return tab && isPreviewTab(tab) ? replaceTab(s, { ...tab, preview: false }) : {};
         });
       },
 
