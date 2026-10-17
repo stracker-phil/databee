@@ -213,6 +213,23 @@ describe("SettingsDialog", () => {
     expect(useStore.getState().tabs).toHaveLength(1);
   });
 
+  it("records a shortcut when the click does not focus the field, as in WebKit", async () => {
+    connectedStore();
+    useStore.getState().openDialog({ type: "settings", page: "shortcuts" });
+    render(<App />);
+    await userEvent.type(await screen.findByLabelText("Search shortcuts"), "Command palette");
+    fireEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await userEvent.keyboard("{Meta>}t{/Meta}");
+    expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘T");
+    expect(mocked.setKeybindings).toHaveBeenLastCalledWith({ "palette.open": "Mod+T" });
+    expect(useStore.getState().tabs).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘T");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("finds a command by its id in the shortcut search", async () => {
     installCommands();
     render(<SettingsDialog />);

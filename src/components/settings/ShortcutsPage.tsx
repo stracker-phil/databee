@@ -12,7 +12,10 @@ function ShortcutField({ value, onChange }: { value: string | null; onChange: (b
       data-recording={recording || undefined}
       className={`shortcut-field${recording ? " recording" : ""}${value === null && !recording ? " unbound" : ""}`}
       aria-label={recording ? "Press the new shortcut" : "Record shortcut"}
-      onClick={() => setRecording(true)}
+      onClick={(e) => {
+        e.currentTarget.focus();
+        setRecording(true);
+      }}
       onBlur={() => setRecording(false)}
       onKeyDown={(e) => {
         if (!recording) return;
