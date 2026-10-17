@@ -13,10 +13,13 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
       listeners, which stay subscribed for the app's lifetime.
    3. `installWp()` (`src/components/wp/install.ts`): the `wp` and `document` scopes.
    4. `installCommands()`: the command registry. It runs last because some core commands use WordPress scopes.
-3. `main.tsx` assigns the store to `window.databee` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`, which
+3. `main.tsx` calls `installNativeMenuGuard()` (`src/lib/nativeMenu.ts`): a right-click that no app menu
+   handled shows nothing, so the WebView's own Reload and Inspect Element never appear; text fields and the
+   SQL editor keep the native Cut/Copy/Paste menu.
+4. `main.tsx` assigns the store to `window.databee` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`, which
    `bun run build:app` and `bun run app` set for the debug bundle the dev scripts drive; `bun run build`
    (release) leaves it out. It renders `<ErrorBoundary><App/></ErrorBoundary>`.
-4. `App.tsx` loads the two stylesheets and calls `useBackendEvents()` once:
+5. `App.tsx` loads the two stylesheets and calls `useBackendEvents()` once:
    1. `loadSettings()` loads settings and keybindings. `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch requests (`take_launch_events`).
    2. It subscribes to `launch` (drain again) and `command` (menu clicks → `runCommand`).
