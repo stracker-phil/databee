@@ -1,14 +1,16 @@
 /** The Document view: a section band per group, then its key/value or table rows. */
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Address, Document, Group, Provenance, Value as StoredValue } from "../../api";
-import { EDIT_VALUE_EVENT } from "../../commands";
+import { EDIT_VALUE_EVENT, RULE_MENU } from "../../commands";
 import { groupAnchors, isEmpty, provenanceKey } from "../../lib/document";
 import { useStore } from "../../state/store";
+import { ContextMenu } from "../ContextMenu";
 import { useOpenValue } from "../value/useOpenValue";
 import { DocumentContext, type DocumentActions } from "./fields";
 import { GroupHeader } from "./GroupHeader";
 import { AlsoLinked } from "./AlsoLinked";
 import { EventsGroup, FieldsGroup, MetaGroup, MoreRows, RowsGroup, type Marks } from "./groups";
+import { useCollapsedGroups } from "./useCollapsedGroups";
 
 interface Props {
   document: Document;
@@ -49,7 +51,9 @@ function useEditCommand(editable: boolean, focus: Provenance | null, setEditing:
 
 export function DocumentView({ document, owner, focus, onFocus, onMore, editable }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const { openValue, targetMenu } = useOpenValue(owner);
+  const collapse = useCollapsedGroups(owner);
   useEditCommand(editable, focus, setEditing);
 
   const actions = useMemo<DocumentActions>(
@@ -61,6 +65,7 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
         saveValue(owner, value, text);
       },
       cancelEdit: () => setEditing(null),
+      menu: (e) => setMenu({ x: e.clientX, y: e.clientY }),
     }),
     [openValue, onFocus, owner],
   );
@@ -71,16 +76,20 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
   return (
     <DocumentContext.Provider value={actions}>
       <div className="document">
-        {shown.map((group) => (
-          <Fragment key={group.id}>
-            <GroupHeader group={group} database={owner.database} anchor={anchors.get(group.id)} />
-            <GroupBody group={group} marks={marks} />
-            <MoreRows group={group} onMore={onMore} />
-          </Fragment>
-        ))}
+        {shown.map((group) => {
+          const collapsed = collapse.isCollapsed(group.id);
+          return (
+            <Fragment key={group.id}>
+              <GroupHeader group={group} database={owner.database} anchor={anchors.get(group.id)} collapsed={collapsed} onToggle={collapse.toggle} />
+              {!collapsed && <GroupBody group={group} marks={marks} />}
+              {!collapsed && <MoreRows group={group} onMore={onMore} />}
+            </Fragment>
+          );
+        })}
         <AlsoLinked groups={document.groups} database={owner.database} />
       </div>
       {targetMenu}
+      {menu && <ContextMenu {...menu} items={RULE_MENU} onClose={() => setMenu(null)} />}
     </DocumentContext.Provider>
   );
 }

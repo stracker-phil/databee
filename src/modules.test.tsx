@@ -22,8 +22,9 @@ describe("installModules", () => {
     act(() => runCommand("settings.open"));
 
     const nav = await screen.findByRole("navigation", { name: "Settings pages" });
-    for (const label of ["Appearance", "Shortcuts", "Queries", "WordPress", "Logging", "Presentations"]) {
+    for (const label of ["Appearance", "Shortcuts", "Queries", "Logging", "Presentations"]) {
       expect(within(nav).getByRole("button", { name: label })).toBeInTheDocument();
     }
+    expect(within(nav).queryByRole("button", { name: "WordPress" })).not.toBeInTheDocument();
   });
 });

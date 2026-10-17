@@ -148,6 +148,33 @@ fn like_regex(pattern: &str) -> String {
     out
 }
 
+/// `meta_key = '_customer_user' AND …`, for reading only (coverage builds the real SQL).
+pub fn conditions_text(conditions: &Conditions) -> String {
+    conditions
+        .iter()
+        .map(|(column, rule)| match_text(column, rule))
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
+fn quoted(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn match_text(column: &str, rule: &Match) -> String {
+    match rule {
+        Match::Eq(value) => format!("{column} = {}", quoted(value)),
+        Match::In(values) => {
+            let list: Vec<String> = values.iter().map(|v| quoted(v)).collect();
+            format!("{column} IN ({})", list.join(", "))
+        }
+        Match::Glob { glob } => format!("{column} GLOB {}", quoted(glob)),
+        Match::Like { like } => format!("{column} LIKE {}", quoted(like)),
+        Match::Regexp { regexp } => format!("{column} REGEXP {}", quoted(regexp)),
+        Match::Not { not } => format!("NOT ({})", match_text(column, not)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,6 +346,44 @@ mod tests {
             error.starts_with("`k`: invalid regular expression"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn conditions_read_as_sql_like_text() {
+        let cases = [
+            (Match::Eq("a".into()), "k = 'a'"),
+            (Match::Eq("it's".into()), "k = 'it''s'"),
+            (Match::In(vec!["a".into(), "b".into()]), "k IN ('a', 'b')"),
+            (glob("_who*"), "k GLOB '_who*'"),
+            (like("wa%"), "k LIKE 'wa%'"),
+            (regexp("^[0-9]+$"), "k REGEXP '^[0-9]+$'"),
+            (not(Match::Eq("a".into())), "NOT (k = 'a')"),
+            (not(not(Match::Eq("a".into()))), "NOT (NOT (k = 'a'))"),
+            (not(Match::In(vec!["a".into()])), "NOT (k IN ('a'))"),
+        ];
+        for (rule, expected) in cases {
+            let label = rule.to_string();
+            let conditions = Conditions::from([("k".to_string(), rule)]);
+
+            assert_eq!(conditions_text(&conditions), expected, "{label}");
+        }
+    }
+
+    #[test]
+    fn several_conditions_are_joined_with_and_and_none_read_as_empty_text() {
+        let conditions = Conditions::from([
+            ("meta_key".to_string(), Match::Eq("_ref".into())),
+            (
+                "status".to_string(),
+                Match::In(vec!["a".into(), "b".into()]),
+            ),
+        ]);
+
+        assert_eq!(
+            conditions_text(&conditions),
+            "meta_key = '_ref' AND status IN ('a', 'b')"
+        );
+        assert_eq!(conditions_text(&Conditions::new()), "");
     }
 
     #[test]

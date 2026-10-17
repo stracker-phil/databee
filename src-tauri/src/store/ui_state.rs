@@ -1,6 +1,6 @@
 //! Per-connection UI state (`ui_state.json`), keyed by connection identity
 //! (`user@host:port/database`): column widths per table and pane sizes (all in px), and whether the
-//! sidebar is collapsed.
+//! sidebar is collapsed, and the object view's collapsed section bands.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -31,6 +31,8 @@ pub struct UiState {
     #[serde(alias = "editorHeight")]
     pub sql_editor_height: Option<u32>,
     pub sidebar_hidden: bool,
+    /// Collapsed object view groups by database, each as `<document table>::<group id>`.
+    pub collapsed_groups: BTreeMap<String, Vec<String>>,
 }
 
 pub struct UiStateStore {
@@ -154,6 +156,42 @@ mod tests {
         let state = UiStateStore::open(dir.path()).get("a@b:1/db");
         assert!(!state.sidebar_hidden);
         assert_eq!(state.inspector_width, Some(410));
+        assert_eq!(state.tables["t"].widths["id"], 60);
+    }
+
+    #[tokio::test]
+    async fn collapsed_groups_survive_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = UiStateStore::open(dir.path());
+        let state = UiState {
+            collapsed_groups: BTreeMap::from([
+                (
+                    "shop".to_string(),
+                    vec!["wp_posts::meta".to_string(), "wp_posts::links".to_string()],
+                ),
+                ("blog".to_string(), vec![]),
+            ]),
+            ..UiState::default()
+        };
+        store.set("a@b:1/db", state.clone()).await.unwrap();
+
+        let reopened = UiStateStore::open(dir.path()).get("a@b:1/db");
+        assert_eq!(reopened.collapsed_groups, state.collapsed_groups);
+        assert_eq!(reopened, state);
+    }
+
+    #[test]
+    fn file_without_collapsed_groups_loads_empty_and_keeps_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("ui_state.json"),
+            r#"{"a@b:1/db": {"inspectorWidth": 410, "sidebarHidden": true, "tables": {"t": {"widths": {"id": 60}}}}}"#,
+        )
+        .unwrap();
+        let state = UiStateStore::open(dir.path()).get("a@b:1/db");
+        assert!(state.collapsed_groups.is_empty());
+        assert_eq!(state.inspector_width, Some(410));
+        assert!(state.sidebar_hidden);
         assert_eq!(state.tables["t"].widths["id"], 60);
     }
 

@@ -1,10 +1,11 @@
-import { FileCode2, FileText, Loader2, Plus, Table2, X } from "lucide-react";
+import { FileCode2, FileText, Loader2, Plus, SlidersHorizontal, Table2, X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useBindingLabel } from "../commands";
 import { useStore, type Tab } from "../state/store";
 import { formatAddress } from "../lib/address";
 import { documentText } from "../lib/document";
 import { ObjectPanel } from "./object/ObjectPanel";
+import { ProjectPanel } from "./project/ProjectPanel";
 import { QueryTab } from "./QueryTab";
 import { TableTab } from "./TableTab";
 
@@ -13,6 +14,7 @@ const ARROW_STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 };
 function tabIcon(tab: Tab) {
   if (tab.kind === "table") return <Table2 size="0.923rem" />;
   if (tab.kind === "object") return <FileText size="0.923rem" />;
+  if (tab.kind === "project") return <SlidersHorizontal size="0.923rem" />;
   if (tab.running) return <Loader2 size="0.923rem" className="spin" />;
   return <FileCode2 size="0.923rem" />;
 }
@@ -22,6 +24,7 @@ const PREVIEW_HINT = " · preview (double-click to keep)";
 function tabTooltip(tab: Tab): string {
   if (tab.kind === "query") return tab.title;
   if (tab.kind === "object") return `${formatAddress(tab.address)}${tab.preview ? PREVIEW_HINT : ""}`;
+  if (tab.kind === "project") return formatAddress(tab.address);
   const columns = tab.where.map((w) => ` · ${w.column}: ${w.value ?? "NULL"}`).join("");
   const filter = tab.filter ? ` · ${tab.filter}` : "";
   const preview = tab.preview ? PREVIEW_HINT : "";
@@ -31,18 +34,20 @@ function tabTooltip(tab: Tab): string {
 function tabStage(tab: Tab): string {
   if (tab.kind === "table") return `tab:table:${tab.database}.${tab.table}`;
   if (tab.kind === "object") return `tab:object:${documentText(tab.address)}`;
+  if (tab.kind === "project") return `tab:project:${tab.database}`;
   return `tab:query:${tab.id}`;
 }
 
 function TabPanel({ tab }: { tab: Tab }) {
   if (tab.kind === "query") return <QueryTab tab={tab} />;
   if (tab.kind === "object") return <ObjectPanel tab={tab} />;
+  if (tab.kind === "project") return <ProjectPanel tab={tab} />;
   return <TableTab tab={tab} />;
 }
 
 function TabItem({ tab, active }: { tab: Tab; active: boolean }) {
   const { activateTab, closeTab, pinTab } = useStore.getState();
-  const preview = tab.kind !== "query" && tab.preview;
+  const preview = (tab.kind === "table" || tab.kind === "object") && tab.preview;
   return (
     <div
       role="tab"

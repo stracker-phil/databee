@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { toAppError, type Address, type Cell, type ColumnMeta, type Value as StoredValue } from "../api";
-import { EDIT_VALUE_EVENT } from "../commands";
+import { EDIT_VALUE_EVENT, RULE_MENU } from "../commands";
 import { fullCellText, type CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import { cellText, rowsToJson, rowsToTsv } from "../lib/format";
@@ -279,6 +279,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
               { label: "Set to NULL", action: () => onEditCell(row, col, null) },
             ] as MenuEntry[])
           : []),
+        ...(rowValues(row)[col]?.source && rows[row][col].t !== "bytes" ? (["separator", ...RULE_MENU, "separator"] as MenuEntry[]) : []),
         { label: "Copy row as TSV", action: () => void copyText(rowsToTsv(names, [rows[row]]), "row") },
         { label: "Copy row as JSON", action: () => void copyText(rowsToJson(names, [rows[row]]), "row as JSON") },
         "separator",

@@ -118,7 +118,7 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
 
 - **Padding:** `--pad` above and below a 20px line. Settings → Appearance "row padding" has four steps
   (1px, 3px, 5px, 8px); the default is step 2 (3px). Grid rows, sidebar items and palette results use it;
-  document rows too; Project page lists follow when they are built (U8).
+  document rows and Project page lists too.
 - **Hairline:** every row has a 1px `--line` below it.
 - **Row hover:** the whole row takes `--row-hover` (subtle).
 - **Cell hover:** the hovered value itself takes `--cell` (stronger), with a 3px radius.
@@ -138,6 +138,9 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
 Each group in a document starts with a band: `--band` background, `--line` hairlines above and below, 28px
 of space above it, 6px 12px inside.
 
+- a disclosure chevron at the left in `--o3`: it, or a click on the band outside its buttons, collapses the
+  group to its band (name, relation, count stay; rows, `WHERE` and grid go). Collapsed groups are remembered
+  per connection and database for every document of the same table;
 - table name: mono, semibold, primary text (sans for `events` and `changes`);
 - relation in secondary small text, mirroring the group's link: `this row`, `meta · order_id`,
   `items · order_id → this row`, `pattern · <rule as SQL>`;
@@ -228,7 +231,7 @@ cell says otherwise.
   from U9), the search field on the right, then icon buttons. The WordPress/Database mode switch stays as a
   segmented control until U12.
 - **Tab bar** (`--chrome`): tabs are cells separated by `--line`; the active tab takes `--bg` and joins the
-  content; preview tabs show italic titles. Tabs: query, table, object, project (from U8).
+  content; preview tabs show italic titles. Tabs: query, table, object, project.
 - **Sidebar** (`--chrome`): the Tables/History switch, the filter field, a `db · N tables` caption, then the
   database tree. `view.sidebar` (⌘\, the palette, or the ▤ button) hides it entirely (no rail); the state
   is persisted per connection (`sidebarHidden` in `ui_state.json`).
@@ -236,10 +239,35 @@ cell says otherwise.
   (`databee://wc-pp/db/wp_posts?post_type=page`; a click copies it; `· filtered` follows when a typed SQL
   filter applies, which no address holds; replaced by the provenance of the hovered or selected value), for a
   query tab its result summary after it,
-  spacer, `pending n` (a button to the tray when n > 0), `● live 2 s` in the accent while live
+  spacer, `presets wordpress · woocommerce` (the presets that apply to the current database; a click opens its
+  Project page), `pending n` (a button to the tray when n > 0), `● live 2 s` in the accent while live
   (from U13). Plain text, no chips; theme and inspector dock live in Settings and the palette.
 - **Column stack** (from U9): drilling opens a column to the right (minimum 420px); the oldest collapse to
   34px strips with a vertical `table #key` label; the active column has a 2px accent line on top.
+
+## Project page
+
+A `project` tab (`databee://<slug>/<db>/?project`; the `project.open` command, palette `>Project`; the status
+bar's preset text) shows the rules of one database as section bands with rows, in this order: presets and
+prefix (prefix field with `suggested: wp_`, a switch per preset with its marker tables in `--o3`, "Export as
+preset…" to a save panel), the rule form when one is open, references, value styles, kinds. Details and
+behavior: [presets.md](presets.md#the-project-page).
+
+- **References:** columns source, when, target, origin, coverage, actions; mono rows with the row anatomy.
+  Project rows in primary text (edit, remove); preset and foreign-key rows in `--o2`, read-only (preset:
+  disable); inferred rows with a dashed target and `same name · indexed` / `not indexed` in `--o3` (promote,
+  disable); switched-off rows in `--o3`, struck through (enable). Coverage is on demand: "check" per row,
+  "Check coverage for all" in the band; it reads `6 of 7 · 1 is 0 or NULL`, `running…`, `not checked`,
+  `timed out`.
+- **Rule form:** a band `new reference · from r on <table>.<column> · <key>`, then labelled fields (source and
+  target as table and column selects, `when` as column `=` value, label), the live coverage line in mono
+  (`0 of 1 resolve`) with the warning "no source value matches a target; the rule is probably wrong ·
+  unresolved: …" in `--o2`, then Cancel (`--o2`) and Save to project (accent). A Rust error shows in
+  `--style-red` small text under the field it names.
+- **Value styles:** column or meta key, match (`= 'wc-failed'`), color (its name in its `--style-*` color;
+  the form picks from swatches of the scheme's style colors), origin. None by default.
+- **Kinds:** column or meta key, kind (`money · currency from currency`, `timestamp · unix`), origin.
+- Actions are plain accent text buttons separated by ` · `; no chips or icons.
 
 ## Keys
 
@@ -256,7 +284,7 @@ the object and grid scopes, never in inputs, the editor or dialogs; `Tab` keeps 
 | ⌘[ / ⌘] | global | back / forward through the active tab's address history (WordPress mode: its own history until U12); without history the keys stay with the editor |
 | `⌥` (held) | object, grid | peek the focused or hovered reference (from U9) |
 | `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (grid: the `table` scope; documents and Rows grids: the `object` scope) |
-| `r` | object, grid | add a reference from this column or meta key (from U8) |
+| `r` | object, grid | add a reference from this column or meta key: opens the Project page with the form prefilled (context menu: "Add reference…", "Kind…", "Style…") |
 | `w` | object | live mode on/off (from U13) |
 | `s` | object | snapshot (from U13) |
 | `x` | object | dismiss change marks in the focused column (from U13) |

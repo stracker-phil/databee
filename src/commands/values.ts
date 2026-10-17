@@ -1,11 +1,12 @@
 /**
- * Value commands (`y`, `Y`, `e`, `f`) on the focused value: the selected grid cell of the active tab, or the
+ * Value commands (`y`, `Y`, `e`, `f`, `r`, "Kind…", "Style…") on the focused value: the selected grid cell of the active tab, or the
  * focused value of an object's document (docs/ux.md, Keys). The table and object scopes each have a set.
  */
 import { api, type Provenance, type Value } from "../api";
 import { fullCellText } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import { cellText } from "../lib/format";
+import { kindFormFor, referenceFormFor, styleFormFor } from "../lib/ruleForms";
 import { fail, selectActiveSession, selectActiveTab, selectFocusedValue, useStore, type Store, type Tab } from "../state/store";
 import type { Command, Scope } from "./registry";
 
@@ -93,12 +94,38 @@ function editable(): boolean {
 
 const editValue = () => void window.dispatchEvent(new Event(EDIT_VALUE_EVENT));
 
+type RuleFormKind = "reference" | "kind" | "style";
+
+/** Opens the Project page with a rule form prefilled from the focused value's provenance (and, for a style, its text). */
+export async function openRuleForm(kind: RuleFormKind) {
+  const found = sourced();
+  if (!found) return;
+  const { tab, source, database } = found;
+  await attempt("Could not prepare the rule", async () => {
+    const draft = await api.ruleDraft(tab.sessionId, database, source);
+    const form = kind === "reference" ? referenceFormFor(source, draft) : kind === "kind" ? kindFormFor(source, draft) : styleFormFor(source, draft, (await found.raw()) ?? "");
+    useStore.getState().openProject({ sessionId: tab.sessionId, database, form });
+  });
+}
+
+/** Rule entries for a value's context menu; `sourced` values only. */
+export const RULE_MENU = [
+  { label: "Add reference…", action: () => void openRuleForm("reference") },
+  { label: "Kind…", action: () => void openRuleForm("kind") },
+  { label: "Style…", action: () => void openRuleForm("style") },
+];
+
+export const canAddRule = () => !!sourced();
+
 function valueCommands(scope: Scope, idPrefix: string): Command[] {
   return [
     { id: `${idPrefix}copyRaw`, title: "Copy value", scope, defaultBinding: "Y", when: () => !!focused(), run: copyRaw },
     { id: `${idPrefix}copyCondition`, title: "Copy value as SQL condition", scope, defaultBinding: "Shift+Y", when: () => !!sourced(), run: copyCondition },
     { id: `${idPrefix}edit`, title: "Edit value", scope, defaultBinding: "E", when: editable, run: editValue },
     { id: `${idPrefix}filter`, title: "Filter rows by value", scope, defaultBinding: "F", when: () => !!sourced(), run: filterByValue },
+    { id: `${idPrefix}addReference`, title: "Add reference from this value…", scope, defaultBinding: "R", when: canAddRule, run: () => openRuleForm("reference") },
+    { id: `${idPrefix}setKind`, title: "Set the kind of this column or meta key…", scope, when: canAddRule, run: () => openRuleForm("kind") },
+    { id: `${idPrefix}setStyle`, title: "Add a value style for this value…", scope, when: canAddRule, run: () => openRuleForm("style") },
   ];
 }
 

@@ -42,4 +42,4 @@ export type Keybindings = Record<string, string | null>;
 
 export type PaneSize = "detailPaneWidth" | "inspectorWidth" | "bottomPaneHeight" | "sqlEditorHeight";
 
-export const EMPTY_UI_STATE: UiState = { tables: {}, detailPaneWidth: null, inspectorWidth: null, bottomPaneHeight: null, sqlEditorHeight: null, sidebarHidden: false };
+export const EMPTY_UI_STATE: UiState = { tables: {}, detailPaneWidth: null, inspectorWidth: null, bottomPaneHeight: null, sqlEditorHeight: null, sidebarHidden: false, collapsedGroups: {} };

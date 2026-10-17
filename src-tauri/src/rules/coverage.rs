@@ -5,6 +5,7 @@
 //! `by`): it works for declared, project, preset and inferred references alike, and is checked
 //! against the current lens, so every table and column in the SQL is one the schema has.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Serialize;
@@ -12,7 +13,8 @@ use ts_rs::TS;
 
 use super::condition::Condition;
 use super::effective::{self, EffectiveRules, RuleSources};
-use super::types::Match;
+use super::project_change::{self, ChangeContext, ProjectChange};
+use super::types::{Match, Reference};
 use crate::db::{Dialect, ResultSet, escape_like};
 use crate::error::{AppError, AppResult};
 use crate::lens::{self, ColumnsRef, ResolvedReference};
@@ -207,6 +209,68 @@ pub async fn reference_coverage(
 ) -> AppResult<Coverage> {
     let schema = schema::database(session, database).await?;
     let rules = effective::effective(session, database, &schema, sources);
+    count(session, database, &schema, rules, reference, timeout).await
+}
+
+/// The coverage `rule` would have once stored in the project: checked like `project_update`
+/// (`replacing` names the project reference it would replace), counted like a saved rule.
+pub async fn coverage_preview(
+    session: &Session,
+    database: &str,
+    rule: Reference,
+    replacing: Option<String>,
+    sources: RuleSources<'_>,
+    timeout: Duration,
+) -> AppResult<Coverage> {
+    let schema = schema::database(session, database).await?;
+    let loaded = effective::loaded_presets(&sources.presets.entries());
+    let mut project = sources.projects.get(&session.slug(), database);
+    let index = match &replacing {
+        Some(id) => project.references.iter().position(|r| &r.id == id),
+        None => Some(project.references.len()),
+    };
+    let change = match replacing {
+        Some(id) => ProjectChange::UpdateReference {
+            id,
+            reference: rule,
+        },
+        None => ProjectChange::AddReference { reference: rule },
+    };
+    let ctx = ChangeContext {
+        schema: schema.clone(),
+        presets: loaded.clone(),
+    };
+    project_change::apply(&mut project, change, &ctx)?;
+    let Some(stored) = index.and_then(|i| project.references.get(i)) else {
+        return Err(AppError::InvalidInput("the rule was not stored".into()));
+    };
+    let by = ReferenceSource::Project {
+        id: stored.id.clone(),
+    };
+    let rules = Arc::new(EffectiveRules::build(&project, &schema, &loaded));
+    let Some(applied) = rules.references.iter().find(|r| r.by == by) else {
+        return Err(AppError::InvalidInput(format!(
+            "`{}` names a table this database does not have",
+            stored.from
+        )));
+    };
+    let reference = ResolvedReference {
+        from: ColumnsRef::new(&applied.from.table, vec![applied.from.column.clone()]),
+        to: ColumnsRef::new(&applied.to.table, vec![applied.to.column.clone()]),
+        by,
+    };
+    count(session, database, &schema, rules, &reference, timeout).await
+}
+
+/// Counts `reference`, which must be one of the lens of `rules`.
+async fn count(
+    session: &Session,
+    database: &str,
+    schema: &Arc<DatabaseSchema>,
+    rules: Arc<EffectiveRules>,
+    reference: &ResolvedReference,
+    timeout: Duration,
+) -> AppResult<Coverage> {
     let lens = lens::build(
         schema.clone(),
         &session.slug(),
@@ -223,7 +287,7 @@ pub async fn reference_coverage(
         )));
     }
     let (when, to_when) = rule_conditions(&rules, reference);
-    let self_key = self_key_columns(&schema, reference);
+    let self_key = self_key_columns(schema, reference);
     let query = CoverageQuery {
         database,
         from: &reference.from,
@@ -1107,6 +1171,147 @@ to_when = { active = "1" }
                     ..Coverage::default()
                 },
                 "{host}:{port}"
+            );
+        }
+    }
+
+    fn children_rule(id: &str, from: &str) -> Reference {
+        reference(id, from, "cov_parents.parent_id")
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn an_unsaved_rule_counts_the_same_as_the_identical_stored_rule() {
+        let preview_dir = tempdir().unwrap();
+        let (preview_catalog, preview_projects) = built_in_sources(&preview_dir);
+        let stored_dir = tempdir().unwrap();
+        let (stored_catalog, stored_projects) = built_in_sources(&stored_dir);
+        let preview_sources = RuleSources {
+            presets: &preview_catalog,
+            projects: &preview_projects,
+        };
+        let stored_sources = RuleSources {
+            presets: &stored_catalog,
+            projects: &stored_projects,
+        };
+        for (host, port) in servers() {
+            let session = fixture_session(&host, port, "databee_test").await;
+            stored_projects
+                .update(&session.slug(), "databee_test", |project| {
+                    project.references = vec![children_rule("mine", "cov_children.parent_id")];
+                    Ok(())
+                })
+                .await
+                .unwrap();
+            let stored_rule = find(
+                &session,
+                "databee_test",
+                "cov_children",
+                stored_sources,
+                |r| r.by == ReferenceSource::Project { id: "mine".into() },
+            )
+            .await;
+
+            let mut stored = reference_coverage(
+                &session,
+                "databee_test",
+                &stored_rule,
+                stored_sources,
+                TIMEOUT,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
+            let mut preview = coverage_preview(
+                &session,
+                "databee_test",
+                children_rule("", "cov_children.parent_id"),
+                None,
+                preview_sources,
+                TIMEOUT,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
+
+            stored.sample_unresolved.sort();
+            preview.sample_unresolved.sort();
+            assert_eq!(preview, stored, "{host}:{port}");
+            assert_eq!(
+                preview,
+                Coverage {
+                    total: 5,
+                    resolved: 1,
+                    zero_or_null: 2,
+                    sample_unresolved: vec!["98".into(), "99".into()],
+                    timed_out: false,
+                },
+                "{host}:{port}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn a_preview_of_a_rule_with_an_unknown_column_is_invalid_input_naming_the_field() {
+        let dir = tempdir().unwrap();
+        let (catalog, projects) = built_in_sources(&dir);
+        let sources = RuleSources {
+            presets: &catalog,
+            projects: &projects,
+        };
+        for (host, port) in servers() {
+            let session = fixture_session(&host, port, "databee_test").await;
+
+            let err = coverage_preview(
+                &session,
+                "databee_test",
+                children_rule("", "cov_children.no_such_column"),
+                None,
+                sources,
+                TIMEOUT,
+            )
+            .await
+            .unwrap_err();
+
+            assert!(
+                matches!(&err, AppError::InvalidInput(m) if m.contains("`reference.from`")),
+                "{host}:{port}: {err:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn replacing_a_reference_the_project_lacks_is_refused() {
+        let dir = tempdir().unwrap();
+        let (catalog, projects) = built_in_sources(&dir);
+        let sources = RuleSources {
+            presets: &catalog,
+            projects: &projects,
+        };
+        for (host, port) in servers() {
+            let session = fixture_session(&host, port, "databee_test").await;
+
+            let err = coverage_preview(
+                &session,
+                "databee_test",
+                children_rule("", "cov_children.parent_id"),
+                Some("ghost".into()),
+                sources,
+                TIMEOUT,
+            )
+            .await
+            .unwrap_err();
+
+            assert_eq!(
+                err.kind(),
+                crate::error::ErrorKind::InvalidInput,
+                "{host}:{port}: {err:?}"
+            );
+            assert!(
+                projects
+                    .get(&session.slug(), "databee_test")
+                    .references
+                    .is_empty()
             );
         }
     }

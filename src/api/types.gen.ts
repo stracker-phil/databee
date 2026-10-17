@@ -475,6 +475,12 @@ export type KeyKind = "int" | "string" | "public" | "protected" | "private";
 
 export type KeyPart = { column: string, value: string, };
 
+export type KindRow = { origin: RuleOrigin, 
+/**
+ * The index `updateKind` and `removeKind` take, for project rules.
+ */
+index: number | null, rule: KindRule, };
+
 /**
  * Applies to `columns` (globs) and to rows of meta tables whose key matches a `meta_keys` glob,
  * in every applied meta table unless `in_meta` names some.
@@ -509,6 +515,11 @@ export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
  * `{ regexp }` or `{ not = <match> }`. Integers are read as their text.
  */
 export type Match = string | Array<string> | { glob: string, } | { like: string, } | { regexp: string, } | { not: Match, };
+
+/**
+ * A meta value: the meta table as rules name it, its key column and the row's key.
+ */
+export type MetaDraft = { table: string, keyColumn: string, key: string, };
 
 /**
  * A key/value table. With `owner` and `fk` it describes the owner's rows and declares the
@@ -648,6 +659,12 @@ export type PresetInfo = {
  */
 name: string, source: PresetSource, error: string | null, };
 
+export type PresetRow = { name: string, 
+/**
+ * Real table names under the prefix.
+ */
+markerTables: Array<string>, applied: boolean, };
+
 export type PresetSource = { "kind": "builtIn" } | { "kind": "user", path: string, };
 
 export type ProductSummary = { id: string, name: string, status: string, kind: string | null, sku: string | null, price: string | null, stockStatus: string | null, stock: string | null, totalSales: number, variations: number, image: string | null, };
@@ -687,6 +704,8 @@ disabled: Array<string>, kinds: Array<KindRule>, styles: Array<StyleRule>, saved
  */
 export type ProjectChange = { "op": "addReference", reference: Reference, } | { "op": "updateReference", id: string, reference: Reference, } | { "op": "removeReference", id: string, } | { "op": "addKind", rule: KindRule, } | { "op": "updateKind", index: number, rule: KindRule, } | { "op": "removeKind", index: number, } | { "op": "addStyle", rule: StyleRule, } | { "op": "updateStyle", index: number, rule: StyleRule, } | { "op": "removeStyle", index: number, } | { "op": "disable", id: string, } | { "op": "enable", id: string, } | { "op": "setPrefix", prefix: string | null, } | { "op": "setNetworkPrefix", prefix: string | null, } | { "op": "setPresets", presets: Array<string> | null, };
 
+export type ProjectRules = { project: Project, prefix: string, suggestedPrefix: string | null, presets: Array<PresetRow>, foreignKeys: number, references: Array<ReferenceRow>, kinds: Array<KindRow>, styles: Array<StyleRow>, tables: Array<RuleTable>, };
+
 /**
  * Where a value was read: rendered as `wp_postmeta.meta_value · meta_id 9123`.
  */
@@ -719,6 +738,29 @@ label?: string | null,
  * The incoming group's columns; keys of the source's meta table are pivoted in.
  */
 columns?: Array<string>, };
+
+export type ReferenceRow = { origin: RuleOrigin, 
+/**
+ * What `disable`, `enable` and `removeReference` take; `None` for a foreign key (a fact).
+ */
+id: string | null, 
+/**
+ * Real table names.
+ */
+from: ColumnsRef, to: ColumnsRef, 
+/**
+ * The rule's `when` and `to_when` as SQL-like text; empty without conditions.
+ */
+when: string, toWhen: string, label: string | null, disabled: boolean, 
+/**
+ * What `reference_coverage` takes; `None` while the reference does not apply.
+ */
+reference: ResolvedReference | null, 
+/**
+ * The rule as stored (table names without prefix): a project or preset rule, or the project
+ * rule that promotes an inferred reference.
+ */
+rule: Reference | null, };
 
 /**
  * Why a column counts as a reference.
@@ -788,6 +830,19 @@ styles: Array<CellStyle>, };
  * covers composite keys.
  */
 export type RowKey = Array<KeyPart>;
+
+export type RuleDraft = { 
+/**
+ * The value's column, its table without prefix (`wc_orders_meta.meta_value`).
+ */
+source: ColumnRef, meta: MetaDraft | null, };
+
+export type RuleOrigin = { "kind": "project" } | { "kind": "preset", preset: string, } | { "kind": "foreignKey", constraint: string, } | { "kind": "inferred", indexed: boolean, };
+
+/**
+ * A table and the name rules write it as (without prefix).
+ */
+export type RuleTable = { table: string, name: string, };
 
 /**
  * What `rules_info` returns: the prefixes, the presets and the entities of a database.
@@ -921,6 +976,8 @@ export type StyleColor = "red" | "green" | "yellow" | "blue" | "purple";
 
 export type StyleMatch = "=" | "LIKE" | "REGEXP";
 
+export type StyleRow = { origin: RuleOrigin, index: number | null, rule: StyleRule, };
+
 /**
  * Colors values of its columns or meta keys that match. Never global: the same text in another
  * column stays uncolored.
@@ -969,7 +1026,11 @@ export type TransientInfo = { name: string, siteWide: boolean, bytes: number,
  */
 expiresAt: number | null, expired: boolean, };
 
-export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: number | null, inspectorWidth: number | null, bottomPaneHeight: number | null, sqlEditorHeight: number | null, sidebarHidden: boolean, };
+export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: number | null, inspectorWidth: number | null, bottomPaneHeight: number | null, sqlEditorHeight: number | null, sidebarHidden: boolean, 
+/**
+ * Collapsed object view groups by database, each as `<document table>::<group id>`.
+ */
+collapsedGroups: { [key in string]: Array<string> }, };
 
 /**
  * One `UPDATE`: `table` defaults to the action's, `key` to its primary key, matched to `{id}`.

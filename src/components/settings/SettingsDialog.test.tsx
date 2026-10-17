@@ -94,10 +94,16 @@ describe("SettingsDialog", () => {
   it("switches pages from the sidebar", async () => {
     render(<SettingsDialog />);
     expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "WordPress" }));
-    expect(screen.getByRole("heading", { name: "WordPress" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("switch", { name: "Gravatar avatars" }));
-    expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ gravatar: !settings().gravatar }));
+    await userEvent.click(screen.getByRole("button", { name: "Queries" }));
+    expect(screen.getByRole("heading", { name: "Queries" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("switch", { name: "Confirm destructive statements" }));
+    expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ confirmDestructive: !settings().confirmDestructive }));
+  });
+
+  it("lists no WordPress page", () => {
+    render(<SettingsDialog />);
+    const nav = screen.getByRole("navigation", { name: "Settings pages" });
+    expect(within(nav).queryByRole("button", { name: "WordPress" })).not.toBeInTheDocument();
   });
 
   it("closes without saving anything when nothing changed", async () => {

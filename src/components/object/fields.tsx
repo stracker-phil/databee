@@ -1,5 +1,5 @@
 /** One value of a document row: focusable, editable in place, drawn by `Value`. */
-import { createContext, memo, useContext, useState, type KeyboardEvent } from "react";
+import { createContext, memo, useContext, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { Provenance, Value as StoredValue } from "../../api";
 import { cellText } from "../../lib/format";
 import { Value, type OpenValue } from "../value/Value";
@@ -10,11 +10,13 @@ export interface DocumentActions {
   /** Queues the new text (null for NULL) for the value's provenance row. */
   save(value: StoredValue, text: string | null): void;
   cancelEdit(): void;
+  /** Right-click on a sourced value, after it took the focus. */
+  menu(event: MouseEvent): void;
 }
 
 const noop = () => {};
 
-export const DocumentContext = createContext<DocumentActions>({ onOpen: noop, focus: noop, save: noop, cancelEdit: noop });
+export const DocumentContext = createContext<DocumentActions>({ onOpen: noop, focus: noop, save: noop, cancelEdit: noop, menu: noop });
 
 /** Numbers and money align right, as in grids. */
 export const isNumeric = (value: StoredValue | null) => value?.kind.kind === "number" || value?.kind.kind === "money";
@@ -40,12 +42,18 @@ interface FieldProps {
 
 /** A value cell; a mousedown focuses its provenance, so value commands and a following click act on it. */
 export const Field = memo(function Field({ value, focused, editing = false, numeric = false }: FieldProps) {
-  const { onOpen, focus } = useContext(DocumentContext);
+  const { onOpen, focus, menu } = useContext(DocumentContext);
   if (!value) return <span />;
   if (editing) return <ValueEditor value={value} />;
   const classes = [numeric ? "r" : "", focused ? "focus" : ""].filter(Boolean).join(" ");
+  const onContextMenu = (e: MouseEvent) => {
+    if (!value.source || value.raw.t === "bytes") return;
+    e.preventDefault();
+    focus(value.source);
+    menu(e);
+  };
   return (
-    <span className={classes || undefined} onMouseDown={() => focus(value.source)}>
+    <span className={classes || undefined} onMouseDown={() => focus(value.source)} onContextMenu={onContextMenu}>
       <Value value={value} onOpen={onOpen} />
     </span>
   );

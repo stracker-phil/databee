@@ -1,10 +1,12 @@
+import { useEffect } from "react";
 import { PanelLeft } from "lucide-react";
 import { useBindingLabel } from "../commands";
 import { formatAddress } from "../lib/address";
 import { copyText } from "../lib/clipboard";
 import { formatCount } from "../lib/format";
 import { provenanceText } from "../lib/provenance";
-import { isWpView, selectActivePending, selectActiveTab, selectFocusedValue, selectSidebarHidden, selectWp, useStore, type QueryTab, type Tab } from "../state/store";
+import { projectKey } from "../state/slices/project";
+import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectFocusedValue, selectSidebarHidden, selectWp, useStore, type QueryTab, type Tab } from "../state/store";
 
 /** WordPress mode: the table prefix the presets apply under. */
 function WpFacts() {
@@ -105,7 +107,25 @@ function PendingCount() {
   );
 }
 
-/** Left to right: sidebar toggle, address, spacer, pending count. */
+/** The presets that apply to the active database; a click opens its Project page. */
+function PresetsText() {
+  const session = useStore(selectActiveSession);
+  const database = session?.database ?? null;
+  const info = useStore((s) => (session && database ? s.rulesInfo[projectKey(session.id, database)] : undefined));
+  const dataVersion = useStore((s) => s.dataVersion);
+  useEffect(() => {
+    if (session && database) void useStore.getState().loadRulesInfo(session.id, database);
+  }, [session?.id, database, dataVersion]);
+  if (!session || !database || !info) return null;
+  const presets = info.appliedPresets.length ? info.appliedPresets.join(" · ") : "none";
+  return (
+    <button data-stage="statusbar:presets" className="status-text" title="Open the Project page" onClick={() => useStore.getState().openProject()}>
+      presets {presets}
+    </button>
+  );
+}
+
+/** Left to right: sidebar toggle, address, spacer, presets, pending count. */
 export function StatusBar() {
   const wpMode = useStore(isWpView);
   return (
@@ -113,6 +133,7 @@ export function StatusBar() {
       {!wpMode && <SidebarToggle />}
       <Address />
       <div className="spacer" />
+      {!wpMode && <PresetsText />}
       <PendingCount />
     </footer>
   );

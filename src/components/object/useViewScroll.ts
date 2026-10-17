@@ -6,7 +6,8 @@ const atBottom = (el: HTMLElement) => el.scrollTop >= el.scrollHeight - el.clien
 /**
  * Both views share one scroll container, so the view being shown would inherit the other's offset.
  * A restored offset the view cannot reach yet (its grids are still loading) is applied again as it grows,
- * until the reader scrolls. A focused Document value is scrolled into view.
+ * until the reader scrolls, clicks or presses a key (collapsing a group shrinks the view on purpose).
+ * A focused Document value is scrolled into view.
  */
 export function useViewScroll(view: ObjectView, ready: boolean) {
   const ref = useRef<HTMLDivElement>(null);
@@ -24,7 +25,16 @@ export function useViewScroll(view: ObjectView, ready: boolean) {
       if (pending.current !== null && el.scrollTop < pending.current) el.scrollTop = pending.current;
     });
     for (const child of el.children) observer.observe(child);
-    return () => observer.disconnect();
+    const settle = () => {
+      pending.current = null;
+    };
+    el.addEventListener("pointerdown", settle);
+    el.addEventListener("keydown", settle);
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("pointerdown", settle);
+      el.removeEventListener("keydown", settle);
+    };
     // `ready` re-attaches the observer once the grids have rendered their children.
   }, [view, ready]);
 

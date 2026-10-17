@@ -55,6 +55,9 @@ import type {
   ResolvedReference,
   Project,
   ProjectChange,
+  ProjectRules,
+  Reference,
+  RuleDraft,
   TableStructure,
   UiState,
 } from "./types";
@@ -71,6 +74,8 @@ export const api = {
   setUiState: (identity: string, ui: UiState) => invoke<UiState>("set_ui_state", { identity, ui }),
   openLogFolder: () => invoke<void>("open_log_folder"),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
+  /** The native save panel; the chosen path, or null when cancelled. */
+  chooseSavePath: (fileName: string, extension: string) => invoke<string | null>("choose_save_path", { fileName, extension }),
   logError: (message: string) => invoke<void>("log_frontend_error", { message }),
 
   takeLaunchEvents: () => invoke<LaunchEvent[]>("take_launch_events"),
@@ -118,6 +123,15 @@ export const api = {
     invoke<Project>("project_update", { sessionId, database, change }),
   /** The project's rules as a preset file (TOML). */
   projectExport: (sessionId: string, database: string) => invoke<string>("project_export", { sessionId, database }),
+  /** Writes the project's rules as a preset file to `path`. */
+  projectExportTo: (sessionId: string, database: string, path: string) => invoke<void>("project_export_to", { sessionId, database, path }),
+  /** Every reference (switched off ones too), kind, value style and preset of a database, for the Project page. */
+  projectRules: (sessionId: string, database: string) => invoke<ProjectRules>("project_rules", { sessionId, database }),
+  /** The start of a rule form for a value: its column as rules name it and, on a meta value, its meta key. */
+  ruleDraft: (sessionId: string, database: string, provenance: Provenance) => invoke<RuleDraft>("rule_draft", { sessionId, database, provenance }),
+  /** The coverage of an unsaved reference rule; `replacing` is the project reference it would replace. Errors name the field. */
+  coveragePreview: (sessionId: string, database: string, reference: Reference, replacing: string | null) =>
+    invoke<Coverage>("coverage_preview", { sessionId, database, reference, replacing }),
   /** How many source rows of a reference (as `tableReferences` returned it) find a target row; read-only. */
   referenceCoverage: (sessionId: string, database: string, reference: ResolvedReference) =>
     invoke<Coverage>("reference_coverage", { sessionId, database, reference }),

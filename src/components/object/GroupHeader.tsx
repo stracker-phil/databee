@@ -1,4 +1,5 @@
-import { memo } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { memo, type MouseEvent } from "react";
 import type { Group } from "../../api";
 import { formatAddress } from "../../lib/address";
 import { countText, originText, relationText } from "../../lib/document";
@@ -15,18 +16,40 @@ interface Props {
   group: Group;
   database: string;
   anchor?: string;
+  collapsed: boolean;
+  onToggle(groupId: string): void;
 }
 
 /**
  * The section band of a group (docs/ux.md, Section header band). Its `data-table` links the sidebar entry
- * of the same table; hovering that entry lights the band (`lit`).
+ * of the same table; hovering that entry lights the band (`lit`). The chevron, or a click on the band outside
+ * its buttons, collapses the group's rows.
  */
-export const GroupHeader = memo(function GroupHeader({ group, database, anchor }: Props) {
+export const GroupHeader = memo(function GroupHeader({ group, database, anchor, collapsed, onToggle }: Props) {
   const lit = useStore((s) => s.hover.linked && !!group.table && s.hover.table === group.table);
   const events = group.via.kind === "events";
   const name = events ? "events" : group.table;
+  const toggleLabel = `${collapsed ? "Expand" : "Collapse"} ${name}`;
+  const onBandClick = (e: MouseEvent) => {
+    if (!(e.target as HTMLElement).closest("button")) onToggle(group.id);
+  };
   return (
-    <div className={`sh${lit ? " lit" : ""}`} data-table={group.table || undefined} data-src={originText(group) ?? undefined}>
+    <div
+      className={`sh${lit ? " lit" : ""}`}
+      data-table={group.table || undefined}
+      data-src={originText(group) ?? undefined}
+      onClick={onBandClick}
+    >
+      <button
+        className="sh-toggle"
+        aria-expanded={!collapsed}
+        aria-label={toggleLabel}
+        data-stage={`collapse:${group.id}`}
+        data-stage-label={toggleLabel}
+        onClick={() => onToggle(group.id)}
+      >
+        {collapsed ? <ChevronRight size="0.923rem" /> : <ChevronDown size="0.923rem" />}
+      </button>
       {events ? (
         <span className="tn sans">{name}</span>
       ) : (

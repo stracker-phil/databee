@@ -6,7 +6,8 @@ queries, anomalies and actions belong to it. The code is generic (`src-tauri/src
 knowledge lives only in preset files. Rules follow [`.claude/rules/presets.md`](../.claude/rules/presets.md).
 
 Status: presets are parsed, checked and listed (`presets_list`); projects are stored and edited
-(`project_get`, `project_update`, `project_export`); references, kinds and value styles apply to browse
+(`project_get`, `project_update`, `project_export`, `project_export_to`) and shown on the
+[Project page](#the-project-page) (`project_rules`, `rule_draft`, `coverage_preview`); references, kinds and value styles apply to browse
 pages, query results and `table_references` ([Effective rules](#effective-rules)), `rules_info` reports
 the prefixes, presets and entities, and `reference_coverage` counts how many rows of a reference resolve
 ([Coverage](#coverage)). `document` builds a row's document from meta tables, references, entities,
@@ -312,6 +313,71 @@ appended.
 **Export.** `project_export` returns the project as a preset file named `<slug>-<database>`: its references,
 kinds and styles, saved queries as `[[pinned]]` (`pin` as `home`) and explicit presets as `requires`. The
 prefixes, `disabled` and the automatic preset choice have no preset form and are left out.
+`project_export_to(session_id, database, path)` writes that text to a path the user chose in the native
+save panel (`choose_save_path(file_name, extension)` in `commands.rs`, from `tauri-plugin-dialog`'s Rust API;
+the page has no dialog permission).
+
+## The Project page
+
+The Project page (`?project`, a `project` tab; frontend in `src/components/project/`) shows and edits the
+rules of one database. It opens from the `project.open` command (palette `>Project`, no default key), the
+status bar's `presets …` text and the address. `project_rules(session_id, database)`
+(`rules/overview/`; the row types in `rows.rs`) returns everything it lists in one `ProjectRules`:
+
+| Field | Means |
+|---|---|
+| `project` | the stored project |
+| `prefix`, `suggestedPrefix` | the effective prefix and the suggestion from marker tables |
+| `presets` | every loaded preset: `name`, `markerTables` (real names under the prefix), `applied` |
+| `foreignKeys` | how many declared foreign keys apply |
+| `references` | `ReferenceRow`s: project rules, then preset rules (last applied preset first, overridden ones left out, owned `[[meta]]` tables' `fk` references included), then foreign keys and inferred references, then inferred references the project switched off |
+| `kinds`, `styles` | project rules (with their `index`), then the applied presets' rules |
+| `tables` | `RuleTable { table, name }`: every real table and the name rules write it as (tables outside the prefixes are missing) |
+
+A `ReferenceRow` has its `origin` (`project`, `preset`, `foreignKey`, `inferred` with `indexed`), the `id`
+that `disable`, `enable` and `removeReference` take (`inferred:<table>.<column>` for inferred rows; none for
+a foreign key, which is a fact and cannot be switched off), real `from` and `to`, `when` and `toWhen` as
+SQL-like text (`meta_key = '_customer_user'`; `glob` reads `GLOB`), `label`, `disabled`, the
+`ResolvedReference` that `reference_coverage` takes (none while it does not apply: switched off, or shadowed by
+a foreign key), and `rule`: the stored rule of a project or preset row, or for an inferred row the project
+rule that promotes it (`promote` adds it; an unconditional project rule replaces the inference).
+
+Sections, each a section band with rows:
+1. **Presets and prefix:** the prefix field (empty: the suggestion applies, shown as `suggested: wp_`), each
+   preset with its marker tables and a switch (`presets: null` is auto; a switch stores the applied presets as
+   an explicit list, "back to auto" clears it), and "Export as preset…".
+2. **The rule form**, when one is open: a reference, kind or value-style form.
+3. **References:** source, when, target, origin, coverage, actions. Project rows: check, edit, remove. Preset
+   rows (`--o2`): check, disable. Foreign keys (`--o2`): check. Inferred rows: dashed target, `same name ·
+   indexed` / `not indexed`, check, promote, disable. Switched-off rows are struck through with enable.
+   Coverage runs on demand per row ("check") or for all rows one after another ("Check coverage for all"),
+   and shows `resolved of total`, `· n are 0 or NULL`, up to three unresolved values, or "timed out".
+4. **Value styles:** column or meta key, match, color (in its `--style-*` color), origin; project rows edit and
+   remove, preset styles (shipped off) "switch on", which copies them into the project with `enabled = true`.
+5. **Kinds:** column or meta key, kind, origin; project rows edit and remove. Preset kinds are read-only (a
+   project kind rule comes first and so wins).
+
+**From a value.** `value.addReference` (`r`, grid and object scopes as `value.` and `object.`),
+`value.setKind` and `value.setStyle` (context menu "Add reference…", "Kind…", "Style…") call
+`rule_draft(session_id, database, provenance)` (`rules/draft.rs`), which returns the value's column as rules
+name it (`source`, e.g. `wc_orders_meta.meta_value`) and, on the value column of a `[[meta]]` table, `meta`:
+the meta table's rule name, its key column and the key the row is stored under (read from the server). The
+Project page opens with the form prefilled: a reference from the column with `when` `meta_key = '…'` on a meta
+value; a kind or style scoped to the column, or to the meta key in that meta table (a style also takes the
+value's text).
+
+**Reference form.** Source and target are table and column pickers over `tables` and the schema cache (a
+new target table preselects its single-column primary key); `when` is one `column = value` (a stored rule
+with a richer `when` keeps it unchanged); label. While typing, `coverage_preview(session_id, database,
+reference, replacing)` counts the unsaved rule (debounced): it checks the rule like `project_update`
+(`addReference`, or `updateReference` of `replacing`) on a copy of the project, builds the effective rules
+from that copy and counts exactly like a saved rule. Zero resolved values with orphans show "no source value
+matches a target; the rule is probably wrong" with the unresolved sample. Saving calls `project_update`; an
+error shows next to the field it names (`reference.from` at the source, `reference.when.*` at when,
+`reference.to` and `reference.to_when.*` at the target, `reference.label` at the label). Kind and style
+forms take the scope as rules write it (columns and globs without prefix, meta keys, meta tables).
+
+Every change bumps `dataVersion`, so documents, grids and the page reload with the new rules.
 
 ## Effective rules
 

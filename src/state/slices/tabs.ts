@@ -1,6 +1,7 @@
 import { api, toAppError, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse, type Provenance, type Value } from "../../api";
 import type { CellSource } from "../../lib/cells";
 import type { ObjectView } from "../../lib/document";
+import type { ProjectForm } from "../../lib/ruleForms";
 import { fail } from "../requests";
 import { isWpView, selectActiveSession, selectActiveTab } from "../selectors";
 import type { Slice, Store } from "../store";
@@ -58,11 +59,23 @@ export interface ObjectTab {
   nav: TabNav;
 }
 
-export type Tab = QueryTab | TableTab | ObjectTab;
+/** The Project page of one database (`?project`); `form` is the rule form opened from a value or a row. */
+export interface ProjectTab {
+  id: string;
+  kind: "project";
+  sessionId: string;
+  title: string;
+  database: string;
+  address: Address;
+  form: ProjectForm | null;
+  nav: TabNav;
+}
+
+export type Tab = QueryTab | TableTab | ObjectTab | ProjectTab;
 
 /** The preview tab of a session (table or object), which the next preview replaces. */
 export function previewTab(s: Store, sessionId: string): TableTab | ObjectTab | undefined {
-  return s.tabs.find((t): t is TableTab | ObjectTab => t.kind !== "query" && !!t.preview && t.sessionId === sessionId);
+  return s.tabs.find((t): t is TableTab | ObjectTab => (t.kind === "table" || t.kind === "object") && !!t.preview && t.sessionId === sessionId);
 }
 
 /** `tabs` with `tab` in the place of `replaced` (or appended), so a preview keeps its position. */
@@ -226,7 +239,7 @@ export const tabsSlice: Slice<TabsSlice> = {
     },
 
     pinTab(id) {
-      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind !== "query" && t.preview ? { ...t, preview: false } : t)) }));
+      set((s) => ({ tabs: s.tabs.map((t) => ((t.kind === "table" || t.kind === "object") && t.id === id && t.preview ? { ...t, preview: false } : t)) }));
     },
 
     activateTab(id) {

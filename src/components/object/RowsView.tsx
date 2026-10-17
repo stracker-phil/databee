@@ -22,6 +22,7 @@ import { ErrorPanel } from "../ErrorPanel";
 import { ResultsGrid, type CellPos } from "../ResultsGrid";
 import { AlsoLinked } from "./AlsoLinked";
 import { GroupHeader } from "./GroupHeader";
+import { useCollapsedGroups } from "./useCollapsedGroups";
 
 /** Rows a grid shows before it scrolls. */
 const VISIBLE_ROWS = 12;
@@ -178,6 +179,7 @@ export function RowsView({ document, owner, focus, scrollTo }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const anchors = groupAnchors(document.groups);
   const groups = document.groups.filter((g) => g.table && !isEmpty(g));
+  const collapse = useCollapsedGroups(owner);
   useEffect(() => {
     if (!scrollTo) return;
     const sections = ref.current?.querySelectorAll<HTMLElement>("[data-group]") ?? [];
@@ -187,11 +189,12 @@ export function RowsView({ document, owner, focus, scrollTo }: Props) {
     <div className="document rows-view" ref={ref}>
       {groups.map((group) => {
         const filter = filterText(group);
+        const collapsed = collapse.isCollapsed(group.id);
         return (
           <section key={group.id} data-group={group.id} aria-label={`${group.table} rows`}>
-            <GroupHeader group={group} database={owner.database} anchor={anchors.get(group.id)} />
-            {filter && <div className="rows-filter">WHERE {filter}</div>}
-            {group.error ? <ErrorPanel message={group.error} code={null} /> : <GroupGrid group={group} owner={owner} focus={focus} />}
+            <GroupHeader group={group} database={owner.database} anchor={anchors.get(group.id)} collapsed={collapsed} onToggle={collapse.toggle} />
+            {!collapsed && filter && <div className="rows-filter">WHERE {filter}</div>}
+            {!collapsed && (group.error ? <ErrorPanel message={group.error} code={null} /> : <GroupGrid group={group} owner={owner} focus={focus} />)}
           </section>
         );
       })}

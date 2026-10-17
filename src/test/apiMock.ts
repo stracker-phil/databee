@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Coverage, type Dashboard, type Document,type Keybindings, type Page, type PlannedChange, type Project, type Resolved, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Coverage, type Dashboard, type Document,type Keybindings, type Page, type PlannedChange, type Project, type ProjectRules, type Resolved, type RuleDraft, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { NOW } from "./now";
 import { session } from "./session";
@@ -36,6 +36,7 @@ export function createApiMock(): typeof realApi {
     updateSettings: vi.fn(async (s) => s),
     openLogFolder: vi.fn().mockResolvedValue(undefined),
     openUrl: vi.fn().mockResolvedValue(undefined),
+    chooseSavePath: vi.fn().mockResolvedValue(null),
     logError: vi.fn().mockResolvedValue(undefined),
     takeLaunchEvents: vi.fn().mockResolvedValue([]),
     listRecents: vi.fn().mockResolvedValue([]),
@@ -52,6 +53,10 @@ export function createApiMock(): typeof realApi {
     projectGet: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
     projectUpdate: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
     projectExport: vi.fn().mockResolvedValue(""),
+    projectExportTo: vi.fn().mockResolvedValue(undefined),
+    projectRules: vi.fn().mockImplementation(async (_sessionId: string, database: string): Promise<ProjectRules> => ({ project: emptyProject(database), prefix: "wp_", suggestedPrefix: null, presets: [], foreignKeys: 0, references: [], kinds: [], styles: [], tables: [] })),
+    ruleDraft: vi.fn(async (_s, _d, provenance): Promise<RuleDraft> => ({ source: `${provenance.table}.${provenance.column}`, meta: null })),
+    coveragePreview: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
     referenceCoverage: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
     document: vi.fn(async (_s, text): Promise<Document> => ({ address: parseAddress(text), entity: null, header: [], groups: [], alternatives: [], actions: [] })),
     tableActions: vi.fn().mockResolvedValue([]),

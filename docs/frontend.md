@@ -43,8 +43,9 @@ App
    │       TabPanels → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel)
    │                 → TableTab (filter bar + ResultsGrid | StructureView)
    │                 → ObjectPanel (ObjectHeader, DocumentView | RowsView)
+   │                 → ProjectPanel (presets and prefix, rule form, references, value styles, kinds)
    ├─ PendingTray
-   └─ StatusBar                        ▤ sidebar toggle, provenance or address, pending n
+   └─ StatusBar                        ▤ sidebar toggle, provenance or address, presets, pending n
 Dialogs · CommandPalette · Toasts
 ```
 
@@ -55,7 +56,7 @@ root: it creates the store, keeps the slice registry and re-exports the selector
 and the state types, so components import everything from `state/store`.
 
 - `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs`, `changes`, `data`,
-  `favorites`, `ui`, `nav`, `objects`, and the temporary `wp` until it moves to the WordPress module). Each exports its
+  `favorites`, `ui`, `nav`, `objects`, `project`, and the temporary `wp` until it moves to the WordPress module). Each exports its
   member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
   the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
 - `Store` is an interface extending every core slice's interface. A module adds its members with
@@ -75,7 +76,7 @@ and the state types, so components import everything from `state/store`.
 |---|---|
 | `settings` | `Settings \| null`; null until loaded |
 | `sessions`, `activeSessionId` | open connections (`SessionInfo`, with the connection `slug`) |
-| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error), `TableTab` (database, table, data/structure view, filter, structured `where`, preview) or `ObjectTab` (a row address, `view: "document" \| "rows"`, `focus`, preview; [Object tabs](#object-tabs)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
+| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error), `TableTab` (database, table, data/structure view, filter, structured `where`, preview) `ObjectTab` (a row address, `view: "document" \| "rows"`, `focus`, preview; [Object tabs](#object-tabs)) or `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
 | `documents` | `document` replies by `session/<address or shorthand>`, tagged with their `dataVersion` (`loadDocument`, `keepDocument`, `selectDocument`) |
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
@@ -89,7 +90,7 @@ and the state types, so components import everything from `state/store`.
 | `dataVersion` | bumped by ⌘R (`refreshView`, which first drops the session's schema cache with `refreshSchema`) and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
 | `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar's `pending n` button uses it) |
-| `uiState` | per connection identity: column widths, pane sizes and `sidebarHidden` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag |
+| `uiState` | per connection identity: column widths, pane sizes, `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group |
 | `paletteOpen`, `keybindings`, `favorites`, `toasts`, `recentNav` | as named |
 
 Conventions:
@@ -225,7 +226,8 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `Inspector` + `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` (what a click on a value opens), see [Values](#values) |
-| Objects | `object/`: `ObjectPanel`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, `useViewScroll`, see [Object tabs](#object-tabs) |
+| Objects | `object/`: `ObjectPanel`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) |
+| Project | `project/`: `ProjectPanel`, `PresetsSection`, `ReferenceForm`, `KindStyleForms`, `ReferencesSection`, `RuleSections`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `CommandPalette`, `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens-until-u12) |
 
@@ -236,7 +238,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 ```ts
 interface SettingsPage { id, group, label, icon, intro?, Body, order? }
 registerSettingsPage(page)   // replaces a page with the same id
-settingsPages()              // by group (Interface, Database, WordPress, System, then others by name), order, label
+settingsPages()              // by group (Interface, Database, System, then others by name), order, label
 settingsGroups()             // the same, grouped for the nav
 ```
 
@@ -248,7 +250,7 @@ settingsGroups()             // the same, grouped for the nav
   choices, so a registered page is reachable from Stage without further code.
 - `components/settings/`: `controls.tsx` (`Group`, `Row`, `Switch`, `Segmented`, `TextField`,
   `NumberField`), `ShortcutsPage.tsx`, `pages.tsx` (`registerCoreSettingsPages()`: Appearance, Shortcuts,
-  Queries, Display, Connections, WordPress, Logging). Numeric bounds come from `SETTINGS_LIMITS` /
+  Queries, Display, Connections, Logging). Numeric bounds come from `SETTINGS_LIMITS` /
   `TEXT_SIZES`, the log levels from `LOG_LEVELS`.
 
 Adding a page from a module: write the component next to the module's code (it may import the shared
@@ -317,7 +319,12 @@ Bare keys never fire in inputs or the editor (`resolveKeydown`).
 | `value.edit` | `e` | dispatches `EDIT_VALUE_EVENT`; the grid of the active tab that holds the selection, or the active Document view, opens its inline editor there, which queues a core `setCell` on the provenance row through the pending tray (documents: rows with a single-column key, meta rows by their own id) |
 | `value.filter` | `f` | in a table tab, `filterRows(tabId, { column, value })` (nav slice): adds the match to the table tab's structured filter, replacing one on the same column, through `showRows` (so ⌘[ returns); elsewhere it opens the value's table filtered by it in the preview tab |
 
-Binary cells offer none of `Y`, `e` and `f`, since their cell holds only a preview.
+| `value.addReference` | `r` | `openRuleForm("reference")`: `api.ruleDraft(sessionId, database, provenance)` (the column as rules name it, the meta key on a meta value), then `openProject` with a prefilled `ReferenceForm` |
+| `value.setKind`, `value.setStyle` | | the same with a `KindForm` or a `StyleForm` (the style takes the value's text) |
+
+Binary cells offer none of `Y`, `e`, `f` and the rule commands, since their cell holds only a preview. The grid's
+cell menu and the Document view's value menu (right-click) list `RULE_MENU`: "Add reference…", "Kind…",
+"Style…".
 
 **WordPress options screen (until U12).** `FieldValue` renders an option field through `Value` when its kind has
 a form there (NULL, `""`, secrets, money and time hints, short text); entity links (a reference-style button that
@@ -418,6 +425,12 @@ the table tab's row menu ("Open as object") and from `openEntity(entity, id)` (W
   container (`overflow-anchor: none`), so `useViewScroll` keeps each view's own offset: a view starts at the
   top the first time, gets its offset back later (re-applied while its grids still load), then reveals the
   focused value.
+- **Collapse:** every `GroupHeader` has a chevron button (`aria-expanded`, "Collapse/Expand <table>"); it and a
+  click on the band outside its buttons call `toggleGroupCollapsed(identity, database, "<document table>::<group id>")`
+  (`ui` slice), stored in `UiState.collapsedGroups` by database (`ui_state.json`, debounced), so the choice holds
+  for every row of the document's table. `useCollapsedGroups(owner)` reads it for both views. A collapsed group
+  keeps its band and drops its body and `+n` button; in Rows its grid does not mount, so nothing is browsed. A
+  click or key in the view ends `useViewScroll`'s offset restore, so collapsing does not jump back.
 - **Linked table highlight:** a section band takes `lit` while `hover` is a table link to its table; sidebar
   rows take `lit` for a link and `lit-value` (lighter) for a hovered value of that table.
 
@@ -432,6 +445,26 @@ test checks it against `src/test/fixtures/addresses.json`, which a Rust test wri
 page (sourced from `page.table` and `page.keys[row]`), `resultValueAt(result, row, col)` for query
 results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's `value::value_at`
 ([architecture](architecture.md#values-and-the-lens)).
+
+### Project tabs
+
+A `ProjectTab` (`components/project/`, mock `Project`) is the Project page of one database
+([presets.md](presets.md#the-project-page)); one per session and database. `openProject({ sessionId?, database?,
+form? })` (`project` slice) reuses it and replaces its `form` when one is given; `project.open` (global, no key),
+the status bar's `presets …` button (`rulesInfo`, loaded per `dataVersion`) and `openAddress` of a `?project`
+address call it. It has no history (`nav` stays empty).
+
+- **Loading:** `loadProjectRules(sessionId, database)` keeps `api.projectRules` per `dataVersion` in
+  `projectRules`; `changeProject(sessionId, database, change)` calls `api.projectUpdate`, then `bumpData`, so
+  documents and grids reload with the new rules, and returns the `AppError` instead of showing it.
+- **Sections:** `PresetsSection`, the open form (`ReferenceForm`, `KindForm`, `StyleForm`), `ReferencesSection`
+  (coverage per row in component state: `api.referenceCoverage` with the row's `reference`), `StylesSection`,
+  `KindsSection`. They share `ProjectContext` (`context.ts`) and the `:is(.object, .project)` band and row classes.
+- **Forms** (`lib/ruleForms.ts`): form state lives in the tab, so it survives switching tabs. `referenceRule`
+  maps the real tables of the pickers to rule names through `ProjectRules.tables`; `fieldError` splits Rust's
+  `` `field`: message `` and maps the field to the form field it shows under. `ReferenceForm` previews coverage
+  with `api.coveragePreview` 400 ms after the last change.
+- **Export:** `api.chooseSavePath(<slug>-<database>.toml, "toml")`, then `api.projectExportTo(…, path)`.
 
 - **Tab addresses** (`slices/nav.ts`): a `TableTab`'s `address` is derived from its table and `where` by
   `tableAddress`: one match on the table's single-column primary key (from the `structures` cache) is the
@@ -448,9 +481,9 @@ results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's
   `selectCanNav` finds history, so ⌘[ still outdents in the editor. In WordPress mode both delegate to
   `wpNav` (`goBack` / `goForward`) until WordPress mode is removed.
 - **`openAddress(text, { preview? })`:** parses, finds the open session by slug, opens a row address as an
-  object tab (`openObject`) and a table address in a table tab (`openTableTab` with the matching `where`), in
-  the preview tab when asked. Other targets (home, saved query, find, project)
-  answer with a toast until their views exist. The dev hook reaches it as
+  object tab (`openObject`), a table address in a table tab (`openTableTab` with the matching `where`), in
+  the preview tab when asked, and `?project` as the Project page (`openProject`). Other targets (home, saved
+  query, find) answer with a toast until their views exist. The dev hook reaches it as
   `window.databee.getState().openAddress("databee://…")`.
 - **Slug renames:** `renameConnectionSlug(identity, slug)` calls Rust, then rewrites `slug` on the sessions
   and the connection part of every address of their tabs. Settings → Connections lists the saved
@@ -468,6 +501,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 |---|---|
 | `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text (`cellDisplay` only for `Value`), TSV/JSON export, `relativeTime` |
 | `values.ts` | `valueAt`, `resultValueAt`, `cellValue`, `utcSeconds` (see [Addresses and history](#addresses-and-history)) |
+| `ruleForms.ts` | the Project page's form state (`ReferenceForm`, `KindForm`, `StyleForm`), prefills from a `RuleDraft` or a listed rule, `referenceRule` / `kindRule` / `styleRule`, `fieldError`, display texts (see [Project tabs](#project-tabs)) |
 | `provenance.ts` | `provenanceText(value)` and `sourceText(provenance)`: the status bar text of a value |
 | `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText` |
 | `clipboard.ts` | `copyText` with a success or error toast |

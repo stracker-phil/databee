@@ -66,6 +66,8 @@ export interface UiSlice {
   setPaneSize(identity: string, pane: PaneSize, px: number): void;
   /** Shows or hides the sidebar of the active connection and persists the choice. */
   toggleSidebar(): void;
+  /** Collapses or expands an object view group (`<document table>::<group id>`) in one database and persists it. */
+  toggleGroupCollapsed(identity: string, database: string, key: string): void;
   setMode(mode: Mode): void;
   setHover(hover: ValueHover): void;
 }
@@ -156,6 +158,14 @@ export const uiSlice: Slice<UiSlice> = {
       toggleSidebar() {
         const session = selectActiveSession(get());
         if (session) patchUiState(session.identity, (current) => ({ sidebarHidden: !current.sidebarHidden }));
+      },
+
+      toggleGroupCollapsed(identity, database, key) {
+        patchUiState(identity, (current) => {
+          const keys = current.collapsedGroups?.[database] ?? [];
+          const next = keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key];
+          return { collapsedGroups: { ...current.collapsedGroups, [database]: next } };
+        });
       },
 
       setMode(mode) {

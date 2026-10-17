@@ -21,7 +21,7 @@ export interface SettingsPage {
 }
 
 /** Nav order of the known groups; any other group follows them, by name. */
-const GROUP_ORDER = ["Interface", "Database", "WordPress", "System"];
+const GROUP_ORDER = ["Interface", "Database", "System"];
 
 const pages = new Map<string, SettingsPage>();
 const listeners = new Set<() => void>();

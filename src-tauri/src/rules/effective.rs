@@ -238,7 +238,11 @@ impl EffectiveRules {
 
     /// The reference `fk → owner` that each owned `[[meta]]` table declares, to the owner's
     /// single-column primary key.
-    fn meta_references(&self, preset: &Preset, schema: &DatabaseSchema) -> Vec<Reference> {
+    pub(super) fn meta_references(
+        &self,
+        preset: &Preset,
+        schema: &DatabaseSchema,
+    ) -> Vec<Reference> {
         preset
             .meta
             .iter()
@@ -410,7 +414,7 @@ fn single_key<'s>(schema: &'s DatabaseSchema, table: &str) -> Option<&'s str> {
 }
 
 /// A project reference with the same `from` and `when` replaces the preset rule.
-fn is_overridden(project: &Project, rule: &Reference) -> bool {
+pub(super) fn is_overridden(project: &Project, rule: &Reference) -> bool {
     project
         .references
         .iter()

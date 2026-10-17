@@ -504,23 +504,29 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .object-summary { display: flex; flex-wrap: wrap; gap: 0.462rem 1.846rem; font-family: var(--font-mono); font-size: var(--data-font-size); }
 .object-alternatives { color: var(--o3); font-size: var(--fs-small); }
 .document { display: flex; flex-direction: column; }
-.object .sh {
+:is(.object, .project) .sh {
   display: flex; align-items: baseline; gap: 0.923rem; margin-top: 28px; padding: 6px 12px;
   background: var(--band); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: default;
 }
-.object .sh .tn { border: none; background: none; padding: 0; font-family: var(--font-mono); font-size: var(--fs-base); font-weight: 600; color: var(--text); }
-.object .sh .tn.sans { font-family: var(--font-ui); }
+:is(.object, .project) .sh .tn { border: none; background: none; padding: 0; font-family: var(--font-mono); font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+:is(.object, .project) .sh .tn.sans { font-family: var(--font-ui); }
 .object .sh button.tn:hover { text-decoration: underline; }
-.object .sh .via { color: var(--o2); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.object .sh .cnt { color: var(--o3); font-size: var(--fs-small); white-space: nowrap; }
+:is(.object, .project) .sh .via { color: var(--o2); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+:is(.object, .project) .sh .cnt { color: var(--o3); font-size: var(--fs-small); white-space: nowrap; }
 .object .sh.lit { background: var(--lit); box-shadow: inset 3px 0 0 var(--accent); }
 .object .sh.lit .tn { color: var(--accent); }
-.object .row {
+.object .sh .sh-toggle {
+  align-self: center; display: inline-flex; margin-left: -0.462rem; padding: 0.154rem; border: none; border-radius: 3px;
+  background: none; color: var(--o3);
+}
+.object .sh .sh-toggle:hover { color: var(--text); }
+.object .sh .sh-toggle:focus-visible { outline: 1.5px solid var(--accent); }
+:is(.object, .project) .row {
   display: grid; column-gap: 20px; padding: var(--pad) 12px; line-height: 20px; border-bottom: 1px solid var(--line);
   font-family: var(--font-mono); font-size: var(--data-font-size);
 }
-.object .row > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.object .row:hover { background: var(--row-hover); }
+:is(.object, .project) .row > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+:is(.object, .project) .row:hover { background: var(--row-hover); }
 .object .row .val[data-src] { border-radius: 3px; padding: 0 3px; margin: 0 -3px; }
 .object .row .val[data-src]:hover { background: var(--cell); }
 .object .row > .focus {
@@ -530,8 +536,8 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .object .row .r { text-align: right; }
 .object .row.kv { grid-template-columns: 300px minmax(0, 1fr); }
 .object .row.kv > :first-child { color: var(--o2); }
-.object .row.hdr { color: var(--o3); font-family: var(--font-ui); font-size: var(--fs-small); }
-.object .row.hdr:hover { background: transparent; }
+:is(.object, .project) .row.hdr { color: var(--o3); font-family: var(--font-ui); font-size: var(--fs-small); }
+:is(.object, .project) .row.hdr:hover { background: transparent; }
 .object .row.group-error { color: var(--style-red); white-space: normal; }
 .object .more { align-self: flex-start; border: none; background: none; padding: var(--pad) 12px; color: var(--accent); font-size: var(--fs-small); }
 .object .also { padding: 14px 12px 0; color: var(--o3); font-size: var(--fs-small); }
@@ -540,6 +546,42 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .rows-view section { display: flex; flex-direction: column; }
 .rows-grid { display: flex; flex-direction: column; min-height: 0; }
 .rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); }
+
+/* ---------- project page ---------- */
+/* mock Project: section bands and rows as in the object view; read-only rows in --o2, switched off ones struck. */
+.project { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.project section { display: flex; flex-direction: column; }
+.project .act { border: none; background: none; padding: 0; font: inherit; color: var(--accent); white-space: nowrap; }
+.project .act:hover:not(:disabled) { color: var(--text); }
+.project .act.o2 { color: var(--o2); }
+.project .acts { text-align: right; }
+.project .row.o2 { color: var(--o2); }
+.project .row.off { color: var(--o3); }
+.project .row.off .src { text-decoration: line-through; }
+.project .row .dashed { text-decoration: underline dashed; text-underline-offset: 3px; }
+.project .row .r { text-align: right; }
+.project .row.empty { font-family: var(--font-ui); }
+.project .row.refs { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 0.9fr) minmax(0, 1.1fr) max-content; }
+.project .row.styles { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.5fr) minmax(0, 0.8fr) max-content; }
+.project .row.kinds { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 0.8fr) max-content; }
+.project .row.prefix-row { grid-template-columns: 8rem 14rem minmax(0, 1fr); align-items: center; }
+.project .row.prefix-row > label { color: var(--o2); font-family: var(--font-ui); }
+.project .row.preset-row { grid-template-columns: 14rem minmax(0, 1fr) max-content; align-items: center; }
+.project .row.preset-row > :nth-child(2) { font-size: var(--fs-small); }
+.project .rule-form { padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.project .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; padding: 12px 12px 0; }
+.project .form-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.project .form-field > .o3 { font-size: var(--fs-small); }
+.project .picker { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.project .picker > .input { flex: 1; min-width: 0; }
+.project .field-error { color: var(--style-red); font-size: var(--fs-small); white-space: normal; }
+.project .form-foot { display: flex; gap: 18px; align-items: baseline; padding: 12px 12px 0; }
+.project .coverage-line { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--font-mono); font-size: var(--data-font-size); }
+.project .warning { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o2); }
+.project .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.project .swatch-choice { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid transparent; border-radius: 6px; background: none; font-family: var(--font-mono); }
+.project .swatch-choice[aria-pressed="true"] { border-color: var(--field-line); background: var(--field); }
+.project .swatch { width: 10px; height: 10px; border-radius: 3px; }
 
 /* ---------- documents ---------- */
 .doc { overflow: auto; padding: 1.231rem 1.538rem 2.462rem; display: flex; flex-direction: column; gap: 1.385rem; }

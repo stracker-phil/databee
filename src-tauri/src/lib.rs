@@ -210,6 +210,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
         .plugin(log_plugin())
         .plugin(init_logging(log_level))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(stage::init(&config_dir))
         .plugin(wp::init(&config_dir))
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
@@ -234,6 +235,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             commands::set_ui_state,
             commands::open_log_folder,
             commands::open_url,
+            commands::choose_save_path,
             commands::take_launch_events,
             commands::list_recents,
             commands::remove_recent,
@@ -273,6 +275,10 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             rules::commands::project_get,
             rules::commands::project_update,
             rules::commands::project_export,
+            rules::commands::project_export_to,
+            rules::commands::project_rules,
+            rules::commands::rule_draft,
+            rules::commands::coverage_preview,
             rules::commands::reference_coverage,
             document::commands::document,
             document::commands::table_actions,

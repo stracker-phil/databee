@@ -6,7 +6,7 @@ import { OBJECT_VALUE_COMMANDS, VALUE_COMMANDS } from "./values";
 
 export * from "./registry";
 export * from "./scopes";
-export { EDIT_VALUE_EVENT } from "./values";
+export { EDIT_VALUE_EVENT, RULE_MENU } from "./values";
 
 /** Window events for commands whose target lives inside a component. */
 export const EVENTS = {
@@ -142,6 +142,13 @@ export const APP_COMMANDS: Command[] = [
       const tab = selectActiveTab(useStore.getState());
       if (tab?.kind === "object") useStore.getState().toggleObjectView(tab.id);
     },
+  },
+  {
+    id: "project.open",
+    title: "Project",
+    scope: "global",
+    when: () => !!selectActiveSession(useStore.getState())?.database,
+    run: () => useStore.getState().openProject(),
   },
   { id: "connection.new", title: "New connection…", scope: "global", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "connect" }) },
   {

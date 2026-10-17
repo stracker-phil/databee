@@ -2,13 +2,17 @@ use tauri::State;
 
 use super::PresetInfo;
 use super::coverage::{self, Coverage};
+use super::draft::{self, RuleDraft};
 use super::effective::{self, RulesInfo};
+use super::overview::{self, ProjectRules};
 use super::project::Project;
 use super::project_change::{self, ChangeContext, ProjectChange};
-use crate::error::AppResult;
+use super::types::Reference;
+use crate::error::{AppError, AppResult};
 use crate::lens::ResolvedReference;
 use crate::schema;
 use crate::state::AppState;
+use crate::value::Provenance;
 
 /// Every known preset, with the parse error of a user file that does not load.
 #[tauri::command]
@@ -68,6 +72,70 @@ pub fn project_export(
 ) -> AppResult<String> {
     let session = state.sessions.get(&session_id)?;
     state.projects.get(&session.slug(), &database).export()
+}
+
+/// Writes `project_export` to `path` (a path the user chose in the save panel).
+#[tauri::command]
+pub async fn project_export_to(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    path: String,
+) -> AppResult<()> {
+    let text = project_export(state, session_id, database)?;
+    tokio::fs::write(&path, text)
+        .await
+        .map_err(|e| AppError::Io(format!("Writing {path} failed: {e}")))
+}
+
+/// Everything the Project page lists for `database`.
+#[tauri::command]
+pub async fn project_rules(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+) -> AppResult<ProjectRules> {
+    let session = state.sessions.get(&session_id)?;
+    let schema = schema::database(&session, &database).await?;
+    let rules = effective::effective(&session, &database, &schema, state.rules());
+    let loaded = effective::loaded_presets(&state.presets.entries());
+    let project = state.projects.get(&session.slug(), &database);
+    Ok(overview::project_rules(project, schema, rules, &loaded))
+}
+
+/// The start of a rule form for the value at `provenance`.
+#[tauri::command]
+pub async fn rule_draft(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    provenance: Provenance,
+) -> AppResult<RuleDraft> {
+    let session = state.sessions.get(&session_id)?;
+    let timeout = state.settings.get().query_timeout();
+    draft::rule_draft(&session, &database, &provenance, state.rules(), timeout).await
+}
+
+/// The coverage of an unsaved `reference`; `replacing` is the project reference it would replace.
+#[tauri::command]
+pub async fn coverage_preview(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    reference: Reference,
+    replacing: Option<String>,
+) -> AppResult<Coverage> {
+    let session = state.sessions.get(&session_id)?;
+    let timeout = state.settings.get().query_timeout();
+    coverage::coverage_preview(
+        &session,
+        &database,
+        reference,
+        replacing,
+        state.rules(),
+        timeout,
+    )
+    .await
 }
 
 /// How many source rows of `reference` (as `table_references` returned it) find a target row.

@@ -72,7 +72,8 @@ pub async fn value_condition(
     ))
 }
 
-async fn stored_key(
+/// The key the meta row at `provenance` is stored under, read from the server.
+pub async fn stored_key(
     session: &Session,
     database: &str,
     meta: &MetaRef,

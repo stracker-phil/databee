@@ -83,6 +83,7 @@ export function stageState(): Flat {
   };
   if (tab?.kind === "table") state.table = `${tab.database}.${tab.table} (${tab.view})`;
   if (tab?.kind === "object") state.object = `${formatAddress(tab.address)} (${tab.view})`;
+  if (tab?.kind === "project") state.project = tab.form ? `${tab.database} (${tab.form.type} form)` : tab.database;
   if (tab?.kind === "query") state.query = tab.running ? "running" : tab.error ? "failed" : tab.response ? "done" : "not run";
   if (wp) {
     state.prefix = wp.prefix;

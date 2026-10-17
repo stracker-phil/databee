@@ -131,7 +131,7 @@ export const navSlice: Slice<NavSlice> = {
     const travel = async (direction: "back" | "forward") => {
       const tab = selectActiveTab(get());
       const target = tab?.nav[direction].at(-1);
-      if (!tab || !target || tab.kind === "query") return;
+      if (!tab || !target || tab.kind === "query" || tab.kind === "project") return;
       if (tab.kind === "object") {
         if (target.target.kind === "row") set((st) => ({ ...withTab(st, reobjected(tab, target, stepped(tab, direction))), selectedCell: null }));
         return;
@@ -150,7 +150,8 @@ export const navSlice: Slice<NavSlice> = {
           const session = get().sessions.find((x) => x.slug === address.connection);
           if (!session) return get().toast("error", `No open connection is named ${address.connection}`);
           const kind = address.target.kind;
-          if (kind !== "table" && kind !== "row") return get().toast("info", `${formatAddress(address)} cannot be opened yet: only table and row addresses open so far`);
+          if (kind === "project") return get().openProject({ sessionId: session.id, database: address.database });
+          if (kind !== "table" && kind !== "row") return get().toast("info", `${formatAddress(address)} cannot be opened yet: only table, row and project addresses open so far`);
           if (kind === "row") return get().openObject(address, { preview: opts.preview });
           if (get().activeSessionId !== session.id) get().setActiveSession(session.id);
           const location = await locationOf(get, session.id, address);

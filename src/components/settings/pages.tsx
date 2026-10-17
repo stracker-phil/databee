@@ -1,5 +1,5 @@
 /** The core settings pages. Modules register their own pages from their install function. */
-import { Blocks, FolderOpen, Keyboard, Palette, Plug, ScrollText, SquareTerminal, Table2 } from "lucide-react";
+import { FolderOpen, Keyboard, Palette, Plug, ScrollText, SquareTerminal, Table2 } from "lucide-react";
 import { useId, type CSSProperties } from "react";
 import {
   ACCENTS, api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, SETTINGS_LIMITS, TEXT_SIZES, type LogLevel, type SchemeId,
@@ -195,14 +195,6 @@ function ConnectionsPage({ s, set }: SettingsPageProps) {
   );
 }
 
-function WordPressPage({ s, set }: SettingsPageProps) {
-  return (
-    <Group>
-      <Switch label="Gravatar avatars" description="Loads customer avatars from gravatar.com, which sends a hash of each email address." checked={s.gravatar} onChange={(gravatar) => set({ gravatar })} />
-    </Group>
-  );
-}
-
 function LoggingPage({ s, set }: SettingsPageProps) {
   return (
     <Group>
@@ -228,6 +220,5 @@ export function registerCoreSettingsPages() {
   registerSettingsPage({ id: "queries", group: "Database", label: "Queries", icon: SquareTerminal, order: 10, intro: "Limits and safety checks for the SQL editor and table views.", Body: QueriesPage });
   registerSettingsPage({ id: "display", group: "Database", label: "Display", icon: Table2, order: 20, intro: "How values and schemas show up in grids, documents and the sidebar.", Body: DisplayPage });
   registerSettingsPage({ id: "connections", group: "Database", label: "Connections", icon: Plug, order: 30, intro: "Defaults for new connections, and the name each saved connection has in addresses.", Body: ConnectionsPage });
-  registerSettingsPage({ id: "wordpress", group: "WordPress", label: "WordPress", icon: Blocks, order: 10, intro: "The WordPress lens for WooCommerce and WordPress databases.", Body: WordPressPage });
   registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What DataBee writes to its log file.", Body: LoggingPage });
 }
