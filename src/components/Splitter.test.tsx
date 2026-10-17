@@ -6,11 +6,11 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 import App from "../App";
 import { api } from "../api";
 import { resetStore, useStore } from "../state/store";
-import { connectedStore, session, text } from "../test/fixtures";
+import { columnMeta, connectedStore, session, text } from "../test/fixtures";
 
 const mocked = vi.mocked(api, true);
 
-const inspect = () => useStore.setState({ selectedCell: { tabId: "q1", row: 0, col: 0, column: { name: "option_value", typeName: "LONGTEXT" }, cell: text('a:1:{s:1:"k";s:1:"v";}'), source: { sessionId: "s1", resultId: 1 } } });
+const inspect = () => useStore.setState({ selectedCell: { tabId: "q1", row: 0, col: 0, column: columnMeta("option_value", "LONGTEXT"), cell: text('a:1:{s:1:"k";s:1:"v";}'), source: { sessionId: "s1", resultId: 1 } } });
 
 function drag(handle: HTMLElement, from: { x?: number; y?: number }, to: { x?: number; y?: number }) {
   fireEvent.mouseDown(handle, { button: 0, clientX: from.x ?? 0, clientY: from.y ?? 0 });

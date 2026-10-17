@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Resolved, type SnapshotInfo, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Resolved, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { NOW } from "./now";
 import { session } from "./session";
@@ -43,6 +43,7 @@ export function createApiMock(): typeof realApi {
     listDatabases: vi.fn().mockResolvedValue([]),
     listTables: vi.fn().mockResolvedValue([]),
     describeTable: vi.fn().mockResolvedValue({ columns: [], indexes: [], primaryKey: [], foreignKeys: [], ddl: null } satisfies TableStructure),
+    tableReferences: vi.fn().mockResolvedValue({ outgoing: [], incoming: [] } satisfies TableReferences),
     refreshSchema: vi.fn().mockResolvedValue(undefined),
     completionSchema: vi.fn().mockResolvedValue({}),
     useDatabase: vi.fn().mockResolvedValue(undefined),
@@ -51,7 +52,9 @@ export function createApiMock(): typeof realApi {
     fetchCell: vi.fn().mockResolvedValue(""),
     browseTable: vi.fn(
       async (_s, req): Promise<BrowsePage> => ({
-        result: { id: 1, columns: [], rows: [], totalRows: 0, truncated: false, affectedRows: 0, lastInsertId: null, returnsRows: true },
+        table: req.table,
+        result: { id: 1, columns: [], rows: [], totalRows: 0, truncated: false, affectedRows: 0, lastInsertId: null, returnsRows: true, kinds: [], serialized: [] },
+        keys: [],
         hasMore: false,
         limit: req.limit,
         filter: null,

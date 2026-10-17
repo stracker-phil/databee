@@ -74,7 +74,16 @@ export type Autoload = {
  */
 value: string, on: boolean, };
 
-export type BrowsePage = { result: ResultSet, hasMore: boolean, 
+export type BrowsePage = { 
+/**
+ * The browsed table, which `keys` and `result.kinds` describe.
+ */
+table: string, result: ResultSet, 
+/**
+ * The primary key of each row, in row order (set by `Session::browse`); empty when the
+ * table has no primary key.
+ */
+keys: Array<RowKey>, hasMore: boolean, 
 /**
  * Page size after the clamp; the next page starts at `offset + limit`.
  */
@@ -122,7 +131,33 @@ export type ColumnInfo = { name: string, columnType: string, nullable: boolean, 
  */
 generated: boolean, };
 
-export type ColumnMeta = { name: string, typeName: string, };
+/**
+ * What a column holds as far as the lens says. The cell decides the rest: NULL, `''`, binary,
+ * serialized text and "no reference" are per cell.
+ */
+export type ColumnKind = { "kind": "text" } | { "kind": "number" } | { "kind": "timestamp" } | { "kind": "primaryKey", table: Address, columns: Array<string>, } | { "kind": "reference", targets: Array<ReferenceTarget>, by: ReferenceSource, };
+
+export type ColumnMeta = { name: string, typeName: string, 
+/**
+ * The table column the value was read from, as the server reports it; `None` for
+ * expressions and for results built in code.
+ */
+origin: ColumnOrigin | null, };
+
+/**
+ * The real table and column behind a result column, also under an alias (`org_table`,
+ * `org_name` of the protocol).
+ */
+export type ColumnOrigin = { 
+/**
+ * `None` when the server sent no schema (derived tables on some servers).
+ */
+database: string | null, table: string, column: string, };
+
+/**
+ * Columns of one table; a reference's two ends pair up by position.
+ */
+export type ColumnsRef = { table: string, columns: Array<string>, };
 
 export type CompareRow = { path: string, a: string | null, b: string | null, };
 
@@ -282,6 +317,8 @@ export type InsightLevel = "info" | "warning" | "danger";
  */
 export type KeyKind = "int" | "string" | "public" | "protected" | "private";
 
+export type KeyPart = { column: string, value: string, };
+
 /**
  * Something the UI should act on after a (CLI) launch. Passwords stay in Rust;
  * the UI only learns whether one is available for the request.
@@ -409,6 +446,11 @@ export type ProductSummary = { id: string, name: string, status: string, kind: s
 
 export type ProductView = { doc: EntityDoc, name: string, status: string, kind: string | null, image: string | null, sku: string | null, price: string | null, regularPrice: string | null, salePrice: string | null, stockStatus: string | null, stock: string | null, totalSales: string | null, terms: Array<[string, Array<string>]>, attributes: Array<[string, Array<string>]>, variations: Array<Variation>, related: Array<RelatedChip>, };
 
+/**
+ * Where a value was read: rendered as `wp_postmeta.meta_value · meta_id 9123`.
+ */
+export type Provenance = { table: string, column: string, row: RowKey, };
+
 export type RecentConnection = { identity: string, 
 /**
  * Derived from `spec` when listed; older files lack it.
@@ -418,6 +460,24 @@ account: string, spec: ConnectionSpec, lastUsed: string,
  * The connection part of an address, unique within the store (filled on open for older files).
  */
 slug: string, };
+
+/**
+ * Why a column counts as a reference.
+ */
+export type ReferenceSource = { "kind": "foreignKey", constraint: string, } | { "kind": "project", id: string, } | { "kind": "preset", preset: string, id: string, } | { "kind": "sameName", column: string, indexed: boolean, };
+
+/**
+ * A table a reference column points at, and the column there that holds the value.
+ */
+export type ReferenceTarget = { 
+/**
+ * The target table's rows, without a filter.
+ */
+table: Address, column: string, 
+/**
+ * `column` is the table's single-column primary key, so a value addresses one row.
+ */
+key: boolean, };
 
 export type RelatedChip = { label: string, link: EntityLink | null, 
 /**
@@ -441,6 +501,12 @@ address: Address,
  */
 exists: boolean, };
 
+/**
+ * A reference from `from` to `to` and why it exists. An ambiguous inferred column gives one
+ * reference per target table.
+ */
+export type ResolvedReference = { from: ColumnsRef, to: ColumnsRef, by: ReferenceSource, };
+
 export type ResultSet = { 
 /**
  * Names the result for `fetch_cell`; unique per session once the session keeps it, 0 before.
@@ -449,7 +515,22 @@ id: number, columns: Array<ColumnMeta>, rows: Array<Array<Cell>>,
 /**
  * Rows the server sent; larger than `rows.len()` when the row limit cut the result.
  */
-totalRows: number, truncated: boolean, affectedRows: number, lastInsertId: number | null, returnsRows: boolean, };
+totalRows: number, truncated: boolean, affectedRows: number, lastInsertId: number | null, returnsRows: boolean, 
+/**
+ * What each column holds, in column order; filled by `Session::execute` (SQL types and
+ * references by column origin) and `Session::browse` (the lens), empty elsewhere.
+ */
+kinds: Array<ColumnKind>, 
+/**
+ * The cells whose text decodes as PHP-serialized or JSON, by row then column.
+ */
+serialized: Array<SerializedCell>, };
+
+/**
+ * A row's primary key, in key order. Unlike `db::changes::RowKey` it owns its values and
+ * covers composite keys.
+ */
+export type RowKey = Array<KeyPart>;
 
 export type RowRef = { table: string, idColumn: string, id: string, };
 
@@ -459,7 +540,21 @@ export type SearchHit = { entity: string, id: string, title: string, subtitle: s
  */
 matched: string, };
 
+/**
+ * Dim text next to the raw value, such as a relative time, with its own source.
+ */
+export type Secondary = { text: string, source: Provenance | null, };
+
 export type Sensitive = "secret";
+
+/**
+ * A cell whose text decodes as PHP-serialized data or JSON.
+ */
+export type SerializedCell = { row: number, col: number, format: Format, 
+/**
+ * The value's head, e.g. `a:3:{…}`.
+ */
+preview: string, };
 
 export type SeriesLabels = { completed: string, processing: string, failed: string, other: string, };
 
@@ -570,6 +665,8 @@ export type TableEntity = { entity: string, idColumn: string, };
 
 export type TableInfo = { name: string, isView: boolean, rowsEstimate: number | null, sizeBytes: number | null, comment: string, };
 
+export type TableReferences = { outgoing: Array<ResolvedReference>, incoming: Array<ResolvedReference>, };
+
 export type TableStructure = { columns: Array<ColumnInfo>, indexes: Array<IndexInfo>, 
 /**
  * Columns of the `PRIMARY` index in key order; empty without one.
@@ -621,6 +718,16 @@ export type UploadsUrl = { url: string, source: "upload_url_path", };
 
 export type UserSummary = { id: string, login: string, email: string | null, name: string | null, registered: number | null, roles: Array<string>, orderCount: number, totalSpent: string | null, lastOrder: number | null, avatar: string | null, };
 
+export type Value = { raw: Cell, kind: ValueKind, 
+/**
+ * `None` for query results and for rows of a table without a primary key.
+ */
+source: Provenance | null, 
+/**
+ * A scheme color name from a value-style rule.
+ */
+style: string | null, secondary: Secondary | null, };
+
 /**
  * Children are addressed by their position (edits send index paths), so equal display keys
  * stay distinct.
@@ -638,6 +745,15 @@ declaringClass?: string,
  * The stored key bytes as hex when they are not valid UTF-8.
  */
 rawHex?: string, node: ValueNode, };
+
+/**
+ * There is no status kind: status values are enums, and color comes only from value styles.
+ */
+export type ValueKind = { "kind": "text" } | { "kind": "number" } | { "kind": "money", currency: Value | null, } | { "kind": "timestamp", utc: number | null, } | { "kind": "primaryKey", address: Address, } | { "kind": "reference", targets: Array<Address>, by: ReferenceSource, 
+/**
+ * Whether the target row exists; `None` until someone checks.
+ */
+exists: boolean | null, } | { "kind": "noReference" } | { "kind": "enum" } | { "kind": "serialized", format: Format, preview: string, } | { "kind": "secret" } | { "kind": "binary" } | { "kind": "null" } | { "kind": "empty" };
 
 export type ValueNode = { kind: NodeKind, text?: string, class?: string, children?: Array<ValueChild>, note?: string, };
 

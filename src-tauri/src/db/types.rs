@@ -3,6 +3,7 @@ use ts_rs::TS;
 
 use super::Cell;
 use crate::error::AppError;
+use crate::value::{ColumnKind, RowKey, SerializedCell};
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -10,6 +11,21 @@ use crate::error::AppError;
 pub struct ColumnMeta {
     pub name: String,
     pub type_name: String,
+    /// The table column the value was read from, as the server reports it; `None` for
+    /// expressions and for results built in code.
+    pub origin: Option<ColumnOrigin>,
+}
+
+/// The real table and column behind a result column, also under an alias (`org_table`,
+/// `org_name` of the protocol).
+#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnOrigin {
+    /// `None` when the server sent no schema (derived tables on some servers).
+    pub database: Option<String>,
+    pub table: String,
+    pub column: String,
 }
 
 #[derive(Serialize, Debug, Clone, Default, PartialEq, TS)]
@@ -26,6 +42,11 @@ pub struct ResultSet {
     pub affected_rows: u64,
     pub last_insert_id: Option<u64>,
     pub returns_rows: bool,
+    /// What each column holds, in column order; filled by `Session::execute` (SQL types and
+    /// references by column origin) and `Session::browse` (the lens), empty elsewhere.
+    pub kinds: Vec<ColumnKind>,
+    /// The cells whose text decodes as PHP-serialized or JSON, by row then column.
+    pub serialized: Vec<SerializedCell>,
     /// Full values of the `LongText` cells, which the session moves into its cell cache.
     #[serde(skip)]
     #[ts(skip)]
@@ -202,7 +223,12 @@ pub struct AppliedFilter {
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct BrowsePage {
+    /// The browsed table, which `keys` and `result.kinds` describe.
+    pub table: String,
     pub result: ResultSet,
+    /// The primary key of each row, in row order (set by `Session::browse`); empty when the
+    /// table has no primary key.
+    pub keys: Vec<RowKey>,
     pub has_more: bool,
     /// Page size after the clamp; the next page starts at `offset + limit`.
     pub limit: u32,

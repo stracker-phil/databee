@@ -198,8 +198,17 @@ impl Database for FakeDatabase {
         Ok(keys.collect())
     }
 
-    async fn completion(&self, _database: &str) -> AppResult<BTreeMap<String, Vec<String>>> {
-        Ok(BTreeMap::new())
+    /// The column names of the declared structures; a table declared without columns is absent.
+    async fn completion(&self, database: &str) -> AppResult<BTreeMap<String, Vec<String>>> {
+        let schema = self.schema.lock_unpoisoned();
+        let columns = schema
+            .iter()
+            .filter(|((db, _), s)| db == database && !s.columns.is_empty())
+            .map(|((_, table), s)| {
+                let names = s.columns.iter().map(|c| c.name.clone()).collect();
+                (table.clone(), names)
+            });
+        Ok(columns.collect())
     }
 
     async fn browse(
@@ -210,7 +219,9 @@ impl Database for FakeDatabase {
     ) -> AppResult<BrowsePage> {
         let (sql, filter) = browse_sql(req, Dialect::MYSQL)?;
         Ok(BrowsePage {
+            table: req.table.clone(),
             result: self.respond(&sql)?,
+            keys: Vec::new(),
             has_more: false,
             limit: req.limit,
             filter,

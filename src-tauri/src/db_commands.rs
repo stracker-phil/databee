@@ -13,6 +13,7 @@ use crate::db::{
     BrowsePage, BrowseRequest, DatabaseInfo, ExecuteResponse, TableInfo, TableStructure,
 };
 use crate::error::{AppError, AppResult};
+use crate::lens::{self, TableReferences};
 use crate::schema;
 use crate::session::{self, OpenArgs, SessionInfo};
 use crate::state::AppState;
@@ -211,6 +212,18 @@ pub async fn resolve_address(
     let address = Address::parse(&address)?;
     let session = state.sessions.get(&session_id)?;
     resolve::resolve(&session, address, state.settings.get().query_timeout()).await
+}
+
+/// The references from and to `table`: declared foreign keys and same-name inference.
+#[tauri::command]
+pub async fn table_references(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    table: String,
+) -> AppResult<TableReferences> {
+    let session = state.sessions.get(&session_id)?;
+    lens::table_references(&session, &database, &table).await
 }
 
 /// The full text of a cell that a result set sent as a `LongText` preview.

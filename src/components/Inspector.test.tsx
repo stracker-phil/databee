@@ -6,12 +6,12 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, type Cell, type DecodedValue } from "../api";
 import { useStore } from "../state/store";
-import { connectedStore, text } from "../test/fixtures";
+import { columnMeta, connectedStore, text } from "../test/fixtures";
 import { Inspector } from "./Inspector";
 
 const mocked = vi.mocked(api, true);
 
-const column = { name: "meta_value", typeName: "LONGTEXT" };
+const column = columnMeta("meta_value", "LONGTEXT");
 
 const jsonOf = (key: string): DecodedValue => ({
   format: "json",

@@ -12,7 +12,7 @@ import { StatusBar } from "../components/StatusBar";
 import { TabBar } from "../components/Tabs";
 import { Toasts } from "../components/Toasts";
 import { Toolbar } from "../components/Toolbar";
-import { connectedStore, pendingChange, queryTab, resultSet, session, text } from "../test/fixtures";
+import { columnMeta, connectedStore, pendingChange, queryTab, resultSet, session, text } from "../test/fixtures";
 import { wpInfo, wpStore } from "../test/wpFixtures";
 import { useStore, type QueryTab } from "./store";
 
@@ -47,7 +47,7 @@ function twoSessions(tabs: QueryTab[], active: { session: string; tab: string })
 }
 
 const inspect = (tabId: string) =>
-  useStore.setState({ selectedCell: { tabId, row: 0, col: 0, column: { name: "option_value", typeName: "LONGTEXT" }, cell: text("hello"), source: { sessionId: "s1", resultId: 1 } } });
+  useStore.setState({ selectedCell: { tabId, row: 0, col: 0, column: columnMeta("option_value", "LONGTEXT"), cell: text("hello"), source: { sessionId: "s1", resultId: 1 } } });
 
 const inspector = () => screen.queryByRole("complementary", { name: "Value inspector" });
 const tabTitles = () => screen.getAllByRole("tab").map((t) => t.querySelector(".title")?.textContent);

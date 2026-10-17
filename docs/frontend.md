@@ -330,6 +330,11 @@ Every view has an address (`databee://<slug>/<database>/<table>/<key>?…`, [arc
 `formatAddress`, `sameAddress`, `encodePart`), because addresses are built on every navigation; a Vitest
 test checks it against `src/test/fixtures/addresses.json`, which a Rust test writes.
 
+`lib/values.ts` turns a cell into a `Value` (kind and provenance): `valueAt(page, row, col)` for a browse
+page (sourced from `page.table` and `page.keys[row]`), `resultValueAt(result, row, col)` for query
+results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's `value::value_at`
+([architecture](architecture.md#values-and-the-lens)).
+
 - **Tab addresses** (`slices/nav.ts`): a `TableTab`'s `address` is derived from its table and `where` by
   `tableAddress`: one match on the table's single-column primary key (from the `structures` cache) is the
   row (`…/<table>/<key>?view=rows`), anything else the table with its filter (`…/<table>?col=val`, a `null`

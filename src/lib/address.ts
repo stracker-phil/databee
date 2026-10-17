@@ -46,7 +46,8 @@ function nonEmpty(raw: string, part: string): string {
   return decoded;
 }
 
-const address = (connection: string, database: string, target: Target): Address => ({ connection, database, target, view: null, compare: null });
+/** An address without view or compare parameters. */
+export const address = (connection: string, database: string, target: Target): Address => ({ connection, database, target, view: null, compare: null });
 
 /** A parameter without `=` (`?project`, a NULL filter `?col`) has a null value. */
 type Params = [name: string, value: string | null][];

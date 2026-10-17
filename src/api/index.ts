@@ -49,6 +49,7 @@ import type {
   SessionInfo,
   Settings,
   TableInfo,
+  TableReferences,
   TableStructure,
   UiState,
 } from "./types";
@@ -96,6 +97,9 @@ export const api = {
     invoke<BrowsePage>("browse_table", { sessionId, request }),
   /** Checks an address against the session (slug, database, table, key) and returns its canonical form. */
   resolveAddress: (sessionId: string, address: string) => invoke<Resolved>("resolve_address", { sessionId, address }),
+  /** Declared foreign keys and same-name references from and to a table. */
+  tableReferences: (sessionId: string, database: string, table: string) =>
+    invoke<TableReferences>("table_references", { sessionId, database, table }),
   /** The "New query" SQL for a table, quoted by Rust. */
   tableSelectSql: (sessionId: string, database: string, table: string) =>
     invoke<string>("table_select_sql", { sessionId, database, table }),

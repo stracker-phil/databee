@@ -10,6 +10,7 @@ mod dev;
 pub mod error;
 pub mod ipc;
 mod launch;
+mod lens;
 mod lock;
 mod menu;
 mod schema;
@@ -20,6 +21,7 @@ mod state;
 pub mod store;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_support;
+pub mod value;
 mod window;
 pub mod wp;
 
@@ -254,6 +256,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::cancel_query,
             db_commands::browse_table,
             db_commands::resolve_address,
+            db_commands::table_references,
             db_commands::fetch_cell,
             db_commands::table_select_sql,
             db_commands::plan_change,

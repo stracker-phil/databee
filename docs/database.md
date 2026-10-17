@@ -8,7 +8,7 @@ in `src-tauri/src/db_commands.rs`.
 | File | Responsibility |
 |---|---|
 | `db/mod.rs` | The `Database` trait every caller uses (`&dyn Database`, [ADR 0011](adr/0011-database-trait-object.md)), the `open` factory (one arm per engine) and re-exports |
-| `db/types.rs` | Shared DTOs (`ResultSet` with its `id` and the IPC-skipped `full_texts`, `ExecuteResponse` with its `failure: StatementFailure`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage`, `AppliedFilter`, `FilterKind`) |
+| `db/types.rs` | Shared DTOs (`ColumnMeta` with its `origin`, `ResultSet` with its `id`, `kinds`, `serialized` and the IPC-skipped `full_texts`, `ExecuteResponse` with its `failure: StatementFailure`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage` with `table` and `keys`, `AppliedFilter`, `FilterKind`) |
 | `db/dialect.rs` | `Dialect { backslash_escapes }` (`Dialect::MYSQL`, or `from_sql_mode`): `quote_ident` (backticks), `sql_string`, `like` / `like_contains`, `table_ref`, `system_schemas`; `escape_like` |
 | `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
 | `db/mysql/mod.rs` | `MySqlSession`, the only driver, implementing `Database`: the metadata pool, the editor connection, `connect_options`. It owns all I/O. |
@@ -230,9 +230,10 @@ index, so it needs no query of its own). A table without any index or foreign ke
 database:
 
 - `schema::database(session, db) -> DatabaseSchema`: `tables` (`Database::tables`; row estimates and sizes as
-  of the load), `keys` (`Database::keys`, an empty `TableKeys` for a table without keys) and `incoming`, the
-  reverse index of foreign keys: referenced table → `IncomingKey { table, foreignKey }`. Three queries
-  (`tables` and the bulk loader's two), run concurrently, however many tables.
+  of the load), `keys` (`Database::keys`, an empty `TableKeys` for a table without keys), `columns` (column
+  names per table, `Database::completion`) and `incoming`, the reverse index of foreign keys: referenced
+  table → `IncomingKey { table, foreignKey }`. Four queries (`tables`, `completion` and the bulk loader's
+  two), run concurrently, however many tables.
 - `schema::structure(session, db, table)`: one table's `TableStructure`, loaded on first use.
 - `schema::fresh_structure`: reads the structure from the server and stores it. `describe_table` uses it
   because the DDL text's `AUTO_INCREMENT` moves with every insert; `list_tables` is not cached either,
@@ -247,7 +248,54 @@ because a statement can name any database. A load stamped before DDL or a refres
 not kept. Applied plans never contain DDL and leave the cache alone. DDL made outside the app (another
 client, WP-CLI) shows after `view.refresh`.
 
-Users: `address::resolve` (table names, primary keys, filter columns).
+Users: `address::resolve` (table names, primary keys, filter columns) and the lens
+([References and kinds](#references-and-kinds)).
+
+## References and kinds
+
+`src-tauri/src/lens/` reads what a column holds and which references a table has (the `Lens` trait;
+[architecture](architecture.md#values-and-the-lens)). `SchemaLens` answers from `schema::database`, so a
+browse page or `table_references` call needs no structure query per table.
+
+**Declared references** are the foreign keys (`ReferenceSource::ForeignKey { constraint }`).
+
+**Same-name inference** (`SchemaLens::inferred_targets`). Column `A.c` points at table `B` when:
+- `B` has a single-column primary key named `c` (compared case-insensitively, so `comment_id` matches
+  `wp_comments.comment_ID`);
+- `A` is not `B`;
+- `c` is not `A`'s own single-column primary key (a member of a composite key may still be a reference,
+  like `wp_term_relationships.term_taxonomy_id`);
+- `c` is not `id` (any case, so `ID` too);
+- no declared foreign key of `A` contains `c`.
+
+Several matching tables give several targets, all listed. The source is `SameName { column, indexed }`;
+`indexed` says `A` has an index whose first column is `c`. Example: `wp_actionscheduler_logs.action_id` →
+`wp_actionscheduler_actions`.
+
+**Column kinds** (`ColumnKind`, in column order in `ResultSet.kinds`):
+- a single-column primary key is `PrimaryKey { table, columns }`;
+- a single-column foreign key, else an inferred reference, is `Reference { targets, by }` (each
+  `ReferenceTarget` has the target table's address, its column and whether that column is its key).
+  Composite foreign keys only appear in `table_references`;
+- other members of a composite primary key are `PrimaryKey`;
+- otherwise the SQL type decides: numeric `Number`, temporal `Timestamp`, everything else `Text`.
+
+The cell decides the rest when the page builds a `Value`: NULL is `null` (`noReference` in a reference
+column, as is `0`), `''` is `empty`, binary is `binary`, and a text cell listed in `ResultSet.serialized`
+(PHP-serialized or JSON that parses, found with the full text of long cells) is `serialized` with a
+preview such as `a:3:{…}`.
+
+**Where kinds are filled:**
+- `Session::browse` loads the page and the schema concurrently, then sets the lens kinds and
+  `BrowsePage.keys` (one `RowKey` per row; empty when the table has no primary key or a key cell is
+  binary). If the schema fails to load, the page shows with type kinds.
+- `Session::execute` sets type kinds, then, for every column whose `ColumnMeta.origin` names a table (the
+  protocol's `org_table` and `org_name`, which sqlx exposes as `Column::origin`; also through an alias),
+  the kind that table's lens gives. Expressions keep their type kind. Query results have no provenance.
+- `fetch` results (WordPress reads, change planning) carry no kinds.
+
+`table_references(sessionId, database, table)` returns `{ outgoing, incoming }`, each a
+`ResolvedReference { from, to, by }` with the columns of both ends.
 
 ## Editing rows
 

@@ -13,7 +13,9 @@ use crate::db::classify::changes_schema;
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
 use crate::db::{self, BrowsePage, BrowseRequest, CellLimit, Database, ExecuteResponse};
 use crate::error::{AppError, AppResult};
+use crate::lens;
 use crate::lock::{MutexExt, RwLockExt};
+use crate::schema;
 use crate::secrets::{PasswordSource, SecretStore, resolve_password};
 use crate::state::AppState;
 use crate::store::slug::default_slug;
@@ -146,7 +148,8 @@ impl Session {
         self.ddl_writes.load(Ordering::SeqCst)
     }
 
-    /// Runs a user query; long text cells in the results are kept for `fetch_cell`.
+    /// Runs a user query; the results get their column kinds, and long text cells are kept
+    /// for `fetch_cell`.
     pub async fn execute(
         &self,
         sql: &str,
@@ -161,20 +164,28 @@ impl Session {
             self.ddl_writes.fetch_add(1, Ordering::SeqCst);
         }
         let mut response = response?;
+        lens::annotate_execute(self, &mut response).await;
         for result in &mut response.results {
             self.cells.keep(result);
         }
         Ok(response)
     }
 
-    /// Reads a page of a table; its long text cells are kept for `fetch_cell`.
+    /// Reads a page of a table with its column kinds and row keys; its long text cells are
+    /// kept for `fetch_cell`.
     pub async fn browse(
         &self,
         request: &BrowseRequest,
         cell_limit: CellLimit,
         timeout: Duration,
     ) -> AppResult<BrowsePage> {
-        let mut page = self.db.browse(request, cell_limit, timeout).await?;
+        // The schema is cached after the first page, so loading it alongside costs nothing later.
+        let (page, schema) = tokio::join!(
+            self.db.browse(request, cell_limit, timeout),
+            schema::database(self, &request.database)
+        );
+        let mut page = page?;
+        lens::annotate_browse(self, &mut page, &request.database, schema);
         self.cells.keep(&mut page.result);
         Ok(page)
     }

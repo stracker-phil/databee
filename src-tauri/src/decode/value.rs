@@ -156,9 +156,20 @@ pub fn decode(text: &str) -> Option<DecodedValue> {
     decode_at_depth(text, 0)
 }
 
-fn decode_at_depth(text: &str, depth: usize) -> Option<DecodedValue> {
+/// The format `text` looks stored in: PHP-serialized by `php::looks_serialized`, JSON when it
+/// starts like an object or array. Whether it parses is up to the caller.
+pub fn format_of(text: &str) -> Option<Format> {
     let trimmed = text.trim();
     if php::looks_serialized(trimmed) {
+        return Some(Format::Php);
+    }
+    let json = trimmed.starts_with('{') || trimmed.starts_with('[');
+    json.then_some(Format::Json)
+}
+
+fn decode_at_depth(text: &str, depth: usize) -> Option<DecodedValue> {
+    let trimmed = text.trim();
+    if format_of(trimmed)? == Format::Php {
         return Some(match php::parse(trimmed.as_bytes()) {
             Ok(v) => DecodedValue::new(Format::Php, Some(php_node(&v, depth))),
             Err(strict) => match php::parse_lenient(trimmed.as_bytes()) {
@@ -176,12 +187,9 @@ fn decode_at_depth(text: &str, depth: usize) -> Option<DecodedValue> {
             },
         });
     }
-    if trimmed.starts_with('{') || trimmed.starts_with('[') {
-        return serde_json::from_str::<serde_json::Value>(trimmed)
-            .ok()
-            .map(|v| DecodedValue::new(Format::Json, Some(json_node(&v, depth))));
-    }
-    None
+    serde_json::from_str::<serde_json::Value>(trimmed)
+        .ok()
+        .map(|v| DecodedValue::new(Format::Json, Some(json_node(&v, depth))))
 }
 
 fn hex(bytes: &[u8]) -> String {

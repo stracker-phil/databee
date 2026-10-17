@@ -624,6 +624,7 @@ mod tests {
                 .map(|c| ColumnMeta {
                     name: c.to_string(),
                     type_name: "TEXT".into(),
+                    origin: None,
                 })
                 .collect(),
             rows,

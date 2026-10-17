@@ -6,7 +6,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import { api, EMPTY_UI_STATE, type BrowsePage, type TableStructure } from "../api";
 import { useStore, type TableTab as TableTabState } from "../state/store";
-import { connectedStore, num, resultSet, session, tableTab, text } from "../test/fixtures";
+import { browsePage, connectedStore, num, resultSet, session, tableTab, text } from "../test/fixtures";
 import { TableTab } from "./TableTab";
 
 const mocked = vi.mocked(api, true);
@@ -30,17 +30,11 @@ describe("TableTab", () => {
     connectedStore();
     useStore.setState({ tabs: [tab], activeTabId: tab.id });
     mocked.describeTable.mockResolvedValue(structure);
-    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: null, columnsFilter: null });
+    mocked.browseTable.mockResolvedValue(browsePage());
   });
 
   it("sends the primary key with the filter and shows the ID interpretation as a chip", async () => {
-    mocked.browseTable.mockResolvedValue({
-      result: resultSet(),
-      hasMore: false,
-      limit: 500,
-      filter: { kind: "ids", sql: "`ID` IN (3229, 3227)", label: "ID in (3229, 3227)" },
-      columnsFilter: null,
-    });
+    mocked.browseTable.mockResolvedValue(browsePage({ filter: { kind: "ids", sql: "`ID` IN (3229, 3227)", label: "ID in (3229, 3227)" } }));
     const Live = () => <TableTab tab={useStore((s) => s.tabs[0]) as TableTabState} />;
     render(<Live />);
     const where = screen.getByLabelText("WHERE filter");
@@ -53,7 +47,7 @@ describe("TableTab", () => {
   });
 
   it("shows no chip for plain SQL filters", async () => {
-    mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: { kind: "sql", sql: "post_type = 'page'", label: "post_type = 'page'" }, columnsFilter: null });
+    mocked.browseTable.mockResolvedValue(browsePage({ filter: { kind: "sql", sql: "post_type = 'page'", label: "post_type = 'page'" } }));
     render(<TableTab tab={tab} />);
     await screen.findByText("Hello world");
     expect(screen.queryByRole("button", { name: /ID in/ })).not.toBeInTheDocument();
@@ -122,7 +116,7 @@ describe("TableTab", () => {
 
     beforeEach(() => {
       useStore.setState({ tabs: [], activeTabId: null });
-      mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: null, columnsFilter: rowFilter });
+      mocked.browseTable.mockResolvedValue(browsePage({ columnsFilter: rowFilter }));
     });
 
     it("requests the row by column equality and shows the filter Rust reports", async () => {
@@ -143,7 +137,7 @@ describe("TableTab", () => {
       useStore.getState().openRow("wp_posts", "ID", "7");
       render(<Active />);
       await screen.findByText("ID = 7");
-      mocked.browseTable.mockResolvedValue({ result: resultSet(), hasMore: false, limit: 500, filter: null, columnsFilter: null });
+      mocked.browseTable.mockResolvedValue(browsePage());
       await userEvent.click(screen.getByRole("button", { name: "Clear column filter" }));
       await waitFor(() => expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ where: [] })));
       expect(screen.queryByText("ID = 7")).not.toBeInTheDocument();
@@ -151,14 +145,13 @@ describe("TableTab", () => {
   });
 
   describe("paging", () => {
-    const pageOf = (label: string, patch: Partial<BrowsePage> = {}): BrowsePage => ({
-      result: resultSet({ rows: [[num("1"), text(`${label}-x`)], [num("2"), text(`${label}-y`)]] }),
-      hasMore: true,
-      limit: 2,
-      filter: null,
-      columnsFilter: null,
-      ...patch,
-    });
+    const pageOf = (label: string, patch: Partial<BrowsePage> = {}): BrowsePage =>
+      browsePage({
+        result: resultSet({ rows: [[num("1"), text(`${label}-x`)], [num("2"), text(`${label}-y`)]] }),
+        hasMore: true,
+        limit: 2,
+        ...patch,
+      });
     const held = () => {
       let resolve!: (page: BrowsePage) => void;
       const promise = new Promise<BrowsePage>((r) => (resolve = r));

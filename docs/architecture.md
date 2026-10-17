@@ -70,7 +70,9 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/cli.rs ipc.rs        argv parsing, single-instance socket
   src/launch.rs            queue of launch requests + one-shot passwords
   src/state.rs session.rs  AppState, open sessions
-  src/schema.rs            per-session schema cache: tables, keys, foreign keys, structures
+  src/schema.rs            per-session schema cache: tables, columns, keys, foreign keys, structures
+  src/value/               Value, ValueKind, ColumnKind, RowKey: what a cell is and where it came from
+  src/lens/                the lens seam: SchemaLens (keys, foreign keys, same-name inference), result kinds
   src/commands.rs          settings, keybindings, favorites, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
@@ -94,7 +96,7 @@ src/                       React app
   registry/                extension points modules register into (settingsPages.ts)
   components/              UI; components/wp/ is WordPress mode, components/settings/ the Settings dialog
   stage/                   page side of the Stage hook, its Settings page, installStage()
-  lib/                     pure helpers (formatting, SQL ranges, theme)
+  lib/                     pure helpers (formatting, SQL ranges, theme, addresses, values)
   styles/                  schemes/ (one file per color scheme), theme.css (derived tokens), fonts.css, app.css
   assets/fonts/            bundled Geist and JetBrains Mono (OFL)
   test/                    api mock, fixtures
@@ -148,6 +150,24 @@ databee://<connection>/<database>/?project               project page
   (`src/test/fixtures/addresses.json`, written by a Rust test) keeps both equal.
 - Free SQL filters are not addressable: a tab filtered by typed SQL keeps the table's address with a
   `· filtered` hint.
+
+## Values and the lens
+
+Every value the UI shows is a `Value` (`src-tauri/src/value/`): the raw `Cell`, a `ValueKind` (text,
+number, timestamp, primary key, reference, no reference, serialized, binary, null, empty; money, enum and
+secret come from rules), its `Provenance` (table, column, row key) and optional secondary text. There is no
+status kind: color comes only from value styles.
+
+- **Per column, not per cell.** A result carries one `ColumnKind` per column (`ResultSet.kinds`), the
+  cells that decode as PHP-serialized or JSON (`ResultSet.serialized`) and, for a browse page, every
+  row's key (`BrowsePage.keys`). The page builds a cell's `Value` from them (`valueAt` in
+  `src/lib/values.ts`), so 500 rows don't carry 500 copies of each kind. This is the one rule the page
+  ports from Rust, for payload size: `value::value_at` (`ResultValues` for many cells) is the reference
+  implementation that Rust callers outside the page use, and tests on both sides keep them equal.
+- **The lens seam.** `lens::Lens` answers `kinds(table, columns)`, `references_from(table)` and
+  `references_to(table)`. `SchemaLens` answers from the schema cache: primary keys, declared foreign keys
+  and same-name inference ([database.md](database.md#references-and-kinds)). The rules lens of presets and
+  projects wraps it and adds or overrides references and kinds.
 
 ## A request, end to end
 

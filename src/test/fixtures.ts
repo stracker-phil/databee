@@ -1,4 +1,4 @@
-import type { Cell, PlannedChange, ResultSet, Settings, TableInfo } from "../api";
+import type { BrowsePage, Cell, ColumnMeta, PlannedChange, ResultSet, Settings, TableInfo } from "../api";
 import { session } from "./session";
 import { settings } from "./settings";
 
@@ -12,13 +12,12 @@ export function table(name: string, patch: Partial<TableInfo> = {}): TableInfo {
 export const text = (v: string): Cell => ({ t: "text", v });
 export const num = (v: string): Cell => ({ t: "number", v });
 
+export const columnMeta = (name: string, typeName: string): ColumnMeta => ({ name, typeName, origin: null });
+
 export function resultSet(patch: Partial<ResultSet> = {}): ResultSet {
   return {
     id: 1,
-    columns: [
-      { name: "ID", typeName: "BIGINT UNSIGNED" },
-      { name: "post_title", typeName: "TEXT" },
-    ],
+    columns: [columnMeta("ID", "BIGINT UNSIGNED"), columnMeta("post_title", "TEXT")],
     rows: [
       [num("1"), text("Hello world")],
       [num("2"), { t: "null" }],
@@ -28,8 +27,14 @@ export function resultSet(patch: Partial<ResultSet> = {}): ResultSet {
     affectedRows: 0,
     lastInsertId: null,
     returnsRows: true,
+    kinds: [],
+    serialized: [],
     ...patch,
   };
+}
+
+export function browsePage(patch: Partial<BrowsePage> = {}): BrowsePage {
+  return { table: "wp_posts", result: resultSet(), keys: [], hasMore: false, limit: 500, filter: null, columnsFilter: null, ...patch };
 }
 
 export function queryTab(patch: Partial<QueryTab> = {}): QueryTab {

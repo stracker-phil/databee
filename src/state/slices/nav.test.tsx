@@ -9,7 +9,7 @@ import { api } from "../../api";
 import { installCommands, runCommand } from "../../commands";
 import { Toasts } from "../../components/Toasts";
 import { formatAddress } from "../../lib/address";
-import { connectedStore, queryTab, resultSet, session, tableTab } from "../../test/fixtures";
+import { browsePage, connectedStore, queryTab, session, tableTab } from "../../test/fixtures";
 import { wpStore } from "../../test/wpFixtures";
 import { selectActiveTab, selectWpRoute, useStore } from "../store";
 
@@ -133,13 +133,12 @@ describe("history with the rendered table view", () => {
     vi.clearAllMocks();
     connectedStore({ tabs: [] });
     mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: ["ID"], foreignKeys: [], ddl: null });
-    mocked.browseTable.mockImplementation(async (_s, req) => ({
-      result: resultSet(),
-      hasMore: false,
-      limit: 500,
-      filter: null,
-      columnsFilter: req.where?.length ? { kind: "columns", sql: "", label: req.where.map((c) => `${c.column} = ${c.value}`).join(" AND ") } : null,
-    }));
+    mocked.browseTable.mockImplementation(async (_s, req) =>
+      browsePage({
+        table: req.table,
+        columnsFilter: req.where?.length ? { kind: "columns", sql: "", label: req.where.map((c) => `${c.column} = ${c.value}`).join(" AND ") } : null,
+      }),
+    );
   });
 
   it("restores a cleared column filter on ⌘[", async () => {

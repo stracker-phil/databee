@@ -7,7 +7,7 @@ use sqlx::{AssertSqlSafe, Column, Either, Executor, Row, SqlSafeStr, Statement, 
 use crate::db::cell::{self, CellLimit, Family};
 use crate::db::classify::returns_rows;
 use crate::db::lexer::split_statements;
-use crate::db::{Cell, ColumnMeta, Dialect, FullText, ResultSet, StatementFailure};
+use crate::db::{Cell, ColumnMeta, ColumnOrigin, Dialect, FullText, ResultSet, StatementFailure};
 use crate::error::{AppError, AppResult};
 
 pub async fn thread_id(conn: &mut MySqlConnection) -> AppResult<u64> {
@@ -37,7 +37,24 @@ fn column_meta(column: &MySqlColumn) -> ColumnMeta {
     ColumnMeta {
         name: column.name().to_string(),
         type_name: column.type_info().name().to_string(),
+        origin: origin(column),
     }
+}
+
+/// sqlx joins schema and table as `schema.table`; database names rarely hold a dot, so the
+/// first one splits them.
+fn origin(column: &MySqlColumn) -> Option<ColumnOrigin> {
+    let source = column.origin();
+    let source = source.table_column()?;
+    let (database, table) = match source.table.split_once('.') {
+        Some((database, table)) => (Some(database.to_string()), table.to_string()),
+        None => (None, source.table.to_string()),
+    };
+    Some(ColumnOrigin {
+        database,
+        table,
+        column: source.name.to_string(),
+    })
 }
 
 fn columns_of(row: &MySqlRow) -> Vec<ColumnMeta> {
@@ -244,6 +261,7 @@ mod tests {
         vec![ColumnMeta {
             name: "a".into(),
             type_name: "INT".into(),
+            origin: None,
         }]
     }
 

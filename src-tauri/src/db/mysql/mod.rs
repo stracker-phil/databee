@@ -289,7 +289,9 @@ impl Database for MySqlSession {
         result.truncated = false;
         result.total_rows = result.rows.len() as u64;
         Ok(BrowsePage {
+            table: req.table.clone(),
             result,
+            keys: Vec::new(),
             has_more,
             limit,
             filter,

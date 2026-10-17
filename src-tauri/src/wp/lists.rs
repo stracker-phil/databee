@@ -1295,6 +1295,7 @@ mod tests {
                 .map(|i| ColumnMeta {
                     name: i.to_string(),
                     type_name: "TEXT".into(),
+                    origin: None,
                 })
                 .collect(),
             rows: vec![vec![

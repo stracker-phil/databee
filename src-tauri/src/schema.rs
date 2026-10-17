@@ -1,5 +1,5 @@
-//! The per-session schema cache: per database the tables, every table's keys (loaded in bulk),
-//! foreign keys by referenced table, and table structures loaded on first use.
+//! The per-session schema cache: per database the tables, every table's column names and keys
+//! (loaded in bulk), foreign keys by referenced table, and table structures loaded on first use.
 //!
 //! Only DDL changes what it holds, so it is kept until the session runs a script with DDL
 //! (`Session::ddl_writes`) or the user refreshes (`refresh`). DDL from outside the app shows
@@ -21,6 +21,8 @@ pub struct DatabaseSchema {
     pub tables: Vec<TableInfo>,
     /// Keys of every table in `tables`, empty for a table without any.
     pub keys: BTreeMap<String, TableKeys>,
+    /// Column names of every table, in table order; same-name inference reads them.
+    pub columns: BTreeMap<String, Vec<String>>,
     /// Foreign keys that point at each table, by referenced table.
     pub incoming: BTreeMap<String, Vec<IncomingKey>>,
 }
@@ -33,7 +35,11 @@ pub struct IncomingKey {
 }
 
 impl DatabaseSchema {
-    fn new(tables: Vec<TableInfo>, mut keys: BTreeMap<String, TableKeys>) -> Self {
+    fn new(
+        tables: Vec<TableInfo>,
+        mut keys: BTreeMap<String, TableKeys>,
+        columns: BTreeMap<String, Vec<String>>,
+    ) -> Self {
         for table in &tables {
             keys.entry(table.name.clone()).or_default();
         }
@@ -52,6 +58,7 @@ impl DatabaseSchema {
         Self {
             tables,
             keys,
+            columns,
             incoming,
         }
     }
@@ -64,7 +71,10 @@ impl DatabaseSchema {
         self.keys.get(table)
     }
 
-    #[allow(dead_code, reason = "read by the table_references command")]
+    pub fn columns(&self, table: &str) -> &[String] {
+        self.columns.get(table).map_or(&[], Vec::as_slice)
+    }
+
     pub fn incoming(&self, table: &str) -> &[IncomingKey] {
         self.incoming.get(table).map_or(&[], Vec::as_slice)
     }
@@ -135,15 +145,19 @@ impl SchemaCache {
     }
 }
 
-/// The tables and keys of `database`: three queries on first use, then from the cache.
+/// The tables, columns and keys of `database`: four queries on first use, then from the cache.
 pub async fn database(session: &Session, database: &str) -> AppResult<Arc<DatabaseSchema>> {
     let cache = SchemaCache::of(session);
     let stamp = cache.stamp(session);
     if let Some(schema) = cache.cached(database, stamp, |e| e.schema.clone()) {
         return Ok(schema);
     }
-    let (tables, keys) = tokio::try_join!(session.db.tables(database), session.db.keys(database))?;
-    let schema = Arc::new(DatabaseSchema::new(tables, keys));
+    let (tables, keys, columns) = tokio::try_join!(
+        session.db.tables(database),
+        session.db.keys(database),
+        session.db.completion(database)
+    )?;
+    let schema = Arc::new(DatabaseSchema::new(tables, keys, columns));
     cache.store(session, database, stamp, |e| {
         e.schema = Some(schema.clone())
     });

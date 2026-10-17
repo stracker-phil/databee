@@ -640,6 +640,7 @@ mod tests {
                     .map(|name| ColumnMeta {
                         name: name.to_string(),
                         type_name: "TEXT".into(),
+                        origin: None,
                     })
                     .collect(),
                 rows: vec![

@@ -83,6 +83,7 @@ mod tests {
                 .map(|name| ColumnMeta {
                     name: (*name).into(),
                     type_name: "TEXT".into(),
+                    origin: None,
                 })
                 .collect(),
             rows,
