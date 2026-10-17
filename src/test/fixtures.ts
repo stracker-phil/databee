@@ -96,7 +96,7 @@ export function readoutOf(patch: Partial<Readout> = {}): Readout {
     address: { connection: session.slug, database: "db", target: { kind: "home" }, view: null, compare: null },
     status: { host: session.spec.host, slug: session.slug, database: "db", prefix: "", presets: [], serverVersion: session.serverVersion, values: none },
     anomalies: none,
-    newObjects: none,
+    recentlyCreated: { items: [], entities: [], error: null },
     pinned: none,
     recent: none,
     ...patch,

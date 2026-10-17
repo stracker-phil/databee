@@ -1,4 +1,4 @@
-import { api, toAppError, type AppError, type ProjectChange, type ProjectRules, type RulesInfo, type SessionInfo } from "../../api";
+import { api, toAppError, type AppError, type Coverage, type ProjectChange, type ProjectRules, type RulesInfo, type SessionInfo } from "../../api";
 import type { ProjectForm } from "../../lib/ruleForms";
 import { fail } from "../requests";
 import { selectActiveSession } from "../selectors";
@@ -13,11 +13,25 @@ interface ProjectRulesEntry {
   error: AppError | null;
 }
 
+export type CoverageState = { status: "running" } | { status: "done"; coverage: Coverage } | { status: "error"; message: string };
+
+/** Reference coverage of one database for the session, by `coverageKey`; `generation` counts refreshes. */
+export interface CoverageCache {
+  generation: number;
+  results: Record<string, CoverageState>;
+}
+
 export interface ProjectSlice {
   /** By `session/database`. */
   projectRules: Record<string, ProjectRulesEntry>;
   /** By `session/database`, for the status bar's preset text. */
   rulesInfo: Record<string, RulesInfo>;
+  /** By `session/database`. */
+  coverage: Record<string, CoverageCache>;
+  /** Stores one result (`null` drops it, e.g. a run cancelled before it answered). */
+  setCoverage: (key: string, reference: string, state: CoverageState | null) => void;
+  /** Forgets every result of the database, so the Project page counts again. */
+  refreshCoverage: (key: string) => void;
   loadProjectRules: (sessionId: string, database: string) => Promise<void>;
   loadRulesInfo: (sessionId: string, database: string) => Promise<void>;
   /**
@@ -43,6 +57,21 @@ export const projectSlice: Slice<ProjectSlice> = {
   create: (set, get) => ({
     projectRules: {},
     rulesInfo: {},
+    coverage: {},
+
+    setCoverage(key, reference, state) {
+      set((s) => {
+        const cache = s.coverage[key] ?? { generation: 0, results: {} };
+        const results = { ...cache.results };
+        if (state) results[reference] = state;
+        else delete results[reference];
+        return { coverage: { ...s.coverage, [key]: { ...cache, results } } };
+      });
+    },
+
+    refreshCoverage(key) {
+      set((s) => ({ coverage: { ...s.coverage, [key]: { generation: (s.coverage[key]?.generation ?? 0) + 1, results: {} } } }));
+    },
 
     async loadProjectRules(sessionId, database) {
       const key = projectKey(sessionId, database);
@@ -116,5 +145,5 @@ export const projectSlice: Slice<ProjectSlice> = {
     },
   }),
 
-  sessionClosed: (sessionId, s) => ({ projectRules: withoutSession(s.projectRules, sessionId), rulesInfo: withoutSession(s.rulesInfo, sessionId) }),
+  sessionClosed: (sessionId, s) => ({ projectRules: withoutSession(s.projectRules, sessionId), rulesInfo: withoutSession(s.rulesInfo, sessionId), coverage: withoutSession(s.coverage, sessionId) }),
 };

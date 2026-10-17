@@ -5,11 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import App from "../../App";
-import { api, type Address } from "../../api";
+import { api, type Address, type Value } from "../../api";
 import { installCommands } from "../../commands";
 import { formatAddress } from "../../lib/address";
 import { selectActiveTab, useStore } from "../../state/store";
-import { connectedStore, table } from "../../test/fixtures";
+import { connectedStore, table, text, value } from "../../test/fixtures";
 import { activeObject, browseOrderTables, objectDocument, orderAddress, orderGroups, paidViaSource, setStatus } from "../../test/objectFixtures";
 
 const mocked = vi.mocked(api, true);
@@ -323,46 +323,106 @@ describe("ObjectPanel", () => {
     it("lists the document's actions in the Actions menu and none that it does not list", async () => {
       await openOrder();
       await userEvent.click(screen.getByRole("button", { name: "Actions" }));
-      expect(screen.getByRole("menuitem", { name: "Run mark-completed" })).toBeInTheDocument();
-      expect(screen.getByRole("menuitem", { name: "Run purge-notes (no undo)" })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: /^Run mark-completed/ })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: /^Run purge-notes \(no undo\)/ })).toBeInTheDocument();
       expect(screen.queryByRole("menuitem", { name: /cancel-order/ })).not.toBeInTheDocument();
+    });
+
+    it("shows under each action what it writes", async () => {
+      await openOrder();
+      await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+      expect(screen.getByRole("menuitem", { name: /Run mark-completed/ })).toHaveTextContent("wp_wc_orders: date_updated_gmt, status · wp_posts: post_modified, post_status");
+      expect(screen.getByRole("menuitem", { name: /Run purge-notes/ })).toHaveTextContent("wp_comments: free SQL");
     });
 
     it("opens the same menu on a right-click of the header", async () => {
       await openOrder();
       fireEvent.contextMenu(screen.getByRole("region", { name: "Object header" }));
-      expect(screen.getByRole("menuitem", { name: "Run mark-completed" })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: /^Run mark-completed/ })).toBeInTheDocument();
     });
 
-    it("plans the chosen action on the document address", async () => {
+    it("previews the chosen action on the document address and queues that preview", async () => {
       await openOrder();
       await userEvent.click(screen.getByRole("button", { name: "Actions" }));
-      await userEvent.click(screen.getByRole("menuitem", { name: "Run mark-completed" }));
-      await waitFor(() => expect(mocked.planAction).toHaveBeenCalledWith("s1", ORDER_URL, "mark-completed", {}));
+      await userEvent.click(screen.getByRole("menuitem", { name: /^Run mark-completed/ }));
+      await waitFor(() => expect(mocked.previewAction).toHaveBeenCalledWith("s1", ORDER_URL, "mark-completed", {}));
+      expect(mocked.queueActionPreview).not.toHaveBeenCalled();
+      await userEvent.click(await screen.findByRole("button", { name: "Queue change" }));
+      await waitFor(() => expect(mocked.queueActionPreview).toHaveBeenCalledWith("s1", 1));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(useStore.getState().pending).toHaveLength(1);
     });
 
-    it("plans on the document address while the Rows view is shown", async () => {
+    it("shows each row the action writes with its old and new values, the row count and undo", async () => {
+      const cell = (v: string | null): Value => value({ raw: v === null ? { t: "null" } : text(v), kind: v === null ? { kind: "null" } : { kind: "text" } });
+      mocked.previewAction.mockResolvedValue({
+        id: 7,
+        description: "mark-completed: Update 1 wp_wc_orders row, 1 wp_posts row",
+        canUndo: true,
+        sql: [],
+        rows: [
+          { table: "wp_wc_orders", key: [{ column: "id", value: "4711" }], change: { kind: "update", columns: [{ column: "status", old: cell("wc-processing"), new: cell("wc-completed") }] } },
+          { table: "wp_posts", key: [{ column: "ID", value: "4711" }], change: { kind: "update", columns: [{ column: "post_modified", old: cell(null), new: cell("2026-10-17 12:34:56") }] } },
+        ],
+      });
+      await openOrder();
+      await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+      await userEvent.click(screen.getByRole("menuitem", { name: /^Run mark-completed/ }));
+      const order = await screen.findByRole("group", { name: "wp_wc_orders #4711" });
+      expect(order).toHaveTextContent(/status\s*wc-processing\s*→\s*wc-completed/);
+      expect(screen.getByRole("group", { name: "wp_posts #4711" })).toHaveTextContent(/post_modified\s*NULL\s*→\s*2026-10-17 12:34:56/);
+      expect(screen.getByText(/2 rows · undo available/)).toBeInTheDocument();
+      expect(screen.getByText(/review its SQL in the pending tray/)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Queue change" }));
+      await waitFor(() => expect(mocked.queueActionPreview).toHaveBeenCalledWith("s1", 7));
+    });
+
+    it("shows the statements of a free SQL action, whose rows are not known in advance", async () => {
+      mocked.previewAction.mockResolvedValue({ id: 2, description: "purge-notes: free SQL", canUndo: false, rows: [], sql: ["DELETE FROM wp_comments WHERE comment_type = 'order_note'"] });
+      await openOrder();
+      await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+      await userEvent.click(screen.getByRole("menuitem", { name: /^Run purge-notes/ }));
+      expect(await screen.findByText("DELETE FROM wp_comments WHERE comment_type = 'order_note'")).toBeInTheDocument();
+      expect(screen.getByText(/affects rows not known in advance/)).toBeInTheDocument();
+      expect(screen.getByText(/rows not known in advance · no undo/)).toBeInTheDocument();
+    });
+
+    it("cancels without queueing anything", async () => {
+      await openOrder();
+      await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+      await userEvent.click(screen.getByRole("menuitem", { name: /^Run mark-completed/ }));
+      await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(mocked.queueActionPreview).not.toHaveBeenCalled();
+    });
+
+    it("previews on the document address while the Rows view is shown", async () => {
       await openOrder(rows4711);
       await userEvent.click(screen.getByRole("button", { name: "Actions" }));
-      await userEvent.click(screen.getByRole("menuitem", { name: "Run mark-completed" }));
-      await waitFor(() => expect(mocked.planAction).toHaveBeenCalledWith("s1", ORDER_URL, "mark-completed", {}));
+      await userEvent.click(screen.getByRole("menuitem", { name: /^Run mark-completed/ }));
+      await waitFor(() => expect(mocked.previewAction).toHaveBeenCalledWith("s1", ORDER_URL, "mark-completed", {}));
     });
 
-    it("asks for a required parameter first, offering the first choice", async () => {
+    it("edits a parameter in the sheet, starting at the first choice, and previews again", async () => {
       mocked.document.mockResolvedValue(objectDocument({ actions: [setStatus] }));
       await openOrder();
       await userEvent.click(screen.getByRole("button", { name: "Actions" }));
-      await userEvent.click(screen.getByRole("menuitem", { name: "Run set-status" }));
-      expect(await screen.findByRole("textbox", { name: "set-status: status (wc-completed, wc-cancelled)" })).toHaveValue("wc-completed");
-      expect(mocked.planAction).not.toHaveBeenCalled();
-      await userEvent.click(screen.getByRole("button", { name: "Save" }));
-      await waitFor(() => expect(mocked.planAction).toHaveBeenCalledWith("s1", ORDER_URL, "set-status", { status: "wc-completed" }));
+      await userEvent.click(screen.getByRole("menuitem", { name: /^Run set-status/ }));
+      const status = await screen.findByRole("combobox", { name: "status" });
+      expect(status).toHaveValue("wc-completed");
+      expect(screen.getByText("writes wp_wc_orders: status")).toBeInTheDocument();
+      await waitFor(() => expect(mocked.previewAction).toHaveBeenCalledWith("s1", ORDER_URL, "set-status", { status: "wc-completed" }));
+      await userEvent.clear(status);
+      await userEvent.type(status, "wc-on-hold");
+      await waitFor(() => expect(mocked.previewAction).toHaveBeenLastCalledWith("s1", ORDER_URL, "set-status", { status: "wc-on-hold" }));
+      expect(mocked.queueActionPreview).not.toHaveBeenCalled();
     });
 
-    it("says no action applies when the document lists none", async () => {
+    it("hides the Actions button and says no action applies on a right-click when the document lists none", async () => {
       mocked.document.mockResolvedValue(objectDocument({ actions: [] }));
       await openOrder();
-      await userEvent.click(screen.getByRole("button", { name: "Actions" }));
+      expect(screen.queryByRole("button", { name: "Actions" })).not.toBeInTheDocument();
+      fireEvent.contextMenu(screen.getByRole("region", { name: "Object header" }));
       expect(screen.getByRole("menuitem", { name: "No actions apply to this row" })).toBeDisabled();
     });
 
@@ -372,7 +432,7 @@ describe("ObjectPanel", () => {
       await userEvent.type(await screen.findByLabelText("Search everything"), "mark-comp");
       expect(await screen.findByRole("option", { name: /Run mark-completed/ })).toBeInTheDocument();
       await userEvent.click(screen.getByRole("option", { name: /Run mark-completed/ }));
-      await waitFor(() => expect(mocked.planAction).toHaveBeenCalledWith("s1", ORDER_URL, "mark-completed", {}));
+      await waitFor(() => expect(mocked.previewAction).toHaveBeenCalledWith("s1", ORDER_URL, "mark-completed", {}));
     });
 
     it("leaves the actions out of the palette while another kind of tab is active", async () => {

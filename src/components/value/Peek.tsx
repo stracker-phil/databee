@@ -1,17 +1,19 @@
 /** Holding ⌥ peeks the hovered, else the focused, reference (docs/ux.md, Peek); ↵ opens it. */
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { api, type Peek } from "../../api";
+import { api, type Address, type Peek, type PeekMatch } from "../../api";
 import { formatAddress, parseAddress } from "../../lib/address";
-import { bySourceText } from "../../lib/provenance";
+import { bySourceText, rowIdentity } from "../../lib/provenance";
 import { useApiResult } from "../../lib/useApiResult";
 import { selectActiveTab, selectFocusedValue, selectSessionBySlug, useStore } from "../../state/store";
 import { openTarget, type ColumnPlace } from "./open";
-import { Value } from "./Value";
+import { SummaryLine } from "./SummaryLine";
 
 export interface PeekTarget {
   address: string;
   via: string | null;
   by: string | null;
+  /** The row the reference is stored in (`rowIdentity`), left out of a set the reference matches. */
+  from: string | null;
   rect: DOMRect | null;
   /** The column the reference is in; opening it drills there. */
   place: ColumnPlace | null;
@@ -34,6 +36,7 @@ function hoveredTarget(el: Element | null): PeekTarget | null {
     address: ref.dataset.ref,
     via: ref.dataset.via ?? null,
     by: ref.dataset.by ?? null,
+    from: ref.dataset.from ?? null,
     rect: ref.getBoundingClientRect(),
     place: placeOf(ref),
   };
@@ -51,6 +54,7 @@ function focusedTarget(): PeekTarget | null {
     address: formatAddress(kind.targets[0]),
     via: value?.source?.column ?? null,
     by: bySourceText(kind.by),
+    from: value?.source ? rowIdentity(value.source.table, value.source.row) : null,
     rect: shown?.getBoundingClientRect() ?? null,
     place,
   };
@@ -146,31 +150,105 @@ function position(rect: DOMRect | null): CSSProperties {
   return { left: Math.max(8, Math.min(rect.left, window.innerWidth - WIDTH - 8)), top: rect.bottom + OFFSET };
 }
 
-export function PeekCard({ target }: { target: PeekTarget }) {
+const MATCH_ROWS = 5;
+
+function matchIdentity(match: PeekMatch): string | null {
+  return match.address.target.kind === "row" ? rowIdentity(match.address.target.table, match.key) : null;
+}
+
+/** `wp_wc_orders #4711`, or for a set `wp_wc_orders · billing_email = ada@example.com`. */
+function PeekTitle({ address }: { address: Address }) {
+  const t = address.target;
+  if (t.kind === "row")
+    return (
+      <span className="mono">
+        <span className="tn">{t.table}</span> <span className="key">#{t.key}</span>
+      </span>
+    );
+  if (t.kind !== "table") return <span className="mono">{formatAddress(address)}</span>;
+  return (
+    <span className="mono">
+      <span className="tn">{t.table}</span>
+      {t.filter.map((f) => (
+        <span key={f.column} className="o2">
+          {" · "}
+          {f.column} = {f.value ?? "NULL"}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function matchesText(total: number, others: boolean): string {
+  const other = others ? "other " : "";
+  if (total === 0) return `no ${other}row matches`;
+  return total === 1 ? `1 ${other}row matches` : `${total} ${other}rows match`;
+}
+
+/** The rows a set address selects, without the row the reference is stored in. */
+function Matches({ data, from, onOpen }: { data: Peek; from: string | null; onOpen: (address: Address) => void }) {
+  const all = data.matches?.rows ?? [];
+  const rows = all.filter((m) => !from || matchIdentity(m) !== from);
+  const dropped = all.length - rows.length;
+  const total = (data.matches?.total ?? 0) - dropped;
+  const shown = rows.slice(0, MATCH_ROWS);
+  return (
+    <>
+      <div className="peek-row peek-count o2">{matchesText(total, dropped > 0)}</div>
+      {shown.map((match) => (
+        <button key={formatAddress(match.address)} className="peek-row peek-match" onClick={() => onOpen(match.address)}>
+          <span className="key">#{match.address.target.kind === "row" ? match.address.target.key : ""}</span>
+          <SummaryLine summary={match.summary} />
+        </button>
+      ))}
+      {total > shown.length && <div className="peek-row o3">{total - shown.length} more · ↵ opens all</div>}
+    </>
+  );
+}
+
+function rowIdentityOf(data: Peek): string | null {
+  const t = data.address.target;
+  return t.kind === "row" && data.keyColumn ? rowIdentity(t.table, [{ column: data.keyColumn, value: t.key }]) : null;
+}
+
+/** A set whose only match is the row the reference is stored in, which the backend peeks as that row. */
+const onlySelf = (data: Peek, target: PeekTarget) => target.from !== null && parseAddress(target.address).target.kind === "table" && rowIdentityOf(data) === target.from;
+
+function PeekBody({ data, target, onOpen }: { data: Peek; target: PeekTarget; onOpen: (address: Address) => void }) {
+  if (data.matches) return <Matches data={data} from={target.from} onOpen={onOpen} />;
+  if (onlySelf(data, target)) return <div className="peek-row peek-count o2">{matchesText(0, true)}</div>;
+  if (data.summary.values.length === 0) return <div className="peek-row o3">no values</div>;
+  return (
+    <div className="peek-row peek-summary">
+      <SummaryLine summary={data.summary} />
+    </div>
+  );
+}
+
+export function PeekCard({ target, onClose }: { target: PeekTarget; onClose?: () => void }) {
   const loaded = usePeekData(target.address);
-  const address = parseAddress(target.address);
+  const requested = parseAddress(target.address);
+  const data = loaded.data;
+  const address = data && !data.matches && !onlySelf(data, target) ? data.address : requested;
   const row = address.target.kind === "row" ? address.target : null;
-  const keyColumn = loaded.data?.keyColumn ?? null;
-  const to = row ? `${row.table}${keyColumn ? `.${keyColumn}` : ""}` : target.address;
+  const keyColumn = data?.keyColumn ?? null;
+  const to = row ? `${row.table}${keyColumn ? `.${keyColumn}` : ""}` : requested.target.kind === "table" ? requested.target.table : target.address;
   const footer = [target.via ? `via ${target.via} → ${to}` : `→ ${to}`, target.by].filter(Boolean).join(" · ");
-  const label = `Peek ${row ? `${row.table} ${row.key}` : target.address}`;
+  const rt = requested.target;
+  const label = `Peek ${rt.kind === "row" ? `${rt.table} ${rt.key}` : target.address}`;
+  const open = (to: Address) => {
+    onClose?.();
+    openTarget(to, target.place);
+  };
   return (
     <aside className="peek" aria-label={label} data-stage="peek" style={{ ...position(target.rect), width: WIDTH }}>
       <div className="peek-head">
-        <span className="mono">
-          <span className="tn">{row?.table}</span> <span className="key">#{row?.key}</span>
-        </span>
+        <PeekTitle address={address} />
         <span className="o3">⌥ peek · ↵ open</span>
       </div>
       {loaded.state === "loading" && <div className="peek-row o3">Loading…</div>}
       {loaded.state === "failed" && <div className="peek-row o3">{loaded.error.message}</div>}
-      {loaded.state === "loaded" &&
-        loaded.data.values.map(([name, value]) => (
-          <div key={name} className="peek-row">
-            <span className="o2">{name}</span>
-            <Value value={value} density="grid" />
-          </div>
-        ))}
+      {loaded.state === "loaded" && <PeekBody data={loaded.data} target={target} onOpen={open} />}
       <div className="peek-foot">{footer}</div>
     </aside>
   );
@@ -179,5 +257,5 @@ export function PeekCard({ target }: { target: PeekTarget }) {
 export function PeekOverlay() {
   const [target, close] = usePeekKeys();
   useOpenKey(target, close);
-  return target ? <PeekCard target={target} /> : null;
+  return target ? <PeekCard target={target} onClose={close} /> : null;
 }

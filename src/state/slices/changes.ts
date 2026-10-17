@@ -1,7 +1,6 @@
-import { api, type Address, type ChangeRequest, type PlannedChange } from "../../api";
-import { formatAddress } from "../../lib/address";
+import { api, type ChangeRequest, type PlannedChange } from "../../api";
 import { fail } from "../requests";
-import { selectActivePending, selectActiveSession, selectLastBatch, selectSessionBySlug } from "../selectors";
+import { selectActivePending, selectActiveSession, selectLastBatch } from "../selectors";
 import type { Slice } from "../store";
 
 export interface ChangesSlice {
@@ -14,7 +13,8 @@ export interface ChangesSlice {
   trayFocusRequest: number;
   queueChange: (change: ChangeRequest) => Promise<boolean>;
   /** Plans rule action `action` on a row address (or a table address for table actions) for review. */
-  queueAction: (address: Address, action: string, params: Record<string, string>) => Promise<boolean>;
+  /** Queues the plan of an action preview (`api.previewAction`). */
+  queueActionPreview: (sessionId: string, id: number) => Promise<boolean>;
   discardChange: (id: number) => Promise<void>;
   discardAll: () => Promise<void>;
   applyChanges: () => Promise<void>;
@@ -58,10 +58,8 @@ export const changesSlice: Slice<ChangesSlice> = {
         return queue(session.id, () => api.planChange(session.id, change));
       },
 
-      async queueAction(address, action, params) {
-        const session = selectSessionBySlug(get(), address.connection);
-        if (!session) return false;
-        return queue(session.id, () => api.planAction(session.id, formatAddress(address), action, params));
+      queueActionPreview(sessionId, id) {
+        return queue(sessionId, () => api.queueActionPreview(sessionId, id));
       },
 
       async discardChange(id) {

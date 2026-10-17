@@ -2,8 +2,11 @@
  * The status bar text for a value: where it is stored, where a reference points and by which rule, and
  * what a timestamp means (docs/ux.md, Value grammar).
  */
-import type { Address, Provenance, ReferenceSource, Value } from "../api";
+import type { Address, Provenance, ReferenceSource, RowKey, Value } from "../api";
 import { cellText } from "./format";
+
+/** Names one row by table and key, e.g. `wp_wc_orders#id=4711`, to tell whether two places mean the same row. */
+export const rowIdentity = (table: string, key: RowKey) => `${table}#${key.map((part) => `${part.column}=${part.value}`).join(",")}`;
 
 /** `wp_wc_orders_meta.meta_value · id 9123` */
 export function sourceText(source: Provenance): string {

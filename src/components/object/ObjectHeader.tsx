@@ -1,4 +1,3 @@
-import { MoreHorizontal } from "lucide-react";
 import type { Address, Document } from "../../api";
 import { useBindingLabel } from "../../commands";
 import { formatAddress } from "../../lib/address";
@@ -7,7 +6,7 @@ import { useStore } from "../../state/store";
 import { useContextMenu, type MenuAnchor } from "../ContextMenu";
 import { KeyCap } from "../Field";
 import { useOpenValue } from "../value/useOpenValue";
-import { Value } from "../value/Value";
+import { SummaryLine } from "../value/SummaryLine";
 import { actionMenu } from "./actions";
 
 interface Props {
@@ -51,27 +50,23 @@ export function ObjectHeader({ document, owner, view }: Props) {
         <span className="key">#{key}</span>
         <span className="spacer" />
         <ViewToggle {...view} />
-        <button
-          className="icon-btn"
-          aria-label="Actions"
-          title={document.actions.length > 0 ? "Actions for this row" : "No actions apply to this row"}
-          data-stage="object-actions"
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            openActions({ x: r.left, y: r.bottom });
-          }}
-        >
-          <MoreHorizontal size="1rem" />
-        </button>
+        {document.actions.length > 0 && (
+          <button
+            className="btn"
+            title="Actions for this row"
+            data-stage="object-actions"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              openActions({ x: r.left, y: r.bottom });
+            }}
+          >
+            Actions
+          </button>
+        )}
       </div>
-      {document.header.length > 0 && (
+      {document.header.values.length > 0 && (
         <div className="object-summary">
-          {document.header.map(([name, value]) => (
-            <span key={name}>
-              <span className="o3">{name} </span>
-              <Value value={value} onOpen={openValue} />
-            </span>
-          ))}
+          <SummaryLine summary={document.header} onOpen={openValue} />
         </div>
       )}
       {document.alternatives.length > 0 && (

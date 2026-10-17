@@ -20,8 +20,11 @@ export interface ReferenceForm {
   type: "reference";
   /** What opened the form, e.g. `r on wp_wc_orders_meta.meta_value · meta_id 9`. */
   opener: string;
+  /** The project reference being edited (`updateReference`). */
   replacing: string | null;
-  /** The stored rule being edited or promoted; what the form does not show is kept from it. */
+  /** The id a new project rule is stored under: a preset reference's id overrides it; empty gets the default. */
+  ruleId: string;
+  /** The stored rule being edited; what the form does not show is kept from it. */
   base: Reference | null;
   source: ColumnPick;
   when: WhenDraft | null;
@@ -57,7 +60,8 @@ export interface KindForm {
 export interface StyleForm {
   type: "style";
   opener: string;
-  index: number | null;
+  /** The project or preset style being edited; editing a preset style stores a project override. */
+  replacing: string | null;
   scope: ScopeDraft;
   match: StyleMatch;
   value: string;
@@ -97,6 +101,7 @@ export function referenceFormFor(source: Provenance, draft: RuleDraft): Referenc
     type: "reference",
     opener: openerText("r", source),
     replacing: null,
+    ruleId: "",
     base: null,
     source: { table: source.table, column: source.column },
     when,
@@ -111,7 +116,7 @@ export function kindFormFor(source: Provenance, draft: RuleDraft): KindForm {
 }
 
 export function styleFormFor(source: Provenance, draft: RuleDraft, raw: string): StyleForm {
-  return { type: "style", opener: openerText("style", source), index: null, scope: scopeOf(draft), match: "=", value: raw, color: "red" };
+  return { type: "style", opener: openerText("style", source), replacing: null, scope: scopeOf(draft), match: "=", value: raw, color: "red" };
 }
 
 /** A single `column = 'value'`, the only `when` the form edits. */
@@ -122,15 +127,23 @@ function simpleWhen(when: Reference["when"]): WhenDraft | null {
   return typeof match === "string" ? { column, value: match } : null;
 }
 
-/** Edits a project row (`replacing` its id) or promotes an inferred one (a new project rule). */
+/** A row the project stores (`project`, or `edited`); any other row is saved as a new project rule that replaces it. */
+export const storedInProject = (row: ReferenceRow) => row.origin.kind === "project" || row.edited;
+
+/**
+ * Edits a listed reference: a project or edited row by its id; a preset row becomes a project rule under the
+ * preset rule's id (an override); an inferred row becomes a project rule that replaces the inference.
+ */
 export function referenceFormFromRow(row: ReferenceRow, opener: string): ReferenceForm | null {
   if (!row.rule) return null;
   const when = simpleWhen(row.rule.when);
   const hasWhen = Object.keys(row.rule.when ?? {}).length > 0;
+  const stored = storedInProject(row);
   return {
     type: "reference",
     opener,
-    replacing: row.origin.kind === "project" ? row.id : null,
+    replacing: stored ? row.id : null,
+    ruleId: !stored && row.origin.kind === "preset" ? (row.id ?? "") : "",
     base: row.rule,
     source: { table: row.from.table, column: row.from.columns[0] ?? "" },
     when,
@@ -167,7 +180,7 @@ export function kindFormFromRow(row: KindRow): KindForm {
 
 export function styleFormFromRow(row: StyleRow): StyleForm {
   const rule = row.rule;
-  return { type: "style", opener: "edit", index: row.index, scope: scopeFromRule(rule), match: rule.match, value: rule.value, color: rule.color };
+  return { type: "style", opener: `edit ${row.id}`, replacing: row.id, scope: scopeFromRule(rule), match: rule.match, value: rule.value, color: rule.color };
 }
 
 /** The name rules store for a real table; a table outside the prefix keeps its name and Rust refuses it. */
@@ -183,7 +196,7 @@ export function referenceRule(form: ReferenceForm, tables: RuleTable[]): Referen
   const base = form.base;
   const when = form.whenLocked ? (base?.when ?? {}) : form.when && form.when.column ? { [form.when.column]: form.when.value } : {};
   return {
-    id: "",
+    id: form.ruleId,
     from: ruleColumn(tables, form.source),
     when,
     to: ruleColumn(tables, form.target),
@@ -245,11 +258,11 @@ export function ruleOriginText(origin: RuleOrigin): string {
     case "project":
       return "project";
     case "preset":
-      return origin.preset;
+      return `preset ${origin.preset}`;
     case "foreignKey":
       return `foreign key ${origin.constraint}`;
     case "inferred":
-      return "inferred";
+      return `inferred · same name · ${origin.indexed ? "indexed" : "not indexed"}`;
   }
 }
 

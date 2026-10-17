@@ -7,6 +7,8 @@ interface MenuItem {
   disabled?: boolean;
   /** The tooltip, e.g. why the item is disabled. */
   title?: string;
+  /** A secondary line under the label. */
+  detail?: string;
 }
 
 export type MenuEntry = MenuItem | "separator";
@@ -87,6 +89,7 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
           <button
             key={`${i}-${item.label}`}
             role="menuitem"
+            className={item.detail ? "with-detail" : undefined}
             disabled={item.disabled}
             title={item.title}
             onClick={() => {
@@ -94,7 +97,14 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
               item.action();
             }}
           >
-            {item.label}
+            {item.detail ? (
+              <>
+                <span>{item.label}</span>
+                <span className="menu-detail">{item.detail}</span>
+              </>
+            ) : (
+              item.label
+            )}
           </button>
         ),
       )}

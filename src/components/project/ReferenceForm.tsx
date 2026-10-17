@@ -96,7 +96,7 @@ export function ReferenceForm({ form, ctx }: { form: Form; ctx: ProjectContext }
 
   return (
     <FormFrame
-      title={form.replacing ? "edit reference" : "new reference"}
+      title={form.base ? "edit reference" : "new reference"}
       opener={form.opener}
       anchor="project:form"
       saving={saving}

@@ -27,5 +27,5 @@ export function usePeekHeld(item: Item | undefined, activeRef: RefObject<HTMLLIE
   }, []);
   const hit = item?.hit;
   if (!held || hit?.address.target.kind !== "row") return null;
-  return { address: formatAddress(hit.address), via: null, by: null, rect: activeRef.current?.getBoundingClientRect() ?? null, place: null };
+  return { address: formatAddress(hit.address), via: null, by: null, from: null, rect: activeRef.current?.getBoundingClientRect() ?? null, place: null };
 }

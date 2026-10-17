@@ -1,4 +1,4 @@
-import { api, type AppError, type ColumnInfo, type ConnectionSpec, type Home, type SnapshotInfo } from "../../api";
+import { api, type Address, type AppError, type ColumnInfo, type ConnectionSpec, type Home, type ObjectAction, type SnapshotInfo } from "../../api";
 import type { Slice, Store } from "../store";
 
 export interface Toast {
@@ -16,6 +16,8 @@ type Dialog =
   | { type: "password"; spec: ConnectionSpec; account: string | null; error?: string; savePassword: boolean }
   | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }
   | { type: "prompt"; title: string; value: string; onSubmit: (value: string) => void }
+  /** A rule action on a row, or on a table address without a filter: its params and what it writes, before it is queued. */
+  | { type: "action"; address: Address; action: ObjectAction }
   | { type: "insertRow"; database: string; table: string; columns: ColumnInfo[] }
   /** How a saved query shows on the readout; `null` is not pinned. */
   | { type: "pin"; title: string; pin: Home | null; onSubmit: (pin: Home | null) => void }

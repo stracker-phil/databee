@@ -91,9 +91,9 @@ export function StyleForm({ form, ctx }: { form: SForm; ctx: ProjectContext }) {
     ctx.setForm({ ...form, ...patch });
   };
   const rule = styleRule(form);
-  const change: ProjectChange = form.index === null ? { op: "addStyle", rule } : { op: "updateStyle", index: form.index, rule };
+  const change: ProjectChange = form.replacing === null ? { op: "addStyle", rule } : { op: "updateStyle", id: form.replacing, rule };
   return (
-    <FormFrame title={form.index === null ? "new value style" : "edit value style"} opener={form.opener} anchor="project:form" saving={saving} error={error} onCancel={() => ctx.setForm(null)} onSave={() => void save(change)} footer={null}>
+    <FormFrame title={form.replacing === null ? "new value style" : "edit value style"} opener={form.opener} anchor="project:form" saving={saving} error={error} onCancel={() => ctx.setForm(null)} onSave={() => void save(change)} footer={null}>
       <ScopeFields scope={form.scope} error={error} onChange={(scope) => update({ scope })} />
       <Labeled label="match">
         <span className="picker">

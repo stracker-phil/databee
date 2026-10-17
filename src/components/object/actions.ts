@@ -1,42 +1,47 @@
-import type { ActionParam, Address, ObjectAction } from "../../api";
+import { api, type ActionWrite, type Address, type ObjectAction } from "../../api";
 import type { Command } from "../../commands";
 import { documentText, objectAddress } from "../../lib/document";
-import { selectActiveTab, selectDocument, useStore } from "../../state/store";
+import { fail, selectActiveTab, selectDocument, selectSessionBySlug, useStore } from "../../state/store";
 import type { MenuEntry } from "../ContextMenu";
 
-const MAX_CHOICES = 8;
-
-function paramTitle(action: ObjectAction, param: ActionParam): string {
-  const shown = param.choices.slice(0, MAX_CHOICES).join(", ");
-  const more = param.choices.length > MAX_CHOICES ? ", …" : "";
-  const choices = shown ? ` (${shown}${more}${param.free ? ", or any value" : ""})` : "";
-  return `${action.name}: ${param.name}${choices}`;
+function writeText(write: ActionWrite): string {
+  switch (write.write) {
+    case "set":
+      return `${write.table}: ${write.columns.join(", ")}`;
+    case "deleteRows":
+      return `${write.table}: deletes rows`;
+    case "freeSql":
+      return `${write.table}: free SQL`;
+  }
 }
 
-/** Asks for each required parameter in turn, then calls `done`; optional ones are left to their default. */
-function askParams(action: ObjectAction, params: Record<string, string>, index: number, done: (params: Record<string, string>) => void) {
-  const param = action.params[index];
-  if (!param) return done(params);
-  if (param.optional) return askParams(action, params, index + 1, done);
-  useStore.getState().openDialog({
-    type: "prompt",
-    title: paramTitle(action, param),
-    value: param.default ?? param.choices[0] ?? "",
-    onSubmit: (value) => askParams(action, { ...params, [param.name]: value }, index + 1, done),
-  });
-}
+/** What the action writes, step by step, e.g. "wp_wc_orders: date_updated_gmt, status · wp_posts: post_status". */
+export const writesSummary = (action: ObjectAction) => action.writes.map(writeText).join(" · ");
 
+/** Opens the action sheet: params, and the rows and values the action writes, before it is queued. */
 function runAction(address: Address, action: ObjectAction) {
-  askParams(action, {}, 0, (params) => {
-    void useStore.getState().queueAction(objectAddress(address, "document"), action.name, params);
-  });
+  useStore.getState().openDialog({ type: "action", address: objectAddress(address, "document"), action });
+}
+
+/** Opens the sheet of table action `name` on a table address (an anomaly's fix). */
+export async function runTableAction(address: Address, name: string) {
+  const s = useStore.getState();
+  const session = selectSessionBySlug(s, address.connection);
+  if (!session || address.target.kind !== "table") return;
+  try {
+    const action = (await api.tableActions(session.id, address.database, address.target.table)).find((a) => a.name === name);
+    if (action) s.openDialog({ type: "action", address, action });
+    else s.toast("error", `${address.target.table} has no action ${name}`);
+  } catch (e) {
+    fail(e, `Cannot open ${name}`);
+  }
 }
 
 const actionTitle = (action: ObjectAction) => `Run ${action.name}${action.undo ? "" : " (no undo)"}`;
 
 export function actionMenu(address: Address, actions: ObjectAction[]): MenuEntry[] {
   if (actions.length === 0) return [{ label: "No actions apply to this row", disabled: true, action: () => {} }];
-  return actions.map((action) => ({ label: actionTitle(action), action: () => runAction(address, action) }));
+  return actions.map((action) => ({ label: actionTitle(action), detail: writesSummary(action), action: () => runAction(address, action) }));
 }
 
 /** The active object's actions as palette commands (`>`); they exist only while that document is loaded. */

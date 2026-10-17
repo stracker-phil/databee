@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { address, formatAddress } from "../../lib/address";
-import { connectedStore } from "../../test/fixtures";
+import { connectedStore, text, value } from "../../test/fixtures";
 import { activeObject, objectDocument, orderAddress } from "../../test/objectFixtures";
 import { ObjectHeader } from "./ObjectHeader";
 
@@ -13,6 +13,20 @@ const alternative = (table: string, key: string) => address("shop", "db", { kind
 
 const header = (alternatives = [alternative("wp_posts", "4711"), alternative("wp_users", "4711")]) =>
   render(<ObjectHeader document={objectDocument({ alternatives })} owner={orderAddress} view={{ current: "document", onChange: () => {} }} />);
+
+describe("ObjectHeader summary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore({ tabs: [] });
+  });
+
+  it("shows the names and values of the header summary", () => {
+    const header = { values: [{ name: "status", value: value({ raw: text("wc-processing") }) }] };
+    render(<ObjectHeader document={objectDocument({ header })} owner={orderAddress} view={{ current: "document", onChange: () => {} }} />);
+    expect(screen.getByText("status")).toBeInTheDocument();
+    expect(screen.getByText("wc-processing")).toBeInTheDocument();
+  });
+});
 
 describe("ObjectHeader alternatives", () => {
   beforeEach(() => {

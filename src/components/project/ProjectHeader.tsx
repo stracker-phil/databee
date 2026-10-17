@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { api, type PresetRow } from "../../api";
+import { projectKey } from "../../state/slices/project";
 import { fail, useStore } from "../../state/store";
 import type { ProjectContext } from "./context";
 
-function PrefixRow({ ctx }: { ctx: ProjectContext }) {
+function PrefixField({ ctx }: { ctx: ProjectContext }) {
   const { project, prefix, suggestedPrefix } = ctx.rules;
   const [text, setText] = useState(project.prefix ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -14,8 +15,10 @@ function PrefixRow({ ctx }: { ctx: ProjectContext }) {
     setError(failed?.message ?? null);
   };
   return (
-    <div className="row prefix-row">
-      <label htmlFor="project-prefix">prefix</label>
+    <span className="head-field">
+      <label htmlFor="project-prefix" className="o2">
+        prefix
+      </label>
       <input
         id="project-prefix"
         className="input mono"
@@ -28,8 +31,8 @@ function PrefixRow({ ctx }: { ctx: ProjectContext }) {
         onBlur={() => void commit()}
         onKeyDown={(e) => e.key === "Enter" && void commit()}
       />
-      <span className="o3">{error ?? (suggestedPrefix ? `suggested: ${suggestedPrefix}` : "no suggestion")}</span>
-    </div>
+      <span className={error ? "field-error" : "o3"}>{error ?? (suggestedPrefix ? `suggested: ${suggestedPrefix}` : "no suggestion")}</span>
+    </span>
   );
 }
 
@@ -39,15 +42,14 @@ function nextPresets(presets: PresetRow[], name: string, on: boolean): string[] 
   return on ? [...applied.filter((n) => n !== name), name] : applied.filter((n) => n !== name);
 }
 
-function PresetLine({ preset, ctx }: { preset: PresetRow; ctx: ProjectContext }) {
+function PresetSwitch({ preset, ctx }: { preset: PresetRow; ctx: ProjectContext }) {
   const toggle = async (on: boolean) => {
     const failed = await ctx.change({ op: "setPresets", presets: nextPresets(ctx.rules.presets, preset.name, on) });
     if (failed) fail(failed, `Could not switch ${preset.name}`);
   };
+  const markers = preset.markerTables.length ? `marker tables ${preset.markerTables.join(", ")}` : "no marker tables";
   return (
-    <div className="row preset-row">
-      <span>{preset.name}</span>
-      <span className="o3">{preset.markerTables.length ? `marker ${preset.markerTables.join(", ")}` : "no marker tables"}</span>
+    <label className="head-field" title={markers}>
       <input
         className="switch"
         type="checkbox"
@@ -59,7 +61,8 @@ function PresetLine({ preset, ctx }: { preset: PresetRow; ctx: ProjectContext })
         checked={preset.applied}
         onChange={(e) => void toggle(e.target.checked)}
       />
-    </div>
+      <span>{preset.name}</span>
+    </label>
   );
 }
 
@@ -75,31 +78,38 @@ async function exportPreset(ctx: ProjectContext) {
   }
 }
 
-export function PresetsSection({ ctx }: { ctx: ProjectContext }) {
+/** One row: prefix, a switch per preset, auto or "back to auto", then refresh coverage and export. */
+export function ProjectHeader({ ctx }: { ctx: ProjectContext }) {
   const auto = ctx.rules.project.presets === null;
   const toAuto = async () => {
     const failed = await ctx.change({ op: "setPresets", presets: null });
     if (failed) fail(failed, "Could not switch presets back to auto");
   };
+  const refresh = () => useStore.getState().refreshCoverage(projectKey(ctx.tab.sessionId, ctx.tab.database));
   return (
-    <section aria-label="Presets and prefix">
-      <div className="sh">
-        <span className="tn sans">presets and prefix</span>
-        <span className="via">{auto ? "auto: every preset whose marker tables exist" : "chosen by hand"}</span>
-        <span className="spacer" />
-        {!auto && (
+    <section className="project-head" aria-label="Presets and prefix">
+      <PrefixField key={ctx.rules.project.prefix ?? ""} ctx={ctx} />
+      <span className="head-presets">
+        {ctx.rules.presets.map((preset) => (
+          <PresetSwitch key={preset.name} preset={preset} ctx={ctx} />
+        ))}
+        {auto ? (
+          <span className="o3" title="every preset whose marker tables exist">
+            auto
+          </span>
+        ) : (
           <button className="act" data-stage="project:presets-auto" onClick={() => void toAuto()}>
             back to auto
           </button>
         )}
-        <button className="act" data-stage="project:export" data-stage-label="Export as preset" onClick={() => void exportPreset(ctx)}>
-          Export as preset…
-        </button>
-      </div>
-      <PrefixRow key={ctx.rules.project.prefix ?? ""} ctx={ctx} />
-      {ctx.rules.presets.map((preset) => (
-        <PresetLine key={preset.name} preset={preset} ctx={ctx} />
-      ))}
+      </span>
+      <span className="spacer" />
+      <button className="act" data-stage="project:refresh-coverage" data-stage-label="Refresh coverage" onClick={refresh}>
+        Refresh coverage
+      </button>
+      <button className="act" data-stage="project:export" data-stage-label="Export as preset" onClick={() => void exportPreset(ctx)}>
+        Export as preset…
+      </button>
     </section>
   );
 }

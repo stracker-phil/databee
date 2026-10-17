@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE, type AnomalyLine, type NewObjects, type PinnedLine, type RecentLine } from "../../api";
+import { api, EMPTY_UI_STATE, type AnomalyLine, type CreatedEntity, type CreatedItem, type PinnedLine, type RecentLine, type Summary } from "../../api";
 import { address, formatAddress } from "../../lib/address";
 import { NO_HOVER, selectActiveTab, useStore } from "../../state/store";
 import { connectedStore, readoutOf, readoutTab, text, value } from "../../test/fixtures";
@@ -18,6 +18,9 @@ const mocked = vi.mocked(api, true);
 
 const tab = readoutTab();
 const posts = address("shop", "db", { kind: "table", table: "wp_posts", filter: [] });
+const postRow = (key: string) => address("shop", "db", { kind: "row", table: "wp_posts", key });
+
+const summary = (...pairs: [string, string][]): Summary => ({ values: pairs.map(([name, v]) => ({ name, value: value({ raw: text(v) }) })) });
 
 const anomaly = (patch: Partial<AnomalyLine> = {}): AnomalyLine => ({
   id: "auto-drafts",
@@ -41,17 +44,29 @@ const pinned = (count: number): PinnedLine => ({
   error: null,
 });
 
-const recent = (key: string): RecentLine => ({ address: address("shop", "db", { kind: "row", table: "wp_posts", key }), at: Math.floor(Date.now() / 1000), summary: [], error: null });
+const recent = (key: string, patch: Partial<RecentLine> = {}): RecentLine => ({ address: postRow(key), at: Math.floor(Date.now() / 1000), summary: { values: [] }, error: null, ...patch });
 
-const newPosts = (): NewObjects => ({
-  entity: "post",
+const entityOf = (entity: string, patch: Partial<CreatedEntity> = {}): CreatedEntity => ({
+  entity,
   preset: "wordpress",
   table: "wp_posts",
-  sql: "SELECT ID, post_title FROM wp_posts ORDER BY ID DESC LIMIT 5",
-  columns: ["ID", "post_title"],
-  rows: [{ address: null, values: [value({ raw: text("7") }), value({ raw: text("Hello") })] }],
+  sql: `SELECT ID, post_title FROM wp_posts WHERE post_type = '${entity}' ORDER BY ID DESC LIMIT 5`,
+  countInWindow: 2,
   error: null,
+  ...patch,
 });
+
+const createdItem = (entity: string, key: string, patch: Partial<CreatedItem> = {}): CreatedItem => ({
+  entity,
+  table: "wp_posts",
+  address: postRow(key),
+  created: value({ raw: text("2026-01-15 10:00:00") }),
+  summary: summary(["post_title", `Title ${key}`]),
+  ...patch,
+});
+
+const withCreated = (items: CreatedItem[], entities: CreatedEntity[] = [entityOf("post"), entityOf("page", { countInWindow: 1 })]) =>
+  readoutOf({ recentlyCreated: { items, entities, error: null } });
 
 const shown = async (readout = readoutOf()) => {
   mocked.readout.mockResolvedValue(readout);
@@ -66,7 +81,7 @@ describe("Readout", () => {
     connectedStore({ tabs: [tab] });
   });
 
-  it("shows the raw status line with host, database, prefix, presets, server version and status values", async () => {
+  it("shows the database, one meta line with host, prefix, presets and server version, and the status values", async () => {
     const base = readoutOf();
     await shown({
       ...base,
@@ -81,9 +96,10 @@ describe("Readout", () => {
       },
     });
     const status = within(screen.getByRole("region", { name: "Status" }));
-    for (const part of ["127.0.0.1", "db", "wp_", "wordpress, woocommerce", "10.3.39-MariaDB", "siteurl", "https://shop.test"]) {
-      expect(status.getByText(part)).toBeInTheDocument();
-    }
+    expect(status.getByRole("heading", { name: "db" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Status" })).toHaveTextContent("127.0.0.1 · wp_ · wordpress, woocommerce · 10.3.39-MariaDB");
+    expect(status.getByRole("button", { name: "siteurl" })).toBeInTheDocument();
+    expect(status.getByText("https://shop.test")).toBeInTheDocument();
   });
 
   it("opens the saved query of a status value", async () => {
@@ -101,7 +117,7 @@ describe("Readout", () => {
   });
 
   describe("without presets", () => {
-    it.each(["Anomalies", "New objects", "Recent"])("shows no %s section", async (name) => {
+    it.each(["Needs attention", "Recently created", "Recently opened"])("shows no %s section", async (name) => {
       await shown();
       expect(screen.queryByRole("region", { name })).not.toBeInTheDocument();
     });
@@ -113,16 +129,17 @@ describe("Readout", () => {
   });
 
   describe("anomalies", () => {
-    it("shows the count and text of a line without coloring the count", async () => {
+    it("shows the count, text, preset and id of a line without coloring the count", async () => {
       await shown(readoutOf({ anomalies: { items: [anomaly()], error: null } }));
-      const section = within(screen.getByRole("region", { name: "Anomalies" }));
+      const section = within(screen.getByRole("region", { name: "Needs attention" }));
       expect(section.getByText("auto-drafts older than a day")).toBeInTheDocument();
+      expect(section.getByText("wordpress · auto-drafts")).toBeInTheDocument();
       expect(section.getByText("12")).not.toHaveAttribute("style");
     });
 
     it("opens the rows of the table with the line's filter", async () => {
       await shown(readoutOf({ anomalies: { items: [anomaly()], error: null } }));
-      await userEvent.click(screen.getByRole("button", { name: "→ rows" }));
+      await userEvent.click(screen.getByRole("button", { name: "Show rows" }));
       expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "table", table: "wp_posts", filter: "post_status = 'auto-draft'" });
     });
 
@@ -130,37 +147,45 @@ describe("Readout", () => {
       const query = { id: "orphans", title: "Orphaned meta", sql: "SELECT 1", pin: null, origin: { kind: "project" } as const, readOnly: false };
       mocked.savedQueries.mockResolvedValue([query]);
       await shown(readoutOf({ anomalies: { items: [anomaly({ address: address("shop", "db", { kind: "query", id: "orphans" }), filter: null })], error: null } }));
-      await userEvent.click(screen.getByRole("button", { name: "→ rows" }));
+      await userEvent.click(screen.getByRole("button", { name: "Show rows" }));
       await vi.waitFor(() => expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "query", title: "Orphaned meta" }));
     });
 
-    it("queues the fix action for review", async () => {
+    it("opens the fix action's sheet on its table instead of queueing it", async () => {
+      const fix = { name: "delete-auto-drafts", preset: "wordpress", kind: "delete" as const, undo: true, params: [], writes: [{ write: "deleteRows" as const, table: "wp_posts" }] };
+      mocked.tableActions.mockResolvedValue([fix]);
       await shown(readoutOf({ anomalies: { items: [anomaly({ fix: { action: "delete-auto-drafts", address: posts } })], error: null } }));
       await userEvent.click(screen.getByRole("button", { name: "delete-auto-drafts" }));
-      expect(mocked.planAction).toHaveBeenCalledWith("s1", formatAddress(posts), "delete-auto-drafts", {});
-      await vi.waitFor(() => expect(useStore.getState().pending).toHaveLength(1));
+      expect(mocked.tableActions).toHaveBeenCalledWith("s1", "db", "wp_posts");
+      await vi.waitFor(() => expect(useStore.getState().dialog).toEqual({ type: "action", address: posts, action: fix }));
+      expect(useStore.getState().pending).toHaveLength(0);
     });
 
-    it("offers no rows link for a line without an address", async () => {
+    it("offers no Show rows button for a line without an address", async () => {
       await shown(readoutOf({ anomalies: { items: [anomaly({ address: null, filter: null })], error: null } }));
-      expect(screen.queryByRole("button", { name: "→ rows" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Show rows" })).not.toBeInTheDocument();
     });
 
     it("shows a failing rule's error next to its line", async () => {
       await shown(readoutOf({ anomalies: { items: [anomaly({ count: null, error: "Unknown column 'x'" })], error: null } }));
-      expect(screen.getByRole("region", { name: "Anomalies" })).toHaveTextContent("Unknown column 'x'");
+      expect(screen.getByRole("region", { name: "Needs attention" })).toHaveTextContent("Unknown column 'x'");
     });
   });
 
   describe("part errors", () => {
     it("shows an error of a part in its own section", async () => {
       await shown(readoutOf({ anomalies: { items: [], error: "preset wordpress: rule broken" } }));
-      expect(within(screen.getByRole("region", { name: "Anomalies" })).getByText("preset wordpress: rule broken")).toBeInTheDocument();
+      expect(within(screen.getByRole("region", { name: "Needs attention" })).getByText("preset wordpress: rule broken")).toBeInTheDocument();
+    });
+
+    it("shows an error of the recently created part in its section", async () => {
+      await shown(readoutOf({ recentlyCreated: { items: [], entities: [], error: "boom" } }));
+      expect(screen.getByRole("region", { name: "Recently created" })).toHaveTextContent("boom");
     });
 
     it("keeps the other sections when one part fails", async () => {
-      await shown(readoutOf({ newObjects: { items: [], error: "boom" }, pinned: { items: [pinned(3)], error: null } }));
-      expect(screen.getByRole("region", { name: "New objects" })).toHaveTextContent("boom");
+      await shown(readoutOf({ recentlyCreated: { items: [], entities: [], error: "boom" }, pinned: { items: [pinned(3)], error: null } }));
+      expect(screen.getByRole("region", { name: "Recently created" })).toHaveTextContent("boom");
       expect(screen.getByRole("button", { name: "Open drafts" })).toBeInTheDocument();
     });
 
@@ -171,20 +196,72 @@ describe("Readout", () => {
     });
   });
 
-  describe("new objects", () => {
-    it("lists the newest rows of an entity with the SQL behind them", async () => {
-      await shown(
-        readoutOf({
-          newObjects: {
-            items: [{ entity: "post", preset: "wordpress", table: "wp_posts", sql: "SELECT ID, post_title FROM wp_posts ORDER BY ID DESC LIMIT 5", columns: ["ID", "post_title"], rows: [{ address: null, values: [value({ raw: text("7") }), value({ raw: text("Hello") })] }], error: null }],
-            error: null,
-          },
-        }),
-      );
-      const section = within(screen.getByRole("region", { name: "New objects" }));
-      expect(section.getByText("post_title")).toBeInTheDocument();
-      expect(section.getByText("Hello")).toBeInTheDocument();
-      expect(section.getByText(/SELECT ID, post_title FROM wp_posts/)).toBeInTheDocument();
+  describe("recently created", () => {
+    const section = () => within(screen.getByRole("region", { name: "Recently created" }));
+
+    it("lists each row with its entity, key button and summary names and values", async () => {
+      await shown(withCreated([createdItem("post", "7", { summary: summary(["post_title", "Hello"], ["post_status", "publish"]) })]));
+      const line = section().getByRole("button", { name: "#7" }).closest<HTMLElement>(".row")!;
+      expect(line).toHaveTextContent("post");
+      for (const part of ["post_title", "Hello", "post_status", "publish"]) expect(within(line).getByText(part)).toBeInTheDocument();
+    });
+
+    it("opens the row of a line by its key", async () => {
+      await shown(withCreated([createdItem("post", "7")]));
+      await userEvent.click(section().getByRole("button", { name: "#7" }));
+      expect(formatAddress(activeObject().address)).toBe("databee://shop/db/wp_posts/7");
+    });
+
+    it("shows the relative time of a timestamp with the stored value in its title", async () => {
+      const utc = Date.now() / 1000 - 2 * 3600;
+      const created = value({ raw: { t: "temporal", v: "2026-01-15 10:00:00" }, kind: { kind: "timestamp", utc, zone: null } });
+      await shown(withCreated([createdItem("post", "7", { created })]));
+      const time = section().getByText("2 h ago");
+      expect(time.getAttribute("title")).toContain("2026-01-15 10:00:00");
+    });
+
+    it("shows the stored value when it is no timestamp", async () => {
+      await shown(withCreated([createdItem("post", "7")]));
+      expect(section().getByText("2026-01-15 10:00:00")).toBeInTheDocument();
+    });
+
+    it("shows a chip per entity with its count in the window, all pressed", async () => {
+      await shown(withCreated([createdItem("post", "7")]));
+      const chips = section().getByRole("group", { name: "Entities" });
+      expect(within(chips).getByRole("button", { name: "post 2" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(chips).getByRole("button", { name: "page 1" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("hides the lines of an entity when its chip is toggled off and shows them again when toggled on", async () => {
+      await shown(withCreated([createdItem("post", "7", { summary: summary(["post_title", "Hello"]) }), createdItem("page", "3", { summary: summary(["post_title", "About"]) })]));
+      const chip = section().getByRole("button", { name: "post 2" });
+      await userEvent.click(chip);
+      expect(chip).toHaveAttribute("aria-pressed", "false");
+      expect(section().queryByText("Hello")).not.toBeInTheDocument();
+      expect(section().getByText("About")).toBeInTheDocument();
+      await userEvent.click(chip);
+      expect(chip).toHaveAttribute("aria-pressed", "true");
+      expect(section().getByText("Hello")).toBeInTheDocument();
+    });
+
+    it("discloses the query and table of an entity from its chevron", async () => {
+      const post = entityOf("post");
+      await shown(withCreated([createdItem("post", "7")], [post]));
+      expect(section().queryByText(post.sql)).not.toBeInTheDocument();
+      await userEvent.click(section().getByRole("button", { name: "Query of post" }));
+      expect(section().getByText(post.sql)).toBeInTheDocument();
+      expect(section().getByRole("button", { name: "wp_posts" })).toBeInTheDocument();
+      expect(section().getByRole("button", { name: "Query of post" })).toHaveAttribute("aria-expanded", "true");
+    });
+
+    it("marks an entity whose query failed", async () => {
+      await shown(withCreated([], [entityOf("post", { error: "Unknown column 'x'" })]));
+      expect(section().getByRole("button", { name: "post failed" })).toBeInTheDocument();
+    });
+
+    it("says no rows when every entity has none", async () => {
+      await shown(withCreated([], [entityOf("post", { countInWindow: 0 })]));
+      expect(section().getByText("no rows")).toBeInTheDocument();
     });
   });
 
@@ -202,7 +279,7 @@ describe("Readout", () => {
   });
 
   describe("status values", () => {
-    it("names the table a value is stored in before its title", async () => {
+    it("shows the table a value is stored in after its value", async () => {
       const base = readoutOf();
       const source = { table: "wp_options", column: "option_value", row: [{ column: "option_name", value: "siteurl" }] };
       await shown({
@@ -222,20 +299,34 @@ describe("Readout", () => {
   });
 
   describe("band counts and hints", () => {
+    const full = () =>
+      readoutOf({
+        anomalies: { items: [anomaly()], error: null },
+        recentlyCreated: { items: [createdItem("post", "7")], entities: [entityOf("post")], error: null },
+        pinned: { items: [pinned(3)], error: null },
+        recent: { items: [recent("7")], error: null },
+      });
+
     it.each([
-      ["Anomalies", "1 rule"],
-      ["New objects", "1 entity"],
+      ["Needs attention", "1 rule"],
+      ["Recently created", "1 row"],
       ["Pinned queries", "1 query"],
-      ["Recent", "1 object"],
+      ["Recently opened", "1 object"],
     ])("shows the count of the %s band", async (name, count) => {
-      await shown(readoutOf({ anomalies: { items: [anomaly()], error: null }, newObjects: { items: [newPosts()], error: null }, pinned: { items: [pinned(3)], error: null }, recent: { items: [recent("7")], error: null } }));
+      await shown(full());
       expect(within(screen.getByRole("region", { name })).getByText(count)).toBeInTheDocument();
     });
 
     it("pluralizes the count of a band", async () => {
-      await shown(readoutOf({ anomalies: { items: [anomaly(), anomaly({ id: "orphans" })], error: null }, newObjects: { items: [newPosts(), { ...newPosts(), entity: "page" }], error: null } }));
+      await shown(readoutOf({ anomalies: { items: [anomaly(), anomaly({ id: "orphans" })], error: null }, recentlyCreated: { items: [createdItem("post", "7"), createdItem("post", "8")], entities: [entityOf("post")], error: null } }));
       expect(screen.getByText("2 rules")).toBeInTheDocument();
-      expect(screen.getByText("2 entities")).toBeInTheDocument();
+      expect(screen.getByText("2 rows")).toBeInTheDocument();
+    });
+
+    it("counts only the lines of the entities that are shown", async () => {
+      await shown(withCreated([createdItem("post", "7"), createdItem("page", "3")]));
+      await userEvent.click(screen.getByRole("button", { name: "page 1" }));
+      expect(within(screen.getByRole("region", { name: "Recently created" })).getByText("1 row")).toBeInTheDocument();
     });
 
     it("shows how to pin and that nothing is pinned yet", async () => {
@@ -253,38 +344,38 @@ describe("Readout", () => {
 
     it("hides the rows but keeps the band and the region", async () => {
       await shown(withAnomaly());
-      await userEvent.click(screen.getByRole("button", { name: "Collapse anomalies" }));
-      const toggle = screen.getByRole("button", { name: "Expand anomalies" });
+      await userEvent.click(screen.getByRole("button", { name: "Collapse needs attention" }));
+      const toggle = screen.getByRole("button", { name: "Expand needs attention" });
       expect(toggle).toHaveAttribute("aria-expanded", "false");
       expect(screen.queryByText(anomalyText)).not.toBeInTheDocument();
-      expect(within(screen.getByRole("region", { name: "Anomalies" })).getByText("1 rule")).toBeInTheDocument();
+      expect(within(screen.getByRole("region", { name: "Needs attention" })).getByText("1 rule")).toBeInTheDocument();
     });
 
     it("shows the rows again when expanded", async () => {
       await shown(withAnomaly());
-      await userEvent.click(screen.getByRole("button", { name: "Collapse anomalies" }));
-      await userEvent.click(screen.getByRole("button", { name: "Expand anomalies" }));
+      await userEvent.click(screen.getByRole("button", { name: "Collapse needs attention" }));
+      await userEvent.click(screen.getByRole("button", { name: "Expand needs attention" }));
       expect(screen.getByText(anomalyText)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Collapse anomalies" })).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("button", { name: "Collapse needs attention" })).toHaveAttribute("aria-expanded", "true");
     });
 
     it("toggles when the band is clicked outside its buttons", async () => {
       await shown(withAnomaly());
-      await userEvent.click(within(screen.getByRole("region", { name: "Anomalies" })).getByText("anomalies"));
+      await userEvent.click(within(screen.getByRole("region", { name: "Needs attention" })).getByText("needs attention"));
       expect(screen.queryByText(anomalyText)).not.toBeInTheDocument();
-      await userEvent.click(within(screen.getByRole("region", { name: "Anomalies" })).getByText("1 rule"));
+      await userEvent.click(within(screen.getByRole("region", { name: "Needs attention" })).getByText("1 rule"));
       expect(screen.getByText(anomalyText)).toBeInTheDocument();
     });
 
     it("remembers the collapsed band per database and keeps it collapsed after a reload", async () => {
       await shown(withAnomaly());
-      await userEvent.click(screen.getByRole("button", { name: "Collapse anomalies" }));
+      await userEvent.click(screen.getByRole("button", { name: "Collapse needs attention" }));
       expect(useStore.getState().uiState[session.identity]?.collapsedGroups.db).toEqual(["::anomalies"]);
 
       mocked.readout.mockResolvedValue(readoutOf({ anomalies: { items: [anomaly(), anomaly({ id: "orphans" })], error: null } }));
       act(() => useStore.getState().bumpData());
       await screen.findByText("2 rules");
-      expect(screen.getByRole("button", { name: "Expand anomalies" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Expand needs attention" })).toBeInTheDocument();
       expect(screen.queryByText(anomalyText)).not.toBeInTheDocument();
     });
 
@@ -294,16 +385,14 @@ describe("Readout", () => {
       expect(screen.getByRole("button", { name: "Expand pinned" })).toHaveAttribute("aria-expanded", "false");
       expect(screen.queryByRole("button", { name: "Open drafts" })).not.toBeInTheDocument();
     });
-  });
 
-  describe("new objects block", () => {
-    it("shows the entity, its table and its row count, and opens the table", async () => {
-      await shown(readoutOf({ newObjects: { items: [newPosts()], error: null } }));
-      const section = within(screen.getByRole("region", { name: "New objects" }));
-      expect(section.getByText("post")).toBeInTheDocument();
-      expect(section.getByText("1 row")).toBeInTheDocument();
-      await userEvent.click(section.getByRole("button", { name: "wp_posts" }));
-      expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "table", table: "wp_posts" });
+    it.each([
+      ["created", "recently created"],
+      ["recent", "recently opened"],
+    ])("remembers the %s band under its own key", async (key, name) => {
+      await shown(readoutOf({ recentlyCreated: { items: [createdItem("post", "7")], entities: [entityOf("post")], error: null }, recent: { items: [recent("7")], error: null } }));
+      await userEvent.click(screen.getByRole("button", { name: `Collapse ${name}` }));
+      expect(useStore.getState().uiState[session.identity]?.collapsedGroups.db).toEqual([`::${key}`]);
     });
   });
 
@@ -358,21 +447,21 @@ describe("Readout", () => {
 
     beforeEach(() => useStore.setState({ hover: NO_HOVER }));
 
-    it("names the table of an anomaly row when its empty space is hovered", async () => {
+    it("names the table of an anomaly card when its empty space is hovered", async () => {
       await shownHovering(readoutOf({ anomalies: { items: [anomaly()], error: null } }));
       await hover(screen.getByText("12"));
       expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false });
     });
 
-    it("names the table of a row of a new-objects block", async () => {
-      await shownHovering(readoutOf({ newObjects: { items: [newPosts()], error: null } }));
-      await hover(screen.getByText("Hello").closest<HTMLElement>(".row")!);
+    it("names the table of a recently created line", async () => {
+      await shownHovering(withCreated([createdItem("post", "7")]));
+      await hover(screen.getByRole("button", { name: "#7" }).closest<HTMLElement>(".row")!);
       expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false });
     });
 
     it("names the table of a recent object row", async () => {
       await shownHovering(readoutOf({ recent: { items: [recent("7")], error: null } }));
-      await hover(within(screen.getByRole("region", { name: "Recent" })).getByText("wp_posts"));
+      await hover(within(screen.getByRole("region", { name: "Recently opened" })).getByText("wp_posts"));
       expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false });
     });
 
@@ -392,13 +481,25 @@ describe("Readout", () => {
     });
   });
 
-  describe("recent objects", () => {
+  describe("recently opened", () => {
     it("opens the row of a recent object by its key", async () => {
       await shown(readoutOf({ recent: { items: [recent("7")], error: null } }));
-      expect(within(screen.getByRole("region", { name: "Recent" })).getByText("wp_posts")).toBeInTheDocument();
+      expect(within(screen.getByRole("region", { name: "Recently opened" })).getByText("wp_posts")).toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "#7" }));
       expect(formatAddress(activeObject().address)).toBe("databee://shop/db/wp_posts/7");
       expect(mocked.rememberObject).toHaveBeenCalledWith("s1", "databee://shop/db/wp_posts/7");
+    });
+
+    it("renders the summary of a recent object as names and values", async () => {
+      await shown(readoutOf({ recent: { items: [recent("7", { summary: summary(["post_title", "Hello"]) })], error: null } }));
+      const section = within(screen.getByRole("region", { name: "Recently opened" }));
+      expect(section.getByText("post_title")).toBeInTheDocument();
+      expect(section.getByText("Hello")).toBeInTheDocument();
+    });
+
+    it("shows the error of a recent object instead of its summary", async () => {
+      await shown(readoutOf({ recent: { items: [recent("7", { error: "Row is gone" })], error: null } }));
+      expect(within(screen.getByRole("region", { name: "Recently opened" })).getByText("Row is gone")).toBeInTheDocument();
     });
   });
 });

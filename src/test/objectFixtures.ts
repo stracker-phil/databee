@@ -132,14 +132,25 @@ export const orderGroups = {
   }),
 };
 
-export const markCompleted: ObjectAction = { name: "mark-completed", preset: "woocommerce", kind: "update", undo: true, params: [] };
-export const purgeNotes: ObjectAction = { name: "purge-notes", preset: "woocommerce", kind: "delete", undo: false, params: [] };
+export const markCompleted: ObjectAction = {
+  name: "mark-completed",
+  preset: "woocommerce",
+  kind: "update",
+  undo: true,
+  params: [],
+  writes: [
+    { write: "set", table: "wp_wc_orders", columns: ["date_updated_gmt", "status"] },
+    { write: "set", table: "wp_posts", columns: ["post_modified", "post_status"] },
+  ],
+};
+export const purgeNotes: ObjectAction = { name: "purge-notes", preset: "woocommerce", kind: "sql", undo: false, params: [], writes: [{ write: "freeSql", table: "wp_comments" }] };
 export const setStatus: ObjectAction = {
   name: "set-status",
   preset: "woocommerce",
   kind: "update",
   undo: true,
   params: [{ name: "status", type: "text", choices: ["wc-completed", "wc-cancelled"], free: false, default: null, optional: false, error: null }],
+  writes: [{ write: "set", table: "wp_wc_orders", columns: ["status"] }],
 };
 
 /** The `document` reply for order 4711: own, meta, three incoming groups (one capped, one empty) and events. */
@@ -147,7 +158,7 @@ export function objectDocument(patch: Partial<Document> = {}): Document {
   return {
     address: orderAddress,
     entity: "order",
-    header: [],
+    header: { values: [] },
     groups: Object.values(orderGroups),
     alternatives: [],
     actions: [markCompleted, purgeNotes],

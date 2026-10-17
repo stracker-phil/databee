@@ -29,7 +29,7 @@ function documentOf(owner: typeof order, entity: string, keyColumn: string, fiel
     rowsAddress: null,
     error: null,
   };
-  return { address: owner, entity, header: [], groups: [own], alternatives: [], actions: [] };
+  return { address: owner, entity, header: { values: [] }, groups: [own], alternatives: [], actions: [] };
 }
 
 /** The reference `wp_wc_orders.customer_id = 12` that points at `wp_users #12`. */
@@ -37,6 +37,16 @@ export const customerRef: Value = value({
   raw: num("12"),
   kind: { kind: "reference", targets: [user], by: { kind: "preset", preset: "woocommerce", id: "customer" }, exists: true },
   source: source("wp_wc_orders", "customer_id", "4711", "id"),
+});
+
+/** The set of orders `billing_email = ada@example.com`, which the order 4711 itself belongs to. */
+export const emailSet = address("shop", "db", { kind: "table", table: "wp_wc_orders", filter: [{ column: "billing_email", value: "ada@example.com" }] });
+
+/** `wp_wc_orders.billing_email` of the order 4711, a reference to every order with the same email. */
+export const emailRef: Value = value({
+  raw: text("ada@example.com"),
+  kind: { kind: "reference", targets: [emailSet], by: { kind: "preset", preset: "woocommerce", id: "billing-email" }, exists: true },
+  source: source("wp_wc_orders", "billing_email", "4711", "id"),
 });
 
 export const orderDocument = documentOf(order, "order", "id", [

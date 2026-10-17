@@ -1,14 +1,15 @@
-import { useEffect } from "react";
-import type { ProjectChange } from "../../api";
+import { useEffect, useState } from "react";
+import type { ProjectChange, ProjectRules, ResolvedReference } from "../../api";
 import { useStore, type ProjectTab } from "../../state/store";
 import { projectKey } from "../../state/slices/project";
 import { ErrorPanel } from "../ErrorPanel";
+import { useCollapsedGroups } from "../object/useCollapsedGroups";
 import { KindForm, StyleForm } from "./KindStyleForms";
-import { PresetsSection } from "./PresetsSection";
+import { ProjectHeader } from "./ProjectHeader";
 import { ReferenceForm } from "./ReferenceForm";
-import { ReferencesSection } from "./ReferencesSection";
-import { KindsSection, StylesSection } from "./RuleSections";
+import { groupName, TableSection } from "./TableSection";
 import type { ProjectContext } from "./context";
+import { useAutoCoverage } from "./coverage";
 
 function useProjectRules(sessionId: string, database: string) {
   const entry = useStore((s) => s.projectRules[projectKey(sessionId, database)]);
@@ -20,12 +21,36 @@ function useProjectRules(sessionId: string, database: string) {
   return entry;
 }
 
-function OpenForm({ tab, ctx }: { tab: ProjectTab; ctx: ProjectContext }) {
+/** The open form as a modal sheet; every opener (a row's "edit", "r" on a value) sets the tab's form. */
+function FormSheet({ tab, ctx }: { tab: ProjectTab; ctx: ProjectContext }) {
   const form = tab.form;
   if (!form) return null;
   if (form.type === "reference") return <ReferenceForm key={`reference:${form.opener}`} form={form} ctx={ctx} />;
   if (form.type === "kind") return <KindForm key={`kind:${form.index}:${form.opener}`} form={form} ctx={ctx} />;
-  return <StyleForm key={`style:${form.index}:${form.opener}`} form={form} ctx={ctx} />;
+  return <StyleForm key={`style:${form.replacing}:${form.opener}`} form={form} ctx={ctx} />;
+}
+
+const activeReferences = (rules: ProjectRules): ResolvedReference[] => rules.groups.flatMap((g) => g.references.flatMap((r) => (r.reference ? [r.reference] : [])));
+
+function Tables({ ctx }: { ctx: ProjectContext }) {
+  const { tab, rules } = ctx;
+  const [filter, setFilter] = useState("");
+  const coverage = useAutoCoverage(tab.sessionId, tab.database, activeReferences(rules));
+  const collapse = useCollapsedGroups(tab.address);
+  const needle = filter.trim().toLowerCase();
+  const shown = needle ? rules.groups.filter((g) => groupName(g).toLowerCase().includes(needle)) : rules.groups;
+  return (
+    <>
+      <div className="project-filter">
+        <input className="input mono" type="search" aria-label="Filter tables" data-stage="project:filter" data-stage-label="Filter tables" placeholder="filter tables" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <span className="o3">{needle ? `${shown.length} of ${rules.groups.length} tables` : `${rules.groups.length} tables with rules`}</span>
+      </div>
+      {shown.length === 0 && <div className="row empty o3">{rules.groups.length === 0 ? "no rules: no table has a reference, value style, kind, entity or action" : "no table matches"}</div>}
+      {shown.map((group) => (
+        <TableSection key={groupName(group)} group={group} coverage={coverage} collapse={collapse} ctx={ctx} />
+      ))}
+    </>
+  );
 }
 
 export function ProjectPanel({ tab }: { tab: ProjectTab }) {
@@ -41,11 +66,9 @@ export function ProjectPanel({ tab }: { tab: ProjectTab }) {
   };
   return (
     <div className="project" data-stage="project" data-stage-label={`project · ${tab.database}`}>
-      <PresetsSection ctx={ctx} />
-      <OpenForm tab={tab} ctx={ctx} />
-      <ReferencesSection ctx={ctx} />
-      <StylesSection ctx={ctx} />
-      <KindsSection ctx={ctx} />
+      <ProjectHeader ctx={ctx} />
+      <Tables ctx={ctx} />
+      <FormSheet tab={tab} ctx={ctx} />
     </div>
   );
 }

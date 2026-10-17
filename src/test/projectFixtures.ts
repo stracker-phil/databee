@@ -1,4 +1,4 @@
-import type { PresetRow, ProjectRules, Reference, ReferenceRow, ResolvedReference, RuleTable, TableStructure } from "../api";
+import type { PresetRow, ProjectRules, Reference, ReferenceRow, ResolvedReference, RuleTable, TableRules, TableStructure } from "../api";
 
 export const ruleTables: RuleTable[] = [
   { table: "wp_wc_orders", name: "wc_orders" },
@@ -46,6 +46,7 @@ export function referenceRow(patch: Partial<ReferenceRow> = {}): ReferenceRow {
     toWhen: "",
     label: null,
     disabled: false,
+    edited: false,
     reference: orderItemsResolved,
     rule: orderItemsRule,
     ...patch,
@@ -56,15 +57,18 @@ export const woocommercePreset: PresetRow = { name: "woocommerce", markerTables:
 
 export function projectRules(patch: Partial<ProjectRules> = {}): ProjectRules {
   return {
-    project: { connection: "shop", database: "db", prefix: null, network_prefix: null, presets: null, references: [], disabled: [], kinds: [], styles: [], saved: [] },
+    project: { connection: "shop", database: "db", prefix: null, network_prefix: null, presets: null, references: [], disabled: [], enabled: [], kinds: [], styles: [], saved: [] },
     prefix: "wp_",
     suggestedPrefix: "wp_",
     presets: [woocommercePreset],
     foreignKeys: 0,
-    references: [],
-    kinds: [],
-    styles: [],
+    groups: [],
     tables: ruleTables,
     ...patch,
   };
+}
+
+/** A table's group with nothing in it; `table: null` is the group without a table. */
+export function tableRules(table: string | null, patch: Partial<TableRules> = {}): TableRules {
+  return { table, references: [], referencedBy: [], styles: [], kinds: [], entities: [], actions: [], ...patch };
 }

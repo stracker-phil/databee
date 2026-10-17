@@ -1,13 +1,13 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type BrowsePage, type Comparison, type Coverage, type Document, type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Readout, type Resolved, type RuleDraft, type RulesInfo, type SnapshotDiff, type SnapshotInfo, type TableReferences, type TableStructure, type UiState, type WatchPoll } from "../api/types";
+import { EMPTY_UI_STATE, type ActionPreview, type BrowsePage, type Comparison, type Coverage, type Document, type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Readout, type Resolved, type RuleDraft, type RulesInfo, type SnapshotDiff, type SnapshotInfo, type TableReferences, type TableStructure, type UiState, type WatchPoll } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { session } from "./session";
 import { settings } from "./settings";
 
 function emptyProject(database: string): Project {
-  return { connection: "local", database, prefix: null, network_prefix: null, presets: null, references: [], disabled: [], kinds: [], styles: [], saved: [] };
+  return { connection: "local", database, prefix: null, network_prefix: null, presets: null, references: [], disabled: [], enabled: [], kinds: [], styles: [], saved: [] };
 }
 
 /** A readout with nothing in it, as for a database without presets, pins or recent objects. */
@@ -17,7 +17,7 @@ function emptyReadout(database: string): Readout {
     address: { connection: session.slug, database, target: { kind: "home" }, view: null, compare: null },
     status: { host: session.spec.host, slug: session.slug, database, prefix: "", presets: [], serverVersion: session.serverVersion, values: none },
     anomalies: none,
-    newObjects: none,
+    recentlyCreated: { items: [], entities: [], error: null },
     pinned: none,
     recent: none,
   };
@@ -50,19 +50,19 @@ export function createApiMock(): typeof realApi {
     projectUpdate: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
     projectExport: vi.fn().mockResolvedValue(""),
     projectExportTo: vi.fn().mockResolvedValue(undefined),
-    projectRules: vi.fn().mockImplementation(async (_sessionId: string, database: string): Promise<ProjectRules> => ({ project: emptyProject(database), prefix: "wp_", suggestedPrefix: null, presets: [], foreignKeys: 0, references: [], kinds: [], styles: [], tables: [] })),
+    projectRules: vi.fn().mockImplementation(async (_sessionId: string, database: string): Promise<ProjectRules> => ({ project: emptyProject(database), prefix: "wp_", suggestedPrefix: null, presets: [], foreignKeys: 0, groups: [], tables: [] })),
     ruleDraft: vi.fn(async (_s, _d, provenance): Promise<RuleDraft> => ({ source: `${provenance.table}.${provenance.column}`, meta: null })),
     coveragePreview: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
     referenceCoverage: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
-    document: vi.fn(async (_s, text): Promise<Document> => ({ address: parseAddress(text), entity: null, header: [], groups: [], alternatives: [], actions: [] })),
-    peek: vi.fn().mockResolvedValue({ keyColumn: null, values: [] } satisfies Peek),
+    document: vi.fn(async (_s, text): Promise<Document> => ({ address: parseAddress(text), entity: null, header: { values: [] }, groups: [], alternatives: [], actions: [] })),
+    peek: vi.fn(async (_s, text): Promise<Peek> => ({ address: parseAddress(text), keyColumn: null, summary: { values: [] }, matches: null })),
     watchStart: vi.fn().mockResolvedValue("w1"),
     watchPoll: vi.fn().mockResolvedValue({ delta: { changed: [], added: [], removed: [] }, document: null } satisfies WatchPoll),
     watchStop: vi.fn().mockResolvedValue(undefined),
     compare: vi.fn(async (_s, text): Promise<Comparison> => {
       const address = parseAddress(text);
       const right = address.target.kind === "row" && address.compare ? { ...address, target: { ...address.target, key: address.compare }, compare: null } : address;
-      const empty = (a: typeof address): Document => ({ address: { ...a, compare: null }, entity: null, header: [], groups: [], alternatives: [], actions: [] });
+      const empty = (a: typeof address): Document => ({ address: { ...a, compare: null }, entity: null, header: { values: [] }, groups: [], alternatives: [], actions: [] });
       return { left: empty(address), right: empty(right), delta: { changed: [], added: [], removed: [] } };
     }),
     snapshotTake: vi.fn(async (_s, address, label): Promise<SnapshotInfo> => ({ id: "snap-1", label, connection: session.slug, database: parseAddress(address).database, address, created: 0, values: 0 })),
@@ -70,7 +70,8 @@ export function createApiMock(): typeof realApi {
     snapshotDiff: vi.fn(async (): Promise<SnapshotDiff> => ({ snapshot: { id: "snap-1", label: "before", connection: session.slug, database: "db", address: "", created: 0, values: 0 }, delta: { changed: [], added: [], removed: [] }, document: null })),
     snapshotDelete: vi.fn().mockResolvedValue(undefined),
     tableActions: vi.fn().mockResolvedValue([]),
-    planAction: vi.fn(async (_s, _address, action) => planned(action)),
+    previewAction: vi.fn(async (_s, _address, action): Promise<ActionPreview> => ({ id: 1, description: `${action}: Update 1 row`, canUndo: true, rows: [], sql: [] })),
+    queueActionPreview: vi.fn(async () => planned("action")),
     rulesInfo: vi.fn().mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [], tableEntities: {} } satisfies RulesInfo),
     refreshSchema: vi.fn().mockResolvedValue(undefined),
     completionSchema: vi.fn().mockResolvedValue({}),

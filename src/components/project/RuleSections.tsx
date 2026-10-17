@@ -1,112 +1,100 @@
-import type { KindRow, ProjectChange, StyleRow } from "../../api";
+import type { ActionLine, EntityLine, KindRow, ProjectChange, StyleRow } from "../../api";
 import { kindFormFromRow, kindText, ruleOriginText, scopeText, styleFormFromRow, styleMatchText } from "../../lib/ruleForms";
 import { fail } from "../../state/store";
 import { LongList } from "../LongList";
 import type { ProjectContext } from "./context";
+import { ActionButtons, RuleSwitch } from "./ReferenceLines";
 
-function RowActions({ anchor, onEdit, change, ctx }: { anchor: string; onEdit: () => void; change: ProjectChange; ctx: ProjectContext }) {
-  const remove = async () => {
-    const failed = await ctx.change(change);
-    if (failed) fail(failed, "Could not remove the rule");
-  };
-  return (
-    <span className="acts">
-      <button className="act" data-stage={`${anchor}:edit`} onClick={onEdit}>
-        edit
-      </button>
-      <span className="o3"> · </span>
-      <button className="act" data-stage={`${anchor}:remove`} onClick={() => void remove()}>
-        remove
-      </button>
-    </span>
-  );
+async function send(ctx: ProjectContext, change: ProjectChange, context: string) {
+  const failed = await ctx.change(change);
+  if (failed) fail(failed, context);
+}
+
+function styleActions(row: StyleRow, ctx: ProjectContext): [string, () => void][] {
+  const id = row.id;
+  const actions: [string, () => void][] = [["edit", () => ctx.setForm(styleFormFromRow(row))]];
+  if (row.edited) actions.push(["reset", () => void send(ctx, { op: "removeStyle", id }, "Could not reset the value style")]);
+  else if (row.origin.kind === "project") actions.push(["remove", () => void send(ctx, { op: "removeStyle", id }, "Could not remove the value style")]);
+  return actions;
 }
 
 function StyleLine({ row, ctx }: { row: StyleRow; ctx: ProjectContext }) {
-  const { rule, index } = row;
-  const own = index !== null;
-  const anchor = `style:${own ? index : `${ruleOriginText(row.origin)}:${scopeText(rule)}:${rule.value}`}`;
+  const { rule } = row;
+  const own = row.origin.kind === "project" || row.edited;
+  const anchor = `style:${row.id}`;
+  const label = `${scopeText(rule)} ${styleMatchText(rule)}`;
+  const toggle = (on: boolean) => void send(ctx, { op: on ? "enableStyle" : "disableStyle", id: row.id }, `Could not switch the value style ${row.id}`);
   return (
-    <div className={`row styles${own ? "" : " o2"}${rule.enabled ? "" : " off"}`} role="row" aria-label={`${scopeText(rule)} ${styleMatchText(rule)}`} data-stage={anchor} data-stage-list="styles">
+    <div className={`row styles${own ? "" : " o2"}${row.disabled ? " off" : ""}`} role="row" aria-label={label} data-stage={anchor} data-stage-list="styles">
       <span className="src">{scopeText(rule)}</span>
       <span>{styleMatchText(rule)}</span>
       <span style={{ color: `var(--style-${rule.color})` }}>{rule.color}</span>
-      <span>
+      <span className="origin">
         {ruleOriginText(row.origin)}
-        {!rule.enabled && <span className="o3"> · off</span>}
+        {row.edited && <span className="o3"> · edited in project</span>}
       </span>
-      {own ? <RowActions anchor={anchor} ctx={ctx} onEdit={() => ctx.setForm(styleFormFromRow(row))} change={{ op: "removeStyle", index }} /> : <SwitchOn row={row} anchor={anchor} ctx={ctx} />}
+      <span className="r">
+        <RuleSwitch on={!row.disabled} label={label} anchor={`${anchor}:switch`} onChange={toggle} />
+      </span>
+      <ActionButtons anchor={anchor} actions={styleActions(row, ctx)} />
     </div>
   );
 }
 
-/** A preset ships its styles off; switching one on copies it into the project. */
-function SwitchOn({ row, anchor, ctx }: { row: StyleRow; anchor: string; ctx: ProjectContext }) {
-  if (row.rule.enabled) return <span />;
-  const add = async () => {
-    const failed = await ctx.change({ op: "addStyle", rule: { ...row.rule, enabled: true } });
-    if (failed) fail(failed, "Could not switch the style on");
-  };
-  return (
-    <span className="acts">
-      <button className="act" data-stage={`${anchor}:on`} onClick={() => void add()}>
-        switch on
-      </button>
-    </span>
-  );
-}
-
-export function StylesSection({ ctx }: { ctx: ProjectContext }) {
-  const styles = ctx.rules.styles;
-  return (
-    <section aria-label="Value styles">
-      <div className="sh">
-        <span className="tn sans">value styles</span>
-        <span className="via">color by value, scoped to columns or meta keys; none by default; colors come from the scheme</span>
-      </div>
-      <div className="row styles hdr" role="row">
-        <span>column or meta key</span>
-        <span>match</span>
-        <span>color</span>
-        <span>origin</span>
-        <span />
-      </div>
-      {styles.length === 0 && <div className="row empty o3">no value styles; add one with "Style…" on a value</div>}
-      <LongList items={styles}>{(row, i) => <StyleLine key={i} row={row} ctx={ctx} />}</LongList>
-    </section>
-  );
+export function StyleLines({ rows, ctx }: { rows: StyleRow[]; ctx: ProjectContext }) {
+  return <LongList items={rows}>{(row) => <StyleLine key={`${ruleOriginText(row.origin)}:${row.id}`} row={row} ctx={ctx} />}</LongList>;
 }
 
 function KindLine({ row, ctx }: { row: KindRow; ctx: ProjectContext }) {
   const { rule, index } = row;
   const own = index !== null;
   const anchor = `kind:${own ? index : `${ruleOriginText(row.origin)}:${scopeText(rule)}`}`;
+  const actions: [string, () => void][] = own
+    ? [
+        ["edit", () => ctx.setForm(kindFormFromRow(row))],
+        ["remove", () => void send(ctx, { op: "removeKind", index }, "Could not remove the kind")],
+      ]
+    : [];
   return (
     <div className={`row kinds${own ? "" : " o2"}`} role="row" aria-label={`${scopeText(rule)} ${kindText(rule)}`} data-stage={anchor} data-stage-list="kinds">
       <span className="src">{scopeText(rule)}</span>
       <span>{kindText(rule)}</span>
-      <span>{ruleOriginText(row.origin)}</span>
-      {own ? <RowActions anchor={anchor} ctx={ctx} onEdit={() => ctx.setForm(kindFormFromRow(row))} change={{ op: "removeKind", index }} /> : <span />}
+      <span className="origin">{ruleOriginText(row.origin)}</span>
+      <ActionButtons anchor={anchor} actions={actions} />
     </div>
   );
 }
 
-export function KindsSection({ ctx }: { ctx: ProjectContext }) {
-  const kinds = ctx.rules.kinds;
+export function KindLines({ rows, ctx }: { rows: KindRow[]; ctx: ProjectContext }) {
+  return <LongList items={rows}>{(row, i) => <KindLine key={`${row.index ?? ruleOriginText(row.origin)}:${scopeText(row.rule)}:${i}`} row={row} ctx={ctx} />}</LongList>;
+}
+
+/** Read-only: `entity order · preset woocommerce`, `action mark_paid · row · preset woocommerce`. */
+export function EntityActionLines({ entities, actions }: { entities: EntityLine[]; actions: ActionLine[] }) {
   return (
-    <section aria-label="Kinds">
-      <div className="sh">
-        <span className="tn sans">kinds</span>
-        <span className="via">what a column or meta value holds</span>
-      </div>
-      <div className="row kinds hdr" role="row">
-        <span>column or meta key</span>
-        <span>kind</span>
-        <span>origin</span>
-        <span />
-      </div>
-      {kinds.length === 0 && <div className="row empty o3">no kinds</div>}
-      <LongList items={kinds}>{(row, i) => <KindLine key={i} row={row} ctx={ctx} />}</LongList>
-    </section>
+    <>
+      {entities.map((e) => (
+        <div key={`entity:${e.preset}:${e.name}:${e.filter ?? ""}`} className="row facts o2" role="row" aria-label={`entity ${e.name}`}>
+          <span>
+            <span className="o3">entity </span>
+            {e.name}
+            {e.filter && <span className="o3"> where {e.filter}</span>}
+            <span className="o3"> · preset {e.preset}</span>
+          </span>
+        </div>
+      ))}
+      {actions.map((a) => (
+        <div key={`action:${a.preset}:${a.name}`} className="row facts o2" role="row" aria-label={`action ${a.name}`}>
+          <span>
+            <span className="o3">action </span>
+            {a.name}
+            <span className="o3">
+              {" "}
+              · {a.scope} · preset {a.preset}
+            </span>
+          </span>
+        </div>
+      ))}
+    </>
   );
 }

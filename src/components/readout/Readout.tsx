@@ -1,20 +1,22 @@
-import { useEffect, useMemo, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { Address, AnomalyLine, NewObjects, Part, PinnedLine, ReadoutRow, RecentLine, Status, Value as StoredValue } from "../../api";
+import type { Address, AnomalyLine, CreatedEntity, CreatedItem, Part, PinnedLine, ReadoutRow, RecentLine, RecentlyCreated, Status, Value as StoredValue } from "../../api";
 import { formatAddress } from "../../lib/address";
 import { cellText, charWidth, plural, relativeTime } from "../../lib/format";
+import { sourceText } from "../../lib/provenance";
 import { readoutKey } from "../../state/slices/readout";
 import { useStore, type ReadoutTab } from "../../state/store";
 import { ErrorPanel } from "../ErrorPanel";
 import { LONG_LIST, LongList } from "../LongList";
+import { runTableAction } from "../object/actions";
 import { useCollapsedGroups } from "../object/useCollapsedGroups";
 import { useOpenValue } from "../value/useOpenValue";
+import { SummaryLine } from "../value/SummaryLine";
 import { Value, type OpenValue } from "../value/Value";
 
 const open = (address: Address) => void useStore.getState().openAddress(formatAddress(address));
 
 const rowTableOf = (address: Address | null) => (address && "table" in address.target ? address.target.table : undefined);
-
 
 type Collapse = ReturnType<typeof useCollapsedGroups>;
 
@@ -78,27 +80,18 @@ function StatusHeader({ status, onOpen }: { status: Status; onOpen: OpenValue })
   return (
     <section aria-label="Status" className="readout-head">
       <h1 className="readout-title">{status.database}</h1>
-      <div className="readout-meta">
-        {meta.map((part, i) => (
-          <span key={i}>
-            {i > 0 && <span className="o3"> · </span>}
-            <span>{part}</span>
-          </span>
-        ))}
-      </div>
+      <div className="readout-meta">{meta.join(" · ")}</div>
       {values.length > 0 && (
         <div className="readout-table readout-facts">
           {values.map((v) => {
             const table = v.value?.source?.table;
             return (
               <div key={v.id} className="row" data-row-table={table}>
-                <span className="o2">
-                  {table && <span className="o3">{table} </span>}
-                  <button className="line-open" data-stage={`readout:value:${v.id}`} data-stage-label={v.title} title={v.sql} onClick={() => open(v.address)}>
-                    {v.title}
-                  </button>
-                </span>
+                <button className="line-open" data-stage={`readout:value:${v.id}`} data-stage-label={v.title} title={v.sql} onClick={() => open(v.address)}>
+                  {v.title}
+                </button>
                 <span>{v.error ? <LineError error={v.error} /> : v.value ? <Value value={v.value} density="grid" onOpen={onOpen} /> : <span className="o3">no row</span>}</span>
+                <span className="o3">{table}</span>
               </div>
             );
           })}
@@ -119,31 +112,33 @@ function openAnomaly(line: AnomalyLine) {
 
 function AnomalyRow({ line }: { line: AnomalyLine }) {
   return (
-    <div className="row" data-row-table={rowTableOf(line.address)}>
-      <span className="r">{line.count ?? ""}</span>
-      <span title={`${line.preset} · ${line.id}`}>
-        {line.text}
+    <div className="attention" data-row-table={rowTableOf(line.address)}>
+      <span className="attention-count">{line.count ?? "–"}</span>
+      <span className="attention-text">
+        <span>{line.text}</span>
+        <span className="o3">
+          {line.preset} · {line.id}
+        </span>
         <LineError error={line.error} />
       </span>
-      {line.fix ? (
-        <button
-          className="line-open act"
-          data-stage={`readout:fix:${line.id}`}
-          data-stage-label={line.fix.action}
-          onClick={() => line.fix && void useStore.getState().queueAction(line.fix.address, line.fix.action, {})}
-        >
-          {line.fix.action}
-        </button>
-      ) : (
-        <span />
-      )}
-      {line.address ? (
-        <button className="line-open o3" data-stage={`readout:anomaly:${line.id}`} data-stage-label={line.text} onClick={() => openAnomaly(line)}>
-          → rows
-        </button>
-      ) : (
-        <span />
-      )}
+      <span className="attention-actions">
+        {line.address && (
+          <button className="btn" data-stage={`readout:anomaly:${line.id}`} data-stage-label={line.text} onClick={() => openAnomaly(line)}>
+            Show rows
+          </button>
+        )}
+        {line.fix && (
+          <button
+            className="btn mono"
+            title={`Plan ${line.fix.action} on ${rowTableOf(line.fix.address) ?? ""}`}
+            data-stage={`readout:fix:${line.id}`}
+            data-stage-label={line.fix.action}
+            onClick={() => line.fix && void runTableAction(line.fix.address, line.fix.action)}
+          >
+            {line.fix.action}
+          </button>
+        )}
+      </span>
     </div>
   );
 }
@@ -151,9 +146,9 @@ function AnomalyRow({ line }: { line: AnomalyLine }) {
 function Anomalies({ part, collapse }: { part: Part<AnomalyLine>; collapse: Collapse }) {
   if (part.items.length === 0 && !part.error) return null;
   return (
-    <Section id="anomalies" label="Anomalies" name="anomalies" hint="preset rules, shown while the count is above 0" count={plural(part.items.length, "rule", "rules")} collapse={collapse}>
+    <Section id="anomalies" label="Needs attention" name="needs attention" hint="preset anomalies whose count is above 0" count={plural(part.items.length, "rule", "rules")} collapse={collapse}>
       <LineError error={part.error} row />
-      <div className="readout-table readout-anomalies">
+      <div className="attention-list">
         {part.items.map((line) => (
           <AnomalyRow key={`${line.preset}:${line.id}`} line={line} />
         ))}
@@ -195,17 +190,15 @@ function RowsTable({ columns, rows, table, onOpen }: { columns: string[]; rows: 
 }
 
 interface BlockProps {
-  anchor?: string;
-  label: string;
   title: ReactNode;
   detail?: ReactNode;
   sql: string;
   children: ReactNode;
 }
 
-function Block({ anchor, label, title, detail, sql, children }: BlockProps) {
+function Block({ title, detail, sql, children }: BlockProps) {
   return (
-    <div className="readout-block" data-stage={anchor} data-stage-label={anchor && label}>
+    <div className="readout-block">
       <div className="readout-block-head">
         {title}
         {detail}
@@ -216,32 +209,120 @@ function Block({ anchor, label, title, detail, sql, children }: BlockProps) {
   );
 }
 
-function NewSection({ part, database, collapse, onOpen }: { part: Part<NewObjects>; database: string; collapse: Collapse; onOpen: OpenValue }) {
-  if (part.items.length === 0 && !part.error) return null;
+function createdTime(created: StoredValue): { text: string; title: string } {
+  const source = created.source ? sourceText(created.source) : "created";
+  const stored = cellText(created.raw);
+  const utc = created.kind.kind === "timestamp" ? created.kind.utc : null;
+  if (utc === null) return { text: stored, title: source };
+  return { text: relativeTime(utc), title: `${stored} · ${source}` };
+}
+
+const entityKey = (entity: { entity: string; table: string }) => `${entity.entity} ${entity.table}`;
+
+interface ChipProps {
+  entity: CreatedEntity;
+  withTable: boolean;
+  shown: boolean;
+  open: boolean;
+  onToggle: () => void;
+  onDetails: () => void;
+}
+
+function EntityChip({ entity, withTable, shown, open, onToggle, onDetails }: ChipProps) {
+  const name = withTable ? entityKey(entity) : entity.entity;
   return (
-    <Section id="new" label="New objects" name="new" hint="the newest rows of each entity with a created column" count={plural(part.items.length, "entity", "entities")} collapse={collapse}>
-      <LineError error={part.error} row />
-      <div className="readout-blocks">
-        {part.items.map((objects) => (
-          <Block
-            key={`${objects.preset}:${objects.entity}:${objects.table}`}
-            anchor={`readout:new:${objects.entity}`}
-            label={objects.entity}
-            title={<span className="readout-block-title">{objects.entity}</span>}
-            detail={
-              <>
-                <button className="line-open o2" data-table={objects.table} title="Open the table" onClick={() => useStore.getState().openTableTab(database, objects.table, "data")}>
-                  {objects.table}
-                </button>
-                <span className="o3">{plural(objects.rows.length, "row", "rows")}</span>
-              </>
-            }
-            sql={objects.sql}
-          >
-            {objects.error ? <LineError error={objects.error} row /> : <RowsTable columns={objects.columns} rows={objects.rows} table={objects.table} onOpen={onOpen} />}
-          </Block>
-        ))}
+    <span className={`entity-chip${shown ? " on" : ""}${entity.error ? " failed" : ""}`}>
+      <button aria-pressed={shown} data-stage={`readout:entity:${name}`} data-stage-label={name} title={entity.error ?? `${entity.table} · preset ${entity.preset}`} onClick={onToggle}>
+        <span>{entity.entity}</span>
+        {withTable && <span className="tbl">{entity.table}</span>}{" "}
+        <span className="cnt">{entity.error ? "failed" : entity.countInWindow}</span>
+      </button>
+      <button className="entity-chip-more" aria-expanded={open} aria-label={`Query of ${name}`} onClick={onDetails}>
+        {open ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" />}
+      </button>
+    </span>
+  );
+}
+
+function EntityQuery({ entity, database }: { entity: CreatedEntity; database: string }) {
+  return (
+    <div className="entity-query" aria-label={`${entity.entity} query`}>
+      <div>
+        <span className="o2">{entity.entity}</span>
+        <span className="o3"> · </span>
+        <button className="line-open" data-table={entity.table} title="Open the table" onClick={() => useStore.getState().openTableTab(database, entity.table, "data")}>
+          {entity.table}
+        </button>
+        <span className="o3"> · preset {entity.preset}</span>
       </div>
+      <div className="readout-sql">{entity.sql}</div>
+      <LineError error={entity.error} />
+    </div>
+  );
+}
+
+function CreatedLine({ item, withTable, onOpen }: { item: CreatedItem; withTable: boolean; onOpen: OpenValue }) {
+  const time = createdTime(item.created);
+  const text = formatAddress(item.address);
+  const key = item.address.target.kind === "row" ? item.address.target.key : "";
+  return (
+    <div className="row" data-row-table={item.table}>
+      <span className="o3 r" title={time.title}>
+        {time.text}
+      </span>
+      <span className="o2">
+        {item.entity}
+        {withTable && <span className="o3"> {item.table}</span>}
+      </span>
+      <button className="line-open key" data-stage={`readout:created:${text}`} data-stage-label={`${item.entity} #${key}`} onClick={() => open(item.address)}>
+        #{key}
+      </button>
+      <SummaryLine summary={item.summary} onOpen={onOpen} />
+    </div>
+  );
+}
+
+function CreatedSection({ part, database, collapse, onOpen }: { part: RecentlyCreated; database: string; collapse: Collapse; onOpen: OpenValue }) {
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const [details, setDetails] = useState<string | null>(null);
+  if (part.entities.length === 0 && !part.error) return null;
+  const toggle = (key: string) => {
+    const next = new Set(hidden);
+    if (!next.delete(key)) next.add(key);
+    setHidden(next);
+  };
+  const items = part.items.filter((item) => !hidden.has(entityKey(item)));
+  const detailed = part.entities.find((e) => entityKey(e) === details);
+  const sameName = (entity: { entity: string }) => part.entities.filter((e) => e.entity === entity.entity).length > 1;
+  return (
+    <Section id="created" label="Recently created" name="recently created" hint="newest rows of every entity with a created column" count={plural(items.length, "row", "rows")} collapse={collapse}>
+      <LineError error={part.error} row />
+      <div className="entity-chips" role="group" aria-label="Entities">
+        {part.entities.map((entity) => {
+          const key = entityKey(entity);
+          return (
+            <EntityChip
+              key={`${entity.preset}:${key}`}
+              entity={entity}
+              withTable={sameName(entity)}
+              shown={!hidden.has(key)}
+              open={details === key}
+              onToggle={() => toggle(key)}
+              onDetails={() => setDetails(details === key ? null : key)}
+            />
+          );
+        })}
+      </div>
+      {detailed && <EntityQuery entity={detailed} database={database} />}
+      {items.length === 0 ? (
+        <div className="row readout-empty">no rows</div>
+      ) : (
+        <div className="readout-table readout-created">
+          {items.map((item) => (
+            <CreatedLine key={formatAddress(item.address)} item={item} withTable={sameName(item)} onOpen={onOpen} />
+          ))}
+        </div>
+      )}
     </Section>
   );
 }
@@ -280,7 +361,7 @@ function PinnedSection({ part, collapse, onOpen }: { part: Part<PinnedLine>; col
       {blocks.length > 0 && (
         <div className="readout-blocks wide">
           {blocks.map(({ line, result }) => (
-            <Block key={line.id} label={line.title} title={<PinnedTitle line={line} />} detail={<span className="o3">{plural(result.rows.length, "row", "rows")}</span>} sql={line.sql}>
+            <Block key={line.id} title={<PinnedTitle line={line} />} detail={<span className="o3">{plural(result.rows.length, "row", "rows")}</span>} sql={line.sql}>
               <RowsTable columns={result.columns} rows={result.rows} onOpen={onOpen} />
             </Block>
           ))}
@@ -294,7 +375,7 @@ function RecentSection({ part, collapse, onOpen }: { part: Part<RecentLine>; col
   const rows = part.items.flatMap((line) => (line.address.target.kind === "row" ? [{ line, target: line.address.target }] : []));
   if (rows.length === 0 && !part.error) return null;
   return (
-    <Section id="recent" label="Recent" name="recent" hint="objects opened lately" count={plural(rows.length, "object", "objects")} collapse={collapse}>
+    <Section id="recent" label="Recently opened" name="recently opened" hint="rows opened in this project" count={plural(rows.length, "object", "objects")} collapse={collapse}>
       <LineError error={part.error} row />
       <div className="readout-table readout-recent">
         {rows.map(({ line, target }) => {
@@ -305,17 +386,7 @@ function RecentSection({ part, collapse, onOpen }: { part: Part<RecentLine>; col
               <button className="line-open key" data-stage={`readout:recent:${text}`} data-stage-label={`${target.table} #${target.key}`} onClick={() => open(line.address)}>
                 #{target.key}
               </button>
-              <span className="readout-summary">
-                {line.error ? (
-                  <LineError error={line.error} />
-                ) : (
-                  line.summary.map(({ column, value }) => (
-                    <span key={column} title={column}>
-                      <Value value={value} density="grid" onOpen={onOpen} />
-                    </span>
-                  ))
-                )}
-              </span>
+              <span>{line.error ? <span className="line-error">{line.error}</span> : <SummaryLine summary={line.summary} onOpen={onOpen} />}</span>
               <span className="o3 r" title={`opened ${new Date(line.at * 1000).toISOString()}`}>
                 {relativeTime(line.at)}
               </span>
@@ -338,7 +409,7 @@ export function Readout({ tab }: { tab: ReadoutTab }) {
     <div className="readout" data-stage="readout" data-stage-label={`readout · ${tab.database}`}>
       <StatusHeader status={readout.status} onOpen={openValue} />
       <Anomalies part={readout.anomalies} collapse={collapse} />
-      <NewSection part={readout.newObjects} database={tab.database} collapse={collapse} onOpen={openValue} />
+      <CreatedSection part={readout.recentlyCreated} database={tab.database} collapse={collapse} onOpen={openValue} />
       <PinnedSection part={readout.pinned} collapse={collapse} onOpen={openValue} />
       <RecentSection part={readout.recent} collapse={collapse} onOpen={openValue} />
       {targetMenu}

@@ -37,6 +37,7 @@ import type {
   SnapshotInfo,
   WatchPoll,
   ObjectAction,
+  ActionPreview,
   ResolvedReference,
   Project,
   ProjectChange,
@@ -152,9 +153,11 @@ export const api = {
   /** The `scope = "table"` rule actions of `table`. */
   tableActions: (sessionId: string, database: string, table: string) =>
     invoke<ObjectAction[]>("table_actions", { sessionId, database, table }),
-  /** Plans a rule action on a row address, or on a table address without a filter (table actions). */
-  planAction: (sessionId: string, address: string, action: string, params: Record<string, string>) =>
-    invoke<PlannedChange>("plan_action", { sessionId, address, action, params }),
+  /** Plans a rule action on a row address, or on a table address without a filter (table actions), without
+   * queueing it: the rows and values it writes. `queueActionPreview` queues exactly that plan. */
+  previewAction: (sessionId: string, address: string, action: string, params: Record<string, string>) =>
+    invoke<ActionPreview>("preview_action", { sessionId, address, action, params }),
+  queueActionPreview: (sessionId: string, id: number) => invoke<PlannedChange>("queue_action_preview", { sessionId, id }),
   /** The "New query" SQL for a table, quoted by Rust. */
   tableSelectSql: (sessionId: string, database: string, table: string) =>
     invoke<string>("table_select_sql", { sessionId, database, table }),

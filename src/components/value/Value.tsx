@@ -2,7 +2,7 @@ import { memo, useState, type MouseEvent, type ReactNode } from "react";
 import type { Value as StoredValue } from "../../api";
 import { cellDisplay, cellText, relativeTime } from "../../lib/format";
 import { formatAddress } from "../../lib/address";
-import { bySourceText, provenanceText } from "../../lib/provenance";
+import { bySourceText, provenanceText, rowIdentity } from "../../lib/provenance";
 import { selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
 import { ValueTree } from "../ValueTree";
 import { useDecoded } from "./useDecoded";
@@ -150,12 +150,18 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
 function peekData(value: StoredValue) {
   const kind = value.kind;
   if (kind.kind !== "reference" || kind.exists === false || kind.targets.length !== 1) return {};
-  return { "data-ref": formatAddress(kind.targets[0]), "data-via": value.source?.column, "data-by": bySourceText(kind.by) };
+  const source = value.source;
+  return {
+    "data-ref": formatAddress(kind.targets[0]),
+    "data-via": source?.column,
+    "data-by": bySourceText(kind.by),
+    "data-from": source ? rowIdentity(source.table, source.row) : undefined,
+  };
 }
 
 /**
  * One stored value drawn by its kind; `data-src` and `data-table` feed the status bar (`useValueHover`), a
- * reference's `data-ref`, `data-via` and `data-by` the peek.
+ * reference's `data-ref`, `data-via`, `data-by` and `data-from` (its own row) the peek.
  */
 export const Value = memo(function Value({ value, onOpen, density = "full" }: Props) {
   const acts = !!onOpen && opensOnClick(value, density);

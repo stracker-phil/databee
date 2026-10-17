@@ -1,18 +1,18 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import App from "../../App";
-import { api, type Coverage, type ProjectRules, type RuleDraft } from "../../api";
+import { api, type Coverage, type KindRow, type ProjectRules, type ReferenceRow, type RuleDraft, type StyleRow, type TableRules } from "../../api";
 import { installCommands, runCommand } from "../../commands";
 import { referenceFormFor, type ProjectForm, type ReferenceForm } from "../../lib/ruleForms";
 import { resultValueAt } from "../../lib/values";
 import { selectActiveTab, useStore } from "../../state/store";
 import { connectedStore, resultSet, table } from "../../test/fixtures";
-import { browseOrderTables, incomingLink, objectDocument, orderAddress, orderGroups, paidViaSource } from "../../test/objectFixtures";
-import { describeRuleTable, projectRules, referenceRow, woocommercePreset } from "../../test/projectFixtures";
+import { browseOrderTables, objectDocument, orderAddress, paidViaSource } from "../../test/objectFixtures";
+import { describeRuleTable, orderItemsRule, projectRules, referenceRow, tableRules, woocommercePreset } from "../../test/projectFixtures";
 import { ResultsGrid } from "../ResultsGrid";
 
 const mocked = vi.mocked(api, true);
@@ -21,20 +21,19 @@ const tables = ["wp_wc_orders", "wp_wc_orders_meta", "wp_wc_order_addresses", "w
 
 const coverage = (patch: Partial<Coverage> = {}): Coverage => ({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false, ...patch });
 
-/** After a project change the next `projectRules` reply is `rules`; `afterChange` may also prepare other replies. */
-function respondToChangeWith(rules: ProjectRules, afterChange: () => void = () => {}) {
+function respondToChangeWith(rules: ProjectRules) {
   mocked.projectUpdate.mockImplementation(async () => {
     mocked.projectRules.mockResolvedValue(rules);
-    afterChange();
     return rules.project;
   });
 }
 
 async function openProjectPage(form?: ProjectForm) {
-  render(<App />);
+  const view = render(<App />);
   await screen.findByRole("tree");
   act(() => useStore.getState().openProject(form ? { form } : undefined));
   await screen.findByRole("region", { name: "Presets and prefix" });
+  return view;
 }
 
 async function openOrderObject() {
@@ -45,6 +44,39 @@ async function openOrderObject() {
 }
 
 const ORDER_ITEMS_ROW = "wp_wc_order_items.order_id → wp_wc_orders.id";
+const FK_ROW = "wp_users.ID → wp_wc_orders.id";
+const STYLE_ID = "style:wc_orders.status=wc-failed";
+const STYLE_NAME = "wc_orders.status = 'wc-failed'";
+const KIND_NAME = "wc_orders.status secret";
+
+const itemsGroup = (patch: Partial<TableRules> = {}) => tableRules("wp_wc_order_items", patch);
+const rulesWith = (patch: Partial<TableRules>) => projectRules({ groups: [itemsGroup(patch)] });
+const tableRegion = (name = "wp_wc_order_items") => screen.findByRole("region", { name });
+
+function itemsReference(column: string, patch: Partial<ReferenceRow> = {}): ReferenceRow {
+  const base = referenceRow();
+  const from = { table: "wp_wc_order_items", columns: [column] };
+  return { ...base, id: `r-${column}`, from, reference: { ...base.reference!, from }, ...patch };
+}
+
+const inferredRow = (patch: Partial<ReferenceRow> = {}) =>
+  referenceRow({ origin: { kind: "inferred", indexed: true }, id: "inferred-1", rule: { ...orderItemsRule, id: "" }, ...patch });
+
+const foreignKeyRow = () => referenceRow({ origin: { kind: "foreignKey", constraint: "fk_user" }, id: null, from: { table: "wp_users", columns: ["ID"] }, reference: null, rule: null });
+
+const styleRule = { columns: ["wc_orders.status"], meta_keys: [], in: [], match: "=" as const, value: "wc-failed", color: "red" as const, enabled: true };
+
+const styleRow = (patch: Partial<StyleRow> = {}): StyleRow => ({ origin: { kind: "project" }, id: STYLE_ID, rule: styleRule, disabled: false, edited: false, ...patch });
+
+const presetStyle = (patch: Partial<StyleRow> = {}) => styleRow({ origin: { kind: "preset", preset: "woocommerce" }, ...patch });
+
+const kindRow = (patch: Partial<KindRow> = {}): KindRow => ({ origin: { kind: "project" }, index: 2, rule: { columns: ["wc_orders.status"], secret: true }, ...patch });
+
+function deferredCoverage() {
+  const pending: Array<(c: Coverage) => void> = [];
+  mocked.referenceCoverage.mockImplementation(() => new Promise<Coverage>((resolve) => pending.push(resolve)));
+  return pending;
+}
 
 describe("ProjectPanel", () => {
   beforeEach(() => {
@@ -80,7 +112,7 @@ describe("ProjectPanel", () => {
       render(<App />);
       await userEvent.click(await screen.findByRole("button", { name: "presets woocommerce" }));
       expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "project", database: "db" });
-      expect(await screen.findByRole("region", { name: "References" })).toBeInTheDocument();
+      expect(await screen.findByRole("region", { name: "Presets and prefix" })).toBeInTheDocument();
     });
 
     it("reuses the open Project tab", async () => {
@@ -98,12 +130,26 @@ describe("ProjectPanel", () => {
       act(() => useStore.getState().openProject());
       expect(await screen.findByText("No rules for this database")).toBeInTheDocument();
     });
+
+    it("says no table has rules when there are no groups", async () => {
+      await openProjectPage();
+      expect(screen.getByText(/^no rules:/)).toBeInTheDocument();
+    });
   });
 
-  describe("presets and prefix", () => {
+  describe("header", () => {
     const presets = [woocommercePreset, { name: "yoast", markerTables: [], applied: true }, { name: "acf", markerTables: ["wp_acf"], applied: false }];
 
     beforeEach(() => mocked.projectRules.mockResolvedValue(projectRules({ presets })));
+
+    it("holds the prefix field and a switch per preset in one region", async () => {
+      await openProjectPage();
+      const header = screen.getByRole("region", { name: "Presets and prefix" });
+      expect(within(header).getByRole("textbox", { name: "prefix" })).toBeInTheDocument();
+      expect(within(header).getByRole("switch", { name: "Preset woocommerce" })).toBeChecked();
+      expect(within(header).getByRole("switch", { name: "Preset yoast" })).toBeChecked();
+      expect(within(header).getByRole("switch", { name: "Preset acf" })).not.toBeChecked();
+    });
 
     it.each([
       ["off", "yoast", ["woocommerce"]],
@@ -114,24 +160,28 @@ describe("ProjectPanel", () => {
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setPresets", presets: expected });
     });
 
-    it("shows each preset's marker tables", async () => {
+    it.each([
+      ["woocommerce", "marker tables wp_wc_orders"],
+      ["yoast", "no marker tables"],
+    ])("names the marker tables of preset %s in its tooltip", async (name, title) => {
       await openProjectPage();
-      expect(screen.getByText("marker wp_wc_orders")).toBeInTheDocument();
-      expect(screen.getByText("no marker tables")).toBeInTheDocument();
+      expect(screen.getByRole("switch", { name: `Preset ${name}` }).closest("label")).toHaveAttribute("title", title);
     });
 
-    it("says presets are automatic until some are chosen by hand", async () => {
+    it("says auto while presets are automatic", async () => {
       await openProjectPage();
-      expect(screen.getByText("auto: every preset whose marker tables exist")).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "back to auto" })).not.toBeInTheDocument();
+      const header = screen.getByRole("region", { name: "Presets and prefix" });
+      expect(within(header).getByText("auto")).toBeInTheDocument();
+      expect(within(header).queryByRole("button", { name: "back to auto" })).not.toBeInTheDocument();
     });
 
     it("goes back to auto from a hand-picked list", async () => {
       const chosen = projectRules({ presets });
       mocked.projectRules.mockResolvedValue({ ...chosen, project: { ...chosen.project, presets: ["woocommerce"] } });
       await openProjectPage();
-      expect(screen.getByText("chosen by hand")).toBeInTheDocument();
-      await userEvent.click(screen.getByRole("button", { name: "back to auto" }));
+      const header = screen.getByRole("region", { name: "Presets and prefix" });
+      expect(within(header).queryByText("auto")).not.toBeInTheDocument();
+      await userEvent.click(within(header).getByRole("button", { name: "back to auto" }));
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setPresets", presets: null });
     });
   });
@@ -151,277 +201,6 @@ describe("ProjectPanel", () => {
       await userEvent.click(screen.getByRole("button", { name: "Export as preset…" }));
       await waitFor(() => expect(mocked.chooseSavePath).toHaveBeenCalled());
       expect(mocked.projectExportTo).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("adding a reference from a meta value", () => {
-    const draft: RuleDraft = { source: "wc_orders_meta.meta_value", meta: { table: "wc_orders_meta", keyColumn: "meta_key", key: "_ppcp_paypal_order_id" } };
-    const paypalGroup = { ...orderGroups.refunds, id: "paypal", via: incomingLink("wp_wc_orders_meta", "meta_value", "PayPal orders") };
-
-    beforeEach(() => mocked.ruleDraft.mockResolvedValue(draft));
-
-    it("fills the form from the value, saves the rule and refreshes the open object", async () => {
-      await openOrderObject();
-      await userEvent.click(screen.getByText("bacs"));
-      await userEvent.keyboard("r");
-
-      const form = await screen.findByRole("region", { name: "new reference" });
-      expect(mocked.ruleDraft).toHaveBeenCalledWith("s1", "db", paidViaSource);
-      expect(within(form).getByRole("combobox", { name: "Source table" })).toHaveValue("wp_wc_orders_meta");
-      expect(within(form).getByRole("combobox", { name: "When column" })).toHaveValue("meta_key");
-      expect(within(form).getByRole("textbox", { name: "When value" })).toHaveValue("_ppcp_paypal_order_id");
-
-      await userEvent.selectOptions(within(form).getByRole("combobox", { name: "Target table" }), "wp_wc_orders");
-      await waitFor(() => expect(within(form).getByRole("combobox", { name: "Target column" })).toHaveValue("id"));
-
-      respondToChangeWith(projectRules(), () => mocked.document.mockResolvedValue(objectDocument({ groups: [...Object.values(orderGroups), paypalGroup] })));
-      await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
-
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", {
-        op: "addReference",
-        reference: expect.objectContaining({ from: "wc_orders_meta.meta_value", when: { meta_key: "_ppcp_paypal_order_id" }, to: "wc_orders.id" }),
-      });
-      expect(await screen.findByText("PayPal orders · meta_value → this row")).toBeInTheDocument();
-      expect(screen.queryByRole("region", { name: "new reference" })).not.toBeInTheDocument();
-    });
-
-    it("opens the same form from the Add reference… menu item", async () => {
-      await openOrderObject();
-      fireEvent.contextMenu(screen.getByText("bacs"));
-      await userEvent.click(screen.getByRole("menuitem", { name: "Add reference…" }));
-      const form = await screen.findByRole("region", { name: "new reference" });
-      expect(within(form).getByRole("textbox", { name: "When value" })).toHaveValue("_ppcp_paypal_order_id");
-    });
-
-    it("saves nothing and asks for a target while none is picked", async () => {
-      await openOrderObject();
-      await userEvent.click(screen.getByText("bacs"));
-      await userEvent.keyboard("r");
-      const form = await screen.findByRole("region", { name: "new reference" });
-      await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
-      expect(await within(form).findByRole("alert")).toHaveTextContent("pick a target table and column");
-      expect(mocked.projectUpdate).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("the reference form", () => {
-    const form = (): ReferenceForm => ({
-      ...referenceFormFor(paidViaSource, { source: "wc_orders_meta.meta_value", meta: null }),
-      target: { table: "wp_wc_orders", column: "id" },
-    });
-
-    it("previews the coverage of the unsaved rule and warns when nothing resolves", async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-      try {
-        mocked.coveragePreview.mockResolvedValue(coverage({ total: 1, sampleUnresolved: ["8YB…"] }));
-        await openProjectPage(form());
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(400);
-        });
-        expect(await screen.findByText("0 of 1 resolve")).toBeInTheDocument();
-        expect(screen.getByRole("alert")).toHaveTextContent("no source value matches a target; the rule is probably wrong · unresolved: 8YB…");
-        expect(mocked.coveragePreview).toHaveBeenLastCalledWith("s1", "db", expect.objectContaining({ from: "wc_orders_meta.meta_value", to: "wc_orders.id" }), null);
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it("shows the Rust error under the field it names", async () => {
-      mocked.projectUpdate.mockRejectedValue({ kind: "invalid_input", message: "`reference.to`: `wp_users` has no column `nope`", code: null, field: { path: "reference.to", message: "`wp_users` has no column `nope`" } });
-      await openProjectPage({ ...form(), target: { table: "wp_users", column: "nope" } });
-      const region = await screen.findByRole("region", { name: "new reference" });
-      await userEvent.click(within(region).getByRole("button", { name: "Save to project" }));
-      const alert = await within(region).findByRole("alert");
-      expect(alert).toHaveTextContent("`wp_users` has no column `nope`");
-      expect(alert.parentElement).toContainElement(within(region).getByRole("combobox", { name: "Target table" }));
-      expect(screen.getByRole("region", { name: "new reference" })).toBeInTheDocument();
-    });
-
-    it("closes without saving on Cancel", async () => {
-      await openProjectPage(form());
-      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-      expect(screen.queryByRole("region", { name: "new reference" })).not.toBeInTheDocument();
-      expect(mocked.projectUpdate).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("references", () => {
-    const rowIn = (name = ORDER_ITEMS_ROW) => screen.findByRole("row", { name });
-
-    it("disables a preset reference and shows it struck through with an enable button", async () => {
-      mocked.projectRules.mockResolvedValue(projectRules({ references: [referenceRow()] }));
-      respondToChangeWith(projectRules({ references: [referenceRow({ disabled: true })] }));
-      await openProjectPage();
-      await userEvent.click(within(await rowIn()).getByRole("button", { name: "disable" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "disable", id: "x" });
-      await waitFor(() => expect(within(screen.getByRole("row", { name: ORDER_ITEMS_ROW })).getByRole("button", { name: "enable" })).toBeInTheDocument());
-      const row = screen.getByRole("row", { name: ORDER_ITEMS_ROW });
-      expect(row).toHaveClass("off");
-      expect(within(row).getByText("· disabled")).toBeInTheDocument();
-    });
-
-    it("enables a disabled reference", async () => {
-      mocked.projectRules.mockResolvedValue(projectRules({ references: [referenceRow({ disabled: true })] }));
-      await openProjectPage();
-      await userEvent.click(within(await rowIn()).getByRole("button", { name: "enable" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "enable", id: "x" });
-    });
-
-    it("promotes an inferred reference to a project rule, which can then be edited or removed", async () => {
-      const inferred = referenceRow({ origin: { kind: "inferred", indexed: true }, id: "inferred-1" });
-      mocked.projectRules.mockResolvedValue(projectRules({ references: [inferred] }));
-      respondToChangeWith(projectRules({ references: [referenceRow({ origin: { kind: "project" }, id: "p1" })] }));
-      await openProjectPage();
-      expect(within(await rowIn()).getByText(/inferred/)).toBeInTheDocument();
-      await userEvent.click(within(await rowIn()).getByRole("button", { name: "promote" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addReference", reference: inferred.rule });
-      await waitFor(() => expect(within(screen.getByRole("row", { name: ORDER_ITEMS_ROW })).getByRole("button", { name: "remove" })).toBeInTheDocument());
-      const row = screen.getByRole("row", { name: ORDER_ITEMS_ROW });
-      expect(within(row).getByText("project")).toBeInTheDocument();
-      expect(within(row).getByRole("button", { name: "edit" })).toBeInTheDocument();
-    });
-
-    it("removes a project reference by id", async () => {
-      mocked.projectRules.mockResolvedValue(projectRules({ references: [referenceRow({ origin: { kind: "project" }, id: "p1" })] }));
-      await openProjectPage();
-      await userEvent.click(within(await rowIn()).getByRole("button", { name: "remove" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeReference", id: "p1" });
-    });
-
-    it("opens a project reference in the form to edit it", async () => {
-      mocked.projectRules.mockResolvedValue(projectRules({ references: [referenceRow({ origin: { kind: "project" }, id: "p1" })] }));
-      await openProjectPage();
-      await userEvent.click(within(await rowIn()).getByRole("button", { name: "edit" }));
-      const form = await screen.findByRole("region", { name: "edit reference" });
-      expect(within(form).getByRole("combobox", { name: "Source table" })).toHaveValue("wp_wc_order_items");
-      await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateReference", id: "p1", reference: expect.objectContaining({ from: "wc_order_items.order_id", to: "wc_orders.id" }) });
-    });
-
-    describe("coverage", () => {
-      beforeEach(() => mocked.projectRules.mockResolvedValue(projectRules({ references: [referenceRow()] })));
-
-      it("says a row is not checked until it is", async () => {
-        await openProjectPage();
-        expect(within(await rowIn()).getByText("not checked")).toBeInTheDocument();
-      });
-
-      it("shows resolved of total and the 0-or-NULL count of a checked row", async () => {
-        mocked.referenceCoverage.mockResolvedValue(coverage({ total: 7, resolved: 6, zeroOrNull: 1 }));
-        await openProjectPage();
-        await userEvent.click(within(await rowIn()).getByRole("button", { name: "check" }));
-        const row = await rowIn();
-        expect(await within(row).findByText("6 of 7")).toBeInTheDocument();
-        expect(within(row).getByText("· 1 is 0 or NULL")).toBeInTheDocument();
-        expect(mocked.referenceCoverage).toHaveBeenCalledWith("s1", "db", referenceRow().reference);
-      });
-
-      it("says so when the count timed out", async () => {
-        mocked.referenceCoverage.mockResolvedValue(coverage({ timedOut: true }));
-        await openProjectPage();
-        await userEvent.click(within(await rowIn()).getByRole("button", { name: "check" }));
-        expect(await within(await rowIn()).findByText("timed out")).toBeInTheDocument();
-      });
-
-      it("shows the error of a failed check in the row", async () => {
-        mocked.referenceCoverage.mockRejectedValue({ kind: "invalid_input", message: "Table is gone", code: null });
-        await openProjectPage();
-        await userEvent.click(within(await rowIn()).getByRole("button", { name: "check" }));
-        expect(await within(await rowIn()).findByText("Table is gone")).toBeInTheDocument();
-      });
-
-      it("checks every applied row with Check coverage for all and leaves unapplied rows alone", async () => {
-        const meta = referenceRow({ id: "y", from: { table: "wp_wc_orders_meta", columns: ["order_id"] }, reference: { ...referenceRow().reference!, from: { table: "wp_wc_orders_meta", columns: ["order_id"] } } });
-        const foreignKey = referenceRow({ origin: { kind: "foreignKey", constraint: "fk_user" }, id: null, from: { table: "wp_users", columns: ["ID"] }, reference: null, rule: null });
-        mocked.projectRules.mockResolvedValue(projectRules({ references: [referenceRow(), meta, foreignKey] }));
-        mocked.referenceCoverage.mockImplementation(async (_s, _d, reference) => (reference.from.table === "wp_wc_order_items" ? coverage({ total: 4, resolved: 3 }) : coverage({ total: 2, resolved: 1, zeroOrNull: 1 })));
-        await openProjectPage();
-        await screen.findByRole("row", { name: ORDER_ITEMS_ROW });
-        await userEvent.click(screen.getByRole("button", { name: "Check coverage for all" }));
-        expect(await screen.findByText("3 of 4")).toBeInTheDocument();
-        expect(await screen.findByText("1 of 2")).toBeInTheDocument();
-        const unapplied = screen.getByRole("row", { name: "wp_users.ID → wp_wc_orders.id" });
-        expect(within(unapplied).getByText("not applied")).toBeInTheDocument();
-        expect(within(unapplied).queryByRole("button", { name: "check" })).not.toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("adding a value style", () => {
-    const styleRuleStored = { columns: ["wc_orders.status"], meta_keys: [], in: [], match: "=" as const, value: "wc-failed", color: "red" as const, enabled: true };
-
-    beforeEach(() => mocked.ruleDraft.mockResolvedValue({ source: "wc_orders.status", meta: null }));
-
-    it("takes the value's column, saves the chosen match, text and color, and lists the style", async () => {
-      await openOrderObject();
-      fireEvent.contextMenu(screen.getByText("wc-refunded"));
-      await userEvent.click(screen.getByRole("menuitem", { name: "Style…" }));
-
-      const form = await screen.findByRole("region", { name: "new value style" });
-      expect(within(form).getByRole("textbox", { name: "columns" })).toHaveValue("wc_orders.status");
-      const value = within(form).getByRole("textbox", { name: "Value" });
-      expect(value).toHaveValue("wc-refunded");
-      await userEvent.clear(value);
-      await userEvent.type(value, "wc-failed");
-      expect(within(form).getByRole("button", { name: "red" })).toHaveAttribute("aria-pressed", "true");
-      expect(within(form).getByRole("button", { name: "blue" })).toHaveAttribute("aria-pressed", "false");
-      await userEvent.click(within(form).getByRole("button", { name: "red" }));
-
-      respondToChangeWith(projectRules({ styles: [{ origin: { kind: "project" }, index: 0, rule: styleRuleStored }] }));
-      await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
-
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addStyle", rule: expect.objectContaining({ columns: ["wc_orders.status"], match: "=", value: "wc-failed", color: "red", enabled: true }) });
-      const styles = screen.getByRole("region", { name: "Value styles" });
-      expect(await within(styles).findByRole("row", { name: "wc_orders.status = 'wc-failed'" })).toBeInTheDocument();
-    });
-
-    it("moves the pressed state when another color is picked", async () => {
-      await openOrderObject();
-      fireEvent.contextMenu(screen.getByText("wc-refunded"));
-      await userEvent.click(screen.getByRole("menuitem", { name: "Style…" }));
-      const form = await screen.findByRole("region", { name: "new value style" });
-      await userEvent.click(within(form).getByRole("button", { name: "green" }));
-      expect(within(form).getByRole("button", { name: "green" })).toHaveAttribute("aria-pressed", "true");
-      expect(within(form).getByRole("button", { name: "red" })).toHaveAttribute("aria-pressed", "false");
-    });
-
-    it("lists a style and removes it by index", async () => {
-      mocked.projectRules.mockResolvedValue(projectRules({ styles: [{ origin: { kind: "project" }, index: 3, rule: styleRuleStored }] }));
-      await openProjectPage();
-      const row = await screen.findByRole("row", { name: "wc_orders.status = 'wc-failed'" });
-      await userEvent.click(within(row).getByRole("button", { name: "remove" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeStyle", index: 3 });
-    });
-
-    it("copies a preset's style that ships off into the project when it is switched on", async () => {
-      const off = { ...styleRuleStored, enabled: false };
-      mocked.projectRules.mockResolvedValue(projectRules({ styles: [{ origin: { kind: "preset", preset: "woocommerce" }, index: null, rule: off }] }));
-      await openProjectPage();
-      await userEvent.click(await screen.findByRole("button", { name: "switch on" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addStyle", rule: { ...off, enabled: true } });
-    });
-  });
-
-  describe("value styles in grids", () => {
-    it("draws a cell whose value has a style in that scheme color", () => {
-      const rs = resultSet({ styles: [{ row: 0, col: 1, style: "red" }] });
-      render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={{ sessionId: "s1", resultId: 1 }} valueAt={(row, col) => resultValueAt(rs, row, col)} />);
-      expect(screen.getByText("Hello world").closest("[style]")?.getAttribute("style")).toContain("var(--style-red)");
-    });
-  });
-
-  describe("kinds", () => {
-    it("saves a kind for the meta key of the focused value", async () => {
-      mocked.ruleDraft.mockResolvedValue({ source: "wc_orders_meta.meta_value", meta: { table: "wc_orders_meta", keyColumn: "meta_key", key: "_paid_via" } });
-      await openOrderObject();
-      fireEvent.contextMenu(screen.getByText("bacs"));
-      await userEvent.click(screen.getByRole("menuitem", { name: "Kind…" }));
-      const form = await screen.findByRole("region", { name: "new kind" });
-      expect(within(form).getByRole("textbox", { name: "meta keys" })).toHaveValue("_paid_via");
-      expect(within(form).getByRole("textbox", { name: "in meta tables" })).toHaveValue("wc_orders_meta");
-      await userEvent.selectOptions(within(form).getByRole("combobox", { name: "Kind" }), "secret");
-      await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addKind", rule: { columns: [], meta_keys: ["_paid_via"], in: ["wc_orders_meta"], secret: true } });
     });
   });
 
@@ -449,83 +228,531 @@ describe("ProjectPanel", () => {
     });
   });
 
-  describe("editing and removing project rules", () => {
-    const kindRow = { origin: { kind: "project" } as const, index: 2, rule: { columns: ["wc_orders.status"], secret: true } };
-    const styleRow = { origin: { kind: "project" } as const, index: 3, rule: { columns: ["wc_orders.status"], match: "=" as const, value: "wc-failed", color: "red" as const, enabled: true } };
+  describe("tables", () => {
+    const ordersGroup = tableRules("wp_wc_orders", {
+      referencedBy: [{ from: { table: "wp_wc_order_items", columns: ["order_id"] }, to: { table: "wp_wc_orders", columns: ["id"] }, when: "", disabled: false }],
+      entities: [{ preset: "woocommerce", name: "order", filter: null }],
+      actions: [{ preset: "woocommerce", name: "mark_paid", scope: "row" }],
+    });
+    const fullItemsGroup = itemsGroup({ references: [referenceRow()], styles: [styleRow()], kinds: [kindRow()] });
+    const looseGroup = tableRules(null, { kinds: [kindRow({ index: null, origin: { kind: "preset", preset: "woocommerce" }, rule: { columns: ["*.status"], enum: true } })] });
 
-    beforeEach(() => mocked.projectRules.mockResolvedValue(projectRules({ kinds: [kindRow], styles: [styleRow] })));
+    beforeEach(() => mocked.projectRules.mockResolvedValue(projectRules({ groups: [ordersGroup, fullItemsGroup, looseGroup] })));
 
-    it("updates a kind by index with the edited rule", async () => {
+    it("renders one region per group, named by its table, in the order Rust returns them", async () => {
       await openProjectPage();
-      await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status secret" })).getByRole("button", { name: "edit" }));
-      const form = await screen.findByRole("region", { name: "edit kind" });
-      await userEvent.selectOptions(within(form).getByRole("combobox", { name: "Kind" }), "number");
-      await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateKind", index: 2, rule: expect.objectContaining({ columns: ["wc_orders.status"], number: true }) });
+      await tableRegion();
+      const page = screen.getByRole("region", { name: "Presets and prefix" }).parentElement!;
+      const names = within(page).getAllByRole("region").map((region) => region.getAttribute("aria-label"));
+      expect(names).toEqual(["Presets and prefix", "wp_wc_orders", "wp_wc_order_items", "no table"]);
     });
 
-    it("updates a style by index with the edited rule", async () => {
+    it("counts a table's rules in its band", async () => {
       await openProjectPage();
-      await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status = 'wc-failed'" })).getByRole("button", { name: "edit" }));
-      const form = await screen.findByRole("region", { name: "edit value style" });
-      const value = within(form).getByRole("textbox", { name: "Value" });
+      expect(within(await tableRegion()).getByText("1 reference · 1 value style · 1 kind")).toBeInTheDocument();
+      expect(within(await tableRegion("wp_wc_orders")).getByText("1 incoming · 1 entity · 1 action")).toBeInTheDocument();
+    });
+
+    it("lists a table's references, value styles and kinds as rows", async () => {
+      await openProjectPage();
+      const region = within(await tableRegion());
+      expect(region.getByRole("row", { name: ORDER_ITEMS_ROW })).toHaveTextContent("preset woocommerce");
+      expect(region.getByRole("row", { name: STYLE_NAME })).toBeInTheDocument();
+      expect(region.getByRole("row", { name: KIND_NAME })).toBeInTheDocument();
+    });
+
+    it("lists the incoming references, entities and actions of a table as read-only rows", async () => {
+      await openProjectPage();
+      const region = within(await tableRegion("wp_wc_orders"));
+      expect(region.getByRole("row", { name: "referenced by" })).toHaveTextContent("referenced by wp_wc_order_items.order_id");
+      const entity = region.getByRole("row", { name: "entity order" });
+      expect(entity).toHaveTextContent("entity order · preset woocommerce");
+      const action = region.getByRole("row", { name: "action mark_paid" });
+      expect(action).toHaveTextContent("action mark_paid · row · preset woocommerce");
+      expect(within(entity).queryByRole("button")).not.toBeInTheDocument();
+      expect(within(action).queryByRole("button")).not.toBeInTheDocument();
+    });
+
+    it("collects rules that belong to no table in the no table group", async () => {
+      await openProjectPage();
+      expect(within(await tableRegion("no table")).getByRole("row", { name: "*.status enum" })).toBeInTheDocument();
+    });
+
+    it("hides a collapsed table's rows and remembers it when the page is shown again", async () => {
+      const view = await openProjectPage();
+      await userEvent.click(await screen.findByRole("button", { name: "Collapse wp_wc_order_items" }));
+      expect(screen.queryByRole("row", { name: ORDER_ITEMS_ROW })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Expand wp_wc_order_items" })).toHaveAttribute("aria-expanded", "false");
+
+      view.unmount();
+      render(<App />);
+      expect(await screen.findByRole("button", { name: "Expand wp_wc_order_items" })).toBeInTheDocument();
+      expect(screen.queryByRole("row", { name: ORDER_ITEMS_ROW })).not.toBeInTheDocument();
+    });
+
+    it("shows the rows again when the table is expanded", async () => {
+      await openProjectPage();
+      await userEvent.click(await screen.findByRole("button", { name: "Collapse wp_wc_order_items" }));
+      await userEvent.click(screen.getByRole("button", { name: "Expand wp_wc_order_items" }));
+      expect(screen.getByRole("row", { name: ORDER_ITEMS_ROW })).toBeInTheDocument();
+    });
+
+    describe("filter", () => {
+      it("narrows the tables by a substring of the table name", async () => {
+        await openProjectPage();
+        expect(screen.getByText("3 tables with rules")).toBeInTheDocument();
+        await userEvent.type(screen.getByRole("searchbox", { name: "Filter tables" }), "ITEMS");
+        expect(screen.getByText("1 of 3 tables")).toBeInTheDocument();
+        expect(screen.getByRole("region", { name: "wp_wc_order_items" })).toBeInTheDocument();
+        expect(screen.queryByRole("region", { name: "wp_wc_orders" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("region", { name: "no table" })).not.toBeInTheDocument();
+      });
+
+      it("says so when no table matches", async () => {
+        await openProjectPage();
+        await userEvent.type(screen.getByRole("searchbox", { name: "Filter tables" }), "zzz");
+        expect(screen.getByText("0 of 3 tables")).toBeInTheDocument();
+        expect(screen.getByText("no table matches")).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe("reference switches", () => {
+    it.each([
+      ["disables an enabled", false, { op: "disable", id: "x" }],
+      ["enables a disabled", true, { op: "enable", id: "x" }],
+    ])("%s reference by id", async (_what, disabled, change) => {
+      mocked.projectRules.mockResolvedValue(rulesWith({ references: [referenceRow({ disabled })] }));
+      await openProjectPage();
+      const toggle = await screen.findByRole("switch", { name: ORDER_ITEMS_ROW });
+      if (disabled) expect(toggle).not.toBeChecked();
+      else expect(toggle).toBeChecked();
+      await userEvent.click(toggle);
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", change);
+    });
+
+    it("gives a foreign key neither a switch nor an edit", async () => {
+      mocked.projectRules.mockResolvedValue(rulesWith({ references: [foreignKeyRow()] }));
+      await openProjectPage();
+      const row = await screen.findByRole("row", { name: FK_ROW });
+      expect(row).toHaveTextContent("foreign key fk_user");
+      expect(within(row).getByText("not applied")).toBeInTheDocument();
+      expect(within(row).queryByRole("switch")).not.toBeInTheDocument();
+      expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("editing, resetting and removing references", () => {
+    const rowIn = (name = ORDER_ITEMS_ROW) => screen.findByRole("row", { name });
+    const showRow = async (row: ReferenceRow) => {
+      mocked.projectRules.mockResolvedValue(rulesWith({ references: [row] }));
+      await openProjectPage();
+      return within(await rowIn());
+    };
+
+    it("offers edit and remove for a project reference and removes it by id", async () => {
+      const row = await showRow(referenceRow({ origin: { kind: "project" }, id: "p1" }));
+      expect(row.getByRole("button", { name: "edit" })).toBeInTheDocument();
+      expect(row.queryByRole("button", { name: "reset" })).not.toBeInTheDocument();
+      await userEvent.click(row.getByRole("button", { name: "remove" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeReference", id: "p1" });
+    });
+
+    it.each([
+      ["preset", referenceRow({ id: "p1", edited: true }), "preset woocommerce"],
+      ["inferred", inferredRow({ edited: true }), "inferred"],
+    ])("offers edit and reset for an edited %s reference and resets it by id", async (_kind, edited, origin) => {
+      const row = await showRow(edited);
+      expect(row.getByText(new RegExp(origin))).toBeInTheDocument();
+      expect(row.getByText(/· edited in project/)).toBeInTheDocument();
+      expect(row.getByRole("button", { name: "edit" })).toBeInTheDocument();
+      expect(row.queryByRole("button", { name: "remove" })).not.toBeInTheDocument();
+      await userEvent.click(row.getByRole("button", { name: "reset" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeReference", id: edited.id });
+    });
+
+    it.each([
+      ["preset", referenceRow()],
+      ["inferred", inferredRow()],
+    ])("offers only edit for an unedited %s reference", async (_kind, unedited) => {
+      const row = await showRow(unedited);
+      expect(row.getByRole("button", { name: "edit" })).toBeInTheDocument();
+      expect(row.queryByRole("button", { name: "reset" })).not.toBeInTheDocument();
+      expect(row.queryByRole("button", { name: "remove" })).not.toBeInTheDocument();
+      expect(row.queryByText(/edited in project/)).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ["a project reference", referenceRow({ origin: { kind: "project" }, id: "p1" })],
+      ["an edited preset reference", referenceRow({ id: "p1", edited: true })],
+    ])("saves an edit of %s as an update of its id", async (_kind, row) => {
+      const shown = await showRow(row);
+      await userEvent.click(shown.getByRole("button", { name: "edit" }));
+      const dialog = await screen.findByRole("dialog", { name: "edit reference" });
+      expect(within(dialog).getByRole("combobox", { name: "Source table" })).toHaveValue("wp_wc_order_items");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateReference", id: "p1", reference: expect.objectContaining({ from: "wc_order_items.order_id", to: "wc_orders.id" }) });
+    });
+
+    it("saves an edit of an unedited preset reference as a project rule that overrides the preset's id", async () => {
+      const row = await showRow(referenceRow());
+      await userEvent.click(row.getByRole("button", { name: "edit" }));
+      const dialog = await screen.findByRole("dialog", { name: "edit reference" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addReference", reference: expect.objectContaining({ id: "x", from: "wc_order_items.order_id", to: "wc_orders.id" }) });
+    });
+
+    it("saves an edit of an inferred reference as a new project rule with no id", async () => {
+      const row = await showRow(inferredRow());
+      await userEvent.click(row.getByRole("button", { name: "edit" }));
+      const dialog = await screen.findByRole("dialog", { name: "edit reference" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addReference", reference: expect.objectContaining({ id: "", from: "wc_order_items.order_id" }) });
+    });
+  });
+
+  describe("reference coverage", () => {
+    beforeEach(() => mocked.projectRules.mockResolvedValue(rulesWith({ references: [referenceRow()] })));
+
+    it("counts every applied reference on open without a button to ask for it", async () => {
+      const second = itemsReference("order_item_id");
+      mocked.projectRules.mockResolvedValue(rulesWith({ references: [referenceRow(), second, foreignKeyRow()] }));
+      await openProjectPage();
+      await waitFor(() => expect(mocked.referenceCoverage).toHaveBeenCalledTimes(2));
+      expect(mocked.referenceCoverage.mock.calls.map(([, , reference]) => reference)).toEqual([referenceRow().reference, second.reference]);
+      expect(mocked.referenceCoverage).toHaveBeenCalledWith("s1", "db", referenceRow().reference);
+      expect(screen.queryByRole("button", { name: "check" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Check coverage for all" })).not.toBeInTheDocument();
+    });
+
+    it("says counting until the answer arrives", async () => {
+      deferredCoverage();
+      await openProjectPage();
+      expect(await within(await screen.findByRole("row", { name: ORDER_ITEMS_ROW })).findByText("counting…")).toBeInTheDocument();
+    });
+
+    it("shows resolved of total in the row and what the counts leave out in the tooltip", async () => {
+      mocked.referenceCoverage.mockResolvedValue(coverage({ total: 7, resolved: 6, zeroOrNull: 1, sampleUnresolved: ["9"] }));
+      await openProjectPage();
+      const row = await screen.findByRole("row", { name: ORDER_ITEMS_ROW });
+      const count = await within(row).findByText("6 of 7");
+      expect(count.closest("[title]")).toHaveAttribute("title", "1 is 0 or NULL · unresolved 9");
+    });
+
+    it("says so when the count timed out", async () => {
+      mocked.referenceCoverage.mockResolvedValue(coverage({ timedOut: true }));
+      await openProjectPage();
+      expect(await within(await screen.findByRole("row", { name: ORDER_ITEMS_ROW })).findByText("timed out")).toBeInTheDocument();
+    });
+
+    it("shows the error of a failed count in the row", async () => {
+      mocked.referenceCoverage.mockRejectedValue({ kind: "invalid_input", message: "Table is gone", code: null });
+      await openProjectPage();
+      expect(await within(await screen.findByRole("row", { name: ORDER_ITEMS_ROW })).findByText("Table is gone")).toBeInTheDocument();
+    });
+
+    describe("queue", () => {
+      const five = ["a", "b", "c", "d", "e"].map((column) => itemsReference(column));
+
+      beforeEach(() => mocked.projectRules.mockResolvedValue(rulesWith({ references: five })));
+
+      it("runs at most three counts at once and starts the next as one finishes", async () => {
+        const pending = deferredCoverage();
+        await openProjectPage();
+        await waitFor(() => expect(mocked.referenceCoverage).toHaveBeenCalledTimes(3));
+        await act(async () => {});
+        expect(mocked.referenceCoverage).toHaveBeenCalledTimes(3);
+
+        await act(async () => pending[0](coverage({ total: 1, resolved: 1 })));
+        await waitFor(() => expect(mocked.referenceCoverage).toHaveBeenCalledTimes(4));
+        await act(async () => {});
+        expect(mocked.referenceCoverage).toHaveBeenCalledTimes(4);
+      });
+
+      it("stops counting when the page is left", async () => {
+        const pending = deferredCoverage();
+        const view = await openProjectPage();
+        await waitFor(() => expect(mocked.referenceCoverage).toHaveBeenCalledTimes(3));
+        view.unmount();
+        await act(async () => pending.forEach((resolve) => resolve(coverage({ total: 1, resolved: 1 }))));
+        expect(mocked.referenceCoverage).toHaveBeenCalledTimes(3);
+      });
+    });
+
+    it("keeps the counts for the session, so showing the page again counts nothing", async () => {
+      mocked.referenceCoverage.mockResolvedValue(coverage({ total: 7, resolved: 6 }));
+      const view = await openProjectPage();
+      await screen.findByText("6 of 7");
+      view.unmount();
+      vi.clearAllMocks();
+
+      render(<App />);
+      expect(await screen.findByText("6 of 7")).toBeInTheDocument();
+      expect(mocked.referenceCoverage).not.toHaveBeenCalled();
+    });
+
+    it("counts again when Refresh coverage is clicked", async () => {
+      mocked.referenceCoverage.mockResolvedValue(coverage({ total: 7, resolved: 6 }));
+      await openProjectPage();
+      await screen.findByText("6 of 7");
+      mocked.referenceCoverage.mockResolvedValue(coverage({ total: 8, resolved: 8 }));
+      await userEvent.click(screen.getByRole("button", { name: "Refresh coverage" }));
+      expect(await screen.findByText("8 of 8")).toBeInTheDocument();
+      expect(screen.queryByText("6 of 7")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("the edit sheet", () => {
+    const form = (): ReferenceForm => ({
+      ...referenceFormFor(paidViaSource, { source: "wc_orders_meta.meta_value", meta: null }),
+      target: { table: "wp_wc_orders", column: "id" },
+    });
+
+    it("opens as a dialog named after the form", async () => {
+      await openProjectPage(form());
+      const dialog = await screen.findByRole("dialog", { name: "new reference" });
+      expect(within(dialog).getByRole("combobox", { name: "Target table" })).toHaveValue("wp_wc_orders");
+    });
+
+    it("saves on ⌘↵ from any field and closes", async () => {
+      await openProjectPage(form());
+      const dialog = await screen.findByRole("dialog", { name: "new reference" });
+      await userEvent.click(within(dialog).getByRole("textbox", { name: "Label" }));
+      await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addReference", reference: expect.objectContaining({ from: "wc_orders_meta.meta_value", to: "wc_orders.id" }) });
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("closes on Escape without saving", async () => {
+      await openProjectPage(form());
+      await screen.findByRole("dialog", { name: "new reference" });
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(mocked.projectUpdate).not.toHaveBeenCalled();
+    });
+
+    it("closes on Cancel without saving", async () => {
+      await openProjectPage(form());
+      await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(mocked.projectUpdate).not.toHaveBeenCalled();
+    });
+
+    it("shows the Rust error under the field it names and keeps the sheet open", async () => {
+      mocked.projectUpdate.mockRejectedValue({ kind: "invalid_input", message: "`reference.to`: `wp_users` has no column `nope`", code: null, field: { path: "reference.to", message: "`wp_users` has no column `nope`" } });
+      await openProjectPage({ ...form(), target: { table: "wp_users", column: "nope" } });
+      const dialog = await screen.findByRole("dialog", { name: "new reference" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+      const alert = await within(dialog).findByRole("alert");
+      expect(alert).toHaveTextContent("`wp_users` has no column `nope`");
+      expect(alert.parentElement).toContainElement(within(dialog).getByRole("combobox", { name: "Target table" }));
+      expect(screen.getByRole("dialog", { name: "new reference" })).toBeInTheDocument();
+    });
+
+    it("asks for a target while none is picked and saves nothing", async () => {
+      await openProjectPage({ ...form(), target: { table: "", column: "" } });
+      const dialog = await screen.findByRole("dialog", { name: "new reference" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent("pick a target table and column");
+      expect(mocked.projectUpdate).not.toHaveBeenCalled();
+    });
+
+    it("previews the coverage of the unsaved rule and warns when nothing resolves", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        mocked.coveragePreview.mockResolvedValue(coverage({ total: 1, sampleUnresolved: ["8YB…"] }));
+        await openProjectPage(form());
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(400);
+        });
+        expect(await screen.findByText("0 of 1 resolve")).toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent("no source value matches a target; the rule is probably wrong · unresolved: 8YB…");
+        expect(mocked.coveragePreview).toHaveBeenLastCalledWith("s1", "db", expect.objectContaining({ from: "wc_orders_meta.meta_value", to: "wc_orders.id" }), null);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("adding a reference from a meta value", () => {
+    const draft: RuleDraft = { source: "wc_orders_meta.meta_value", meta: { table: "wc_orders_meta", keyColumn: "meta_key", key: "_ppcp_paypal_order_id" } };
+
+    beforeEach(() => mocked.ruleDraft.mockResolvedValue(draft));
+
+    it("opens the sheet on the Project tab, filled from the value, and saves the rule", async () => {
+      await openOrderObject();
+      await userEvent.click(screen.getByText("bacs"));
+      await userEvent.keyboard("r");
+
+      const dialog = await screen.findByRole("dialog", { name: "new reference" });
+      expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "project" });
+      expect(mocked.ruleDraft).toHaveBeenCalledWith("s1", "db", paidViaSource);
+      expect(within(dialog).getByRole("combobox", { name: "Source table" })).toHaveValue("wp_wc_orders_meta");
+      expect(within(dialog).getByRole("combobox", { name: "When column" })).toHaveValue("meta_key");
+      expect(within(dialog).getByRole("textbox", { name: "When value" })).toHaveValue("_ppcp_paypal_order_id");
+
+      await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Target table" }), "wp_wc_orders");
+      await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Target column" })).toHaveValue("id"));
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", {
+        op: "addReference",
+        reference: expect.objectContaining({ from: "wc_orders_meta.meta_value", when: { meta_key: "_ppcp_paypal_order_id" }, to: "wc_orders.id" }),
+      });
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("opens the same sheet from the Add reference… menu item", async () => {
+      await openOrderObject();
+      fireEvent.contextMenu(screen.getByText("bacs"));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Add reference…" }));
+      const dialog = await screen.findByRole("dialog", { name: "new reference" });
+      expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "project" });
+      expect(within(dialog).getByRole("textbox", { name: "When value" })).toHaveValue("_ppcp_paypal_order_id");
+    });
+  });
+
+  describe("value styles", () => {
+    beforeEach(() => mocked.ruleDraft.mockResolvedValue({ source: "wc_orders.status", meta: null }));
+
+    it("takes the value's column, saves the chosen match, text and color, and lists the style", async () => {
+      await openOrderObject();
+      fireEvent.contextMenu(screen.getByText("wc-refunded"));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Style…" }));
+
+      const dialog = await screen.findByRole("dialog", { name: "new value style" });
+      expect(within(dialog).getByRole("textbox", { name: "columns" })).toHaveValue("wc_orders.status");
+      const value = within(dialog).getByRole("textbox", { name: "Value" });
+      expect(value).toHaveValue("wc-refunded");
       await userEvent.clear(value);
-      await userEvent.type(value, "wc-cancelled");
-      await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateStyle", index: 3, rule: expect.objectContaining({ columns: ["wc_orders.status"], value: "wc-cancelled", color: "red" }) });
+      await userEvent.type(value, "wc-failed");
+      expect(within(dialog).getByRole("button", { name: "red" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(dialog).getByRole("button", { name: "blue" })).toHaveAttribute("aria-pressed", "false");
+
+      respondToChangeWith(projectRules({ groups: [tableRules("wp_wc_orders", { styles: [styleRow()] })] }));
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addStyle", rule: expect.objectContaining({ columns: ["wc_orders.status"], match: "=", value: "wc-failed", color: "red", enabled: true }) });
+      const region = await tableRegion("wp_wc_orders");
+      expect(await within(region).findByRole("row", { name: STYLE_NAME })).toBeInTheDocument();
     });
 
-    describe("revealing the edit form", () => {
-      const scrolled: Element[] = [];
-      const otherStyleRow = { origin: { kind: "project" } as const, index: 4, rule: { columns: ["wc_orders.total"], match: "=" as const, value: "wc-held", color: "blue" as const, enabled: true } };
-
-      beforeEach(() => {
-        scrolled.length = 0;
-        Element.prototype.scrollIntoView = function (this: Element) {
-          scrolled.push(this);
-        };
-      });
-
-      afterEach(() => {
-        delete (Element.prototype as Partial<Element>).scrollIntoView;
-      });
-
-      it("scrolls the edit kind form into view and focuses its first field", async () => {
-        await openProjectPage();
-        await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status secret" })).getByRole("button", { name: "edit" }));
-        const form = await screen.findByRole("region", { name: "edit kind" });
-        expect(scrolled).toContain(form);
-        expect(within(form).getByRole("textbox", { name: "columns" })).toHaveFocus();
-      });
-
-      it("scrolls the edit value style form into view and focuses its first field", async () => {
-        await openProjectPage();
-        await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status = 'wc-failed'" })).getByRole("button", { name: "edit" }));
-        const form = await screen.findByRole("region", { name: "edit value style" });
-        expect(scrolled).toContain(form);
-        expect(within(form).getByRole("textbox", { name: "columns" })).toHaveFocus();
-      });
-
-      it("scrolls to the form again when edit is clicked on another style while one is open", async () => {
-        mocked.projectRules.mockResolvedValue(projectRules({ kinds: [kindRow], styles: [styleRow, otherStyleRow] }));
-        await openProjectPage();
-        await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status = 'wc-failed'" })).getByRole("button", { name: "edit" }));
-        const first = await screen.findByRole("region", { name: "edit value style" });
-        expect(within(first).getByRole("textbox", { name: "columns" })).toHaveValue("wc_orders.status");
-        scrolled.length = 0;
-
-        await userEvent.click(within(screen.getByRole("row", { name: "wc_orders.total = 'wc-held'" })).getByRole("button", { name: "edit" }));
-        const second = await screen.findByRole("region", { name: "edit value style" });
-        expect(scrolled).toContain(second);
-        expect(within(second).getByRole("textbox", { name: "columns" })).toHaveValue("wc_orders.total");
-        expect(within(second).getByRole("textbox", { name: "Value" })).toHaveValue("wc-held");
-      });
+    it("moves the pressed state when another color is picked", async () => {
+      await openOrderObject();
+      fireEvent.contextMenu(screen.getByText("wc-refunded"));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Style…" }));
+      const dialog = await screen.findByRole("dialog", { name: "new value style" });
+      await userEvent.click(within(dialog).getByRole("button", { name: "green" }));
+      expect(within(dialog).getByRole("button", { name: "green" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(dialog).getByRole("button", { name: "red" })).toHaveAttribute("aria-pressed", "false");
     });
 
-    it("removes a kind by index", async () => {
-      await openProjectPage();
-      await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status secret" })).getByRole("button", { name: "remove" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeKind", index: 2 });
+    describe("rows", () => {
+      const open = async (row: StyleRow) => {
+        mocked.projectRules.mockResolvedValue(rulesWith({ styles: [row] }));
+        await openProjectPage();
+        return within(await screen.findByRole("row", { name: STYLE_NAME }));
+      };
+
+      it.each([
+        ["a project style that is on", styleRow(), true, "disableStyle"],
+        ["a project style stored off", styleRow({ disabled: true }), false, "enableStyle"],
+        ["a preset style that is on", presetStyle(), true, "disableStyle"],
+        ["a preset style that is off", presetStyle({ disabled: true }), false, "enableStyle"],
+      ])("switches %s by id", async (_what, row, checked, op) => {
+        await open(row);
+        const toggle = screen.getByRole("switch", { name: STYLE_NAME });
+        if (checked) expect(toggle).toBeChecked();
+        else expect(toggle).not.toBeChecked();
+        await userEvent.click(toggle);
+        expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op, id: STYLE_ID });
+      });
+
+      it("removes a project style by id", async () => {
+        const row = await open(styleRow());
+        expect(row.queryByRole("button", { name: "reset" })).not.toBeInTheDocument();
+        await userEvent.click(row.getByRole("button", { name: "remove" }));
+        expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeStyle", id: STYLE_ID });
+      });
+
+      it("marks an edited preset style and resets it by id", async () => {
+        const row = await open(presetStyle({ edited: true }));
+        expect(row.getByText(/edited in project/)).toBeInTheDocument();
+        expect(row.queryByRole("button", { name: "remove" })).not.toBeInTheDocument();
+        await userEvent.click(row.getByRole("button", { name: "reset" }));
+        expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeStyle", id: STYLE_ID });
+      });
+
+      it("offers neither reset nor remove for a preset style that is not edited", async () => {
+        const row = await open(presetStyle());
+        expect(row.queryByRole("button", { name: "reset" })).not.toBeInTheDocument();
+        expect(row.queryByRole("button", { name: "remove" })).not.toBeInTheDocument();
+      });
+
+      it.each([
+        ["a project style", styleRow()],
+        ["a preset style", presetStyle()],
+      ])("saves an edit of %s as an update of its id", async (_what, row) => {
+        const shown = await open(row);
+        await userEvent.click(shown.getByRole("button", { name: "edit" }));
+        const dialog = await screen.findByRole("dialog", { name: "edit value style" });
+        expect(within(dialog).getByRole("textbox", { name: "columns" })).toHaveFocus();
+        const value = within(dialog).getByRole("textbox", { name: "Value" });
+        await userEvent.clear(value);
+        await userEvent.type(value, "wc-cancelled");
+        await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+        expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateStyle", id: STYLE_ID, rule: expect.objectContaining({ columns: ["wc_orders.status"], value: "wc-cancelled", color: "red" }) });
+      });
+    });
+  });
+
+  describe("value styles in grids", () => {
+    it("draws a cell whose value has a style in that scheme color", () => {
+      const rs = resultSet({ styles: [{ row: 0, col: 1, style: "red" }] });
+      render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={{ sessionId: "s1", resultId: 1 }} valueAt={(row, col) => resultValueAt(rs, row, col)} />);
+      expect(screen.getByText("Hello world").closest("[style]")?.getAttribute("style")).toContain("var(--style-red)");
+    });
+  });
+
+  describe("kinds", () => {
+    it("saves a kind for the meta key of the focused value", async () => {
+      mocked.ruleDraft.mockResolvedValue({ source: "wc_orders_meta.meta_value", meta: { table: "wc_orders_meta", keyColumn: "meta_key", key: "_paid_via" } });
+      await openOrderObject();
+      fireEvent.contextMenu(screen.getByText("bacs"));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Kind…" }));
+      const dialog = await screen.findByRole("dialog", { name: "new kind" });
+      expect(within(dialog).getByRole("textbox", { name: "meta keys" })).toHaveValue("_paid_via");
+      expect(within(dialog).getByRole("textbox", { name: "in meta tables" })).toHaveValue("wc_orders_meta");
+      await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Kind" }), "secret");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addKind", rule: { columns: [], meta_keys: ["_paid_via"], in: ["wc_orders_meta"], secret: true } });
+    });
+
+    describe("rows", () => {
+      it("updates a project kind by index with the edited rule", async () => {
+        mocked.projectRules.mockResolvedValue(rulesWith({ kinds: [kindRow()] }));
+        await openProjectPage();
+        await userEvent.click(within(await screen.findByRole("row", { name: KIND_NAME })).getByRole("button", { name: "edit" }));
+        const dialog = await screen.findByRole("dialog", { name: "edit kind" });
+        await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Kind" }), "number");
+        await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
+        expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateKind", index: 2, rule: expect.objectContaining({ columns: ["wc_orders.status"], number: true }) });
+      });
+
+      it("removes a project kind by index", async () => {
+        mocked.projectRules.mockResolvedValue(rulesWith({ kinds: [kindRow()] }));
+        await openProjectPage();
+        await userEvent.click(within(await screen.findByRole("row", { name: KIND_NAME })).getByRole("button", { name: "remove" }));
+        expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeKind", index: 2 });
+      });
+
+      it("shows a preset kind without edit or remove", async () => {
+        mocked.projectRules.mockResolvedValue(rulesWith({ kinds: [kindRow({ index: null, origin: { kind: "preset", preset: "woocommerce" } })] }));
+        await openProjectPage();
+        const row = await screen.findByRole("row", { name: KIND_NAME });
+        expect(row).toHaveTextContent("preset woocommerce");
+        expect(within(row).queryByRole("button")).not.toBeInTheDocument();
+      });
     });
   });
 
@@ -533,22 +760,21 @@ describe("ProjectPanel", () => {
     const pad = (n: number) => String(n).padStart(4, "0");
 
     it("renders only a window of 500 references", async () => {
-      const references = Array.from({ length: 500 }, (_, i) =>
-        referenceRow({ id: `r${i}`, from: { table: "wp_wc_order_items", columns: [`ref_${pad(i + 1)}`] } }),
-      );
-      mocked.projectRules.mockResolvedValue(projectRules({ references }));
+      mocked.referenceCoverage.mockImplementation(() => new Promise<Coverage>(() => {}));
+      const references = Array.from({ length: 500 }, (_, i) => itemsReference(`ref_${pad(i + 1)}`));
+      mocked.projectRules.mockResolvedValue(rulesWith({ references }));
       await openProjectPage();
-      const section = within(await screen.findByRole("region", { name: "References" }));
-      expect(await section.findByText("wp_wc_order_items.ref_0001")).toBeInTheDocument();
-      expect(section.queryByText("wp_wc_order_items.ref_0500")).not.toBeInTheDocument();
+      const section = within(await tableRegion());
+      expect(await section.findByText("ref_0001")).toBeInTheDocument();
+      expect(section.queryByText("ref_0500")).not.toBeInTheDocument();
       expect(section.getAllByRole("row").length).toBeLessThan(200);
     });
 
     it("renders only a window of 500 kinds", async () => {
-      const kinds = Array.from({ length: 500 }, (_, i) => ({ origin: { kind: "project" } as const, index: i, rule: { columns: [`kind_${pad(i + 1)}`], secret: true } }));
-      mocked.projectRules.mockResolvedValue(projectRules({ kinds }));
+      const kinds = Array.from({ length: 500 }, (_, i) => kindRow({ index: i, rule: { columns: [`kind_${pad(i + 1)}`], secret: true } }));
+      mocked.projectRules.mockResolvedValue(rulesWith({ kinds }));
       await openProjectPage();
-      const section = within(await screen.findByRole("region", { name: "Kinds" }));
+      const section = within(await tableRegion());
       expect(await section.findByText("kind_0001")).toBeInTheDocument();
       expect(section.queryByText("kind_0500")).not.toBeInTheDocument();
       expect(section.getAllByRole("row").length).toBeLessThan(200);

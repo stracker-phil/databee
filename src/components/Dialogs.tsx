@@ -6,6 +6,7 @@ import { useStore } from "../state/store";
 import { Modal } from "./Modal";
 import { CONNECT_TITLE_ID, ConnectForm } from "./ConnectScreen";
 import { SettingsDialog } from "./settings/SettingsDialog";
+import { ActionSheet } from "./object/ActionSheet";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { SnapshotsDialog } from "./SnapshotsDialog";
 
@@ -241,6 +242,8 @@ export function Dialogs() {
       return <ConfirmDialog {...dialog} />;
     case "prompt":
       return <PromptDialog {...dialog} />;
+    case "action":
+      return <ActionSheet {...dialog} />;
     case "pin":
       return <PinDialog {...dialog} />;
     case "password":
