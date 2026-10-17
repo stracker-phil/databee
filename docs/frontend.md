@@ -22,7 +22,9 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 5. `App.tsx` loads the two stylesheets and calls `useBackendEvents()` once:
    1. `loadSettings()` loads settings and keybindings. `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch requests (`take_launch_events`).
-   2. It subscribes to `launch` (drain again) and `command` (menu clicks → `runCommand`).
+   2. It subscribes to `launch` (drain again), `command` (menu clicks → `runCommand`) and `remote` (requests
+      from `databee open` / `databee command` → `answerRemote` in `src/commands/remote.ts`, which always
+      replies with `remoteReply`).
    3. It adds a capture-phase `keydown` → `handleKeydown`, plus `error` / `unhandledrejection` → error toast.
 5. `applyAppearance(settings)` runs whenever settings change.
 
@@ -142,7 +144,7 @@ Conventions:
 
 Only `api.ts` files import `@tauri-apps/api` or `@tauri-apps/plugin-*`: the core's is `src/api/index.ts`, a
 module's is `src/<module>/api.ts` (Stage: `src/stage/api.ts`) ([ADR 0002](adr/0002-ipc-in-api-files.md)). `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic, plus the event
-subscriptions `onLaunch` and `onCommand`. The IPC types are generated from Rust with `ts-rs`
+subscriptions `onLaunch`, `onCommand` and `onRemote`. The IPC types are generated from Rust with `ts-rs`
 ([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts` (a module's types into its own folder, e.g. `src/stage/types.gen.ts`); never edit them. `bun run types`
 regenerates them (it runs the `export_bindings_*` tests), and `bun run lint` fails when a committed file is
 stale. `src/api/types.ts` re-exports the generated types plus the few frontend-only ones (`Keybindings`, `PaneSize`, `EMPTY_UI_STATE`, `TEXT_SIZES`, `SETTINGS_LIMITS`, `LOG_LEVELS`,

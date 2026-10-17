@@ -1,9 +1,11 @@
 use std::io::BufRead;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use url::{Host, Url};
 
+use crate::address::{Address, SCHEME};
 use crate::connection::{ConnectionSpec, Secret};
+use crate::ipc::IpcMessage;
 use crate::store::settings::LogLevel;
 
 const DEFAULT_HOST: &str = "127.0.0.1";
@@ -14,9 +16,12 @@ const DEFAULT_USER: &str = "root";
     name = "databee",
     version,
     about = "Minimalistic SQL client",
-    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/wordpress --password-env DB_PASS\n  echo secret | databee -u wp -d wordpress --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local"
+    args_conflicts_with_subcommands = true,
+    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/wordpress --password-env DB_PASS\n  echo secret | databee -u wp -d wordpress --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/wordpress/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar"
 )]
 struct Args {
+    #[command(subcommand)]
+    command: Option<RemoteCommand>,
     /// Connection URL: mysql://user[:password]@host[:port][/database][?socket=path].
     /// A password in the URL stays visible in the process list while this process runs the
     /// app; prefer --password-stdin or --password-env
@@ -56,6 +61,28 @@ struct Args {
     log_level: Option<LogLevel>,
 }
 
+#[derive(Subcommand, Debug)]
+enum RemoteCommand {
+    /// Open an address, or `<entity> <id>`, in the running DataBee
+    Open {
+        /// A databee:// address, or an entity name such as `order`
+        target: String,
+        /// The entity's key, when TARGET is an entity name
+        id: Option<String>,
+        /// Connection slug for `<entity> <id>` (default: the active connection)
+        #[arg(short, long)]
+        connection: Option<String>,
+        /// Open without bringing DataBee to the front
+        #[arg(long)]
+        background: bool,
+    },
+    /// Run a command of the running DataBee by its id, e.g. `view.sidebar`
+    Command {
+        /// The command id, as listed in the keybindings file
+        id: String,
+    },
+}
+
 /// A connection request from the command line, including its password if one was given.
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -74,6 +101,8 @@ pub enum CliOutcome {
     },
     /// `--help` / `--version`: print and exit without starting the app.
     Exit { message: String },
+    /// A subcommand for the running app (`open`, `command`).
+    Remote { message: IpcMessage },
 }
 
 /// Parses the full argv (including the program name).
@@ -101,9 +130,61 @@ where
             };
         }
     };
+    if let Some(command) = args.command {
+        return remote_message(command).map(|message| CliOutcome::Remote { message });
+    }
     let log_level = args.log_level;
     let launch = build_launch(args, default_port, stdin, env)?;
     Ok(CliOutcome::Run { launch, log_level })
+}
+
+fn remote_message(command: RemoteCommand) -> Result<IpcMessage, String> {
+    match command {
+        RemoteCommand::Open {
+            target,
+            id,
+            connection,
+            background,
+        } => {
+            let address = match id {
+                Some(id) => entity_target(&target, &id)?,
+                None => address_target(target, connection.is_some())?,
+            };
+            Ok(IpcMessage::Open {
+                address,
+                connection,
+                focus: !background,
+            })
+        }
+        RemoteCommand::Command { id } => Ok(IpcMessage::Command { id }),
+    }
+}
+
+fn address_target(target: String, has_connection: bool) -> Result<String, String> {
+    if !target.starts_with(SCHEME) {
+        return Err(format!(
+            "Expected a {SCHEME} address or `<entity> <id>`, got `{target}`"
+        ));
+    }
+    if has_connection {
+        return Err(
+            "--connection applies to `<entity> <id>`; an address names its own connection".into(),
+        );
+    }
+    Address::parse(&target).map_err(|e| e.to_string())?;
+    Ok(target)
+}
+
+/// `<entity> <id>` as the shorthand the app resolves.
+fn entity_target(entity: &str, id: &str) -> Result<String, String> {
+    let id = id.trim();
+    if entity.starts_with(SCHEME) {
+        return Err(format!("An address takes no id: {entity} {id}"));
+    }
+    if entity.contains(char::is_whitespace) || id.is_empty() {
+        return Err(format!("Expected `<entity> <id>`, got `{entity} {id}`"));
+    }
+    Ok(format!("{entity} {id}"))
 }
 
 fn build_launch(
@@ -478,6 +559,108 @@ mod tests {
         assert!(matches!(run(&["--help"]).unwrap(), CliOutcome::Exit { .. }));
         assert!(matches!(
             run(&["--version"]).unwrap(),
+            CliOutcome::Exit { .. }
+        ));
+    }
+
+    fn remote(args: &[&str]) -> IpcMessage {
+        match run(args).unwrap() {
+            CliOutcome::Remote { message } => message,
+            other => panic!("expected a remote message, got {other:?}"),
+        }
+    }
+
+    fn open(address: &str, connection: Option<&str>, focus: bool) -> IpcMessage {
+        IpcMessage::Open {
+            address: address.into(),
+            connection: connection.map(Into::into),
+            focus,
+        }
+    }
+
+    #[test]
+    fn positional_connection_url_still_starts_the_app() {
+        let outcome = run(&["mysql://wp@h/db"]).unwrap();
+        assert!(matches!(
+            outcome,
+            CliOutcome::Run {
+                launch: Some(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn open_with_an_address_sends_it_and_focuses() {
+        let address = "databee://shop/wordpress/wp_posts/42";
+        assert_eq!(remote(&["open", address]), open(address, None, true));
+    }
+
+    #[test]
+    fn open_with_entity_and_id_joins_them_into_one_address() {
+        assert_eq!(
+            remote(&["open", "order", "4711"]),
+            open("order 4711", None, true)
+        );
+    }
+
+    #[test]
+    fn connection_flag_sets_the_connection_in_both_spellings() {
+        for flag in ["-c", "--connection"] {
+            assert_eq!(
+                remote(&["open", "order", "4711", flag, "shop"]),
+                open("order 4711", Some("shop"), true),
+                "{flag}"
+            );
+        }
+    }
+
+    #[test]
+    fn background_flag_opens_without_focus() {
+        assert_eq!(
+            remote(&["open", "order", "4711", "--background"]),
+            open("order 4711", None, false)
+        );
+    }
+
+    #[test]
+    fn command_subcommand_sends_the_command_id() {
+        assert_eq!(
+            remote(&["command", "view.sidebar"]),
+            IpcMessage::Command {
+                id: "view.sidebar".into()
+            }
+        );
+    }
+
+    #[test]
+    fn invalid_open_targets_are_rejected() {
+        for args in [
+            &["open", "databee://x"][..],
+            &["open", "order"],
+            &["open", "databee://shop/db/wp_posts/1", "42"],
+            &[
+                "open",
+                "databee://shop/db/wp_posts/1",
+                "--connection",
+                "shop",
+            ],
+            &["open", "order", " "],
+            &["open", "two words", "1"],
+        ] {
+            assert!(run(args).is_err(), "{args:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn connection_flags_cannot_be_mixed_with_a_subcommand() {
+        assert!(run(&["-d", "db", "open", "databee://shop/db/wp_posts/1"]).is_err());
+    }
+
+    #[test]
+    fn open_help_exits_without_sending() {
+        assert!(matches!(
+            run(&["open", "--help"]).unwrap(),
             CliOutcome::Exit { .. }
         ));
     }

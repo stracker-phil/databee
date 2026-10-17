@@ -14,6 +14,7 @@ mod launch;
 mod lens;
 mod lock;
 mod menu;
+mod remote;
 pub mod rules;
 mod schema;
 pub mod secrets;
@@ -86,6 +87,29 @@ fn forward(socket: &Path, message: &IpcMessage, exit_code: i32) {
     }
 }
 
+/// Exits with the running instance's answer; returns when none is listening.
+fn ask_running_instance(socket: &Path, message: &IpcMessage) {
+    match ipc::request(socket, message.clone()) {
+        Ok(None) => {}
+        Ok(Some(reply)) if reply.ok => {
+            if !reply.result.is_null() {
+                println!("{}", reply.result);
+            }
+            std::process::exit(0);
+        }
+        Ok(Some(reply)) => {
+            eprintln!(
+                "{}",
+                reply.error.unwrap_or_else(|| "The request failed".into())
+            );
+            std::process::exit(1);
+        }
+        Err(e) => fail(&format!(
+            "Could not reach the running DataBee instance: {e}"
+        )),
+    }
+}
+
 /// The lock holder may still be starting up and not listen yet.
 fn forward_to_starting_instance(socket: &Path, message: &IpcMessage, exit_code: i32) -> ! {
     for _ in 0..LOCK_POLLS {
@@ -145,7 +169,7 @@ fn start_ipc(handle: AppHandle, socket: &Path) {
         }
     };
     tauri::async_runtime::spawn(ipc::serve(listener, move |message| {
-        launch::on_ipc_message(&handle, message)
+        launch::on_ipc_message(handle.clone(), message)
     }));
 }
 
@@ -172,6 +196,13 @@ pub fn run() {
             launch.map(IpcMessage::from).unwrap_or(IpcMessage::Activate),
             log_level,
         ),
+        Ok(CliOutcome::Remote { message }) => {
+            ask_running_instance(&socket, &message);
+            if !matches!(message, IpcMessage::Open { .. }) {
+                fail("DataBee is not running");
+            }
+            (message, None)
+        }
         Err(message) => {
             eprintln!("{message}");
             (IpcMessage::Error { message }, None)
@@ -207,6 +238,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
     let config_dir = state.config_dir.clone();
     tauri::Builder::default()
         .manage(state)
+        .manage(remote::Bridge::default())
         .plugin(log_plugin())
         .plugin(init_logging(log_level))
         .plugin(tauri_plugin_opener::init())
@@ -248,6 +280,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             commands::list_history,
             commands::clear_history,
             commands::log_frontend_error,
+            remote::remote_reply,
             db_commands::connect,
             db_commands::disconnect,
             db_commands::list_databases,

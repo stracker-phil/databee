@@ -496,7 +496,7 @@ export type KindRuleFields = { columns?: Array<ColumnGlob>, meta_keys?: Array<st
  * Something the UI should act on after a (CLI) launch. Passwords stay in Rust;
  * the UI only learns whether one is available for the request.
  */
-export type LaunchEvent = { "type": "connect", requestId: string, spec: ConnectionSpec, hasPassword: boolean, savePassword: boolean, } | { "type": "error", message: string, };
+export type LaunchEvent = { "type": "connect", requestId: string, spec: ConnectionSpec, hasPassword: boolean, savePassword: boolean, } | { "type": "error", message: string, } | { "type": "open", address: string, connection: string | null, };
 
 export type ListQuery = { status?: string | null, 
 /**
@@ -780,6 +780,10 @@ table: Address, column: string,
  * `column` is the table's single-column primary key, so a value addresses one row.
  */
 key: boolean, };
+
+export type RemoteEvent = { id: string, request: RemoteRequest, };
+
+export type RemoteRequest = { "type": "open", address: string, connection: string | null, } | { "type": "command", id: string, } | { "type": "current" };
 
 export type Resolved = { 
 /**

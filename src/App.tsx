@@ -12,6 +12,7 @@ import { Toasts } from "./components/Toasts";
 import { Toolbar } from "./components/Toolbar";
 import { CommandPalette } from "./components/CommandPalette";
 import { handleKeydown, installCommands, runMenuCommand } from "./commands";
+import { answerRemote } from "./commands/remote";
 import { PendingTray } from "./components/PendingTray";
 import { useValueHover } from "./components/value/useValueHover";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
@@ -31,7 +32,7 @@ function useBackendEvents() {
 
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
     void loadSettings().then(() => (installCommands(), drainLaunches()));
-    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand)];
+    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), api.onRemote((e) => void answerRemote(e))];
 
     const onKey = handleKeydown;
     const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);

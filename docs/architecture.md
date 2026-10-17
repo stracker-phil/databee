@@ -71,6 +71,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/address/             addresses: parse, format, resolve against a session
   src/cli.rs ipc.rs        argv parsing, single-instance socket
   src/launch.rs            queue of launch requests + one-shot passwords
+  src/remote.rs            requests the page answers (open, command, current), by id with a timeout
   src/state.rs session.rs  AppState, open sessions
   src/schema.rs            per-session schema cache: tables, columns, keys, foreign keys, structures
   src/value/               Value, ValueKind, ColumnKind, RowKey: what a cell is and where it came from

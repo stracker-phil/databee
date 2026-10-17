@@ -11,9 +11,12 @@ Stage hook each have their own page.
    and `create_private_dir` (`store/json_file.rs`) makes it mode 0700. This happens before Tauri starts, because the CLI and the
    socket need the path first. The CLI reads `default_port` with `Settings::peek`, which never quarantines a
    corrupt file.
-2. **CLI.** `cli::parse` returns one of three outcomes:
+2. **CLI.** `cli::parse` returns one of four outcomes:
    - `Exit`: `--help` or `--version`.
    - `Run { launch, log_level }`: an `IpcMessage::Launch` with a connection, or `Activate` without one.
+   - `Remote { message }`: a subcommand (`open`, `command`) for the running app. `ask_running_instance`
+     sends it as a request and exits with its reply. With no instance running, `command` exits 2 ("DataBee
+     is not running") and `open` starts the app with the open queued.
    - An error: it becomes `IpcMessage::Error`, and the app shows it.
 3. **Single-instance handoff.** `ipc::try_forward` sends the message to a running instance (see
    [below](#cli-and-single-instance-handoff)). Only when no instance listens does startup continue, after
@@ -35,6 +38,9 @@ Stage hook each have their own page.
    - In debug builds `apply_dev_frame` applies `DATABEE_WINDOW_FRAME` (see [testing](testing.md#driving-the-app)).
    - `start_ipc` binds the IPC socket and serves it in a task; every message goes to
      `launch::on_ipc_message`. A bind error is logged and the app runs without single-instance handoff.
+
+   `start_app` also manages `remote::Bridge`, the pending requests only the page can answer
+   ([below](#requests-the-page-answers)).
 
 ### Settings side effects
 
@@ -134,9 +140,12 @@ the set and keeps the full text of its `longText` cells.
 |---|---|---|
 | `launch` | none | a second process handed over a request; the page then calls `take_launch_events` |
 | `command` | command id, e.g. `"tabs.new"` | a native menu item was clicked |
+| `remote` | `RemoteEvent {id, request}` | another process asks the page (open, command, current); answered with `remote_reply` |
 | `stage:collect`, `stage:act`, `stage:info` | `{ request, … }` | a Stage request needs the page ([stage.md](stage.md)) |
 
-A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}` or `{type:"error", message}`.
+A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}`, `{type:"error", message}` or
+`{type:"open", address, connection}` (a `databee open` that started the app; the page opens it after the
+connects, through `openFromOutside` in `src/state/outside.ts`).
 `launch.rs` defines the event name (`LAUNCH_EVENT`). A password from the CLI stays in Rust. The page calls
 `connect` with the `requestId`, and Rust looks the password up.
 
@@ -158,13 +167,29 @@ A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}
   counts as none. `--password-stdin` on empty stdin is an error.
 - **Argv caveat:** a forwarded launch keeps its password out of the running app's argv, but the process that
   becomes the app keeps its own argv, so a password in its URL shows in `ps` for the whole session.
+- **Subcommands** (`args_conflicts_with_subcommands`, so `databee <url>` keeps working and no connection flag
+  mixes with a subcommand):
+  - `databee open <address>`: checked with `Address::parse`, sent as `IpcMessage::Open`;
+  - `databee open <entity> <id> [-c/--connection <slug>]`: sent as the shorthand `<entity> <id>`, which the
+    page resolves in that connection's session (default: the active one) through `document`;
+  - `--background` on `open`: no focus change; otherwise the window comes to the front;
+  - `databee command <command-id>`: runs a command of the page's registry (`runMenuCommand`, so an open
+    dialog or the palette blocks it). Unknown or unavailable commands fail.
+  Errors print to stderr with exit 1; a result other than `null` prints to stdout.
 
 `ipc.rs`:
 
 - **Socket:** a Unix domain socket at `<config dir>/databee.sock`, with mode 0600 in a 0700 dir. `serve` drops
   peers with another uid.
-- **Protocol:** one line of JSON per connection (at most 64 KiB, within 5 s), answered with `ok\n`. Malformed,
-  oversized or incomplete lines get no answer.
+- **Protocol:** one line of JSON per connection (at most 64 KiB, within 5 s), in one of two forms:
+  - one-way (a bare `IpcMessage`): answered with `ok\n` before it is handled. `try_forward` sends `launch`,
+    `error` and `activate` this way, so old and new processes understand each other; `scripts/dev/js.sh`
+    sends `eval` this way.
+  - request (`IpcRequest {id, message}`, sent by `ipc::request`): answered once handled with one
+    `IpcReply {id, ok, result, error}` line. A reply that is not JSON or has another id is an error ("may be
+    older than this command").
+
+  Malformed, oversized or incomplete lines get no answer.
 - **`Forward` outcomes** of `try_forward`, and what `run` does with them:
   - `Delivered`: exit 0 (2 for a CLI error);
   - `NoInstance` (socket missing or refused): start the app;
@@ -177,14 +202,29 @@ A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}
   - `launch {spec, password, savePassword}`
   - `error {message}`
   - `activate`
+  - `open {address, connection, focus}`: `address` is an address or an entity shorthand (`order 4711`);
+    `connection` (a slug) picks the session of a shorthand
+  - `command {id}`
+  - `current`: replies with the active tab's address, or `null`
   - `eval {js}`: compiled into debug builds only, used by `scripts/dev/js.sh`.
-- **Handling** (`launch::on_ipc_message`): `eval` runs in the window; everything else is logged by type
-  (`IpcMessage::kind`, never the contents), goes through `LaunchQueue::push`, emits `launch` when it queued an
-  event, then unminimizes and focuses the window (not with `DATABEE_BACKGROUND=1`).
+- **Handling** (`launch::on_ipc_message`, async, returns the reply's result): `eval` runs in the window;
+  everything else is logged by type (`IpcMessage::kind`, never the contents). `open`, `command` and `current`
+  go to the page through `remote::Bridge` (`open` with `focus` first brings the window to the front). The
+  rest goes through `LaunchQueue::push`, emits `launch` when it queued an event, then unminimizes and focuses
+  the window (not with `DATABEE_BACKGROUND=1`).
 - The launch `password` is a `Secret`: plain string on the wire (`connection::serialize_exposed`), redacted in
   `IpcMessage`'s derived `Debug`.
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
   bind while a listener is alive.
+
+### Requests the page answers
+
+`remote.rs`: `Bridge::ask` stores a oneshot sender under a fresh id, emits `remote` with
+`RemoteEvent {id, request: RemoteRequest}` (`open {address, connection}`, `command {id}`, `current`) and waits
+up to 4 s (below the 5 s IPC client timeout) for `remote_reply(id, result, error)`; a set `error` fails the
+request, and a late or unknown reply is dropped. On the page, `useBackendEvents` (`src/App.tsx`) hands each
+event to `answerRemote` (`src/commands/remote.ts`), which opens through `openFromOutside`, runs commands
+through `runMenuCommand` and reads the active tab's address, and always replies.
 
 ## Addresses
 

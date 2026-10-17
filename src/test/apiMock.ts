@@ -116,6 +116,8 @@ export function createApiMock(): typeof realApi {
     wpSnapshotDelete: vi.fn().mockResolvedValue(undefined),
     onLaunch: vi.fn().mockResolvedValue(() => {}),
     onCommand: vi.fn().mockResolvedValue(() => {}),
+    onRemote: vi.fn().mockResolvedValue(() => {}),
+    remoteReply: vi.fn().mockResolvedValue(undefined),
     getKeybindings: vi.fn().mockResolvedValue({}),
     getUiState: vi.fn().mockResolvedValue(EMPTY_UI_STATE),
     setUiState: vi.fn().mockImplementation(async (_i: string, ui: UiState) => ui),
