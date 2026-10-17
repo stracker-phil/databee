@@ -49,7 +49,7 @@ interface RowProps {
   row: ReferenceRow;
   rowKey: string;
   coverage: CoverageState | undefined;
-  onCheck(): void;
+  onCheck: () => void;
   ctx: ProjectContext;
 }
 

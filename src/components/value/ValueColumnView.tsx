@@ -56,9 +56,9 @@ async function queueEdit(target: EditTarget, text: string, path: number[], next:
 
 interface Props {
   column: ValueColumn;
-  onClose(): void;
+  onClose: () => void;
   /** The edit was queued; the column shows the edited text from now on. */
-  onEdited(text: string): void;
+  onEdited: (text: string) => void;
 }
 
 export function ValueColumnView({ column, onClose, onEdited }: Props) {

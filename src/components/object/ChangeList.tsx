@@ -22,7 +22,7 @@ interface Props {
   marks: ChangeMarks;
   /** The command that dismisses the marks (`object.dismissChanges`, `query.dismissChanges`). */
   dismissCommand: string;
-  onJump(source: Provenance): void;
+  onJump: (source: Provenance) => void;
 }
 
 export function ChangeList({ marks, dismissCommand, onJump }: Props) {

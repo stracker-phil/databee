@@ -54,9 +54,18 @@ function PaletteSheet() {
             setIndex(0);
           }}
           onKeyDown={(e) => {
-            if (e.key === "ArrowDown") (e.preventDefault(), setIndex(Math.min(items.length - 1, active + 1)));
-            if (e.key === "ArrowUp") (e.preventDefault(), setIndex(Math.max(0, active - 1)));
-            if (e.key === "Enter") (e.preventDefault(), choose(active, e.metaKey));
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setIndex(Math.min(items.length - 1, active + 1));
+            }
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setIndex(Math.max(0, active - 1));
+            }
+            if (e.key === "Enter") {
+              e.preventDefault();
+              choose(active, e.metaKey);
+            }
           }}
         />
         {searching && <span className="muted small">searching…</span>}

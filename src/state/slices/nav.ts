@@ -29,17 +29,17 @@ export interface TableLocation {
 
 export interface NavSlice {
   /** Opens an address given as text (a row as an object tab); errors become a toast. `preview` opens it in the preview tab. */
-  openAddress(text: string, opts?: { preview?: boolean }): Promise<void>;
+  openAddress: (text: string, opts?: { preview?: boolean }) => Promise<void>;
   /** Shows other rows in table tab `tabId`, recording the current address for back. */
-  showRows(tabId: string, location: TableLocation): void;
+  showRows: (tabId: string, location: TableLocation) => void;
   /** Narrows table tab `tabId` to rows where `match.column` equals `match.value`, replacing a match on the same column. */
-  filterRows(tabId: string, match: ColumnEquals): void;
+  filterRows: (tabId: string, match: ColumnEquals) => void;
   /** Applies a typed WHERE filter to table tab `tabId`; not addressable, so no history entry. */
-  setTableFilter(tabId: string, filter: string): void;
-  navBack(): Promise<void>;
-  navForward(): Promise<void>;
+  setTableFilter: (tabId: string, filter: string) => void;
+  navBack: () => Promise<void>;
+  navForward: () => Promise<void>;
   /** Stores a renamed connection slug and rewrites the addresses of that connection's tabs. */
-  renameConnectionSlug(identity: string, slug: string): Promise<void>;
+  renameConnectionSlug: (identity: string, slug: string) => Promise<void>;
 }
 
 const slugOf = (s: Store, sessionId: string) => s.sessions.find((x) => x.id === sessionId)?.slug ?? "";
@@ -152,7 +152,7 @@ function reobjected(tab: ObjectTab, target: Address, nav: TabNav): ObjectTab {
 
 /** A tab of a renamed connection; recorded stacks are dropped rather than rewritten. */
 function renamed(tab: Tab, slug: string): Tab {
-  const moved = <A extends Address | null>(address: A): A => (address && { ...address, connection: slug }) as A;
+  const moved = <A extends Address | null>(address: A): A => (address && { ...address, connection: slug });
   const nav = { back: tab.nav.back.map(moved), forward: tab.nav.forward.map(moved) };
   if (tab.kind !== "object") return { ...tab, address: moved(tab.address), nav } as Tab;
   const columns = tab.columns.map((c): StackColumn => (c.kind === "object" ? { ...c, address: moved(c.address) } : c));

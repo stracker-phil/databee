@@ -18,16 +18,16 @@ export interface ProjectSlice {
   projectRules: Record<string, ProjectRulesEntry>;
   /** By `session/database`, for the status bar's preset text. */
   rulesInfo: Record<string, RulesInfo>;
-  loadProjectRules(sessionId: string, database: string): Promise<void>;
-  loadRulesInfo(sessionId: string, database: string): Promise<void>;
+  loadProjectRules: (sessionId: string, database: string) => Promise<void>;
+  loadRulesInfo: (sessionId: string, database: string) => Promise<void>;
   /**
    * Opens the Project page of `database` (default: the active session's current one); an open one is reused.
    * A `form` replaces the page's form.
    */
-  openProject(opts?: { sessionId?: string; database?: string; form?: ProjectForm }): void;
-  setProjectForm(tabId: string, form: ProjectForm | null): void;
+  openProject: (opts?: { sessionId?: string; database?: string; form?: ProjectForm }) => void;
+  setProjectForm: (tabId: string, form: ProjectForm | null) => void;
   /** Stores the change; every view reloads, since rules change what values are. The error is returned, not shown. */
-  changeProject(sessionId: string, database: string, change: ProjectChange): Promise<AppError | null>;
+  changeProject: (sessionId: string, database: string, change: ProjectChange) => Promise<AppError | null>;
 }
 
 export const projectKey = (sessionId: string, database: string) => `${sessionId}/${database}`;

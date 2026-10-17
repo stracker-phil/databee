@@ -16,8 +16,8 @@ function registerStageSettingsPage() {
   });
 }
 
-/** Call once, when the app starts; returns the listeners to remove. */
+/** Call once, when the app starts. */
 export function installStage() {
   registerStageSettingsPage();
-  return installStageHooks();
+  void Promise.all(installStageHooks());
 }

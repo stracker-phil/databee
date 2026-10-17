@@ -6,7 +6,7 @@ import { MAX_LABEL, clipsOf, collectAnchors, labelOf } from "./anchors";
 function stubLayout() {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const [x, y, width, height] = (this.getAttribute("data-rect") ?? "0,0,0,0").split(",").map(Number);
-    return { x, y, width, height, top: y, left: x, right: x + width, bottom: y + height, toJSON: () => ({}) } as DOMRect;
+    return { x, y, width, height, top: y, left: x, right: x + width, bottom: y + height, toJSON: () => ({}) };
   });
 }
 

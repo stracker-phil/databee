@@ -33,11 +33,11 @@ describe("App", () => {
     connectedStore();
     render(<App />);
     await screen.findByText("wp_options");
-    act(() => runCommand("tabs.new"));
+    await act(() => runCommand("tabs.new"));
     expect(screen.getAllByRole("tab")).toHaveLength(2);
-    act(() => runCommand("tabs.close"));
+    await act(() => runCommand("tabs.close"));
     expect(screen.getAllByRole("tab")).toHaveLength(1);
-    act(() => runCommand("settings.open"));
+    await act(() => runCommand("settings.open"));
     expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
   });
 
@@ -86,7 +86,7 @@ describe("App", () => {
     it("hides the sidebar with view.sidebar and persists the choice for the connection", async () => {
       render(<App />);
       expect(await screen.findByRole("tree", { name: "Databases" })).toBeInTheDocument();
-      act(() => runCommand("view.sidebar"));
+      await act(() => runCommand("view.sidebar"));
       expect(selectSidebarHidden(useStore.getState())).toBe(true);
       expect(tree()).not.toBeInTheDocument();
       await waitFor(() => expect(mocked.setUiState).toHaveBeenCalledWith(session.identity, expect.objectContaining({ sidebarHidden: true })));

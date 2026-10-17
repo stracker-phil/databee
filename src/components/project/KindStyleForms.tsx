@@ -21,7 +21,7 @@ function useSave(ctx: ProjectContext) {
   return { saving, error, setError, save };
 }
 
-function ScopeFields({ scope, error, onChange }: { scope: ScopeDraft; error: FieldError | null; onChange(scope: ScopeDraft): void }) {
+function ScopeFields({ scope, error, onChange }: { scope: ScopeDraft; error: FieldError | null; onChange: (scope: ScopeDraft) => void }) {
   const field = (key: keyof ScopeDraft, label: string, placeholder: string) => (
     <Labeled label={label}>
       <input className="input mono" aria-label={label} data-stage={`project:form:${key}`} placeholder={placeholder} value={scope[key]} onChange={(e) => onChange({ ...scope, [key]: e.target.value })} />
@@ -75,7 +75,7 @@ export function KindForm({ form, ctx }: { form: KForm; ctx: ProjectContext }) {
   );
 }
 
-function ColorChoice({ color, chosen, onPick }: { color: StyleColor; chosen: boolean; onPick(): void }) {
+function ColorChoice({ color, chosen, onPick }: { color: StyleColor; chosen: boolean; onPick: () => void }) {
   return (
     <button type="button" className="swatch-choice" aria-label={color} aria-pressed={chosen} data-stage={`project:form:color:${color}`} data-stage-list="project:form:color" onClick={onPick}>
       <span className="swatch" style={{ background: `var(--style-${color})` }} />

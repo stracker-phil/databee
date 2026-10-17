@@ -15,12 +15,12 @@ export interface ReadoutSlice {
   /** By `session/database`. */
   readouts: Record<string, ReadoutEntry>;
   /** Loads once per `dataVersion`; `force` reloads anyway (the recent objects change without one). */
-  loadReadout(sessionId: string, database: string, force?: boolean): Promise<void>;
+  loadReadout: (sessionId: string, database: string, force?: boolean) => Promise<void>;
   /**
    * Shows the readout of `database` (default: the active session's current one) in the session's readout tab,
    * which is created first when there is none. `activate: false` only moves an existing tab to the database.
    */
-  openReadout(opts?: { sessionId?: string; database?: string; activate?: boolean }): void;
+  openReadout: (opts?: { sessionId?: string; database?: string; activate?: boolean }) => void;
 }
 
 export const readoutKey = (sessionId: string, database: string) => `${sessionId}/${database}`;

@@ -17,8 +17,8 @@ interface Props {
   /** The row this document is of; its own primary key switches to Rows. */
   owner: Address;
   focus: Provenance | null;
-  onFocus(source: Provenance | null): void;
-  onMore(groupId: string): void;
+  onFocus: (source: Provenance | null) => void;
+  onMore: (groupId: string) => void;
   /** Whether `e` (`value.edit`) edits the focused value here: the tab is active and shows this view. */
   editable: boolean;
   /** Change marks of live mode, a snapshot or compare; removed rows show in their groups. */

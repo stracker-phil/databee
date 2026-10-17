@@ -17,7 +17,7 @@ interface Props {
   database: string;
   anchor?: string;
   collapsed: boolean;
-  onToggle(groupId: string): void;
+  onToggle: (groupId: string) => void;
 }
 
 /** Its `data-table` links the sidebar entry of the same table; hovering that entry lights the band (`lit`). */

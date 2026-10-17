@@ -7,19 +7,19 @@ import type { ObjectTab, Tab } from "./tabs";
 
 export interface ColumnsSlice {
   /** Opens `target` as a column after column `from` of object tab `tabId`; the columns to its right close. */
-  drill(tabId: string, from: number, target: Address): void;
+  drill: (tabId: string, from: number, target: Address) => void;
   /** Opens a value after column `from` of an object tab, or as the right column of a table or query tab (`from` null). */
-  openValueColumn(tabId: string, from: number | null, column: ValueColumn): void;
+  openValueColumn: (tabId: string, from: number | null, column: ValueColumn) => void;
   /** The value column at `index` (null: a table or query tab's) shows `text`, the edited value. */
-  updateValueColumn(tabId: string, index: number | null, text: string): void;
+  updateValueColumn: (tabId: string, index: number | null, text: string) => void;
   /** Pops back to column `index`: it becomes active and the columns to its right close. */
-  popToColumn(tabId: string, index: number): void;
+  popToColumn: (tabId: string, index: number) => void;
   /** `Esc`: closes the rightmost column of the active tab, an object column or a value column. */
-  closeRightmostColumn(): void;
+  closeRightmostColumn: () => void;
   /** Makes column `index` active without closing any; history does not record it. */
-  setActiveColumn(tabId: string, index: number): void;
+  setActiveColumn: (tabId: string, index: number) => void;
   /** `h`/`l`: the column left (-1) or right (+1) of the active one becomes active. */
-  moveActiveColumn(delta: number): void;
+  moveActiveColumn: (delta: number) => void;
 }
 
 const findObjectTab = (s: Store, tabId: string) => s.tabs.find((t): t is ObjectTab => t.id === tabId && t.kind === "object");

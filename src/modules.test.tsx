@@ -19,7 +19,7 @@ describe("installModules", () => {
     connectedStore();
     render(<App />);
     await screen.findByText("wp_options");
-    act(() => runCommand("settings.open"));
+    await act(() => runCommand("settings.open"));
 
     const nav = await screen.findByRole("navigation", { name: "Settings pages" });
     for (const label of ["Appearance", "Shortcuts", "Queries", "Logging", "Presentations"]) {

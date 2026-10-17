@@ -29,7 +29,7 @@ interface PickerProps {
   database: string;
   tables: RuleTable[];
   value: ColumnPick;
-  onChange(value: ColumnPick): void;
+  onChange: (value: ColumnPick) => void;
   /** Selects the primary key once a newly chosen table's columns are known. */
   preferKey?: boolean;
 }
@@ -85,8 +85,8 @@ interface FrameProps {
   footer: ReactNode;
   saving: boolean;
   error: FieldError | null;
-  onCancel(): void;
-  onSave(): void;
+  onCancel: () => void;
+  onSave: () => void;
 }
 
 export function FormFrame({ title, opener, anchor, children, footer, saving, error, onCancel, onSave }: FrameProps) {

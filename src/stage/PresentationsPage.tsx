@@ -19,18 +19,19 @@ export function PresentationsPage() {
   useEffect(() => {
     stageApi.settings().then(setStage, (e) => fail(e, "Could not load the presentation settings"));
   }, []);
+  const loaded = s !== null;
   useEffect(() => {
-    if (!s) return;
+    if (!loaded) return;
     let alive = true;
     const load = () => stageApi.status().then((next) => alive && setStatus(next), () => alive && setStatus(null));
     void load();
     // Keeps "Last presenter request" current while the page is open.
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(() => void load(), 5000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [s?.enabled, s?.port, s?.token]);
+  }, [loaded, s?.enabled, s?.port, s?.token]);
   if (!s) return null;
   const patchStage = (patch: Partial<StageSettings>) =>
     stageApi.updateSettings({ ...s, ...patch }).then(setStage, (e) => fail(e, "Could not save the presentation settings"));

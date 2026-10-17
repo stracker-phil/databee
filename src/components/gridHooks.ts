@@ -23,12 +23,12 @@ export function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLab
  * `valueAt` reads the result `rows` came from, so new rows are what makes the cache stale.
  */
 export function useRowValues(rows: Cell[][], valueAt: ((row: number, col: number) => StoredValue) | undefined) {
-  const cache = useMemo(() => new Map<number, StoredValue[]>(), [rows]);
+  const cache = useMemo(() => ({ rows, values: new Map<number, StoredValue[]>() }), [rows]);
   return (row: number): StoredValue[] => {
-    let values = cache.get(row);
+    let values = cache.values.get(row);
     if (!values) {
-      values = rows[row].map((cell, col) => (valueAt ? valueAt(row, col) : cellValue(cell)));
-      cache.set(row, values);
+      values = cache.rows[row].map((cell, col) => (valueAt ? valueAt(row, col) : cellValue(cell)));
+      cache.values.set(row, values);
     }
     return values;
   };

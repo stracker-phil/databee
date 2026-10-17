@@ -9,7 +9,7 @@ import { Modal } from "./Modal";
 interface Props {
   title: string;
   snapshots: SnapshotInfo[];
-  onPick(id: string): void;
+  onPick: (id: string) => void;
 }
 
 export function SnapshotsDialog({ title, snapshots: initial, onPick }: Props) {

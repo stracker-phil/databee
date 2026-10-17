@@ -116,9 +116,7 @@ export function typeInto(anchor: HTMLElement, value: string, mode: StageTypeMode
   field.focus();
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
     const next = mode === "append" ? field.value + value : value;
-    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")?.set;
-    if (setter) setter.call(field, next);
-    else field.value = next;
+    Reflect.set(Object.getPrototypeOf(field) as object, "value", next, field);
     field.setSelectionRange?.(next.length, next.length);
     field.dispatchEvent(new Event("input", { bubbles: true }));
     return;

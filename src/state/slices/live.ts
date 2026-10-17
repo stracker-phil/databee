@@ -35,16 +35,16 @@ export interface LiveSlice {
   /** Change marks by `ChangeTarget.key`; `x` drops them. */
   changeMarks: Record<string, ChangeMarks>;
   /** `w`: live mode on or off for the active object column. */
-  toggleLive(): Promise<void>;
+  toggleLive: () => Promise<void>;
   /** One round: every live column polls once; columns no tab shows any more stop. */
-  pollLive(): Promise<void>;
+  pollLive: () => Promise<void>;
   /** `x`: drops the change marks of the active target; live mode stays on. */
-  dismissMarks(): void;
+  dismissMarks: () => void;
   /** `s`: asks for a label, then stores the active target as it is now. */
-  takeSnapshot(): void;
+  takeSnapshot: () => void;
   /** "Changes since snapshot…": lists the active target's snapshots to pick one. */
-  chooseSnapshot(): Promise<void>;
-  showSnapshotDiff(target: ChangeTarget, id: string): Promise<void>;
+  chooseSnapshot: () => Promise<void>;
+  showSnapshotDiff: (target: ChangeTarget, id: string) => Promise<void>;
 }
 
 export const queryMarksKey = (sessionId: string, tabId: string) => `${sessionId}/q:${tabId}`;

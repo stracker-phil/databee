@@ -186,11 +186,11 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   // Bytes cells carry a preview, not their value; editing it would write the preview back. Long text is fetched first.
   const canEdit = (cell: Cell) => !!onEditCell && cell.t !== "bytes";
 
-  /** Calls `use` with the cell's full text: right away, or after fetching a `longText` cell. */
-  const withFullText = ({ row, col }: CellPos, use: (text: string) => void) => {
+  /** Calls `apply` with the cell's full text: right away, or after fetching a `longText` cell. */
+  const withFullText = ({ row, col }: CellPos, apply: (text: string) => void) => {
     const cell = rows[row][col];
-    if (cell.t !== "longText") return use(cellText(cell));
-    fullCellText(cell, source, row, col).then(use, (e) => toast("error", `Could not load the value: ${toAppError(e).message}`));
+    if (cell.t !== "longText") return apply(cellText(cell));
+    fullCellText(cell, source, row, col).then(apply, (e) => toast("error", `Could not load the value: ${toAppError(e).message}`));
   };
 
   const startEdit = ({ row, col }: CellPos) => {

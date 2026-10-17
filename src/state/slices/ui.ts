@@ -54,19 +54,19 @@ export interface UiSlice {
   recentNav: RecentNav[];
   /** Shown in the status bar instead of the address while set. */
   hover: ValueHover;
-  toast(kind: Toast["kind"], message: string): void;
-  dismissToast(id: number): void;
-  openDialog(dialog: Dialog): void;
-  closeDialog(): void;
-  setSidebarPanel(panel: UiSlice["sidebarPanel"]): void;
-  setPaletteOpen(open: boolean, seed?: string): void;
-  loadUiState(identity: string): Promise<void>;
-  setTableWidths(identity: string, table: string, widths: Record<string, number>): void;
-  setPaneSize(identity: string, pane: PaneSize, px: number): void;
-  toggleSidebar(): void;
+  toast: (kind: Toast["kind"], message: string) => void;
+  dismissToast: (id: number) => void;
+  openDialog: (dialog: Dialog) => void;
+  closeDialog: () => void;
+  setSidebarPanel: (panel: UiSlice["sidebarPanel"]) => void;
+  setPaletteOpen: (open: boolean, seed?: string) => void;
+  loadUiState: (identity: string) => Promise<void>;
+  setTableWidths: (identity: string, table: string, widths: Record<string, number>) => void;
+  setPaneSize: (identity: string, pane: PaneSize, px: number) => void;
+  toggleSidebar: () => void;
   /** Collapses or expands an object view group (`<document table>::<group id>`) in one database and persists it. */
-  toggleGroupCollapsed(identity: string, database: string, key: string): void;
-  setHover(hover: ValueHover): void;
+  toggleGroupCollapsed: (identity: string, database: string, key: string) => void;
+  setHover: (hover: ValueHover) => void;
 }
 
 let nextToastId = 1;

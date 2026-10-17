@@ -14,7 +14,7 @@ import { actionMenu } from "./actions";
 interface Props {
   document: Document;
   owner: Address;
-  view: { current: ObjectView; onChange(view: ObjectView): void };
+  view: { current: ObjectView; onChange: (view: ObjectView) => void };
 }
 
 function ViewToggle({ current, onChange }: Props["view"]) {

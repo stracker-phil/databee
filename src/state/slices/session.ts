@@ -24,15 +24,15 @@ export interface SessionSlice {
   schema: Record<string, SchemaState>;
   /** Table structures by `session/database/table`, shared by every tab of that table. */
   structures: Record<string, StructureEntry>;
-  handleLaunchEvents(events: LaunchEvent[]): Promise<void>;
-  connect(args: { spec: ConnectionSpec; password?: string; requestId?: string; savePassword?: boolean }): Promise<boolean>;
-  disconnect(sessionId: string): Promise<void>;
-  setActiveSession(sessionId: string): void;
-  switchDatabase(sessionId: string, database: string): Promise<void>;
-  loadDatabases(sessionId: string): Promise<void>;
-  loadTables(sessionId: string, database: string): Promise<void>;
+  handleLaunchEvents: (events: LaunchEvent[]) => Promise<void>;
+  connect: (args: { spec: ConnectionSpec; password?: string; requestId?: string; savePassword?: boolean }) => Promise<boolean>;
+  disconnect: (sessionId: string) => Promise<void>;
+  setActiveSession: (sessionId: string) => void;
+  switchDatabase: (sessionId: string, database: string) => Promise<void>;
+  loadDatabases: (sessionId: string) => Promise<void>;
+  loadTables: (sessionId: string, database: string) => Promise<void>;
   /** Describes the table once per `dataVersion`; the reply lands in `structures`. */
-  loadStructure(sessionId: string, database: string, table: string): Promise<void>;
+  loadStructure: (sessionId: string, database: string, table: string) => Promise<void>;
 }
 
 export function nextActiveSessionId(s: Store, closed: string) {

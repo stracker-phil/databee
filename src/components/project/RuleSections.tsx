@@ -4,7 +4,7 @@ import { fail } from "../../state/store";
 import { LongList } from "../LongList";
 import type { ProjectContext } from "./context";
 
-function RowActions({ anchor, onEdit, change, ctx }: { anchor: string; onEdit(): void; change: ProjectChange; ctx: ProjectContext }) {
+function RowActions({ anchor, onEdit, change, ctx }: { anchor: string; onEdit: () => void; change: ProjectChange; ctx: ProjectContext }) {
   const remove = async () => {
     const failed = await ctx.change(change);
     if (failed) fail(failed, "Could not remove the rule");

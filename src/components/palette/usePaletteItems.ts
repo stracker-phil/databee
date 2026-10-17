@@ -150,16 +150,16 @@ export function usePaletteItems(query: string) {
   const saved = useStore((s) => (session && database ? s.savedQueries[projectKey(session.id, database)] : undefined));
   const recent = useStore((s) => s.recentNav);
 
-  // Once per opening: the palette is remounted each time it opens.
+  // Per opening (the palette is remounted each time it opens) and per database.
+  const sessionId = session?.id;
   useEffect(() => {
-    const { loadTables, loadRulesInfo, loadSavedQueries } = useStore.getState();
-    if (!session || !database) return;
-    if (!tables) void loadTables(session.id, database);
-    if (!info) void loadRulesInfo(session.id, database);
+    if (!sessionId || !database) return;
+    const s = useStore.getState();
+    if (!s.schema[sessionId]?.tables[database]) void s.loadTables(sessionId, database);
+    if (!s.rulesInfo[projectKey(sessionId, database)]) void s.loadRulesInfo(sessionId, database);
     // Saved queries change from other tabs and the project; read them fresh on every opening.
-    void loadSavedQueries(session.id, database);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void s.loadSavedQueries(sessionId, database);
+  }, [sessionId, database]);
 
   const { prefix, needle } = parsePrefix(query);
   const { hits, searching } = useRowHits(prefix, needle);

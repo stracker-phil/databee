@@ -128,11 +128,10 @@ export function PasswordDialog({
     <Modal onClose={close} labelledBy="pw-title">
       <form
         className="form-contents"
-        onSubmit={async (e) => {
+        onSubmit={(e) => {
           e.preventDefault();
           setBusy(true);
-          await connect({ spec, password, savePassword: save });
-          setBusy(false);
+          void connect({ spec, password, savePassword: save }).then(() => setBusy(false));
         }}
       >
         <h2 id="pw-title" style={{ display: "flex", gap: "0.615rem", alignItems: "center" }}>
@@ -200,13 +199,15 @@ function InsertRowDialog({ database, table, columns }: { database: string; table
     <Modal onClose={close} className="wide" labelledBy="insert-title">
       <form
         className="form-contents"
-        onSubmit={async (e) => {
+        onSubmit={(e) => {
           e.preventDefault();
           const values: [string, string | null][] = editable
             .map((c) => [c.name, fieldOf(c.name)] as const)
             .filter(([, f]) => f.mode !== "default")
             .map(([name, f]) => [name, f.mode === "null" ? null : f.value]);
-          if (await queueChange({ type: "insertRow", database, table, values })) close();
+          void queueChange({ type: "insertRow", database, table, values }).then((queued) => {
+            if (queued) close();
+          });
         }}
       >
         <h2 id="insert-title">Insert into {table}</h2>

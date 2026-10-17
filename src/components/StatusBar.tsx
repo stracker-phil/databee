@@ -103,9 +103,10 @@ function PresetsText() {
   const database = session?.database ?? null;
   const info = useStore((s) => (session && database ? s.rulesInfo[projectKey(session.id, database)] : undefined));
   const dataVersion = useStore((s) => s.dataVersion);
+  const sessionId = session?.id;
   useEffect(() => {
-    if (session && database) void useStore.getState().loadRulesInfo(session.id, database);
-  }, [session?.id, database, dataVersion]);
+    if (sessionId && database) void useStore.getState().loadRulesInfo(sessionId, database);
+  }, [sessionId, database, dataVersion]);
   if (!session || !database || !info) return null;
   const presets = info.appliedPresets.length ? info.appliedPresets.join(" · ") : "none";
   return (

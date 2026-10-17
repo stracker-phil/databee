@@ -133,19 +133,19 @@ export interface TabsSlice {
   selectedCell: SelectedCell | null;
   /** Query tabs opened per session, for unique default titles. */
   queryCounter: Record<string, number>;
-  openQueryTab(sql?: string, title?: string, saved?: SavedRef): void;
+  openQueryTab: (sql?: string, title?: string, saved?: SavedRef) => void;
   /** An open tab of the same table is activated; `view` and `preview: false` (pin) apply to it only when given. */
-  openTableTab(database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean; where?: ColumnEquals[] }): void;
-  pinTab(id: string): void;
-  activateTab(id: string): void;
-  closeTab(id: string): void;
-  cycleTab(delta: number): void;
-  updateQueryTab(id: string, patch: Partial<QueryTab>): void;
-  updateTableTab(id: string, patch: Partial<TableTab>): void;
-  updateObjectTab(id: string, patch: Partial<ObjectTab>): void;
-  selectCell(selected: Omit<SelectedCell, "tabId"> | null): void;
-  runQuery(tabId: string, sql: string, confirmed?: boolean): Promise<void>;
-  cancelQuery(tabId: string): Promise<void>;
+  openTableTab: (database: string, table: string, view?: TableTab["view"], filter?: string, opts?: { preview?: boolean; where?: ColumnEquals[] }) => void;
+  pinTab: (id: string) => void;
+  activateTab: (id: string) => void;
+  closeTab: (id: string) => void;
+  cycleTab: (delta: number) => void;
+  updateQueryTab: (id: string, patch: Partial<QueryTab>) => void;
+  updateTableTab: (id: string, patch: Partial<TableTab>) => void;
+  updateObjectTab: (id: string, patch: Partial<ObjectTab>) => void;
+  selectCell: (selected: Omit<SelectedCell, "tabId"> | null) => void;
+  runQuery: (tabId: string, sql: string, confirmed?: boolean) => Promise<void>;
+  cancelQuery: (tabId: string) => Promise<void>;
 }
 
 export const resetSelection = () => ({ selectedCell: null });

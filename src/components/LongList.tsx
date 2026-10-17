@@ -15,9 +15,9 @@ const OVERSCAN = 20;
 interface Props<T> {
   items: readonly T[];
   /** A keyed row; every row of one list has the same height. */
-  children(item: T, index: number): ReactNode;
+  children: (item: T, index: number) => ReactNode;
   /** Picks the row to scroll into view whenever it changes, e.g. the focused one. */
-  revealWhere?(item: T): boolean;
+  revealWhere?: (item: T) => boolean;
 }
 
 export function LongList<T>(props: Props<T>) {
@@ -44,6 +44,7 @@ function useLayout(top: RefObject<HTMLDivElement | null>) {
   const [scroller, setScroller] = useState<HTMLElement | null>(null);
   const [margin, setMargin] = useState(0);
   const [rowHeight, setRowHeight] = useState(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- measures after every render; each setter only fires on a change
   useLayoutEffect(() => {
     const el = top.current;
     if (!el) return;

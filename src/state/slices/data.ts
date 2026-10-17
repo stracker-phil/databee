@@ -9,9 +9,9 @@ export interface DataSlice {
   dataVersion: number;
   /** Bumped when a query finishes, so the history panel reloads. */
   historyVersion: number;
-  bumpData(): void;
+  bumpData: () => void;
   /** `view.refresh`: forgets the active session's cached schema, then reloads every view. */
-  refreshView(): Promise<void>;
+  refreshView: () => Promise<void>;
 }
 
 export const dataSlice: Slice<DataSlice> = {

@@ -79,13 +79,12 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
     } finally {
       if (token === latest.current) setLoading(false);
     }
-    // `dataVersion` is only a refetch trigger: a new value recreates `load`, which the effect below reruns.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.sessionId, tab.database, tab.table, tab.filter, tab.where, browse, pageSize, dataVersion, primaryKey]);
+  }, [tab.sessionId, tab.database, tab.table, tab.filter, tab.where, browse, pageSize, primaryKey]);
 
+  // `dataVersion` is only a refetch trigger.
   useEffect(() => {
     if (ready) void load();
-  }, [load, ready]);
+  }, [load, ready, dataVersion]);
 
   return { browse, setBrowse, page, error, loading, reload: load, pageSize };
 }

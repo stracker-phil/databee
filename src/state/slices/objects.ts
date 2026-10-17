@@ -21,21 +21,21 @@ export interface ObjectsSlice {
   /** Documents by `session/<address or shorthand>`; `loadDocument` fills them. */
   documents: Record<string, DocumentEntry>;
   /** Loads the document of `text` (a row address, or `order 4711` in `database`) once per `dataVersion`. */
-  loadDocument(sessionId: string, text: string, database: string | null): Promise<void>;
+  loadDocument: (sessionId: string, text: string, database: string | null) => Promise<void>;
   /** Keeps a document fetched elsewhere, so the tab that shows it next does not fetch it again. */
-  keepDocument(sessionId: string, document: Document): void;
+  keepDocument: (sessionId: string, document: Document) => void;
   /** Opens a row address as an object tab; a tab that opened with the same row is reused. */
-  openObject(address: Address, opts?: { preview?: boolean }): void;
+  openObject: (address: Address, opts?: { preview?: boolean }) => void;
   /** Opens an entity record (`order 4711`) as an object tab; Rust picks the table that holds the key. */
-  openEntity(entity: string, id: string): Promise<void>;
+  openEntity: (entity: string, id: string) => Promise<void>;
   /**
    * Shows the document or the rows in column `index` (default: the active one), recording the address being
    * left; `focus` moves the focused value along.
    */
-  setObjectView(tabId: string, view: ObjectView, focus?: Provenance | null, index?: number): void;
+  setObjectView: (tabId: string, view: ObjectView, focus?: Provenance | null, index?: number) => void;
   /** `object.toggleView`: the other view, focused on the same provenance (a grid's selected cell in Rows view). */
-  toggleObjectView(tabId: string, index?: number): void;
-  focusObject(tabId: string, focus: Provenance | null, index?: number): void;
+  toggleObjectView: (tabId: string, index?: number) => void;
+  focusObject: (tabId: string, focus: Provenance | null, index?: number) => void;
 }
 
 export const documentKey = (sessionId: string, text: string) => `${sessionId}/${text}`;

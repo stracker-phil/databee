@@ -12,14 +12,14 @@ export interface ChangesSlice {
   applying: boolean;
   /** Bumped to move focus to the pending tray's Apply button. */
   trayFocusRequest: number;
-  queueChange(change: ChangeRequest): Promise<boolean>;
+  queueChange: (change: ChangeRequest) => Promise<boolean>;
   /** Plans rule action `action` on a row address (or a table address for table actions) for review. */
-  queueAction(address: Address, action: string, params: Record<string, string>): Promise<boolean>;
-  discardChange(id: number): Promise<void>;
-  discardAll(): Promise<void>;
-  applyChanges(): Promise<void>;
-  undoLast(): Promise<void>;
-  focusPendingTray(): void;
+  queueAction: (address: Address, action: string, params: Record<string, string>) => Promise<boolean>;
+  discardChange: (id: number) => Promise<void>;
+  discardAll: () => Promise<void>;
+  applyChanges: () => Promise<void>;
+  undoLast: () => Promise<void>;
+  focusPendingTray: () => void;
 }
 
 export const changesSlice: Slice<ChangesSlice> = {

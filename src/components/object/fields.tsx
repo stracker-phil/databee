@@ -6,12 +6,12 @@ import { Value, type OpenValue } from "../value/Value";
 
 export interface DocumentActions {
   onOpen: OpenValue;
-  focus(source: Provenance | null): void;
+  focus: (source: Provenance | null) => void;
   /** Queues the new text (null for NULL) for the value's provenance row. */
-  save(value: StoredValue, text: string | null): void;
-  cancelEdit(): void;
+  save: (value: StoredValue, text: string | null) => void;
+  cancelEdit: () => void;
   /** Right-click on a sourced value, after it took the focus. */
-  menu(event: MouseEvent): void;
+  menu: (event: MouseEvent) => void;
 }
 
 const noop = () => {};

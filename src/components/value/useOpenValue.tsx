@@ -1,4 +1,4 @@
-import { useCallback, useContext, useState, type MouseEvent } from "react";
+import { useCallback, useContext, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import type { Address, Value } from "../../api";
 import { runCommand } from "../../commands";
 import { formatAddress } from "../../lib/address";
@@ -13,25 +13,25 @@ import { ColumnContext, openRowObject, openTarget, showValue } from "./open";
 export function useOpenValue(owner: Address | null) {
   const place = useContext(ColumnContext);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
-  const ownerText = owner ? formatAddress(owner) : null;
+  const ownerRef = useRef(owner);
+  useLayoutEffect(() => {
+    ownerRef.current = owner;
+  });
   const openValue = useCallback(
     (value: Value, e: MouseEvent) => {
       const kind = value.kind;
       if (kind.kind === "enum") return void runCommand("value.filter");
-      if (kind.kind === "primaryKey") return openRowObject(kind.address, owner, true, place);
+      if (kind.kind === "primaryKey") return openRowObject(kind.address, ownerRef.current, true, place);
       if (kind.kind === "serialized") return void showValue(value, place);
       if (kind.kind !== "reference") return;
       if (kind.targets.length === 1) return openTarget(kind.targets[0], place);
       setMenu({ x: e.clientX, y: e.clientY, items: kind.targets.map((t) => ({ label: `Open ${formatAddress(t)}`, action: () => openTarget(t, place) })) });
     },
-    // `owner` matters only through its text.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ownerText, place],
+    [place],
   );
   const openRow = useCallback(
-    (address: Address, preview: boolean) => openRowObject(address, owner, preview, place),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ownerText, place],
+    (address: Address, preview: boolean) => openRowObject(address, ownerRef.current, preview, place),
+    [place],
   );
   const targetMenu = menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />;
   return { openValue, openRow, place, targetMenu };

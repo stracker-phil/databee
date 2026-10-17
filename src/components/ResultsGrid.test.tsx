@@ -266,7 +266,7 @@ describe("ResultsGrid sizing", () => {
     screen
       .getAllByRole("row")
       .slice(1)
-      .map((r) => parseFloat((r as HTMLElement).style.top));
+      .map((r) => parseFloat((r).style.top));
 
   const measuredRowHeight = (height: number) => {
     const original = Element.prototype.getBoundingClientRect;
@@ -290,7 +290,7 @@ describe("ResultsGrid sizing", () => {
       render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} />);
       const large = rowTops();
       expect(large.slice(1).map((top, i) => top - large[i])).toEqual([39, 39, 39, 39]);
-      const row = screen.getAllByRole("row")[1] as HTMLElement;
+      const row = screen.getAllByRole("row")[1];
       expect(parseFloat(row.style.height)).toBe(39);
     } finally {
       spy.mockRestore();

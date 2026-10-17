@@ -24,7 +24,7 @@ const mocked_api = vi.mocked(api, true);
 function stubLayout() {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const [x, y, width, height] = (this.getAttribute("data-rect") ?? "0,0,0,0").split(",").map(Number);
-    return { x, y, width, height, top: y, left: x, right: x + width, bottom: y + height, toJSON: () => ({}) } as DOMRect;
+    return { x, y, width, height, top: y, left: x, right: x + width, bottom: y + height, toJSON: () => ({}) };
   });
   document.elementFromPoint = () => null;
   Element.prototype.scrollIntoView = vi.fn();

@@ -16,10 +16,11 @@ function useCoveragePreview(tab: ProjectTab, rule: Reference | null, replacing: 
   const { sessionId, database } = tab;
   const key = rule ? JSON.stringify([rule, replacing]) : null;
   useEffect(() => {
-    if (!key || !rule) {
+    if (!key) {
       setPreview({ status: "idle" });
       return;
     }
+    const [rule, replacing] = JSON.parse(key) as [Reference, string | null];
     let alive = true;
     const timer = window.setTimeout(() => {
       setPreview({ status: "running" });
@@ -32,7 +33,6 @@ function useCoveragePreview(tab: ProjectTab, rule: Reference | null, replacing: 
       alive = false;
       window.clearTimeout(timer);
     };
-    // `key` stands for `rule` and `replacing`, which are new objects on every render.
   }, [key, sessionId, database]);
   return preview;
 }
@@ -55,7 +55,7 @@ function PreviewLine({ preview }: { preview: Preview }) {
   );
 }
 
-function WhenField({ ctx, form, update }: { ctx: ProjectContext; form: Form; update(patch: Partial<Form>): void }) {
+function WhenField({ ctx, form, update }: { ctx: ProjectContext; form: Form; update: (patch: Partial<Form>) => void }) {
   const { columns } = useTableColumns(ctx.tab.sessionId, ctx.tab.database, form.source.table);
   if (form.whenLocked) return <span className="mono o2">{Object.keys(form.base?.when ?? {}).join(", ")} (kept as stored)</span>;
   const when = form.when ?? { column: "", value: "" };

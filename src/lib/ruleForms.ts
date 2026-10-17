@@ -3,7 +3,7 @@
  * fills them, and the rule they save. Table names in the reference form are real ones; `RuleTable`s from Rust
  * map them to the names rules store. Kind and style scopes are typed as rules store them (globs allowed).
  */
-import type { AppError, KindRow, KindRule, Match, Provenance, Reference, ReferenceRow, RuleDraft, RuleOrigin, RuleTable, StyleColor, StyleMatch, StyleRow, StyleRule, Zone } from "../api";
+import type { AppError, KindRow, KindRule, Provenance, Reference, ReferenceRow, RuleDraft, RuleOrigin, RuleTable, StyleColor, StyleMatch, StyleRow, StyleRule, Zone } from "../api";
 
 export interface ColumnPick {
   table: string;
@@ -118,7 +118,7 @@ export function styleFormFor(source: Provenance, draft: RuleDraft, raw: string):
 function simpleWhen(when: Reference["when"]): WhenDraft | null {
   const entries = Object.entries(when ?? {});
   if (entries.length !== 1) return null;
-  const [[column, match]] = entries as [string, Match][];
+  const [[column, match]] = entries;
   return typeof match === "string" ? { column, value: match } : null;
 }
 

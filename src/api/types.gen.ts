@@ -769,7 +769,7 @@ cellKinds: Array<CellKind>,
 styles: Array<CellStyle>, };
 
 /**
- * A row's primary key, in key order. Unlike `db::changes::RowKey` it owns its values and
+ * A row's primary key, in key order. Unlike `db::changes::ChangeKey` it owns its values and
  * covers composite keys.
  */
 export type RowKey = Array<KeyPart>;

@@ -33,7 +33,7 @@ function useBackendEvents() {
 
     const onKey = handleKeydown;
     const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);
-    const onRejection = (e: PromiseRejectionEvent) => toast("error", `Unexpected error: ${String(e.reason?.message ?? e.reason)}`);
+    const onRejection = (e: PromiseRejectionEvent) => toast("error", `Unexpected error: ${toAppError(e.reason).message}`);
     window.addEventListener("keydown", onKey, true);
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);

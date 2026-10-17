@@ -65,7 +65,7 @@ export function setOverrides(next: Overrides) {
 export function bindingFor(id: string, custom: Overrides = overrides): string | null {
   const fallbackFor = commands.get(id)?.fallbackFor;
   if (fallbackFor) return bindingFor(fallbackFor, custom);
-  if (Object.prototype.hasOwnProperty.call(custom, id)) return custom[id] === null ? null : normalizeBinding(custom[id] as string);
+  if (Object.prototype.hasOwnProperty.call(custom, id)) return custom[id] === null ? null : normalizeBinding(custom[id]);
   const def = commands.get(id)?.defaultBinding;
   return def ? normalizeBinding(def) : null;
 }

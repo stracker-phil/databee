@@ -39,7 +39,7 @@ function useGroupPage(sessionId: string | null, database: string, group: Group) 
   const dataVersion = useStore((s) => s.dataVersion);
   const target = group.rowsAddress?.target;
   const whereKey = JSON.stringify(target?.kind === "table" ? target.filter : null);
-  const where = useMemo((): ColumnEquals[] | null => JSON.parse(whereKey), [whereKey]);
+  const where = useMemo(() => JSON.parse(whereKey) as ColumnEquals[] | null, [whereKey]);
   const [state, setState] = useState<{
     page: BrowsePage | null;
     error: AppError | null;

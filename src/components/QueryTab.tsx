@@ -176,12 +176,11 @@ export function QueryTab({ tab }: { tab: QueryTabState }) {
     if (!isActive) return;
     const onRun = (e: Event) => {
       const which = (e as CustomEvent<string>).detail;
-      run(which === "all" || !viewRef.current ? tab.sql : currentStatement(viewRef.current));
+      void runQuery(tab.id, which === "all" || !viewRef.current ? tab.sql : currentStatement(viewRef.current));
     };
     window.addEventListener(EVENTS.runQuery, onRun);
     return () => window.removeEventListener(EVENTS.runQuery, onRun);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, tab.id, tab.sql]);
+  }, [isActive, tab.id, tab.sql, runQuery]);
   const { height } = useWindowSize();
   const editor = usePaneSize("sqlEditorHeight", 140, 48, height - 320);
   const results = tab.response?.results ?? [];

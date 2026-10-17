@@ -62,7 +62,7 @@ describe("TableTab", () => {
     fireEvent.mouseUp(window);
     const saved = useStore.getState().uiState[session.identity]?.tables["db.wp_posts"]?.widths;
     expect(saved).toBeDefined();
-    expect(saved!.post_title).toBeGreaterThan(saved!.ID);
+    expect(saved.post_title).toBeGreaterThan(saved.ID);
     const header = screen.getByRole("columnheader", { name: /post_title/ });
     expect(header.style.width).toBe("var(--col-1)");
     await waitFor(() => expect(mocked.setUiState).toHaveBeenCalledWith(session.identity, expect.objectContaining({ tables: { "db.wp_posts": { widths: saved } } })), { timeout: 1500 });

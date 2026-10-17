@@ -9,15 +9,15 @@ import type { QueryTab, SavedRef } from "./tabs";
 export interface SavedSlice {
   /** By `session/database`. */
   savedQueries: Record<string, SavedEntry[]>;
-  loadSavedQueries(sessionId: string, database: string): Promise<SavedEntry[]>;
+  loadSavedQueries: (sessionId: string, database: string) => Promise<SavedEntry[]>;
   /** A query tab with the entry's SQL, run at once; a preset query opens as an unsaved "copy of …". */
-  openSavedQuery(sessionId: string, database: string, entry: SavedEntry): void;
+  openSavedQuery: (sessionId: string, database: string, entry: SavedEntry) => void;
   /** ⌘S: updates the tab's project or global query, else asks for a title and stores a new one in the project. */
-  saveQueryTab(tabId: string): void;
+  saveQueryTab: (tabId: string) => void;
   /** Asks how the tab's saved query shows on the readout: not at all, as a count or as its first rows. */
-  pinQueryTab(tabId: string): void;
+  pinQueryTab: (tabId: string) => void;
   /** Copies the preset query the tab was opened from into the project; the tab then saves to that copy. */
-  copyPresetQuery(tabId: string): Promise<void>;
+  copyPresetQuery: (tabId: string) => Promise<void>;
 }
 
 export const isPreset = (origin: SavedOrigin): origin is Extract<SavedOrigin, { kind: "preset" }> => origin.kind === "preset";

@@ -6,10 +6,10 @@ import type { Slice } from "../store";
 export interface SettingsSlice {
   settings: Settings | null;
   keybindings: Keybindings;
-  loadSettings(): Promise<void>;
+  loadSettings: () => Promise<void>;
   /** `quiet` skips the toast, for settings that apply as they change. */
-  saveSettings(settings: Settings, opts?: { quiet?: boolean }): Promise<void>;
-  saveKeybindings(bindings: Keybindings): Promise<void>;
+  saveSettings: (settings: Settings, opts?: { quiet?: boolean }) => Promise<void>;
+  saveKeybindings: (bindings: Keybindings) => Promise<void>;
 }
 
 export const settingsSlice: Slice<SettingsSlice> = {
