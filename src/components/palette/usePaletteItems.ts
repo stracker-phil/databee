@@ -8,10 +8,11 @@ import { selectActiveSession, selectActiveTab, useStore, type RecentNav } from "
 import { objectActionCommands } from "../object/actions";
 import { parsePrefix, score, searchesRows, type Prefix } from "./parse";
 import { useRowHits } from "./useRowHits";
+import { useSwitchItems } from "./useSwitchItems";
 
 export interface Item {
   key: string;
-  /** Recent, a hit's section (`objects with id 4711`), Address, Tables or Commands. */
+  /** Recent, a hit's section (`objects with id 4711`), Address, Tables, Commands, Connections or Databases. */
   section: string;
   title: string;
   subtitle?: string;
@@ -141,7 +142,7 @@ function tableItems(tables: TableInfo[], database: string | null, prefix: Prefix
     });
 }
 
-/** The palette's results for `query` in the order Recent, row hits, saved queries, Tables, Commands. */
+/** The palette's results for `query` in the order Recent, row hits, saved queries, Connections and Databases (`c:`), Tables, Commands. */
 export function usePaletteItems(query: string) {
   const session = useStore(selectActiveSession);
   const database = session?.database ?? null;
@@ -163,12 +164,13 @@ export function usePaletteItems(query: string) {
 
   const { prefix, needle } = parsePrefix(query);
   const { hits, searching } = useRowHits(prefix, needle);
+  const switchItems = useSwitchItems(prefix, needle);
 
   const items: Item[] = useMemo(() => {
     const rows = [...addressItems(prefix, needle), ...hitItems(hits)];
     const queries = savedItems(saved ?? [], session?.id ?? null, database, prefix, needle);
-    return [...recentItems(recent, prefix, needle), ...rows, ...queries, ...tableItems(tables ?? [], database, prefix, needle), ...commandItems(prefix, needle)].slice(0, MAX_ITEMS);
-  }, [hits, needle, prefix, tables, recent, database, saved, session?.id]);
+    return [...recentItems(recent, prefix, needle), ...rows, ...queries, ...switchItems, ...tableItems(tables ?? [], database, prefix, needle), ...commandItems(prefix, needle)].slice(0, MAX_ITEMS);
+  }, [hits, needle, prefix, tables, recent, database, saved, session?.id, switchItems]);
 
   const hasEntities = !!info?.entities.length;
   return { items, searching, prefix, needle, rowSearch: searchesRows(prefix, needle), hasEntities };

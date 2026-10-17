@@ -137,6 +137,7 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | Shortcut | Command | Where |
 |---|---|---|
 | ⌘K / ⌘P | Command palette / open table or record | everywhere |
+| ⌘⇧P | Switch connection or database | everywhere |
 | ⌘[ / ⌘] | Back / forward in the tab's history | everywhere |
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset | everywhere |
 | ⌘R | Refresh the current view | everywhere |

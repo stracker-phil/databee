@@ -361,6 +361,7 @@ rebindable.
 | ⌘F | table | focus the table's `WHERE` filter |
 | ⌘⇧F | db | focus the sidebar filter |
 | ⌘K / ⌘P | global | palette / palette with `t:` (tables) |
+| ⌘⇧P | global | switch connection or database: the palette with `c:` (`connection.switch`, also File menu) |
 | ⌘T / ⌘W | global | new query tab / close tab |
 | ⌃Tab / ⌃⇧Tab | db | next / previous tab |
 | ⌘R | global | refresh the current view |
@@ -374,7 +375,7 @@ tab), `editor` (a query tab) and `object` (an object tab).
 
 ## Palette prefixes
 
-The palette is the main navigation. Sections, in order: Recent, row hits, saved queries, Tables, Commands. Row hits are
+The palette is the main navigation. Sections, in order: Recent, row hits, saved queries, Connections and Databases (`c:`), Tables, Commands. Row hits are
 grouped in sections titled by what they are (`objects with id 4711`, `rows that reference 4711`) and render
 with the value grammar: the table name (or `table.column`) in `--o2`, `#key` in the accent, then the summary
 values. Enter opens a hit in the current object tab's column stack (or a new object tab); ⌘↵ opens a new
@@ -388,5 +389,6 @@ tab; holding ⌥ peeks the selected hit. The footer lists the keys and the prefi
 | `@john` | entities whose rule marks them `people = true`, searched on their `search` and `search_exact` columns and meta keys |
 | text of 6+ characters | values in the entities' `search` columns and non-key reference targets (external ids); shorter text matches only tables and commands |
 | `q:` | saved queries: the project's, the global ones and the presets' pinned ones, with their origin |
+| `c:` | switch connection (⌘⇧P): open sessions (the active one marked `current`, others `open`), then recent connections, each with its name, `host:port / database` and slug; then the active connection's databases (`current` marked). Fuzzy: substring, else the characters in order within one field. Enter activates an open session, connects a recent one (asking for the password when needed; the other sessions stay open), or switches the database |
 | `=value` | find everywhere: every `[[meta]]` value, the `[[find]]` sources and the entities' search columns, one section per table and column |
 | `databee://…` | open the address |

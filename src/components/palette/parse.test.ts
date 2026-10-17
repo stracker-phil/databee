@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { score, searchesRows } from "./parse";
+import { fuzzyScore, parsePrefix, score, searchesRows } from "./parse";
 
 describe("searchesRows", () => {
   it.each([
@@ -26,5 +26,22 @@ describe("score", () => {
     ["a different case", "Orders", "oRDERS", 4],
   ])("scores %s", (_name, title, needle, expected) => {
     expect(score(title, needle)).toBe(expected);
+  });
+});
+
+describe("parsePrefix", () => {
+  it("reads c: as the connection switcher", () => {
+    expect(parsePrefix("c: shop")).toEqual({ prefix: "c:", needle: "shop" });
+  });
+});
+
+describe("fuzzyScore", () => {
+  it.each([
+    ["the best field's score", ["Shop", "shop"], "shop", 4],
+    ["characters in order within one field", ["Staging", "127.0.0.1:3306"], "stgng", 1],
+    ["characters spread over two fields", ["Shop", "127.0.0.1:52958"], "shop2", 0],
+    ["an empty needle", ["Shop"], "", 1],
+  ])("scores %s", (_name, fields, needle, expected) => {
+    expect(fuzzyScore(fields, needle)).toBe(expected);
   });
 });

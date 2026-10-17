@@ -11,12 +11,14 @@ import { PeekCard } from "./value/Peek";
 /** ⌘K: rows by id, people, external ids and values, plus tables, commands and recent items (docs/frontend.md). */
 export function CommandPalette() {
   const open = useStore((s) => s.paletteOpen);
-  // Mounted per opening, so the query, results and selection start fresh each time.
-  return open ? <PaletteSheet /> : null;
+  const seed = useStore((s) => s.paletteSeed);
+  // Mounted per opening (and per seed, so a command run from the palette can reopen it with a prefix).
+  return open ? <PaletteSheet key={seed} /> : null;
 }
 
 function emptyText(prefix: Prefix, needle: string, rowSearch: boolean): string {
   if (prefix === "q:") return "No saved queries.";
+  if (prefix === "c:") return needle ? "Nothing found." : "No connections yet.";
   if (prefix === "#" && !rowSearch) return "Type an id, e.g. #4711.";
   if (prefix === "databee://") return "Not an address yet.";
   if ((prefix === "@" || prefix === "=") && !rowSearch) return "Type at least 2 characters.";

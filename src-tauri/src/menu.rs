@@ -24,6 +24,7 @@ const fn item(id: &'static str, label: &'static str, default_binding: &'static s
 
 pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("connection.new", "New Connection…", "Mod+N"),
+    item("connection.switch", "Switch Connection…", "Mod+Shift+P"),
     item("tabs.new", "New Query Tab", "Mod+T"),
     item("tabs.close", "Close Tab", "Mod+W"),
     item("settings.open", "Settings…", "Mod+,"),
@@ -70,6 +71,7 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         .build()?;
     let file = SubmenuBuilder::new(app, "File")
         .item(&item("connection.new")?)
+        .item(&item("connection.switch")?)
         .item(&item("tabs.new")?)
         .separator()
         .item(&item("changes.apply")?)

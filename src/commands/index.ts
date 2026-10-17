@@ -119,6 +119,7 @@ const APP_COMMANDS: Command[] = [
   { id: "readout.open", title: "Readout", scope: "global", when: hasDatabase, run: () => useStore.getState().openReadout() },
   { id: "project.open", title: "Project", scope: "global", when: hasDatabase, run: () => useStore.getState().openProject() },
   { id: "connection.new", title: "New connection…", scope: "global", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "connect" }) },
+  { id: "connection.switch", title: "Switch connection…", scope: "global", defaultBinding: "Mod+Shift+P", menu: true, run: () => useStore.getState().setPaletteOpen(true, "c:") },
   {
     id: "settings.open",
     title: "Settings…",

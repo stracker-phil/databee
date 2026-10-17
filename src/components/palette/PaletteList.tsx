@@ -93,12 +93,12 @@ export function PaletteList({ items, active, activeRef, empty, onHover, onChoose
   );
 }
 
-const PREFIX_HINTS = "# id · @ people · t: tables · q: queries · > commands · = find everywhere · databee://";
+const PREFIX_HINTS = "# id · @ people · t: tables · q: queries · c: connections · > commands · = find everywhere · databee://";
 
 export function PaletteFooter({ prefix, hasEntities, hasHit }: { prefix: Prefix; hasEntities: boolean; hasHit: boolean }) {
   return (
     <div className="palette-foot o3">
-      <span>{hasHit ? "↵ open in column · ⌘↵ new tab · ⌥ peek" : "↵ open · ⌘↵ new tab"}</span>
+      <span>{prefix === "c:" ? "↵ connect or switch" : hasHit ? "↵ open in column · ⌘↵ new tab · ⌥ peek" : "↵ open · ⌘↵ new tab"}</span>
       {prefix === "#" && !hasEntities && <span>no entities: # reads tables under 1M estimated rows</span>}
       <span className="mono">{PREFIX_HINTS}</span>
     </div>
