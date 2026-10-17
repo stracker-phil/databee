@@ -91,6 +91,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are
     `appearance:accent:<id>` (list `appearance:accent`)
 
+  - `value:<table>.<column>:<key>` for values that act on click or reveal (references, enums, serialized
+    data, secrets) and have a provenance (list `values`; label: the raw value)
   - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:search` (opens the palette),
     `toolbar:mode:<wp|db>`, `statusbar:sidebar` (the ▤ toggle), `statusbar:pending`
 

@@ -1,4 +1,4 @@
-import type { BrowsePage, Cell, ColumnMeta, PlannedChange, ResultSet, Settings, TableInfo } from "../api";
+import type { BrowsePage, Cell, ColumnMeta, PlannedChange, ResultSet, Settings, TableInfo, Value } from "../api";
 import { session } from "./session";
 import { settings } from "./settings";
 
@@ -12,7 +12,12 @@ export function table(name: string, patch: Partial<TableInfo> = {}): TableInfo {
 export const text = (v: string): Cell => ({ t: "text", v });
 export const num = (v: string): Cell => ({ t: "number", v });
 
-export const columnMeta = (name: string, typeName: string): ColumnMeta => ({ name, typeName, origin: null });
+/** A plain text value without provenance; override `raw`, `kind`, `source`, `style` or `secondary`. */
+export function value(patch: Partial<Value> = {}): Value {
+  return { raw: text("x"), kind: { kind: "text" }, source: null, style: null, secondary: null, ...patch };
+}
+
+export const columnMeta =(name: string, typeName: string): ColumnMeta => ({ name, typeName, origin: null });
 
 export function resultSet(patch: Partial<ResultSet> = {}): ResultSet {
   return {

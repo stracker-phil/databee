@@ -21,6 +21,18 @@ export function resultValueAt(result: ResultSet, row: number, col: number, sourc
   return { raw, kind: cellKind(result, row, col, raw, column, source), source, style, secondary: null };
 }
 
+/** A cell outside any result's kinds (no lens): only what the cell itself says. */
+export function cellValue(raw: Cell): Value {
+  return { raw, kind: plainKind(raw), source: null, style: null, secondary: null };
+}
+
+function plainKind(cell: Cell): ValueKind {
+  if (cell.t === "null") return { kind: "null" };
+  if (cell.t === "bytes") return { kind: "binary" };
+  if (cell.t === "text" && cell.v === "") return { kind: "empty" };
+  return cell.t === "number" ? { kind: "number" } : { kind: "text" };
+}
+
 const cellText = (cell: Cell): string | null => (cell.t === "number" || cell.t === "text" || cell.t === "temporal" || cell.t === "json" ? cell.v : null);
 
 /** WordPress stores "no target" as `0`; NULL means the same in a reference column. */

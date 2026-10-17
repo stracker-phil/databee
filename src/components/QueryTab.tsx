@@ -4,6 +4,7 @@ import { CheckCircle2, Loader2, Play, PlayCircle, Square } from "lucide-react";
 import { api, toAppError } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { formatCount } from "../lib/format";
+import { resultValueAt } from "../lib/values";
 import { useResolvedScheme } from "../lib/theme";
 import { useStore, type QueryTab as QueryTabState } from "../state/store";
 import { ErrorPanel } from "./ErrorPanel";
@@ -62,7 +63,14 @@ function ResultView({ tab }: { tab: QueryTabState }) {
   if (tab.error) return <ErrorPanel message={tab.error.message} code={tab.error.code} />;
   if (!result) return <div className="empty-state">Run a query to see results here.</div>;
   if (result.returnsRows) {
-    return <ResultsGrid columns={result.columns} rows={result.rows} source={{ sessionId: tab.sessionId, resultId: result.id }} />;
+    return (
+      <ResultsGrid
+        columns={result.columns}
+        rows={result.rows}
+        source={{ sessionId: tab.sessionId, resultId: result.id }}
+        valueAt={(row, col) => resultValueAt(result, row, col)}
+      />
+    );
   }
   return (
     <div className="message-panel">

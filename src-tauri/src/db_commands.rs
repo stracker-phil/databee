@@ -18,6 +18,7 @@ use crate::schema;
 use crate::session::{self, OpenArgs, SessionInfo};
 use crate::state::AppState;
 use crate::store::history::HistoryEntry;
+use crate::value::{self, Provenance};
 
 /// Rows a "New query" on a table asks for.
 const NEW_QUERY_LIMIT: u32 = 100;
@@ -231,6 +232,29 @@ pub async fn table_references(
 ) -> AppResult<TableReferences> {
     let session = state.sessions.get(&session_id)?;
     lens::table_references(&session, &database, &table, Some(state.rules())).await
+}
+
+/// The value at `provenance` as a SQL condition, quoted for the server (`value.copyCondition`);
+/// `raw: None` is NULL.
+#[tauri::command]
+pub async fn value_condition(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    provenance: Provenance,
+    raw: Option<String>,
+) -> AppResult<String> {
+    let session = state.sessions.get(&session_id)?;
+    let timeout = state.settings.get().query_timeout();
+    value::value_condition(
+        &session,
+        &database,
+        &provenance,
+        raw.as_deref(),
+        state.rules(),
+        timeout,
+    )
+    .await
 }
 
 /// The full text of a cell that a result set sent as a `LongText` preview.

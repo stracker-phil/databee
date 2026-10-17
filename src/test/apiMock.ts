@@ -60,6 +60,7 @@ export function createApiMock(): typeof realApi {
     execute: vi.fn().mockResolvedValue({ results: [], elapsedMs: 0, database: "db", failure: null }),
     cancelQuery: vi.fn().mockResolvedValue(undefined),
     fetchCell: vi.fn().mockResolvedValue(""),
+    valueCondition: vi.fn().mockResolvedValue(""),
     browseTable: vi.fn(
       async (_s, req): Promise<BrowsePage> => ({
         table: req.table,

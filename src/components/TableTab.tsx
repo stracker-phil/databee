@@ -4,6 +4,7 @@ import { api, toAppError, type AppError, type AppliedFilter, type BrowsePage, ty
 import { EVENTS, useBindingLabel } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { cellText } from "../lib/format";
+import { valueAt } from "../lib/values";
 import { selectStructure, selectWp, useStore, type TableTab as TableTabState } from "../state/store";
 import type { MenuEntry } from "./ContextMenu";
 import { ErrorPanel } from "./ErrorPanel";
@@ -282,6 +283,7 @@ function DataView({ tab }: { tab: TableTabState }) {
           columns={page.result.columns}
           rows={page.result.rows}
           source={{ sessionId: tab.sessionId, resultId: page.result.id }}
+          valueAt={(row, col) => valueAt(page, row, col)}
           sort={{ column: browse.orderBy, descending: browse.descending }}
           onSort={sortBy}
           columnWidths={savedWidths}

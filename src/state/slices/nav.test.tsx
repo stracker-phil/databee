@@ -178,6 +178,20 @@ describe("openAddress", () => {
     expect(activeTable()).toMatchObject({ table: "wp_options", where: [] });
   });
 
+  it("opens a pinned tab by default", async () => {
+    await act(() => useStore.getState().openAddress("databee://shop/db/wp_posts"));
+    expect(activeTable().preview).toBe(false);
+  });
+
+  it("opens a preview tab when asked, and the next preview replaces it", async () => {
+    await act(() => useStore.getState().openAddress("databee://shop/db/wp_posts", { preview: true }));
+    expect(activeTable()).toMatchObject({ table: "wp_posts", preview: true });
+
+    await act(() => useStore.getState().openAddress("databee://shop/db/wp_options", { preview: true }));
+    expect(useStore.getState().tabs).toHaveLength(1);
+    expect(activeTable()).toMatchObject({ table: "wp_options", preview: true });
+  });
+
   it("reports a connection that is not open", async () => {
     await act(() => useStore.getState().openAddress("databee://nope/db/wp_posts"));
     expect(await screen.findByRole("alert")).toHaveTextContent("No open connection is named nope");
@@ -200,6 +214,45 @@ describe("openAddress", () => {
   it("says that other address kinds do not open yet", async () => {
     await act(() => useStore.getState().openAddress("databee://shop/db/"));
     expect(await screen.findByRole("status")).toHaveTextContent("cannot be opened yet");
+  });
+});
+
+describe("filterRows", () => {
+  const draft = { column: "post_status", value: "draft" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore({ tabs: [] });
+    installCommands();
+    act(() => useStore.getState().openTableTab("db", "wp_posts", "data", undefined, { where: pages }));
+  });
+
+  it("adds a match to the rows already filtered", () => {
+    act(() => useStore.getState().filterRows(activeTable().id, draft));
+    expect(activeTable().where).toEqual([...pages, draft]);
+  });
+
+  it("replaces a match on the same column, whatever its case", () => {
+    act(() => useStore.getState().filterRows(activeTable().id, draft));
+    act(() => useStore.getState().filterRows(activeTable().id, { column: "POST_TYPE", value: "post" }));
+    expect(activeTable().where).toEqual([draft, { column: "POST_TYPE", value: "post" }]);
+  });
+
+  it("records the earlier rows for back", async () => {
+    act(() => useStore.getState().filterRows(activeTable().id, draft));
+    expect(runCommand("nav.back")).toBe(true);
+    await waitFor(() => expect(activeTable().where).toEqual(pages));
+  });
+
+  it("matches NULL", () => {
+    act(() => useStore.getState().filterRows(activeTable().id, { column: "post_parent", value: null }));
+    expect(addressOfActive()).toBe("databee://shop/db/wp_posts?post_type=page&post_parent");
+  });
+
+  it("does nothing for a tab that is not a table tab", () => {
+    const before = useStore.getState().tabs;
+    act(() => useStore.getState().filterRows("missing", draft));
+    expect(useStore.getState().tabs).toBe(before);
   });
 });
 

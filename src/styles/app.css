@@ -456,7 +456,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 /* ---------- value tree ---------- */
 /* No type tints: keys secondary, container types tertiary, values in primary text (docs/ux.md, Trees). */
 .vt { font-family: var(--font-mono); font-size: var(--data-font-size); line-height: 1.55; user-select: text; }
-.vt-line { display: flex; align-items: baseline; gap: 0.385rem; border-radius: 3px; padding: 0 2px; }
+.vt-line { display: flex; align-items: baseline; gap: 0.385rem; padding: var(--pad) 2px; line-height: 20px; border-bottom: 1px solid var(--line); }
 .vt-line:hover { background: var(--row-hover); }
 .vt-toggle { width: 0.846rem; flex: none; color: var(--o3); display: inline-flex; align-self: center; }
 .vt-children { padding-left: 1.077rem; border-left: 1px solid var(--line); margin-left: 0.385rem; }
@@ -465,12 +465,31 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .vt-key.int { color: var(--o2); }
 .vt-vis { font-size: 0.808rem; color: var(--o3); }
 .vt-string { word-break: break-word; white-space: pre-wrap; }
+.vt-quote { color: var(--o3); }
+.vt-pair { display: inline-flex; gap: 0.385rem; margin-left: 0.615rem; }
 .vt-int, .vt-float { font-variant-numeric: tabular-nums; }
 .vt-null { color: var(--o3); font-style: italic; }
 .vt-ref, .vt-muted { color: var(--o3); }
 .vt-warning, .vt-error { display: flex; gap: 0.462rem; align-items: flex-start; padding: 0.462rem 0.615rem; border-radius: 6px; margin-bottom: 0.615rem; font-family: var(--font-ui); font-size: var(--fs-small); }
 .vt-warning { background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); }
 .vt-error { background: color-mix(in srgb, var(--style-red) 12%, transparent); color: var(--style-red); }
+
+/* ---------- values ---------- */
+/* One look per kind (docs/ux.md, Value grammar): accent only on interactive kinds, color only from value
+   styles (set inline as var(--style-<name>)), everything else through opacity. */
+.val { font-family: var(--font-mono); }
+.val-pk { color: var(--accent); }
+.val-ref { color: var(--accent); text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.val-ref.inferred { text-decoration-style: dashed; }
+.val-dang { color: var(--o3); text-decoration: line-through; }
+.val-o3, .val-ser, .val-secret { color: var(--o3); }
+.val-null { color: var(--o3); font-style: italic; }
+.val-num { font-variant-numeric: tabular-nums; }
+.val-sec { color: var(--o2); margin-left: 0.6em; }
+.val-note { color: var(--o3); margin-left: 0.6em; font-family: var(--font-ui); font-size: var(--fs-small); }
+.val-secret, button.val-ser, button.val-ref { border: none; background: none; padding: 0; font: inherit; }
+.val-secret:hover, .val-ser:hover { color: var(--text); }
+.val-tree { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; }
 
 /* ---------- documents ---------- */
 .doc { overflow: auto; padding: 1.231rem 1.538rem 2.462rem; display: flex; flex-direction: column; gap: 1.385rem; }

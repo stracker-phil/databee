@@ -10,13 +10,15 @@ import { uiSlice, type UiSlice } from "./slices/ui";
 import { wpSlice, type WpSlice } from "./slices/wp";
 
 export { fail } from "./requests";
-export { flushUiState } from "./slices/ui";
+export { flushUiState, NO_HOVER } from "./slices/ui";
 export {
   selectActivePending,
   selectActiveSession,
   selectActiveTab,
   selectCanNav,
   selectCanUndo,
+  selectMaxCellChars,
+  selectNullLabel,
   selectSidebarHidden,
   selectStructure,
   selectVisibleDatabases,
@@ -27,7 +29,7 @@ export {
 export type { TabNav, TableLocation } from "./slices/nav";
 export type { SchemaState, StructureEntry } from "./slices/session";
 export type { QueryTab, SelectedCell, Tab, TableTab } from "./slices/tabs";
-export type { Dialog, Mode, RecentNav, Toast } from "./slices/ui";
+export type { Dialog, Mode, RecentNav, Toast, ValueHover } from "./slices/ui";
 export type { EntityMeta, WpList, WpRoute } from "./slices/wp";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */

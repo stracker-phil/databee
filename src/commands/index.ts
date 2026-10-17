@@ -2,9 +2,11 @@ import { TEXT_SIZES } from "../api";
 import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, selectWp, selectWpRoute, useStore, type Store, type WpList, type WpRoute } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
+import { VALUE_COMMANDS } from "./values";
 
 export * from "./registry";
 export * from "./scopes";
+export { EDIT_VALUE_EVENT } from "./values";
 
 /** Window events for commands whose target lives inside a component. */
 export const EVENTS = {
@@ -169,6 +171,7 @@ export const APP_COMMANDS: Command[] = [
   { id: "favorites.add", title: "Add to favorites", scope: "global", defaultBinding: "Mod+D", menu: true, when: () => inDb() && !!selectActiveTab(useStore.getState()), run: () => useStore.getState().addCurrentTabToFavorites() },
   { id: "changes.apply", title: "Apply pending changes", scope: "global", defaultBinding: "Mod+S", menu: true, when: () => selectActivePending(useStore.getState()).length > 0, run: () => void useStore.getState().applyChanges() },
   { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => selectCanUndo(useStore.getState()), run: () => void useStore.getState().undoLast() },
+  ...VALUE_COMMANDS,
   ...SCREENS,
 ];
 

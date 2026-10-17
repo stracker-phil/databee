@@ -174,18 +174,19 @@ Palette, peek, popovers, context menus, toasts and dialogs: `--pop` background, 
 `--scrim`. Overlays take `Esc` first. Palette results use the row anatomy; the active one is `--sel` with a
 2px accent bar on the left, and command shortcuts show as key caps.
 
-## Value grammar (from U5)
+## Value grammar
 
-One component (`src/components/value/Value.tsx`) renders every value in grids, documents, peek, the palette,
-the readout and the Project page. Hover never opens a tooltip: the status bar shows the provenance of the
-hovered value, else of the focused value, else the current address. The Hover column is what the status bar
-shows.
+One component (`src/components/value/Value.tsx`) renders every value: grids and the WordPress column fields
+today, documents (U7), peek, the palette, the readout and the Project page as they are built. Hover never
+opens a tooltip: the status bar shows the provenance of the hovered value, else of the focused (selected)
+value, else the current address. The Hover column is what the status bar shows. Built in U5 except where a
+cell says otherwise.
 
 | Kind | Look | Click | Hover |
 |---|---|---|---|
-| PrimaryKey `#3297` | accent, mono | opens the object (Rows view when already in its Document) | provenance |
-| Reference, declared `customer_id 4` | accent, dotted underline | opens the target in a new column | provenance and source (FK, project, preset); ⌥ peeks |
-| Reference, inferred | accent, dashed underline, tertiary "inferred" | as declared; several targets: choose | the rule (`action_id = wp_actionscheduler_actions.action_id · indexed`) |
+| PrimaryKey `#3297` | accent, mono | opens the object (Rows view when already in its Document) (from U7; none yet) | provenance |
+| Reference, declared `customer_id 4` | accent, dotted underline | opens the target (grids: in the preview tab until U9's column stack) | provenance, `→` target and source (`foreign key …`, `project …`, `preset …`); ⌥ peeks (from U9) |
+| Reference, inferred | accent, dashed underline, tertiary "inferred" | as declared; several targets: a menu to choose | `→` target `· inferred · same name · indexed` |
 | Reference, dangling | tertiary, struck through | none | "no row `#4` in `wp_users`" |
 | No reference (`0` or `NULL` in a reference column) | tertiary, no underline | none | "0 = no reference" |
 | Enum (status slugs, gateways) `wc-failed` | raw string, default color | filters rows by this value | provenance |
@@ -194,19 +195,23 @@ shows.
 | Timestamp | raw value primary, relative time secondary (`1792167625  2 h ago`) | none | UTC and local time |
 | Null | italic tertiary `NULL` | none | provenance |
 | Empty | tertiary `""` (never rendered like `NULL`) | none | provenance |
-| Serialized | tertiary preview `▸ a:17{…}` / `{…17}`; in grids followed by the raw text, tertiary | expands inline as a tree | provenance |
+| Serialized | tertiary preview `▸ a:17{…}` / `{…17}`; in grids followed by the raw text, tertiary | expands inline as a tree (grids: selects the cell, so the Inspector shows the tree, until U9) | provenance |
 | Secret | masked | reveals | provenance |
 | Binary | tertiary `<n bytes>` | none | provenance |
 
 - **Trees** (`ValueTree`): a hairline guide on the left, keys secondary, container types tertiary
-  (`array(2)`), strings in dim quotes so `"2.04"` and `2.04` differ, leaf pairs of a small array on one line.
-  Tree rows keep the row anatomy.
+  (`array(2)`), strings in dim quotes so `"2.04"` and `2.04` differ, leaf pairs of a small array (up to 4
+  leaves, 60 characters) on one line unless the tree is editable. Tree rows keep the row anatomy.
 - **Value styles (from U4c):** a project (or preset, off by default) rule `{ columns or meta keys, match:
   = | LIKE | REGEXP, value, color }` colors matching values with `--style-<color>` (`red`, `green`, `yellow`,
   `blue`, `purple`). A style is always scoped to columns or meta keys, never global. There is no status kind
   and no default status color.
-- **Provenance text:** `wp_wc_orders_meta.meta_value · id 9123`, plus `→ wp_users.ID · preset woocommerce`
-  for references and `UTC … · local …` for timestamps.
+- **Provenance text:** `wp_wc_orders_meta.meta_value · id 9123`, plus `→ wp_users #12 · preset woocommerce`
+  for references, `UTC … · local …` for timestamps with a known zone (`zone not stored` otherwise; zero
+  dates have neither) and `currency <source>` for money. Query results carry no row, so only the kind's
+  part shows.
+- **Secondary text** (`Value.secondary`, a relative time, a currency, a formatted amount) follows the raw
+  value in `--o2`, never instead of it.
 - **Change marks (from U13):** a changed value flashes (`--cell` fading out over 1.6s), then shows the old
   value tertiary and struck through, with a 3px accent bar on the row.
 
@@ -223,7 +228,8 @@ shows.
   is persisted per connection (`sidebarHidden` in `ui_state.json`).
 - **Status bar** (`--chrome`), left to right: ▤ sidebar toggle, the active tab's address in mono
   (`databee://wc-pp/db/wp_posts?post_type=page`; a click copies it; `· filtered` follows when a typed SQL
-  filter applies, which no address holds), for a query tab its result summary after it (provenance from U5),
+  filter applies, which no address holds; replaced by the provenance of the hovered or selected value), for a
+  query tab its result summary after it,
   spacer, `pending n` (a button to the tray when n > 0), `● live 2 s` in the accent while live
   (from U13). Plain text, no chips; theme and inspector dock live in Settings and the palette.
 - **Column stack** (from U9): drilling opens a column to the right (minimum 420px); the oldest collapse to
@@ -243,7 +249,7 @@ the object and grid scopes, never in inputs, the editor or dialogs; `Tab` keeps 
 | `Esc` | object | close the rightmost column; overlays take `Esc` first (from U9) |
 | ⌘[ / ⌘] | global | back / forward through the active tab's address history (WordPress mode: its own history until U12); without history the keys stay with the editor |
 | `⌥` (held) | object, grid | peek the focused or hovered reference (from U9) |
-| `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (from U5) |
+| `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (grid: the `table` scope; object from U7) |
 | `r` | object, grid | add a reference from this column or meta key (from U8) |
 | `w` | object | live mode on/off (from U13) |
 | `s` | object | snapshot (from U13) |

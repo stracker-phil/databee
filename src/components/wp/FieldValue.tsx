@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Copy, Eye, Maximize2, Minimize2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
-import { api, type ColumnEquals, type DocField, type NewValue } from "../../api";
+import { api, type ColumnEquals, type DocField, type NewValue, type Provenance, type Value as StoredValue, type ValueKind } from "../../api";
 import { copyText } from "../../lib/clipboard";
 import { cellText, relativeTime } from "../../lib/format";
 import { absoluteFromUnix, shorten } from "../../lib/wpFormat";
 import { selectActiveSession, useStore, type WpList } from "../../state/store";
 import { ContextMenu, type MenuEntry } from "../ContextMenu";
+import { Value } from "../value/Value";
 import { ValueTree } from "../ValueTree";
+import { sourceText } from "../../lib/provenance";
 import { LinkChip } from "./LinkChip";
 
 const COLLAPSE_AT = 120;
@@ -129,8 +131,32 @@ export function valueMenu(
   return items;
 }
 
-/** The table row a field is stored in, as column matches for the Database view. */
-export type RowSource = { table: string; where: ColumnEquals[] };
+/** The table row a field is stored in, as column matches for the Database view; `column` when the field is a column of it. */
+export type RowSource = { table: string; where: ColumnEquals[]; column?: string };
+
+/** Where a column field is stored; meta and option fields have no single column here. */
+function provenanceOf(source?: RowSource): Provenance | null {
+  if (!source?.column) return null;
+  const row = source.where.flatMap((c) => (c.value === null ? [] : [{ column: c.column, value: c.value }]));
+  return { table: source.table, column: source.column, row };
+}
+
+/**
+ * The field as a `Value`, for the kinds `Value` draws the same way (bridge until U7 replaces these
+ * screens): null, empty, secrets, money and time hints, short text.
+ */
+function fieldValue(field: DocField, source: Provenance): StoredValue | null {
+  const { value: raw, hint } = field;
+  const text = cellText(raw);
+  let kind: ValueKind = { kind: "text" };
+  if (raw.t === "null") kind = { kind: "null" };
+  else if (field.sensitive === "secret") kind = { kind: "secret" };
+  else if (text === "") kind = { kind: "empty" };
+  else if (field.link || field.decoded || text.length > COLLAPSE_AT) return null;
+  else if (hint?.type === "time") kind = { kind: "timestamp", utc: hint.unix, zone: null };
+  const secondary = hint?.type === "money" ? { text: hint.text, source: null } : null;
+  return { raw, kind, source, style: null, secondary };
+}
 
 /** Renders one field according to its render hint; raw text is always one toggle away. */
 export function FieldValue({ field, target, source }: { field: DocField; target?: EditTarget; source?: RowSource }) {
@@ -142,6 +168,8 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
   const save = useFieldEditor(field, target);
   const { value, hint, decoded, link, sensitive } = field;
   const text = cellText(value);
+  const provenance = provenanceOf(source);
+  const bridged = provenance && fieldValue(field, provenance);
 
   const editTree = save
     ? async (path: number[], v: NewValue) => {
@@ -167,8 +195,12 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
     );
   }
 
+  // The branches after `bridged` stay until U7 deletes these screens: fields without a single column (meta,
+  // options) and what `Value` has no form for yet (entity links, editable trees, collapsed long text).
   let body: React.ReactNode;
-  if (value.t === "null") {
+  if (bridged) {
+    body = <Value value={bridged} />;
+  } else if (value.t === "null") {
     body = <span className="null">{nullLabel}</span>;
   } else if (sensitive === "secret") {
     body = <Secret text={text} />;
@@ -203,6 +235,8 @@ export function FieldValue({ field, target, source }: { field: DocField; target?
   return (
     <span
       className="field-value"
+      data-src={provenance ? sourceText(provenance) : undefined}
+      data-table={provenance?.table}
       onContextMenu={(e) => {
         if (!hasMenu) return;
         e.preventDefault();

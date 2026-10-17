@@ -2,20 +2,21 @@ import type { EntityLink } from "../../api";
 import { useStore } from "../../state/store";
 import { Peekable } from "./Peek";
 
+/**
+ * An entity link drawn as a reference value: the stored id in the accent with a dotted underline, the
+ * target's summary after it in secondary text. WordPress screens only, until U7 deletes them.
+ */
 export function LinkChip({ link, label }: { link: EntityLink; label?: string }) {
   const openEntity = useStore((s) => s.openEntity);
+  const summary = label ?? link.label;
   return (
-    <Peekable entity={link.entity} id={link.id}>
-      <button
-        className="chip"
-        aria-label={`Open ${link.entity} ${link.id}`}
-        title={`${link.entity} #${link.id}`}
-        onClick={() => openEntity(link.entity, link.id)}
-      >
-        {link.image && <img src={link.image} alt="" loading="lazy" />}
-        <span className="chip-label">{label ?? link.label ?? `${link.entity} #${link.id}`}</span>
-        <span className="chip-id">#{link.id}</span>
-      </button>
-    </Peekable>
+    <span className="val val-reference">
+      <Peekable entity={link.entity} id={link.id}>
+        <button className="val-ref" aria-label={`Open ${link.entity} ${link.id}`} onClick={() => openEntity(link.entity, link.id)}>
+          {link.id}
+        </button>
+      </Peekable>
+      {summary && <span className="val-sec">{summary}</span>}
+    </span>
   );
 }

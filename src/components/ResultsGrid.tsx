@@ -1,19 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { toAppError, type Cell, type ColumnMeta } from "../api";
+import { toAppError, type Address, type Cell, type ColumnMeta, type Value as StoredValue } from "../api";
+import { EDIT_VALUE_EVENT, runCommand } from "../commands";
+import { formatAddress } from "../lib/address";
 import { fullCellText, type CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
-import { cellDisplay, cellText, rowsToJson, rowsToTsv } from "../lib/format";
+import { cellText, rowsToJson, rowsToTsv } from "../lib/format";
 import { useRowHeight } from "../lib/theme";
-import { useStore } from "../state/store";
+import { cellValue } from "../lib/values";
+import { selectNullLabel, useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { Value } from "./value/Value";
 
 interface Props {
   columns: ColumnMeta[];
   rows: Cell[][];
   /** The result set the rows belong to; without it `longText` cells can't be fetched in full. */
   source: CellSource;
+  /** A cell as a value (kind, provenance, style); without it cells show only what the cell itself says. */
+  valueAt?: (row: number, col: number) => StoredValue;
   sort?: { column: string | null; descending: boolean };
   onSort?: (column: string) => void;
   /** Extra context-menu entries for a row (e.g. "Open as document"). */
@@ -34,13 +40,11 @@ const INITIAL_VIEWPORT = { width: 1000, height: 800 };
 
 type CellPos = { row: number; col: number };
 
-/** Kinds show through alignment and opacity, never through color (docs/ux.md, Value grammar). */
-const KIND_CLASS: Partial<Record<Cell["t"], string>> = { number: " num", null: " null", bytes: " bytes" };
-
 const samePos = <T extends CellPos>(a: T | null, row: number, col: number): a is T => a?.row === row && a.col === col;
 
+/** Numbers align right; everything else about a kind is drawn by `Value` (docs/ux.md, Value grammar). */
 function cellClass(cell: Cell, row: number, col: number, marks: { selected: CellPos | null; editing: CellPos | null }): string {
-  let name = `grid-cell${KIND_CLASS[cell.t] ?? ""}`;
+  let name = cell.t === "number" ? "grid-cell num" : "grid-cell";
   if (samePos(marks.selected, row, col)) name += " selected";
   if (samePos(marks.editing, row, col)) name += " editing";
   return name;
@@ -79,13 +83,49 @@ function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLabel: str
   const charWidth = fontSize * 0.6;
   // The type sits under the name in smaller text, so the wider of the two sets the header's width.
   const header = Math.max(col.name.length, col.typeName.length * 0.85) + 2;
-  const longest = rows.reduce((max, r) => Math.max(max, Math.min(cellDisplay(r[index], nullLabel, 60).length, 60)), 0);
+  const shown = (cell: Cell) => (cell.t === "null" ? nullLabel.length : cellText(cell).length);
+  const longest = rows.reduce((max, r) => Math.max(max, Math.min(shown(r[index]), 60)), 0);
   return Math.round(Math.min(cap, Math.max(64, Math.max(header, longest) * charWidth + 20)));
 }
 
-export function ResultsGrid({ columns, rows, source, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange }: Props) {
-  const nullLabel = useStore((s) => s.settings?.nullLabel ?? "NULL");
-  const maxChars = useStore((s) => s.settings?.maxCellChars ?? 500);
+/**
+ * Values per row, built on the row's first render, so `Value` keeps its memo while the grid re-renders.
+ * `valueAt` reads the result `rows` came from, so new rows are what makes the cache stale.
+ */
+function useRowValues(rows: Cell[][], valueAt: Props["valueAt"]) {
+  const cache = useMemo(() => new Map<number, StoredValue[]>(), [rows]);
+  return (row: number): StoredValue[] => {
+    let values = cache.get(row);
+    if (!values) {
+      values = rows[row].map((cell, col) => (valueAt ? valueAt(row, col) : cellValue(cell)));
+      cache.set(row, values);
+    }
+    return values;
+  };
+}
+
+/** `value.edit` (e): the grid of the active tab that holds the selected cell starts editing it. */
+function useEditValueCommand(source: CellSource, startEdit: (at: CellPos) => void) {
+  const startEditRef = useRef(startEdit);
+  useEffect(() => {
+    startEditRef.current = startEdit;
+  });
+  useEffect(() => {
+    const edit = () => {
+      const s = useStore.getState();
+      const at = s.selectedCell;
+      if (!at || at.tabId !== s.activeTabId || at.source.sessionId !== source.sessionId || at.source.resultId !== source.resultId) return;
+      startEditRef.current({ row: at.row, col: at.col });
+    };
+    window.addEventListener(EDIT_VALUE_EVENT, edit);
+    return () => window.removeEventListener(EDIT_VALUE_EVENT, edit);
+  }, [source.sessionId, source.resultId]);
+}
+
+const openTarget = (target: Address) => void useStore.getState().openAddress(formatAddress(target), { preview: true });
+
+export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange }: Props) {
+  const nullLabel = useStore(selectNullLabel);
   const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
   const selectCell = useStore((s) => s.selectCell);
   const toast = useStore((s) => s.toast);
@@ -167,10 +207,21 @@ export function ResultsGrid({ columns, rows, source, sort, onSort, rowActions, o
   };
 
 
+  const rowValues = useRowValues(rows, valueAt);
+
   const select = (row: number, col: number) => {
     setSelected({ row, col });
-    selectCell({ row, col, column: columns[col], cell: rows[row][col], source });
+    selectCell({ row, col, column: columns[col], cell: rows[row][col], source, value: rowValues(row)[col] });
   };
+
+  // A click lands after the mousedown that selected the cell, so value commands act on this value.
+  const openValue = useCallback((value: StoredValue, e: ReactMouseEvent) => {
+    const kind = value.kind;
+    if (kind.kind === "enum") return void runCommand("value.filter");
+    if (kind.kind !== "reference") return;
+    if (kind.targets.length === 1) return openTarget(kind.targets[0]);
+    setMenu({ x: e.clientX, y: e.clientY, items: kind.targets.map((t) => ({ label: `Open ${formatAddress(t)}`, action: () => openTarget(t) })) });
+  }, []);
 
   // Bytes cells carry a preview, not their value; editing it would write the preview back. Long text is fetched first.
   const canEdit = (cell: Cell) => !!onEditCell && cell.t !== "bytes";
@@ -190,6 +241,8 @@ export function ResultsGrid({ columns, rows, source, sort, onSort, rowActions, o
   };
 
   const copyCell = (at: CellPos) => withFullText(at, (text) => void copyText(text, "value"));
+
+  useEditValueCommand(source, startEdit);
 
   const openMenu = (e: React.MouseEvent, row: number, col: number) => {
     e.preventDefault();
@@ -286,6 +339,7 @@ export function ResultsGrid({ columns, rows, source, sort, onSort, rowActions, o
       <div className="grid-inner" style={{ height: virtualizer.getTotalSize(), width: totalWidth }}>
         {virtualizer.getVirtualItems().map((v) => {
           const row = rows[v.index];
+          const values = rowValues(v.index);
           return (
             <div key={v.key} className="grid-row" role="row" style={{ top: v.start, height: rowHeight, width: totalWidth }}>
               {row.map((cell, ci) => (
@@ -316,7 +370,7 @@ export function ResultsGrid({ columns, rows, source, sort, onSort, rowActions, o
                       onBlur={() => setEditing(null)}
                     />
                   ) : (
-                    cellDisplay(cell, nullLabel, maxChars)
+                    <Value value={values[ci]} onOpen={openValue} density="grid" />
                   )}
                 </div>
               ))}

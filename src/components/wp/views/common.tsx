@@ -147,7 +147,7 @@ export function AllFields({ doc, changed }: { doc: EntityDoc; changed?: Set<stri
           </button>
         }
       >
-        <FieldList fields={doc.fields} changed={changed} target={{ kind: "row", table: doc.table, keyColumn: doc.idColumn, key: doc.id }} source={() => ({ table: doc.table, where: row })} />
+        <FieldList fields={doc.fields} changed={changed} target={{ kind: "row", table: doc.table, keyColumn: doc.idColumn, key: doc.id }} source={(f) => ({ table: doc.table, where: row, column: f.name })} />
       </Card>
       {ms && meta > 0 && (
         <div className="meta-head">

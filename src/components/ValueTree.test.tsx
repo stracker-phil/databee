@@ -50,6 +50,53 @@ describe("ValueTree editing", () => {
   });
 });
 
+describe("ValueTree leaves", () => {
+  it("dims the quotes around a string, so it differs from a number", () => {
+    render(<ValueTree value={decoded(str("2.04"))} />);
+    const quotes = screen.getAllByText('"');
+    expect(quotes).toHaveLength(2);
+    for (const quote of quotes) expect(quote).toHaveClass("vt-quote");
+  });
+
+  it("shows a number without quotes", () => {
+    render(<ValueTree value={decoded({ kind: "float", text: "2.04" })} />);
+    expect(screen.getByText("2.04")).toBeInTheDocument();
+    expect(screen.queryByText('"')).not.toBeInTheDocument();
+  });
+});
+
+describe("ValueTree small collections", () => {
+  const leaf = (key: string, text: string): ValueChild => ({ key, keyKind: "string", node: str(text) });
+  const small: ValueNode = { kind: "array", children: [leaf("a", "1"), leaf("b", "2")] };
+
+  it("shows the leaf pairs of a small array on one line", () => {
+    render(<ValueTree value={decoded(small)} />);
+    expect(screen.getAllByRole("treeitem")).toHaveLength(1);
+    expect(screen.getByText("array(2)")).toBeInTheDocument();
+    expect(screen.getByText("a")).toBeInTheDocument();
+    expect(screen.getByText("b")).toBeInTheDocument();
+  });
+
+  it("keeps one row per leaf when the tree is editable", () => {
+    render(<ValueTree value={decoded(small)} onEdit={vi.fn()} />);
+    expect(screen.getAllByRole("treeitem")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Edit a" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit b" })).toBeInTheDocument();
+  });
+
+  it("keeps one row per entry for an array with more than four entries", () => {
+    const many: ValueNode = { kind: "array", children: ["a", "b", "c", "d", "e"].map((k) => leaf(k, "x")) };
+    render(<ValueTree value={decoded(many)} />);
+    expect(screen.getAllByRole("treeitem")).toHaveLength(6);
+  });
+
+  it("keeps rows for an array that holds another array", () => {
+    const nested: ValueNode = { kind: "array", children: [{ key: "inner", keyKind: "string", node: small }] };
+    render(<ValueTree value={decoded(nested)} />);
+    expect(screen.getAllByRole("treeitem")).toHaveLength(2);
+  });
+});
+
 describe("ValueTree keys", () => {
   it("shows the declaring class next to a private property", () => {
     const root: ValueNode = { kind: "object", class: "Bar", children: [{ key: "secret", keyKind: "private", declaringClass: "Foo", node: str("v") }] };

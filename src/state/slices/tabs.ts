@@ -1,4 +1,4 @@
-import { api, toAppError, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse } from "../../api";
+import { api, toAppError, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse, type Value } from "../../api";
 import type { CellSource } from "../../lib/cells";
 import { fail } from "../requests";
 import { isWpView, selectActiveSession, selectActiveTab } from "../selectors";
@@ -53,6 +53,8 @@ export interface SelectedCell {
   cell: Cell;
   /** Lets the Inspector fetch a `longText` cell in full. */
   source: CellSource;
+  /** The cell as a value (kind and provenance) for the status bar and the value commands; grids always set it. */
+  value?: Value;
 }
 
 export interface TabsSlice {

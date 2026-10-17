@@ -51,13 +51,34 @@ pub fn columns_filter(req: &BrowseRequest, dialect: Dialect) -> Option<AppliedFi
     }
     Some(AppliedFilter {
         kind: FilterKind::Columns,
-        sql: render_columns(
-            &req.r#where,
-            |c| dialect.quote_ident(c),
-            |v| dialect.sql_string(v),
-        ),
+        sql: equals_sql(dialect, &req.r#where),
         label: render_columns(&req.r#where, str::to_string, str::to_string),
     })
+}
+
+/// One column of the first row matching `row`.
+pub fn select_column_sql(
+    dialect: Dialect,
+    database: &str,
+    table: &str,
+    column: &str,
+    row: &[ColumnEquals],
+) -> String {
+    format!(
+        "SELECT {} FROM {} WHERE {} LIMIT 1",
+        dialect.quote_ident(column),
+        dialect.table_ref(database, table),
+        equals_sql(dialect, row)
+    )
+}
+
+/// `column = 'value' AND …`, quoted for `dialect`; a `None` value is `IS NULL`.
+pub fn equals_sql(dialect: Dialect, columns: &[ColumnEquals]) -> String {
+    render_columns(
+        columns,
+        |c| dialect.quote_ident(c),
+        |v| dialect.sql_string(v),
+    )
 }
 
 fn render_columns(
@@ -395,6 +416,46 @@ mod tests {
                 "{dialect:?}"
             );
         }
+    }
+
+    #[test]
+    fn equals_sql_joins_columns_and_renders_null_as_is_null() {
+        for (columns, expected) in [
+            (vec![], ""),
+            (vec![eq("ID", Some("7"))], "`ID` = '7'"),
+            (vec![eq("post_parent", None)], "`post_parent` IS NULL"),
+            (
+                vec![
+                    eq("meta_key", Some("_k")),
+                    eq("meta_value", None),
+                    eq("we`ird", Some("")),
+                ],
+                "`meta_key` = '_k' AND `meta_value` IS NULL AND `we``ird` = ''",
+            ),
+        ] {
+            assert_eq!(equals_sql(Dialect::MYSQL, &columns), expected, "{expected}");
+        }
+    }
+
+    #[test]
+    fn select_column_sql_reads_one_column_of_the_first_matching_row() {
+        let row = [eq("meta_id", Some("7")), eq("site", None)];
+
+        assert_eq!(
+            select_column_sql(Dialect::MYSQL, "wp", "wp_postmeta", "meta_key", &row),
+            "SELECT `meta_key` FROM `wp`.`wp_postmeta` WHERE `meta_id` = '7' AND `site` IS NULL LIMIT 1"
+        );
+    }
+
+    #[test]
+    fn equals_sql_escapes_values_per_dialect() {
+        let no_backslash = Dialect {
+            backslash_escapes: false,
+        };
+        let columns = [eq("c", Some(r"a'b\c"))];
+
+        assert_eq!(equals_sql(Dialect::MYSQL, &columns), r"`c` = 'a''b\\c'");
+        assert_eq!(equals_sql(no_backslash, &columns), r"`c` = 'a''b\c'");
     }
 
     #[test]

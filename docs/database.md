@@ -308,6 +308,15 @@ value.
 `ResolvedReference { from, to, by }` with the columns of both ends, rule references (conditional ones too)
 included and disabled or replaced inferences left out.
 
+## Value conditions
+
+`value_condition(sessionId, database, provenance, raw)` (`value/condition.rs`) turns a stored value into
+the SQL condition the `Y` value command copies. `condition_sql` renders `ColumnEquals` matches with
+`db::browse::equals_sql`, so quoting follows the session's `Dialect` (`NO_BACKSLASH_ESCAPES` included) and
+`raw: None` is `IS NULL`. On the value column of a `[[meta]]` table of the effective rules, the row's key is
+read first (`SELECT <key> … WHERE <row key> LIMIT 1` with the query timeout), giving
+`` `meta_key` = '…' AND `meta_value` = '…' ``; a meta key column itself is a plain column condition.
+
 ## Editing rows
 
 Grid edits are core (`db/changes.rs`) and work without the WordPress module. Every write goes plan, review,

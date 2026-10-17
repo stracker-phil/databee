@@ -5,6 +5,7 @@
 //! and the page derives each cell's `Value` from them (`src/lib/values.ts`; `value_at` here is
 //! the same rule in Rust). A page of 500 rows would otherwise send 500 copies of each kind.
 
+mod condition;
 mod rows;
 mod serialized;
 mod time;
@@ -12,6 +13,7 @@ mod time;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+pub use condition::value_condition;
 pub use rows::{ResultValues, page_value_at, row_keys, value_at};
 pub use serialized::{find_serialized, serialized};
 pub use time::utc_seconds;
@@ -103,7 +105,7 @@ pub enum ReferenceSource {
 }
 
 /// Where a value was read: rendered as `wp_postmeta.meta_value · meta_id 9123`.
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct Provenance {
@@ -122,12 +124,12 @@ pub struct Secondary {
 
 /// A row's primary key, in key order. Unlike `db::changes::RowKey` it owns its values and
 /// covers composite keys.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct RowKey(pub Vec<KeyPart>);
 
-#[derive(Serialize, Debug, Clone, PartialEq, Eq, TS)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct KeyPart {

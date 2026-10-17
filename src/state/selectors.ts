@@ -16,6 +16,10 @@ export const selectSidebarHidden = (s: Store): boolean => {
   return !!session && !!s.uiState[session.identity]?.sidebarHidden;
 };
 
+/** How grids and values show NULL and how much text a cell shows; the defaults match Rust's settings. */
+export const selectNullLabel = (s: Store) => s.settings?.nullLabel ?? "NULL";
+export const selectMaxCellChars = (s: Store) => s.settings?.maxCellChars ?? 500;
+
 export const selectActiveTab = (s: Store) => s.tabs.find((t) => t.id === s.activeTabId) ?? null;
 
 /** Back or forward has somewhere to go: the active tab's history, or WordPress mode's own. */

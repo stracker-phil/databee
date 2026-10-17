@@ -258,6 +258,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::browse_table,
             db_commands::resolve_address,
             db_commands::table_references,
+            db_commands::value_condition,
             db_commands::fetch_cell,
             db_commands::table_select_sql,
             db_commands::plan_change,

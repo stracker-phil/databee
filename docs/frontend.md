@@ -40,7 +40,7 @@ App
    │       TabPanels → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel)
    │                 → TableTab (filter bar + ResultsGrid | StructureView)
    ├─ PendingTray
-   └─ StatusBar                        ▤ sidebar toggle, address, pending n
+   └─ StatusBar                        ▤ sidebar toggle, provenance or address, pending n
 Dialogs · CommandPalette · Toasts
 ```
 
@@ -78,7 +78,8 @@ and the state types, so components import everything from `state/store`.
 | `wp`, `wpNav` | detection results per `session/db`; navigation stack (max 100) |
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
-| `selectedCell` | `{ tabId, row, col, column, cell, source? }`; opens the Inspector. `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets it fetch a `longText` cell in full |
+| `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`; opens the Inspector. `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets it fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
+| `hover` | `{ src, table }` of the value under the pointer (`setHover`, from `useValueHover`); the status bar shows `src` |
 | `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
 | `dataVersion` | bumped by ⌘R (`refreshView`, which first drops the session's schema cache with `refreshSchema`) and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
@@ -217,6 +218,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Shell | `Toolbar`, `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `Inspector` + `ValueTree` (PHP/JSON decode) |
+| Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), see [Values](#values) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `CommandPalette`, `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens-until-u12) |
 
@@ -263,7 +265,8 @@ one of them.
 - **Toolbar:** `ConnectionText` shows `connection / database` as mono text; a transparent native select over
   each name (`Connection` only with several sessions, `Database` always) opens the picker. `SearchField` is a
   button styled as a field (label "Go to") that opens the palette; its key cap follows `palette.open`.
-- **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (WordPress mode: the
+- **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (the provenance of
+  the hovered or selected value while there is one, see [Values](#values); else in WordPress mode the
   table prefix; otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
   typed SQL filter applies; a query tab adds rows, time and statement count, with the row-limit warning), spacer, `PendingCount` (`pending n`, a button to the tray when n > 0).
   The theme and dock chips are gone: both stay in Settings and the palette.
@@ -273,13 +276,52 @@ stay mounted; inactive panels are `hidden`. Tabs use a roving `tabIndex` with Le
 (`TabItem`, `tabIcon`). Shortcut hints (new tab, run statement, run all, editor placeholder) come from
 `useBindingLabel(commandId)` in `commands/index.ts`, so they follow rebinding.
 
+### Values
+
+`components/value/Value.tsx` renders every stored value: `Value({ value, onOpen?, density? })`, a `memo`
+component, drawn per kind as [ux.md](ux.md#value-grammar) lists. `density` is `grid` (one line, cut to
+`maxCellChars`; serialized data followed by its raw text) or `full` (the default; serialized data expands in
+place to a `ValueTree`, decoded with `api.decodeValue` on first expand). `onOpen(value, event)` fires for
+the kinds that act on click (`opensOnClick`: a reference with a target that is not known to be missing, an
+enum, serialized data in a grid); the caller decides what that does. A secret reveals on its own. A style
+sets `color: var(--style-<name>)`. CSS classes are `val` and `val-<kind>` (`styles/app.css`, values).
+
+Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
+(`AppShell` in `App.tsx`) adds one delegated `mouseover`/`mouseleave` listener to the app, reads the nearest
+`[data-src]` at most once per animation frame and writes `hover` (`setHover` skips equal values). The status
+bar's address slot shows `hover.src`, else the provenance of `selectedCell.value`, else the address.
+Interactive values with a provenance are Stage anchors `value:<table>.<column>:<key>` (list `values`).
+
+**Value commands** (`commands/values.ts`, `VALUE_COMMANDS` in `APP_COMMANDS`, scope `table`; the object
+scope follows in U7) act on the focused value, `selectedCell.value`, and are rebindable like every command.
+Bare keys never fire in inputs or the editor (`resolveKeydown`).
+
+| Command | Key | Does |
+|---|---|---|
+| `value.copyRaw` | `y` | copies the stored text (a `longText` cell fetched in full; NULL as empty) |
+| `value.copyCondition` | `Y` | `api.valueCondition(sessionId, database, provenance, raw)`: Rust renders the condition from `ColumnEquals` with the session's `Dialect`; on the value column of a `[[meta]]` table it reads the row's key and returns `` `meta_key` = '…' AND `meta_value` = '…' `` |
+| `value.edit` | `e` | dispatches `EDIT_VALUE_EVENT`; the grid of the active tab that holds the selection opens its inline editor there, which queues a core `setCell` through the pending tray |
+| `value.filter` | `f` | `filterRows(tabId, { column, value })` (nav slice): adds the match to the table tab's structured filter, replacing one on the same column, through `showRows` (so ⌘[ returns) |
+
+Binary cells offer none of `Y`, `e` and `f`, since their cell holds only a preview.
+
+**WordPress bridge (until U7).** `FieldValue` renders a column field (`RowSource.column`, set for an entity's
+own columns in `views/common.tsx`) through `Value` when its kind has a form there: NULL, `""`, secrets,
+money and time hints, short text; the field's wrapper carries `data-src` either way. Meta and option
+fields, entity links, editable trees and collapsed long text keep the old rendering. `LinkChip` draws an
+entity link as a reference (the id in the accent with a dotted underline, the target's summary secondary).
+
 ### Results grid
 
 `ResultsGrid` resets its selection and inline editor when `rows` changes identity and clamps indices
 before use. It has no row-number column. Header cells show the column name with the sort arrow, and the type
 below it. Hover is plain CSS (`--row-hover` on the row, `--cell` on the cell), so crossing cells never
-re-renders the grid. Cell classes name the kind only where it changes alignment or opacity (`num`, `null`,
-`bytes`), never a color. Keys live in `KEY_ACTIONS` (arrows, Home/End, PageUp/PageDown, Enter to edit, ⌘C). `bytes`
+re-renders the grid. Cells render `Value` with `density="grid"`, from the `valueAt(row, col)` prop
+(`TableTab`: `lib/values.ts` `valueAt` on the page; `QueryTab`: `resultValueAt`; without it `cellValue`);
+values are built once per row and rows identity, so `Value`'s memo holds while the grid re-renders. The
+only kind class on a cell is `num` (right alignment for number cells). A click on a reference opens its
+target with `openAddress(…, { preview: true })` (several targets: a menu), on an enum runs `value.filter`;
+serialized data opens in the Inspector through the selection. Keys live in `KEY_ACTIONS` (arrows, Home/End, PageUp/PageDown, Enter to edit, ⌘C). `bytes`
 cells are never editable: they show a `0x…` preview, which an edit would write back.
 
 Rust cuts text longer than the `maxCellChars` setting to a `longText { len, preview }` cell
@@ -348,8 +390,8 @@ results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's
   a row address needs the primary key, so they load the structure first. They are enabled only while
   `selectCanNav` finds history, so ⌘[ still outdents in the editor. In WordPress mode both delegate to
   `wpNav` (`goBack` / `goForward`) until WordPress mode is removed.
-- **`openAddress(text)`:** parses, finds the open session by slug, and opens a table or row address in a
-  table tab (`openTableTab` with the matching `where`). Other targets (home, saved query, find, project)
+- **`openAddress(text, { preview? })`:** parses, finds the open session by slug, and opens a table or row
+  address in a table tab (`openTableTab` with the matching `where`, in the preview tab when asked). Other targets (home, saved query, find, project)
   answer with a toast until their views exist. The dev hook reaches it as
   `window.databee.getState().openAddress("databee://…")`.
 - **Slug renames:** `renameConnectionSlug(identity, slug)` calls Rust, then rewrites `slug` on the sessions
@@ -366,7 +408,9 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 
 | File | Contents |
 |---|---|
-| `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text, TSV/JSON export, `relativeTime` |
+| `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text (`cellDisplay` only for `Value`), TSV/JSON export, `relativeTime` |
+| `values.ts` | `valueAt`, `resultValueAt`, `cellValue`, `utcSeconds` (see [Addresses and history](#addresses-and-history)) |
+| `provenance.ts` | `provenanceText(value)` and `sourceText(provenance)`: the status bar text of a value |
 | `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText` |
 | `clipboard.ts` | `copyText` with a success or error toast |
 | `address.ts` | `parseAddress` / `formatAddress`, the port of Rust's `address` module |

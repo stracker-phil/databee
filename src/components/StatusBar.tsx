@@ -3,6 +3,7 @@ import { useBindingLabel } from "../commands";
 import { formatAddress } from "../lib/address";
 import { copyText } from "../lib/clipboard";
 import { formatCount } from "../lib/format";
+import { provenanceText } from "../lib/provenance";
 import { isWpView, selectActivePending, selectActiveTab, selectSidebarHidden, selectWp, useStore, type QueryTab, type Tab } from "../state/store";
 
 /** WordPress mode: the table prefix the presets apply under. */
@@ -46,16 +47,23 @@ function QuerySummary({ tab }: { tab: QueryTab }) {
   );
 }
 
-/** The address slot: where the active tab is, and a query tab's result summary. */
+/** Where the hovered value is stored, else the focused one (docs/ux.md, Value grammar). */
+function useProvenance(): string | null {
+  const hovered = useStore((s) => s.hover.src);
+  const focused = useStore((s) => (s.selectedCell?.value ? provenanceText(s.selectedCell.value) : null));
+  return hovered ?? focused;
+}
+
+/** The address slot: the provenance of the hovered or focused value, else where the active tab is, and a query tab's result summary. */
 function Address() {
   const tab = useStore(selectActiveTab);
   const wpMode = useStore(isWpView);
-  if (wpMode) return <WpFacts />;
-  if (!tab) return null;
+  const provenance = useProvenance();
+  const place = provenance ? <span className="address mono">{provenance}</span> : wpMode ? <WpFacts /> : tab && <AddressText tab={tab} />;
   return (
     <>
-      <AddressText tab={tab} />
-      {tab.kind === "query" && <QuerySummary tab={tab} />}
+      {place}
+      {!wpMode && tab?.kind === "query" && <QuerySummary tab={tab} />}
     </>
   );
 }

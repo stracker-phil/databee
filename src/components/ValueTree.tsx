@@ -58,9 +58,27 @@ function summary(node: ValueNode): string {
   return node.kind;
 }
 
+/** Arrays and objects this small show their leaf pairs on one line. */
+const INLINE_CHILDREN = 4;
+const INLINE_TEXT = 60;
+
+function inlinePairs(node: ValueNode): boolean {
+  const children = node.children ?? [];
+  if (children.length === 0 || children.length > INLINE_CHILDREN) return false;
+  if (children.some((c) => (c.node.children?.length ?? 0) > 0 || c.node.kind === "array" || c.node.kind === "object")) return false;
+  return children.reduce((n, c) => n + c.key.length + (c.node.text?.length ?? 0), 0) <= INLINE_TEXT;
+}
+
+/** Quotes are dim, so a string `"2.04"` and a number `2.04` look different. */
 function Leaf({ node }: { node: ValueNode }) {
   if (node.kind === "string") {
-    return <span className="vt-string">"{node.text}"</span>;
+    return (
+      <span className="vt-string">
+        <span className="vt-quote">"</span>
+        {node.text}
+        <span className="vt-quote">"</span>
+      </span>
+    );
   }
   if (node.kind === "custom") {
     return (
@@ -90,21 +108,17 @@ function Row({
   onEdit?: TreeEdit;
 }) {
   const node = child?.node ?? root!;
-  const hint = child ? keyHint(child) : "";
   const hasChildren = (node.children?.length ?? 0) > 0;
   const [open, setOpen] = useState(depth < 2);
   const [editing, setEditing] = useState(false);
+  // Inline pairs have no edit buttons, so an editable tree keeps one row per leaf.
+  if (hasChildren && !onEdit && inlinePairs(node)) return <InlineRow child={child} node={node} />;
   const editable = onEdit && !hasChildren && !["ref", "custom", "enum", "array", "object"].includes(node.kind);
   return (
     <div className="vt-row" role="treeitem" aria-expanded={hasChildren ? open : undefined}>
       <div className="vt-line" onClick={() => hasChildren && setOpen(!open)}>
         <span className="vt-toggle">{hasChildren ? open ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" /> : null}</span>
-        {child && (
-          <span className={`vt-key${child.keyKind === "int" ? " int" : ""}`}>
-            {child.key}
-            {hint && <span className="vt-vis"> {hint}</span>}
-          </span>
-        )}
+        {child && <Key child={child} />}
         {editing ? (
           <LeafEditor
             node={node}
@@ -140,6 +154,35 @@ function Row({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The stored key, with its visibility or raw bytes when the key has them. */
+function Key({ child }: { child: ValueChild }) {
+  const hint = keyHint(child);
+  return (
+    <span className={`vt-key${child.keyKind === "int" ? " int" : ""}`}>
+      {child.key}
+      {hint && <span className="vt-vis"> {hint}</span>}
+    </span>
+  );
+}
+
+function InlineRow({ child, node }: { child?: ValueChild; node: ValueNode }) {
+  return (
+    <div className="vt-row" role="treeitem">
+      <div className="vt-line">
+        <span className="vt-toggle" />
+        {child && <Key child={child} />}
+        <span className="vt-muted">{summary(node)}</span>
+        {node.children!.map((c, i) => (
+          <span key={`${c.key}-${i}`} className="vt-pair">
+            <Key child={c} />
+            <Leaf node={c.node} />
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

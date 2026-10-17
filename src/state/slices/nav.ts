@@ -27,10 +27,12 @@ export interface TableLocation {
 }
 
 export interface NavSlice {
-  /** Opens an address given as text; errors become a toast. */
-  openAddress(text: string): Promise<void>;
+  /** Opens an address given as text; errors become a toast. `preview` opens it in the preview tab. */
+  openAddress(text: string, opts?: { preview?: boolean }): Promise<void>;
   /** Shows other rows in table tab `tabId`, recording the current address for back. */
   showRows(tabId: string, location: TableLocation): void;
+  /** Narrows table tab `tabId` to rows where `match.column` equals `match.value`, replacing a match on the same column. */
+  filterRows(tabId: string, match: ColumnEquals): void;
   /** Applies a typed WHERE filter to table tab `tabId`; not addressable, so no history entry. */
   setTableFilter(tabId: string, filter: string): void;
   /** Back and forward in the active tab; in WordPress mode through `wpNav`. */
@@ -131,7 +133,7 @@ export const navSlice: Slice<NavSlice> = {
     };
 
     return {
-      async openAddress(text) {
+      async openAddress(text, opts = {}) {
         try {
           const address = parseAddress(text.trim());
           const session = get().sessions.find((x) => x.slug === address.connection);
@@ -142,7 +144,7 @@ export const navSlice: Slice<NavSlice> = {
           const location = await locationOf(get, session.id, address);
           if (!location) return;
           get().setMode("db");
-          get().openTableTab(location.database, location.table, "data", undefined, { where: location.where });
+          get().openTableTab(location.database, location.table, "data", undefined, { where: location.where, preview: opts.preview });
         } catch (e) {
           if (e instanceof AddressError) get().toast("error", e.message);
           else fail(e, "Could not open the address");
@@ -156,6 +158,13 @@ export const navSlice: Slice<NavSlice> = {
           const next = retargeted(s, tab, location, tab.nav);
           return withTab(s, { ...next, nav: pushed(tab.nav, tab.address, next.address) });
         });
+      },
+
+      filterRows(tabId, match) {
+        const tab = get().tabs.find((t): t is TableTab => t.id === tabId && t.kind === "table");
+        if (!tab) return;
+        const same = (c: ColumnEquals) => c.column.toLowerCase() === match.column.toLowerCase();
+        get().showRows(tabId, { database: tab.database, table: tab.table, where: [...tab.where.filter((c) => !same(c)), match] });
       },
 
       setTableFilter(tabId, filter) {

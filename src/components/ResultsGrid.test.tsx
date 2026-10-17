@@ -57,7 +57,7 @@ describe("ResultsGrid editing", () => {
 
   describe("with a bytes cell", () => {
     const rs = resultSet({ rows: [[num("1"), { t: "bytes", v: { len: 2, hexPreview: "cafe" } }]] });
-    const bytes = () => screen.getByText(/0xcafe/);
+    const bytes = () => screen.getByText("<2 bytes>");
 
     it("opens no editor on double-click", async () => {
       render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} onEditCell={vi.fn()} />);
@@ -122,6 +122,8 @@ describe("ResultsGrid long text cells", () => {
 
 });
 
+const cellOf = (content: string) => screen.getByText(content).closest<HTMLElement>('[role="gridcell"]')!;
+
 describe("ResultsGrid keyboard selection", () => {
   const columns = resultSet().columns;
   const rows = [0, 1, 2].map((i) => [text(`a${i}`), text(`b${i}`)]);
@@ -142,15 +144,15 @@ describe("ResultsGrid keyboard selection", () => {
     render(<ResultsGrid columns={columns} rows={rows} source={source} />);
     await userEvent.click(screen.getByText(from));
     await userEvent.keyboard(`{${key}}`);
-    expect(screen.getByText(to)).toHaveClass("selected");
-    if (to !== from) expect(screen.getByText(from)).not.toHaveClass("selected");
+    expect(cellOf(to)).toHaveClass("selected");
+    if (to !== from) expect(cellOf(from)).not.toHaveClass("selected");
   });
 
   it("drops the selection when the rows are replaced by fewer rows", async () => {
     const many = Array.from({ length: 8 }, (_, i) => [text(`a${i}`), text(`b${i}`)]);
     const { rerender } = render(<ResultsGrid columns={columns} rows={many} source={source} />);
     await userEvent.click(screen.getByText("b5"));
-    expect(screen.getByText("b5")).toHaveClass("selected");
+    expect(cellOf("b5")).toHaveClass("selected");
 
     rerender(<ResultsGrid columns={columns} rows={many.slice(0, 2)} source={source} />);
     await userEvent.keyboard("{Meta>}c{/Meta}");
@@ -172,10 +174,10 @@ describe("ResultsGrid value grammar", () => {
     expect(screen.getAllByRole("gridcell")).toHaveLength(rs.columns.length);
   });
 
-  it("marks number and null cells by kind and adds no per-type classes", () => {
+  it("right-aligns number cells, draws NULL by its kind and adds no per-type classes", () => {
     render(<ResultsGrid columns={rs.columns} rows={rows} source={source} />);
-    expect(screen.getByText("1")).toHaveClass("num");
-    expect(screen.getByText("NULL")).toHaveClass("null");
+    expect(cellOf("1")).toHaveClass("num");
+    expect(screen.getByText("NULL")).toHaveClass("val-null");
     for (const cell of screen.getAllByRole("gridcell")) expect(cell.className).not.toMatch(/(^|\s)t-/);
   });
 

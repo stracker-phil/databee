@@ -26,6 +26,14 @@ export type RecentNav =
   | { kind: "entity"; entity: string; id: string; title: string }
   | { kind: "table"; database: string; table: string };
 
+/** The value under the pointer: its provenance text and table (`data-src`, `data-table`). */
+export interface ValueHover {
+  src: string | null;
+  table: string | null;
+}
+
+export const NO_HOVER: ValueHover = { src: null, table: null };
+
 export interface UiSlice {
   toasts: Toast[];
   dialog: Dialog | null;
@@ -38,6 +46,8 @@ export interface UiSlice {
   /** Recently opened entities and tables, newest first. */
   recentNav: RecentNav[];
   mode: Mode;
+  /** Shown in the status bar instead of the address while set. */
+  hover: ValueHover;
   /** The user picked a mode explicitly; don't switch automatically anymore. */
   modeChosen: boolean;
   toast(kind: Toast["kind"], message: string): void;
@@ -53,6 +63,7 @@ export interface UiSlice {
   /** Shows or hides the sidebar of the active connection and persists the choice. */
   toggleSidebar(): void;
   setMode(mode: Mode): void;
+  setHover(hover: ValueHover): void;
 }
 
 let nextToastId = 1;
@@ -91,6 +102,7 @@ export const uiSlice: Slice<UiSlice> = {
       paletteSeed: "",
       uiState: {},
       recentNav: [],
+      hover: NO_HOVER,
       ...resetMode(),
 
       toast(kind, message) {
@@ -149,6 +161,11 @@ export const uiSlice: Slice<UiSlice> = {
 
       setMode(mode) {
         set({ mode, modeChosen: true });
+      },
+
+      setHover(hover) {
+        const current = get().hover;
+        if (current.src !== hover.src || current.table !== hover.table) set({ hover });
       },
     };
   },

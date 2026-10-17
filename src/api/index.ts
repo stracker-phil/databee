@@ -49,6 +49,7 @@ import type {
   SessionInfo,
   Settings,
   TableInfo,
+  Provenance,
   TableReferences,
   PresetInfo,
   RulesInfo,
@@ -106,6 +107,9 @@ export const api = {
   /** Declared foreign keys, project and preset references, and same-name references from and to a table. */
   tableReferences: (sessionId: string, database: string, table: string) =>
     invoke<TableReferences>("table_references", { sessionId, database, table }),
+  /** The value at `provenance` as a SQL condition (`meta_key = '…' AND meta_value = '…'` on a meta value); `raw: null` is NULL. */
+  valueCondition: (sessionId: string, database: string, provenance: Provenance, raw: string | null) =>
+    invoke<string>("value_condition", { sessionId, database, provenance, raw }),
   presetsList: () => invoke<PresetInfo[]>("presets_list"),
   /** The prefixes, applied presets and entities of a database. */
   rulesInfo: (sessionId: string, database: string) => invoke<RulesInfo>("rules_info", { sessionId, database }),

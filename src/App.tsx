@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { api, toAppError } from "./api";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { Dialogs } from "./components/Dialogs";
@@ -13,6 +13,7 @@ import { Toolbar } from "./components/Toolbar";
 import { CommandPalette } from "./components/CommandPalette";
 import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { PendingTray } from "./components/PendingTray";
+import { useValueHover } from "./components/value/useValueHover";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
 import { applyAppearance, syncRowHeight, useSystemDark } from "./lib/theme";
 import { flushUiState, selectSidebarHidden, selectWp, useStore } from "./state/store";
@@ -88,8 +89,10 @@ function DbWorkspace() {
 }
 
 function AppShell({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useValueHover(ref);
   return (
-    <div className="app">
+    <div className="app" ref={ref}>
       <Toolbar />
       {children}
       <PendingTray />
