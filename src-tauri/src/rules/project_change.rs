@@ -7,9 +7,9 @@ use std::sync::Arc;
 use serde::Deserialize;
 use ts_rs::TS;
 
+use super::applied::Applied;
 use super::catalog::PresetCatalog;
 use super::kinds::{KindRule, StyleRule};
-use super::prefix::suggest_prefix;
 use super::project::Project;
 use super::types::{Check, ColumnGlob, Conditions, FieldError, Preset, Reference};
 use crate::error::{AppError, AppResult};
@@ -274,65 +274,16 @@ struct Tables<'a> {
     network_prefix: String,
 }
 
-/// The presets the project enables: its list, else every loaded one.
-fn enabled_presets<'p>(project: &Project, presets: &'p [Arc<Preset>]) -> Vec<&'p Preset> {
-    presets
-        .iter()
-        .map(Arc::as_ref)
-        .filter(|p| {
-            project
-                .presets
-                .as_ref()
-                .is_none_or(|on| on.contains(&p.name))
-        })
-        .collect()
-}
-
-/// The project's prefix, else the shortest under which some enabled preset's marker tables exist.
-fn resolve_prefix(project: &Project, tables: &[&str], enabled: &[&Preset]) -> String {
-    let suggested = || {
-        enabled
-            .iter()
-            .filter_map(|p| suggest_prefix(tables.iter().copied(), &p.marker_tables))
-            .min_by_key(String::len)
-    };
-    project
-        .prefix
-        .clone()
-        .or_else(suggested)
-        .unwrap_or_default()
-}
-
-/// The project's network prefix, else the one that holds the presets' network tables, else
-/// the prefix (a single site).
-fn resolve_network_prefix(
-    project: &Project,
-    tables: &[&str],
-    enabled: &[&Preset],
-    prefix: &str,
-) -> String {
-    let network_tables: Vec<String> = enabled
-        .iter()
-        .flat_map(|p| p.network_tables.iter().cloned())
-        .collect();
-    project
-        .network_prefix
-        .clone()
-        .or_else(|| suggest_prefix(tables.iter().copied(), &network_tables))
-        .unwrap_or_else(|| prefix.to_string())
-}
-
 impl<'a> Tables<'a> {
+    /// The prefixes the effective rules would use (`Applied`), so a rule that passes here
+    /// resolves the same way when it applies.
     fn new(project: &Project, ctx: &'a ChangeContext) -> Self {
         let schema = ctx.schema.as_ref();
-        let tables: Vec<&str> = schema.tables.iter().map(|t| t.name.as_str()).collect();
-        let enabled = enabled_presets(project, &ctx.presets);
-        let prefix = resolve_prefix(project, &tables, &enabled);
-        let network_prefix = resolve_network_prefix(project, &tables, &enabled, &prefix);
+        let applied = Applied::new(project, schema, &ctx.presets);
         Self {
             schema,
-            prefix,
-            network_prefix,
+            prefix: applied.prefix,
+            network_prefix: applied.network_prefix,
         }
     }
 
@@ -955,6 +906,23 @@ mod tests {
         assert_eq!(
             message,
             "`reference.from`: no table `wp_2_orders` or `wp_orders` in this database"
+        );
+    }
+
+    #[test]
+    fn a_preset_that_does_not_apply_declares_no_network_tables() {
+        let ctx = ctx_of(multisite(), vec![preset("core", &["posts"], &["users"])]);
+        let mut project = Project {
+            prefix: Some("wp_2_".into()),
+            presets: Some(Vec::new()),
+            ..project()
+        };
+
+        let message = rejection(&mut project, author_to_user(), &ctx);
+
+        assert_eq!(
+            message,
+            "`reference.to`: no table `wp_2_users` in this database"
         );
     }
 }

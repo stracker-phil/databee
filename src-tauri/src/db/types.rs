@@ -3,7 +3,7 @@ use ts_rs::TS;
 
 use super::Cell;
 use crate::error::AppError;
-use crate::value::{ColumnKind, RowKey, SerializedCell};
+use crate::value::{CellKind, CellStyle, ColumnKind, RowKey, SerializedCell};
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -47,6 +47,11 @@ pub struct ResultSet {
     pub kinds: Vec<ColumnKind>,
     /// The cells whose text decodes as PHP-serialized or JSON, by row then column.
     pub serialized: Vec<SerializedCell>,
+    /// Cells whose row gives them another kind than their column's, by row then column; filled
+    /// with `kinds` by the rules lens.
+    pub cell_kinds: Vec<CellKind>,
+    /// Cells a value style colors, by row then column.
+    pub styles: Vec<CellStyle>,
     /// Full values of the `LongText` cells, which the session moves into its cell cache.
     #[serde(skip)]
     #[ts(skip)]

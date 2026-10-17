@@ -953,6 +953,7 @@ dependencies = [
  "libc",
  "log",
  "percent-encoding",
+ "regex",
  "rust_decimal",
  "security-framework",
  "serde",

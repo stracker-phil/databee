@@ -278,24 +278,35 @@ Several matching tables give several targets, all listed. The source is `SameNam
   `ReferenceTarget` has the target table's address, its column and whether that column is its key).
   Composite foreign keys only appear in `table_references`;
 - other members of a composite primary key are `PrimaryKey`;
-- otherwise the SQL type decides: numeric `Number`, temporal `Timestamp`, everything else `Text`.
+- otherwise the SQL type decides: numeric `Number`, temporal `Timestamp` (zone `null`), everything else
+  `Text`.
+
+With rules ([presets.md](presets.md#effective-rules)), `RulesLens` adds project and preset references
+(`Reference` with `by` `project` or `preset`) and kind rules (`Money { currency }`, `Timestamp { zone }`,
+`Enum`, `Secret`, `Number`). Cells whose row decides their kind (conditional references, meta-key kinds) are
+listed in `ResultSet.cell_kinds`; cells a value style colors in `ResultSet.styles`.
 
 The cell decides the rest when the page builds a `Value`: NULL is `null` (`noReference` in a reference
 column, as is `0`), `''` is `empty`, binary is `binary`, and a text cell listed in `ResultSet.serialized`
 (PHP-serialized or JSON that parses, found with the full text of long cells) is `serialized` with a
-preview such as `a:3:{…}`.
+preview such as `a:3:{…}`. A `secret` column masks every non-empty cell; a timestamp carries `utc` (Unix
+seconds) when its zone is stored and the value is a time; a money cell carries its currency as a sourced
+value.
 
 **Where kinds are filled:**
-- `Session::browse` loads the page and the schema concurrently, then sets the lens kinds and
+- `Session::browse` loads the page and the schema concurrently, then sets the lens kinds (the rules lens
+  when `RuleSources` are given and the rules change anything), the per-cell kinds and styles, and
   `BrowsePage.keys` (one `RowKey` per row; empty when the table has no primary key or a key cell is
   binary). If the schema fails to load, the page shows with type kinds.
 - `Session::execute` sets type kinds, then, for every column whose `ColumnMeta.origin` names a table (the
   protocol's `org_table` and `org_name`, which sqlx exposes as `Column::origin`; also through an alias),
-  the kind that table's lens gives. Expressions keep their type kind. Query results have no provenance.
+  the kind that table's lens gives, and per-cell kinds and styles for the columns of each origin table.
+  Expressions keep their type kind. Query results have no provenance.
 - `fetch` results (WordPress reads, change planning) carry no kinds.
 
 `table_references(sessionId, database, table)` returns `{ outgoing, incoming }`, each a
-`ResolvedReference { from, to, by }` with the columns of both ends.
+`ResolvedReference { from, to, by }` with the columns of both ends, rule references (conditional ones too)
+included and disabled or replaced inferences left out.
 
 ## Editing rows
 

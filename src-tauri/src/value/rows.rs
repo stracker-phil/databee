@@ -1,8 +1,6 @@
 //! Row keys and the `Value` of one cell, derived from a result's column kinds.
 
-use super::{
-    ColumnKind, KeyPart, Provenance, ReferenceTarget, RowKey, SerializedCell, Value, ValueKind,
-};
+use super::{ColumnKind, KeyPart, Provenance, ReferenceTarget, RowKey, Value, ValueKind, time};
 use crate::address::{Address, Target};
 use crate::db::{BrowsePage, Cell, ColumnEquals, ResultSet};
 
@@ -89,18 +87,30 @@ impl<'a> ResultValues<'a> {
     pub fn value(&self, row: usize, col: usize, source: Option<Provenance>) -> Value {
         let cells = &self.result.rows[row];
         let raw = cells[col].clone();
-        let column = self.result.kinds.get(col).unwrap_or(&ColumnKind::Text);
-        let kind = self.cell_kind(cells, row, col, column);
+        let column = find_at(&self.result.cell_kinds, row, col, |c| (c.row, c.col))
+            .map(|c| &c.kind)
+            .or_else(|| self.result.kinds.get(col))
+            .unwrap_or(&ColumnKind::Text);
+        let kind = self.cell_kind(cells, row, col, column, source.as_ref());
+        let style =
+            find_at(&self.result.styles, row, col, |c| (c.row, c.col)).map(|c| c.style.clone());
         Value {
             raw,
             kind,
             source,
-            style: None,
+            style,
             secondary: None,
         }
     }
 
-    fn cell_kind(&self, cells: &[Cell], row: usize, col: usize, column: &ColumnKind) -> ValueKind {
+    fn cell_kind(
+        &self,
+        cells: &[Cell],
+        row: usize,
+        col: usize,
+        column: &ColumnKind,
+        source: Option<&Provenance>,
+    ) -> ValueKind {
         let cell = &cells[col];
         if matches!(column, ColumnKind::Reference { .. }) && is_no_reference(cell) {
             return ValueKind::NoReference;
@@ -111,10 +121,14 @@ impl<'a> ResultValues<'a> {
             Cell::Bytes { .. } => return ValueKind::Binary,
             _ => {}
         }
+        // A secret stays masked even when it decodes.
+        if matches!(column, ColumnKind::Secret) {
+            return ValueKind::Secret;
+        }
         if let Some(kind) = self.schema_kind(cells, col, column, cell) {
             return kind;
         }
-        if let Some(found) = find_cell(&self.result.serialized, row, col) {
+        if let Some(found) = find_at(&self.result.serialized, row, col, |c| (c.row, c.col)) {
             return ValueKind::Serialized {
                 format: found.format,
                 preview: found.preview.clone(),
@@ -122,9 +136,48 @@ impl<'a> ResultValues<'a> {
         }
         match column {
             ColumnKind::Number => ValueKind::Number,
-            ColumnKind::Timestamp => ValueKind::Timestamp { utc: None },
+            ColumnKind::Timestamp { zone } => ValueKind::Timestamp {
+                utc: cell
+                    .as_text()
+                    .and_then(|text| time::utc_seconds(text, *zone)),
+                zone: *zone,
+            },
+            ColumnKind::Money { currency } => ValueKind::Money {
+                currency: self.currency(cells, currency, source).map(Box::new),
+            },
+            ColumnKind::Enum => ValueKind::Enum,
             _ => ValueKind::Text,
         }
+    }
+
+    /// The first of `names` that is a column of the result with text in this row, as a value
+    /// sourced from the same row.
+    fn currency(
+        &self,
+        cells: &[Cell],
+        names: &[String],
+        source: Option<&Provenance>,
+    ) -> Option<Value> {
+        let columns = &self.result.columns;
+        names.iter().find_map(|name| {
+            let index = columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(name))?;
+            let cell = cells.get(index)?;
+            if cell.as_text().is_none_or(str::is_empty) {
+                return None;
+            }
+            Some(Value {
+                raw: cell.clone(),
+                kind: ValueKind::Text,
+                source: source.map(|s| Provenance {
+                    column: columns[index].name.clone(),
+                    ..s.clone()
+                }),
+                style: None,
+                secondary: None,
+            })
+        })
     }
 
     /// `PrimaryKey` or `Reference`, when the cell's text can address a row.
@@ -162,11 +215,15 @@ fn is_no_reference(cell: &Cell) -> bool {
     matches!(cell, Cell::Null) || cell.as_text() == Some("0")
 }
 
-fn find_cell(cells: &[SerializedCell], row: usize, col: usize) -> Option<&SerializedCell> {
-    let at = cells
-        .binary_search_by_key(&(row, col), |c| (c.row, c.col))
-        .ok()?;
-    cells.get(at)
+/// The entry at `row`, `col` of a list sorted by row, then column.
+fn find_at<T>(
+    items: &[T],
+    row: usize,
+    col: usize,
+    at: impl Fn(&T) -> (usize, usize),
+) -> Option<&T> {
+    let index = items.binary_search_by_key(&(row, col), at).ok()?;
+    items.get(index)
 }
 
 /// The table of a kind's table address; kinds always carry `Target::Table`.
@@ -221,10 +278,15 @@ fn target_address(target: &ReferenceTarget, value: &str) -> Option<Address> {
             Target::Row { table, key: value },
         ));
     }
-    let filter = vec![ColumnEquals {
+    // The target's own filter (from `to_when`) narrows the rows that share the value.
+    let mut filter = match &target.table.target {
+        Target::Table { filter, .. } => filter.clone(),
+        _ => Vec::new(),
+    };
+    filter.push(ColumnEquals {
         column: target.column.clone(),
         value: Some(value),
-    }];
+    });
     Some(with_target(&target.table, Target::Table { table, filter }))
 }
 
@@ -233,6 +295,7 @@ mod tests {
     use super::*;
     use crate::db::{ColumnMeta, FullText};
     use crate::decode::value::Format;
+    use crate::rules::kinds::Zone;
     use crate::value::{KeyPart, ReferenceSource, find_serialized};
 
     fn table_address(table: &str) -> Address {
@@ -351,9 +414,12 @@ mod tests {
             (ColumnKind::Number, number("0"), ValueKind::Number),
             (ColumnKind::Number, number("12"), ValueKind::Number),
             (
-                ColumnKind::Timestamp,
+                ColumnKind::Timestamp { zone: None },
                 Cell::Temporal("2026-01-01 10:00:00".into()),
-                ValueKind::Timestamp { utc: None },
+                ValueKind::Timestamp {
+                    utc: None,
+                    zone: None,
+                },
             ),
         ];
         for (column, cell, expected) in cases {
@@ -628,6 +694,104 @@ mod tests {
         let set = result(&["a"], Vec::new(), vec![vec![number("1")], vec![bytes()]]);
 
         assert!(row_keys(&set, &["a".into()]).is_empty());
+    }
+
+    #[test]
+    fn timestamp_cells_carry_their_zone_and_the_moment_it_gives() {
+        let cases = [
+            (
+                Some(Zone::Unix),
+                Cell::Text("1700000000:5".into()),
+                Some(1_700_000_000),
+            ),
+            (
+                Some(Zone::Utc),
+                Cell::Temporal("2023-11-14 22:13:20".into()),
+                Some(1_700_000_000),
+            ),
+            (
+                Some(Zone::Utc),
+                Cell::Temporal("0000-00-00 00:00:00".into()),
+                None,
+            ),
+            (
+                Some(Zone::Local),
+                Cell::Temporal("2023-11-14 22:13:20".into()),
+                None,
+            ),
+        ];
+        for (zone, cell, utc) in cases {
+            let label = format!("{zone:?} {cell:?}");
+            assert_eq!(
+                kind_of(ColumnKind::Timestamp { zone }, cell),
+                ValueKind::Timestamp { utc, zone },
+                "{label}"
+            );
+        }
+    }
+
+    fn invoice(currency: Cell) -> ResultSet {
+        let money = ColumnKind::Money {
+            currency: vec!["missing".into(), "currency".into()],
+        };
+        result(
+            &["amount", "currency"],
+            vec![money, ColumnKind::Text],
+            vec![vec![number("12.50"), currency]],
+        )
+    }
+
+    fn invoice_source(column: &str) -> Provenance {
+        Provenance {
+            table: "f_invoices".into(),
+            column: column.into(),
+            row: key_of(&[("invoice_id", "3")]),
+        }
+    }
+
+    #[test]
+    fn money_takes_its_currency_from_a_row_column_with_the_same_row_as_source() {
+        let set = invoice(text("EUR"));
+
+        let value = value_at(&set, 0, 0, Some(invoice_source("amount")));
+
+        assert_eq!(
+            value.kind,
+            ValueKind::Money {
+                currency: Some(Box::new(Value {
+                    raw: text("EUR"),
+                    kind: ValueKind::Text,
+                    source: Some(invoice_source("currency")),
+                    style: None,
+                    secondary: None,
+                })),
+            }
+        );
+    }
+
+    #[test]
+    fn money_without_a_stored_currency_has_none() {
+        for cell in [text(""), Cell::Null] {
+            let label = format!("{cell:?}");
+            assert_eq!(
+                value_at(&invoice(cell), 0, 0, None).kind,
+                ValueKind::Money { currency: None },
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn money_currency_has_no_source_when_the_amount_has_none() {
+        let value = value_at(&invoice(text("EUR")), 0, 0, None);
+
+        let ValueKind::Money {
+            currency: Some(currency),
+        } = &value.kind
+        else {
+            panic!("{:?}", value.kind);
+        };
+        assert_eq!(currency.source, None);
     }
 
     fn page(keys: Vec<RowKey>) -> BrowsePage {

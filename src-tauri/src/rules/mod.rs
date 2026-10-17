@@ -3,15 +3,21 @@
 //! generic; application knowledge lives only in preset files (docs/presets.md).
 
 pub mod actions;
+pub mod applied;
 pub mod catalog;
 pub mod commands;
+pub mod condition;
+pub mod effective;
 pub mod kinds;
+pub mod lens;
 pub mod placeholder;
 pub mod prefix;
 pub mod preset;
 pub mod project;
 pub mod project_change;
 pub mod queries;
+#[cfg(test)]
+mod testing;
 pub mod types;
 
 pub use catalog::{PresetCatalog, PresetInfo, PresetSource};

@@ -286,7 +286,7 @@ mod tests {
 
     async fn run(session: &Session, sql: &str) {
         session
-            .execute(sql, 10, CellLimit::NONE, TIMEOUT)
+            .execute(sql, 10, CellLimit::NONE, TIMEOUT, None)
             .await
             .unwrap();
     }
@@ -469,6 +469,7 @@ mod tests {
                     10,
                     CellLimit::NONE,
                     TIMEOUT,
+                    None,
                 )
                 .await;
             let before = structure(&session, "databee_test", "authors")
@@ -482,6 +483,7 @@ mod tests {
                     10,
                     CellLimit::NONE,
                     TIMEOUT,
+                    None,
                 )
                 .await;
             let after_add = structure(&session, "databee_test", "authors").await;
@@ -491,6 +493,7 @@ mod tests {
                     10,
                     CellLimit::NONE,
                     TIMEOUT,
+                    None,
                 )
                 .await;
             let after_drop = structure(&session, "databee_test", "authors").await;

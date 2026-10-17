@@ -51,6 +51,7 @@ import type {
   TableInfo,
   TableReferences,
   PresetInfo,
+  RulesInfo,
   Project,
   ProjectChange,
   TableStructure,
@@ -100,10 +101,12 @@ export const api = {
     invoke<BrowsePage>("browse_table", { sessionId, request }),
   /** Checks an address against the session (slug, database, table, key) and returns its canonical form. */
   resolveAddress: (sessionId: string, address: string) => invoke<Resolved>("resolve_address", { sessionId, address }),
-  /** Declared foreign keys and same-name references from and to a table. */
+  /** Declared foreign keys, project and preset references, and same-name references from and to a table. */
   tableReferences: (sessionId: string, database: string, table: string) =>
     invoke<TableReferences>("table_references", { sessionId, database, table }),
   presetsList: () => invoke<PresetInfo[]>("presets_list"),
+  /** The prefixes, applied presets and entities of a database. */
+  rulesInfo: (sessionId: string, database: string) => invoke<RulesInfo>("rules_info", { sessionId, database }),
   /** The project of the session's connection and `database`; empty when none is stored. */
   projectGet: (sessionId: string, database: string) => invoke<Project>("project_get", { sessionId, database }),
   /** Checks the change against the database's tables and columns; errors name the field. */

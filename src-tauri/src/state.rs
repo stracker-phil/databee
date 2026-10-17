@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::launch::LaunchQueue;
+use crate::rules::effective::RuleSources;
 use crate::rules::{PresetCatalog, ProjectsStore};
 use crate::secrets::SecretStore;
 use crate::session::Sessions;
@@ -46,6 +47,14 @@ impl AppState {
             sessions: Sessions::default(),
             config_dir: config_dir.to_path_buf(),
             log_override: None,
+        }
+    }
+
+    /// The presets and projects the rules lens reads.
+    pub fn rules(&self) -> RuleSources<'_> {
+        RuleSources {
+            presets: &self.presets,
+            projects: &self.projects,
         }
     }
 }

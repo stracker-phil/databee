@@ -7,6 +7,7 @@
 
 mod rows;
 mod serialized;
+mod time;
 
 use serde::Serialize;
 use ts_rs::TS;
@@ -18,6 +19,7 @@ use crate::address::Address;
 use crate::db::Cell;
 use crate::db::cell::{self, Family};
 use crate::decode::value::Format;
+use crate::rules::kinds::Zone;
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -43,9 +45,12 @@ pub enum ValueKind {
     Money {
         currency: Option<Box<Value>>,
     },
+    /// `utc` is the moment in Unix seconds when the zone is known and the value is a time (zero
+    /// dates are not); `zone` is the kind rule's, `None` for a temporal column without one.
     Timestamp {
         #[ts(type = "number | null")]
         utc: Option<i64>,
+        zone: Option<Zone>,
     },
     /// The row's own key; `address` opens the row.
     PrimaryKey {
@@ -137,7 +142,17 @@ pub struct KeyPart {
 pub enum ColumnKind {
     Text,
     Number,
-    Timestamp,
+    /// A temporal SQL type (zone `None` unless a kind rule names it) or a kind rule.
+    Timestamp {
+        zone: Option<Zone>,
+    },
+    /// From a kind rule; `currency` names the row's columns to take the currency from, first
+    /// non-empty wins.
+    Money {
+        currency: Vec<String>,
+    },
+    Enum,
+    Secret,
     /// Part of `table`'s primary key `columns`; the row's address comes from their values.
     PrimaryKey {
         table: Address,
@@ -149,12 +164,42 @@ pub enum ColumnKind {
     },
 }
 
+/// A cell whose kind its row decides (a conditional reference, a meta key's kind rule), sent only
+/// where it differs from the column's kind.
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct CellKind {
+    pub row: usize,
+    pub col: usize,
+    pub kind: ColumnKind,
+}
+
+/// A cell a value style colors (`Value.style`).
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct CellStyle {
+    pub row: usize,
+    pub col: usize,
+    /// A scheme style color name.
+    pub style: String,
+}
+
+/// What a lens decides per cell, for one result.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CellAnnotations {
+    pub kinds: Vec<CellKind>,
+    pub styles: Vec<CellStyle>,
+}
+
 /// A table a reference column points at, and the column there that holds the value.
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceTarget {
-    /// The target table's rows, without a filter.
+    /// The target table's rows, filtered by the `=` conditions of the reference's `to_when`
+    /// (a non-key target such as a meta value under one key); unfiltered otherwise.
     pub table: Address,
     pub column: String,
     /// `column` is the table's single-column primary key, so a value addresses one row.
@@ -178,7 +223,7 @@ pub struct SerializedCell {
 pub fn type_kind(type_name: &str) -> ColumnKind {
     match cell::family(type_name) {
         Family::Number => ColumnKind::Number,
-        Family::Temporal => ColumnKind::Timestamp,
+        Family::Temporal => ColumnKind::Timestamp { zone: None },
         Family::Json | Family::Bit | Family::Binary | Family::Text => ColumnKind::Text,
     }
 }

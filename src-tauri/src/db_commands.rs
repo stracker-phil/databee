@@ -135,6 +135,7 @@ pub async fn run_query(
             settings.row_limit as usize,
             settings.cell_limit(),
             settings.query_timeout(),
+            Some(state.rules()),
         )
         .await;
     let elapsed_ms = match &response {
@@ -198,7 +199,12 @@ pub async fn browse_table(
     let settings = state.settings.get();
     let session = state.sessions.get(&session_id)?;
     session
-        .browse(&request, settings.cell_limit(), settings.query_timeout())
+        .browse(
+            &request,
+            settings.cell_limit(),
+            settings.query_timeout(),
+            Some(state.rules()),
+        )
         .await
 }
 
@@ -214,7 +220,8 @@ pub async fn resolve_address(
     resolve::resolve(&session, address, state.settings.get().query_timeout()).await
 }
 
-/// The references from and to `table`: declared foreign keys and same-name inference.
+/// The references from and to `table`: declared foreign keys, project and preset references,
+/// and same-name inference.
 #[tauri::command]
 pub async fn table_references(
     state: State<'_, AppState>,
@@ -223,7 +230,7 @@ pub async fn table_references(
     table: String,
 ) -> AppResult<TableReferences> {
     let session = state.sessions.get(&session_id)?;
-    lens::table_references(&session, &database, &table).await
+    lens::table_references(&session, &database, &table, Some(state.rules())).await
 }
 
 /// The full text of a cell that a result set sent as a `LongText` preview.

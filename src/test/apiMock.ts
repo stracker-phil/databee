@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Project, type Resolved, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Project, type Resolved, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { NOW } from "./now";
 import { session } from "./session";
@@ -52,6 +52,7 @@ export function createApiMock(): typeof realApi {
     projectGet: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
     projectUpdate: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
     projectExport: vi.fn().mockResolvedValue(""),
+    rulesInfo: vi.fn().mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [], tableEntities: {} } satisfies RulesInfo),
     refreshSchema: vi.fn().mockResolvedValue(undefined),
     completionSchema: vi.fn().mockResolvedValue({}),
     useDatabase: vi.fn().mockResolvedValue(undefined),
@@ -61,7 +62,7 @@ export function createApiMock(): typeof realApi {
     browseTable: vi.fn(
       async (_s, req): Promise<BrowsePage> => ({
         table: req.table,
-        result: { id: 1, columns: [], rows: [], totalRows: 0, truncated: false, affectedRows: 0, lastInsertId: null, returnsRows: true, kinds: [], serialized: [] },
+        result: { id: 1, columns: [], rows: [], totalRows: 0, truncated: false, affectedRows: 0, lastInsertId: null, returnsRows: true, kinds: [], serialized: [], cellKinds: [], styles: [] },
         keys: [],
         hasMore: false,
         limit: req.limit,

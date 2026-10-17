@@ -15,6 +15,7 @@ use crate::db::{self, BrowsePage, BrowseRequest, CellLimit, Database, ExecuteRes
 use crate::error::{AppError, AppResult};
 use crate::lens;
 use crate::lock::{MutexExt, RwLockExt};
+use crate::rules::effective::{self, RuleSources};
 use crate::schema;
 use crate::secrets::{PasswordSource, SecretStore, resolve_password};
 use crate::state::AppState;
@@ -148,14 +149,15 @@ impl Session {
         self.ddl_writes.load(Ordering::SeqCst)
     }
 
-    /// Runs a user query; the results get their column kinds, and long text cells are kept
-    /// for `fetch_cell`.
+    /// Runs a user query; the results get their column kinds (with `rules`, also the rules'
+    /// kinds and styles), and long text cells are kept for `fetch_cell`.
     pub async fn execute(
         &self,
         sql: &str,
         row_limit: usize,
         cell_limit: CellLimit,
         timeout: Duration,
+        rules: Option<RuleSources<'_>>,
     ) -> AppResult<ExecuteResponse> {
         let response = self.db.execute(sql, row_limit, cell_limit, timeout).await;
         // Counted after the run, also a failed one (a script may stop after its DDL), so a
@@ -164,20 +166,21 @@ impl Session {
             self.ddl_writes.fetch_add(1, Ordering::SeqCst);
         }
         let mut response = response?;
-        lens::annotate_execute(self, &mut response).await;
+        lens::annotate_execute(self, &mut response, rules).await;
         for result in &mut response.results {
             self.cells.keep(result);
         }
         Ok(response)
     }
 
-    /// Reads a page of a table with its column kinds and row keys; its long text cells are
-    /// kept for `fetch_cell`.
+    /// Reads a page of a table with its column kinds and row keys (with `rules`, also the rules'
+    /// kinds and styles); its long text cells are kept for `fetch_cell`.
     pub async fn browse(
         &self,
         request: &BrowseRequest,
         cell_limit: CellLimit,
         timeout: Duration,
+        rules: Option<RuleSources<'_>>,
     ) -> AppResult<BrowsePage> {
         // The schema is cached after the first page, so loading it alongside costs nothing later.
         let (page, schema) = tokio::join!(
@@ -185,7 +188,16 @@ impl Session {
             schema::database(self, &request.database)
         );
         let mut page = page?;
-        lens::annotate_browse(self, &mut page, &request.database, schema);
+        let effective = match (&schema, rules) {
+            (Ok(schema), Some(sources)) => Some(effective::effective(
+                self,
+                &request.database,
+                schema,
+                sources,
+            )),
+            _ => None,
+        };
+        lens::annotate_browse(self, &mut page, &request.database, schema, effective);
         self.cells.keep(&mut page.result);
         Ok(page)
     }
@@ -930,7 +942,9 @@ mod tests {
     }
 
     async fn run(session: &Session, sql: &str) -> AppResult<ExecuteResponse> {
-        session.execute(sql, 10, CellLimit::NONE, TIMEOUT).await
+        session
+            .execute(sql, 10, CellLimit::NONE, TIMEOUT, None)
+            .await
     }
 
     #[tokio::test]

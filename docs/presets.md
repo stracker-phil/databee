@@ -6,8 +6,10 @@ queries, anomalies and actions belong to it. The code is generic (`src-tauri/src
 knowledge lives only in preset files. Rules follow [`.claude/rules/presets.md`](../.claude/rules/presets.md).
 
 Status: presets are parsed, checked and listed (`presets_list`); projects are stored and edited
-(`project_get`, `project_update`, `project_export`). The rules lens that applies presets and projects to
-browsing comes next; until then no rule changes what the app shows.
+(`project_get`, `project_update`, `project_export`); references, kinds and value styles apply to browse
+pages, query results and `table_references` ([Effective rules](#effective-rules)), and `rules_info` reports
+the prefixes, presets and entities. Entities, patterns, pinned queries, anomalies, actions and find sources
+are parsed but not used yet.
 
 ## Where presets live
 
@@ -77,7 +79,9 @@ label = "same email"                # names the incoming group
 columns = ["id", "status", "_qty"]  # the group's columns; keys of the source's meta table pivot in
 ```
 
-**Conditions** (`when`, `to_when`, `owner_when`, an action's `when`) map a column to a match; all must hold:
+**Conditions** (`when`, `to_when`, `owner_when`, an action's `when`) map a column to a match; all must hold.
+They compare exactly (case-sensitive, whatever the column's collation); NULL matches nothing, not even
+`not`. A regular expression that does not compile is a load error.
 
 | Value | Means |
 |---|---|
@@ -264,10 +268,83 @@ preset names must load. The error names the field: ``` `reference.when.meta_key`
 `meta_key` ```. A reference without `id` gets its default id; when the project already uses it, `-><to>` is
 appended.
 
-**Overrides.** A project reference with the same `from` and `when` (the same default id) as a preset
-reference overrides it; `disabled` removes preset or inferred ids. Applying both comes with the effective
-rules (next part of this step).
+**Overrides.** A project reference with the same `from` and `when` as a preset reference overrides it;
+`disabled` removes preset or inferred ids ([Effective rules](#effective-rules)).
 
 **Export.** `project_export` returns the project as a preset file named `<slug>-<database>`: its references,
 kinds and styles, saved queries as `[[pinned]]` (`pin` as `home`) and explicit presets as `requires`. The
 prefixes, `disabled` and the automatic preset choice have no preset form and are left out.
+
+## Effective rules
+
+`rules/effective.rs` combines the applied presets and the project of a database into `EffectiveRules`, with
+real table names and compiled conditions. It is cached per session and database and rebuilt when the schema
+changes (DDL, refresh), a preset file changes or the project changes.
+
+**Which presets apply** (`rules/applied.rs`, `Applied`):
+- The **prefix** is the project's, else the suggestion: the shortest prefix under which all marker tables of
+  some candidate preset exist (candidates: the project's `presets`, else every preset that loads), else none.
+- With `presets` set, those presets apply, whatever tables exist. Otherwise every preset with
+  `marker_tables` applies when they all exist under the prefix. A preset without marker tables applies only
+  when listed or required.
+- An applied preset brings the presets it `requires`, which apply before it.
+- The **network prefix** is the project's, else the shortest prefix that holds all `network_tables` of the
+  applied presets, else the prefix.
+- A table name resolves under the network prefix when an applied preset lists it in `network_tables`, else
+  under the prefix; when that table does not exist, the other prefix is tried. Rules on tables that exist
+  under neither are dropped (presets describe optional tables too).
+
+**Precedence.** For a column, the strongest reference wins:
+1. a declared foreign key (a constraint is a fact; no rule overrides it, and a single-column primary key
+   stays the row's identity);
+2. project references;
+3. preset references, the last applied preset first (a preset refines the presets it requires);
+4. same-name inference.
+
+Within one source, conditional references come before unconditional ones. The column's kind is the first
+unconditional reference; a conditional reference that comes before it decides per row (see below). Rules
+of one source with the same `from` and `when` (one column pointing at two tables) become one reference with
+several targets.
+
+**Overrides and disabling.** A project reference with the same `from` and `when` as a preset reference
+replaces it. `disabled` drops preset references by id (in every applied preset) and same-name inference by
+`inferred:<table>.<column>` (real names, e.g. `inferred:wp_actionscheduler_logs.action_id`).
+
+**Kinds.** Kind rules apply where no key or reference does (to columns the SQL type made text, number or
+timestamp). The first matching rule wins, project rules before preset rules. `columns` globs match the
+table's name without prefix and the column name (case-insensitively); `meta_keys` globs match the key of a
+row of an applied `[[meta]]` table (owned or not), in every meta table unless `in` names some.
+
+| Rule | Column kind | Cell |
+|---|---|---|
+| `money = { currency = [...] }` | `money` | the currency is the first listed column of the row with text, sourced from the same row (owner columns and sibling meta keys come with documents) |
+| `timestamp = "unix"` | `timestamp`, zone `unix` | `utc` from the leading digits (`<unix>:<id>` reads too); `0` is no time |
+| `timestamp = "utc"` | `timestamp`, zone `utc` | `utc` from `YYYY-MM-DD HH:MM:SS` or `YYYY-MM-DD`; zero dates are no time |
+| `timestamp = "local"` | `timestamp`, zone `local` | `utc` stays empty: the zone is not stored, so the value is never converted |
+| `enum`, `number` | `enum`, `number` | |
+| `secret` | `secret` | masked, even when it decodes as serialized data |
+
+A temporal column without a rule is a timestamp without zone, shown raw.
+
+**Per-row decisions** (`RulesLens::cells`), in memory over the page, without queries:
+- a conditional reference whose `when` holds on the row (all `when` columns must be in the result);
+- on a meta table's value column (with its key column in the result), the kind rule of the row's key;
+- a value style whose columns or meta keys cover the cell and whose match holds.
+
+They reach the page as `ResultSet.cell_kinds` (only where the kind differs from the column's) and
+`ResultSet.styles`, sorted by row, then column; `valueAt` applies both.
+
+**Targets.** A reference to a primary key addresses the row. Any other target addresses the table filtered
+by the value, plus the `=` conditions of `to_when` (other `to_when` operators cannot be part of an address
+and apply where documents query the target).
+
+**Value styles** apply only when `enabled`; preset styles ship switched off, and a project switches one on
+by adding it (with `enabled = true`) to its own `styles`.
+
+## `rules_info`
+
+`rules_info(session_id, database)` returns `RulesInfo { prefix, networkPrefix, suggestedPrefix,
+appliedPresets, availablePresets, entities, tableEntities }`. `entities` are `{ preset, entity }` with the
+real table name; `tableEntities` maps a real table to its entity names. Entities with a `filter` come first
+on their table: a row takes the first entity whose filter holds.
+

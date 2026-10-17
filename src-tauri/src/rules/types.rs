@@ -9,6 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use ts_rs::TS;
 
 use super::actions::Action;
+use super::condition::Matcher;
 use super::kinds::{KindRule, StyleRule};
 use super::queries::{Anomaly, Pattern, Pinned};
 
@@ -172,7 +173,12 @@ impl Match {
         match op.as_str() {
             "glob" => scalar(arg).map(|glob| Match::Glob { glob }),
             "like" => scalar(arg).map(|like| Match::Like { like }),
-            "regexp" => scalar(arg).map(|regexp| Match::Regexp { regexp }),
+            "regexp" => {
+                let regexp = scalar(arg)?;
+                // Checked on load, so a broken pattern names its rule instead of never matching.
+                Matcher::regexp(&regexp)?;
+                Ok(Match::Regexp { regexp })
+            }
             "not" => Self::from_value(arg).map(|m| Match::Not { not: Box::new(m) }),
             other => Err(format!(
                 "unknown condition `{other}`, expected glob, like, regexp or not"

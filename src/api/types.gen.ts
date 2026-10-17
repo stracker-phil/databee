@@ -83,6 +83,12 @@ sessionReset?: boolean, };
  */
 export type AppliedBatch = { batchId: number, affected: number, canUndo: boolean, };
 
+export type AppliedEntity = { preset: string, 
+/**
+ * `table` is the real table name.
+ */
+entity: Entity, };
+
 /**
  * The condition that actually ran, so the UI can show its interpretation.
  */
@@ -142,6 +148,21 @@ export type Cell = { "t": "null" } | { "t": "number", "v": string } | { "t": "te
  */
 len: number, preview: string, } };
 
+/**
+ * A cell whose kind its row decides (a conditional reference, a meta key's kind rule), sent only
+ * where it differs from the column's kind.
+ */
+export type CellKind = { row: number, col: number, kind: ColumnKind, };
+
+/**
+ * A cell a value style colors (`Value.style`).
+ */
+export type CellStyle = { row: number, col: number, 
+/**
+ * A scheme style color name.
+ */
+style: string, };
+
 export type ChangeRequest = { "type": "setCell", database: string, table: string, keyColumn: string, key: string, column: string, value: string | null, } | { "type": "deleteRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "duplicateRow", database: string, table: string, keyColumn: string, key: string, } | { "type": "insertRow", database: string, table: string, values: Array<[string, string | null]>, };
 
 export type ChipTarget = { "kind": "list", list: WpList, params: { [key in string]: string }, } | { "kind": "timeline" };
@@ -166,7 +187,7 @@ generated: boolean, };
  * What a column holds as far as the lens says. The cell decides the rest: NULL, `''`, binary,
  * serialized text and "no reference" are per cell.
  */
-export type ColumnKind = { "kind": "text" } | { "kind": "number" } | { "kind": "timestamp" } | { "kind": "primaryKey", table: Address, columns: Array<string>, } | { "kind": "reference", targets: Array<ReferenceTarget>, by: ReferenceSource, };
+export type ColumnKind = { "kind": "text" } | { "kind": "number" } | { "kind": "timestamp", zone: Zone | null, } | { "kind": "money", currency: Array<string>, } | { "kind": "enum" } | { "kind": "secret" } | { "kind": "primaryKey", table: Address, columns: Array<string>, } | { "kind": "reference", targets: Array<ReferenceTarget>, by: ReferenceSource, };
 
 export type ColumnMeta = { name: string, typeName: string, 
 /**
@@ -688,7 +709,8 @@ export type ReferenceSource = { "kind": "foreignKey", constraint: string, } | { 
  */
 export type ReferenceTarget = { 
 /**
- * The target table's rows, without a filter.
+ * The target table's rows, filtered by the `=` conditions of the reference's `to_when`
+ * (a non-key target such as a meta value under one key); unfiltered otherwise.
  */
 table: Address, column: string, 
 /**
@@ -741,7 +763,16 @@ kinds: Array<ColumnKind>,
 /**
  * The cells whose text decodes as PHP-serialized or JSON, by row then column.
  */
-serialized: Array<SerializedCell>, };
+serialized: Array<SerializedCell>, 
+/**
+ * Cells whose row gives them another kind than their column's, by row then column; filled
+ * with `kinds` by the rules lens.
+ */
+cellKinds: Array<CellKind>, 
+/**
+ * Cells a value style colors, by row then column.
+ */
+styles: Array<CellStyle>, };
 
 /**
  * A row's primary key, in key order. Unlike `db::changes::RowKey` it owns its values and
@@ -750,6 +781,23 @@ serialized: Array<SerializedCell>, };
 export type RowKey = Array<KeyPart>;
 
 export type RowRef = { table: string, idColumn: string, id: string, };
+
+/**
+ * What `rules_info` returns: the prefixes, the presets and the entities of a database.
+ */
+export type RulesInfo = { prefix: string, networkPrefix: string, suggestedPrefix: string | null, 
+/**
+ * In apply order: each after the presets it requires.
+ */
+appliedPresets: Array<string>, 
+/**
+ * Every preset that loads.
+ */
+availablePresets: Array<string>, entities: Array<AppliedEntity>, 
+/**
+ * Entity names by real table, filtered entities first.
+ */
+tableEntities: { [key in string]: Array<string> }, };
 
 /**
  * A query the user saved, optionally pinned to the readout home. `pin` shares the shape of a
@@ -999,7 +1047,7 @@ rawHex?: string, node: ValueNode, };
 /**
  * There is no status kind: status values are enums, and color comes only from value styles.
  */
-export type ValueKind = { "kind": "text" } | { "kind": "number" } | { "kind": "money", currency: Value | null, } | { "kind": "timestamp", utc: number | null, } | { "kind": "primaryKey", address: Address, } | { "kind": "reference", targets: Array<Address>, by: ReferenceSource, 
+export type ValueKind = { "kind": "text" } | { "kind": "number" } | { "kind": "money", currency: Value | null, } | { "kind": "timestamp", utc: number | null, zone: Zone | null, } | { "kind": "primaryKey", address: Address, } | { "kind": "reference", targets: Array<Address>, by: ReferenceSource, 
 /**
  * Whether the target row exists; `None` until someone checks.
  */

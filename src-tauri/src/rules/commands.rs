@@ -1,15 +1,31 @@
 use tauri::State;
 
 use super::PresetInfo;
+use super::effective::{self, RulesInfo};
 use super::project::Project;
 use super::project_change::{self, ChangeContext, ProjectChange};
 use crate::error::AppResult;
+use crate::schema;
 use crate::state::AppState;
 
 /// Every known preset, with the parse error of a user file that does not load.
 #[tauri::command]
 pub fn presets_list(state: State<'_, AppState>) -> Vec<PresetInfo> {
     state.presets.list()
+}
+
+/// The prefixes, applied presets and entities of `database`.
+#[tauri::command]
+pub async fn rules_info(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+) -> AppResult<RulesInfo> {
+    let session = state.sessions.get(&session_id)?;
+    let schema = schema::database(&session, &database).await?;
+    let rules = effective::effective(&session, &database, &schema, state.rules());
+    let loaded = effective::loaded_presets(&state.presets.entries());
+    Ok(RulesInfo::new(&rules, &loaded))
 }
 
 /// The project of the session's connection and `database`; an empty one when none is stored.

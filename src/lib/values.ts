@@ -1,9 +1,9 @@
 /**
- * A cell as a `Value` (kind and provenance), built from the result's column kinds and serialized
- * cells instead of one `Value` per cell from Rust (payload size). A port of Rust's
+ * A cell as a `Value` (kind, provenance and style), built from the result's column kinds, per-cell
+ * kinds, value styles and serialized cells instead of one `Value` per cell from Rust (payload size). A port of Rust's
  * `value::value_at`, the reference implementation; tests keep both equal.
  */
-import type { Address, BrowsePage, Cell, ColumnKind, Provenance, ReferenceTarget, ResultSet, SerializedCell, Target, Value, ValueKind } from "../api";
+import type { Address, BrowsePage, Cell, ColumnKind, Provenance, ReferenceTarget, ResultSet, Target, Value, ValueKind, Zone } from "../api";
 import { address } from "./address";
 
 /** The value of one cell of a browse page, sourced from the page's table and the row's key. */
@@ -16,7 +16,9 @@ export function valueAt(page: BrowsePage, row: number, col: number): Value {
 /** The value of one cell of any result; query results have no provenance yet. */
 export function resultValueAt(result: ResultSet, row: number, col: number, source: Provenance | null = null): Value {
   const raw = result.rows[row][col];
-  return { raw, kind: cellKind(result, row, col, raw), source, style: null, secondary: null };
+  const column: ColumnKind = findAt(result.cellKinds, row, col)?.kind ?? result.kinds[col] ?? { kind: "text" };
+  const style = findAt(result.styles, row, col)?.style ?? null;
+  return { raw, kind: cellKind(result, row, col, raw, column, source), source, style, secondary: null };
 }
 
 const cellText = (cell: Cell): string | null => (cell.t === "number" || cell.t === "text" || cell.t === "temporal" || cell.t === "json" ? cell.v : null);
@@ -24,20 +26,73 @@ const cellText = (cell: Cell): string | null => (cell.t === "number" || cell.t =
 /** WordPress stores "no target" as `0`; NULL means the same in a reference column. */
 const isNoReference = (cell: Cell) => cell.t === "null" || cellText(cell) === "0";
 
-function cellKind(result: ResultSet, row: number, col: number, cell: Cell): ValueKind {
-  const column: ColumnKind = result.kinds[col] ?? { kind: "text" };
+function cellKind(result: ResultSet, row: number, col: number, cell: Cell, column: ColumnKind, source: Provenance | null): ValueKind {
   if (column.kind === "reference" && isNoReference(cell)) return { kind: "noReference" };
   if (cell.t === "null") return { kind: "null" };
   if (cell.t === "text" && cell.v === "") return { kind: "empty" };
   if (cell.t === "bytes") return { kind: "binary" };
+  // A secret stays masked even when it decodes.
+  if (column.kind === "secret") return { kind: "secret" };
 
   const fromSchema = schemaKind(result, row, column, cell);
   if (fromSchema) return fromSchema;
-  const serialized = findCell(result.serialized, row, col);
+  const serialized = findAt(result.serialized, row, col);
   if (serialized) return { kind: "serialized", format: serialized.format, preview: serialized.preview };
-  if (column.kind === "number") return { kind: "number" };
-  if (column.kind === "timestamp") return { kind: "timestamp", utc: null };
-  return { kind: "text" };
+  switch (column.kind) {
+    case "number":
+      return { kind: "number" };
+    case "timestamp": {
+      const text = cellText(cell);
+      return { kind: "timestamp", utc: text === null ? null : utcSeconds(text, column.zone), zone: column.zone };
+    }
+    case "money":
+      return { kind: "money", currency: currency(result, row, column.currency, source) };
+    case "enum":
+      return { kind: "enum" };
+    default:
+      return { kind: "text" };
+  }
+}
+
+/** The first of `names` that is a column of the result with text in this row, sourced from the same row. */
+function currency(result: ResultSet, row: number, names: string[], source: Provenance | null): Value | null {
+  for (const name of names) {
+    const index = result.columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase());
+    if (index < 0) continue;
+    const raw = result.rows[row][index];
+    const text = cellText(raw);
+    if (!text) continue;
+    const from = source ? { ...source, column: result.columns[index].name } : null;
+    return { raw, kind: { kind: "text" }, source: from, style: null, secondary: null };
+  }
+  return null;
+}
+
+/**
+ * Unix seconds of `text` read in `zone`: `null` for a zone that is not stored (`local`, none), zero dates
+ * and text that is no time. A port of Rust's `value::time::utc_seconds`.
+ */
+export function utcSeconds(text: string, zone: Zone | null): number | null {
+  if (zone === "unix") {
+    const digits = /^\d+/.exec(text)?.[0];
+    const seconds = digits ? Number(digits) : 0;
+    return seconds === 0 ? null : seconds;
+  }
+  if (zone !== "utc") return null;
+  const full = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(text);
+  const atTime = full ? utcOf(full.slice(1).map(Number)) : null;
+  if (atTime !== null) return atTime;
+  const date = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  return date ? utcOf([...date.slice(1).map(Number), 0, 0, 0]) : null;
+}
+
+/** `null` for a field out of range (month or day 0, 24 o'clock), which `Date.UTC` would roll over. */
+function utcOf([year, month, day, hour, minute, second]: number[]): number | null {
+  const ms = Date.UTC(year, month - 1, day, hour, minute, second);
+  const at = new Date(ms);
+  const exact =
+    at.getUTCFullYear() === year && at.getUTCMonth() === month - 1 && at.getUTCDate() === day && at.getUTCHours() === hour && at.getUTCMinutes() === minute && at.getUTCSeconds() === second;
+  return exact ? ms / 1000 : null;
 }
 
 /** `primaryKey` or `reference`, when the cell's text can address a row. */
@@ -54,8 +109,8 @@ function schemaKind(result: ResultSet, row: number, column: ColumnKind, cell: Ce
   return { kind: "reference", targets, by: column.by, exists: null };
 }
 
-/** Rust sends the serialized cells sorted by row, then column. */
-function findCell(cells: SerializedCell[], row: number, col: number): SerializedCell | null {
+/** Rust sends per-cell lists sorted by row, then column. */
+function findAt<T extends { row: number; col: number }>(cells: T[], row: number, col: number): T | null {
   let low = 0;
   let high = cells.length - 1;
   while (low <= high) {
@@ -108,10 +163,13 @@ function rowAddress(cells: Cell[], table: Address, key: string[], indexes: numbe
   return withTarget(table, { kind: "table", table: name, filter });
 }
 
+/** The filter a table address already carries (a reference's `to_when`). */
+const ownFilter = (a: Address) => (a.target.kind === "table" ? a.target.filter : []);
+
 /** `null` for a target whose address is not a table, which the lens never builds. */
 function targetAddress(target: ReferenceTarget, value: string): Address | null {
   const table = tableName(target.table);
   if (table === null) return null;
   if (target.key) return withTarget(target.table, { kind: "row", table, key: value });
-  return withTarget(target.table, { kind: "table", table, filter: [{ column: target.column, value }] });
+  return withTarget(target.table, { kind: "table", table, filter: [...ownFilter(target.table), { column: target.column, value }] });
 }

@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use super::condition::Matcher;
 use super::types::{Check, ColumnGlob, FieldError};
 
 /// Which zone a timestamp is stored in. `local` is the site's zone, which is not stored, so such
@@ -167,6 +168,19 @@ pub enum StyleColor {
     Purple,
 }
 
+impl StyleColor {
+    /// The name `Value.style` carries (`--style-<name>`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Red => "red",
+            Self::Green => "green",
+            Self::Yellow => "yellow",
+            Self::Blue => "blue",
+            Self::Purple => "purple",
+        }
+    }
+}
+
 /// Colors values of its columns or meta keys that match. Never global: the same text in another
 /// column stays uncolored.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
@@ -195,7 +209,21 @@ fn enabled_by_default() -> bool {
 impl Check for StyleRule {
     fn check(&self) -> Result<(), FieldError> {
         check_targets(&self.columns, &self.meta_keys, &self.r#in)
-            .map_err(|message| FieldError::new("columns", message))
+            .map_err(|message| FieldError::new("columns", message))?;
+        self.matcher()
+            .map(drop)
+            .map_err(|message| FieldError::new("value", message))
+    }
+}
+
+impl StyleRule {
+    /// The rule's `match` and `value` as a value matcher.
+    pub fn matcher(&self) -> Result<Matcher, String> {
+        match self.matching {
+            StyleMatch::Eq => Ok(Matcher::Eq(self.value.clone())),
+            StyleMatch::Like => Matcher::like(&self.value),
+            StyleMatch::Regexp => Matcher::regexp(&self.value),
+        }
     }
 }
 

@@ -1,24 +1,27 @@
-//! Column kinds, row keys and serialized cells for the results the session hands to the page.
-//! These run before the session moves long texts into its cell cache (`find_serialized` needs
-//! them in full).
+//! Column kinds, row keys, per-cell kinds and styles for the results the session hands to the
+//! page. These run before the session moves long texts into its cell cache (`find_serialized`
+//! and conditions need them in full).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::{Lens, SchemaLens};
-use crate::db::{BrowsePage, ColumnMeta, ExecuteResponse, ResultSet};
+use super::Lens;
+use super::cells::{IndexedColumns, add_cells, annotate_origins, table_columns};
+use crate::db::{BrowsePage, ColumnMeta, ExecuteResponse};
 use crate::error::AppResult;
-use crate::schema::{self, DatabaseSchema};
+use crate::rules::effective::{EffectiveRules, RuleSources};
+use crate::schema::DatabaseSchema;
 use crate::session::Session;
 use crate::value::{self, ColumnKind};
 
-/// Kinds from the lens of the browsed table, and the rows' keys. Without a schema (it failed to
-/// load) the page still shows, with kinds from the SQL types.
+/// Kinds from the lens of the browsed table (with `rules` when given), and the rows' keys.
+/// Without a schema (it failed to load) the page still shows, with kinds from the SQL types.
 pub fn annotate_browse(
     session: &Session,
     page: &mut BrowsePage,
     database: &str,
     schema: AppResult<Arc<DatabaseSchema>>,
+    rules: Option<Arc<EffectiveRules>>,
 ) {
     value::find_serialized(&mut page.result);
     let schema = match schema {
@@ -33,61 +36,44 @@ pub fn annotate_browse(
         .keys(&page.table)
         .map(|k| k.primary_key.clone())
         .unwrap_or_default();
-    let lens = SchemaLens::new(schema, &session.slug(), database);
+    let lens = super::build(schema, &session.slug(), database, rules);
     page.result.kinds = lens.kinds(&page.table, &page.result.columns);
+    let names: IndexedColumns = page
+        .result
+        .columns
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (i, c.name.clone()))
+        .collect();
+    add_cells(
+        &mut page.result,
+        lens.as_ref(),
+        &table_columns(&page.table, &names),
+    );
     page.keys = value::row_keys(&page.result, &primary_key);
 }
 
 /// Kinds from the SQL types, and from the lens of each column's origin table where the server
-/// names one, so `SELECT post_author FROM wp_posts` shows references too.
-pub async fn annotate_execute(session: &Session, response: &mut ExecuteResponse) {
+/// names one, so `SELECT post_author FROM wp_posts` shows references too. Per-cell kinds and
+/// styles need the columns a rule reads from the same table in the result.
+pub async fn annotate_execute(
+    session: &Session,
+    response: &mut ExecuteResponse,
+    rules: Option<RuleSources<'_>>,
+) {
     // `None` remembers a database whose schema failed to load, so it is tried once per call.
-    let mut lenses = HashMap::<String, Option<SchemaLens>>::new();
+    let mut lenses = HashMap::<String, Option<Box<dyn Lens>>>::new();
     for result in &mut response.results {
         value::find_serialized(result);
         result.kinds = type_kinds(&result.columns);
-        annotate_origins(session, response.database.as_deref(), result, &mut lenses).await;
-    }
-}
-
-async fn annotate_origins(
-    session: &Session,
-    current: Option<&str>,
-    result: &mut ResultSet,
-    lenses: &mut HashMap<String, Option<SchemaLens>>,
-) {
-    for (col, column) in result.columns.iter().enumerate() {
-        let Some(origin) = &column.origin else {
-            continue;
-        };
-        let Some(database) = origin.database.as_deref().or(current) else {
-            continue;
-        };
-        if !lenses.contains_key(database) {
-            let lens = load(session, database).await;
-            lenses.insert(database.to_string(), lens);
-        }
-        let Some(Some(lens)) = lenses.get(database) else {
-            continue;
-        };
-        // The lens knows the column by its real name, not the alias the result shows.
-        let real = ColumnMeta {
-            name: origin.column.clone(),
-            ..column.clone()
-        };
-        if let Some(kind) = lens.kinds(&origin.table, &[real]).into_iter().next() {
-            result.kinds[col] = kind;
-        }
-    }
-}
-
-async fn load(session: &Session, database: &str) -> Option<SchemaLens> {
-    match schema::database(session, database).await {
-        Ok(schema) => Some(SchemaLens::new(schema, &session.slug(), database)),
-        Err(e) => {
-            log::debug!("Schema of {database} not loaded for result kinds: {e}");
-            None
-        }
+        annotate_origins(
+            session,
+            response.database.as_deref(),
+            result,
+            &mut lenses,
+            rules,
+        )
+        .await;
     }
 }
 
@@ -106,7 +92,8 @@ mod tests {
     use crate::address::{Address, Target};
     use crate::connection::ConnectionSpec;
     use crate::db::{
-        BrowseRequest, Cell, CellLimit, ColumnInfo, ColumnOrigin, FakeDatabase, TableStructure,
+        BrowseRequest, Cell, CellLimit, ColumnInfo, ColumnOrigin, FakeDatabase, ResultSet,
+        TableStructure,
     };
     use crate::decode::value::Format;
     use crate::error::AppError;
@@ -240,7 +227,7 @@ mod tests {
         let session = session_over(FakeDatabase::new().on("items", items_page_result()));
 
         let page = session
-            .browse(&items_request(), CellLimit::NONE, TIMEOUT)
+            .browse(&items_request(), CellLimit::NONE, TIMEOUT, None)
             .await
             .unwrap();
 
@@ -262,6 +249,7 @@ mod tests {
             &mut page,
             "wp",
             Err(AppError::InvalidInput("no schema".into())),
+            None,
         );
 
         assert_eq!(
@@ -302,6 +290,7 @@ mod tests {
                 10,
                 CellLimit::NONE,
                 TIMEOUT,
+                None,
             )
             .await
             .unwrap();
@@ -331,13 +320,17 @@ mod tests {
         let session = session_over(FakeDatabase::new().on("SELECT", result));
 
         let response = session
-            .execute("SELECT 1, NOW(), 'x'", 10, CellLimit::NONE, TIMEOUT)
+            .execute("SELECT 1, NOW(), 'x'", 10, CellLimit::NONE, TIMEOUT, None)
             .await
             .unwrap();
 
         assert_eq!(
             response.results[0].kinds,
-            [ColumnKind::Number, ColumnKind::Timestamp, ColumnKind::Text]
+            [
+                ColumnKind::Number,
+                ColumnKind::Timestamp { zone: None },
+                ColumnKind::Text
+            ]
         );
     }
 
@@ -362,6 +355,7 @@ mod tests {
                     10,
                     CellLimit::NONE,
                     TIMEOUT,
+                    None,
                 )
                 .await
                 .unwrap_or_else(|e| panic!("{server}: {e:?}"));
@@ -392,7 +386,7 @@ mod tests {
             };
 
             let page = session
-                .browse(&request, CellLimit::NONE, TIMEOUT)
+                .browse(&request, CellLimit::NONE, TIMEOUT, None)
                 .await
                 .unwrap_or_else(|e| panic!("{server}: {e:?}"));
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Address, BrowsePage, Cell, ColumnKind, ResultSet } from "../api";
 import { browsePage, columnMeta, num, resultSet, text } from "../test/fixtures";
-import { resultValueAt, valueAt } from "./values";
+import { resultValueAt, utcSeconds, valueAt } from "./values";
 
 const tableAddress = (table: string): Address => ({ connection: "local", database: "db", target: { kind: "table", table, filter: [] }, view: null, compare: null });
 const rowAddress = (table: string, key: string): Address => ({ ...tableAddress(table), target: { kind: "row", table, key } });
@@ -17,7 +17,7 @@ const kinds: ColumnKind[] = [
   { kind: "text" },
   { kind: "text" },
   { kind: "number" },
-  { kind: "timestamp" },
+  { kind: "timestamp", zone: null },
   { kind: "text" },
 ];
 
@@ -94,7 +94,7 @@ describe("valueAt", () => {
 
   it("marks number and timestamp columns", () => {
     expect(at("first", "menu_order").kind).toEqual({ kind: "number" });
-    expect(at("first", "post_date").kind).toEqual({ kind: "timestamp", utc: null });
+    expect(at("first", "post_date").kind).toEqual({ kind: "timestamp", utc: null, zone: null });
   });
 
   it("marks a null timestamp as null", () => {
@@ -153,5 +153,147 @@ describe("resultValueAt", () => {
       kinds: [{ kind: "primaryKey", table: tableAddress("wp_term_relationships"), columns: ["a", "b"] }],
     });
     expect(resultValueAt(partial, 0, 0).kind).toEqual({ kind: "text" });
+  });
+
+  describe("cellKinds", () => {
+    const overridden = resultSet({
+      columns: [columnMeta("a", "TEXT"), columnMeta("b", "TEXT")],
+      rows: [
+        [text("x"), text("1")],
+        [text("y"), text("2")],
+      ],
+      kinds: [{ kind: "text" }, { kind: "text" }],
+      cellKinds: [{ row: 0, col: 1, kind: { kind: "number" } }],
+    });
+
+    it("overrides the column kind for that cell", () => {
+      expect(resultValueAt(overridden, 0, 1).kind).toEqual({ kind: "number" });
+    });
+
+    it("leaves the other cells of the column and row on the column kind", () => {
+      expect(resultValueAt(overridden, 1, 1).kind).toEqual({ kind: "text" });
+      expect(resultValueAt(overridden, 0, 0).kind).toEqual({ kind: "text" });
+    });
+  });
+
+  describe("styles", () => {
+    const styled = resultSet({
+      columns: [columnMeta("a", "TEXT")],
+      rows: [[text("ok")], [text("failed")]],
+      styles: [{ row: 1, col: 0, style: "danger" }],
+    });
+
+    it("sets the style of a styled cell", () => {
+      expect(resultValueAt(styled, 1, 0).style).toBe("danger");
+    });
+
+    it("leaves an unstyled cell without a style", () => {
+      expect(resultValueAt(styled, 0, 0).style).toBeNull();
+    });
+  });
+
+  describe("money", () => {
+    const priced = (currencyNames: string[], currencyCell: Cell | null = text("EUR")) =>
+      resultSet({
+        columns: [columnMeta("total", "DECIMAL"), columnMeta("Currency", "VARCHAR")],
+        rows: [currencyCell ? [num("9.50"), currencyCell] : [num("9.50"), { t: "null" }]],
+        kinds: [{ kind: "money", currency: currencyNames }, { kind: "text" }],
+      });
+    const source = { table: "orders", column: "total", row: [{ column: "id", value: "1" }] };
+
+    it("takes the currency from the named column of the same row, matched case-insensitively", () => {
+      expect(resultValueAt(priced(["currency"]), 0, 0, source).kind).toEqual({
+        kind: "money",
+        currency: { raw: text("EUR"), kind: { kind: "text" }, source: { ...source, column: "Currency" }, style: null, secondary: null },
+      });
+    });
+
+    it("uses the first listed column that exists", () => {
+      const kind = resultValueAt(priced(["missing", "currency"]), 0, 0).kind;
+      expect(kind).toMatchObject({ kind: "money", currency: { raw: text("EUR"), source: null } });
+    });
+
+    it.each([
+      ["names no column of the result", ["missing"], text("EUR")],
+      ["is null in the row", ["currency"], null],
+      ["is empty in the row", ["currency"], text("")],
+    ])("has no currency when the currency column %s", (_name, names, cell) => {
+      expect(resultValueAt(priced(names, cell), 0, 0).kind).toEqual({ kind: "money", currency: null });
+    });
+  });
+
+  describe("timestamp", () => {
+    const stamped = (zone: "unix" | "utc" | "local" | null, cell: Cell) =>
+      resultValueAt(resultSet({ columns: [columnMeta("t", "DATETIME")], rows: [[cell]], kinds: [{ kind: "timestamp", zone }] }), 0, 0).kind;
+
+    it("carries the zone and the UTC seconds of a UTC datetime", () => {
+      expect(stamped("utc", { t: "temporal", v: "2024-01-01 10:00:00" })).toEqual({ kind: "timestamp", utc: 1704103200, zone: "utc" });
+    });
+
+    it("keeps the zone and no seconds for a local datetime", () => {
+      expect(stamped("local", { t: "temporal", v: "2024-01-01 10:00:00" })).toEqual({ kind: "timestamp", utc: null, zone: "local" });
+    });
+
+    it("reads a unix timestamp stored as a number", () => {
+      expect(stamped("unix", { t: "number", v: "1700000000" })).toEqual({ kind: "timestamp", utc: 1700000000, zone: "unix" });
+    });
+  });
+
+  describe("secret", () => {
+    it("masks a secret that decodes as serialized text", () => {
+      const secret = resultSet({
+        columns: [columnMeta("token", "TEXT")],
+        rows: [[text('a:1:{s:1:"k";s:1:"v";}')]],
+        kinds: [{ kind: "secret" }],
+        serialized: [{ row: 0, col: 0, format: "php", preview: "a:1:{…}" }],
+      });
+      expect(resultValueAt(secret, 0, 0).kind).toEqual({ kind: "secret" });
+    });
+
+    it("still shows null as null", () => {
+      const secret = resultSet({ columns: [columnMeta("token", "TEXT")], rows: [[{ t: "null" }]], kinds: [{ kind: "secret" }] });
+      expect(resultValueAt(secret, 0, 0).kind).toEqual({ kind: "null" });
+    });
+  });
+
+  describe("reference target with its own filter", () => {
+    it("adds the referenced value to the filter the target already carries", () => {
+      const own = [{ column: "post_type", value: "product" }];
+      const result = resultSet({
+        columns: [columnMeta("product_id", "BIGINT")],
+        rows: [[num("5")]],
+        kinds: [{ kind: "reference", targets: [{ table: filterAddress("wp_posts", own), column: "post_parent", key: false }], by: { kind: "sameName", column: "post_parent", indexed: true } }],
+      });
+      expect(resultValueAt(result, 0, 0).kind).toMatchObject({
+        kind: "reference",
+        targets: [
+          filterAddress("wp_posts", [
+            { column: "post_type", value: "product" },
+            { column: "post_parent", value: "5" },
+          ]),
+        ],
+      });
+    });
+  });
+});
+
+describe("utcSeconds", () => {
+  it.each([
+    ["unix", "1700000000", 1700000000],
+    ["unix", "1700000000:42", 1700000000],
+    ["unix", "0", null],
+    ["unix", "0:42", null],
+    ["unix", "soon", null],
+    ["utc", "2024-01-01 10:00:00", 1704103200],
+    ["utc", "2024-01-01 10:00:00.123456", 1704103200],
+    ["utc", "2024-01-01", 1704067200],
+    ["utc", "0000-00-00 00:00:00", null],
+    ["utc", "0000-00-00", null],
+    ["utc", "2024-13-01 00:00:00", null],
+    ["utc", "never", null],
+    ["local", "2024-01-01 10:00:00", null],
+    [null, "2024-01-01 10:00:00", null],
+  ] as const)("reads %s text %j as %s", (zone, input, expected) => {
+    expect(utcSeconds(input, zone)).toBe(expected);
   });
 });

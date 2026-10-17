@@ -75,7 +75,8 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/schema.rs            per-session schema cache: tables, columns, keys, foreign keys, structures
   src/value/               Value, ValueKind, ColumnKind, RowKey: what a cell is and where it came from
   src/lens/                the lens seam: SchemaLens (keys, foreign keys, same-name inference), result kinds
-  src/rules/               presets and projects: rule types, TOML parsing, the preset catalog, projects.json
+  src/rules/               presets and projects: rule types, TOML parsing, the preset catalog, projects.json,
+                           effective rules and the rules lens
   src/commands.rs          settings, keybindings, favorites, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
@@ -162,15 +163,17 @@ secret come from rules), its `Provenance` (table, column, row key) and optional 
 status kind: color comes only from value styles.
 
 - **Per column, not per cell.** A result carries one `ColumnKind` per column (`ResultSet.kinds`), the
-  cells that decode as PHP-serialized or JSON (`ResultSet.serialized`) and, for a browse page, every
-  row's key (`BrowsePage.keys`). The page builds a cell's `Value` from them (`valueAt` in
+  cells that decode as PHP-serialized or JSON (`ResultSet.serialized`), the few cells whose row gives
+  them another kind (`ResultSet.cell_kinds`: conditional references, meta-key kinds), the cells a value
+  style colors (`ResultSet.styles`) and, for a browse page, every row's key (`BrowsePage.keys`). The page builds a cell's `Value` from them (`valueAt` in
   `src/lib/values.ts`), so 500 rows don't carry 500 copies of each kind. This is the one rule the page
   ports from Rust, for payload size: `value::value_at` (`ResultValues` for many cells) is the reference
   implementation that Rust callers outside the page use, and tests on both sides keep them equal.
-- **The lens seam.** `lens::Lens` answers `kinds(table, columns)`, `references_from(table)` and
-  `references_to(table)`. `SchemaLens` answers from the schema cache: primary keys, declared foreign keys
-  and same-name inference ([database.md](database.md#references-and-kinds)). The rules lens of presets and
-  projects wraps it and adds or overrides references and kinds.
+- **The lens seam.** `lens::Lens` answers `kinds(table, columns)`, `references_from(table)`,
+  `references_to(table)` and `cells(columns, result)` (per-row kinds and styles). `SchemaLens` answers
+  from the schema cache: primary keys, declared foreign keys and same-name inference
+  ([database.md](database.md#references-and-kinds)). `rules::lens::RulesLens` wraps it with the effective
+  rules of presets and the project; `lens::build` picks it when the rules change anything.
 
 ## Rules and presets
 
@@ -194,6 +197,15 @@ WordPress and WooCommerce are preset files.
 - `project.rs`, `project_change.rs`: `Project` per connection slug and database in `ProjectsStore`
   (`projects.json`, in `AppState`), edited by `ProjectChange`s that are checked against the schema cache;
   `Project::export` writes it as a preset file.
+- `applied.rs`: `Applied`, which presets apply and the prefix and network prefix their table names
+  resolve under (also used to check project changes).
+- `condition.rs`: `when`/`to_when` and value-style matches compiled once (`Matcher`; the `regex` crate for
+  LIKE and REGEXP) and evaluated in memory over a page.
+- `effective.rs`: `EffectiveRules` (applied presets ⊕ project, real table names, precedence order) and its
+  cache in `Session.ext`, keyed by the schema (`Arc`), the preset list (`Arc`) and the project (value), so
+  DDL, a refresh, a preset file change or a project change rebuilds it. `RuleSources` (from
+  `AppState::rules`) is what `Session::browse`, `Session::execute` and `table_references` take.
+- `lens.rs`: `RulesLens` (see the lens seam above).
 
 ## A request, end to end
 

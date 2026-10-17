@@ -29,6 +29,8 @@ export function resultSet(patch: Partial<ResultSet> = {}): ResultSet {
     returnsRows: true,
     kinds: [],
     serialized: [],
+    cellKinds: [],
+    styles: [],
     ...patch,
   };
 }

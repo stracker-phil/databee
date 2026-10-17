@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use super::{ColumnsRef, Lens, ResolvedReference};
 use crate::address::{Address, Target};
-use crate::db::{ColumnMeta, ForeignKey};
+use crate::db::{ColumnEquals, ColumnMeta, ForeignKey};
 use crate::schema::DatabaseSchema;
 use crate::value::{self, ColumnKind, ReferenceSource, ReferenceTarget};
 
@@ -40,9 +40,14 @@ impl SchemaLens {
     }
 
     fn table_address(&self, table: &str) -> Address {
+        self.filtered_address(table, Vec::new())
+    }
+
+    /// `table`'s rows narrowed by `filter`, in this lens's connection and database.
+    pub(crate) fn filtered_address(&self, table: &str, filter: Vec<ColumnEquals>) -> Address {
         let target = Target::Table {
             table: table.to_string(),
-            filter: Vec::new(),
+            filter,
         };
         Address::new(self.connection.clone(), self.database.clone(), target)
     }
@@ -53,7 +58,7 @@ impl SchemaLens {
             .map_or(&[], |k| k.primary_key.as_slice())
     }
 
-    fn single_key(&self, table: &str) -> Option<&str> {
+    pub(crate) fn single_key(&self, table: &str) -> Option<&str> {
         match self.primary_key(table) {
             [column] => Some(column),
             _ => None,
@@ -87,7 +92,7 @@ impl SchemaLens {
             .collect()
     }
 
-    fn has_declared_foreign_key(&self, table: &str, column: &str) -> bool {
+    pub(crate) fn has_declared_foreign_key(&self, table: &str, column: &str) -> bool {
         self.foreign_keys(table)
             .iter()
             .any(|fk| fk.columns.iter().any(|c| c.eq_ignore_ascii_case(column)))
@@ -154,14 +159,18 @@ impl SchemaLens {
 
     /// A single-column primary key is the row's identity; a member of a composite key that is
     /// also a reference (`wp_term_relationships.term_taxonomy_id`) is shown as the reference.
-    fn column_kind(&self, table: &str, column: &ColumnMeta) -> ColumnKind {
+    /// Without `infer`, only a declared foreign key makes the column a reference.
+    pub(crate) fn column_kind(&self, table: &str, column: &ColumnMeta, infer: bool) -> ColumnKind {
         let is_single_key = self
             .single_key(table)
             .is_some_and(|key| key.eq_ignore_ascii_case(&column.name));
         if is_single_key {
             return self.primary_key_kind(table);
         }
-        if let Some(reference) = self.reference_kind(table, &column.name) {
+        let reference = self
+            .reference_kind(table, &column.name)
+            .filter(|kind| infer || !is_inferred(kind));
+        if let Some(reference) = reference {
             return reference;
         }
         let in_key = self
@@ -203,9 +212,22 @@ impl SchemaLens {
     }
 }
 
+fn is_inferred(kind: &ColumnKind) -> bool {
+    matches!(
+        kind,
+        ColumnKind::Reference {
+            by: ReferenceSource::SameName { .. },
+            ..
+        }
+    )
+}
+
 impl Lens for SchemaLens {
     fn kinds(&self, table: &str, columns: &[ColumnMeta]) -> Vec<ColumnKind> {
-        columns.iter().map(|c| self.column_kind(table, c)).collect()
+        columns
+            .iter()
+            .map(|c| self.column_kind(table, c, true))
+            .collect()
     }
 
     fn references_from(&self, table: &str) -> Vec<ResolvedReference> {
