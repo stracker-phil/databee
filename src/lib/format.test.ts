@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { cellDisplay, cellText, formatBytes, relativeTime, rowsToJson, rowsToTsv } from "./format";
+import { cellDisplay, cellText, charWidth, formatBytes, relativeTime, rowsToJson, rowsToTsv } from "./format";
 import type { Cell } from "../api";
+
+describe("charWidth", () => {
+  it.each([
+    ["the name when no text is longer", "id", ["a"], undefined, "4ch"],
+    ["the longest text", "id", ["a", "x".repeat(10)], undefined, "12ch"],
+    ["40 characters at most by default", "id", ["x".repeat(100)], undefined, "42ch"],
+    ["the given maximum", "id", ["x".repeat(100)], 10, "12ch"],
+  ])("sizes to %s", (_name, name, texts, max, expected) => {
+    expect(charWidth(name, texts, max)).toBe(expected);
+  });
+});
 
 describe("formatBytes", () => {
   it("uses binary units", () => {

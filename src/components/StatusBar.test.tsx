@@ -143,6 +143,16 @@ describe("StatusBar", () => {
       expect(screen.queryByText("wp_posts.post_author · ID 5")).not.toBeInTheDocument();
     });
 
+    it("returns to the selected value's provenance when the hover ends", async () => {
+      render(<Shell />);
+      selectAuthor();
+      await userEvent.hover(screen.getByText("hovered value"));
+      await screen.findByText("wp_postmeta.meta_value · meta_id 9");
+      await userEvent.hover(screen.getByText("no provenance here"));
+      expect(await screen.findByText("wp_posts.post_author · ID 5")).toBeInTheDocument();
+      expect(screen.queryByText("wp_postmeta.meta_value · meta_id 9")).not.toBeInTheDocument();
+    });
+
     it("shows the address for a selected value without provenance", () => {
       render(<StatusBar />);
       act(() => useStore.getState().selectCell({ row: 0, col: 0, column: columnMeta("c", "text"), cell: num("5"), source: { sessionId: "s1", resultId: 1 }, value: value() }));

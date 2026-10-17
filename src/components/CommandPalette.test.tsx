@@ -1,15 +1,15 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api, type PaletteHit, type RulesInfo, type SavedEntry } from "../api";
-import { installCommands } from "../commands";
+import { installCommands, registerCommands } from "../commands";
 import { formatAddress } from "../lib/address";
 import { projectKey } from "../state/slices/project";
 import { selectActiveTab, useStore } from "../state/store";
-import { connectedStore, session } from "../test/fixtures";
+import { connectedStore, session, table } from "../test/fixtures";
 import { paletteHit } from "../test/paletteFixtures";
 import { CommandPalette } from "./CommandPalette";
 import { parsePrefix } from "./palette/parse";
@@ -34,6 +34,7 @@ const openPalette = () => {
   return screen.getByLabelText("Search everything");
 };
 const selectedOptions = () => screen.getAllByRole("option", { selected: true });
+const optionTitles = () => screen.getAllByRole("option").map((o) => o.getAttribute("data-stage-label"));
 
 describe("CommandPalette", () => {
   const scrollIntoView = vi.fn();
@@ -109,6 +110,46 @@ describe("CommandPalette", () => {
       await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
       expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "table", table: "wp_posts", preview: false });
       expect(useStore.getState().paletteOpen).toBe(false);
+    });
+  });
+
+  describe("table search with t:", () => {
+    it("ranks an exact name before a prefix before a contained name and badges views", async () => {
+      connectedStore({ tables: [table("wp_posts"), table("x_posts", { isView: true }), table("posts_archive"), table("posts"), table("users")] });
+      await userEvent.type(openPalette(), "t:posts");
+      expect(optionTitles()).toEqual(["posts", "posts_archive", "wp_posts", "x_posts"]);
+      const view = screen.getAllByRole("option")[3];
+      expect(within(view).getByText("view")).toBeInTheDocument();
+      expect(within(screen.getAllByRole("option")[2]).queryByText("view")).not.toBeInTheDocument();
+    });
+
+    it("lists at most 40 tables", async () => {
+      connectedStore({ tables: Array.from({ length: 50 }, (_, i) => table(`table_${i}`)) });
+      await userEvent.type(openPalette(), "t:");
+      expect(screen.getAllByRole("option")).toHaveLength(40);
+    });
+  });
+
+  describe("command search with >", () => {
+    beforeEach(() => {
+      registerCommands([
+        { id: "test.zebraExact", title: "Zebra", scope: "global", run: () => {} },
+        { id: "test.zebraPrefix", title: "Zebra crossing", scope: "global", run: () => {} },
+        { id: "test.zebraContains", title: "Big zebra", scope: "global", run: () => {} },
+        { id: "test.zebraHidden", title: "Zebra hidden", scope: "global", when: () => false, run: () => {} },
+      ]);
+    });
+
+    it("lists commands only, without tables, and leaves out commands that are not available", async () => {
+      await userEvent.type(openPalette(), ">");
+      expect(screen.getByRole("option", { name: /Zoom in/ })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /Apply pending changes/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /wp_posts/ })).not.toBeInTheDocument();
+    });
+
+    it("ranks an exact title before a prefix before a contained text and skips unavailable commands", async () => {
+      await userEvent.type(openPalette(), ">zebra");
+      expect(optionTitles()).toEqual(["Zebra", "Zebra crossing", "Big zebra"]);
     });
   });
 
@@ -198,6 +239,13 @@ describe("CommandPalette", () => {
       await vi.waitFor(() => expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_wc_orders", key: "123" } } }));
     });
 
+    it.each(["#12a", "@j"])("does not search rows for %s", async (query) => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await userEvent.type(openPalette(), query);
+      await vi.advanceTimersByTimeAsync(400);
+      expect(mocked.paletteSearch).not.toHaveBeenCalled();
+    });
+
     it.each([
       ["q:", "No saved queries."],
       ["#", "Type an id, e.g. #4711."],
@@ -272,6 +320,12 @@ describe("CommandPalette", () => {
       expect(screen.queryByRole("option", { name: /Failed orders/ })).not.toBeInTheDocument();
     });
 
+    it("matches a query by its id when the title does not match", async () => {
+      await userEvent.type(openPalette(), "q:stale-sessions");
+      expect(await screen.findByRole("option", { name: /Stale sessions/ })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /Failed orders/ })).not.toBeInTheDocument();
+    });
+
     it("opens the selected query in a query tab with its SQL and runs it on Enter", async () => {
       await userEvent.type(openPalette(), "q:failed");
       await screen.findByRole("option", { name: /Failed orders/ });
@@ -296,6 +350,13 @@ describe("CommandPalette", () => {
       expect(screen.getByRole("option", { name: /databee:\/\/shop\/db\/wp_posts\/1/ })).toBeInTheDocument();
       await userEvent.keyboard("{Enter}");
       expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_posts", key: "1" } } });
+    });
+
+    it("lists no Address for a malformed address and says it is not one yet", async () => {
+      await userEvent.type(openPalette(), "databee://x");
+      expect(screen.queryByText("Address")).not.toBeInTheDocument();
+      expect(screen.queryByRole("option")).not.toBeInTheDocument();
+      expect(screen.getByText("Not an address yet.")).toBeInTheDocument();
     });
 
     it("opens the palette seeded with the value when a find address is opened", async () => {

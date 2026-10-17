@@ -37,6 +37,26 @@ const hoverRow = async (label: string) => {
   await waitFor(() => expect(useStore.getState().hover.table).not.toBeNull());
 };
 
+describe("long groups", () => {
+  const COUNT = 500;
+  const rows = (name: (n: number) => string) =>
+    Array.from({ length: COUNT }, (_, i) => ({ key: [{ column: "ID", value: String(i + 1) }], fields: [[name(i + 1), stored("wp_posts", `value ${i + 1}`)]] as [string, ReturnType<typeof stored>][] }));
+
+  it("mounts only a window of the rows of a rows group", () => {
+    const long = group({ shape: "rows", columns: ["c"], total: COUNT, rows: rows(() => "c") });
+    render(<RowsGroup group={long} marks={marks} />);
+    expect(screen.getByText("value 1")).toBeInTheDocument();
+    expect(screen.queryByText(`value ${COUNT}`)).not.toBeInTheDocument();
+  });
+
+  it("mounts only a window of the rows of an events group", () => {
+    const long = group({ table: "", via: { kind: "events" }, total: COUNT, rows: rows((n) => `event_${n}`) });
+    render(<EventsGroup group={long} marks={marks} />);
+    expect(screen.getByText("event_1")).toBeInTheDocument();
+    expect(screen.queryByText(`event_${COUNT}`)).not.toBeInTheDocument();
+  });
+});
+
 describe("Document group row hover", () => {
   beforeEach(() => useStore.setState({ hover: NO_HOVER }));
 

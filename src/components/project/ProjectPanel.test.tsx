@@ -425,6 +425,63 @@ describe("ProjectPanel", () => {
     });
   });
 
+  describe("prefix", () => {
+    it("sends the typed prefix when the field is left", async () => {
+      await openProjectPage();
+      await userEvent.type(screen.getByRole("textbox", { name: "prefix" }), "wc_");
+      await userEvent.tab();
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setPrefix", prefix: "wc_" });
+    });
+
+    it("shows the error Rust returns in place of the suggestion", async () => {
+      mocked.projectUpdate.mockRejectedValue({ kind: "invalid_input", message: "A prefix must end in an underscore", code: null });
+      await openProjectPage();
+      expect(screen.getByText("suggested: wp_")).toBeInTheDocument();
+      await userEvent.type(screen.getByRole("textbox", { name: "prefix" }), "wc{Enter}");
+      expect(await screen.findByText("A prefix must end in an underscore")).toBeInTheDocument();
+      expect(screen.queryByText("suggested: wp_")).not.toBeInTheDocument();
+    });
+
+    it("says there is no suggestion when Rust has none", async () => {
+      mocked.projectRules.mockResolvedValue(projectRules({ suggestedPrefix: null }));
+      await openProjectPage();
+      expect(screen.getByText("no suggestion")).toBeInTheDocument();
+    });
+  });
+
+  describe("editing and removing project rules", () => {
+    const kindRow = { origin: { kind: "project" } as const, index: 2, rule: { columns: ["wc_orders.status"], secret: true } };
+    const styleRow = { origin: { kind: "project" } as const, index: 3, rule: { columns: ["wc_orders.status"], match: "=" as const, value: "wc-failed", color: "red" as const, enabled: true } };
+
+    beforeEach(() => mocked.projectRules.mockResolvedValue(projectRules({ kinds: [kindRow], styles: [styleRow] })));
+
+    it("updates a kind by index with the edited rule", async () => {
+      await openProjectPage();
+      await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status secret" })).getByRole("button", { name: "edit" }));
+      const form = await screen.findByRole("region", { name: "edit kind" });
+      await userEvent.selectOptions(within(form).getByRole("combobox", { name: "Kind" }), "number");
+      await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateKind", index: 2, rule: expect.objectContaining({ columns: ["wc_orders.status"], number: true }) });
+    });
+
+    it("updates a style by index with the edited rule", async () => {
+      await openProjectPage();
+      await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status = 'wc-failed'" })).getByRole("button", { name: "edit" }));
+      const form = await screen.findByRole("region", { name: "edit value style" });
+      const value = within(form).getByRole("textbox", { name: "Value" });
+      await userEvent.clear(value);
+      await userEvent.type(value, "wc-cancelled");
+      await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateStyle", index: 3, rule: expect.objectContaining({ columns: ["wc_orders.status"], value: "wc-cancelled", color: "red" }) });
+    });
+
+    it("removes a kind by index", async () => {
+      await openProjectPage();
+      await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status secret" })).getByRole("button", { name: "remove" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeKind", index: 2 });
+    });
+  });
+
   describe("long rule lists", () => {
     const pad = (n: number) => String(n).padStart(4, "0");
 

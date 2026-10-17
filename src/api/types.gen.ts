@@ -74,9 +74,6 @@ address: Address | null,
  */
 filter: string | null, fix: AnomalyFix | null, error: string | null, };
 
-/**
- * What an anomaly opens: a pinned query of the same preset, or table rows with a SQL filter.
- */
 export type AnomalyOpen = { pinned: string, } | { table: string, where?: string | null, };
 
 /**
@@ -388,11 +385,7 @@ rowsAddress: Address | null,
  */
 error: string | null, };
 
-export type GroupLink = { "kind": "own" } | { "kind": "meta", fk: string, key: string, value: string, } | { "kind": "incoming", reference: ResolvedReference, 
-/**
- * The rule's `label`.
- */
-label: string | null, } | { "kind": "pattern", rule: string, sql: string, } | { "kind": "events" };
+export type GroupLink = { "kind": "own" } | { "kind": "meta", fk: string, key: string, value: string, } | { "kind": "incoming", reference: ResolvedReference, label: string | null, } | { "kind": "pattern", rule: string, sql: string, } | { "kind": "events" };
 
 export type GroupRow = { 
 /**
@@ -408,9 +401,6 @@ export type HistoryEntry = { account: string, database: string | null, sql: stri
  */
 truncated: boolean, executedAt: string, elapsedMs: number, error: string | null, };
 
-/**
- * Where a pinned query shows on the readout home.
- */
 export type Home = { "show": "rows", limit?: number | null, } | { "show": "count" } | { "show": "value" };
 
 export type IndexInfo = { name: string, unique: boolean, columns: Array<string>, };
@@ -453,9 +443,6 @@ export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
  */
 export type Match = string | Array<string> | { glob: string, } | { like: string, } | { regexp: string, } | { not: Match, };
 
-/**
- * A meta value: the meta table as rules name it, its key column and the row's key.
- */
 export type MetaDraft = { table: string, keyColumn: string, key: string, };
 
 /**
@@ -479,15 +466,7 @@ export type NewValue = { "kind": "string", "text": string } | { "kind": "int", "
 
 export type NodeKind = "null" | "bool" | "int" | "float" | "string" | "array" | "object" | "ref" | "enum" | "custom";
 
-export type ObjectAction = { name: string, 
-/**
- * The preset that defines it.
- */
-preset: string, kind: ObjectActionKind, 
-/**
- * Applying it can be undone.
- */
-undo: boolean, params: Array<ActionParam>, };
+export type ObjectAction = { name: string, preset: string, kind: ObjectActionKind, undo: boolean, params: Array<ActionParam>, };
 
 export type ObjectActionKind = "update" | "delete" | "sql";
 
@@ -829,11 +808,7 @@ export type RulesInfo = { prefix: string, networkPrefix: string, suggestedPrefix
 /**
  * In apply order: each after the presets it requires.
  */
-appliedPresets: Array<string>, 
-/**
- * Every preset that loads.
- */
-availablePresets: Array<string>, entities: Array<AppliedEntity>, 
+appliedPresets: Array<string>, availablePresets: Array<string>, entities: Array<AppliedEntity>, 
 /**
  * Entity names by real table, filtered entities first.
  */

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Group } from "../api";
 import { address } from "./address";
-import { countText, documentText, findValue, groupAnchors, moreText, objectAddress, objectTitle, originText, provenanceKey, relationText } from "./document";
+import { countText, documentText, findValue, focusOrder, groupAnchors, moreText, objectAddress, objectTitle, originText, provenanceKey, relationText } from "./document";
 import { incomingLink, objectDocument, orderAddress, orderGroups, paidViaSource, source } from "../test/objectFixtures";
 
-const { own, meta, addresses, refunds, items, events } = orderGroups;
+const { own, meta, addresses, refunds, items, events, coupons } = orderGroups;
 
 const viaOf = (via: Group["via"]): Group => ({ ...addresses, via });
 
@@ -129,6 +129,32 @@ describe("moreText", () => {
   it("is null when the group is not capped or nothing is cut", () => {
     expect(moreText(meta)).toBeNull();
     expect(moreText({ ...items, total: 2 })).toBeNull();
+  });
+});
+
+describe("focusOrder", () => {
+  const groups = [own, meta, addresses, events, coupons];
+  const tables = (collapsed: string[]) => focusOrder(objectDocument({ groups }), (id) => collapsed.includes(id)).map((p) => `${p.table}.${p.column}`);
+
+  it("follows group order, then row order, without the events or empty groups", () => {
+    expect(tables([])).toEqual([
+      "wp_wc_orders.id",
+      "wp_wc_orders.status",
+      "wp_wc_orders.total_amount",
+      "wp_wc_orders_meta.meta_value",
+      "wp_wc_orders_meta.meta_value",
+      "wp_wc_order_addresses.address_type",
+      "wp_wc_order_addresses.city",
+      "wp_wc_order_addresses.address_type",
+      "wp_wc_order_addresses.city",
+    ]);
+  });
+
+  it("leaves out the values of a collapsed group", () => {
+    const order = tables(["meta"]);
+    expect(order).not.toContain("wp_wc_orders_meta.meta_value");
+    expect(order).toHaveLength(7);
+    expect(order[3]).toBe("wp_wc_order_addresses.address_type");
   });
 });
 
