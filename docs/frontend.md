@@ -63,19 +63,21 @@ One zustand store with no middleware, composed from slices. `src/state/store.ts`
 root: it creates the store, keeps the slice registry and re-exports the selectors, `fail`, `flushUiState`
 and the state types, so components import everything from `state/store`.
 
-- `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs`, `changes`, `data`,
-  `saved`, `ui`, `nav`, `objects`, `columns`, `project`, `readout`, `live`). Each exports its
+- `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs` (tab lifecycle), `query`
+  (`runQuery`, `cancelQuery`), `changes`, `data`, `saved`, `ui` (toasts, dialogs, palette, hover, recent),
+  `viewState` (the persisted per-connection `uiState` and its debounced writer), `nav`, `objects`, `columns`,
+  `project`, `readout`, `live`). Each exports its
   member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
   the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
 - `Store` is an interface extending every core slice's interface. A module adds its members with
   `declare module "../state/store" { interface Store { … } }` and registers with `registerSlice(slice)`,
   which merges `slice.create(set, get)` into the live store, so registering after creation works.
 - `resetStore(patch)` (tests) re-runs every registered slice's `create`, then applies `patch`.
-- `src/state/events.ts`: `onSessionEvent(handler)` (returns the unsubscribe function) and
-  `emitSessionEvent`. `databaseChanged { sessionId, database }` fires after `switchDatabase` and when
-  `loadDatabases` reloads the list of a session with a current database. `sessionClosed { sessionId }` fires
-  after `disconnect`'s update.
-- `src/state/selectors.ts`: the selectors; `src/state/requests.ts`: `fail` and the request tokens.
+- `src/state/selectors.ts`: the selectors, among them `selectSessionBySlug` (the session an address's
+  `connection` names) and `noConnectionNamed(slug)`, the message when there is none; `src/state/requests.ts`: `fail`.
+- Tab helpers in `src/state/slices/tabs.ts`: `findTab(s, tabId, kind?)` (the tab, narrowed to `kind` when
+  given), `replaceTab(s, tab)` (the `tabs` update that puts `tab` in its place) and `hasValueColumn(tab)` (a
+  table or query tab with a value column; re-exported from `state/store`).
 - Slices import each other's reset helpers (`resetSelection`) and pure helpers (`activate`, `remembered`,
   `nextActiveSessionId`), never the store object, except where a module-level helper needs it (`fail`).
 
@@ -125,8 +127,6 @@ Conventions:
 - In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
   refuses a tab that is already `running`.
-- Request tokens (`beginRequest(key)` / `isLatest(key, token)`): only the newest request per key writes its
-  reply.
 - Selection: `selectCell` tags the cell with the active tab. `clearSelectionFor(state, tabId)` drops it when
   its tab closes or is left (`activate`); a `dataVersion` bump (`bumpData`) clears it outright.
 - `disconnect(sessionId)` closes the session in Rust, then applies one `set` that merges every registered
@@ -138,7 +138,7 @@ Conventions:
   without activating it. `connect` resets the selection, reuses the session's query tab on reconnect (else
   opens one) and then opens the readout of the session's database ([Readout](#readout)).
 - Tab updates are typed: `updateQueryTab` and `updateTableTab` only patch tabs of their kind.
-- UI state (`setTableWidths`, `setPaneSize`, `toggleSidebar`) is written debounced; `flushUiState` writes it on
+- View state (`viewState` slice: `setTableWidths`, `setPaneSize`, `toggleSidebar`, `toggleGroupCollapsed`) is written debounced; `flushUiState` writes it on
   `beforeunload` (registered in `App.tsx`).
 - Some errors become state instead: a password dialog, a tab's `ErrorPanel`, a confirm dialog for
   `confirmation_required`.
@@ -243,7 +243,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 |---|---|
 | Shell | `Toolbar`, `Path` (the column stack's crumbs), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; its hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `PresetsSection`, `ReferenceForm`, `KindStyleForms`, `ReferencesSection`, `RuleSections`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |

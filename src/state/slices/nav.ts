@@ -5,11 +5,11 @@
 import { api, type Address, type ColumnEquals } from "../../api";
 import { AddressError, formatAddress, parseAddress, sameAddress } from "../../lib/address";
 import { fail } from "../requests";
-import { selectActiveTab, selectStructure } from "../selectors";
+import { noConnectionNamed, selectActiveTab, selectSessionBySlug, selectStructure } from "../selectors";
 import type { Slice, Store } from "../store";
 import { objectColumn, objectColumnAt, type ColumnStack, type StackColumn } from "../../lib/columns";
 import { documentText, objectTitle } from "../../lib/document";
-import type { ObjectTab, Tab, TableTab } from "./tabs";
+import { findTab, replaceTab, type ObjectTab, type Tab, type TableTab } from "./tabs";
 
 export const NAV_LIMIT = 50;
 
@@ -104,10 +104,6 @@ function retargeted(s: Store, tab: TableTab, location: TableLocation, nav: TabNa
   };
 }
 
-function withTab(s: Store, tab: Tab): Partial<Store> {
-  return { tabs: s.tabs.map((t) => (t.id === tab.id ? tab : t)) };
-}
-
 /** `tab`'s history after one step in `direction`: the address being left goes onto the other stack. */
 function stepped(tab: Tab & { address: Address }, direction: "back" | "forward"): TabNav {
   const leave = (entries: Address[]) => [...entries, tab.address].slice(-NAV_LIMIT);
@@ -166,22 +162,22 @@ export const navSlice: Slice<NavSlice> = {
       const target = tab?.nav[direction].at(-1);
       if (!tab || !target || tab.kind === "query" || tab.kind === "project" || tab.kind === "readout") return;
       if (tab.kind === "object") {
-        if (target.target.kind === "row") set((st) => ({ ...withTab(st, reobjected(tab, target, stepped(tab, direction))), selectedCell: null }));
+        if (target.target.kind === "row") set((st) => ({ ...replaceTab(st, reobjected(tab, target, stepped(tab, direction))), selectedCell: null }));
         return;
       }
       const location = await locationOf(get, tab.sessionId, target);
       // The tab may have closed or moved on while the structure loaded.
-      const current = get().tabs.find((t) => t.id === tab.id);
+      const current = findTab(get(), tab.id);
       if (!location || current !== tab) return;
-      set((st) => withTab(st, retargeted(st, tab, location, stepped(tab, direction))));
+      set((st) => replaceTab(st, retargeted(st, tab, location, stepped(tab, direction))));
     };
 
     return {
       async openAddress(text, opts = {}) {
         try {
           const address = parseAddress(text.trim());
-          const session = get().sessions.find((x) => x.slug === address.connection);
-          if (!session) return get().toast("error", `No open connection is named ${address.connection}`);
+          const session = selectSessionBySlug(get(), address.connection);
+          if (!session) return get().toast("error", noConnectionNamed(address.connection));
           const kind = address.target.kind;
           if (kind === "home") return get().openReadout({ sessionId: session.id, database: address.database });
           if (kind === "project") return get().openProject({ sessionId: session.id, database: address.database });
@@ -205,15 +201,15 @@ export const navSlice: Slice<NavSlice> = {
 
       showRows(tabId, location) {
         set((s) => {
-          const tab = s.tabs.find((t): t is TableTab => t.id === tabId && t.kind === "table");
+          const tab = findTab(s, tabId, "table");
           if (!tab) return {};
           const next = retargeted(s, tab, location, tab.nav);
-          return withTab(s, { ...next, nav: pushed(tab.nav, tab.address, next.address) });
+          return replaceTab(s, { ...next, nav: pushed(tab.nav, tab.address, next.address) });
         });
       },
 
       filterRows(tabId, match) {
-        const tab = get().tabs.find((t): t is TableTab => t.id === tabId && t.kind === "table");
+        const tab = findTab(get(), tabId, "table");
         if (!tab) return;
         const same = (c: ColumnEquals) => c.column.toLowerCase() === match.column.toLowerCase();
         get().showRows(tabId, { database: tab.database, table: tab.table, where: [...tab.where.filter((c) => !same(c)), match] });
@@ -221,9 +217,9 @@ export const navSlice: Slice<NavSlice> = {
 
       setTableFilter(tabId, filter) {
         set((s) => {
-          const tab = s.tabs.find((t): t is TableTab => t.id === tabId && t.kind === "table");
+          const tab = findTab(s, tabId, "table");
           if (!tab) return {};
-          return withTab(s, { ...tab, filter: filter || undefined, title: tableTitle(tab.table, tab.where, filter) });
+          return replaceTab(s, { ...tab, filter: filter || undefined, title: tableTitle(tab.table, tab.where, filter) });
         });
       },
 

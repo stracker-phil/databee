@@ -5,7 +5,7 @@ import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
 import { EMPTY_NAV } from "./nav";
 import { withoutSession } from "./session";
-import { activate, newTabId, type ProjectTab } from "./tabs";
+import { activate, findTab, newTabId, replaceTab, type ProjectTab } from "./tabs";
 
 export interface ProjectRulesEntry {
   version: number;
@@ -37,10 +37,6 @@ function projectTarget(s: Store, opts: { sessionId?: string; database?: string }
   const session = opts.sessionId ? s.sessions.find((x) => x.id === opts.sessionId) : selectActiveSession(s);
   const database = opts.database ?? session?.database;
   return session && database ? { session, database } : null;
-}
-
-function withProjectTab(s: Store, tab: ProjectTab): Partial<Store> {
-  return { tabs: s.tabs.map((t) => (t.id === tab.id ? tab : t)) };
 }
 
 export const projectSlice: Slice<ProjectSlice> = {
@@ -83,7 +79,7 @@ export const projectSlice: Slice<ProjectSlice> = {
       const existing = fresh.tabs.find((t): t is ProjectTab => t.kind === "project" && t.sessionId === session.id && t.database === database);
       if (existing) {
         const form = opts.form;
-        set((st) => ({ ...(form ? withProjectTab(st, { ...existing, form }) : {}), ...activate(st, existing.id) }));
+        set((st) => ({ ...(form ? replaceTab(st, { ...existing, form }) : {}), ...activate(st, existing.id) }));
         return;
       }
       set((st) => {
@@ -103,8 +99,8 @@ export const projectSlice: Slice<ProjectSlice> = {
 
     setProjectForm(tabId, form) {
       set((s) => {
-        const tab = s.tabs.find((t): t is ProjectTab => t.id === tabId && t.kind === "project");
-        return tab ? withProjectTab(s, { ...tab, form }) : {};
+        const tab = findTab(s, tabId, "project");
+        return tab ? replaceTab(s, { ...tab, form }) : {};
       });
     },
 

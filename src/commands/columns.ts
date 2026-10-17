@@ -2,7 +2,7 @@
 import { collapseKey, documentText, focusOrder, provenanceKey } from "../lib/document";
 import { objectColumnAt } from "../lib/columns";
 import { drillable, openValueAt } from "../components/value/open";
-import { selectActiveTab, selectCollapsedGroups, selectDocument, selectFocusedValue, useStore, type ObjectTab } from "../state/store";
+import { hasValueColumn, selectActiveTab, selectCollapsedGroups, selectDocument, selectFocusedValue, useStore, type ObjectTab } from "../state/store";
 import { isTextInput, type Command } from "./registry";
 
 const focused = () => document.activeElement;
@@ -76,7 +76,7 @@ function canClose(): boolean {
   const tab = selectActiveTab(useStore.getState());
   if (!tab || typing() || menuOpen()) return false;
   if (tab.kind === "object") return tab.columns.length > 1;
-  return (tab.kind === "table" || tab.kind === "query") && !!tab.valueColumn;
+  return hasValueColumn(tab);
 }
 
 const vertical = (id: string, title: string, key: string, delta: number): Command => ({ id, title, scope: "object", defaultBinding: key, when: canMoveFocus, run: () => moveFocus(delta) });

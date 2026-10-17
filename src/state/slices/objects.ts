@@ -3,11 +3,11 @@ import { sameAddress } from "../../lib/address";
 import { objectColumn, type ObjectColumn } from "../../lib/columns";
 import { documentText, objectAddress, objectTitle, type ObjectView } from "../../lib/document";
 import { fail } from "../requests";
-import { selectActiveSession } from "../selectors";
-import type { Slice, Store } from "../store";
+import { noConnectionNamed, selectActiveSession, selectSessionBySlug } from "../selectors";
+import type { Slice } from "../store";
 import { EMPTY_NAV, pushed, restacked } from "./nav";
 import { withoutSession } from "./session";
-import { activate, newTabId, placed, previewTab, type ObjectTab } from "./tabs";
+import { activate, findTab, newTabId, placed, previewTab, replaceTab, type ObjectTab } from "./tabs";
 import { remembered } from "./ui";
 
 /** A `document` reply for one `dataVersion`; the previous document stays while reloading. */
@@ -39,12 +39,6 @@ export interface ObjectsSlice {
 }
 
 export const documentKey = (sessionId: string, text: string) => `${sessionId}/${text}`;
-
-const findObjectTab = (s: Store, tabId: string) => s.tabs.find((t): t is ObjectTab => t.id === tabId && t.kind === "object");
-
-function withObjectTab(s: Store, tab: ObjectTab): Partial<Store> {
-  return { tabs: s.tabs.map((t) => (t.id === tab.id ? tab : t)) };
-}
 
 const sameRow = (a: Address, b: Address) => sameAddress(objectAddress(a, "document"), objectAddress(b, "document"));
 
@@ -82,8 +76,8 @@ export const objectsSlice: Slice<ObjectsSlice> = {
 
     openObject(address, opts = {}) {
       if (address.target.kind !== "row") return;
-      const session = get().sessions.find((x) => x.slug === address.connection);
-      if (!session) return get().toast("error", `No open connection is named ${address.connection}`);
+      const session = selectSessionBySlug(get(), address.connection);
+      if (!session) return get().toast("error", noConnectionNamed(address.connection));
       if (get().activeSessionId !== session.id) get().setActiveSession(session.id);
       void api.rememberObject(session.id, documentText(address)).catch((e) => fail(e, "Could not keep the recent object"));
       const root = objectColumn(address);
@@ -91,7 +85,7 @@ export const objectsSlice: Slice<ObjectsSlice> = {
       if (existing) {
         const columns = address.view || address.compare ? replaced(existing, 0, { ...(existing.columns[0] as ObjectColumn), view: root.view, address: root.address }) : existing.columns;
         const updated = restacked({ ...existing, preview: existing.preview && opts.preview !== false }, { columns, active: 0 }, { record: false });
-        set((s) => ({ ...withObjectTab(s, updated), ...activate(s, existing.id) }));
+        set((s) => ({ ...replaceTab(s, updated), ...activate(s, existing.id) }));
         return;
       }
       set((s) => {
@@ -127,21 +121,21 @@ export const objectsSlice: Slice<ObjectsSlice> = {
 
     setObjectView(tabId, view, focus, index) {
       set((s) => {
-        const tab = findObjectTab(s, tabId);
+        const tab = findTab(s, tabId, "object");
         const found = tab && columnOf(tab, index);
         if (!tab || !found) return {};
         const { column, at } = found;
-        if (column.view === view) return focus === undefined ? {} : withObjectTab(s, { ...tab, columns: replaced(tab, at, { ...column, focus }) });
+        if (column.view === view) return focus === undefined ? {} : replaceTab(s, { ...tab, columns: replaced(tab, at, { ...column, focus }) });
         const shown: ObjectColumn = { ...column, view, address: objectAddress(column.address, view), focus: focus === undefined ? column.focus : focus };
         const updated = restacked(tab, { columns: replaced(tab, at, shown), active: at });
         // The grids of the view being left unmount, so their selection goes too.
-        return { ...withObjectTab(s, updated), selectedCell: s.selectedCell?.tabId === tabId ? null : s.selectedCell };
+        return { ...replaceTab(s, updated), selectedCell: s.selectedCell?.tabId === tabId ? null : s.selectedCell };
       });
     },
 
     toggleObjectView(tabId, index) {
       const s = get();
-      const tab = findObjectTab(s, tabId);
+      const tab = findTab(s, tabId, "object");
       const found = tab && columnOf(tab, index);
       if (!tab || !found) return;
       const { column, at } = found;
@@ -152,10 +146,10 @@ export const objectsSlice: Slice<ObjectsSlice> = {
 
     focusObject(tabId, focus, index) {
       set((s) => {
-        const tab = findObjectTab(s, tabId);
+        const tab = findTab(s, tabId, "object");
         const found = tab && columnOf(tab, index);
         if (!tab || !found) return {};
-        return withObjectTab(s, { ...tab, columns: replaced(tab, found.at, { ...found.column, focus }) });
+        return replaceTab(s, { ...tab, columns: replaced(tab, found.at, { ...found.column, focus }) });
       });
     },
   }),

@@ -11,6 +11,11 @@ export const selectStructure = (s: Store, sessionId: string, database: string, t
 
 export const selectActiveSession = (s: Store) => s.sessions.find((x) => x.id === s.activeSessionId) ?? null;
 
+/** The open session whose connection slug is `slug` (the `connection` of an address). */
+export const selectSessionBySlug = (s: Store, slug: string) => s.sessions.find((x) => x.slug === slug);
+
+export const noConnectionNamed = (slug: string) => `No open connection is named ${slug}`;
+
 /** The sidebar is collapsed for the active connection (persisted in its UI state). */
 export const selectSidebarHidden = (s: Store): boolean => {
   const session = selectActiveSession(s);
@@ -45,7 +50,7 @@ const NO_GROUPS: string[] = [];
 
 /** The collapsed group keys (`collapseKey`) of documents in `owner`'s database, kept per connection. */
 export const selectCollapsedGroups = (s: Store, owner: Address): string[] => {
-  const identity = s.sessions.find((x) => x.slug === owner.connection)?.identity;
+  const identity = selectSessionBySlug(s, owner.connection)?.identity;
   return (identity ? s.uiState[identity]?.collapsedGroups?.[owner.database] : undefined) ?? NO_GROUPS;
 };
 

@@ -7,15 +7,3 @@ export function fail(e: unknown, context: string) {
   useStore.getState().toast("error", `${context}: ${err.message}`);
   return err;
 }
-
-/** Request tokens: only the newest request per key may write its reply. */
-const latestRequest = new Map<string, number>();
-let nextRequestToken = 1;
-
-export function beginRequest(key: string) {
-  const token = nextRequestToken++;
-  latestRequest.set(key, token);
-  return token;
-}
-
-export const isLatest = (key: string, token: number) => latestRequest.get(key) === token;

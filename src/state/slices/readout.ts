@@ -3,7 +3,7 @@ import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
 import { EMPTY_NAV, homeAddress } from "./nav";
 import { withoutSession } from "./session";
-import { activate, newTabId, type ReadoutTab } from "./tabs";
+import { activate, newTabId, replaceTab, type ReadoutTab } from "./tabs";
 
 export interface ReadoutEntry {
   version: number;
@@ -63,8 +63,7 @@ export const readoutSlice: Slice<ReadoutSlice> = {
         const tab: ReadoutTab = existing
           ? { ...existing, database, address }
           : { id: newTabId("readout"), kind: "readout", sessionId: session.id, title: "readout", database, address, nav: EMPTY_NAV };
-        const tabs = existing ? st.tabs.map((t) => (t.id === tab.id ? tab : t)) : [tab, ...st.tabs];
-        return { tabs, ...(activating ? activate(st, tab.id) : {}) };
+        return { ...(existing ? replaceTab(st, tab) : { tabs: [tab, ...st.tabs] }), ...(activating ? activate(st, tab.id) : {}) };
       });
     },
   }),

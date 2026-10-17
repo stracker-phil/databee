@@ -3,7 +3,7 @@ import { objectColumn, type ColumnStack, type StackColumn, type ValueColumn } fr
 import { selectActiveTab } from "../selectors";
 import type { Slice, Store } from "../store";
 import { restacked } from "./nav";
-import type { ObjectTab, Tab } from "./tabs";
+import { findTab, hasValueColumn, replaceTab, type ObjectTab, type Tab } from "./tabs";
 
 export interface ColumnsSlice {
   /** Opens `target` as a column after column `from` of object tab `tabId`; the columns to its right close. */
@@ -22,21 +22,15 @@ export interface ColumnsSlice {
   moveActiveColumn: (delta: number) => void;
 }
 
-const findObjectTab = (s: Store, tabId: string) => s.tabs.find((t): t is ObjectTab => t.id === tabId && t.kind === "object");
-
 /** The active column of an object tab, to tell whether an update moved it. */
 const activeColumn = (tab: Tab | undefined) => (tab?.kind === "object" ? tab.columns[tab.active] : undefined);
 
 /** The tab with `tab` in its place; a new active column leaves the tab's grid selection behind. */
 function withTab(s: Store, tab: Tab): Partial<Store> {
-  const previous = s.tabs.find((t) => t.id === tab.id);
-  const tabs = s.tabs.map((t) => (t.id === tab.id ? tab : t));
-  const moved = activeColumn(previous) !== activeColumn(tab);
-  return moved && s.selectedCell?.tabId === tab.id ? { tabs, selectedCell: null } : { tabs };
+  const moved = activeColumn(findTab(s, tab.id)) !== activeColumn(tab);
+  const replaced = replaceTab(s, tab);
+  return moved && s.selectedCell?.tabId === tab.id ? { ...replaced, selectedCell: null } : replaced;
 }
-
-const hasValueColumn = (tab: Tab): tab is Extract<Tab, { kind: "table" | "query" }> & { valueColumn: ValueColumn } =>
-  (tab.kind === "table" || tab.kind === "query") && !!tab.valueColumn;
 
 const isColumnIndex = (tab: ObjectTab, index: number) => index >= 0 && index < tab.columns.length;
 
@@ -51,14 +45,14 @@ export const columnsSlice: Slice<ColumnsSlice> = {
     drill(tabId, from, target) {
       if (target.target.kind !== "row") return;
       set((s) => {
-        const tab = findObjectTab(s, tabId);
+        const tab = findTab(s, tabId, "object");
         return tab ? withTab(s, pushedAfter(tab, from, objectColumn(target))) : {};
       });
     },
 
     openValueColumn(tabId, from, column) {
       set((s) => {
-        const tab = s.tabs.find((t) => t.id === tabId);
+        const tab = findTab(s, tabId);
         if (!tab) return {};
         if (tab.kind === "object") {
           if (from === null) return {};
@@ -71,7 +65,7 @@ export const columnsSlice: Slice<ColumnsSlice> = {
 
     updateValueColumn(tabId, index, text) {
       set((s) => {
-        const tab = s.tabs.find((t) => t.id === tabId);
+        const tab = findTab(s, tabId);
         if (!tab) return {};
         if (index === null) return hasValueColumn(tab) ? withTab(s, { ...tab, valueColumn: { ...tab.valueColumn, text } }) : {};
         if (tab.kind !== "object") return {};
@@ -82,7 +76,7 @@ export const columnsSlice: Slice<ColumnsSlice> = {
 
     popToColumn(tabId, index) {
       set((s) => {
-        const tab = findObjectTab(s, tabId);
+        const tab = findTab(s, tabId, "object");
         if (!tab || !isColumnIndex(tab, index)) return {};
         return withTab(s, restacked(tab, { columns: tab.columns.slice(0, index + 1), active: index }));
       });
@@ -103,7 +97,7 @@ export const columnsSlice: Slice<ColumnsSlice> = {
 
     setActiveColumn(tabId, index) {
       set((s) => {
-        const tab = findObjectTab(s, tabId);
+        const tab = findTab(s, tabId, "object");
         if (!tab || tab.active === index || !isColumnIndex(tab, index)) return {};
         return withTab(s, restacked(tab, { columns: tab.columns, active: index }, { record: false }));
       });

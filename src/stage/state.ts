@@ -3,7 +3,7 @@ import { formatAddress } from "../lib/address";
 import type { StageInfoReply, StageRect, StageSurface } from "./types";
 import { resolveSettingsPage, settingsPages } from "../registry/settingsPages";
 import { projectKey } from "../state/slices/project";
-import { selectActiveSession, selectActiveTab, selectSidebarHidden, useStore, type ObjectTab } from "../state/store";
+import { hasValueColumn, selectActiveSession, selectActiveTab, selectSidebarHidden, useStore, type ObjectTab } from "../state/store";
 
 type Flat = StageInfoReply["state"];
 
@@ -52,7 +52,7 @@ export function stageUi(): StageInfoReply["ui"] {
 function valueColumnState(): "open" | "closed" {
   const tab = selectActiveTab(useStore.getState());
   if (tab?.kind === "object") return tab.columns.some((c) => c.kind === "value") ? "open" : "closed";
-  return tab && (tab.kind === "table" || tab.kind === "query") && tab.valueColumn ? "open" : "closed";
+  return tab && hasValueColumn(tab) ? "open" : "closed";
 }
 
 /** The database sidebar; the connect screen has none. */

@@ -1,8 +1,7 @@
-import { api, toAppError, type Home, type SavedOrigin, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse, type Value } from "../../api";
+import type { Home, SavedOrigin, Address, AppError, Cell, ColumnEquals, ColumnMeta, ExecuteResponse, Value } from "../../api";
 import type { CellSource } from "../../lib/cells";
 import type { ColumnStack, StackColumn, ValueColumn } from "../../lib/columns";
 import type { ProjectForm } from "../../lib/ruleForms";
-import { fail } from "../requests";
 import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
 import { EMPTY_NAV, homeAddress, pushed, tableAddress, tableTitle, type TabNav } from "./nav";
@@ -98,6 +97,22 @@ export interface ReadoutTab {
 
 export type Tab = QueryTab | TableTab | ObjectTab | ProjectTab | ReadoutTab;
 
+type TabOfKind<K extends Tab["kind"]> = Extract<Tab, { kind: K }>;
+
+/** Tab `tabId`, when it is of `kind` (any kind when absent). */
+export function findTab<K extends Tab["kind"] = Tab["kind"]>(s: Store, tabId: string, kind?: K): TabOfKind<K> | undefined {
+  return s.tabs.find((t): t is TabOfKind<K> => t.id === tabId && (kind === undefined || t.kind === kind));
+}
+
+/** The update that puts `tab` in the place of the tab with its id. */
+export function replaceTab(s: Store, tab: Tab): Pick<Store, "tabs"> {
+  return { tabs: s.tabs.map((t) => (t.id === tab.id ? tab : t)) };
+}
+
+/** A table or query tab with a value column open next to its grid. */
+export const hasValueColumn = (tab: Tab): tab is TabOfKind<"table" | "query"> & { valueColumn: ValueColumn } =>
+  (tab.kind === "table" || tab.kind === "query") && !!tab.valueColumn;
+
 /** The preview tab of a session (table or object), which the next preview replaces. */
 export function previewTab(s: Store, sessionId: string): TableTab | ObjectTab | undefined {
   return s.tabs.find((t): t is TableTab | ObjectTab => (t.kind === "table" || t.kind === "object") && !!t.preview && t.sessionId === sessionId);
@@ -144,8 +159,6 @@ export interface TabsSlice {
   updateTableTab: (id: string, patch: Partial<TableTab>) => void;
   updateObjectTab: (id: string, patch: Partial<ObjectTab>) => void;
   selectCell: (selected: Omit<SelectedCell, "tabId"> | null) => void;
-  runQuery: (tabId: string, sql: string, confirmed?: boolean) => Promise<void>;
-  cancelQuery: (tabId: string) => Promise<void>;
 }
 
 export const resetSelection = () => ({ selectedCell: null });
@@ -164,181 +177,129 @@ function sameWhere(a: ColumnEquals[], b: ColumnEquals[]): boolean {
 }
 
 export const tabsSlice: Slice<TabsSlice> = {
-  create: (set, get) => ({
-    tabs: [],
-    activeTabId: null,
-    queryCounter: {},
-    ...resetSelection(),
-
-    openQueryTab(sql = "", title, saved) {
-      const session = selectActiveSession(get());
-      if (!session) return;
-      set((s) => {
-        // Only untitled tabs take a number.
-        const previous = s.queryCounter[session.id] ?? 0;
-        const count = title ? previous : previous + 1;
-        const tab: QueryTab = {
-          id: newTabId("query"),
-          kind: "query",
-          sessionId: session.id,
-          title: title ?? `Query ${count}`,
-          sql,
-          running: false,
-          activeResult: 0,
-          address: homeAddress(s, session.id, session.database),
-          nav: EMPTY_NAV,
-          saved,
-        };
-        return { tabs: [...s.tabs, tab], queryCounter: { ...s.queryCounter, [session.id]: count }, ...activate(s, tab.id) };
-      });
-    },
-
-    openTableTab(database, table, view, filter, opts = {}) {
-      const session = selectActiveSession(get());
-      if (!session) return;
-      const where = opts.where ?? [];
-      set((s) => remembered(s, { kind: "table", database, table }));
-      const existing = get().tabs.find(
-        (t): t is TableTab =>
-          t.kind === "table" &&
-          t.sessionId === session.id &&
-          t.database === database &&
-          t.table === table &&
-          t.filter === filter &&
-          sameWhere(t.where, where),
-      );
-      if (existing) {
-        const updated: TableTab = { ...existing, view: view ?? existing.view, preview: existing.preview && opts.preview !== false };
-        set((s) => ({ tabs: s.tabs.map((t) => (t.id === existing.id ? updated : t)), ...activate(s, existing.id) }));
-        return;
-      }
-      set((s) => {
-        const address = tableAddress(s, session.id, { database, table, where });
-        // A preview tab takes the place of the previous preview tab of this session, history included.
-        const replaced = opts.preview ? previewTab(s, session.id) : undefined;
-        const tab: TableTab = {
-          id: newTabId("table"),
-          kind: "table",
-          sessionId: session.id,
-          title: tableTitle(table, where, filter),
-          database,
-          table,
-          view: view ?? "data",
-          filter,
-          where,
-          preview: opts.preview ?? false,
-          address,
-          nav: replaced ? pushed(replaced.nav, replaced.address, address) : EMPTY_NAV,
-        };
-        return { tabs: placed(s.tabs, tab, replaced), ...activate(s, tab.id) };
-      });
-    },
-
-    pinTab(id) {
-      set((s) => ({ tabs: s.tabs.map((t) => ((t.kind === "table" || t.kind === "object") && t.id === id && t.preview ? { ...t, preview: false } : t)) }));
-    },
-
-    activateTab(id) {
-      set((s) => activate(s, id));
-    },
-
-    closeTab(id) {
-      set((s) => {
-        const closing = s.tabs.find((t) => t.id === id);
-        if (!closing) return {};
-        const tabs = s.tabs.filter((t) => t.id !== id);
-        const selectedCell = selectionOutside(s, id);
-        if (s.activeTabId !== id) return { tabs, selectedCell };
-        const sessionTabs = s.tabs.filter((t) => t.sessionId === closing.sessionId);
-        const index = sessionTabs.indexOf(closing);
-        const siblings = sessionTabs.filter((t) => t !== closing);
-        const neighbour = siblings[Math.min(index, siblings.length - 1)];
-        return { tabs, activeTabId: neighbour?.id ?? null, selectedCell };
-      });
-    },
-
-    cycleTab(delta) {
-      const s = get();
-      const tabs = s.tabs.filter((t) => t.sessionId === s.activeSessionId);
-      if (tabs.length < 2) return;
-      const index = tabs.findIndex((t) => t.id === s.activeTabId);
-      const next = tabs[(index + delta + tabs.length) % tabs.length];
-      set(activate(s, next.id));
-    },
-
-    updateQueryTab(id, patch) {
-      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind === "query" ? { ...t, ...patch } : t)) }));
-    },
-
-    updateTableTab(id, patch) {
-      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind === "table" ? { ...t, ...patch } : t)) }));
-    },
-
-    updateObjectTab(id, patch) {
-      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && t.kind === "object" ? { ...t, ...patch } : t)) }));
-    },
-
-    selectCell(selected) {
-      set((s) => ({ selectedCell: selected && s.activeTabId ? { ...selected, tabId: s.activeTabId } : null }));
-    },
-
-    async runQuery(tabId, sql, confirmed = false) {
-      const tab = get().tabs.find((t) => t.id === tabId);
-      // `running` is set synchronously below, so a second run cannot start before the first replies.
-      if (!tab || tab.kind !== "query" || tab.running || !sql.trim()) return;
-      get().updateQueryTab(tabId, { running: true, error: undefined });
-      try {
-        const response = await api.execute(tab.sessionId, sql, confirmed);
-        get().updateQueryTab(tabId, {
-          running: false,
-          response,
-          error: undefined,
-          activeResult: Math.max(0, response.results.length - 1),
+  create: (set, get) => {
+    const patchTab =
+      <K extends Tab["kind"]>(kind: K) =>
+      (id: string, patch: Partial<TabOfKind<K>>) =>
+        set((s) => {
+          const tab = findTab(s, id, kind);
+          return tab ? replaceTab(s, { ...tab, ...patch }) : {};
         });
-        const session = get().sessions.find((s) => s.id === tab.sessionId);
-        if (session && response.database !== session.database) {
-          set((s) => ({
-            sessions: s.sessions.map((x) => (x.id === tab.sessionId ? { ...x, database: response.database } : x)),
-          }));
-        }
-        // Schema may have changed (CREATE/DROP/ALTER); table lists are cheap to reload.
-        if (response.database && response.results.some((r) => !r.returnsRows)) {
-          void get().loadTables(tab.sessionId, response.database);
-        }
-      } catch (e) {
-        const error = toAppError(e);
-        if (error.kind === "confirmation_required") {
-          get().updateQueryTab(tabId, { running: false });
-          set({
-            dialog: {
-              type: "confirm",
-              title: "Run destructive statement?",
-              message: error.reason ?? error.message,
-              confirmLabel: "Run anyway",
-              onConfirm: () => void get().runQuery(tabId, sql, true),
-            },
-          });
-        } else {
-          get().updateQueryTab(tabId, { running: false, error });
-          if (error.sessionReset) {
-            get().toast("info", "Session reset after timeout: temporary tables, variables and open transactions are gone");
-          }
-        }
-      } finally {
-        set((s) => ({ historyVersion: s.historyVersion + 1 }));
-      }
-    },
 
-    async cancelQuery(tabId) {
-      const tab = get().tabs.find((t) => t.id === tabId);
-      if (!tab) return;
-      try {
-        await api.cancelQuery(tab.sessionId);
-      } catch (e) {
-        fail(e, "Cancel failed");
-      }
-    },
-  }),
+    return {
+      tabs: [],
+      activeTabId: null,
+      queryCounter: {},
+      ...resetSelection(),
+
+      openQueryTab(sql = "", title, saved) {
+        const session = selectActiveSession(get());
+        if (!session) return;
+        set((s) => {
+          // Only untitled tabs take a number.
+          const previous = s.queryCounter[session.id] ?? 0;
+          const count = title ? previous : previous + 1;
+          const tab: QueryTab = {
+            id: newTabId("query"),
+            kind: "query",
+            sessionId: session.id,
+            title: title ?? `Query ${count}`,
+            sql,
+            running: false,
+            activeResult: 0,
+            address: homeAddress(s, session.id, session.database),
+            nav: EMPTY_NAV,
+            saved,
+          };
+          return { tabs: [...s.tabs, tab], queryCounter: { ...s.queryCounter, [session.id]: count }, ...activate(s, tab.id) };
+        });
+      },
+
+      openTableTab(database, table, view, filter, opts = {}) {
+        const session = selectActiveSession(get());
+        if (!session) return;
+        const where = opts.where ?? [];
+        set((s) => remembered(s, { kind: "table", database, table }));
+        const existing = get().tabs.find(
+          (t): t is TableTab =>
+            t.kind === "table" &&
+            t.sessionId === session.id &&
+            t.database === database &&
+            t.table === table &&
+            t.filter === filter &&
+            sameWhere(t.where, where),
+        );
+        if (existing) {
+          const updated: TableTab = { ...existing, view: view ?? existing.view, preview: existing.preview && opts.preview !== false };
+          set((s) => ({ ...replaceTab(s, updated), ...activate(s, existing.id) }));
+          return;
+        }
+        set((s) => {
+          const address = tableAddress(s, session.id, { database, table, where });
+          // A preview tab takes the place of the previous preview tab of this session, history included.
+          const replaced = opts.preview ? previewTab(s, session.id) : undefined;
+          const tab: TableTab = {
+            id: newTabId("table"),
+            kind: "table",
+            sessionId: session.id,
+            title: tableTitle(table, where, filter),
+            database,
+            table,
+            view: view ?? "data",
+            filter,
+            where,
+            preview: opts.preview ?? false,
+            address,
+            nav: replaced ? pushed(replaced.nav, replaced.address, address) : EMPTY_NAV,
+          };
+          return { tabs: placed(s.tabs, tab, replaced), ...activate(s, tab.id) };
+        });
+      },
+
+      pinTab(id) {
+        set((s) => {
+          const tab = findTab(s, id);
+          return (tab?.kind === "table" || tab?.kind === "object") && tab.preview ? replaceTab(s, { ...tab, preview: false }) : {};
+        });
+      },
+
+      activateTab(id) {
+        set((s) => activate(s, id));
+      },
+
+      closeTab(id) {
+        set((s) => {
+          const closing = findTab(s, id);
+          if (!closing) return {};
+          const tabs = s.tabs.filter((t) => t.id !== id);
+          const selectedCell = selectionOutside(s, id);
+          if (s.activeTabId !== id) return { tabs, selectedCell };
+          const sessionTabs = s.tabs.filter((t) => t.sessionId === closing.sessionId);
+          const index = sessionTabs.indexOf(closing);
+          const siblings = sessionTabs.filter((t) => t !== closing);
+          const neighbour = siblings[Math.min(index, siblings.length - 1)];
+          return { tabs, activeTabId: neighbour?.id ?? null, selectedCell };
+        });
+      },
+
+      cycleTab(delta) {
+        const s = get();
+        const tabs = s.tabs.filter((t) => t.sessionId === s.activeSessionId);
+        if (tabs.length < 2) return;
+        const index = tabs.findIndex((t) => t.id === s.activeTabId);
+        const next = tabs[(index + delta + tabs.length) % tabs.length];
+        set(activate(s, next.id));
+      },
+
+      updateQueryTab: patchTab("query"),
+      updateTableTab: patchTab("table"),
+      updateObjectTab: patchTab("object"),
+
+      selectCell(selected) {
+        set((s) => ({ selectedCell: selected && s.activeTabId ? { ...selected, tabId: s.activeTabId } : null }));
+      },
+    };
+  },
 
   sessionClosed(sessionId, s) {
     const tabs = s.tabs.filter((t) => t.sessionId !== sessionId);

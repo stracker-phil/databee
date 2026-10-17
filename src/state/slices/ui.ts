@@ -1,6 +1,4 @@
-import { EMPTY_UI_STATE, api, type AppError, type ColumnInfo, type ConnectionSpec, type Home, type PaneSize, type SnapshotInfo, type UiState } from "../../api";
-import { fail } from "../requests";
-import { selectActiveSession } from "../selectors";
+import { api, type AppError, type ColumnInfo, type ConnectionSpec, type Home, type SnapshotInfo } from "../../api";
 import type { Slice, Store } from "../store";
 
 export interface Toast {
@@ -49,8 +47,6 @@ export interface UiSlice {
   paletteOpen: boolean;
   /** Text the palette opens with, e.g. `t:` for tables. */
   paletteSeed: string;
-  /** Per-connection UI state (column widths, split width) by connection identity. */
-  uiState: Record<string, UiState>;
   recentNav: RecentNav[];
   /** Shown in the status bar instead of the address while set. */
   hover: ValueHover;
@@ -60,12 +56,6 @@ export interface UiSlice {
   closeDialog: () => void;
   setSidebarPanel: (panel: UiSlice["sidebarPanel"]) => void;
   setPaletteOpen: (open: boolean, seed?: string) => void;
-  loadUiState: (identity: string) => Promise<void>;
-  setTableWidths: (identity: string, table: string, widths: Record<string, number>) => void;
-  setPaneSize: (identity: string, pane: PaneSize, px: number) => void;
-  toggleSidebar: () => void;
-  /** Collapses or expands an object view group (`<document table>::<group id>`) in one database and persists it. */
-  toggleGroupCollapsed: (identity: string, database: string, key: string) => void;
   setHover: (hover: ValueHover) => void;
 }
 
@@ -80,113 +70,49 @@ export function remembered(s: Store, item: RecentNav): Partial<Store> {
 }
 
 export const uiSlice: Slice<UiSlice> = {
-  create: (set, get) => {
-    const patchUiState = (identity: string, patch: (current: UiState) => Partial<UiState>) => {
-      const current = get().uiState[identity] ?? EMPTY_UI_STATE;
-      const ui: UiState = { ...current, ...patch(current) };
-      set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
-      persistUiState(identity, ui);
-    };
+  create: (set, get) => ({
+    toasts: [],
+    dialog: null,
+    sidebarPanel: "tables",
+    paletteOpen: false,
+    paletteSeed: "",
+    recentNav: [],
+    hover: NO_HOVER,
 
-    return {
-      toasts: [],
-      dialog: null,
-      sidebarPanel: "tables",
-      paletteOpen: false,
-      paletteSeed: "",
-      uiState: {},
-      recentNav: [],
-      hover: NO_HOVER,
+    toast(kind, message) {
+      if (kind === "error") void api.logError(message).catch(() => {});
+      const same = get().toasts.find((t) => t.kind === kind && t.message === message);
+      if (same) {
+        set((s) => ({ toasts: s.toasts.map((t) => (t.id === same.id ? { ...t, count: t.count + 1 } : t)) }));
+        return;
+      }
+      const id = nextToastId++;
+      set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message, count: 1 }] }));
+    },
 
-      toast(kind, message) {
-        if (kind === "error") void api.logError(message).catch(() => {});
-        const same = get().toasts.find((t) => t.kind === kind && t.message === message);
-        if (same) {
-          set((s) => ({ toasts: s.toasts.map((t) => (t.id === same.id ? { ...t, count: t.count + 1 } : t)) }));
-          return;
-        }
-        const id = nextToastId++;
-        set((s) => ({ toasts: [...s.toasts.slice(-4), { id, kind, message, count: 1 }] }));
-      },
+    dismissToast(id) {
+      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    },
 
-      dismissToast(id) {
-        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-      },
+    openDialog(dialog) {
+      set({ dialog });
+    },
 
-      openDialog(dialog) {
-        set({ dialog });
-      },
+    closeDialog() {
+      set({ dialog: null });
+    },
 
-      closeDialog() {
-        set({ dialog: null });
-      },
+    setSidebarPanel(sidebarPanel) {
+      set({ sidebarPanel });
+    },
 
-      setSidebarPanel(sidebarPanel) {
-        set({ sidebarPanel });
-      },
+    setPaletteOpen(paletteOpen, seed = "") {
+      set({ paletteOpen, paletteSeed: seed });
+    },
 
-      setPaletteOpen(paletteOpen, seed = "") {
-        set({ paletteOpen, paletteSeed: seed });
-      },
-
-      async loadUiState(identity) {
-        if (get().uiState[identity]) return;
-        try {
-          const ui = await api.getUiState(identity);
-          set((s) => ({ uiState: { ...s.uiState, [identity]: ui } }));
-        } catch (e) {
-          fail(e, "Could not load view state");
-        }
-      },
-
-      setTableWidths(identity, table, widths) {
-        patchUiState(identity, (current) => ({ tables: { ...current.tables, [table]: { widths } } }));
-      },
-
-      setPaneSize(identity, pane, px) {
-        patchUiState(identity, () => ({ [pane]: Math.round(px) }));
-      },
-
-      toggleSidebar() {
-        const session = selectActiveSession(get());
-        if (session) patchUiState(session.identity, (current) => ({ sidebarHidden: !current.sidebarHidden }));
-      },
-
-      toggleGroupCollapsed(identity, database, key) {
-        patchUiState(identity, (current) => {
-          const keys = current.collapsedGroups?.[database] ?? [];
-          const next = keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key];
-          return { collapsedGroups: { ...current.collapsedGroups, [database]: next } };
-        });
-      },
-
-      setHover(hover) {
-        const current = get().hover;
-        if (current.src !== hover.src || current.table !== hover.table || current.linked !== hover.linked) set({ hover });
-      },
-    };
-  },
+    setHover(hover) {
+      const current = get().hover;
+      if (current.src !== hover.src || current.table !== hover.table || current.linked !== hover.linked) set({ hover });
+    },
+  }),
 };
-
-const uiWrites = new Map<string, { ui: UiState; timer: ReturnType<typeof setTimeout> }>();
-
-/** Debounces UI state writes per connection (drags fire constantly): a write lands 500 ms after the last change. */
-function persistUiState(identity: string, ui: UiState) {
-  clearTimeout(uiWrites.get(identity)?.timer);
-  uiWrites.set(identity, { ui, timer: setTimeout(() => writeUiState(identity), 500) });
-}
-
-function writeUiState(identity: string) {
-  const write = uiWrites.get(identity);
-  if (!write) return;
-  uiWrites.delete(identity);
-  void api.setUiState(identity, write.ui).catch((e) => fail(e, "Could not save view state"));
-}
-
-/** Writes debounced UI state now; called when the window unloads. */
-export function flushUiState() {
-  for (const [identity, { timer }] of [...uiWrites]) {
-    clearTimeout(timer);
-    writeUiState(identity);
-  }
-}

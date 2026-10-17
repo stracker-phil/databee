@@ -10,11 +10,14 @@ import { readoutSlice, type ReadoutSlice } from "./slices/readout";
 import { savedSlice, type SavedSlice } from "./slices/saved";
 import { sessionSlice, type SessionSlice } from "./slices/session";
 import { settingsSlice, type SettingsSlice } from "./slices/settings";
+import { querySlice, type QuerySlice } from "./slices/query";
 import { tabsSlice, type TabsSlice } from "./slices/tabs";
 import { uiSlice, type UiSlice } from "./slices/ui";
+import { viewStateSlice, type ViewStateSlice } from "./slices/viewState";
 
 export { fail } from "./requests";
-export { flushUiState, NO_HOVER } from "./slices/ui";
+export { NO_HOVER } from "./slices/ui";
+export { flushUiState } from "./slices/viewState";
 export {
   selectActivePending,
   selectActiveSession,
@@ -33,6 +36,7 @@ export {
 export type { TabNav, TableLocation } from "./slices/nav";
 export type { SchemaState, StructureEntry } from "./slices/session";
 export type { DocumentEntry } from "./slices/objects";
+export { hasValueColumn } from "./slices/tabs";
 export type { ObjectTab, ProjectTab, QueryTab, ReadoutTab, SelectedCell, Tab, TableTab } from "./slices/tabs";
 export type { ProjectRulesEntry } from "./slices/project";
 export type { Dialog, RecentNav, Toast, ValueHover } from "./slices/ui";
@@ -41,7 +45,7 @@ export type { ChangeTarget, LiveWatch } from "./slices/live";
 export { queryMarksKey, selectActiveLive, selectActiveMarks, selectCanDismissMarks, selectChangeTarget } from "./slices/live";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
-export interface Store extends SettingsSlice, SessionSlice, TabsSlice, ChangesSlice, DataSlice, SavedSlice, UiSlice, NavSlice, ObjectsSlice, ColumnsSlice, ProjectSlice, ReadoutSlice, LiveSlice {}
+export interface Store extends SettingsSlice, SessionSlice, TabsSlice, QuerySlice, ChangesSlice, DataSlice, SavedSlice, UiSlice, ViewStateSlice, NavSlice, ObjectsSlice, ColumnsSlice, ProjectSlice, ReadoutSlice, LiveSlice {}
 
 type SetStore = StoreApi<Store>["setState"];
 type GetStore = StoreApi<Store>["getState"];
@@ -78,10 +82,12 @@ export function resetStore(patch: Partial<Store> = {}) {
 registerSlice(settingsSlice);
 registerSlice(sessionSlice);
 registerSlice(tabsSlice);
+registerSlice(querySlice);
 registerSlice(changesSlice);
 registerSlice(dataSlice);
 registerSlice(savedSlice);
 registerSlice(uiSlice);
+registerSlice(viewStateSlice);
 registerSlice(navSlice);
 registerSlice(objectsSlice);
 registerSlice(columnsSlice);

@@ -1,7 +1,7 @@
 import { api, type Address, type ChangeRequest, type PlannedChange } from "../../api";
 import { formatAddress } from "../../lib/address";
 import { fail } from "../requests";
-import { selectActivePending, selectActiveSession, selectLastBatch } from "../selectors";
+import { selectActivePending, selectActiveSession, selectLastBatch, selectSessionBySlug } from "../selectors";
 import type { Slice } from "../store";
 
 export interface ChangesSlice {
@@ -59,7 +59,7 @@ export const changesSlice: Slice<ChangesSlice> = {
       },
 
       async queueAction(address, action, params) {
-        const session = get().sessions.find((x) => x.slug === address.connection);
+        const session = selectSessionBySlug(get(), address.connection);
         if (!session) return false;
         return queue(session.id, () => api.planAction(session.id, formatAddress(address), action, params));
       },

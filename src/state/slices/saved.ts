@@ -4,7 +4,7 @@ import { selectActiveTab } from "../selectors";
 import type { Slice, Store } from "../store";
 import { withoutSession } from "./session";
 import { projectKey } from "./project";
-import type { QueryTab, SavedRef } from "./tabs";
+import { findTab, type QueryTab, type SavedRef } from "./tabs";
 
 export interface SavedSlice {
   /** By `session/database`. */
@@ -27,11 +27,6 @@ export function originText(origin: SavedOrigin): string {
 }
 
 const sameOrigin = (a: SavedOrigin, b: SavedOrigin) => originText(a) === originText(b);
-
-function queryTab(s: Store, tabId: string): QueryTab | null {
-  const tab = s.tabs.find((t) => t.id === tabId);
-  return tab?.kind === "query" ? tab : null;
-}
 
 /** The database a tab's query is saved in: the one it was saved to, else the session's current one. */
 function tabDatabase(s: Store, tab: QueryTab): string | null {
@@ -92,7 +87,7 @@ export const savedSlice: Slice<SavedSlice> = {
 
       saveQueryTab(tabId) {
         const s = get();
-        const tab = queryTab(s, tabId);
+        const tab = findTab(s, tabId, "query");
         if (!tab) return;
         if (!tab.sql.trim()) return s.toast("info", "Write a query first, then save it");
         const database = tabDatabase(s, tab);
@@ -104,7 +99,7 @@ export const savedSlice: Slice<SavedSlice> = {
 
       pinQueryTab(tabId) {
         const s = get();
-        const tab = queryTab(s, tabId);
+        const tab = findTab(s, tabId, "query");
         if (!tab) return;
         const ref = tab.saved;
         if (!ref || isPreset(ref.origin)) return s.toast("info", "Save the query first, then pin it");
@@ -113,14 +108,14 @@ export const savedSlice: Slice<SavedSlice> = {
           title: tab.title,
           pin: ref.pin,
           onSubmit: (pin) => {
-            const current = queryTab(get(), tabId);
+            const current = findTab(get(), tabId, "query");
             if (current) void storeChange(current, ref, pin);
           },
         });
       },
 
       async copyPresetQuery(tabId) {
-        const tab = queryTab(get(), tabId);
+        const tab = findTab(get(), tabId, "query");
         const ref = tab?.saved;
         if (!tab || !ref || !isPreset(ref.origin)) return;
         const preset = ref.origin.preset;

@@ -1,5 +1,4 @@
 import { api, toAppError, type AppError, type ConnectionSpec, type DatabaseInfo, type LaunchEvent, type SessionInfo, type TableInfo, type TableStructure } from "../../api";
-import { emitSessionEvent } from "../events";
 import { openFromOutside } from "../outside";
 import { fail } from "../requests";
 import { structureKey } from "../selectors";
@@ -116,7 +115,6 @@ export const sessionSlice: Slice<SessionSlice> = {
       }
       // One update, so no render shows a closed session's leftovers.
       set((s) => sessionClosedPatch(sessionId, s));
-      emitSessionEvent({ type: "sessionClosed", sessionId });
     },
 
     setActiveSession(sessionId) {
@@ -133,7 +131,6 @@ export const sessionSlice: Slice<SessionSlice> = {
         }));
         get().openReadout({ sessionId, database, activate: false });
         void get().loadTables(sessionId, database);
-        emitSessionEvent({ type: "databaseChanged", sessionId, database });
       } catch (e) {
         fail(e, `Cannot switch to ${database}`);
       }
@@ -149,10 +146,7 @@ export const sessionSlice: Slice<SessionSlice> = {
           },
         }));
         const current = get().sessions.find((x) => x.id === sessionId)?.database;
-        if (current) {
-          void get().loadTables(sessionId, current);
-          emitSessionEvent({ type: "databaseChanged", sessionId, database: current });
-        }
+        if (current) void get().loadTables(sessionId, current);
       } catch (e) {
         fail(e, "Could not list databases");
       }
