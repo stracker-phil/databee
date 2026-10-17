@@ -9,6 +9,7 @@ import { api, type Dashboard, type OrderSummary } from "../../api";
 import { installCommands } from "../../commands";
 import { selectWpRoute, useStore } from "../../state/store";
 import { session } from "../../test/fixtures";
+import { paletteHit } from "../../test/paletteFixtures";
 import { NOW, orderDocument, wpInfo, wpStore } from "../../test/wpFixtures";
 import { CommandPalette } from "../CommandPalette";
 import { Dialogs } from "../Dialogs";
@@ -399,12 +400,12 @@ describe("Command palette", () => {
   });
 
   it("finds pasted identifiers and opens the match as an object tab", async () => {
-    mocked.wpSearch.mockResolvedValue([{ entity: "order", id: "3229", title: "Order #3229", subtitle: null, matched: "_ppcp_paypal_order_id" }]);
+    mocked.paletteSearch.mockResolvedValue([paletteHit("wp_wc_orders_meta.meta_value", "3229", "objects with value 3UT60541JW9211534", "wp_wc_orders")]);
     useStore.getState().setPaletteOpen(true);
     render(<CommandPalette />);
     await userEvent.type(screen.getByLabelText("Search everything"), "3UT60541JW9211534");
-    expect(await screen.findByText("Order #3229")).toBeInTheDocument();
-    expect(screen.getByText(/matched _ppcp_paypal_order_id/)).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "wp_wc_orders_meta.meta_value #3229" })).toBeInTheDocument();
+    expect(screen.getByText("objects with value 3UT60541JW9211534")).toBeInTheDocument();
     await userEvent.keyboard("{Enter}");
     await vi.waitFor(() => expect(lastTab()).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_wc_orders", key: "3229" } } }));
     expect(useStore.getState().paletteOpen).toBe(false);
@@ -447,19 +448,19 @@ describe("Command palette", () => {
     expect(titles()).toEqual(["Zoom in", "Zoom out", "Reset zoom"]);
   });
 
-  it("lists every entity type that has a numeric ID", async () => {
-    mocked.wpSearch.mockResolvedValue([
-      { entity: "order", id: "3229", title: "Order #3229", subtitle: null, matched: "id" },
-      { entity: "post", id: "3229", title: "Post #3229", subtitle: "page", matched: "id" },
-      { entity: "user", id: "3229", title: "User #3229", subtitle: null, matched: "id" },
+  it("lists every table that has a row with a numeric ID", async () => {
+    mocked.paletteSearch.mockResolvedValue([
+      paletteHit("wp_wc_orders", "3229", "objects with id 3229"),
+      paletteHit("wp_posts", "3229", "objects with id 3229"),
+      paletteHit("wp_users", "3229", "objects with id 3229"),
     ]);
     useStore.getState().setPaletteOpen(true);
     render(<CommandPalette />);
     await userEvent.type(screen.getByLabelText("Search everything"), "#3229");
-    expect(await screen.findByText("Order #3229")).toBeInTheDocument();
-    expect(screen.getByText("Post #3229")).toBeInTheDocument();
-    expect(screen.getByText("User #3229")).toBeInTheDocument();
-    expect(mocked.wpSearch).toHaveBeenCalledWith("s1", "db", "3229");
+    expect(await screen.findByRole("option", { name: "wp_wc_orders #3229" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "wp_posts #3229" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "wp_users #3229" })).toBeInTheDocument();
+    expect(mocked.paletteSearch).toHaveBeenCalledWith("s1", "db", "#3229");
   });
 });
 

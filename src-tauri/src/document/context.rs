@@ -198,6 +198,10 @@ impl Rows {
         self.result.rows.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.result.rows.is_empty()
+    }
+
     pub fn column(&self, name: &str) -> Option<usize> {
         self.result
             .columns
@@ -286,7 +290,7 @@ pub fn non_empty(value: &Value) -> bool {
 }
 
 #[cfg(test)]
-pub(super) mod testing {
+pub(crate) mod testing {
     use std::fs;
     use std::sync::Arc;
     use std::time::Duration;
@@ -426,12 +430,15 @@ value = "v"
             }
         }
 
-        pub async fn ctx(&self) -> Ctx<'_> {
-            let sources = RuleSources {
+        pub fn sources(&self) -> RuleSources<'_> {
+            RuleSources {
                 presets: &self.catalog,
                 projects: &self.projects,
-            };
-            Ctx::load(&self.session, "wp", sources, TIMEOUT)
+            }
+        }
+
+        pub async fn ctx(&self) -> Ctx<'_> {
+            Ctx::load(&self.session, "wp", self.sources(), TIMEOUT)
                 .await
                 .unwrap()
         }

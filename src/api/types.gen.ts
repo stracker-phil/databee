@@ -354,26 +354,6 @@ export type FavoriteTarget = { "kind": "table", database: string, table: string,
 
 export type FilterKind = "ids" | "sql" | "columns";
 
-export type FindGroup = { 
-/**
- * Human source name, e.g. "Post meta".
- */
-source: string, table: string, idColumn: string, count: number, hits: Array<FindHit>, };
-
-export type FindHit = { 
-/**
- * Row key in `table`.
- */
-rowId: string, label: string, 
-/**
- * Entity the row belongs to (post, user, order, action), when there is one.
- */
-entity: string | null, entityId: string | null, 
-/**
- * Column that matched, e.g. `meta_value`.
- */
-column: string, };
-
 export type FindMatch = "exact" | "contains";
 
 /**
@@ -588,6 +568,28 @@ limit: number,
  * Status (or kind) counts for filter chips, independent of the current filter.
  */
 facets: Array<Facet>, kinds: Array<Facet>, };
+
+export type PaletteHit = { 
+/**
+ * What the hits of a section are, e.g. `objects with id 4711`.
+ */
+section: string, 
+/**
+ * What Enter opens: the row, or the owner row of a meta value.
+ */
+address: Address, 
+/**
+ * The table, or `table.column` the row references or matched through.
+ */
+source: string, 
+/**
+ * The key of the opened row.
+ */
+title: Array<Value>, 
+/**
+ * The entity's summary, else the first columns; for a meta value its key and value.
+ */
+detail: Array<Value>, };
 
 /**
  * A value asked for before the action plans; `{param.<name>}` renders it as an SQL literal
@@ -875,12 +877,6 @@ tableEntities: { [key in string]: Array<string> }, };
  * preset's `[[pinned]] home`, so a project query exports as a pinned query.
  */
 export type SavedQuery = { id: string, title: string, sql: string, pin?: Home | null, };
-
-export type SearchHit = { entity: string, id: string, title: string, subtitle: string | null, 
-/**
- * What matched, e.g. "transaction_id" or "_ppcp_paypal_order_id".
- */
-matched: string, };
 
 /**
  * Dim text next to the raw value, such as a relative time, with its own source.

@@ -317,16 +317,19 @@ rebindable.
 
 ## Palette prefixes
 
-The palette is the main navigation. Results render with the value grammar (from U10). Enter opens in the
-current tab (the object tab's column stack from U10); ⌘↵ opens a new tab.
+The palette is the main navigation. Sections, in order: Recent, row hits, Tables, Commands. Row hits are
+grouped in sections titled by what they are (`objects with id 4711`, `rows that reference 4711`) and render
+with the value grammar: the table name (or `table.column`) in `--o2`, `#key` in the accent, then the summary
+values. Enter opens a hit in the current object tab's column stack (or a new object tab); ⌘↵ opens a new
+tab; holding ⌥ peeks the selected hit. The footer lists the keys and the prefixes.
 
 | Input | Result |
 |---|---|
 | `>` | commands |
 | `t:orders` | tables |
-| `#3297` | every object with that id, each with its table name (today: WordPress entities; any rules-defined entity, and rows that reference the id, from U10) |
-| `@john` | entities whose rule marks them `people = true`, searched on their `search` columns (today: WordPress entities; rule-driven from U10) |
-| text of 6+ characters | values in `search` columns and non-key reference targets (external ids) (from U10) |
+| `#3297` | every object with that id across the entities, each with its table name, and the rows that reference it (incoming references and patterns). Without entities, the primary keys of every table under 1M estimated rows (the footer says so) |
+| `@john` | entities whose rule marks them `people = true`, searched on their `search` and `search_exact` columns and meta keys |
+| text of 6+ characters | values in the entities' `search` columns and non-key reference targets (external ids); shorter text matches only tables and commands |
 | `q:` | saved and pinned queries (from U11) |
-| `=value` | find everywhere (from U10) |
-| `databee://…` | open the address (from U10) |
+| `=value` | find everywhere: every `[[meta]]` value, the `[[find]]` sources and the entities' search columns, one section per table and column |
+| `databee://…` | open the address |

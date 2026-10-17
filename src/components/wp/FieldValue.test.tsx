@@ -163,6 +163,6 @@ describe("Value pivots", () => {
     await userEvent.click(screen.getByRole("button", { name: "Actions for _ppcp_paypal_order_id" }));
     expect(screen.queryByRole("menuitem", { name: /Filter/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: "Find everywhere" }));
-    expect(useStore.getState().wpNav.stack.at(-1)).toEqual({ screen: "find", value: "66M12696JX411763D" });
+    expect(useStore.getState()).toMatchObject({ paletteOpen: true, paletteSeed: "=66M12696JX411763D" });
   });
 });

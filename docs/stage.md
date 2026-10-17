@@ -106,7 +106,9 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `:remove`
   - `<entity>:<id>` for WordPress rows (list `wp:<list>`)
   - `wp:nav:<list>`
-  - `palette:search` and the palette results (list `palette:results`)
+  - `palette:search` and the palette results (list `palette:results`): `palette:item:<key>` with the keys
+    `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `cmd:<id>` and
+    `recent:<title>`; holding ⌥ shows the selected hit's `peek`
   - `settings:<page>` and `settings-nav:<page>`
   - `appearance:<control>` on Settings → Appearance (`theme`, `light-scheme`, `dark-scheme`, `row-padding`,
     `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are

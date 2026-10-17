@@ -8,7 +8,6 @@ import { DashboardScreen } from "./Dashboard";
 import { ListScreen } from "./Lists";
 import { SettingsScreen } from "./Settings";
 import { SnapshotsScreen } from "./Debugging";
-import { FindScreen } from "./FindScreen";
 import { useWpData } from "./useWpData";
 
 const ICONS: Record<string, typeof ShoppingCart> = {
@@ -59,8 +58,6 @@ export function routeTitle(route: WpRoute): string {
       return route.list.charAt(0).toUpperCase() + route.list.slice(1);
     case "snapshots":
       return "Snapshots";
-    case "find":
-      return `Find “${route.value}”`;
   }
 }
 
@@ -170,7 +167,6 @@ export function WpWorkspace() {
           {/* ListScreen seeds its search input once, so back and forward must remount it via the history index. */}
           {route.screen === "list" && (route.list === "settings" ? <SettingsScreen key={JSON.stringify(route.params ?? {})} params={route.params} /> : <ListScreen key={`${route.list}:${historyIndex}`} list={route.list} params={route.params} />)}
           {route.screen === "snapshots" && <SnapshotsScreen />}
-          {route.screen === "find" && <FindScreen key={route.value} value={route.value} />}
         </div>
       </main>
     </div>

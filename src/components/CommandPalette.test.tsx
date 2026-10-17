@@ -4,16 +4,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, type SearchHit } from "../api";
+import { api, type PaletteHit, type RulesInfo } from "../api";
 import { installCommands } from "../commands";
-import { useStore } from "../state/store";
-import { connectedStore } from "../test/fixtures";
-import { orderDocument, wpInfo, wpStore } from "../test/wpFixtures";
+import { formatAddress } from "../lib/address";
+import { projectKey } from "../state/slices/project";
+import { selectActiveTab, useStore } from "../state/store";
+import { connectedStore, session } from "../test/fixtures";
+import { paletteHit } from "../test/paletteFixtures";
 import { CommandPalette } from "./CommandPalette";
+import { parsePrefix } from "./palette/parse";
 
 const mocked = vi.mocked(api, true);
 
-const hit = (id: string, title = `Order #${id}`): SearchHit => ({ entity: "order", id, title, subtitle: null, matched: "id" });
+const hit = (key: string, source = "wp_wc_orders"): PaletteHit => paletteHit(source, key);
+const objectTabs = () => useStore.getState().tabs.filter((t) => t.kind === "object");
+const rulesInfo = (entities: string[]): RulesInfo => ({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: entities.map((name) => ({ preset: "woocommerce", entity: { name, table: "wp_wc_orders" } })), tableEntities: {} });
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -114,57 +119,170 @@ describe("CommandPalette", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  describe("entity search", () => {
-    beforeEach(() => wpStore());
-
-    it("does not search entities when the database has none", async () => {
-      useStore.setState((s) => ({ wp: { ...s.wp, "s1/db": { ...wpInfo, entities: [] } } }));
-      await userEvent.type(openPalette(), "#4711");
-      expect(screen.queryByText("searching…")).not.toBeInTheDocument();
-      expect(mocked.wpSearch).not.toHaveBeenCalled();
+  describe("row search", () => {
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
-    it("searches entities for an ID query when the database has entities", async () => {
-      mocked.wpSearch.mockResolvedValue([hit("4711")]);
+    it("searches rows for an id query after the debounce, without needing entities", async () => {
+      mocked.paletteSearch.mockResolvedValue([hit("4711"), hit("4711", "wp_posts")]);
       await userEvent.type(openPalette(), "#4711");
-      expect(await screen.findByText("Order #4711")).toBeInTheDocument();
-      expect(mocked.wpSearch).toHaveBeenLastCalledWith("s1", "db", "4711");
+      expect(await screen.findByRole("option", { name: "wp_wc_orders #4711" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "wp_posts #4711" })).toBeInTheDocument();
+      expect(screen.getByText("objects with id 4711")).toBeInTheDocument();
+      expect(mocked.paletteSearch).toHaveBeenLastCalledWith("s1", "db", "#4711");
+    });
+
+    it("groups hits under their section headings", async () => {
+      mocked.paletteSearch.mockResolvedValue([paletteHit("wp_wc_orders", "4711"), paletteHit("wp_wc_orders_meta.meta_value", "4712", "objects with value 4711", "wp_wc_orders")]);
+      await userEvent.type(openPalette(), "=4711");
+      await screen.findByRole("option", { name: "wp_wc_orders #4711" });
+      expect(screen.getByText("objects with id 4711")).toBeInTheDocument();
+      expect(screen.getByText("objects with value 4711")).toBeInTheDocument();
+    });
+
+    it("keeps a data-stage anchor per hit named after its address", async () => {
+      mocked.paletteSearch.mockResolvedValue([hit("4711")]);
+      await userEvent.type(openPalette(), "#4711");
+      const option = await screen.findByRole("option", { name: "wp_wc_orders #4711" });
+      expect(option).toHaveAttribute("data-stage", `palette:item:hit:${formatAddress(hit("4711").address)}`);
+    });
+
+    it("searches free text from 6 characters and not below", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const input = openPalette();
+      await userEvent.type(input, "jane@");
+      await vi.advanceTimersByTimeAsync(400);
+      expect(mocked.paletteSearch).not.toHaveBeenCalled();
+
+      await userEvent.type(input, "x");
+      await vi.advanceTimersByTimeAsync(400);
+      expect(mocked.paletteSearch).toHaveBeenCalledWith("s1", "db", "jane@x");
     });
 
     it("stops showing 'searching…' when the query drops below two characters while the search is pending", async () => {
-      const pending = deferred<SearchHit[]>();
-      mocked.wpSearch.mockReturnValueOnce(pending.promise);
-      const input = openPalette();
-      await userEvent.type(input, "ab");
-      await vi.waitFor(() => expect(mocked.wpSearch).toHaveBeenCalled());
+      const pending = deferred<PaletteHit[]>();
+      mocked.paletteSearch.mockReturnValueOnce(pending.promise);
+      await userEvent.type(openPalette(), "=ab");
+      await vi.waitFor(() => expect(mocked.paletteSearch).toHaveBeenCalled());
       expect(screen.getByText("searching…")).toBeInTheDocument();
 
       await userEvent.keyboard("{Backspace}");
       expect(screen.queryByText("searching…")).not.toBeInTheDocument();
       await act(async () => pending.resolve([hit("1")]));
-      expect(screen.queryByText("Order #1")).not.toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "wp_wc_orders #1" })).not.toBeInTheDocument();
     });
 
-    it("keeps exactly one option selected when a reply with fewer hits arrives, and Enter runs it", async () => {
-      const second = deferred<SearchHit[]>();
-      mocked.wpSearch.mockResolvedValueOnce([hit("120"), hit("121"), hit("122")]).mockReturnValueOnce(second.promise);
-      const input = openPalette();
-      await userEvent.type(input, "#12");
-      await screen.findByText("Order #122");
+    it("keeps exactly one option selected when a reply with fewer hits arrives, and Enter opens it", async () => {
+      const second = deferred<PaletteHit[]>();
+      mocked.paletteSearch.mockResolvedValueOnce([hit("120"), hit("121"), hit("122")]).mockReturnValueOnce(second.promise);
+      await userEvent.type(openPalette(), "#12");
+      await screen.findByRole("option", { name: "wp_wc_orders #122" });
 
       await userEvent.keyboard("3{ArrowDown}{ArrowDown}");
-      expect(selectedOptions()[0]).toHaveTextContent("Order #122");
+      expect(selectedOptions()[0]).toHaveAccessibleName("wp_wc_orders #122");
 
-      await vi.waitFor(() => expect(mocked.wpSearch).toHaveBeenLastCalledWith("s1", "db", "123"));
+      await vi.waitFor(() => expect(mocked.paletteSearch).toHaveBeenLastCalledWith("s1", "db", "#123"));
       await act(async () => second.resolve([hit("123")]));
       expect(screen.getAllByRole("option")).toHaveLength(1);
-      expect(selectedOptions()).toHaveLength(1);
-      expect(selectedOptions()[0]).toHaveTextContent("Order #123");
+      expect(selectedOptions()[0]).toHaveAccessibleName("wp_wc_orders #123");
 
-      mocked.document.mockResolvedValue(orderDocument("123"));
       await userEvent.keyboard("{Enter}");
-      await vi.waitFor(() => expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_wc_orders", key: "123" } } }));
-      expect(mocked.document).toHaveBeenCalledWith("s1", "order 123", "db");
+      await vi.waitFor(() => expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_wc_orders", key: "123" } } }));
     });
+
+    it.each([
+      ["q:", "No saved queries."],
+      ["#", "Type an id, e.g. #4711."],
+    ])("explains the empty %s search", async (query, message) => {
+      await userEvent.type(openPalette(), query);
+      expect(screen.getByText(message)).toBeInTheDocument();
+    });
+  });
+
+  describe("opening a hit", () => {
+    beforeEach(() => mocked.paletteSearch.mockResolvedValue([hit("4712")]));
+
+    it("opens an object tab on Enter when no object tab is active", async () => {
+      await userEvent.type(openPalette(), "#4712");
+      await screen.findByRole("option", { name: "wp_wc_orders #4712" });
+      await userEvent.keyboard("{Enter}");
+      expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_wc_orders", key: "4712" } } });
+      expect(useStore.getState().paletteOpen).toBe(false);
+    });
+
+    it("drills into a new column on Enter when an object tab is active", async () => {
+      useStore.getState().openObject(hit("4711").address);
+      await userEvent.type(openPalette(), "#4712");
+      await screen.findByRole("option", { name: "wp_wc_orders #4712" });
+      await userEvent.keyboard("{Enter}");
+      const tab = selectActiveTab(useStore.getState());
+      expect(objectTabs()).toHaveLength(1);
+      expect(tab).toMatchObject({ kind: "object", active: 1 });
+      expect(tab?.kind === "object" && tab.columns).toHaveLength(2);
+    });
+
+    it("opens a new object tab on ⌘↵ even when an object tab is active", async () => {
+      useStore.getState().openObject(hit("4711").address);
+      await userEvent.type(openPalette(), "#4712");
+      await screen.findByRole("option", { name: "wp_wc_orders #4712" });
+      await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+      expect(objectTabs()).toHaveLength(2);
+      expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", address: { target: { kind: "row", key: "4712" } } });
+    });
+
+    it("peeks the selected hit while ⌥ is held", async () => {
+      await userEvent.type(openPalette(), "#4712");
+      await screen.findByRole("option", { name: "wp_wc_orders #4712" });
+      const user = userEvent.setup();
+      await user.keyboard("{Alt>}");
+      expect(await screen.findByRole("complementary", { name: "Peek wp_wc_orders 4712" })).toBeInTheDocument();
+      await user.keyboard("{/Alt}");
+      await vi.waitFor(() => expect(screen.queryByRole("complementary", { name: /Peek/ })).not.toBeInTheDocument());
+    });
+  });
+
+  describe("addresses", () => {
+    it("lists a typed row address and opens it on Enter", async () => {
+      await userEvent.type(openPalette(), `databee://${session.slug}/db/wp_posts/1`);
+      expect(screen.getByText("Address")).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: /databee:\/\/shop\/db\/wp_posts\/1/ })).toBeInTheDocument();
+      await userEvent.keyboard("{Enter}");
+      expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", address: { target: { kind: "row", table: "wp_posts", key: "1" } } });
+    });
+
+    it("opens the palette seeded with the value when a find address is opened", async () => {
+      render(<CommandPalette />);
+      await act(() => useStore.getState().openAddress(`databee://${session.slug}/db/?find=x`));
+      expect(await screen.findByLabelText("Search everything")).toHaveValue("=x");
+    });
+  });
+
+  describe("footer", () => {
+    it("says which tables # reads when the database has no entities", async () => {
+      await userEvent.type(openPalette(), "#4");
+      expect(screen.getByText("no entities: # reads tables under 1M estimated rows")).toBeInTheDocument();
+    });
+
+    it("omits that note when the database has entities", async () => {
+      useStore.setState({ rulesInfo: { [projectKey("s1", "db")]: rulesInfo(["order"]) } });
+      await userEvent.type(openPalette(), "#4");
+      expect(screen.queryByText(/no entities/)).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("parsePrefix", () => {
+  it.each([
+    ["q:orders", "q:", "orders"],
+    ["=66M12696JX411763D", "=", "66M12696JX411763D"],
+    ["  #4711 ", "#", "4711"],
+    ["jane", null, "jane"],
+  ])("splits %j into prefix and needle", (input, prefix, needle) => {
+    expect(parsePrefix(input)).toEqual({ prefix, needle });
+  });
+
+  it("keeps the whole text of a databee:// address as the needle", () => {
+    expect(parsePrefix("databee://shop/db/wp_posts/1")).toEqual({ prefix: "databee://", needle: "databee://shop/db/wp_posts/1" });
   });
 });

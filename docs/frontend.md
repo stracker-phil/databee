@@ -190,11 +190,26 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   `Digit1` → `1`, `Minus` → `-`), so ⌥⌘K records as `Mod+Alt+K`.
 - **Overrides** come from `keybindings.json` (`null` unbinds). Settings → Shortcuts records new bindings and
   flags conflicts in overlapping scopes.
-- **Palette** (`CommandPalette.tsx`) lists the commands whose `when()` passes, the active object's rule
-  actions (`objectActionCommands()`, `Run <action>`), plus tables, entities and recent items. A guest
-  customer hit (`guest:<email>`) opens Find everywhere for the email. The prefixes `>`, `t:`, `#` and `@` narrow the search. `usePaletteItems(query)` builds
-  the results and runs the entity search; `PaletteList` renders them and scrolls the active one into
-  view. Enter opens a table in the preview tab, ⌘↵ (`goAlt`) opens it pinned.
+- **Palette** (`CommandPalette.tsx`, `components/palette/`) is the main navigation. Its sections, in order:
+  Recent, row hits (an `Address` item for `databee://…`, then Rust's sections), Tables, Commands (those
+  whose `when()` passes, plus the active object's rule actions, `objectActionCommands()`).
+  - `parsePrefix` (`palette/parse.ts`) reads `>` (commands), `t:` (tables), `q:` (saved queries; none until
+    U11), `#`, `@`, `=` and `databee://` (the whole text is the needle). `searchesRows` says when Rust is asked:
+    `#<digits>`, `@`/`=` with 2+ characters, free text with 6+ (`MIN_TEXT`); shorter text matches only tables
+    and commands (substring `score`).
+  - `useRowHits` calls `api.paletteSearch` 200 ms after the last keystroke; a newer input drops older
+    replies. The hits come in Rust's sections, titled by what they are (`objects with id 4711`, `rows that
+    reference 4711`, `people matching jane`, `external id …`, `<table>.<column>` for `=`; see
+    [architecture](architecture.md#palette-search)).
+  - `PaletteList` renders a hit as its `source` (table, or `table.column`) in `--o2`, `#` and its key in the
+    accent, then its detail `Value`s; other items as title, badge and key cap. It scrolls the active item into
+    view. `PaletteFooter` lists the keys and the prefixes, and for `#` without entities says that it reads
+    only tables under 1M estimated rows.
+  - Enter on a hit (`openHit`) drills into the active object tab's stack (`drill` after its active column),
+    else opens an object tab; ⌘↵ (`goAlt`) always opens a tab. A hit whose address is not a row opens with
+    `openAddress`. Tables open in the preview tab, pinned with ⌘↵. Holding ⌥ peeks the selected hit
+    (`PeekCard` under its row). `openAddress` of a `?find=<value>` address opens the palette with `=<value>`,
+    and so does "Find everywhere" on a WordPress field.
 - **Menu.** Native menu items emit `command` events. See [backend.md](backend.md#native-menu) for the Rust side
   of `menu: true`.
 
@@ -232,7 +247,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `PresetsSection`, `ReferenceForm`, `KindStyleForms`, `ReferencesSection`, `RuleSections`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
-| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette`, `ContextMenu`, `Toasts` |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `PaletteList`), `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens-until-u12) |
 
 ### Settings pages
@@ -398,7 +413,7 @@ The page never builds SQL conditions. Opening rows in the Database view passes s
 - `openRow(table, column, value)` (tabs slice): while the Database view shows a table tab of the active
   session, that tab moves to the rows (`showRows`, so ⌘[ returns). Otherwise it switches to Database mode
   (`setMode("db")`) and opens `table` of the active database with `where: [{ column, value }]` in the
-  preview tab. "Find everywhere" hits and option rows use it.
+  preview tab. Option rows use it.
 - `openInDatabase(table, where?)`: the same with any number of matches, in a kept tab. `RowSource.where`
   (`FieldValue.tsx`) carries the matches for a field's "Open row in Database view".
 - `openTableTab(database, table, view?, filter?, { preview?, where? })`: an open tab is reused only when

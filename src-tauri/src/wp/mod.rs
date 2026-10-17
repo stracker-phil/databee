@@ -1,17 +1,15 @@
 //! WordPress screens over the effective rules of the `wordpress`, `woocommerce` and
-//! `action-scheduler` presets: documents, lists, search, snapshots and the options inspector.
+//! `action-scheduler` presets: documents, lists, snapshots and the options inspector.
 
 pub mod catalog;
 pub mod changes;
 pub mod commands;
 pub mod dashboard;
 pub mod document;
-pub mod find;
 pub mod lists;
 pub mod media;
 pub mod options;
 pub mod rows;
-pub mod search;
 #[cfg(test)]
 mod server_tests;
 pub mod site;
@@ -57,8 +55,6 @@ pub const COMMANDS: &[&str] = &[
     "wp_failed_by_hook",
     "wp_sessions",
     "wp_content",
-    "wp_search",
-    "wp_find_value",
     "wp_options_group",
     "wp_snapshot_take",
     "wp_snapshots",
@@ -112,8 +108,6 @@ pub fn init(config_dir: &Path) -> TauriPlugin<Wry> {
             commands::wp_failed_by_hook,
             commands::wp_sessions,
             commands::wp_content,
-            commands::wp_search,
-            commands::wp_find_value,
             commands::wp_options_group,
             commands::wp_snapshot_take,
             commands::wp_snapshots,

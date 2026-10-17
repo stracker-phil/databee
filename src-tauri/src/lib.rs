@@ -19,6 +19,7 @@ mod menu;
 mod remote;
 pub mod rules;
 mod schema;
+mod search;
 pub mod secrets;
 mod session;
 pub mod stage;
@@ -323,6 +324,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             document::commands::peek,
             document::commands::table_actions,
             document::commands::plan_action,
+            search::commands::palette_search,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

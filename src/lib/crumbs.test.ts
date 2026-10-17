@@ -15,18 +15,8 @@ describe("routeCrumbs", () => {
     expect(crumbs[1].route).toBeUndefined();
   });
 
-  it("names the searched value on the find screen", () => {
-    expect(routeCrumbs({ screen: "find", value: "66M12696JX411763D" }).map((c) => c.label)).toEqual(["Find everywhere", "“66M12696JX411763D”"]);
-  });
-
   it("never repeats an item", () => {
-    const routes = [
-      { screen: "find", value: "shop" },
-      { screen: "list", list: "content", params: { kind: "page", search: "shop" } },
-    ] as const;
-    for (const route of routes) {
-      const labels = routeCrumbs(route).map((c) => c.label);
-      expect(new Set(labels).size).toBe(labels.length);
-    }
+    const labels = routeCrumbs({ screen: "list", list: "content", params: { kind: "page", search: "shop" } }).map((c) => c.label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });

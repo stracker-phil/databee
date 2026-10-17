@@ -35,16 +35,20 @@ pub async fn peek(ctx: &Ctx<'_>, address: &Address) -> AppResult<Peek> {
         )));
     }
     let own = own::load(ctx, &table, &filter).await?;
-    let summary: &[String] = own.entity.as_ref().map_or(&[], |e| &e.entity.summary);
-    let values = if summary.is_empty() {
-        plain_columns(ctx, &own)
-    } else {
-        summary_values(ctx, &own, summary).await
-    };
     Ok(Peek {
         key_column: ctx.single_key(&table).map(str::to_string),
-        values,
+        values: values(ctx, &own).await,
     })
+}
+
+/// The entity's summary of a loaded row, else its first five columns outside the key.
+pub async fn values(ctx: &Ctx<'_>, own: &Own) -> Vec<(String, Value)> {
+    let summary: &[String] = own.entity.as_ref().map_or(&[], |e| &e.entity.summary);
+    if summary.is_empty() {
+        plain_columns(ctx, own)
+    } else {
+        summary_values(ctx, own, summary).await
+    }
 }
 
 /// The row's values without currency lookups.

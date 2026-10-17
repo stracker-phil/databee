@@ -88,11 +88,11 @@ preset applies.
 | `document.rs` | `EntityDoc` and `DocField`; `assemble` adds a `Hint` (money with the currency of the row or the document, time for `unix`/`utc` timestamps) and `Sensitive::Secret` from the kind rules; the title is the entity's summary values |
 | `mod.rs` | `WpInfo` (the `rules_info` shim), `load_docs` and `expand` (only for snapshots: rows, meta and relation counts), featured images (`post_images`, for the lists), options queries |
 | `commands.rs` | The Tauri commands, which only forward; `wp_detect` maps `rules_info` to `WpInfo` |
-| `lists.rs`, `dashboard.rs`, `search.rs`, `find.rs`, `options.rs`, `snapshot.rs`, `changes.rs` | The list screens, dashboard (UTC days), the palette's entity search (`wp_search`), find everywhere (`wp_find_value`), options inspector, snapshots and writes |
+| `lists.rs`, `dashboard.rs`, `options.rs`, `snapshot.rs`, `changes.rs` | The list screens, dashboard (UTC days), options inspector, snapshots and writes; the palette's search is the core's `search/` ([architecture](architecture.md#palette-search)) |
 | `sql.rs`, `rows.rs`, `media.rs`, `snapshots_store.rs` | Shared SQL fragments, cell readers (`money`: an amount as stored plus its currency code), thumbnail URLs, the snapshot store |
 
 `wp_detect` returns `WpInfo { prefix, presets, entities, tableEntities, legacyEntitiesFile }` or `null`.
-`entities` are the entity names of `RulesInfo.entities`, which the palette's `#`/`@` search needs;
+`entities` are the entity names of `RulesInfo.entities`;
 `tableEntities` maps a real table to the entity its rows open as. `openEntity(entity, id)` (`wp` slice) asks
 `document` for the shorthand `<entity> <id>`, keeps the reply (`keepDocument`) and opens its canonical row address
 as an object tab. A list's side pane shows the same document (`object/EntityDocument.tsx`). The Compare screen

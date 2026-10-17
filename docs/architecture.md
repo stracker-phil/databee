@@ -81,6 +81,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/rules/               presets and projects: rule types, TOML parsing, the preset catalog, projects.json,
                            effective rules, the rules lens and reference coverage
   src/document/            documents: one row with its meta rows, incoming references, patterns and events
+  src/search/              the palette's search: ids, people, external ids, find everywhere
   src/commands.rs          settings, keybindings, favorites, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
@@ -278,6 +279,10 @@ without building its document: the row in one query (with its entity, as for `ow
 summary name is not a column), or, without a summary, the first five columns that are not part of the primary
 key. `key_column` is the single-column key row addresses name, for the peek's `via … → table.column` line.
 
+**Linked** (`linked.rs`): what the palette's search reads of a row without its document: `row` (the row by
+its single-column key, with its entity), `summary` (the peek's values) and `referencing` (its incoming
+reference and pattern groups).
+
 **Entity shorthand** (`shorthand.rs`): the tables that define the entity are tried with the key (a table
 only for the entity, without `filter`, before filtered ones); the first that holds it wins and the others are
 `alternatives`.
@@ -294,6 +299,25 @@ table)` lists the `scope = "table"` ones. `plan_action(session_id, address, acti
 row address, or on a table address without a filter for a table action, and returns a `PlannedChange` like
 `plan_change`, so the pending tray applies and undoes it (`actions/plan.rs`, see
 [presets.md](presets.md#action)).
+
+## Palette search
+
+`src-tauri/src/search/` answers the palette's row searches (`palette_search(session_id, database, query)`,
+the MCP `find` tool) from the effective rules and the schema alone. `search::parse` reads the input:
+
+| Input | `Query` | Sections |
+|---|---|---|
+| `#<digits>` | `Id` (`ids.rs`) | `objects with id <n>`: each entity table with a single-column key that holds the key (one `own` query per table, the summary as a peek reads it); `rows that reference <n>`: the incoming reference and pattern groups of the first 5 found rows (`document::linked::referencing`; meta rows only when a pattern of the table needs them) |
+| `@<text>` (2+ characters) | `People` (`text.rs`) | `people matching <text>`: entities with `people = true`, on their `search` columns (`LIKE` contains) and `search_exact` columns (`=`); names that are no column are keys of the entity's own `[[meta]]` table (`pk IN (SELECT fk … )`) |
+| free text (6+ characters, no prefix) | `Text` (`text.rs`) | `external id <text>`: the targets of rule references that are not the target table's key (`=` plus the `to_when` conditions), a meta row as its owner row; then `objects matching <text>`: every entity's `search`/`search_exact` |
+| `=<value>` (2+ characters) | `Find` (`find.rs`) | one section per `table.column`: the value column of every `[[meta]]` table (exact), the `[[find]]` sources (their `match`), the entities' `search` (contains) and `search_exact` columns |
+
+Without entities, `#` reads every base table with a single-column key and fewer than 1M estimated rows
+(`PLAIN_TABLE_ROWS`). Each query runs with `QUERY_TIMEOUT` (3 s, or the query timeout when lower); a failed
+or timed-out query drops only its own hits. Each section has at most `SECTION_CAP` (20) hits, and each row
+appears once (the first section keeps it). A `PaletteHit { section, address, source, title, detail }` opens
+`address` (a meta value's owner row); `title` is the opened row's key and `detail` its summary values (for a
+meta value its key and value), all `Value`s with provenance.
 
 ## A request, end to end
 

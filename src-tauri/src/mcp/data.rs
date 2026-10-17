@@ -17,6 +17,7 @@ use crate::lens::{self, ResolvedReference};
 use crate::rules::effective::RuleSources;
 use crate::rules::{PresetCatalog, ProjectsStore};
 use crate::schema;
+use crate::search::{self, PaletteHit};
 use crate::secrets::SecretStore;
 use crate::session::{self, Session};
 use crate::store::recents::{RecentConnection, RecentsStore};
@@ -163,6 +164,20 @@ impl Core {
                     Some(sources),
                 )
                 .await
+        })
+        .await
+    }
+
+    /// The palette's search: `#<id>`, `@<name>`, `=<value>` or free text; only SELECTs, each
+    /// with the search's timeout and section caps.
+    pub async fn find(
+        &self,
+        connection: &str,
+        database: &str,
+        query: &str,
+    ) -> AppResult<Vec<PaletteHit>> {
+        self.with_rules(connection, async |session, sources, settings| {
+            search::search(session, database, query, sources, settings.query_timeout()).await
         })
         .await
     }
@@ -465,6 +480,47 @@ mod server_tests {
                 rig.server,
                 references.len()
             );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn find_returns_the_palette_hits_with_their_sections_and_sources() {
+        for rig in rigs() {
+            let hits = rig
+                .core
+                .find(&rig.slug, DB, "#4711")
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e:?}", rig.server));
+
+            let objects: Vec<&str> = hits
+                .iter()
+                .filter(|hit| hit.section == "objects with id 4711")
+                .map(|hit| hit.source.as_str())
+                .collect();
+            assert!(
+                objects.contains(&"wp_wc_orders") && objects.contains(&"wp_posts"),
+                "{}: {objects:?}",
+                rig.server
+            );
+            assert!(
+                hits.iter()
+                    .any(|hit| hit.section == "rows that reference 4711"
+                        && hit.source == "wp_wc_orders.parent_order_id"),
+                "{}: {} hits",
+                rig.server,
+                hits.len()
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn find_returns_no_hits_for_input_only_the_page_answers() {
+        for rig in rigs() {
+            let hits = rig.core.find(&rig.slug, DB, "t:orders").await;
+
+            assert_eq!(hits, Ok(Vec::new()), "{}", rig.server);
         }
     }
 

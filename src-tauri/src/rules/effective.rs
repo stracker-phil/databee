@@ -21,7 +21,7 @@ use super::condition::{self, Condition, Matcher, column_glob_match, glob_match};
 use super::kinds::{KindRule, StyleRule};
 use super::project::Project;
 use super::queries::Pattern;
-use super::types::{ColumnGlob, ColumnRef, Entity, Preset, Reference};
+use super::types::{ColumnGlob, ColumnRef, Entity, FindSource, Preset, Reference};
 use crate::db::ColumnEquals;
 use crate::lock::MutexExt;
 use crate::schema::DatabaseSchema;
@@ -122,6 +122,8 @@ pub struct EffectiveRules {
     pub patterns: Vec<RulePattern>,
     /// In apply order.
     pub actions: Vec<RuleAction>,
+    /// `[[find]]` sources with real table names, in apply order.
+    pub finds: Vec<FindSource>,
     pub disabled: HashSet<String>,
 }
 
@@ -143,6 +145,7 @@ impl EffectiveRules {
             entities: Vec::new(),
             patterns: Vec::new(),
             actions: Vec::new(),
+            finds: Vec::new(),
             disabled,
         };
         rules.add_references(&project.references, None);
@@ -310,6 +313,14 @@ impl EffectiveRules {
         }
         for action in &preset.actions {
             self.add_action(&preset.name, action);
+        }
+        for find in &preset.finds {
+            if let Some(table) = self.applied.existing_table(&find.table) {
+                self.finds.push(FindSource {
+                    table,
+                    ..find.clone()
+                });
+            }
         }
     }
 

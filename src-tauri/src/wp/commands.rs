@@ -8,13 +8,11 @@ use super::catalog::Catalog;
 use super::changes::{self, WpChangeRequest};
 use super::dashboard::{self, ActionHistogram, BrowserSection, Dashboard};
 use super::document::DocField;
-use super::find::{self, FindGroup};
 use super::lists::{
     self, ActionSummary, ListQuery, OrderSummary, OrderType, Page, PostSummary, ProductSummary,
     SessionSummary, UserSummary,
 };
 use super::options::OptionsOverview;
-use super::search::{self, SearchHit};
 use super::site::WpContext;
 use super::snapshot::{self, DiffEntry, Scope};
 use super::snapshots_store::SnapshotInfo;
@@ -234,32 +232,6 @@ pub async fn wp_content(
         ctx, session: s, ..
     } = wp_env(&state, &session_id, &database).await?;
     lists::content(s.db.as_ref(), &ctx, &database, &query).await
-}
-
-#[tauri::command]
-pub async fn wp_find_value(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    value: String,
-) -> AppResult<Vec<FindGroup>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    find::find_value(s.db.as_ref(), &ctx, &database, &value).await
-}
-
-#[tauri::command]
-pub async fn wp_search(
-    state: State<'_, AppState>,
-    session_id: String,
-    database: String,
-    query: String,
-) -> AppResult<Vec<SearchHit>> {
-    let WpEnv {
-        ctx, session: s, ..
-    } = wp_env(&state, &session_id, &database).await?;
-    search::search(s.db.as_ref(), &ctx, &database, &query).await
 }
 
 #[tauri::command]

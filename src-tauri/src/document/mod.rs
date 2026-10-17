@@ -12,10 +12,11 @@ mod context;
 mod events;
 mod exists;
 mod incoming;
+pub mod linked;
 mod meta;
 mod own;
 mod patterns;
-mod peek;
+pub mod peek;
 mod pivot;
 #[cfg(test)]
 mod server_tests;
@@ -33,6 +34,10 @@ use crate::rules::effective::RuleSources;
 use crate::session::Session;
 use crate::value::{RowKey, Value};
 
+#[cfg(test)]
+pub(crate) use context::testing;
+pub use context::{Ctx, Rows};
+pub use own::{Own, entity_filter};
 pub use peek::Peek;
 
 /// Meta rows shown before the group is capped.

@@ -127,7 +127,7 @@ export function valueMenu(
     items.push({ label: `Filter ${pivot.label} by this value`, action: () => actions.navigate({ screen: "list", list: pivot.list, params: { [pivot.param]: text } }) });
   }
   if (text.trim().length >= 2) {
-    items.push("separator", { label: "Find everywhere", action: () => actions.navigate({ screen: "find", value: text.trim() }) });
+    items.push("separator", { label: "Find everywhere", action: () => useStore.getState().setPaletteOpen(true, `=${text.trim()}`) });
   }
   return items;
 }

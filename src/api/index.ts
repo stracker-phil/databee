@@ -16,7 +16,6 @@ import type {
   ActionHistogram,
   ErrorKind,
   DocField,
-  FindGroup,
   HookFailures,
   ListQuery,
   OrderSummary,
@@ -24,11 +23,11 @@ import type {
   Page,
   PostSummary,
   ProductSummary,
-  SearchHit,
   SessionSummary,
   AppError,
   DecodedValue,
   Peek,
+  PaletteHit,
   OptionsOverview,
   WpInfo,
   BrowsePage,
@@ -144,6 +143,9 @@ export const api = {
     invoke<Document>("document", { sessionId, address, database }),
   /** What a peek shows of a row address: its entity's summary, else its first columns. */
   peek: (sessionId: string, address: string) => invoke<Peek>("peek", { sessionId, address }),
+  /** The palette's row hits for `#id`, `@name`, `=value` or free text of 6+ characters. */
+  paletteSearch: (sessionId: string, database: string, query: string) =>
+    invoke<PaletteHit[]>("palette_search", { sessionId, database, query }),
   /** The `scope = "table"` rule actions of `table`. */
   tableActions: (sessionId: string, database: string, table: string) =>
     invoke<ObjectAction[]>("table_actions", { sessionId, database, table }),
@@ -184,10 +186,6 @@ export const api = {
     invoke<Page<SessionSummary>>("plugin:wp|wp_sessions", { sessionId, database, query }),
   wpContent: (sessionId: string, database: string, query: ListQuery) =>
     invoke<Page<PostSummary>>("plugin:wp|wp_content", { sessionId, database, query }),
-  wpFindValue: (sessionId: string, database: string, value: string) =>
-    invoke<FindGroup[]>("plugin:wp|wp_find_value", { sessionId, database, value }),
-  wpSearch: (sessionId: string, database: string, query: string) =>
-    invoke<SearchHit[]>("plugin:wp|wp_search", { sessionId, database, query }),
   wpOptionsGroup: (sessionId: string, database: string, prefix: string) =>
     invoke<DocField[]>("plugin:wp|wp_options_group", { sessionId, database, prefix }),
 

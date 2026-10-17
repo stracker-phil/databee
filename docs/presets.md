@@ -242,7 +242,8 @@ dropped (`EffectiveRules.actions`).
 
 ### `[[find]]`
 
-Extra sources for find everywhere, besides meta values and entity search columns.
+Extra sources for find everywhere (the palette's `=value`), besides meta values and entity search columns
+([architecture](architecture.md#palette-search)).
 
 ```toml
 [[find]]

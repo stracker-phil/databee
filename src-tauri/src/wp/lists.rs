@@ -425,9 +425,6 @@ pub fn users_sql(dialect: Dialect, db: &str, ctx: &WpContext, q: &ListQuery) -> 
     )
 }
 
-/// Virtual customers for guest checkouts are addressed as `guest:<billing email>`.
-pub const GUEST_PREFIX: &str = "guest:";
-
 /// (count, sum of totals, last order) per customer for paid-ish orders.
 pub fn customer_stats_sql(
     dialect: Dialect,

@@ -20,6 +20,7 @@ pub struct FakeDatabase {
     database: Mutex<Option<String>>,
     responses: Vec<(String, AppResult<ResultSet>)>,
     queries: Mutex<Vec<String>>,
+    fetch_timeouts: Mutex<Vec<Duration>>,
     applied: Mutex<Vec<Vec<String>>>,
     /// Structures by database and table, behind `tables`, `structure` and `keys`.
     schema: Mutex<BTreeMap<(String, String), TableStructure>>,
@@ -38,6 +39,7 @@ impl FakeDatabase {
             database: Mutex::new(None),
             responses: Vec::new(),
             queries: Mutex::default(),
+            fetch_timeouts: Mutex::default(),
             applied: Mutex::default(),
             schema: Mutex::default(),
             closed: AtomicBool::new(false),
@@ -76,6 +78,11 @@ impl FakeDatabase {
     /// Every SQL text seen by `execute`, `fetch` and `browse`, in order.
     pub fn queries(&self) -> Vec<String> {
         self.queries.lock_unpoisoned().clone()
+    }
+
+    /// The timeout of every `fetch` call, in order.
+    pub fn fetch_timeouts(&self) -> Vec<Duration> {
+        self.fetch_timeouts.lock_unpoisoned().clone()
     }
 
     /// The statements of every `apply` call, in order.
@@ -229,7 +236,8 @@ impl Database for FakeDatabase {
         })
     }
 
-    async fn fetch(&self, sql: &str, _timeout: Duration) -> AppResult<ResultSet> {
+    async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet> {
+        self.fetch_timeouts.lock_unpoisoned().push(timeout);
         self.respond(sql)
     }
 

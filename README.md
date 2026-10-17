@@ -115,6 +115,9 @@ Its tools:
 - `query(connection, sql, limit)`: SELECT, SHOW, DESCRIBE, EXPLAIN and WITH … SELECT only; anything else
   is refused before it reaches the server;
 - `references(connection, database)`: every reference between the tables, with its source;
+- `find(connection, database, query)`: rows as the palette finds them: `#4711` (rows with that id and
+  the rows that reference them), `@jane` (people), `=value` (find everywhere) or free text of 6+ characters
+  (search columns and external ids);
 - `link(address)`: the canonical `databee://` link;
 - `current`, `open(address, focus)` and `command(id)`: act on the running app.
 

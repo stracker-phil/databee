@@ -23,8 +23,6 @@ export function routeCrumbs(route: WpRoute): Crumb[] {
       return [{ label: "Dashboard" }];
     case "snapshots":
       return [{ label: "Snapshots & diff" }];
-    case "find":
-      return [{ label: "Find everywhere" }, { label: `“${route.value}”` }];
     case "list": {
       const crumbs = [listCrumb(route.list)];
       const status = route.params?.status;

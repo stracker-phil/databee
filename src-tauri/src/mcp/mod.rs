@@ -62,6 +62,18 @@ pub struct ReferencesArgs {
 
 #[derive(Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
+pub struct FindArgs {
+    /// A connection slug from `connections`
+    pub connection: String,
+    pub database: String,
+    /// `#4711` (rows with that id and the rows that reference them), `@jane` (people), `=value`
+    /// (every meta value and searchable column) or free text of 6+ characters (search columns
+    /// and external ids)
+    pub query: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
 pub struct OpenArgs {
     /// A databee:// address, or an entity shorthand such as `order 4711` (in the active connection)
     pub address: String,
@@ -148,6 +160,17 @@ impl DataBeeServer {
         answer(self.core.references(&args.connection, &args.database).await)
     }
 
+    #[tool(
+        description = "Finds rows as DataBee's palette does: by id across entities, people, external ids or a value anywhere; each hit has its address, key and summary values"
+    )]
+    async fn find(&self, Parameters(args): Parameters<FindArgs>) -> Result<String, String> {
+        answer(
+            self.core
+                .find(&args.connection, &args.database, &args.query)
+                .await,
+        )
+    }
+
     #[tool(description = "The canonical databee:// link of an address, to open in DataBee")]
     async fn link(&self, Parameters(args): Parameters<AddressArgs>) -> Result<String, String> {
         Address::parse(&args.address)
@@ -218,11 +241,12 @@ mod tests {
     use tempfile::{TempDir, tempdir};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-    const TOOLS: [&str; 9] = [
+    const TOOLS: [&str; 10] = [
         "command",
         "connections",
         "current",
         "document",
+        "find",
         "link",
         "open",
         "query",
@@ -236,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn the_server_offers_exactly_the_nine_tools() {
+    fn the_server_offers_exactly_the_ten_tools() {
         let mut names: Vec<String> = DataBeeServer::tool_router()
             .list_all()
             .iter()

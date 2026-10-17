@@ -22,9 +22,7 @@ use crate::wp::catalog::Catalog;
 use crate::wp::changes::{WpChangeRequest, plan as plan_wp_change};
 use crate::wp::dashboard::{Granularity, action_histogram, browser, dashboard};
 use crate::wp::document::Sensitive;
-use crate::wp::find::{FindGroup, FindHit, find_value};
 use crate::wp::lists::{self, ListQuery};
-use crate::wp::search::search;
 use crate::wp::site::WpContext;
 use crate::wp::{WpList, expand, load_docs, options_overview, post_images};
 
@@ -320,127 +318,6 @@ async fn lists_sort_by_whitelisted_keys() {
 
 #[tokio::test]
 #[ignore]
-async fn guest_checkouts_are_not_users_but_are_found_by_search() {
-    for (db, ctx, _) in env().await {
-        let all = lists::users(&db, &ctx, "wp_test", &lists::ListQuery::default(), false)
-            .await
-            .unwrap();
-        assert!(!all.items.iter().any(|c| c.id.starts_with("guest:")));
-        assert!(!all.kinds.iter().any(|k| k.value == "guest"));
-
-        let hits = search(&db, &ctx, "wp_test", "guest@").await.unwrap();
-        assert!(
-            hits.iter()
-                .any(|h| h.entity == "user" && h.id == "guest:guest@shop.test"),
-            "{hits:?}"
-        );
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn find_value_scans_meta_options_actions_and_logs() {
-    for (db, ctx, _) in env().await {
-        let hit = |row_id: &str, label: &str, entity: Option<(&str, &str)>, column: &str| FindHit {
-            row_id: row_id.into(),
-            label: label.into(),
-            entity: entity.map(|(e, _)| e.into()),
-            entity_id: entity.map(|(_, id)| id.into()),
-            column: column.into(),
-        };
-        let group = |source: &str, table: &str, id_column: &str, hits: Vec<FindHit>| FindGroup {
-            source: source.into(),
-            table: table.into(),
-            id_column: id_column.into(),
-            count: hits.len() as u64,
-            hits,
-        };
-
-        let paypal_id = find_value(&db, &ctx, "wp_test", "66M12696JX411763D")
-            .await
-            .unwrap();
-        assert_eq!(
-            paypal_id,
-            [
-                group(
-                    "Order meta",
-                    "wp_wc_orders_meta",
-                    "id",
-                    vec![hit(
-                        "1",
-                        "order #4711 · _ppcp_paypal_order_id",
-                        Some(("order", "4711")),
-                        "meta_value"
-                    )]
-                ),
-                group(
-                    "WooCommerce log",
-                    "wp_woocommerce_log",
-                    "log_id",
-                    vec![hit(
-                        "1",
-                        "woocommerce-paypal-payments · PATCH https://api-m.sandbox.paypal.com/v2/checkout/orders/66M12696JX411763D",
-                        None,
-                        "message"
-                    )]
-                ),
-            ]
-        );
-
-        let transaction = find_value(&db, &ctx, "wp_test", "61P3809224872131H")
-            .await
-            .unwrap();
-        assert_eq!(
-            transaction,
-            [group(
-                "Orders",
-                "wp_wc_orders",
-                "id",
-                vec![hit(
-                    "4711",
-                    "order #4711 · wc-processing",
-                    Some(("order", "4711")),
-                    "transaction_id"
-                )]
-            )]
-        );
-
-        // Action args and log messages match by containment; "14711" is not "4711".
-        let contained = find_value(&db, &ctx, "wp_test", "14711").await.unwrap();
-        assert_eq!(
-            contained,
-            [
-                group(
-                    "Scheduled actions",
-                    "wp_actionscheduler_actions",
-                    "action_id",
-                    vec![hit(
-                        "3",
-                        "wc-admin_import_orders · pending",
-                        Some(("action", "3")),
-                        "args"
-                    )]
-                ),
-                group(
-                    "WooCommerce log",
-                    "wp_woocommerce_log",
-                    "log_id",
-                    vec![hit("3", "other · Unrelated error #14711", None, "message")]
-                ),
-            ]
-        );
-
-        assert!(
-            find_value(&db, &ctx, "wp_test", "no-such-value-anywhere")
-                .await
-                .unwrap()
-                .is_empty()
-        );
-    }
-}
-
-#[tokio::test]
-#[ignore]
 async fn failed_actions_group_by_hook_with_last_message() {
     for (db, ctx, _) in env().await {
         let groups = crate::wp::lists::failed_by_hook(&db, &ctx, "wp_test")
@@ -624,43 +501,6 @@ async fn content_without_a_kind_lists_every_visible_post_type() {
                 .collect::<Vec<_>>(),
             ["publish"]
         );
-    }
-}
-
-#[tokio::test]
-#[ignore]
-async fn omnisearch_finds_pasted_identifiers() {
-    for (db, ctx, _) in env().await {
-        let first = |hits: Vec<crate::wp::search::SearchHit>| {
-            hits.into_iter().next().map(|h| (h.entity, h.id, h.matched))
-        };
-        assert_eq!(
-            first(
-                search(&db, &ctx, "wp_test", "61P3809224872131H")
-                    .await
-                    .unwrap()
-            ),
-            Some(("order".into(), "4711".into(), "transaction_id".into()))
-        );
-        assert_eq!(
-            first(
-                search(&db, &ctx, "wp_test", "66M12696JX411763D")
-                    .await
-                    .unwrap()
-            ),
-            Some((
-                "order".into(),
-                "4711".into(),
-                "_ppcp_paypal_order_id".into()
-            ))
-        );
-        let jane = search(&db, &ctx, "wp_test", "jane@shop").await.unwrap();
-        assert!(jane.iter().any(|h| h.entity == "user" && h.id == "12"));
-        assert!(jane.iter().any(|h| h.entity == "order" && h.id == "4711"));
-        let sku = search(&db, &ctx, "wp_test", "SHIRT-R").await.unwrap();
-        assert!(sku.iter().any(|h| h.entity == "post" && h.id == "201"));
-        let id = search(&db, &ctx, "wp_test", "#4711").await.unwrap();
-        assert!(id.iter().any(|h| h.entity == "order" && h.id == "4711"));
     }
 }
 
@@ -1411,7 +1251,6 @@ mod real_data {
     #[ignore]
     async fn wordpress_mode_queries_work_on_real_data() {
         use crate::wp::lists::{self, ListQuery};
-        use crate::wp::search::search;
         use crate::wp::{dashboard, options_group};
 
         fn non_empty<T>(what: &str, items: &[T]) {
@@ -1458,14 +1297,6 @@ mod real_data {
         non_empty("sessions", &sessions.items);
         lap("lists");
 
-        let order_id = &orders.items[0].id;
-        let hits = search(&db, &ctx, &database, order_id).await.unwrap();
-        assert!(
-            hits.iter()
-                .any(|h| h.entity == "order" && &h.id == order_id),
-            "search by order id {order_id}"
-        );
-        lap("search order id");
         non_empty(
             "woocommerce options",
             &options_group(&db, &ctx, &catalog, &database, "woocommerce")

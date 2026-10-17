@@ -25,8 +25,6 @@ const WP_COMMANDS: &[&str] = &[
     "wp_failed_by_hook",
     "wp_sessions",
     "wp_content",
-    "wp_search",
-    "wp_find_value",
     "wp_options_group",
     "wp_snapshot_take",
     "wp_snapshots",

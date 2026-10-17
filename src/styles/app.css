@@ -880,6 +880,11 @@ button.flag-pill:not(:disabled):hover { outline: 1px solid var(--accent); }
 .palette-section { position: absolute; left: 1.231rem; display: none; }
 .palette-list li:has(.palette-section) { margin-top: 1.4rem; }
 .palette-list li .palette-section { display: block; top: -1.25rem; font-size: var(--fs-small); color: var(--o3); }
+.palette-hit { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 17rem) 5.4rem minmax(0, 1fr); column-gap: 1.077rem; align-items: baseline; font-size: var(--data-font-size); }
+.palette-hit > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-hit .tn { color: var(--o2); }
+.palette-hit .key, .palette-hit .key .val-pk { color: var(--accent); }
+.palette-foot { display: flex; flex-wrap: wrap; gap: 0.462rem 1.385rem; padding: 0.769rem 1.231rem 0.462rem; border-top: 1px solid var(--line); font-size: var(--fs-small); }
 
 /* ---------- shortcuts settings ---------- */
 .shortcut-field { display: inline-flex; align-items: center; justify-content: center; width: 7rem; height: 1.692rem; border: 1px solid var(--field-line); border-radius: 6px; background: var(--field); box-shadow: var(--shadow-inset); font-family: var(--font-ui); }

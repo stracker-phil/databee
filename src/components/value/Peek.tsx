@@ -7,7 +7,7 @@ import { selectActiveTab, selectFocusedValue, useStore } from "../../state/store
 import { openTarget, type ColumnPlace } from "./open";
 import { Value } from "./Value";
 
-interface PeekTarget {
+export interface PeekTarget {
   address: string;
   via: string | null;
   by: string | null;
@@ -161,7 +161,7 @@ function position(rect: DOMRect | null): CSSProperties {
   return { left: Math.max(8, Math.min(rect.left, window.innerWidth - WIDTH - 8)), top: rect.bottom + OFFSET };
 }
 
-function PeekCard({ target }: { target: PeekTarget }) {
+export function PeekCard({ target }: { target: PeekTarget }) {
   const loaded = usePeekData(target.address);
   const address = parseAddress(target.address);
   const row = address.target.kind === "row" ? address.target : null;

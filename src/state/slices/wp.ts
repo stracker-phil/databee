@@ -11,8 +11,7 @@ export type { WpList };
 export type WpRoute =
   | { screen: "dashboard" }
   | { screen: "list"; list: WpList; params?: Record<string, string>; selected?: { entity: string; id: string } }
-  | { screen: "snapshots" }
-  | { screen: "find"; value: string };
+  | { screen: "snapshots" };
 
 export interface WpSlice {
   /** WordPress detection per `session/database`; null = not WordPress. */
