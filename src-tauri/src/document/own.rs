@@ -4,6 +4,7 @@
 use super::context::{Ctx, Rows};
 use crate::address::{Address, Target};
 use crate::db::ColumnEquals;
+use crate::db::browse::aliased_equals_sql;
 use crate::error::{AppError, AppResult};
 use crate::rules::effective::AppliedEntity;
 use crate::rules::placeholder::with_prefixes;
@@ -40,16 +41,7 @@ impl Own {
 /// a filter on every column of a composite key.
 pub fn row_filter(ctx: &Ctx<'_>, address: &Address) -> AppResult<(String, Vec<ColumnEquals>)> {
     match &address.target {
-        Target::Row { table, key } => {
-            let column = ctx.single_key(table).ok_or_else(|| {
-                AppError::InvalidInput(format!("`{table}` has no single-column primary key"))
-            })?;
-            let filter = vec![ColumnEquals {
-                column: column.to_string(),
-                value: Some(key.clone()),
-            }];
-            Ok((table.clone(), filter))
-        }
+        Target::Row { table, key } => Ok((table.clone(), ctx.schema.row_filter(table, key)?)),
         Target::Table { table, filter } if covers_key(ctx.primary_key(table), filter) => {
             Ok((table.clone(), filter.clone()))
         }
@@ -101,7 +93,7 @@ pub async fn load(ctx: &Ctx<'_>, table: &str, filter: &[ColumnEquals]) -> AppRes
         "SELECT t.*{} FROM {} AS t WHERE {} LIMIT 2",
         tests.concat(),
         ctx.table_ref(table),
-        equals_sql(ctx, Some("t"), filter)
+        aliased_equals_sql(ctx.dialect, "t", filter)
     );
     let mut result = ctx.fetch(&sql).await?;
     if result.rows.len() != 1 {
@@ -136,18 +128,6 @@ pub fn entity_filter(ctx: &Ctx<'_>, filter: &str) -> String {
         &applied.prefix,
         &applied.network_prefix,
     )
-}
-
-/// `a = 'x' AND b IS NULL`, the columns qualified with `alias`.
-pub fn equals_sql(ctx: &Ctx<'_>, alias: Option<&str>, filter: &[ColumnEquals]) -> String {
-    filter
-        .iter()
-        .map(|f| match &f.value {
-            Some(value) => format!("{} = {}", ctx.column(alias, &f.column), ctx.literal(value)),
-            None => format!("{} IS NULL", ctx.column(alias, &f.column)),
-        })
-        .collect::<Vec<_>>()
-        .join(" AND ")
 }
 
 #[cfg(test)]

@@ -10,9 +10,7 @@ use tokio::sync::Mutex;
 
 use crate::address::{Address, Target};
 use crate::db::classify::is_read_only;
-use crate::db::{
-    BrowsePage, BrowseRequest, ColumnEquals, Connector, ExecuteResponse, MySqlConnector,
-};
+use crate::db::{BrowsePage, BrowseRequest, Connector, ExecuteResponse, MySqlConnector};
 use crate::document::{self, Document};
 use crate::error::{AppError, AppResult};
 use crate::lens::{self, ResolvedReference};
@@ -216,7 +214,10 @@ async fn browse_request(
 ) -> AppResult<BrowseRequest> {
     let (table, filter) = match &address.target {
         Target::Table { table, filter } => (table, filter.clone()),
-        Target::Row { table, key } => (table, row_filter(session, address, table, key).await?),
+        Target::Row { table, key } => {
+            let schema = schema::database(session, &address.database).await?;
+            (table, schema.row_filter(table, key)?)
+        }
         _ => {
             return Err(AppError::InvalidInput(format!(
                 "`rows` takes a table or row address, not {address}"
@@ -230,25 +231,6 @@ async fn browse_request(
         r#where: filter,
         ..BrowseRequest::default()
     })
-}
-
-/// The row by its single-column primary key.
-async fn row_filter(
-    session: &Session,
-    address: &Address,
-    table: &str,
-    key: &str,
-) -> AppResult<Vec<ColumnEquals>> {
-    let schema = schema::database(session, &address.database).await?;
-    let Some([column]) = schema.keys(table).map(|k| k.primary_key.as_slice()) else {
-        return Err(AppError::InvalidInput(format!(
-            "{table} has no single-column primary key, so {address} names no row"
-        )));
-    };
-    Ok(vec![ColumnEquals {
-        column: column.clone(),
-        value: Some(key.to_string()),
-    }])
 }
 
 #[cfg(test)]
@@ -538,15 +520,14 @@ mod server_tests {
     async fn rows_of_a_row_address_on_a_composite_key_table_names_no_row() {
         for rig in rigs() {
             let address = format!("databee://{}/{DB}/wp_term_relationships/123", rig.slug);
-            let shown = Address::parse(&address).unwrap();
 
             let err = rig.core.rows(&address, None).await.err();
 
             assert_eq!(
                 err,
-                Some(AppError::InvalidInput(format!(
-                    "wp_term_relationships has no single-column primary key, so {shown} names no row"
-                ))),
+                Some(AppError::InvalidInput(
+                    "`wp_term_relationships` has no single-column primary key".into()
+                )),
                 "{}",
                 rig.server
             );

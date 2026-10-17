@@ -246,10 +246,10 @@ dropped (`EffectiveRules.actions`).
 - `update`: each step selects its rows by the row itself (the first step without `table` and `key`), or by
   `key` (default: the step table's primary key) `= {id}`, plus the action's `when` on the action's table and
   the step's `where`; a step on a missing table is skipped. A table action selects by `when` and `where`.
-  The steps become one `UpdateWhere` request ([database.md](database.md#editing-rows)). A text `set` value
+  The steps become one `where_changes::plan_update` plan ([database.md](database.md#editing-rows)). A text `set` value
   that is a single placeholder is that placeholder's literal (NULL stays NULL); other text is one string
   literal with the placeholders filled in as text. `{ sql = "…" }` is an expression.
-- `delete`: the same selection, as a `DeleteWhere` request.
+- `delete`: the same selection, planned by `where_changes::plan_delete`.
 - `sql`: run as written, without undo; the first value of `preview_sql` goes into the description.
 
 ### `[[find]]`

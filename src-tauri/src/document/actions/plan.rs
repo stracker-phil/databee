@@ -1,16 +1,17 @@
-//! Plans an action on a row or a table. Structured effects become `UpdateWhere`/`DeleteWhere`
-//! requests, which read the rows first and keep their before-image for undo; free SQL is planned
+//! Plans an action on a row or a table. Structured effects are planned as `where_changes`
+//! updates and deletes, which read the rows first and keep their before-image for undo; free SQL is planned
 //! as written, without undo, its `preview_sql` result in the description.
 
 use std::collections::BTreeMap;
 
 use super::super::context::Ctx;
-use super::super::own::{self, equals_sql};
+use super::super::own;
 use super::params::{self, ParamValue};
 use super::rules;
 use crate::address::{Address, Target};
-use crate::db::changes::{self, ChangeRequest, Plan};
-use crate::db::where_changes::{RowsDelete, RowsUpdate};
+use crate::db::browse::equals_sql;
+use crate::db::changes::Plan;
+use crate::db::where_changes::{self, RowsDelete, RowsUpdate};
 use crate::error::{AppError, AppResult};
 use crate::rules::actions::{ActionEffect, ActionScope, DeleteSpec, SetValue, UpdateStep};
 use crate::rules::condition::{conditions_sql, holds};
@@ -69,7 +70,7 @@ pub async fn plan(
                 )));
             }
             let id = loaded.id(ctx).map(str::to_string);
-            (Some(equals_sql(ctx, None, filter)), id)
+            (Some(equals_sql(ctx.dialect, filter)), id)
         }
         None => (None, None),
     };
@@ -81,15 +82,18 @@ pub async fn plan(
         id,
         params,
     };
-    let request = match &action.rule.effect {
-        ActionEffect::Update(steps) => scope.update_request(steps)?,
-        ActionEffect::Delete(spec) => scope.delete_request(spec)?,
+    let (db, database) = (ctx.session.db.as_ref(), ctx.database.as_str());
+    let plan = match &action.rule.effect {
+        ActionEffect::Update(steps) => {
+            where_changes::plan_update(db, database, &scope.updates(steps)?, ctx.timeout).await?
+        }
+        ActionEffect::Delete(spec) => {
+            where_changes::plan_delete(db, database, &scope.delete(spec)?, ctx.timeout).await?
+        }
         ActionEffect::Sql { sql, preview_sql } => {
-            let plan = scope.free_sql(sql, preview_sql.as_deref()).await?;
-            return Ok(named(name, plan));
+            scope.free_sql(sql, preview_sql.as_deref()).await?
         }
     };
-    let plan = changes::plan(ctx.session.db.as_ref(), &request, ctx.timeout).await?;
     Ok(named(name, plan))
 }
 
@@ -115,26 +119,19 @@ fn is_lone_placeholder(text: &str) -> bool {
 }
 
 impl Scope<'_> {
-    fn update_request(&self, steps: &[UpdateStep]) -> AppResult<ChangeRequest> {
-        let updates = steps
+    fn updates(&self, steps: &[UpdateStep]) -> AppResult<Vec<RowsUpdate>> {
+        steps
             .iter()
             .filter_map(|step| self.update(step).transpose())
-            .collect::<AppResult<Vec<_>>>()?;
-        Ok(ChangeRequest::UpdateWhere {
-            database: self.ctx.database.clone(),
-            updates,
-        })
+            .collect()
     }
 
-    fn delete_request(&self, spec: &DeleteSpec) -> AppResult<ChangeRequest> {
+    fn delete(&self, spec: &DeleteSpec) -> AppResult<RowsDelete> {
         let table = &self.action.rule.table;
-        Ok(ChangeRequest::DeleteWhere {
-            database: self.ctx.database.clone(),
-            delete: RowsDelete {
-                table: table.clone(),
-                key_columns: self.key_columns(table)?,
-                filter: self.filter(table, Selection::Row, spec.r#where.as_deref())?,
-            },
+        Ok(RowsDelete {
+            table: table.clone(),
+            key_columns: self.key_columns(table)?,
+            filter: self.filter(table, Selection::Row, spec.r#where.as_deref())?,
         })
     }
 
@@ -197,11 +194,10 @@ impl Scope<'_> {
             match selection {
                 Selection::Row => parts.push(row.clone()),
                 Selection::ByKey(key) => {
-                    let column = key.or_else(|| ctx.single_key(table)).ok_or_else(|| {
-                        AppError::InvalidInput(format!(
-                            "`{table}` has no single-column primary key"
-                        ))
-                    })?;
+                    let column = match key {
+                        Some(key) => key,
+                        None => ctx.schema.key_column(table)?,
+                    };
                     parts.push(format!("{} = {}", ctx.ident(column), self.id_literal()?));
                 }
             }

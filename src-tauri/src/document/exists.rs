@@ -8,11 +8,12 @@ use futures_util::future::join_all;
 use super::Group;
 use super::context::Ctx;
 use crate::address::{Address, Target};
-use crate::db::ResultSet;
+use crate::db::browse::equals_sql;
+use crate::db::{ColumnEquals, ResultSet};
 use crate::value::{Value, ValueKind};
 
-/// `column = value` pairs that select a target row; `None` is NULL.
-type Lookup = Vec<(String, Option<String>)>;
+/// The conditions that select a target row.
+type Lookup = Vec<ColumnEquals>;
 
 /// The rows found per table; `None` when the query failed, so `exists` stays unknown.
 type Found = HashMap<String, Option<ResultSet>>;
@@ -98,15 +99,10 @@ fn targets(ctx: &Ctx<'_>, value: &Value) -> Vec<Option<(String, Lookup)>> {
 fn lookup(ctx: &Ctx<'_>, address: &Address) -> Option<(String, Lookup)> {
     match &address.target {
         Target::Row { table, key } => {
-            let column = ctx.single_key(table)?;
-            Some((table.clone(), vec![(column.to_string(), Some(key.clone()))]))
+            Some((table.clone(), ctx.schema.row_filter(table, key).ok()?))
         }
         Target::Table { table, filter } if !filter.is_empty() => {
-            let lookup = filter
-                .iter()
-                .map(|f| (f.column.clone(), f.value.clone()))
-                .collect();
-            Some((table.clone(), lookup))
+            Some((table.clone(), filter.clone()))
         }
         _ => None,
     }
@@ -114,23 +110,17 @@ fn lookup(ctx: &Ctx<'_>, address: &Address) -> Option<(String, Lookup)> {
 
 async fn fetch(ctx: &Ctx<'_>, table: &str, lookups: &[Lookup]) -> Option<ResultSet> {
     let mut columns: Vec<&str> = Vec::new();
-    for (column, _) in lookups.iter().flatten() {
-        if !columns.iter().any(|c| c.eq_ignore_ascii_case(column)) {
-            columns.push(column);
+    for lookup in lookups.iter().flatten() {
+        if !columns
+            .iter()
+            .any(|c| c.eq_ignore_ascii_case(&lookup.column))
+        {
+            columns.push(&lookup.column);
         }
     }
     let tests: Vec<String> = lookups
         .iter()
-        .map(|lookup| {
-            let parts: Vec<String> = lookup
-                .iter()
-                .map(|(column, value)| match value {
-                    Some(value) => format!("{} = {}", ctx.ident(column), ctx.literal(value)),
-                    None => format!("{} IS NULL", ctx.ident(column)),
-                })
-                .collect();
-            format!("({})", parts.join(" AND "))
-        })
+        .map(|lookup| format!("({})", equals_sql(ctx.dialect, lookup)))
         .collect();
     let select: Vec<String> = columns.iter().map(|c| ctx.ident(c)).collect();
     let sql = format!(
@@ -152,19 +142,19 @@ async fn fetch(ctx: &Ctx<'_>, table: &str, lookups: &[Lookup]) -> Option<ResultS
 fn matches(found: &ResultSet, lookup: &Lookup) -> bool {
     let positions: Option<Vec<usize>> = lookup
         .iter()
-        .map(|(column, _)| {
+        .map(|want| {
             found
                 .columns
                 .iter()
-                .position(|c| c.name.eq_ignore_ascii_case(column))
+                .position(|c| c.name.eq_ignore_ascii_case(&want.column))
         })
         .collect();
     let Some(positions) = positions else {
         return false;
     };
     found.rows.iter().any(|row| {
-        lookup.iter().zip(&positions).all(|((_, want), &i)| {
-            match (row.get(i).and_then(|c| c.as_text()), want) {
+        lookup.iter().zip(&positions).all(|(want, &i)| {
+            match (row.get(i).and_then(|c| c.as_text()), &want.value) {
                 (Some(have), Some(want)) => have.eq_ignore_ascii_case(want),
                 (None, None) => true,
                 _ => false,

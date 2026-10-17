@@ -9,8 +9,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::db::{ForeignKey, TableInfo, TableKeys, TableStructure};
-use crate::error::AppResult;
+use crate::db::{ColumnEquals, ForeignKey, TableInfo, TableKeys, TableStructure};
+use crate::error::{AppError, AppResult};
 use crate::lock::MutexExt;
 use crate::session::Session;
 
@@ -69,6 +69,27 @@ impl DatabaseSchema {
 
     pub fn keys(&self, table: &str) -> Option<&TableKeys> {
         self.keys.get(table)
+    }
+
+    pub fn single_key(&self, table: &str) -> Option<&str> {
+        match self.keys(table)?.primary_key.as_slice() {
+            [key] => Some(key),
+            _ => None,
+        }
+    }
+
+    pub fn key_column(&self, table: &str) -> AppResult<&str> {
+        self.single_key(table).ok_or_else(|| {
+            AppError::InvalidInput(format!("`{table}` has no single-column primary key"))
+        })
+    }
+
+    /// The row of `table` whose single-column primary key is `key`.
+    pub fn row_filter(&self, table: &str, key: &str) -> AppResult<Vec<ColumnEquals>> {
+        Ok(vec![ColumnEquals {
+            column: self.key_column(table)?.to_string(),
+            value: Some(key.to_string()),
+        }])
     }
 
     pub fn columns(&self, table: &str) -> &[String] {

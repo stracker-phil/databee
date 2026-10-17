@@ -74,13 +74,12 @@ async fn check_and_canonicalize_target(
             };
             *table = real;
             let schema = schema::database(session, &database).await?;
-            let primary_key = schema.keys(table).map(|k| k.primary_key.as_slice());
-            let Some([column]) = primary_key else {
-                return Ok(false);
-            };
             let keys = std::iter::once(key.as_str()).chain(address.compare.as_deref());
             for row_key in keys {
-                if !row_exists(session, &database, table, column, row_key, timeout).await? {
+                let Ok(row) = schema.row_filter(table, row_key) else {
+                    return Ok(false);
+                };
+                if !row_exists(session, &database, table, row, timeout).await? {
                     return Ok(false);
                 }
             }
@@ -134,18 +133,14 @@ async fn row_exists(
     session: &Session,
     database: &str,
     table: &str,
-    column: &str,
-    key: &str,
+    row: Vec<ColumnEquals>,
     timeout: Duration,
 ) -> AppResult<bool> {
     let request = BrowseRequest {
         database: database.to_string(),
         table: table.to_string(),
         limit: 1,
-        r#where: vec![ColumnEquals {
-            column: column.to_string(),
-            value: Some(key.to_string()),
-        }],
+        r#where: row,
         ..BrowseRequest::default()
     };
     // Only the row count matters, so cells are cut short.

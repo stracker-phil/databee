@@ -81,6 +81,15 @@ pub fn equals_sql(dialect: Dialect, columns: &[ColumnEquals]) -> String {
     )
 }
 
+/// `equals_sql` with every column qualified as `alias.column`.
+pub fn aliased_equals_sql(dialect: Dialect, alias: &str, columns: &[ColumnEquals]) -> String {
+    render_columns(
+        columns,
+        |c| format!("{alias}.{}", dialect.quote_ident(c)),
+        |v| dialect.sql_string(v),
+    )
+}
+
 fn render_columns(
     columns: &[ColumnEquals],
     column: impl Fn(&str) -> String,
