@@ -1,28 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Copy, X } from "lucide-react";
-import { api, type ChangeRequest, type DecodedValue, type NewValue } from "../../api";
+import { api, type ChangeRequest, type NewValue } from "../../api";
 import type { ValueColumn } from "../../lib/columns";
 import { copyText } from "../../lib/clipboard";
 import { formatCount } from "../../lib/format";
 import { sourceText } from "../../lib/provenance";
 import { fail, useStore } from "../../state/store";
 import { ValueTree } from "../ValueTree";
-
-/** PHP-serialized or JSON text decoded by Rust; null for plain text and while decoding. */
-function useDecoded(text: string): DecodedValue | null {
-  const [decoded, setDecoded] = useState<{ text: string; value: DecodedValue | null } | null>(null);
-  useEffect(() => {
-    let alive = true;
-    api.decodeValue(text).then(
-      (value) => alive && setDecoded({ text, value }),
-      () => alive && setDecoded({ text, value: null }),
-    );
-    return () => {
-      alive = false;
-    };
-  }, [text]);
-  return decoded?.text === text ? decoded.value : null;
-}
+import { useDecoded } from "./useDecoded";
 
 /** The row a value column's edits go to: its provenance row, when a single-column key names it. */
 interface EditTarget {

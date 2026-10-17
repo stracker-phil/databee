@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { CheckCircle2, Copy, Loader2, Pin, Play, PlayCircle, Save, Square } from "lucide-react";
 import { api, toAppError, type Provenance, type ResultSet } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { formatCount } from "../lib/format";
 import { pinLabel } from "../lib/pins";
+import { useApiResult } from "../lib/useApiResult";
 import { resultValueAt } from "../lib/values";
 import { useResolvedScheme } from "../lib/theme";
 import { isPreset, originText } from "../state/slices/saved";
@@ -17,23 +18,21 @@ import { ResultsGrid } from "./ResultsGrid";
 import { Splitter, usePaneSize, useWindowSize } from "./Splitter";
 import { ValueCounts, type ValueCountsTarget } from "./ValueCounts";
 
-/** Columns per table for completion; reloads when the table list changes (DDL reloads it). */
+const NO_SCHEMA: Record<string, string[]> = {};
+
+/**
+ * Columns per table for completion; reloads when the table list changes (DDL reloads it). Completion is a
+ * convenience: a failure keeps the previous schema and is only logged, never toasted.
+ */
 function useCompletionSchema(sessionId: string, database: string | null) {
-  const [schema, setSchema] = useState<Record<string, string[]>>({});
   const tables = useStore((s) => (database ? s.schema[sessionId]?.tables[database] : undefined));
-  useEffect(() => {
-    if (!database) return;
-    let alive = true;
-    api.completionSchema(sessionId, database).then(
-      (s) => alive && setSchema(s),
-      // Completion is a convenience: keep the previous schema and log instead of toasting.
-      (e) => void api.logError(`Completion schema for ${database}: ${toAppError(e).message}`).catch(() => {}),
-    );
-    return () => {
-      alive = false;
-    };
-  }, [sessionId, database, tables]);
-  return schema;
+  const tablesKey = useMemo(() => JSON.stringify(tables ?? null), [tables]);
+  const key = database ? JSON.stringify([sessionId, database, tablesKey]) : null;
+  const { data } = useApiResult(key, () => api.completionSchema(sessionId, database ?? ""), {
+    keepData: true,
+    onError: (e) => void api.logError(`Completion schema for ${database}: ${e.message}`).catch(() => {}),
+  });
+  return data ?? NO_SCHEMA;
 }
 
 function RunHint() {

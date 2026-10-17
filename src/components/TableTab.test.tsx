@@ -199,13 +199,16 @@ describe("TableTab", () => {
         ...structure,
         columns: [{ ...structure.columns[0], name: "id" }, structure.columns[1]],
         indexes: [{ name: "PRIMARY", unique: true, columns: ["id"] }],
+        primaryKey: ["id"],
       });
+      mocked.browseTable.mockResolvedValue(browsePage({ keys: [[{ column: "id", value: "1" }], [{ column: "id", value: "2" }]] }));
       render(<TableTab tab={tab} />);
       fireEvent.contextMenu(await screen.findByText("Hello world"));
       expect(screen.getByRole("menuitem", { name: "Delete row" })).toBeInTheDocument();
     });
 
     it("opens the row as an object from the row menu", async () => {
+      mocked.browseTable.mockResolvedValue(browsePage({ keys: [[{ column: "ID", value: "1" }], [{ column: "ID", value: "2" }]] }));
       render(<TableTab tab={tab} />);
       fireEvent.contextMenu(await screen.findByText("Hello world"));
       await userEvent.click(screen.getByRole("menuitem", { name: "Open as object" }));

@@ -3,35 +3,35 @@ import { Copy, RefreshCw } from "lucide-react";
 import { Group, NumberField, Row, Switch } from "../components/settings/controls";
 import { copyText } from "../lib/clipboard";
 import { relativeTime } from "../lib/format";
+import { useApiResult } from "../lib/useApiResult";
 import { fail, useStore } from "../state/store";
 import { stageApi } from "./api";
-import type { StageSettings, StageStatus } from "./types";
+import type { StageSettings } from "./types";
 
 /** Port bounds. Rust's `StageSettings::sanitized` is the source of truth: it replaces ports below 1024. */
 const PORT_LIMITS = { min: 1024, max: 65_535 } as const;
 
+const STATUS_POLL_MS = 5000;
+
+/** The Stage API's status for the current settings, polled so "Last presenter request" stays current. */
+function useStageStatus(s: StageSettings | null) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((n) => n + 1), STATUS_POLL_MS);
+    return () => clearInterval(timer);
+  }, []);
+  const key = s ? JSON.stringify([s.enabled, s.port, s.token, tick]) : null;
+  return useApiResult(key, stageApi.status, { keepData: true });
+}
+
 /** The hook's switch, status, port, token and register command (docs/stage.md). */
 export function PresentationsPage() {
-  const [s, setStage] = useState<StageSettings | null>(null);
-  const [status, setStatus] = useState<StageStatus | null>(null);
+  const loaded = useApiResult("stage-settings", stageApi.settings, { onError: (e) => fail(e, "Could not load the presentation settings") });
+  const [saved, setStage] = useState<StageSettings | null>(null);
+  const s = saved ?? loaded.data;
   const [revealed, setRevealed] = useState(false);
   const toast = useStore((st) => st.toast);
-  useEffect(() => {
-    stageApi.settings().then(setStage, (e) => fail(e, "Could not load the presentation settings"));
-  }, []);
-  const loaded = s !== null;
-  useEffect(() => {
-    if (!loaded) return;
-    let alive = true;
-    const load = () => stageApi.status().then((next) => alive && setStatus(next), () => alive && setStatus(null));
-    void load();
-    // Keeps "Last presenter request" current while the page is open.
-    const timer = setInterval(() => void load(), 5000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, [loaded, s?.enabled, s?.port, s?.token]);
+  const { data: status, error: statusError } = useStageStatus(s);
   if (!s) return null;
   const patchStage = (patch: Partial<StageSettings>) =>
     stageApi.updateSettings({ ...s, ...patch }).then(setStage, (e) => fail(e, "Could not save the presentation settings"));
@@ -47,7 +47,9 @@ export function PresentationsPage() {
     <Group>
       <Switch label="Allow presentations" description="Runs a local API on 127.0.0.1; requests from web pages are refused." checked={s.enabled} onChange={(enabled) => void patchStage({ enabled })} />
       <Row label="Status" description={status?.running ? status.url : undefined}>
-        {status?.error ? (
+        {statusError ? (
+          <span className="pill tone-orange">{statusError.message}</span>
+        ) : status?.error ? (
           <span className="pill tone-orange">{status.error}</span>
         ) : status?.running ? (
           <span className="pill tone-green">Ready</span>

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Copy, Filter, Hash, Loader2, Plus, RefreshCw, X } from "lucide-react";
-import { api, toAppError, type AppError, type AppliedFilter, type BrowsePage, type ColumnMeta, type TableStructure } from "../api";
+import { api, type AppliedFilter, type BrowsePage, type TableStructure } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { address } from "../lib/address";
 import { copyText } from "../lib/clipboard";
-import { cellText } from "../lib/format";
+import { DEFAULT_ROW_LIMIT, singleKey } from "../lib/cells";
+import { useApiResult } from "../lib/useApiResult";
 import { valueAt } from "../lib/values";
 import { selectStructure, useStore, type TableTab as TableTabState } from "../state/store";
 import type { MenuEntry } from "./ContextMenu";
@@ -12,9 +13,6 @@ import { ErrorPanel } from "./ErrorPanel";
 import { InsetField } from "./Field";
 import { ResultsGrid } from "./ResultsGrid";
 import { ValueCounts, type ValueCountsTarget } from "./ValueCounts";
-
-/** Rust's default `rowLimit`, for the moment before settings load; Rust clamps the page size anyway. */
-const DEFAULT_ROW_LIMIT = 1000;
 
 /** Paging and sort; the filters live on the tab, which back and forward change. */
 interface Browse {
@@ -39,54 +37,27 @@ function singleColumnPrimaryKey(structure: TableStructure | null): string | null
   return pk.length === 1 ? pk[0] : null;
 }
 
-/** MySQL column names are case-insensitive, so the result header may differ in case from the schema. */
-function columnIndex(columns: ColumnMeta[], name: string): number {
-  return columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase());
-}
-
-/** Pages through the table once `ready`; a reply that is not the latest request is dropped. */
+/** Pages through the table once `ready`; a reply for an older page, sort or filter is dropped. */
 function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean) {
   const pageSize = useStore((s) => s.settings?.rowLimit ?? DEFAULT_ROW_LIMIT);
   const dataVersion = useStore((s) => s.dataVersion);
   const [browse, setBrowse] = useState<Browse>({ offset: 0, orderBy: null, descending: false });
   // Other rows (a new filter, back, forward) start at their first page and keep the sort.
   useEffect(() => setBrowse((b) => (b.offset === 0 ? b : { ...b, offset: 0 })), [tab.filter, tab.where]);
-  const [page, setPage] = useState<BrowsePage | null>(null);
-  const [error, setError] = useState<AppError | null>(null);
-  const [loading, setLoading] = useState(false);
-  const latest = useRef(0);
-
-  const load = useCallback(async () => {
-    const token = ++latest.current;
-    setLoading(true);
-    try {
-      const result = await api.browseTable(tab.sessionId, {
-        database: tab.database,
-        table: tab.table,
-        offset: browse.offset,
-        limit: pageSize,
-        orderBy: browse.orderBy,
-        descending: browse.descending,
-        filter: tab.filter || null,
-        primaryKey,
-        where: tab.where,
-      });
-      if (token !== latest.current) return;
-      setPage(result);
-      setError(null);
-    } catch (e) {
-      if (token === latest.current) setError(toAppError(e));
-    } finally {
-      if (token === latest.current) setLoading(false);
-    }
-  }, [tab.sessionId, tab.database, tab.table, tab.filter, tab.where, browse, pageSize, primaryKey]);
-
-  // `dataVersion` is only a refetch trigger.
-  useEffect(() => {
-    if (ready) void load();
-  }, [load, ready, dataVersion]);
-
-  return { browse, setBrowse, page, error, loading, reload: load, pageSize };
+  const request = {
+    database: tab.database,
+    table: tab.table,
+    offset: browse.offset,
+    limit: pageSize,
+    orderBy: browse.orderBy,
+    descending: browse.descending,
+    filter: tab.filter || null,
+    primaryKey,
+    where: tab.where,
+  };
+  const key = ready ? JSON.stringify([tab.sessionId, request, dataVersion]) : null;
+  const result = useApiResult(key, () => api.browseTable(tab.sessionId, request), { keepData: true });
+  return { browse, setBrowse, page: result.data, error: result.error, loading: key !== null && result.state === "loading", reload: result.reload, pageSize };
 }
 
 function FilterBar({ tabId, initial, primaryKey, onApply }: { tabId: string; initial: string; primaryKey: string | null; onApply: (filter: string) => void }) {
@@ -164,34 +135,29 @@ function Pager({ offset, rows, limit, hasMore, onOffset }: PagerProps) {
   );
 }
 
-/** Row menu entries and cell edits, which address the row by its single-column primary key. */
+/** Row menu entries and cell edits, which address the row by the single-column key Rust sent with the page. */
 function useRowEditing(tab: TableTabState, page: BrowsePage | null, primaryKey: string | null) {
   const slug = useStore((s) => s.sessions.find((x) => x.id === tab.sessionId)?.slug ?? "");
   const queueChange = useStore((s) => s.queueChange);
   const pinTab = useStore((s) => s.pinTab);
-  const columns = page?.result.columns ?? [];
-  const rows = page?.result.rows ?? [];
-  const keyIndex = primaryKey ? columnIndex(columns, primaryKey) : -1;
-  const keyOf = (row: number) => (keyIndex >= 0 ? cellText(rows[row][keyIndex]) : null);
+  const rowOf = (row: number) => (primaryKey && page ? singleKey(page.keys[row]) : null);
 
   const rowActions = (row: number): MenuEntry[] => {
-    const items: MenuEntry[] = [];
-    const key = keyOf(row);
-    if (primaryKey && key != null) {
-      const object = address(slug, tab.database, { kind: "row", table: tab.table, key });
-      items.push({ label: "Open as object", action: () => useStore.getState().openObject(object) });
-      const base = { database: tab.database, table: tab.table, keyColumn: primaryKey, key };
-      items.push({ label: "Duplicate row", action: () => void queueChange({ type: "duplicateRow", ...base }) });
-      items.push({ label: "Delete row", action: () => void queueChange({ type: "deleteRow", ...base }) });
-    }
-    return items;
+    const key = rowOf(row);
+    if (!key) return [];
+    const base = { database: tab.database, table: tab.table, ...key };
+    return [
+      { label: "Open as object", action: () => useStore.getState().openObject(address(slug, tab.database, { kind: "row", table: tab.table, key: key.key })) },
+      { label: "Duplicate row", action: () => void queueChange({ type: "duplicateRow", ...base }) },
+      { label: "Delete row", action: () => void queueChange({ type: "deleteRow", ...base }) },
+    ];
   };
 
   const editCell = (row: number, col: number, value: string | null) => {
-    const key = keyOf(row);
-    if (!primaryKey || key == null) return;
+    const key = rowOf(row);
+    if (!key || !page) return;
     pinTab(tab.id);
-    void queueChange({ type: "setCell", database: tab.database, table: tab.table, keyColumn: primaryKey, key, column: columns[col].name, value });
+    void queueChange({ type: "setCell", database: tab.database, table: tab.table, ...key, column: page.result.columns[col].name, value });
   };
 
   return { rowActions, onEditCell: primaryKey ? editCell : undefined };
@@ -259,7 +225,7 @@ function DataView({ tab }: { tab: TableTabState }) {
         >
           <Plus size="1rem" />
         </button>
-        <button data-stage="table:reload" className="icon-btn" aria-label="Reload" title="Reload" onClick={() => void reload()}>
+        <button data-stage="table:reload" className="icon-btn" aria-label="Reload" title="Reload" onClick={reload}>
           {loading ? <Loader2 size="1rem" className="spin" /> : <RefreshCw size="1rem" />}
         </button>
         {structureError && (

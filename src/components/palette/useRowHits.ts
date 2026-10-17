@@ -1,37 +1,23 @@
-import { useEffect, useState } from "react";
 import { api, type PaletteHit } from "../../api";
-import { selectActiveSession, useStore } from "../../state/store";
+import { useApiResult } from "../../lib/useApiResult";
+import { fail, selectActiveSession, useStore } from "../../state/store";
 import { searchesRows, searchText, type Prefix } from "./parse";
 
 const DEBOUNCE_MS = 200;
+const NO_HITS: PaletteHit[] = [];
 
 /** Rust's row hits for the input (`palette_search`), debounced; a newer input drops older replies. */
 export function useRowHits(prefix: Prefix, needle: string): { hits: PaletteHit[]; searching: boolean } {
   const session = useStore(selectActiveSession);
-  const [hits, setHits] = useState<PaletteHit[]>([]);
-  const [searching, setSearching] = useState(false);
-  const wanted = !!session?.database && searchesRows(prefix, needle);
+  const sessionId = session?.id ?? "";
+  const database = session?.database ?? null;
   const text = searchText(prefix, needle);
-
-  useEffect(() => {
-    if (!session?.database || !wanted) {
-      setHits([]);
-      return;
-    }
-    let alive = true;
-    setSearching(true);
-    const timer = setTimeout(() => {
-      api.paletteSearch(session.id, session.database!, text).then(
-        (found) => alive && (setHits(found), setSearching(false)),
-        () => alive && (setHits([]), setSearching(false)),
-      );
-    }, DEBOUNCE_MS);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-      setSearching(false);
-    };
-  }, [text, wanted, session?.id, session?.database]);
-
-  return { hits, searching };
+  const key = database && searchesRows(prefix, needle) ? JSON.stringify([sessionId, database, text]) : null;
+  const result = useApiResult(key, () => api.paletteSearch(sessionId, database ?? "", text), {
+    keepData: true,
+    delayMs: DEBOUNCE_MS,
+    onError: (e) => fail(e, "Could not search rows"),
+  });
+  if (key === null) return { hits: NO_HITS, searching: false };
+  return { hits: result.state === "failed" ? NO_HITS : (result.data ?? NO_HITS), searching: result.state === "loading" };
 }

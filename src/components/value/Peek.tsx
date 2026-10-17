@@ -1,8 +1,9 @@
 /** Holding ⌥ peeks the hovered, else the focused, reference (docs/ux.md, Peek); ↵ opens it. */
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { api, toAppError, type Peek } from "../../api";
+import { api, type Peek } from "../../api";
 import { formatAddress, parseAddress } from "../../lib/address";
 import { bySourceText } from "../../lib/provenance";
+import { useApiResult } from "../../lib/useApiResult";
 import { selectActiveTab, selectFocusedValue, useStore } from "../../state/store";
 import { openTarget, type ColumnPlace } from "./open";
 import { Value } from "./Value";
@@ -113,10 +114,6 @@ function useOpenKey(target: PeekTarget | null, close: () => void) {
   }, [target, close]);
 }
 
-type Loaded = { state: "loading" } | { state: "loaded"; peek: Peek } | { state: "failed"; error: string };
-
-const LOADING: Loaded = { state: "loading" };
-
 /** Peeks by session and address for the current `dataVersion`; a refresh or an applied write empties it. */
 const cache = new Map<string, Promise<Peek>>();
 let cacheVersion = -1;
@@ -136,24 +133,12 @@ function cachedPeek(sessionId: string, address: string, dataVersion: number): Pr
   return request;
 }
 
-function usePeekData(address: string): Loaded {
+function usePeekData(address: string) {
   const slug = parseAddress(address).connection;
   const sessionId = useStore((s) => s.sessions.find((x) => x.slug === slug)?.id ?? null);
   const dataVersion = useStore((s) => s.dataVersion);
-  const [loaded, setLoaded] = useState<{ key: string; data: Loaded } | null>(null);
-  const key = `${sessionId}|${dataVersion}|${address}`;
-  useEffect(() => {
-    if (!sessionId) return;
-    let alive = true;
-    cachedPeek(sessionId, address, dataVersion).then(
-      (peek) => alive && setLoaded({ key, data: { state: "loaded", peek } }),
-      (e) => alive && setLoaded({ key, data: { state: "failed", error: toAppError(e).message } }),
-    );
-    return () => {
-      alive = false;
-    };
-  }, [key, sessionId, address, dataVersion]);
-  return loaded?.key === key ? loaded.data : LOADING;
+  const key = sessionId ? JSON.stringify([sessionId, dataVersion, address]) : null;
+  return useApiResult(key, () => cachedPeek(sessionId!, address, dataVersion));
 }
 
 function position(rect: DOMRect | null): CSSProperties {
@@ -165,7 +150,7 @@ export function PeekCard({ target }: { target: PeekTarget }) {
   const loaded = usePeekData(target.address);
   const address = parseAddress(target.address);
   const row = address.target.kind === "row" ? address.target : null;
-  const keyColumn = loaded.state === "loaded" ? loaded.peek.keyColumn : null;
+  const keyColumn = loaded.data?.keyColumn ?? null;
   const to = row ? `${row.table}${keyColumn ? `.${keyColumn}` : ""}` : target.address;
   const footer = [target.via ? `via ${target.via} → ${to}` : `→ ${to}`, target.by].filter(Boolean).join(" · ");
   const label = `Peek ${row ? `${row.table} ${row.key}` : target.address}`;
@@ -178,9 +163,9 @@ export function PeekCard({ target }: { target: PeekTarget }) {
         <span className="o3">⌥ peek · ↵ open</span>
       </div>
       {loaded.state === "loading" && <div className="peek-row o3">Loading…</div>}
-      {loaded.state === "failed" && <div className="peek-row o3">{loaded.error}</div>}
+      {loaded.state === "failed" && <div className="peek-row o3">{loaded.error.message}</div>}
       {loaded.state === "loaded" &&
-        loaded.peek.values.map(([name, value]) => (
+        loaded.data.values.map(([name, value]) => (
           <div key={name} className="peek-row">
             <span className="o2">{name}</span>
             <Value value={value} density="grid" />

@@ -1,10 +1,11 @@
-import { memo, useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { api, type DecodedValue, type Value as StoredValue } from "../../api";
+import { memo, useState, type MouseEvent, type ReactNode } from "react";
+import type { Value as StoredValue } from "../../api";
 import { cellDisplay, cellText, relativeTime } from "../../lib/format";
 import { formatAddress } from "../../lib/address";
 import { bySourceText, provenanceText } from "../../lib/provenance";
-import { fail, selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
+import { selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
 import { ValueTree } from "../ValueTree";
+import { useDecoded } from "./useDecoded";
 
 /** `grid`: one line, cut to the cell; `full`: the whole value, serialized data expands in place. */
 export type Density = "grid" | "full";
@@ -55,32 +56,17 @@ function SecretText({ text }: { text: string }) {
   );
 }
 
-function useDecoded(text: string, open: boolean): DecodedValue | null {
-  const [decoded, setDecoded] = useState<DecodedValue | null>(null);
-  useEffect(() => {
-    if (!open || decoded) return;
-    let alive = true;
-    api.decodeValue(text).then(
-      (d) => {
-        if (alive) setDecoded(d);
-      },
-      (e) => {
-        if (alive) fail(e, "Could not decode the value");
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, [text, open, decoded]);
-  return decoded;
-}
-
 function SerializedTree({ value, preview }: { value: StoredValue; preview: string }) {
   const [open, setOpen] = useState(false);
-  const decoded = useDecoded(cellText(value.raw), open);
+  const [opened, setOpened] = useState(false);
+  const decoded = useDecoded(cellText(value.raw), opened);
+  const toggle = () => {
+    setOpen(!open);
+    setOpened(true);
+  };
   return (
     <span className="val-tree">
-      <button className="val-ser" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} ${preview}`} onClick={() => setOpen(!open)}>
+      <button className="val-ser" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} ${preview}`} onClick={toggle}>
         {open ? "▾" : "▸"} {preview}
       </button>
       {open && decoded && <ValueTree value={decoded} />}

@@ -1,24 +1,25 @@
 /** The slug of every saved connection: the name an address starts with (`databee://<slug>/…`). */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, type RecentConnection } from "../../api";
+import { useApiResult } from "../../lib/useApiResult";
 import { fail, useStore } from "../../state/store";
 import { Group, TextField } from "./controls";
 
 const title = (recent: RecentConnection) => recent.spec.name ?? `${recent.spec.database ?? "no database"} on ${recent.account}`;
 
+const NO_RECENTS: RecentConnection[] = [];
+
 export function ConnectionSlugs() {
-  const [recents, setRecents] = useState<RecentConnection[]>([]);
+  const listed = useApiResult("recents", api.listRecents, { onError: (e) => fail(e, "Could not list saved connections") });
+  const [renamed, setRenamed] = useState<Record<string, string>>({});
+  const recents = (listed.data ?? NO_RECENTS).map((r) => (r.identity in renamed ? { ...r, slug: renamed[r.identity] } : r));
   // Bumped after a rejected rename, so the fields show the stored slugs again.
   const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    api.listRecents().then(setRecents, (e) => fail(e, "Could not list saved connections"));
-  }, []);
 
   const rename = async (recent: RecentConnection, slug: string) => {
     try {
       await useStore.getState().renameConnectionSlug(recent.identity, slug);
-      setRecents((list) => list.map((r) => (r.identity === recent.identity ? { ...r, slug } : r)));
+      setRenamed((slugs) => ({ ...slugs, [recent.identity]: slug }));
     } catch (e) {
       fail(e, "Could not rename the connection");
       setAttempt((n) => n + 1);

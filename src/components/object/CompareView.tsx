@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, toAppError, type AppError, type Comparison, type Provenance } from "../../api";
+import { api, type Provenance } from "../../api";
 import type { ObjectColumn } from "../../lib/columns";
 import { compareMarks } from "../../lib/diff";
 import { formatAddress } from "../../lib/address";
 import { formatCount } from "../../lib/format";
 import { objectTitle, type ObjectView } from "../../lib/document";
+import { useApiResult } from "../../lib/useApiResult";
 import { useStore, type ObjectTab } from "../../state/store";
 import { ErrorPanel } from "../ErrorPanel";
 import { DocumentView } from "./DocumentView";
@@ -12,18 +13,9 @@ import { ObjectHeader } from "./ObjectHeader";
 
 function useComparison(sessionId: string, address: string) {
   const dataVersion = useStore((s) => s.dataVersion);
-  const [state, setState] = useState<{ comparison: Comparison | null; error: AppError | null }>({ comparison: null, error: null });
-  useEffect(() => {
-    let current = true;
-    api
-      .compare(sessionId, address)
-      .then((comparison) => current && setState({ comparison, error: null }))
-      .catch((e) => current && setState((s) => ({ comparison: s.comparison, error: toAppError(e) })));
-    return () => {
-      current = false;
-    };
-  }, [sessionId, address, dataVersion]);
-  return state;
+  const key = JSON.stringify([sessionId, address, dataVersion]);
+  const { data: comparison, error } = useApiResult(key, () => api.compare(sessionId, address), { keepData: true });
+  return { comparison, error };
 }
 
 interface Props {

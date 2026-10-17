@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   api,
-  toAppError,
   type Address,
-  type AppError,
   type BrowsePage,
-  type ColumnEquals,
   type ColumnMeta,
   type Document,
   type Group,
@@ -14,7 +11,9 @@ import {
   type RowKey,
   type Value,
 } from "../../api";
+import { columnIndex, DEFAULT_ROW_LIMIT, singleKey } from "../../lib/cells";
 import { fieldOf, groupAnchors, isEmpty, provenanceKey } from "../../lib/document";
+import { useApiResult } from "../../lib/useApiResult";
 import { valueAt } from "../../lib/values";
 import { useStore } from "../../state/store";
 import { ErrorPanel } from "../ErrorPanel";
@@ -24,12 +23,9 @@ import { GroupHeader } from "./GroupHeader";
 import { useCollapsedGroups } from "./useCollapsedGroups";
 
 const VISIBLE_ROWS = 12;
-const DEFAULT_ROW_LIMIT = 1000;
 
 const sameKey = (a: RowKey, b: RowKey) =>
   a.length === b.length && a.every((p, i) => p.column.toLowerCase() === b[i].column.toLowerCase() && p.value === b[i].value);
-
-const columnAt = (columns: ColumnMeta[], name: string) => columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase());
 
 const useSessionId = (owner: Address) => useStore((s) => s.sessions.find((x) => x.slug === owner.connection)?.id ?? null);
 
@@ -38,33 +34,11 @@ function useGroupPage(sessionId: string | null, database: string, group: Group) 
   const limit = useStore((s) => s.settings?.rowLimit ?? DEFAULT_ROW_LIMIT);
   const dataVersion = useStore((s) => s.dataVersion);
   const target = group.rowsAddress?.target;
-  const whereKey = JSON.stringify(target?.kind === "table" ? target.filter : null);
-  const where = useMemo(() => JSON.parse(whereKey) as ColumnEquals[] | null, [whereKey]);
-  const [state, setState] = useState<{
-    page: BrowsePage | null;
-    error: AppError | null;
-  }>({ page: null, error: null });
-  // `dataVersion` is only a refetch trigger: the effect reads nothing from it.
-  useEffect(() => {
-    if (!where || !sessionId) return;
-    let alive = true;
-    api
-      .browseTable(sessionId, {
-        database,
-        table: group.table,
-        offset: 0,
-        limit,
-        where,
-      })
-      .then(
-        (page) => alive && setState({ page, error: null }),
-        (e) => alive && setState({ page: null, error: toAppError(e) }),
-      );
-    return () => {
-      alive = false;
-    };
-  }, [sessionId, database, group.table, where, limit, dataVersion]);
-  return { browsed: !!where, ...state };
+  const where = target?.kind === "table" ? target.filter : null;
+  const request = where && sessionId ? { database, table: group.table, offset: 0, limit, where } : null;
+  const key = request ? JSON.stringify([sessionId, request, dataVersion]) : null;
+  const { data: page, error } = useApiResult(key, () => api.browseTable(sessionId!, request!), { keepData: true });
+  return { browsed: !!where, page, error };
 }
 
 /** Grid height for `rows` rows plus the two-line column header. */
@@ -82,21 +56,13 @@ function BrowsedGrid({ page, sessionId, owner, focus }: GridProps & { page: Brow
   const cell = useMemo((): CellPos | null => {
     if (focus?.table !== page.table) return null;
     const row = page.keys.findIndex((k) => sameKey(k, focus.row));
-    const col = columnAt(page.result.columns, focus.column);
+    const col = columnIndex(page.result.columns, focus.column);
     return row >= 0 && col >= 0 ? { row, col } : null;
   }, [focus, page]);
   const onEditCell = (row: number, col: number, value: string | null) => {
-    const key = page.keys[row];
-    if (key?.length !== 1) return;
-    void useStore.getState().queueChange({
-      type: "setCell",
-      database: owner.database,
-      table: page.table,
-      keyColumn: key[0].column,
-      key: key[0].value,
-      column: page.result.columns[col].name,
-      value,
-    });
+    const key = singleKey(page.keys[row]);
+    if (!key) return;
+    void useStore.getState().queueChange({ type: "setCell", database: owner.database, table: page.table, ...key, column: page.result.columns[col].name, value });
   };
   return (
     <div className="rows-grid" style={gridHeight(page.result.rows.length)}>

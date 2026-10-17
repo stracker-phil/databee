@@ -1,7 +1,8 @@
 /** "Value counts" of a grid column: each stored value of the column with how often it occurs; a click filters by it. */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, toAppError, type AppError, type Cell, type ColumnEquals, type ValueCount } from "../api";
+import { api, type Cell, type ColumnEquals } from "../api";
 import { formatCount } from "../lib/format";
+import { useApiResult } from "../lib/useApiResult";
 import { Value } from "./value/Value";
 
 /** What Rust counts (`value_counts`), capped there too. */
@@ -36,20 +37,9 @@ function filterText(cell: Cell): { value: string | null } | null {
   return { value: cell.v };
 }
 
-function useCounts(target: ValueCountsTarget) {
-  const [counts, setCounts] = useState<ValueCount[] | null>(null);
-  const [error, setError] = useState<AppError | null>(null);
-  const { sessionId, database, table, column, equals } = target;
-  useEffect(() => {
-    let alive = true;
-    api.valueCounts(sessionId, database, table, column, equals, VALUE_COUNTS_LIMIT).then(
-      (found) => alive && setCounts(found),
-      (e) => alive && setError(toAppError(e)),
-    );
-    return () => {
-      alive = false;
-    };
-  }, [sessionId, database, table, column, equals]);
+function useCounts({ sessionId, database, table, column, equals }: ValueCountsTarget) {
+  const key = JSON.stringify([sessionId, database, table, column, equals]);
+  const { data: counts, error } = useApiResult(key, () => api.valueCounts(sessionId, database, table, column, equals, VALUE_COUNTS_LIMIT));
   return { counts, error };
 }
 

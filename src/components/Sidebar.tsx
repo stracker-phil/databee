@@ -5,6 +5,7 @@ import { api, type HistoryEntry, type TableInfo } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { copyText } from "../lib/clipboard";
 import { compactCount, formatBytes, formatCount, relativeTime } from "../lib/format";
+import { useApiResult } from "../lib/useApiResult";
 import { fail, selectActiveSession, selectActiveTab, selectVisibleDatabases, useStore, type Tab } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { InsetField } from "./Field";
@@ -239,36 +240,23 @@ function TablesPanel() {
   );
 }
 
+const NO_HISTORY: HistoryEntry[] = [];
+
 function HistoryPanel() {
   const session = useStore(selectActiveSession);
   const historyVersion = useStore((s) => s.historyVersion);
   const openQueryTab = useStore((s) => s.openQueryTab);
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const account = session?.account ?? null;
-
-  useEffect(() => {
-    if (!account) return;
-    // Only the newest request writes: a slow reply for another server or an earlier run is dropped.
-    let latest = true;
-    api.listHistory(account).then(
-      (list) => {
-        if (latest) setEntries(list);
-      },
-      () => {
-        if (latest) setEntries([]);
-      },
-    );
-    return () => {
-      latest = false;
-    };
-  }, [account, historyVersion]);
+  const key = account ? JSON.stringify([account, historyVersion]) : null;
+  const history = useApiResult(key, () => api.listHistory(account ?? ""), { keepData: true });
+  const entries = history.state === "failed" ? NO_HISTORY : (history.data ?? NO_HISTORY);
 
   if (!account) return null;
 
   const clear = async () => {
     try {
       await api.clearHistory(account);
-      setEntries([]);
+      history.reload();
     } catch (e) {
       fail(e, "Could not clear history");
     }
@@ -283,7 +271,13 @@ function HistoryPanel() {
         </button>
       </div>
       <div className="sidebar-body" data-stage="sidebar:history-list" data-stage-label="Query history">
-        {entries.length === 0 && <div className="sidebar-empty">Queries you run on this server appear here.</div>}
+        {history.error ? (
+          <div className="sidebar-empty" role="alert">
+            Could not load the history: {history.error.message}
+          </div>
+        ) : (
+          entries.length === 0 && <div className="sidebar-empty">Queries you run on this server appear here.</div>
+        )}
         {entries.map((e, i) => (
           <div
             // Entries carry no id, and executedAt + sql can repeat.

@@ -1,5 +1,19 @@
-import { api, type Cell } from "../api";
+import { api, type Cell, type ColumnMeta, type RowKey } from "../api";
 import { cellText } from "./format";
+
+/** Rust's default `rowLimit`, for the moment before settings load; Rust clamps the page size anyway. */
+export const DEFAULT_ROW_LIMIT = 1000;
+
+/** MySQL column names are case-insensitive, so a result header may differ in case from the schema. */
+export function columnIndex(columns: ColumnMeta[], name: string): number {
+  const wanted = name.toLowerCase();
+  return columns.findIndex((c) => c.name.toLowerCase() === wanted);
+}
+
+/** A row key as the `keyColumn` and `key` that row changes address; null without a key or for a composite one. */
+export function singleKey(key: RowKey | null | undefined): { keyColumn: string; key: string } | null {
+  return key?.length === 1 ? { keyColumn: key[0].column, key: key[0].value } : null;
+}
 
 /** Where a grid's rows came from, so `longText` cells can be fetched in full. */
 export interface CellSource {

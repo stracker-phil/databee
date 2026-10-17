@@ -77,7 +77,18 @@ and the state types, so components import everything from `state/store`.
   `connection` names) and `noConnectionNamed(slug)`, the message when there is none; `src/state/requests.ts`: `fail`.
 - Tab helpers in `src/state/slices/tabs.ts`: `findTab(s, tabId, kind?)` (the tab, narrowed to `kind` when
   given), `replaceTab(s, tab)` (the `tabs` update that puts `tab` in its place) and `hasValueColumn(tab)` (a
-  table or query tab with a value column; re-exported from `state/store`).
+  table or query tab with a value column; re-exported from `state/store`) and `isPreviewTab(tab)`.
+- Tab kinds: each `Tab["kind"]` has one entry in two typed records, so adding a kind fails to compile until
+  both have one. `TAB_KINDS` (`src/state/tabKinds.ts`) holds what the store needs: `database(tab, s, column?)`
+  and `preview` (the kind can sit in the session's preview tab: table, object). `tabDatabase(s, tab, column?)`
+  is the database a tab works in, which the value commands and value columns use: a table tab's `database`,
+  the row address of an object tab's active (or given) stack column, a project or readout tab's `database`,
+  a query tab's session's current database. `TAB_VIEWS` (`src/components/tabViews.tsx`) holds how it looks:
+  `icon`, `tooltip`, `stage` (its `data-stage` anchor), `Panel`, and the optional status-bar parts
+  `addressHint` (a table's `· filtered`) and `Summary` (a query's results); it is separate because store
+  modules must not import components. Behavior only some kinds have stays in a partial per-kind record next
+  to it: back/forward (`travelers`, `nav.ts`), change targets (`CHANGE_TARGETS`, `live.ts`), the Stage
+  state line (`TAB_STATE`, `stage/state.ts`).
 - Slices import each other's reset helpers (`resetSelection`) and pure helpers (`activate`, `remembered`,
   `nextActiveSessionId`), never the store object, except where a module-level helper needs it (`fail`).
 
@@ -112,6 +123,19 @@ Conventions:
 - Store actions wrap API errors in `fail(e, context)`, which shows an error toast and writes the message to
   the Rust log. Components that call `api` directly use the exported `fail` too, and update the UI only
   after the call succeeded (removing a recent connection, clearing history).
+- Data loading: a component that reads from `api` outside the store uses
+  `useApiResult(key, fetcher, { onError, keepData, delayMs })` (`lib/useApiResult.ts`), never a hand-written
+  fetch in `useEffect`. The string `key` names every input of the fetcher (session, arguments and
+  `dataVersion` when the view re-fetches on ⌘R); a new key fetches again, `null` fetches nothing, and a reply
+  for a superseded key or after unmount is dropped. It returns `{ state: "loading" | "loaded" | "failed",
+  data, error, reload }`. `keepData` keeps the last loaded data while another key loads or after a failure
+  (pages, history, completion); `delayMs` debounces (palette row hits, the coverage preview). Error policy:
+  a component with a place for the error shows `error` there (`ErrorPanel`, a form error, the peek card,
+  the value counts popover, the history panel, the Stage status pill); one without passes
+  `onError: (e) => fail(e, context)` for a toast (decoding a value, palette row hits, recent connections,
+  Stage settings). Only a best-effort enhancement logs instead (`api.logError`: the SQL editor's completion
+  schema). No failure is swallowed. `value/useDecoded.ts` is the one decoder hook of `Value` and the value
+  column.
 - Clipboard: `copyText(text, what)` (`lib/clipboard.ts`) is the only clipboard writer. It toasts
   "Copied {what}" or that the clipboard is not available.
 - Formatting (`lib/format.ts`): `formatCount` for every count shown in full (`12,345`), `compactCount`
@@ -198,7 +222,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
     `#<digits>`, `@`/`=` with 2+ characters, free text with 6+ (`MIN_TEXT`); shorter text matches only tables
     and commands (substring `score`).
   - `useRowHits` calls `api.paletteSearch` 200 ms after the last keystroke; a newer input drops older
-    replies. The hits come in Rust's sections, titled by what they are (`objects with id 4711`, `rows that
+    replies, and a failed search toasts. The hits come in Rust's sections, titled by what they are (`objects with id 4711`, `rows that
     reference 4711`, `people matching jane`, `external id …`, `<table>.<column>` for `=`; see
     [architecture](architecture.md#palette-search)).
   - `PaletteList` renders a hit as its `source` (table, or `table.column`) in `--o2`, `#` and its key in the
@@ -339,7 +363,7 @@ survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There 
 - **Sidebar:** the Tables/History switch, the filter (`InsetField`, key cap from `sidebar.focusFilter`), a
   `db · N tables` caption, then the tree. Rows are `.si` items (`sel` for the active table). All tabs of the active session
 stay mounted; inactive panels are `hidden`. Tabs use a roving `tabIndex` with Left/Right arrows
-(`TabItem`, `tabIcon`). Shortcut hints (new tab, run statement, run all, editor placeholder) come from
+(`TabItem`; icon, tooltip and anchor from `TAB_VIEWS`). Shortcut hints (new tab, run statement, run all, editor placeholder) come from
 `useBindingLabel(commandId)` in `commands/index.ts`, so they follow rebinding.
 
 ### Values
@@ -549,7 +573,7 @@ is the column `h`/`l` move, the path marks and the value commands act on. The `c
 - `drill(tabId, from, target)`: `target` as an object column after column `from`, closing any to its right,
   active. Clicks and Enter reach it through `ColumnContext` (`value/open.ts`), which each column provides.
 - `openValueColumn(tabId, from, column)`: the same for a value column; for a table or query tab (`from` null)
-  it sets the tab's `valueColumn`, which `WithValueColumn` (`Tabs.tsx`) renders right of the tab.
+  it sets the tab's `valueColumn`, which `WithValueColumn` (`tabViews.tsx`) renders right of the tab.
   `updateValueColumn` keeps an edited text.
 - `popToColumn(tabId, index)` (a strip, a crumb), `closeRightmostColumn()` (`Esc`, `columns.close`; a table or
   query tab's value column first), `setActiveColumn(tabId, index)` (a mousedown in a column, in the capture
@@ -632,7 +656,8 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `values.ts` | `valueAt`, `resultValueAt`, `cellValue`, `utcSeconds` (see [Addresses and history](#addresses-and-history)) |
 | `ruleForms.ts` | the Project page's form state (`ReferenceForm`, `KindForm`, `StyleForm`), prefills from a `RuleDraft` or a listed rule, `referenceRule` / `kindRule` / `styleRule`, `fieldError`, display texts (see [Project tabs](#project-tabs)) |
 | `provenance.ts` | `provenanceText(value)` and `sourceText(provenance)`: the status bar text of a value |
-| `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText` |
+| `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText`; `columnIndex` (case-insensitive, as MySQL column names are); `singleKey` (a `RowKey` as the `keyColumn` and `key` of a row change; table tabs and Rows view edit by `BrowsePage.keys` from Rust); `DEFAULT_ROW_LIMIT` (the page size before settings load) |
+| `useApiResult.ts` | `useApiResult`, the data loading hook (see [Store](#store), Data loading) |
 | `clipboard.ts` | `copyText` with a success or error toast |
 | `address.ts` | `parseAddress` / `formatAddress`, the port of Rust's `address` module |
 | `sql.ts` | statement ranges and the statement at the cursor |
@@ -659,8 +684,8 @@ address call it. It has no history (`nav` stays empty).
   (coverage per row in component state: `api.referenceCoverage` with the row's `reference`), `StylesSection`,
   `KindsSection`. They share `ProjectContext` (`context.ts`) and the `:is(.object, .project)` band and row classes.
 - **Forms** (`lib/ruleForms.ts`): form state lives in the tab, so it survives switching tabs. `referenceRule`
-  maps the real tables of the pickers to rule names through `ProjectRules.tables`; `fieldError` splits Rust's
-  `` `field`: message `` and maps the field to the form field it shows under. `ReferenceForm` previews coverage
+  maps the real tables of the pickers to rule names through `ProjectRules.tables`; `fieldError` maps the
+  path of `AppError.field` (`reference.when.meta_key`, `kind.in[0]`) to the form field it shows under. `ReferenceForm` previews coverage
   with `api.coveragePreview` 400 ms after the last change.
 - **Export:** `api.chooseSavePath(<slug>-<database>.toml, "toml")`, then `api.projectExportTo(…, path)`.
 

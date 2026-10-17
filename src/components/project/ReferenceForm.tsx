@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { api, toAppError, type Coverage, type Reference } from "../../api";
+import { useState } from "react";
+import { api, type Coverage, type Reference } from "../../api";
 import { fieldError, referenceComplete, referenceRule, type FieldError, type ReferenceForm as Form } from "../../lib/ruleForms";
+import { useApiResult } from "../../lib/useApiResult";
 import { useTableColumns, ColumnPicker, FieldMessage, FormFrame, Labeled } from "./formParts";
 import type { ProjectTab } from "../../state/store";
 import type { ProjectContext } from "./context";
@@ -12,29 +13,13 @@ type Preview = { status: "idle" } | { status: "running" } | { status: "done"; co
 
 /** Coverage of the rule as typed, debounced; Rust checks it like a save, so errors name the field. */
 function useCoveragePreview(tab: ProjectTab, rule: Reference | null, replacing: string | null): Preview {
-  const [preview, setPreview] = useState<Preview>({ status: "idle" });
   const { sessionId, database } = tab;
-  const key = rule ? JSON.stringify([rule, replacing]) : null;
-  useEffect(() => {
-    if (!key) {
-      setPreview({ status: "idle" });
-      return;
-    }
-    const [rule, replacing] = JSON.parse(key) as [Reference, string | null];
-    let alive = true;
-    const timer = window.setTimeout(() => {
-      setPreview({ status: "running" });
-      api.coveragePreview(sessionId, database, rule, replacing).then(
-        (coverage) => alive && setPreview({ status: "done", coverage }),
-        (e) => alive && setPreview({ status: "failed", error: fieldError(toAppError(e)) }),
-      );
-    }, PREVIEW_DELAY_MS);
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-    };
-  }, [key, sessionId, database]);
-  return preview;
+  const key = rule ? JSON.stringify([sessionId, database, rule, replacing]) : null;
+  const result = useApiResult(key, () => api.coveragePreview(sessionId, database, rule!, replacing), { delayMs: PREVIEW_DELAY_MS });
+  if (key === null) return { status: "idle" };
+  if (result.state === "failed") return { status: "failed", error: fieldError(result.error) };
+  if (result.state === "loaded") return { status: "done", coverage: result.data };
+  return { status: "running" };
 }
 
 function PreviewLine({ preview }: { preview: Preview }) {

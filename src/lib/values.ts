@@ -5,6 +5,7 @@
  */
 import type { Address, BrowsePage, Cell, ColumnKind, Provenance, ReferenceTarget, ResultSet, Target, Value, ValueKind, Zone } from "../api";
 import { address } from "./address";
+import { columnIndex } from "./cells";
 
 /** The value of one cell of a browse page, sourced from the page's table and the row's key. */
 export function valueAt(page: BrowsePage, row: number, col: number): Value {
@@ -69,7 +70,7 @@ function cellKind(result: ResultSet, row: number, col: number, cell: Cell, colum
 /** The first of `names` that is a column of the result with text in this row, sourced from the same row. */
 function currency(result: ResultSet, row: number, names: string[], source: Provenance | null): Value | null {
   for (const name of names) {
-    const index = result.columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase());
+    const index = columnIndex(result.columns, name);
     if (index < 0) continue;
     const raw = result.rows[row][index];
     const text = cellText(raw);

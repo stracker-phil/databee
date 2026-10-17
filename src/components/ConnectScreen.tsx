@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Database, Trash2 } from "lucide-react";
 import { api, type AppError, type ConnectionSpec, type RecentConnection } from "../api";
 import { relativeTime } from "../lib/format";
+import { useApiResult } from "../lib/useApiResult";
 import { fail, useStore } from "../state/store";
 
 /** Heading id of the form, for the connect sheet's `aria-labelledby`. */
@@ -57,17 +58,17 @@ function recentSubtitle(recent: RecentConnection) {
   return `${recent.account}${recent.spec.database ? ` / ${recent.spec.database}` : ""}`;
 }
 
+const NO_RECENTS: RecentConnection[] = [];
+
 export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; error?: AppError }) {
   const defaultPort = useStore((s) => s.settings?.defaultPort ?? 3306);
   const connect = useStore((s) => s.connect);
   const [form, setForm] = useState(() => toForm(initial, defaultPort));
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [recents, setRecents] = useState<RecentConnection[]>([]);
-
-  useEffect(() => {
-    api.listRecents().then(setRecents, () => setRecents([]));
-  }, []);
+  const listed = useApiResult("recents", api.listRecents, { onError: (e) => fail(e, "Could not list recent connections") });
+  const [removed, setRemoved] = useState<string[]>([]);
+  const recents = (listed.data ?? NO_RECENTS).filter((r) => !removed.includes(r.identity));
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -91,7 +92,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
   const removeRecent = async (identity: string) => {
     try {
       await api.removeRecent(identity);
-      setRecents((r) => r.filter((x) => x.identity !== identity));
+      setRemoved((ids) => [...ids, identity]);
     } catch (e) {
       fail(e, "Could not remove the recent connection");
     }
