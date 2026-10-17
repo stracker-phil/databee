@@ -523,7 +523,10 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .object .row:hover { background: var(--row-hover); }
 .object .row .val[data-src] { border-radius: 3px; padding: 0 3px; margin: 0 -3px; }
 .object .row .val[data-src]:hover { background: var(--cell); }
-.object .row .focus .val { box-shadow: 0 0 0 1.5px var(--accent); border-radius: 3px; }
+.object .row > .focus {
+  margin: calc(-1 * var(--pad)) -8px; padding: var(--pad) 8px;
+  box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 3px;
+}
 .object .row .r { text-align: right; }
 .object .row.kv { grid-template-columns: 300px minmax(0, 1fr); }
 .object .row.kv > :first-child { color: var(--o2); }
