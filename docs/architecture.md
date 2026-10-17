@@ -283,9 +283,9 @@ without building its document: the row in one query (with its entity, as for `ow
 summary name is not a column), or, without a summary, the first five columns that are not part of the primary
 key. `key_column` is the single-column key row addresses name, for the peek's `via … → table.column` line.
 
-**Linked** (`linked.rs`): what the palette's search reads of a row without its document: `row` (the row by
-its single-column key, with its entity), `summary` (the peek's values) and `referencing` (its incoming
-reference and pattern groups).
+**Referencing** (`build.rs`): `referencing` gives the incoming reference and pattern groups of a row without
+its document, for the palette's search (meta rows only when a pattern of the table needs them); `own::resolve`
+reads the row of an address with its entity, for documents, peeks and the search.
 
 **Entity shorthand** (`shorthand.rs`): the tables that define the entity are tried with the key (a table
 only for the entity, without `filter`, before filtered ones); the first that holds it wins and the others are
@@ -328,7 +328,7 @@ the MCP `find` tool) from the effective rules and the schema alone. `search::par
 
 | Input | `Query` | Sections |
 |---|---|---|
-| `#<digits>` | `Id` (`ids.rs`) | `objects with id <n>`: each entity table with a single-column key that holds the key (one `own` query per table, the summary as a peek reads it); `rows that reference <n>`: the incoming reference and pattern groups of the first 5 found rows (`document::linked::referencing`; meta rows only when a pattern of the table needs them) |
+| `#<digits>` | `Id` (`ids.rs`) | `objects with id <n>`: each entity table with a single-column key that holds the key (one `own` query per table, the summary as a peek reads it); `rows that reference <n>`: the incoming reference and pattern groups of the first 5 found rows (`document::referencing`; meta rows only when a pattern of the table needs them) |
 | `@<text>` (2+ characters) | `People` (`text.rs`) | `people matching <text>`: entities with `people = true`, on their `search` columns (`LIKE` contains) and `search_exact` columns (`=`); names that are no column are keys of the entity's own `[[meta]]` table (`pk IN (SELECT fk … )`) |
 | free text (6+ characters, no prefix) | `Text` (`text.rs`) | `external id <text>`: the targets of rule references that are not the target table's key (`=` plus the `to_when` conditions), a meta row as its owner row; then `objects matching <text>`: every entity's `search`/`search_exact` |
 | `=<value>` (2+ characters) | `Find` (`find.rs`) | one section per `table.column`: the value column of every `[[meta]]` table (exact), the `[[find]]` sources (their `match`), the entities' `search` (contains) and `search_exact` columns; the sources of one table share one `UNION ALL` (`Ctx::rows_per_filter`) |

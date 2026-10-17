@@ -13,20 +13,13 @@ use super::{
 };
 use crate::address::{Address, Target};
 use crate::db::ColumnEquals;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::rules::kinds::ValueRule;
 use crate::rules::placeholder::{Placeholder, scan};
 use crate::value::Value;
 
 pub async fn document(ctx: &Ctx<'_>, address: &Address) -> AppResult<Document> {
-    let (table, filter) = own::row_filter(ctx, address)?;
-    if ctx.schema.table(&table).is_none() {
-        return Err(AppError::InvalidInput(format!(
-            "`{}` has no table `{table}`",
-            ctx.database
-        )));
-    }
-    let own = own::load(ctx, &table, &filter).await?;
+    let (own, filter) = own::resolve(ctx, address).await?;
     let meta_rows = meta::load(ctx, &own, &needed_meta_keys(ctx, &own)).await;
     let meta_values = MetaValues::new(&meta_rows);
     let plain = own.rows.values(&|_, _| None).remove(0);
@@ -38,27 +31,55 @@ pub async fn document(ctx: &Ctx<'_>, address: &Address) -> AppResult<Document> {
             .iter()
             .map(|rows| meta::group(ctx, rows, &currency)),
     );
-    let (incoming, found) = join(
-        incoming::groups(ctx, &own),
-        patterns::groups(ctx, &own, &meta_values),
-    )
-    .await;
-    groups.extend(incoming);
-    let (pattern_groups, orders) = patterns::split(found);
-    groups.extend(pattern_groups);
+    let (referencing, orders) = incoming_and_patterns(ctx, &own, &meta_values).await;
+    groups.extend(referencing);
     unique_ids(&mut groups);
     let mut header = header(&own, &groups[0].rows[0].fields, &groups, &meta_values);
     exists::check(ctx, &mut header, &mut groups).await;
     groups.push(events::group(&groups, &orders));
     let actions = actions::for_row(ctx, &own).await;
     Ok(Document {
-        address: canonical(ctx, &table, filter),
+        address: canonical(ctx, own.table(), filter),
         entity: own.entity.as_ref().map(|e| e.entity.name.clone()),
         header,
         groups,
         alternatives: Vec::new(),
         actions,
     })
+}
+
+/// The incoming reference and pattern groups of a row without its document; meta rows are read
+/// only when a pattern of the table needs them.
+pub async fn referencing(ctx: &Ctx<'_>, own: &Own) -> Vec<Group> {
+    let has_patterns = ctx
+        .rules
+        .patterns
+        .iter()
+        .any(|p| p.rule.owner == own.table());
+    let meta_rows = if has_patterns {
+        meta::load(ctx, own, &needed_meta_keys(ctx, own)).await
+    } else {
+        Vec::new()
+    };
+    incoming_and_patterns(ctx, own, &MetaValues::new(&meta_rows))
+        .await
+        .0
+}
+
+/// Incoming groups, then pattern groups, and the patterns' event orders.
+async fn incoming_and_patterns(
+    ctx: &Ctx<'_>,
+    own: &Own,
+    meta_values: &MetaValues,
+) -> (Vec<Group>, HashMap<String, Option<String>>) {
+    let (mut groups, found) = join(
+        incoming::groups(ctx, own),
+        patterns::groups(ctx, own, meta_values),
+    )
+    .await;
+    let (pattern_groups, orders) = patterns::split(found);
+    groups.extend(pattern_groups);
+    (groups, orders)
 }
 
 /// A money value without its currency in its own row looks in the document's row (the owner of

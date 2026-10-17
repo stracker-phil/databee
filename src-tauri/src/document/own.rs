@@ -59,6 +59,19 @@ pub fn row_filter(ctx: &Ctx<'_>, address: &Address) -> AppResult<(String, Vec<Co
     }
 }
 
+/// The row of `address` with its entity, and the filter that selected it.
+pub async fn resolve(ctx: &Ctx<'_>, address: &Address) -> AppResult<(Own, Vec<ColumnEquals>)> {
+    let (table, filter) = row_filter(ctx, address)?;
+    if ctx.schema.table(&table).is_none() {
+        return Err(AppError::InvalidInput(format!(
+            "`{}` has no table `{table}`",
+            ctx.database
+        )));
+    }
+    let own = load(ctx, &table, &filter).await?;
+    Ok((own, filter))
+}
+
 fn covers_key(key: &[String], filter: &[ColumnEquals]) -> bool {
     !key.is_empty()
         && key

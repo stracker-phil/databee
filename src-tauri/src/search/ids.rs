@@ -4,19 +4,21 @@ use futures_util::future::join_all;
 
 use super::hits::{self, Place};
 use super::{PLAIN_TABLE_ROWS, PaletteHit, SECTION_CAP};
-use crate::document::{Ctx, Own, linked, peek};
+use crate::document::{self, Ctx, Own, peek};
 
 /// Found rows whose referencing rows are read.
 const LINKED_ROWS: usize = 5;
 
 pub async fn search(ctx: &Ctx<'_>, id: &str) -> Vec<PaletteHit> {
     let tables = tables(ctx);
-    let loaded = join_all(tables.iter().map(|table| linked::row(ctx, table, id))).await;
+    let addresses: Vec<_> = tables.iter().map(|t| ctx.row_address(t, id)).collect();
+    let loaded = join_all(addresses.iter().map(|a| document::resolve(ctx, a))).await;
     let found: Vec<Own> = tables
         .iter()
         .zip(loaded)
         .filter_map(|(table, loaded)| {
             loaded
+                .map(|(own, _)| own)
                 .map_err(|e| log::debug!("`#{id}` skipped `{table}`: {e}"))
                 .ok()
         })
@@ -33,7 +35,7 @@ pub async fn search(ctx: &Ctx<'_>, id: &str) -> Vec<PaletteHit> {
         found
             .iter()
             .take(LINKED_ROWS)
-            .map(|own| linked::referencing(ctx, own)),
+            .map(|own| document::referencing(ctx, own)),
     )
     .await;
     let groups: Vec<_> = groups.into_iter().flatten().collect();
@@ -80,9 +82,8 @@ async fn object(ctx: &Ctx<'_>, own: &Own, section: &str) -> Option<PaletteHit> {
         summary: &[],
         matched: None,
     };
-    let mut hit = hits::row(ctx, &place, &key, &fields);
-    hit.detail = summary.into_iter().map(|(_, value)| value).collect();
-    Some(hit)
+    let detail = summary.into_iter().map(|(_, value)| value).collect();
+    Some(hits::with_detail(ctx, &place, &key, &fields, detail))
 }
 
 #[cfg(test)]

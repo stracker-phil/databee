@@ -15,7 +15,6 @@ pub mod diff;
 mod events;
 mod exists;
 mod incoming;
-pub mod linked;
 mod meta;
 mod own;
 mod patterns;
@@ -39,10 +38,11 @@ use crate::rules::effective::RuleSources;
 use crate::session::Session;
 use crate::value::{RowKey, Value};
 
+pub use build::referencing;
 #[cfg(test)]
 pub(crate) use context::testing;
 pub use context::{Ctx, KeyOrder, Rows};
-pub use own::{Own, entity_filter};
+pub use own::{Own, entity_filter, resolve};
 pub use peek::Peek;
 
 /// Meta rows shown before the group is capped.

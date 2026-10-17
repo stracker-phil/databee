@@ -90,6 +90,16 @@ pub fn row(ctx: &Ctx<'_>, place: &Place<'_>, key: &RowKey, fields: &Fields) -> P
             .filter_map(|name| field(fields, name).cloned());
         detail.extend(summary);
     }
+    with_detail(ctx, place, key, fields, detail)
+}
+
+pub fn with_detail(
+    ctx: &Ctx<'_>,
+    place: &Place<'_>,
+    key: &RowKey,
+    fields: &Fields,
+    detail: Vec<Value>,
+) -> PaletteHit {
     let address = address(ctx, place.table, key);
     PaletteHit {
         section: place.section.to_string(),

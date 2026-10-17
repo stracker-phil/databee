@@ -10,7 +10,7 @@ use super::meta::{self, MetaValues};
 use super::own::{self, Own};
 use crate::address::Address;
 use crate::db::Cell;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::value::{Value, ValueKind};
 
 /// Columns shown for a row whose table has no entity summary.
@@ -27,16 +27,9 @@ pub struct Peek {
 }
 
 pub async fn peek(ctx: &Ctx<'_>, address: &Address) -> AppResult<Peek> {
-    let (table, filter) = own::row_filter(ctx, address)?;
-    if ctx.schema.table(&table).is_none() {
-        return Err(AppError::InvalidInput(format!(
-            "`{}` has no table `{table}`",
-            ctx.database
-        )));
-    }
-    let own = own::load(ctx, &table, &filter).await?;
+    let (own, _) = own::resolve(ctx, address).await?;
     Ok(Peek {
-        key_column: ctx.single_key(&table).map(str::to_string),
+        key_column: ctx.single_key(own.table()).map(str::to_string),
         values: values(ctx, &own).await,
     })
 }
@@ -107,6 +100,7 @@ async fn summary_values(ctx: &Ctx<'_>, own: &Own, summary: &[String]) -> Vec<(St
 mod tests {
     use super::*;
     use crate::document::context::testing::{Rig, num, result, shop, text};
+    use crate::error::AppError;
     use crate::value::{KeyPart, Provenance, RowKey};
 
     const SUMMARY: &str = r#"
