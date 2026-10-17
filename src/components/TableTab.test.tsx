@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE, type BrowsePage, type Cell, type TableStructure, type ValueCount } from "../api";
+import { api, EMPTY_UI_STATE, type BrowsePage, type Cell, type TableProfile, type TableStructure, type ValueCount } from "../api";
 import { useStore, type TableTab as TableTabState } from "../state/store";
 import { browsePage, connectedStore, num, resultSet, session, tableTab, text, value } from "../test/fixtures";
 import { TableTab } from "./TableTab";
@@ -297,7 +297,10 @@ describe("TableTab", () => {
   describe("structure view", () => {
     const structureTab: TableTabState = { ...tab, view: "structure" };
 
+    const profile: TableProfile = { table: "wp_posts", ruleName: "posts", columns: [], meta: [], referencedBy: [], entities: [], actions: [], ddl: null };
+
     it("shows the DDL with a copy button when the table has a DDL", async () => {
+      mocked.tableRules.mockResolvedValue({ ...profile, ddl: "CREATE TABLE wp_posts (...)" });
       render(<TableTab tab={structureTab} />);
       expect(await screen.findByRole("heading", { name: /DDL/ })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Copy DDL" })).toBeInTheDocument();
@@ -305,7 +308,7 @@ describe("TableTab", () => {
     });
 
     it("hides the DDL heading and copy button when the DDL is null", async () => {
-      mocked.describeTable.mockResolvedValue({ ...structure, ddl: null });
+      mocked.tableRules.mockResolvedValue(profile);
       render(<TableTab tab={structureTab} />);
       expect(await screen.findByRole("heading", { name: "Columns" })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: /DDL/ })).not.toBeInTheDocument();

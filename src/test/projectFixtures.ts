@@ -1,4 +1,4 @@
-import type { PresetRow, ProjectRules, Reference, ReferenceRow, ResolvedReference, RuleTable, TableRules, TableStructure } from "../api";
+import type { PresetRow, ProjectChangeLine, ProjectRules, Reference, ReferenceRow, ResolvedReference, RuleTable, TableRules, TableStructure } from "../api";
 
 export const ruleTables: RuleTable[] = [
   { table: "wp_wc_orders", name: "wc_orders" },
@@ -62,8 +62,26 @@ export function projectRules(patch: Partial<ProjectRules> = {}): ProjectRules {
     suggestedPrefix: "wp_",
     presets: [woocommercePreset],
     foreignKeys: 0,
+    changes: [],
     groups: [],
     tables: ruleTables,
+    ...patch,
+  };
+}
+
+/** An edited preset reference `wp_wc_order_items.order_id → wp_wc_orders.id` (id `x`) as the project's change list shows it. */
+export function changeLine(patch: Partial<ProjectChangeLine> = {}): ProjectChangeLine {
+  return {
+    action: "edited",
+    rule: "reference",
+    origin: { kind: "preset", preset: "woocommerce" },
+    id: "x",
+    text: "wp_wc_order_items.order_id → wp_wc_orders.id",
+    was: null,
+    off: false,
+    table: "wp_wc_order_items",
+    undo: { op: "removeReference", id: "x" },
+    edit: { type: "reference", id: "x" },
     ...patch,
   };
 }

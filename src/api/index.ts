@@ -42,6 +42,7 @@ import type {
   Project,
   ProjectChange,
   ProjectRules,
+  TableProfile,
   Reference,
   RuleDraft,
   SavedEntry,
@@ -119,6 +120,8 @@ export const api = {
   projectExportTo: (sessionId: string, database: string, path: string) => invoke<void>("project_export_to", { sessionId, database, path }),
   /** Every reference (switched off ones too), kind, value style and preset of a database, for the Project page. */
   projectRules: (sessionId: string, database: string) => invoke<ProjectRules>("project_rules", { sessionId, database }),
+  /** A table's Structure view: per column its kinds, references and value styles, then its meta-key rules, incoming references, entities and actions. */
+  tableRules: (sessionId: string, database: string, table: string) => invoke<TableProfile>("table_rules", { sessionId, database, table }),
   /** The start of a rule form for a value: its column as rules name it and, on a meta value, its meta key. */
   ruleDraft: (sessionId: string, database: string, provenance: Provenance) => invoke<RuleDraft>("rule_draft", { sessionId, database, provenance }),
   /** The coverage of an unsaved reference rule; `replacing` is the project reference it would replace. Errors name the field. */

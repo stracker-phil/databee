@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import type { ProjectChange, ProjectRules, ResolvedReference } from "../../api";
+import type { ProjectChange } from "../../api";
 import { useStore, type ProjectTab } from "../../state/store";
 import { projectKey } from "../../state/slices/project";
+import type { ProjectSection } from "../../state/slices/tabs";
 import { ErrorPanel } from "../ErrorPanel";
 import { useCollapsedGroups } from "../object/useCollapsedGroups";
 import { KindForm, StyleForm } from "./KindStyleForms";
 import { ProjectHeader } from "./ProjectHeader";
+import { activeReferenceRows, Overview } from "./Overview";
 import { ReferenceForm } from "./ReferenceForm";
 import { groupName, TableSection } from "./TableSection";
 import type { ProjectContext } from "./context";
@@ -30,20 +32,24 @@ function FormSheet({ tab, ctx }: { tab: ProjectTab; ctx: ProjectContext }) {
   return <StyleForm key={`style:${form.replacing}:${form.opener}`} form={form} ctx={ctx} />;
 }
 
-const activeReferences = (rules: ProjectRules): ResolvedReference[] => rules.groups.flatMap((g) => g.references.flatMap((r) => (r.reference ? [r.reference] : [])));
-
+/** Every rule by table: the listing behind "All rules…". */
 function Tables({ ctx }: { ctx: ProjectContext }) {
   const { tab, rules } = ctx;
   const [filter, setFilter] = useState("");
-  const coverage = useAutoCoverage(tab.sessionId, tab.database, activeReferences(rules));
+  const coverage = useAutoCoverage(tab.sessionId, tab.database, activeReferenceRows(rules).map((r) => r.reference!));
   const collapse = useCollapsedGroups(tab.address);
   const needle = filter.trim().toLowerCase();
+  const refresh = () => useStore.getState().refreshCoverage(projectKey(tab.sessionId, tab.database));
   const shown = needle ? rules.groups.filter((g) => groupName(g).toLowerCase().includes(needle)) : rules.groups;
   return (
     <>
       <div className="project-filter">
         <input className="input mono" type="search" aria-label="Filter tables" data-stage="project:filter" data-stage-label="Filter tables" placeholder="filter tables" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <span className="o3">{needle ? `${shown.length} of ${rules.groups.length} tables` : `${rules.groups.length} tables with rules`}</span>
+        <span className="spacer" />
+        <button className="act" data-stage="project:refresh-coverage" data-stage-label="Refresh coverage" onClick={refresh}>
+          Refresh coverage
+        </button>
       </div>
       {shown.length === 0 && <div className="row empty o3">{rules.groups.length === 0 ? "no rules: no table has a reference, value style, kind, entity or action" : "no table matches"}</div>}
       {shown.map((group) => (
@@ -64,10 +70,21 @@ export function ProjectPanel({ tab }: { tab: ProjectTab }) {
     change: (change: ProjectChange) => useStore.getState().changeProject(tab.sessionId, tab.database, change),
     setForm: (form) => useStore.getState().setProjectForm(tab.id, form),
   };
+  const section = tab.section ?? "overview";
+  const show = (next: ProjectSection) => useStore.getState().setProjectSection(tab.id, next);
   return (
     <div className="project" data-stage="project" data-stage-label={`project · ${tab.database}`}>
-      <ProjectHeader ctx={ctx} />
-      <Tables ctx={ctx} />
+      <ProjectHeader ctx={ctx}>
+        <div className="segmented" role="group" aria-label="Project section" data-stage="project:section" data-stage-label="Overview / All rules">
+          <button data-stage="project:overview" aria-pressed={section === "overview"} onClick={() => show("overview")}>
+            Overview
+          </button>
+          <button data-stage="project:rules" aria-pressed={section === "rules"} onClick={() => show("rules")}>
+            All rules
+          </button>
+        </div>
+      </ProjectHeader>
+      {section === "overview" ? <Overview ctx={ctx} onAllRules={() => show("rules")} /> : <Tables ctx={ctx} />}
       <FormSheet tab={tab} ctx={ctx} />
     </div>
   );

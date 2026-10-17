@@ -16,7 +16,7 @@ function writeText(write: ActionWrite): string {
 }
 
 /** What the action writes, step by step, e.g. "wp_wc_orders: date_updated_gmt, status · wp_posts: post_status". */
-export const writesSummary = (action: ObjectAction) => action.writes.map(writeText).join(" · ");
+export const writesSummary = (action: { writes: ActionWrite[] }) => action.writes.map(writeText).join(" · ");
 
 /** Opens the action sheet: params, and the rows and values the action writes, before it is queued. */
 function runAction(address: Address, action: ObjectAction) {

@@ -9,10 +9,11 @@ import { api, type Coverage, type KindRow, type ProjectRules, type ReferenceRow,
 import { installCommands, runCommand } from "../../commands";
 import { referenceFormFor, type ProjectForm, type ReferenceForm } from "../../lib/ruleForms";
 import { resultValueAt } from "../../lib/values";
-import { selectActiveTab, useStore } from "../../state/store";
-import { connectedStore, resultSet, table } from "../../test/fixtures";
+import type { ProjectSection } from "../../state/slices/tabs";
+import { selectActiveTab, useStore, type TableTab } from "../../state/store";
+import { connectedStore, readoutOf, resultSet, table } from "../../test/fixtures";
 import { browseOrderTables, objectDocument, orderAddress, paidViaSource } from "../../test/objectFixtures";
-import { describeRuleTable, orderItemsRule, projectRules, referenceRow, tableRules, woocommercePreset } from "../../test/projectFixtures";
+import { changeLine, describeRuleTable, orderItemsRule, projectRules, referenceRow, tableRules, woocommercePreset } from "../../test/projectFixtures";
 import { ResultsGrid } from "../ResultsGrid";
 
 const mocked = vi.mocked(api, true);
@@ -28,10 +29,13 @@ function respondToChangeWith(rules: ProjectRules) {
   });
 }
 
-async function openProjectPage(form?: ProjectForm) {
+async function openProjectPage(form?: ProjectForm, section: ProjectSection = "rules") {
   const view = render(<App />);
   await screen.findByRole("tree");
-  act(() => useStore.getState().openProject(form ? { form } : undefined));
+  act(() => {
+    useStore.getState().openProject(form ? { form } : undefined);
+    useStore.getState().setProjectSection(selectActiveTab(useStore.getState())!.id, section);
+  });
   await screen.findByRole("region", { name: "Presets and prefix" });
   return view;
 }
@@ -89,6 +93,7 @@ describe("ProjectPanel", () => {
     mocked.projectRules.mockResolvedValue(projectRules());
     mocked.projectUpdate.mockResolvedValue(projectRules().project);
     mocked.coveragePreview.mockResolvedValue(coverage());
+    mocked.readout.mockResolvedValue(readoutOf());
     mocked.referenceCoverage.mockResolvedValue(coverage());
     mocked.chooseSavePath.mockResolvedValue(null);
     mocked.rulesInfo.mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: ["woocommerce"], availablePresets: ["woocommerce"], entities: [], tableEntities: {} });
@@ -225,6 +230,206 @@ describe("ProjectPanel", () => {
       mocked.projectRules.mockResolvedValue(projectRules({ suggestedPrefix: null }));
       await openProjectPage();
       expect(screen.getByText("no suggestion")).toBeInTheDocument();
+    });
+  });
+
+  describe("overview", () => {
+    const openOverview = () => openProjectPage(undefined, "overview");
+    const activeTable = () => selectActiveTab(useStore.getState()) as TableTab;
+    const withReference = (patch: Partial<ProjectRules> = {}) => projectRules({ groups: [itemsGroup({ references: [referenceRow()] })], ...patch });
+    const problemRow = () => screen.findByRole("row", { name: ORDER_ITEMS_ROW });
+
+    it("opens on the overview with changes, problems and a way to all rules", async () => {
+      render(<App />);
+      await screen.findByRole("tree");
+      act(() => useStore.getState().openProject());
+      expect(await screen.findByRole("region", { name: "Your changes" })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Problems" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "All rules…" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.queryByRole("searchbox", { name: "Filter tables" })).not.toBeInTheDocument();
+    });
+
+    it("says so when nothing differs from the presets and nothing is wrong", async () => {
+      await openOverview();
+      expect(screen.getByText("No changes — this database uses the presets as shipped.")).toBeInTheDocument();
+      expect(await screen.findByText("No problems found.")).toBeInTheDocument();
+    });
+
+    describe("your changes", () => {
+      it("lists a change as a sentence with its origin, id and what the preset shipped", async () => {
+        mocked.projectRules.mockResolvedValue(projectRules({ changes: [changeLine({ was: "wp_wc_order_items.order_id → wp_wc_orders.order_id" })] }));
+        await openOverview();
+        const row = await screen.findByRole("row", { name: `edited reference ${ORDER_ITEMS_ROW}` });
+        expect(row).toHaveTextContent("edited reference · preset woocommerce · x");
+        expect(row).toHaveTextContent("· was wp_wc_order_items.order_id → wp_wc_orders.order_id");
+        expect(screen.queryByText("No changes — this database uses the presets as shipped.")).not.toBeInTheDocument();
+      });
+
+      it("marks an added rule that is stored off", async () => {
+        mocked.projectRules.mockResolvedValue(projectRules({ changes: [changeLine({ action: "added", origin: null, off: true })] }));
+        await openOverview();
+        expect(await screen.findByRole("row", { name: `added reference ${ORDER_ITEMS_ROW}` })).toHaveTextContent("· off");
+      });
+
+      it("says suggested for a prefix and gives a setting no link to a table", async () => {
+        mocked.projectRules.mockResolvedValue(
+          projectRules({ changes: [changeLine({ action: "set", rule: "prefix", origin: null, id: null, text: "wc_", was: "wp_", table: null, undo: { op: "setPrefix", prefix: null }, edit: null })] }),
+        );
+        await openOverview();
+        const row = await screen.findByRole("row", { name: "set prefix wc_" });
+        expect(row).toHaveTextContent("· suggested wp_");
+        expect(within(row).queryByRole("button", { name: "wc_" })).not.toBeInTheDocument();
+      });
+
+      it("says auto for presets", async () => {
+        mocked.projectRules.mockResolvedValue(
+          projectRules({ changes: [changeLine({ action: "set", rule: "presets", origin: null, id: null, text: "woocommerce", was: "woocommerce, yoast", table: null, undo: { op: "setPresets", presets: null }, edit: null })] }),
+        );
+        await openOverview();
+        expect(await screen.findByRole("row", { name: "set presets woocommerce" })).toHaveTextContent("· auto woocommerce, yoast");
+      });
+
+      it.each([
+        ["reset", "an edited rule", changeLine()],
+        ["remove", "an added rule", changeLine({ action: "added", origin: null, id: "p1", undo: { op: "removeReference", id: "p1" } })],
+        ["switch off", "a rule switched on", changeLine({ action: "switchedOn", undo: { op: "disable", id: "x" } })],
+      ])("offers %s for %s and sends the line's undo", async (name, _what, line) => {
+        mocked.projectRules.mockResolvedValue(projectRules({ changes: [line] }));
+        await openOverview();
+        await userEvent.click(await screen.findByRole("button", { name }));
+        expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", line.undo);
+      });
+
+      it("opens the sheet of the rule a change edits", async () => {
+        mocked.projectRules.mockResolvedValue(withReference({ changes: [changeLine()] }));
+        await openOverview();
+        await userEvent.click(await screen.findByRole("button", { name: "edit" }));
+        const dialog = await screen.findByRole("dialog", { name: "edit reference" });
+        expect(within(dialog).getByRole("combobox", { name: "Source table" })).toHaveValue("wp_wc_order_items");
+      });
+
+      it("offers no edit when the rule is not among the listed rules or the change has none", async () => {
+        mocked.projectRules.mockResolvedValue(projectRules({ changes: [changeLine(), changeLine({ id: "y", edit: null })] }));
+        await openOverview();
+        await screen.findAllByRole("row", { name: `edited reference ${ORDER_ITEMS_ROW}` });
+        expect(screen.queryByRole("button", { name: "edit" })).not.toBeInTheDocument();
+      });
+
+      it("opens the structure of the table the change is about", async () => {
+        mocked.projectRules.mockResolvedValue(projectRules({ changes: [changeLine()] }));
+        await openOverview();
+        await userEvent.click(await screen.findByRole("button", { name: ORDER_ITEMS_ROW }));
+        expect(activeTable()).toMatchObject({ kind: "table", database: "db", table: "wp_wc_order_items", view: "structure" });
+      });
+    });
+
+    describe("problems", () => {
+      beforeEach(() => mocked.projectRules.mockResolvedValue(withReference()));
+
+      it("lists nothing for a reference whose values are all 0 or NULL", async () => {
+        mocked.referenceCoverage.mockResolvedValue(coverage({ total: 4130, zeroOrNull: 4130 }));
+        await openOverview();
+        expect(await screen.findByText("No problems found.")).toBeInTheDocument();
+        expect(screen.queryByRole("row", { name: ORDER_ITEMS_ROW })).not.toBeInTheDocument();
+      });
+
+      it("lists values that point nowhere with a sample of at most three", async () => {
+        mocked.referenceCoverage.mockResolvedValue(coverage({ total: 40, resolved: 34, sampleUnresolved: ["98", "99", "100", "101"] }));
+        await openOverview();
+        expect(await problemRow()).toHaveTextContent(`${ORDER_ITEMS_ROW}: 6 of 40 point nowhere (98, 99, 100) · preset woocommerce`);
+      });
+
+      it("lists a reference that could not be counted", async () => {
+        mocked.referenceCoverage.mockRejectedValue({ kind: "invalid_input", message: "Table is gone", code: null });
+        await openOverview();
+        expect(await problemRow()).toHaveTextContent(`${ORDER_ITEMS_ROW}: could not count: Table is gone`);
+      });
+
+      it("lists nothing for a reference that resolves", async () => {
+        mocked.referenceCoverage.mockResolvedValue(coverage({ total: 7, resolved: 7 }));
+        await openOverview();
+        expect(await screen.findByText("No problems found.")).toBeInTheDocument();
+        expect(screen.queryByRole("row", { name: ORDER_ITEMS_ROW })).not.toBeInTheDocument();
+      });
+
+      it("says how many references are counted until all answered", async () => {
+        const pending = deferredCoverage();
+        await openOverview();
+        expect(await screen.findByText("counting 0 of 1 references…")).toBeInTheDocument();
+        expect(screen.queryByText("No problems found.")).not.toBeInTheDocument();
+        await act(async () => pending[0](coverage({ total: 7, resolved: 7 })));
+        expect(await screen.findByText("No problems found.")).toBeInTheDocument();
+      });
+
+      it("counts again when Refresh coverage is clicked", async () => {
+        mocked.referenceCoverage.mockResolvedValue(coverage({ total: 7, resolved: 5, sampleUnresolved: ["9"] }));
+        await openOverview();
+        expect(await problemRow()).toHaveTextContent("2 of 7 point nowhere (9)");
+        mocked.referenceCoverage.mockResolvedValue(coverage({ total: 7, resolved: 7 }));
+        await userEvent.click(screen.getByRole("button", { name: "Refresh coverage" }));
+        expect(await screen.findByText("No problems found.")).toBeInTheDocument();
+      });
+
+      it("opens the rows that point nowhere with Open rows", async () => {
+        mocked.referenceCoverage.mockResolvedValue(coverage({ total: 40, resolved: 35, sampleUnresolved: ["98"], rows: { unresolved: "`order_id` NOT IN (0)", zeroOrNull: "`order_id` = 0" } }));
+        await openOverview();
+        await userEvent.click(within(await problemRow()).getByRole("button", { name: "Open rows" }));
+        expect(activeTable()).toMatchObject({ kind: "table", table: "wp_wc_order_items", view: "data", filter: "`order_id` NOT IN (0)" });
+      });
+
+      it("opens the table without a filter with Open table", async () => {
+        mocked.referenceCoverage.mockResolvedValue(coverage({ total: 10, resolved: 5, zeroOrNull: 3, rows: { unresolved: "`order_id` NOT IN (0)", zeroOrNull: "`order_id` = 0" } }));
+        await openOverview();
+        await userEvent.click(within(await problemRow()).getByRole("button", { name: "Open table" }));
+        expect(activeTable()).toMatchObject({ kind: "table", table: "wp_wc_order_items", view: "data" });
+        expect(activeTable().filter).toBeUndefined();
+      });
+
+      it("offers only Open table when the counts carry no row filter", async () => {
+        mocked.referenceCoverage.mockResolvedValue(coverage({ total: 10, resolved: 5 }));
+        await openOverview();
+        const row = within(await problemRow());
+        expect(row.getByRole("button", { name: "Open table" })).toBeInTheDocument();
+        expect(row.queryByRole("button", { name: "Open rows" })).not.toBeInTheDocument();
+      });
+
+      it("lists an anomaly whose query failed", async () => {
+        const anomaly = { id: "orphans", preset: "woocommerce", text: "Orphans", count: null, address: null, filter: null, fix: null, error: "Unknown column 'x'" };
+        mocked.readout.mockResolvedValue(readoutOf({ anomalies: { items: [anomaly, { ...anomaly, id: "fine", error: null, count: "0" }], error: null } }));
+        await openOverview();
+        expect(await screen.findByRole("row", { name: "anomaly orphans" })).toHaveTextContent("query failed: Unknown column 'x' · preset woocommerce");
+        expect(screen.queryByRole("row", { name: "anomaly fine" })).not.toBeInTheDocument();
+      });
+
+      it("lists the error of the anomalies as a whole", async () => {
+        mocked.readout.mockResolvedValue(readoutOf({ anomalies: { items: [], error: "Presets could not be read" } }));
+        await openOverview();
+        expect(await screen.findByRole("row", { name: "anomalies" })).toHaveTextContent("anomalies: could not run: Presets could not be read");
+      });
+    });
+
+    describe("switching sections", () => {
+      it("shows the per-table listing from All rules… and returns with Overview", async () => {
+        mocked.projectRules.mockResolvedValue(withReference());
+        await openOverview();
+        await userEvent.click(screen.getByRole("button", { name: "All rules…" }));
+        expect(await tableRegion()).toBeInTheDocument();
+        expect(screen.getByRole("searchbox", { name: "Filter tables" })).toBeInTheDocument();
+        expect(screen.queryByRole("region", { name: "Your changes" })).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "All rules" })).toHaveAttribute("aria-pressed", "true");
+
+        await userEvent.click(screen.getByRole("button", { name: "Overview" }));
+        expect(await screen.findByRole("region", { name: "Your changes" })).toBeInTheDocument();
+        expect(screen.queryByRole("searchbox", { name: "Filter tables" })).not.toBeInTheDocument();
+      });
+
+      it("shows the listing from the segmented control", async () => {
+        await openOverview();
+        const control = screen.getByRole("group", { name: "Project section" });
+        await userEvent.click(within(control).getByRole("button", { name: "All rules" }));
+        expect(await screen.findByRole("searchbox", { name: "Filter tables" })).toBeInTheDocument();
+      });
     });
   });
 
@@ -633,6 +838,7 @@ describe("ProjectPanel", () => {
       await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
 
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addStyle", rule: expect.objectContaining({ columns: ["wc_orders.status"], match: "=", value: "wc-failed", color: "red", enabled: true }) });
+      await userEvent.click(await screen.findByRole("button", { name: "All rules…" }));
       const region = await tableRegion("wp_wc_orders");
       expect(await within(region).findByRole("row", { name: STYLE_NAME })).toBeInTheDocument();
     });

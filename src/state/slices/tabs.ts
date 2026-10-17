@@ -73,7 +73,10 @@ export interface ObjectTab {
   nav: TabNav;
 }
 
-/** The Project page of one database (`?project`); `form` is the rule form opened from a value or a row. */
+/**
+ * The Project page of one database (`?project`); `form` is the rule form opened from a value or a row, `section`
+ * the shown part (default: the overview).
+ */
 export interface ProjectTab {
   id: string;
   kind: "project";
@@ -82,6 +85,7 @@ export interface ProjectTab {
   database: string;
   address: Address;
   form: ProjectForm | null;
+  section?: ProjectSection;
   nav: TabNav;
 }
 
@@ -95,6 +99,8 @@ export interface ReadoutTab {
   address: Address;
   nav: TabNav;
 }
+
+export type ProjectSection = "overview" | "rules";
 
 export type Tab = QueryTab | TableTab | ObjectTab | ProjectTab | ReadoutTab;
 

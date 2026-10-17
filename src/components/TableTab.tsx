@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Copy, Filter, Hash, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Filter, Hash, Loader2, Plus, RefreshCw, X } from "lucide-react";
 import { api, type AppliedFilter, type BrowsePage, type TableStructure } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { address } from "../lib/address";
-import { copyText } from "../lib/clipboard";
 import { DEFAULT_ROW_LIMIT, singleKey } from "../lib/cells";
 import { useApiResult } from "../lib/useApiResult";
 import { valueAt } from "../lib/values";
@@ -12,6 +11,7 @@ import type { MenuEntry } from "./ContextMenu";
 import { ErrorPanel } from "./ErrorPanel";
 import { InsetField } from "./Field";
 import { ResultsGrid } from "./ResultsGrid";
+import { StructureView } from "./structure/StructureView";
 import { ValueCounts, type ValueCountsTarget } from "./ValueCounts";
 
 /** Paging and sort; the filters live on the tab, which back and forward change. */
@@ -263,76 +263,6 @@ function DataView({ tab }: { tab: TableTabState }) {
       )}
       {counts && <ValueCounts target={counts} onPick={(value) => filterRows(tab.id, { column: counts.column, value })} onClose={() => setCounts(null)} />}
     </>
-  );
-}
-
-function StructureView({ tab }: { tab: TableTabState }) {
-  const { structure, error } = useTableStructure(tab.sessionId, tab.database, tab.table);
-
-  if (error) return <ErrorPanel message={error.message} code={error.code} />;
-  if (!structure) return <div className="empty-state">Loading…</div>;
-  return (
-    <div className="structure" data-stage="table:structure-view" data-stage-label="Table structure">
-      <div>
-        <h3>Columns</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th><th>Type</th><th>Null</th><th>Default</th><th>Key</th><th>Extra</th><th>Comment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {structure.columns.map((c) => (
-              <tr key={c.name}>
-                <td style={{ fontWeight: 600 }}>{c.name}</td>
-                <td className="mono">{c.columnType}</td>
-                <td>{c.nullable ? "YES" : ""}</td>
-                <td className="mono">{c.default ?? <span className="muted">—</span>}</td>
-                <td>{c.key && <span className="badge">{c.key}</span>}</td>
-                <td className="muted">{c.extra}</td>
-                <td className="muted">{c.comment}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div>
-        <h3>Indexes</h3>
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Columns</th><th>Unique</th></tr>
-          </thead>
-          <tbody>
-            {structure.indexes.map((i) => (
-              <tr key={i.name}>
-                <td style={{ fontWeight: 600 }}>{i.name}</td>
-                <td className="mono">{i.columns.join(", ")}</td>
-                <td>{i.unique ? "YES" : ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {structure.ddl !== null && <Ddl ddl={structure.ddl} />}
-    </div>
-  );
-}
-
-function Ddl({ ddl }: { ddl: string }) {
-  return (
-    <div>
-      <h3 style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        DDL
-        <button
-          className="icon-btn"
-          aria-label="Copy DDL"
-          onClick={() => void copyText(ddl, "DDL")}
-        >
-          <Copy size="0.923rem" />
-        </button>
-      </h3>
-      <pre className="ddl">{ddl}</pre>
-    </div>
   );
 }
 

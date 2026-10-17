@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { api, toAppError, type Coverage, type ResolvedReference } from "../../api";
 import { projectKey, type CoverageState } from "../../state/slices/project";
+import { unresolvedCount } from "../../lib/coverageProblems";
 import { useStore } from "../../state/store";
 
 export type { CoverageState };
@@ -9,11 +10,8 @@ const SAMPLE_SHOWN = 3;
 /** References counted at once; each count is one or two read-only queries on the metadata pool. */
 export const COVERAGE_CONCURRENCY = 3;
 
-/** Source rows that hold a value (not 0 or NULL) but find no target. */
-const unresolved = (c: Coverage) => c.total - c.resolved - c.zeroOrNull;
-
 /** Nothing that holds a value finds a target: the rule is probably wrong. */
-export const nothingResolves = (c: Coverage) => !c.timedOut && c.resolved === 0 && unresolved(c) > 0;
+export const nothingResolves = (c: Coverage) => !c.timedOut && c.resolved === 0 && unresolvedCount(c) > 0;
 
 export const coverageKey = (reference: ResolvedReference) => JSON.stringify([reference.from, reference.to, reference.by]);
 

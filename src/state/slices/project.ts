@@ -5,7 +5,7 @@ import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
 import { EMPTY_NAV } from "./nav";
 import { withoutSession } from "./session";
-import { activate, findTab, newTabId, replaceTab, type ProjectTab } from "./tabs";
+import { activate, findTab, newTabId, replaceTab, type ProjectSection, type ProjectTab } from "./tabs";
 
 interface ProjectRulesEntry {
   version: number;
@@ -40,6 +40,7 @@ export interface ProjectSlice {
    */
   openProject: (opts?: { sessionId?: string; database?: string; form?: ProjectForm }) => void;
   setProjectForm: (tabId: string, form: ProjectForm | null) => void;
+  setProjectSection: (tabId: string, section: ProjectSection) => void;
   /** Stores the change; every view reloads, since rules change what values are. The error is returned, not shown. */
   changeProject: (sessionId: string, database: string, change: ProjectChange) => Promise<AppError | null>;
 }
@@ -130,6 +131,13 @@ export const projectSlice: Slice<ProjectSlice> = {
       set((s) => {
         const tab = findTab(s, tabId, "project");
         return tab ? replaceTab(s, { ...tab, form }) : {};
+      });
+    },
+
+    setProjectSection(tabId, section) {
+      set((s) => {
+        const tab = findTab(s, tabId, "project");
+        return tab ? replaceTab(s, { ...tab, section }) : {};
       });
     },
 

@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { api, type PresetRow } from "../../api";
-import { projectKey } from "../../state/slices/project";
 import { fail, useStore } from "../../state/store";
 import type { ProjectContext } from "./context";
 
@@ -78,18 +77,17 @@ async function exportPreset(ctx: ProjectContext) {
   }
 }
 
-/** One row: prefix, a switch per preset, auto or "back to auto", then refresh coverage and export. */
-export function ProjectHeader({ ctx }: { ctx: ProjectContext }) {
+/** One row: a switch per preset with auto or "back to auto", the prefix, export, then the section switch (`children`). */
+export function ProjectHeader({ ctx, children }: { ctx: ProjectContext; children?: ReactNode }) {
   const auto = ctx.rules.project.presets === null;
   const toAuto = async () => {
     const failed = await ctx.change({ op: "setPresets", presets: null });
     if (failed) fail(failed, "Could not switch presets back to auto");
   };
-  const refresh = () => useStore.getState().refreshCoverage(projectKey(ctx.tab.sessionId, ctx.tab.database));
   return (
     <section className="project-head" aria-label="Presets and prefix">
-      <PrefixField key={ctx.rules.project.prefix ?? ""} ctx={ctx} />
       <span className="head-presets">
+        <span className="o2">presets</span>
         {ctx.rules.presets.map((preset) => (
           <PresetSwitch key={preset.name} preset={preset} ctx={ctx} />
         ))}
@@ -103,13 +101,12 @@ export function ProjectHeader({ ctx }: { ctx: ProjectContext }) {
           </button>
         )}
       </span>
-      <span className="spacer" />
-      <button className="act" data-stage="project:refresh-coverage" data-stage-label="Refresh coverage" onClick={refresh}>
-        Refresh coverage
-      </button>
+      <PrefixField key={ctx.rules.project.prefix ?? ""} ctx={ctx} />
       <button className="act" data-stage="project:export" data-stage-label="Export as preset" onClick={() => void exportPreset(ctx)}>
         Export as preset…
       </button>
+      <span className="spacer" />
+      {children}
     </section>
   );
 }

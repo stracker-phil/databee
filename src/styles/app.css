@@ -261,6 +261,36 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .structure th, .structure td { text-align: left; padding: 0.308rem 0.769rem 0.308rem 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .structure th { font-weight: 600; color: var(--o2); font-size: var(--fs-small); }
 .structure td.mono { font-size: var(--data-font-size); }
+/* One row per column: name, type, keys, then the rules on it (kind, references, value styles), each rule a
+   line with its origin and the Project page's controls; table-level blocks below. */
+.structure-grid { display: grid; grid-template-columns: minmax(7rem, max-content) minmax(7rem, 15rem) max-content minmax(12rem, 0.9fr) minmax(0, 1.6fr) minmax(15rem, 1.1fr) max-content; }
+.structure-row { display: contents; }
+.structure-row > * { padding: 0.462rem 0.769rem 0.462rem 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.structure-row:hover > * { background: var(--row-hover); }
+.structure-row.head > * { font-weight: 600; color: var(--o2); font-size: var(--fs-small); padding-top: 0.308rem; padding-bottom: 0.308rem; }
+.structure-row.head:hover > * { background: transparent; }
+.structure .col-name { font-family: var(--font-mono); font-size: var(--data-font-size); font-weight: 600; }
+.structure .col-type { font-size: var(--data-font-size); }
+.structure .col-facts { display: block; font-size: var(--fs-small); }
+.structure .key-marks { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-family: var(--font-mono); font-size: var(--fs-small); white-space: nowrap; }
+.structure .rule-cell { display: flex; flex-direction: column; gap: 0.462rem; }
+.structure .rule-item { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.structure .rule-item.off .rule-main { color: var(--o3); text-decoration: line-through; }
+.structure .rule-main { font-family: var(--font-mono); font-size: var(--data-font-size); overflow-wrap: anywhere; }
+.structure .rule-main.dashed .link { text-decoration: underline dashed; text-underline-offset: 3px; }
+.structure .rule-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0.769rem; font-size: var(--fs-small); color: var(--o2); }
+.structure .origin { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o3); white-space: nowrap; }
+.structure .origin .mono { font-size: var(--fs-small); }
+.structure .link { border: none; background: none; padding: 0; font: inherit; color: inherit; }
+.structure .link:hover { color: var(--accent); text-decoration: underline; }
+.structure .act { border: none; background: none; padding: 0; font: inherit; color: var(--accent); white-space: nowrap; }
+.structure .act:hover { color: var(--text); }
+.structure-block h3 .mono { text-transform: none; letter-spacing: 0; }
+.structure-block { display: flex; flex-direction: column; gap: 0.462rem; }
+.structure-block .block-line { display: grid; grid-template-columns: minmax(10rem, 22rem) minmax(0, 1fr); gap: 1.231rem; align-items: baseline; padding-bottom: 0.462rem; border-bottom: 1px solid var(--line); }
+.structure-block .facts { display: flex; flex-wrap: wrap; gap: 2px 1.231rem; align-items: baseline; }
+.structure-block > .rule-item { padding-bottom: 0.462rem; border-bottom: 1px solid var(--line); }
+.structure .mono { font-family: var(--font-mono); font-size: var(--data-font-size); }
 .ddl { margin: 0; padding: 0.923rem; border-radius: 6px; background: var(--chrome); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; }
 
 /* ---------- splitter: a hairline with a wider invisible grab area ---------- */
@@ -622,8 +652,9 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); }
 
 /* ---------- project page ---------- */
-/* One header row, a filter, then a band per table with its rules as in the object view; read-only rows in
-   --o2, switched off ones struck. The rule forms open in a palette-styled sheet (.rule-sheet). */
+/* One header row, then the overview (bands "Your changes" and "Problems", one sentence-like row each) or every
+   rule: a filter and a band per table with its rules as in the object view; read-only rows in --o2, switched
+   off ones struck. The rule forms open in a palette-styled sheet (.rule-sheet). */
 .project { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .project section { display: flex; flex-direction: column; }
 :is(.project, .rule-sheet) .act { border: none; background: none; padding: 0; font: inherit; color: var(--accent); white-space: nowrap; }
@@ -650,6 +681,12 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .project-head .field-error { color: var(--style-red); }
 .project-filter { display: flex; align-items: center; gap: 0.923rem; padding: 0.923rem 0.923rem 0; font-size: var(--fs-small); }
 .project-filter .input { width: 18rem; }
+.project .row.change { grid-template-columns: minmax(10rem, max-content) minmax(0, 1fr) minmax(5.5rem, max-content); align-items: baseline; }
+.project .row.problem { grid-template-columns: minmax(0, 1fr) minmax(5.5rem, max-content); align-items: baseline; }
+.project .row .what { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o2); }
+.project .row .link { border: none; background: none; padding: 0; font: inherit; color: inherit; text-align: left; }
+.project .row .link:hover { color: var(--accent); text-decoration: underline; }
+.project .project-more { padding: 14px 12px 0; font-size: var(--fs-small); }
 .switch.small { width: 1.846rem; height: 1.077rem; vertical-align: middle; }
 .switch.small::after { width: calc(1.077rem - 4px); height: calc(1.077rem - 4px); }
 .switch.small:checked::after { transform: translateX(calc(1.846rem - 1.077rem)); }

@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionPreview, type BrowsePage, type Comparison, type Coverage, type Document, type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Readout, type Resolved, type RuleDraft, type RulesInfo, type SnapshotDiff, type SnapshotInfo, type TableReferences, type TableStructure, type UiState, type WatchPoll } from "../api/types";
+import { EMPTY_UI_STATE, type ActionPreview, type BrowsePage, type Comparison, type Coverage, type Document, type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Readout, type Resolved, type RuleDraft, type RulesInfo, type SnapshotDiff, type SnapshotInfo, type TableProfile, type TableReferences, type TableStructure, type UiState, type WatchPoll } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { session } from "./session";
 import { settings } from "./settings";
@@ -44,13 +44,14 @@ export function createApiMock(): typeof realApi {
     listDatabases: vi.fn().mockResolvedValue([]),
     listTables: vi.fn().mockResolvedValue([]),
     describeTable: vi.fn().mockResolvedValue({ columns: [], indexes: [], primaryKey: [], foreignKeys: [], ddl: null } satisfies TableStructure),
+    tableRules: vi.fn().mockResolvedValue({ table: "wp_posts", ruleName: "posts", columns: [], meta: [], referencedBy: [], entities: [], actions: [], ddl: null } satisfies TableProfile),
     tableReferences: vi.fn().mockResolvedValue({ outgoing: [], incoming: [] } satisfies TableReferences),
     presetsList: vi.fn().mockResolvedValue([]),
     projectGet: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
     projectUpdate: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
     projectExport: vi.fn().mockResolvedValue(""),
     projectExportTo: vi.fn().mockResolvedValue(undefined),
-    projectRules: vi.fn().mockImplementation(async (_sessionId: string, database: string): Promise<ProjectRules> => ({ project: emptyProject(database), prefix: "wp_", suggestedPrefix: null, presets: [], foreignKeys: 0, groups: [], tables: [] })),
+    projectRules: vi.fn().mockImplementation(async (_sessionId: string, database: string): Promise<ProjectRules> => ({ project: emptyProject(database), prefix: "wp_", suggestedPrefix: null, presets: [], foreignKeys: 0, changes: [], groups: [], tables: [] })),
     ruleDraft: vi.fn(async (_s, _d, provenance): Promise<RuleDraft> => ({ source: `${provenance.table}.${provenance.column}`, meta: null })),
     coveragePreview: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
     referenceCoverage: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
