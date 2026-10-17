@@ -87,7 +87,16 @@ reason?: string,
 /**
  * The editor connection was replaced after a timeout (`timeout` only).
  */
-sessionReset?: boolean, };
+sessionReset?: boolean, 
+/**
+ * The form field the error is about (`invalid_input` from a rule form only).
+ */
+field?: AppErrorField, };
+
+/**
+ * `message` is the error's message without the `` `path`: `` prefix.
+ */
+export type AppErrorField = { path: string, message: string, };
 
 /**
  * What the page learns about an applied batch.

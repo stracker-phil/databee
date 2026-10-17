@@ -2,6 +2,7 @@
 //! lens decides per row into the result.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 use super::{Lens, TableColumns};
 use crate::db::{ColumnMeta, ResultSet};
@@ -37,7 +38,7 @@ pub async fn annotate_origins(
     session: &Session,
     current: Option<&str>,
     result: &mut ResultSet,
-    lenses: &mut HashMap<String, Option<Box<dyn Lens>>>,
+    lenses: &mut HashMap<String, Option<Arc<dyn Lens>>>,
     rules: Option<RuleSources<'_>>,
 ) {
     let mut by_origin = ColumnsByOrigin::new();
@@ -80,9 +81,9 @@ async fn load(
     session: &Session,
     database: &str,
     rules: Option<RuleSources<'_>>,
-) -> Option<Box<dyn Lens>> {
+) -> Option<Arc<dyn Lens>> {
     match super::for_database(session, database, rules).await {
-        Ok(lens) => Some(lens),
+        Ok(lens) => Some(Arc::from(lens)),
         Err(e) => {
             log::debug!("Schema of {database} not loaded for result kinds: {e}");
             None

@@ -33,11 +33,7 @@ pub fn address(ctx: &Ctx<'_>, table: &str, key: &RowKey) -> Address {
 
 /// The entity a table's rows are shown with: its unfiltered one, else its first.
 pub fn table_entity<'r>(ctx: &'r Ctx<'_>, table: &str) -> Option<&'r Entity> {
-    let mut entities = ctx
-        .rules
-        .entities
-        .iter()
-        .filter(|e| e.entity.table == table);
+    let mut entities = ctx.rules.entities_of(table);
     let first = entities.clone().next()?;
     let unfiltered = entities.find(|e| e.entity.filter.is_none());
     Some(&unfiltered.unwrap_or(first).entity)

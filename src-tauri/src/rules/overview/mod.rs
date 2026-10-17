@@ -8,13 +8,31 @@ use std::sync::Arc;
 
 pub use rows::{KindRow, PresetRow, ProjectRules, ReferenceRow, RuleOrigin, RuleTable, StyleRow};
 
+use crate::error::AppResult;
 use crate::lens::{self, ColumnsRef, Lens, ResolvedReference, SchemaLens};
 use crate::rules::condition::conditions_text;
-use crate::rules::effective::{EffectiveRules, inferred_id};
+use crate::rules::effective::{self, EffectiveRules, RuleSources, inferred_id};
 use crate::rules::project::Project;
 use crate::rules::types::{ColumnRef, Conditions, Preset, Reference};
 use crate::schema::DatabaseSchema;
+use crate::session::Session;
 use crate::value::ReferenceSource;
+
+/// The Project page of `database` as the session sees it now.
+pub async fn for_database(
+    session: &Session,
+    database: &str,
+    sources: RuleSources<'_>,
+) -> AppResult<ProjectRules> {
+    let (schema, rules) = effective::load(session, database, sources).await?;
+    let project = sources.projects.get(&session.slug(), database);
+    Ok(project_rules(
+        project,
+        schema,
+        rules,
+        &sources.presets.presets(),
+    ))
+}
 
 pub fn project_rules(
     project: Project,
@@ -302,6 +320,7 @@ fn inferred_column_id(reference: &ResolvedReference) -> Option<String> {
 mod tests {
     use super::*;
     use crate::db::ForeignKey;
+    use crate::document::testing::{Rig, shop};
     use crate::rules::testing::{preset, project, reference, schema, with_foreign_key};
 
     const KIT: &str = r#"
@@ -642,6 +661,40 @@ to = "threads.thread_id"
             }]
         );
         assert_eq!(page.project.connection, "local");
+    }
+
+    #[tokio::test]
+    async fn the_page_of_a_database_reads_its_project_presets_and_rules_from_the_session() {
+        let rig = Rig::new(shop(), "");
+
+        let page = for_database(&rig.session, "wp", rig.sources())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            (
+                page.project.connection.as_str(),
+                page.project.database.as_str()
+            ),
+            ("local", "wp")
+        );
+        assert_eq!(page.prefix, "f_");
+        assert_eq!(
+            page.presets,
+            [PresetRow {
+                name: "doc".into(),
+                marker_tables: vec!["f_orders".into()],
+                applied: true,
+            }]
+        );
+        let implied = row(&page, Some("ordermeta.order_id"));
+        assert_eq!(
+            implied.origin,
+            RuleOrigin::Preset {
+                preset: "doc".into()
+            }
+        );
+        assert!(implied.reference.is_some());
     }
 
     #[test]

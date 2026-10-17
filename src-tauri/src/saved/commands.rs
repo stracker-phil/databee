@@ -1,29 +1,11 @@
-use std::sync::Arc;
-
 use tauri::State;
 
 use super::SavedEntry;
 use crate::error::AppResult;
-use crate::rules::effective::{self, EffectiveRules};
+use crate::rules::effective;
 use crate::rules::project::SavedQuery;
 use crate::rules::queries::Home;
-use crate::schema;
-use crate::session::Session;
 use crate::state::AppState;
-
-async fn rules(
-    state: &AppState,
-    session: &Session,
-    database: &str,
-) -> AppResult<Arc<EffectiveRules>> {
-    let database_schema = schema::database(session, database).await?;
-    Ok(effective::effective(
-        session,
-        database,
-        &database_schema,
-        state.rules(),
-    ))
-}
 
 /// The saved queries of `database`: the project's, the global ones and the applied presets'.
 #[tauri::command]
@@ -33,7 +15,7 @@ pub async fn saved_queries(
     database: String,
 ) -> AppResult<Vec<SavedEntry>> {
     let session = state.sessions.get(&session_id)?;
-    let rules = rules(&state, &session, &database).await?;
+    let (_, rules) = effective::load(&session, &database, state.rules()).await?;
     let project = state.projects.get(&session.slug(), &database);
     Ok(super::list(&project, &state.projects.global(), &rules))
 }
@@ -89,7 +71,7 @@ pub async fn copy_preset_query_to_project(
     id: String,
 ) -> AppResult<SavedQuery> {
     let session = state.sessions.get(&session_id)?;
-    let rules = rules(&state, &session, &database).await?;
+    let (_, rules) = effective::load(&session, &database, state.rules()).await?;
     let query = super::preset_copy(&rules, &preset, &id)?;
     super::add_to_project(&state.projects, &session.slug(), &database, query).await
 }

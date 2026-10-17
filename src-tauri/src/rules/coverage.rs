@@ -167,8 +167,7 @@ pub async fn reference_coverage(
     sources: RuleSources<'_>,
     timeout: Duration,
 ) -> AppResult<Coverage> {
-    let schema = schema::database(session, database).await?;
-    let rules = effective::effective(session, database, &schema, sources);
+    let (schema, rules) = effective::load(session, database, sources).await?;
     count(session, database, &schema, rules, reference, timeout).await
 }
 
@@ -183,7 +182,7 @@ pub async fn coverage_preview(
     timeout: Duration,
 ) -> AppResult<Coverage> {
     let schema = schema::database(session, database).await?;
-    let loaded = effective::loaded_presets(&sources.presets.entries());
+    let loaded = sources.presets.presets();
     let mut project = sources.projects.get(&session.slug(), database);
     let ctx = ChangeContext {
         schema: schema.clone(),
@@ -1149,7 +1148,7 @@ to_when = { active = "1" }
             .unwrap_err();
 
             assert!(
-                matches!(&err, AppError::InvalidInput(m) if m.contains("`reference.from`")),
+                matches!(&err, AppError::InvalidField { field, .. } if field == "reference.from"),
                 "{host}:{port}: {err:?}"
             );
         }

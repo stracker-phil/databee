@@ -9,13 +9,12 @@ use tempfile::{TempDir, tempdir};
 
 use super::catalog::{BUILT_IN, PresetCatalog};
 use super::coverage::{Coverage, reference_coverage};
-use super::effective::{RuleSources, RulesInfo, effective, loaded_presets};
+use super::effective::{RuleSources, RulesInfo, rules_info};
 use super::kinds::Zone;
 use super::preset;
 use super::project::ProjectsStore;
 use crate::db::{Cell, ColumnMeta, ResultSet};
 use crate::lens::{self, ColumnsRef, Lens, ResolvedReference, TableColumns};
-use crate::schema;
 use crate::session::Session;
 use crate::test_support::{connect_to, servers, spec};
 use crate::value::{ColumnKind, ReferenceSource, ValueKind, value_at};
@@ -47,9 +46,7 @@ impl Rig {
     }
 
     async fn info(&self, session: &Session, database: &str) -> RulesInfo {
-        let schema = schema::database(session, database).await.unwrap();
-        let rules = effective(session, database, &schema, self.sources());
-        RulesInfo::new(&rules, &loaded_presets(&self.catalog.entries()))
+        rules_info(session, database, self.sources()).await.unwrap()
     }
 
     async fn lens(&self, session: &Session, database: &str) -> Box<dyn Lens> {

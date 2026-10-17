@@ -9,7 +9,6 @@ use ts_rs::TS;
 use super::effective::{self, RuleSources};
 use super::types::ColumnRef;
 use crate::error::{AppError, AppResult};
-use crate::schema;
 use crate::session::Session;
 use crate::value::{Provenance, stored_key};
 
@@ -38,8 +37,7 @@ pub async fn rule_draft(
     sources: RuleSources<'_>,
     timeout: Duration,
 ) -> AppResult<RuleDraft> {
-    let schema = schema::database(session, database).await?;
-    let rules = effective::effective(session, database, &schema, sources);
+    let (_, rules) = effective::load(session, database, sources).await?;
     let Some(name) = rules.applied.rule_names(&provenance.table).first().copied() else {
         return Err(AppError::InvalidInput(format!(
             "`{}` is outside the prefix `{}`, so no rule can name it",

@@ -10,7 +10,6 @@ use super::project_change::{self, ChangeContext, ProjectChange};
 use super::types::Reference;
 use crate::error::{AppError, AppResult};
 use crate::lens::ResolvedReference;
-use crate::schema;
 use crate::state::AppState;
 use crate::value::Provenance;
 
@@ -27,10 +26,7 @@ pub async fn rules_info(
     database: String,
 ) -> AppResult<RulesInfo> {
     let session = state.sessions.get(&session_id)?;
-    let schema = schema::database(&session, &database).await?;
-    let rules = effective::effective(&session, &database, &schema, state.rules());
-    let loaded = effective::loaded_presets(&state.presets.entries());
-    Ok(RulesInfo::new(&rules, &loaded))
+    effective::rules_info(&session, &database, state.rules()).await
 }
 
 /// The project of the session's connection and `database`; an empty one when none is stored.
@@ -92,11 +88,7 @@ pub async fn project_rules(
     database: String,
 ) -> AppResult<ProjectRules> {
     let session = state.sessions.get(&session_id)?;
-    let schema = schema::database(&session, &database).await?;
-    let rules = effective::effective(&session, &database, &schema, state.rules());
-    let loaded = effective::loaded_presets(&state.presets.entries());
-    let project = state.projects.get(&session.slug(), &database);
-    Ok(overview::project_rules(project, schema, rules, &loaded))
+    overview::for_database(&session, &database, state.rules()).await
 }
 
 #[tauri::command]

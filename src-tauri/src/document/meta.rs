@@ -26,12 +26,7 @@ pub async fn load(ctx: &Ctx<'_>, own: &Own, needed: &[String]) -> Vec<MetaRows> 
         return Vec::new();
     };
     let mut out = Vec::new();
-    for meta in ctx
-        .rules
-        .meta
-        .iter()
-        .filter(|m| m.owner.as_deref() == Some(own.table()))
-    {
+    for meta in ctx.rules.owned_meta(own.table()) {
         let Some(fk) = meta.fk.clone() else {
             continue;
         };

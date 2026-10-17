@@ -83,10 +83,7 @@ impl PresetCatalog {
 
     /// Every preset that loaded without error, built-ins first.
     pub fn presets(&self) -> Vec<Arc<Preset>> {
-        self.entries()
-            .iter()
-            .filter_map(|e| e.preset.clone())
-            .collect()
+        loaded(&self.entries())
     }
 
     pub fn entries(&self) -> Arc<[PresetEntry]> {
@@ -147,6 +144,11 @@ impl PresetCatalog {
         check_requires(&mut entries);
         entries
     }
+}
+
+/// The presets of `entries` that loaded without error.
+pub(super) fn loaded(entries: &[PresetEntry]) -> Vec<Arc<Preset>> {
+    entries.iter().filter_map(|e| e.preset.clone()).collect()
 }
 
 /// `label` names the file in errors; a file that does not parse is listed under `stem`.

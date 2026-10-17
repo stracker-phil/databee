@@ -139,10 +139,7 @@ async fn fetch_meta(
 }
 
 fn meta_of<'r>(ctx: &'r Ctx<'_>, owner: &str) -> Option<&'r MetaRef> {
-    ctx.rules
-        .meta
-        .iter()
-        .find(|m| m.owner.as_deref() == Some(owner) && m.fk.is_some())
+    ctx.rules.owned_meta(owner).next()
 }
 
 #[cfg(test)]

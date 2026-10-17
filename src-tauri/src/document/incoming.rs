@@ -87,9 +87,8 @@ fn is_meta_of(ctx: &Ctx<'_>, reference: &ResolvedReference, owner: &str) -> bool
     let [column] = reference.from.columns.as_slice() else {
         return false;
     };
-    ctx.rules.meta.iter().any(|m| {
-        m.owner.as_deref() == Some(owner)
-            && m.table == reference.from.table
+    ctx.rules.owned_meta(owner).any(|m| {
+        m.table == reference.from.table
             && m.fk
                 .as_ref()
                 .is_some_and(|fk| fk.eq_ignore_ascii_case(column))

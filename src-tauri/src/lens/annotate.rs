@@ -69,11 +69,9 @@ pub async fn annotate_execute(
     rules: Option<RuleSources<'_>>,
 ) {
     // `None` remembers a database whose schema failed to load, so it is tried once per call.
-    let mut lenses = HashMap::<String, Option<Box<dyn Lens>>>::new();
+    let mut lenses = HashMap::<String, Option<Arc<dyn Lens>>>::new();
     for result in &mut response.results {
-        value::find_serialized(result);
-        result.kinds = type_kinds(&result.columns);
-        annotate_origins(
+        annotate_result(
             session,
             response.database.as_deref(),
             result,
@@ -82,6 +80,30 @@ pub async fn annotate_execute(
         )
         .await;
     }
+}
+
+/// `annotate_execute` for one result of a query run in `database`, whose lens the caller holds.
+pub async fn annotate_query(
+    session: &Session,
+    database: &str,
+    lens: Arc<dyn Lens>,
+    result: &mut ResultSet,
+    rules: Option<RuleSources<'_>>,
+) {
+    let mut lenses = HashMap::from([(database.to_string(), Some(lens))]);
+    annotate_result(session, Some(database), result, &mut lenses, rules).await;
+}
+
+async fn annotate_result(
+    session: &Session,
+    database: Option<&str>,
+    result: &mut ResultSet,
+    lenses: &mut HashMap<String, Option<Arc<dyn Lens>>>,
+    rules: Option<RuleSources<'_>>,
+) {
+    value::find_serialized(result);
+    result.kinds = type_kinds(&result.columns);
+    annotate_origins(session, database, result, lenses, rules).await;
 }
 
 fn type_kinds(columns: &[ColumnMeta]) -> Vec<ColumnKind> {

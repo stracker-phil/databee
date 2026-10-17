@@ -71,10 +71,7 @@ fn value_match(ctx: &Ctx<'_>, column: &str, term: &Term<'_>, text: &str) -> Stri
 }
 
 fn owner_meta<'r>(ctx: &'r Ctx<'_>, table: &str) -> Option<&'r MetaRef> {
-    ctx.rules
-        .meta
-        .iter()
-        .find(|m| m.owner.as_deref() == Some(table))
+    ctx.rules.owned_meta(table).next()
 }
 
 /// The entity's newest rows where `predicate` holds besides its `filter`.

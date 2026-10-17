@@ -9,7 +9,7 @@ use tempfile::{TempDir, tempdir};
 use crate::document::{self, Ctx};
 use crate::rules::catalog::PresetCatalog;
 use crate::rules::coverage::reference_coverage;
-use crate::rules::effective::{self, RuleSources};
+use crate::rules::effective::RuleSources;
 use crate::rules::overview;
 use crate::rules::project::ProjectsStore;
 use crate::schema;
@@ -154,11 +154,9 @@ async fn the_coverage_of_the_40_project_references_runs_43_statements() {
     let rig = Rig::new();
     for counted in counted_sessions().await {
         let session = &counted.session;
-        let schema = schema::database(session, DATABASE).await.unwrap();
-        let rules = effective::effective(session, DATABASE, &schema, rig.sources());
-        let loaded = effective::loaded_presets(&rig.catalog.entries());
-        let project = rig.projects.get(&session.slug(), DATABASE);
-        let rows = overview::project_rules(project, schema, rules, &loaded);
+        let rows = overview::for_database(session, DATABASE, rig.sources())
+            .await
+            .unwrap();
         let references: Vec<_> = rows
             .references
             .iter()

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-pub use annotate::{annotate_browse, annotate_execute, annotate_table};
+pub use annotate::{annotate_browse, annotate_execute, annotate_query, annotate_table};
 pub use schema_lens::SchemaLens;
 
 use crate::db::{ColumnMeta, ResultSet};
@@ -96,8 +96,13 @@ pub async fn for_database(
     database: &str,
     rules: Option<RuleSources<'_>>,
 ) -> AppResult<Box<dyn Lens>> {
-    let schema = schema::database(session, database).await?;
-    let effective = rules.map(|sources| effective::effective(session, database, &schema, sources));
+    let (schema, effective) = match rules {
+        Some(sources) => {
+            let (schema, rules) = effective::load(session, database, sources).await?;
+            (schema, Some(rules))
+        }
+        None => (schema::database(session, database).await?, None),
+    };
     Ok(build(schema, &session.slug(), database, effective))
 }
 

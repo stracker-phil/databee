@@ -8,7 +8,6 @@ use crate::db::browse::{equals_sql, select_column_sql};
 use crate::db::{ColumnEquals, Dialect};
 use crate::error::{AppError, AppResult};
 use crate::rules::effective::{self, MetaRef, RuleSources};
-use crate::schema;
 use crate::session::Session;
 
 /// The key column of a `[[meta]]` table and the key the value's row is stored under.
@@ -51,8 +50,7 @@ pub async fn value_condition(
     timeout: Duration,
 ) -> AppResult<String> {
     let dialect = session.db.dialect();
-    let schema = schema::database(session, database).await?;
-    let rules = effective::effective(session, database, &schema, sources);
+    let (_, rules) = effective::load(session, database, sources).await?;
     let meta = rules
         .meta_table(&provenance.table)
         .filter(|m| m.value.eq_ignore_ascii_case(&provenance.column));

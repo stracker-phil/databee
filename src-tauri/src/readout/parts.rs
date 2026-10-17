@@ -9,11 +9,11 @@ use super::{
     ReadoutRow, RecentLine, StatusValue, SummaryValue,
 };
 use crate::address::{Address, Target};
-use crate::db::{ExecuteResponse, ResultSet};
+use crate::db::ResultSet;
 use crate::document::Ctx;
 use crate::document::peek;
 use crate::error::AppResult;
-use crate::lens::annotate_execute;
+use crate::lens::annotate_query;
 use crate::rules::actions::ActionScope;
 use crate::rules::effective::{AppliedEntity, RuleSources};
 use crate::rules::placeholder::with_prefixes;
@@ -126,15 +126,16 @@ async fn saved_query(
 ) -> Result<ResultSet, String> {
     let statement = single_statement(sql)?;
     let sql = in_database(ctx.dialect, &ctx.database, &shape(statement));
-    let result = ctx.fetch(&sql).await.map_err(|e| e.to_string())?;
-    let mut response = ExecuteResponse {
-        results: vec![result],
-        elapsed_ms: 0,
-        database: Some(ctx.database.clone()),
-        failure: None,
-    };
-    annotate_execute(ctx.session, &mut response, Some(sources)).await;
-    Ok(response.results.remove(0))
+    let mut result = ctx.fetch(&sql).await.map_err(|e| e.to_string())?;
+    annotate_query(
+        ctx.session,
+        &ctx.database,
+        ctx.lens.clone(),
+        &mut result,
+        Some(sources),
+    )
+    .await;
+    Ok(result)
 }
 
 fn first_value(result: &ResultSet) -> Option<Value> {

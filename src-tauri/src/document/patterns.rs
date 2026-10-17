@@ -28,7 +28,7 @@ pub async fn groups(ctx: &Ctx<'_>, own: &Own, meta: &MetaValues) -> Vec<PatternG
 /// The row's patterns, merged by name and table, in rule order.
 fn merge<'r>(ctx: &'r Ctx<'_>, owner: &str) -> Vec<Vec<&'r RulePattern>> {
     let mut merged: Vec<Vec<&RulePattern>> = Vec::new();
-    for pattern in ctx.rules.patterns.iter().filter(|p| p.rule.owner == owner) {
+    for pattern in ctx.rules.patterns_of(owner) {
         let same = |rules: &&mut Vec<&RulePattern>| {
             rules[0].rule.name == pattern.rule.name && rules[0].rule.table == pattern.rule.table
         };

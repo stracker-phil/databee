@@ -92,7 +92,10 @@ impl ChangeContext {
 }
 
 fn invalid(error: FieldError) -> AppError {
-    AppError::InvalidInput(format!("`{}`: {}", error.field, error.message))
+    AppError::InvalidField {
+        field: error.field,
+        message: error.message,
+    }
 }
 
 /// `field` prefixed to a rule's own field error (`reference.label`).

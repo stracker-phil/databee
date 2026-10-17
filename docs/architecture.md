@@ -20,7 +20,8 @@ These rules hold everywhere in the code. Keep them when you change things.
    IPC types are camelCase, with one deliberate exception: rule types (`src-tauri/src/rules/`) keep the
    snake_case keys of the preset TOML format, so projects, exports and the page store a rule verbatim.
 3. **Errors are data.** Every command returns `Result<T, AppError>`, which serializes as `{ kind, message, code, account }`.
-   The UI branches on `kind` (e.g. `password_required`, `confirmation_required`).
+   The UI branches on `kind` (e.g. `password_required`, `confirmation_required`). Rule form errors
+   (`AppError::InvalidField`) add `field: { path, message }`.
 4. **Passwords never touch files, logs or the webview.** They live in the `Secret` type. It redacts in
    `Debug`, is zeroed on drop and has no `Serialize` impl. Passwords are stored in the OS keychain and handed to a connect call by
    request id.
@@ -106,7 +107,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
 src/                       React app
   main.tsx modules.ts       boot; the install list (core, then one line per module)
   api/                     the core's IPC file (index.ts) + types generated from Rust (ts-rs)
-  state/                   zustand store: store.ts (composition root), slices/, selectors, session events
+  state/                   zustand store: store.ts (composition root), slices/, selectors
   commands/                command registry, scopes, default shortcuts
   registry/                extension points modules register into (settingsPages.ts)
   components/              UI; components/readout/ the home page, components/settings/ the Settings dialog
@@ -182,6 +183,9 @@ status kind: color comes only from value styles.
   from the schema cache: primary keys, declared foreign keys and same-name inference
   ([database.md](database.md#references-and-kinds)). `rules::lens::RulesLens` wraps it with the effective
   rules of presets and the project; `lens::build` picks it when the rules change anything.
+  `lens::annotate_execute` gives query results their kinds by column origin, loading a lens per database;
+  `lens::annotate_query` does the same for one result with a lens the caller already holds (the readout's
+  saved queries use the document `Ctx`'s).
 
 ## Rules and presets
 
@@ -212,16 +216,18 @@ WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](prese
   the Project page, `conditions_sql` as exact SQL terms (coverage, incoming groups, action plans, search).
 - `effective.rs`: `EffectiveRules` (applied presets ⊕ project, real table names, precedence order, the
   `fk → owner` reference of each owned `[[meta]]` table, kind lookups shared with the lens, `rule_for`, the
-  rule behind a `ResolvedReference`) and its
+  rule behind a `ResolvedReference`; `owned_meta`, `entities_of` and `patterns_of` for the meta tables,
+  entities and patterns of one table) and its
   cache in `Session.ext`, keyed by the schema (`Arc`), the preset list (`Arc`) and the project (value), so
-  DDL, a refresh, a preset file change or a project change rebuilds it. `RuleSources` (from
+  DDL, a refresh, a preset file change or a project change rebuilds it. `effective::load` returns a
+  database's schema and its effective rules; `rules_info` builds `RulesInfo` from them. `RuleSources` (from
   `AppState::rules`) is what `Session::browse`, `Session::execute` and `table_references` take.
 - `lens.rs`: `RulesLens` (see the lens seam above).
 - `coverage.rs`: `reference_coverage`, read-only counts of how many rows of one reference resolve
   (`CoverageQuery` builds the SQL from the reference and its rule's conditions), and `coverage_preview`,
   the same count for an unsaved rule on a checked copy of the project (`project_change::put_reference`
   stores it and returns its id).
-- `overview/`: `project_rules`, everything the Project page lists (references of every origin, switched-off
+- `overview/`: `project_rules` (`for_database` loads its inputs), everything the Project page lists (references of every origin, switched-off
   ones included, kinds, styles, presets, the tables rules can name).
 - `draft.rs`: `rule_draft`, a value's column as rules name it and, on a meta value, its meta key.
 

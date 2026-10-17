@@ -12,7 +12,7 @@ use crate::error::AppResult;
 use crate::lens::{self, Lens};
 use crate::rules::effective::{self, EffectiveRules, RuleSources};
 use crate::rules::placeholder::qualify_prefixes;
-use crate::schema::{self, DatabaseSchema};
+use crate::schema::DatabaseSchema;
 use crate::session::Session;
 use crate::value::{self, ColumnKind, Provenance, ResultValues, RowKey, Value, ValueKind};
 
@@ -21,7 +21,7 @@ pub struct Ctx<'a> {
     pub database: String,
     pub schema: Arc<DatabaseSchema>,
     pub rules: Arc<EffectiveRules>,
-    pub lens: Box<dyn Lens>,
+    pub lens: Arc<dyn Lens>,
     pub dialect: Dialect,
     pub timeout: Duration,
 }
@@ -33,14 +33,13 @@ impl<'a> Ctx<'a> {
         sources: RuleSources<'_>,
         timeout: Duration,
     ) -> AppResult<Self> {
-        let schema = schema::database(session, database).await?;
-        let rules = effective::effective(session, database, &schema, sources);
-        let lens = lens::build(
+        let (schema, rules) = effective::load(session, database, sources).await?;
+        let lens = Arc::from(lens::build(
             schema.clone(),
             &session.slug(),
             database,
             Some(rules.clone()),
-        );
+        ));
         Ok(Self {
             session,
             database: database.to_string(),

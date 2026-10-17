@@ -16,16 +16,17 @@ use ts_rs::TS;
 use super::ProjectsStore;
 use super::actions::Action;
 use super::applied::Applied;
-use super::catalog::{PresetCatalog, PresetEntry};
+use super::catalog::{PresetCatalog, PresetEntry, loaded};
 use super::condition::{self, Condition, Matcher, column_glob_match, glob_match};
 use super::kinds::{KindRule, StyleRule};
 use super::project::Project;
 use super::queries::Pattern;
 use super::types::{ColumnGlob, ColumnRef, Entity, FindSource, Preset, Reference};
 use crate::db::ColumnEquals;
+use crate::error::AppResult;
 use crate::lens::{ColumnsRef, ResolvedReference};
 use crate::lock::MutexExt;
-use crate::schema::DatabaseSchema;
+use crate::schema::{self, DatabaseSchema};
 use crate::session::Session;
 use crate::value::ReferenceSource;
 
@@ -403,6 +404,28 @@ impl EffectiveRules {
         self.meta.iter().find(|m| m.table == table)
     }
 
+    /// The meta tables that describe rows of the real table `owner`; each has an `fk`.
+    pub fn owned_meta<'s>(&'s self, owner: &str) -> impl Iterator<Item = &'s MetaRef> {
+        self.meta
+            .iter()
+            .filter(move |m| m.owner.as_deref() == Some(owner) && m.fk.is_some())
+    }
+
+    /// The entities of the real `table`, filtered ones first.
+    pub fn entities_of<'s>(
+        &'s self,
+        table: &str,
+    ) -> impl Iterator<Item = &'s AppliedEntity> + Clone {
+        self.entities
+            .iter()
+            .filter(move |e| e.entity.table == table)
+    }
+
+    /// The patterns whose owner is the real table `owner`, in apply order.
+    pub fn patterns_of<'s>(&'s self, owner: &str) -> impl Iterator<Item = &'s RulePattern> {
+        self.patterns.iter().filter(move |p| p.rule.owner == owner)
+    }
+
     /// Whether one of `globs` covers the real `table.column`.
     pub fn columns_match(&self, globs: &[ColumnGlob], table: &str, column: &str) -> bool {
         let names = self.applied.rule_names(table);
@@ -541,8 +564,7 @@ pub fn effective(
     {
         return hit.rules.clone();
     }
-    let loaded = loaded_presets(&entries);
-    let rules = Arc::new(EffectiveRules::build(&project, schema, &loaded));
+    let rules = Arc::new(EffectiveRules::build(&project, schema, &loaded(&entries)));
     let entry = Cached {
         schema: schema.clone(),
         presets: entries,
@@ -553,8 +575,24 @@ pub fn effective(
     rules
 }
 
-pub fn loaded_presets(entries: &[PresetEntry]) -> Vec<Arc<Preset>> {
-    entries.iter().filter_map(|e| e.preset.clone()).collect()
+/// The schema of `database` and its effective rules.
+pub async fn load(
+    session: &Session,
+    database: &str,
+    sources: RuleSources<'_>,
+) -> AppResult<(Arc<DatabaseSchema>, Arc<EffectiveRules>)> {
+    let schema = schema::database(session, database).await?;
+    let rules = effective(session, database, &schema, sources);
+    Ok((schema, rules))
+}
+
+pub async fn rules_info(
+    session: &Session,
+    database: &str,
+    sources: RuleSources<'_>,
+) -> AppResult<RulesInfo> {
+    let (_, rules) = load(session, database, sources).await?;
+    Ok(RulesInfo::new(&rules, &sources.presets.presets()))
 }
 
 #[cfg(test)]
@@ -573,7 +611,6 @@ mod tests {
         TableSpec, forum, forum_schema, preset, project, reference, schema as schema_of,
     };
     use crate::rules::types::{ColumnGlob, Conditions, Match};
-    use crate::schema;
     use crate::test_support::{connect_to, servers, spec};
 
     const TIMEOUT: Duration = Duration::from_secs(5);
@@ -1466,14 +1503,49 @@ to = "extras.extra_id"
             path
         }
 
-        async fn rules(&self) -> Arc<EffectiveRules> {
-            let schema = schema::database(&self.session, "wp").await.unwrap();
-            let sources = RuleSources {
+        fn sources(&self) -> RuleSources<'_> {
+            RuleSources {
                 presets: &self.catalog,
                 projects: &self.projects,
-            };
-            effective(&self.session, "wp", &schema, sources)
+            }
         }
+
+        async fn rules(&self) -> Arc<EffectiveRules> {
+            load(&self.session, "wp", self.sources()).await.unwrap().1
+        }
+    }
+
+    #[tokio::test]
+    async fn loading_gives_the_cached_schema_and_its_rules() {
+        let rig = Rig::new();
+        rig.write_preset("links.toml", LINKS, 100);
+
+        let (schema, rules) = load(&rig.session, "wp", rig.sources()).await.unwrap();
+
+        assert!(Arc::ptr_eq(
+            &schema,
+            &schema::database(&rig.session, "wp").await.unwrap()
+        ));
+        assert!(Arc::ptr_eq(&rules, &rig.rules().await));
+        assert_eq!(rules.references.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn rules_info_lists_every_loaded_preset_and_the_applied_ones() {
+        let rig = Rig::new();
+        rig.write_preset("links.toml", LINKS, 100);
+        rig.write_preset("broken.toml", "[preset", 100);
+        rig.write_preset(
+            "other.toml",
+            "[preset]\nname = \"other\"\nmarker_tables = [\"nowhere\"]\n",
+            100,
+        );
+
+        let info = rules_info(&rig.session, "wp", rig.sources()).await.unwrap();
+
+        assert_eq!(info.applied_presets, ["links"]);
+        assert_eq!(info.available_presets, ["links", "other"]);
+        assert_eq!(info.prefix, "f_");
     }
 
     #[tokio::test]
@@ -1565,12 +1637,7 @@ to = "extras.extra_id"
         assert_eq!(rig.rules().await.references.len(), 2);
     }
 
-    async fn rules_info(
-        sources: RuleSources<'_>,
-        database: &str,
-        host: &str,
-        port: u16,
-    ) -> RulesInfo {
+    async fn info_on(sources: RuleSources<'_>, database: &str, host: &str, port: u16) -> RulesInfo {
         let db = connect_to(host, port, database).await;
         let session = Session::new(
             "it".into(),
@@ -1578,11 +1645,9 @@ to = "extras.extra_id"
             format!("it-{port}"),
             Box::new(db),
         );
-        let schema = schema::database(&session, database)
+        rules_info(&session, database, sources)
             .await
-            .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"));
-        let rules = effective(&session, database, &schema, sources);
-        RulesInfo::new(&rules, &loaded_presets(&sources.presets.entries()))
+            .unwrap_or_else(|e| panic!("{host}:{port}: {e:?}"))
     }
 
     #[tokio::test]
@@ -1596,8 +1661,8 @@ to = "extras.extra_id"
             projects: &projects,
         };
         for (host, port) in servers() {
-            let wordpress = rules_info(sources, "wp_test", &host, port).await;
-            let plain = rules_info(sources, "databee_test", &host, port).await;
+            let wordpress = info_on(sources, "wp_test", &host, port).await;
+            let plain = info_on(sources, "databee_test", &host, port).await;
 
             let server = format!("{host}:{port}");
             assert_eq!(wordpress.prefix, "wp_", "{server}");

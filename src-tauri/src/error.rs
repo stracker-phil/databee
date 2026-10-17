@@ -37,6 +37,9 @@ pub enum AppError {
     SessionNotFound(String),
     #[error("{0}")]
     InvalidInput(String),
+    /// Invalid input in one field of a rule form; `field` is its path (`reference.from`, `kind.in[0]`).
+    #[error("`{field}`: {message}")]
+    InvalidField { field: String, message: String },
     #[error("Keychain error: {0}")]
     Keychain(String),
     #[error("File error: {0}")]
@@ -62,7 +65,7 @@ impl AppError {
             AppError::Cancelled => ErrorKind::Cancelled,
             AppError::ConfirmationRequired(_) => ErrorKind::ConfirmationRequired,
             AppError::SessionNotFound(_) => ErrorKind::SessionNotFound,
-            AppError::InvalidInput(_) => ErrorKind::InvalidInput,
+            AppError::InvalidInput(_) | AppError::InvalidField { .. } => ErrorKind::InvalidInput,
             AppError::Keychain(_) => ErrorKind::Keychain,
             AppError::Io(_) => ErrorKind::Io,
         }
@@ -78,6 +81,13 @@ impl AppError {
     pub fn reason(&self) -> Option<&str> {
         match self {
             AppError::ConfirmationRequired(reason) => Some(reason),
+            _ => None,
+        }
+    }
+
+    pub fn field(&self) -> Option<FieldJson<'_>> {
+        match self {
+            AppError::InvalidField { field, message } => Some(FieldJson { path: field, message }),
             _ => None,
         }
     }
@@ -113,6 +123,7 @@ impl Serialize for AppError {
             account: self.account(),
             reason: self.reason(),
             session_reset: self.session_reset(),
+            field: self.field(),
         }
         .serialize(serializer)
     }
@@ -134,6 +145,18 @@ struct ErrorJson<'a> {
     #[serde(rename = "sessionReset", skip_serializing_if = "std::ops::Not::not")]
     #[ts(as = "Option<bool>", optional)]
     session_reset: bool,
+    /// The form field the error is about (`invalid_input` from a rule form only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    field: Option<FieldJson<'a>>,
+}
+
+/// `message` is the error's message without the `` `path`: `` prefix.
+#[derive(Serialize, TS, Debug, PartialEq, Eq)]
+#[ts(export, export_to = "src/api/types.gen.ts", rename = "AppErrorField")]
+pub struct FieldJson<'a> {
+    pub path: &'a str,
+    pub message: &'a str,
 }
 
 #[derive(Serialize, TS, Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,6 +308,42 @@ mod tests {
                 "reason": "DELETE without WHERE"
             })
         );
+    }
+
+    #[test]
+    fn invalid_field_serializes_its_path_and_message() {
+        let err = AppError::InvalidField {
+            field: "reference.from".into(),
+            message: "no table `wp_x` in this database".into(),
+        };
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(
+            err.to_string(),
+            "`reference.from`: no table `wp_x` in this database"
+        );
+        assert_eq!(
+            serde_json::to_value(&err).unwrap(),
+            json!({
+                "kind": "invalid_input",
+                "message": "`reference.from`: no table `wp_x` in this database",
+                "code": null,
+                "account": null,
+                "field": {
+                    "path": "reference.from",
+                    "message": "no table `wp_x` in this database"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn errors_other_than_invalid_field_have_no_field_key() {
+        let err = AppError::InvalidInput("bad".into());
+        let value = serde_json::to_value(&err).unwrap();
+
+        assert!(err.field().is_none());
+        assert!(!value.as_object().unwrap().contains_key("field"));
     }
 
     #[test]

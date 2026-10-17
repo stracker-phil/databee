@@ -5,6 +5,9 @@ import { fieldError, kindRule, referenceRule, styleRule, type KindForm, type Ref
 
 const invalid = (message: string): AppError => ({ kind: "invalid_input", message, code: null, account: null });
 
+const invalidField = (path: string, message: string): AppError =>
+  ({ kind: "invalid_input", message: `\`${path}\`: ${message}`, code: null, account: null, field: { path, message } }) as AppError;
+
 describe("fieldError", () => {
   it.each([
     ["reference.from", "source"],
@@ -12,23 +15,28 @@ describe("fieldError", () => {
     ["reference.to", "target"],
     ["reference.to_when.status", "target"],
     ["reference.label", "label"],
+    ["reference.id", "label"],
     ["kind.in[0]", "inMeta"],
     ["style.in[1]", "inMeta"],
     ["kind.columns[0]", "columns"],
+    ["style.columns[2]", "columns"],
+    ["columns", "columns"],
     ["style.value", "value"],
-  ])("points `%s` at the %s field and keeps only the message", (path, field) => {
-    expect(fieldError(invalid(`\`${path}\`: \`wp_users\` has no column \`nope\``))).toEqual({ field, message: "`wp_users` has no column `nope`" });
+  ])("points `%s` at the %s field and returns the field message", (path, field) => {
+    expect(fieldError(invalidField(path, "`wp_users` has no column `nope`"))).toEqual({ field, message: "`wp_users` has no column `nope`" });
   });
 
   it("keeps a multi-line message whole", () => {
-    expect(fieldError(invalid("`reference.from`: first\nsecond"))).toEqual({ field: "source", message: "first\nsecond" });
+    expect(fieldError(invalidField("reference.from", "first\nsecond"))).toEqual({ field: "source", message: "first\nsecond" });
   });
 
-  it.each([
-    ["a message without a field", "the database went away"],
-    ["a field the form does not have", "`project.prefix`: too long"],
-  ])("falls back to the whole form for %s and keeps the full message", (_case, message) => {
-    expect(fieldError(invalid(message))).toEqual({ field: "form", message });
+  it("falls back to the whole form for an error without a field and keeps the full message", () => {
+    expect(fieldError(invalid("the database went away"))).toEqual({ field: "form", message: "the database went away" });
+  });
+
+  it.each(["project.prefix", "presets[0]"])("falls back to the whole form for the unknown field path `%s` and keeps the full message", (path) => {
+    const error = invalidField(path, "too long");
+    expect(fieldError(error)).toEqual({ field: "form", message: error.message });
   });
 });
 

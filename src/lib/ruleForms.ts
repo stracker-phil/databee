@@ -65,7 +65,7 @@ export interface StyleForm {
 
 export type ProjectForm = ReferenceForm | KindForm | StyleForm;
 
-/** The form fields Rust's errors point at (`` `reference.from`: … ``). */
+/** The form fields Rust's errors point at (`AppError.field`). */
 export type FormField = "source" | "when" | "target" | "label" | "columns" | "metaKeys" | "inMeta" | "value" | "form";
 
 export interface FieldError {
@@ -210,28 +210,34 @@ export function styleRule(form: StyleForm): StyleRule {
   return { ...scopeRule(form.scope), match: form.match, value: form.value, color: form.color, enabled: true };
 }
 
-const FIELD_PREFIXES: [string, FormField][] = [
-  ["reference.from", "source"],
-  ["reference.when", "when"],
-  ["reference.to", "target"],
-  ["reference.label", "label"],
-  ["reference.id", "label"],
-  ["columns", "columns"],
-  ["kind.columns", "columns"],
-  ["style.columns", "columns"],
-  ["kind.in", "inMeta"],
-  ["style.in", "inMeta"],
-  ["style.value", "value"],
-];
+const FORM_FIELDS: Record<string, FormField> = {
+  "reference.from": "source",
+  "reference.when": "when",
+  "reference.to": "target",
+  "reference.to_when": "target",
+  "reference.label": "label",
+  "reference.id": "label",
+  columns: "columns",
+  "kind.columns": "columns",
+  "style.columns": "columns",
+  "kind.in": "inMeta",
+  "style.in": "inMeta",
+  "style.value": "value",
+};
 
-/** Rust names the field first (`` `reference.from`: no table … ``); anything else belongs to the whole form. */
-export function fieldError(error: AppError): FieldError {
-  const match = /^`([^`]+)`: ([\s\S]*)$/.exec(error.message);
-  if (!match) return { field: "form", message: error.message };
-  const [, path, message] = match;
-  const found = FIELD_PREFIXES.filter(([prefix]) => path === prefix || path.startsWith(`${prefix}.`) || path.startsWith(`${prefix}[`) || path.startsWith(`${prefix}_`));
-  const longest = found.sort((a, b) => b[0].length - a[0].length)[0];
-  return { field: longest?.[1] ?? "form", message: longest ? message : error.message };
+/** A rule field's path (`reference.when.meta_key`, `kind.in[0]`) up to the field the form shows. */
+const formPath = (path: string) =>
+  path
+    .split(".")
+    .slice(0, 2)
+    .map((part) => part.split("[")[0])
+    .join(".");
+
+/** The form field Rust's error points at; anything else belongs to the whole form. */
+export function fieldError({ field, message }: AppError): FieldError {
+  const formField = field && FORM_FIELDS[formPath(field.path)];
+  if (field && formField) return { field: formField, message: field.message };
+  return { field: "form", message };
 }
 
 export function originText(origin: RuleOrigin): string {
