@@ -1,5 +1,6 @@
 import { api, toAppError, type AppError, type ConnectionSpec, type DatabaseInfo, type LaunchEvent, type SessionInfo, type TableInfo, type TableStructure } from "../../api";
 import { emitSessionEvent } from "../events";
+import { openFromOutside } from "../outside";
 import { fail } from "../requests";
 import { structureKey } from "../selectors";
 import { sessionClosedPatch, type Slice, type Store } from "../store";
@@ -55,11 +56,16 @@ export const sessionSlice: Slice<SessionSlice> = {
     structures: {},
 
     async handleLaunchEvents(events) {
+      // An open after a failed connect would only add a toast to the connect or password dialog.
+      let connected = true;
       for (const event of events) {
         if (event.type === "error") {
           get().toast("error", event.message);
+        } else if (event.type === "open") {
+          if (!connected) continue;
+          await openFromOutside(get, event.address, event.connection).catch((e) => get().toast("error", toAppError(e).message));
         } else {
-          await get().connect({
+          connected = await get().connect({
             spec: event.spec,
             requestId: event.hasPassword ? event.requestId : undefined,
             savePassword: event.savePassword,

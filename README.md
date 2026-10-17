@@ -76,11 +76,52 @@ echo "$PASS" | databee -u root -d local --socket /path/to/mysqld.sock --password
 databee --help
 ```
 
+With DataBee running, `open` and `command` act on its window:
+
+```sh
+databee open 'databee://shop/wordpress/wp_posts/42'       # any address (copy it from the status bar)
+databee open order 4711 --connection shop                 # <entity> <id>; default: the active connection
+databee open order 4711 --background                      # without bringing DataBee to the front
+databee command view.sidebar                              # a command id, as in keybindings.json
+```
+
+`open` starts DataBee when it is not running; `command` then fails with "DataBee is not running".
+
 DataBee takes the password from the first source that has one:
 1. `--password`, `--password-stdin` or `--password-env`;
 2. the URL;
 3. the Keychain (account `user@host:port`);
 4. a prompt in the app.
+
+### Deep links
+
+Addresses are also links: `open 'databee://shop/wordpress/wp_posts/42'` in the terminal, or clicking such a
+link in another app, opens it in DataBee. When no session of that connection is open but a saved
+connection has the slug, DataBee connects first (Keychain password, else it asks). Links need the bundled
+app (`bun run build:app`, then start it once or run `scripts/install-app.sh`); `bun tauri dev` gets none.
+
+## Claude Code
+
+`databee mcp` is a read-only MCP server on stdio. Add it once:
+
+```sh
+claude mcp add databee -- databee mcp
+```
+
+Its tools:
+- `connections`: the saved connections and their slugs;
+- `document(address)`: a row as its document, every value with its provenance;
+- `rows(address, limit)`: the rows of a table or row address;
+- `query(connection, sql, limit)`: SELECT, SHOW, DESCRIBE, EXPLAIN and WITH … SELECT only; anything else
+  is refused before it reaches the server;
+- `references(connection, database)`: every reference between the tables, with its source;
+- `link(address)`: the canonical `databee://` link;
+- `current`, `open(address, focus)` and `command(id)`: act on the running app.
+
+The data tools connect on their own, from the saved connections and the Keychain. They work without
+the app, so `connections` lists only connections that were opened in DataBee once. Nothing writes to a
+database, and project rules cannot be edited from MCP. An agent's answer can be opened in the app with
+`databee open <address>` or as a deep link (see [CLI](#cli)).
 
 ## Shortcuts
 

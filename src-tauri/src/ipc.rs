@@ -2,15 +2,21 @@
 //! Unix socket (mode 0600, same user only) to the running app and exits, so a forwarded
 //! password never appears in the running app's argv. The process that becomes the app
 //! keeps its own argv, including a password given in the URL.
+//!
+//! One JSON line per connection. A bare `IpcMessage` (the one-way form) is acknowledged with
+//! the line `ok` before it is handled; an `IpcRequest` is answered with an `IpcReply` line
+//! once it is handled.
 
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::net::unix::OwnedWriteHalf;
 
 use crate::cli::Launch;
 use crate::connection::{ConnectionSpec, Secret, serialize_exposed};
@@ -30,6 +36,21 @@ pub enum IpcMessage {
         message: String,
     },
     Activate,
+    /// `address` is an address, or an entity shorthand (`order 4711`) in the session of
+    /// `connection` (a slug; the active session when `None`).
+    Open {
+        address: String,
+        #[serde(default)]
+        connection: Option<String>,
+        #[serde(default)]
+        focus: bool,
+    },
+    /// Runs a command of the page's command registry.
+    Command {
+        id: String,
+    },
+    /// Replies with the active tab's address, or `null`.
+    Current,
     /// Runs JavaScript in the window (used by scripts/dev to drive the UI).
     #[cfg(debug_assertions)]
     Eval {
@@ -44,6 +65,9 @@ impl IpcMessage {
             IpcMessage::Launch { .. } => "Launch",
             IpcMessage::Error { .. } => "Error",
             IpcMessage::Activate => "Activate",
+            IpcMessage::Open { .. } => "Open",
+            IpcMessage::Command { .. } => "Command",
+            IpcMessage::Current => "Current",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
         }
@@ -58,6 +82,50 @@ impl From<Launch> for IpcMessage {
             save_password: l.save_password,
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct IpcRequest {
+    pub id: String,
+    pub message: IpcMessage,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct IpcReply {
+    pub id: String,
+    pub ok: bool,
+    pub result: serde_json::Value,
+    pub error: Option<String>,
+}
+
+impl IpcReply {
+    fn new(id: String, outcome: HandlerResult) -> Self {
+        match outcome {
+            Ok(result) => Self {
+                id,
+                ok: true,
+                result,
+                error: None,
+            },
+            Err(error) => Self {
+                id,
+                ok: false,
+                result: serde_json::Value::Null,
+                error: Some(error),
+            },
+        }
+    }
+}
+
+/// What handling a message produced: a JSON result, or an error for the sender.
+pub type HandlerResult = Result<serde_json::Value, String>;
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Incoming {
+    Request(IpcRequest),
+    OneWay(IpcMessage),
 }
 
 const ACK: &str = "ok";
@@ -101,6 +169,31 @@ pub fn try_forward(socket: &Path, message: &IpcMessage) -> io::Result<Forward> {
     })
 }
 
+/// Sends `message` as a request and waits for its reply; `None` when nothing listens.
+pub fn request(socket: &Path, message: IpcMessage) -> io::Result<Option<IpcReply>> {
+    let mut stream = match UnixStream::connect(socket) {
+        Ok(s) => s,
+        Err(e) if no_listener(&e) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    stream.set_read_timeout(Some(CLIENT_TIMEOUT))?;
+    let request = IpcRequest {
+        id: uuid::Uuid::new_v4().to_string(),
+        message,
+    };
+    let mut line = serde_json::to_string(&request).map_err(io::Error::other)?;
+    line.push('\n');
+    stream.write_all(line.as_bytes())?;
+    let mut answer = String::new();
+    BufReader::new(stream).read_line(&mut answer)?;
+    match serde_json::from_str::<IpcReply>(&answer) {
+        Ok(reply) if reply.id == request.id => Ok(Some(reply)),
+        _ => Err(io::Error::other(
+            "the running DataBee instance did not answer the request; it may be older than this command",
+        )),
+    }
+}
+
 /// Binds the socket, replacing a stale file but never a live listener. Blocking std
 /// listener, so it can be created outside the async runtime; `serve` converts it.
 pub fn bind(socket: &Path) -> io::Result<UnixListener> {
@@ -121,10 +214,11 @@ pub fn bind(socket: &Path) -> io::Result<UnixListener> {
     Ok(listener)
 }
 
-/// Calls `handler` for every message received on the listener.
-pub async fn serve<F>(listener: UnixListener, handler: F)
+/// Calls `handler` for every message on the listener and writes each request's result back to its client.
+pub async fn serve<F, Fut>(listener: UnixListener, handler: F)
 where
-    F: Fn(IpcMessage) + Send + Sync + 'static,
+    F: Fn(IpcMessage) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = HandlerResult> + Send + 'static,
 {
     let listener = match tokio::net::UnixListener::from_std(listener) {
         Ok(l) => l,
@@ -133,7 +227,7 @@ where
             return;
         }
     };
-    let handler = std::sync::Arc::new(handler);
+    let handler = Arc::new(handler);
     loop {
         let (stream, _) = match listener.accept().await {
             Ok(conn) => conn,
@@ -143,24 +237,54 @@ where
                 continue;
             }
         };
-        let handler = handler.clone();
-        tokio::spawn(async move {
-            match tokio::time::timeout(CLIENT_TIMEOUT, receive(stream)).await {
-                Ok(Some(message)) => handler(message),
-                Ok(None) => {}
-                Err(_) => log::warn!("IPC client timed out"),
-            }
-        });
+        tokio::spawn(handle_connection(stream, handler.clone()));
     }
 }
 
-/// Reads one message and acknowledges it; `None` when the client is refused.
-async fn receive(stream: tokio::net::UnixStream) -> Option<IpcMessage> {
+async fn handle_connection<F, Fut>(stream: tokio::net::UnixStream, handler: Arc<F>)
+where
+    F: Fn(IpcMessage) -> Fut,
+    Fut: Future<Output = HandlerResult>,
+{
+    let (incoming, mut write) = match tokio::time::timeout(CLIENT_TIMEOUT, receive(stream)).await {
+        Ok(Some(received)) => received,
+        Ok(None) => return,
+        Err(_) => {
+            log::warn!("IPC client timed out");
+            return;
+        }
+    };
+    match incoming {
+        Incoming::OneWay(message) => {
+            send_line(&mut write, ACK).await;
+            let kind = message.kind();
+            if let Err(e) = handler(message).await {
+                log::warn!("Handling {kind} from another process failed: {e}");
+            }
+        }
+        Incoming::Request(IpcRequest { id, message }) => {
+            let reply = IpcReply::new(id, handler(message).await);
+            match serde_json::to_string(&reply) {
+                Ok(line) => send_line(&mut write, &line).await,
+                Err(e) => log::warn!("IPC reply not serializable: {e}"),
+            }
+        }
+    }
+}
+
+async fn send_line(write: &mut OwnedWriteHalf, line: &str) {
+    if let Err(e) = write.write_all(format!("{line}\n").as_bytes()).await {
+        log::debug!("IPC reply failed: {e}");
+    }
+}
+
+/// Reads one message or request; `None` when the client is refused.
+async fn receive(stream: tokio::net::UnixStream) -> Option<(Incoming, OwnedWriteHalf)> {
     if !same_user(&stream) {
         log::warn!("Refusing IPC connection from another user");
         return None;
     }
-    let (read, mut write) = stream.into_split();
+    let (read, write) = stream.into_split();
     let mut line = String::new();
     if let Err(e) = tokio::io::BufReader::new(read.take(MAX_MESSAGE_BYTES))
         .read_line(&mut line)
@@ -173,17 +297,13 @@ async fn receive(stream: tokio::net::UnixStream) -> Option<IpcMessage> {
         log::warn!("Ignoring incomplete or oversized IPC message");
         return None;
     }
-    let message = match serde_json::from_str::<IpcMessage>(&line) {
-        Ok(message) => message,
+    match serde_json::from_str::<Incoming>(&line) {
+        Ok(incoming) => Some((incoming, write)),
         Err(e) => {
             log::warn!("Ignoring malformed IPC message: {e}");
-            return None;
+            None
         }
-    };
-    if let Err(e) = write.write_all(format!("{ACK}\n").as_bytes()).await {
-        log::debug!("IPC acknowledgement failed: {e}");
     }
-    Some(message)
 }
 
 fn same_user(stream: &tokio::net::UnixStream) -> bool {
@@ -213,8 +333,136 @@ mod tests {
         let listener = bind(socket).unwrap();
         tokio::spawn(serve(listener, move |m| {
             let _ = tx.send(m);
+            async { Ok(serde_json::Value::Null) }
         }));
         rx
+    }
+
+    fn serve_answering(socket: &Path) {
+        let listener = bind(socket).unwrap();
+        tokio::spawn(serve(listener, |m| async move {
+            match m {
+                IpcMessage::Command { id } => Ok(serde_json::json!({ "ran": id })),
+                other => Err(format!("cannot handle {}", other.kind())),
+            }
+        }));
+    }
+
+    async fn ask(socket: &Path, message: IpcMessage) -> io::Result<Option<IpcReply>> {
+        let socket = socket.to_path_buf();
+        tokio::task::spawn_blocking(move || request(&socket, message))
+            .await
+            .unwrap()
+    }
+
+    /// A listener that reads one line and answers with `answer` (nothing when empty).
+    fn canned_listener(socket: &Path, answer: &'static str) -> std::thread::JoinHandle<()> {
+        let listener = UnixListener::bind(socket).unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap())
+                .read_line(&mut line)
+                .unwrap();
+            stream.write_all(answer.as_bytes()).unwrap();
+        })
+    }
+
+    #[tokio::test]
+    async fn successful_request_is_answered_with_the_handler_result_under_its_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("db.sock");
+        serve_answering(&socket);
+
+        let reply = ask(
+            &socket,
+            IpcMessage::Command {
+                id: "view.sidebar".into(),
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+        assert!(reply.ok);
+        assert_eq!(reply.result, serde_json::json!({ "ran": "view.sidebar" }));
+        assert_eq!(reply.error, None);
+        assert!(!reply.id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn failing_request_is_answered_with_the_handler_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("db.sock");
+        serve_answering(&socket);
+
+        let reply = ask(&socket, IpcMessage::Current).await.unwrap().unwrap();
+
+        assert!(!reply.ok);
+        assert_eq!(reply.result, serde_json::Value::Null);
+        assert_eq!(reply.error.as_deref(), Some("cannot handle Current"));
+    }
+
+    #[tokio::test]
+    async fn one_way_message_is_acknowledged_with_ok_and_reaches_the_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("db.sock");
+        let mut rx = serve_into_channel(&socket);
+
+        let line = format!(
+            "{}\n",
+            serde_json::to_string(&IpcMessage::Activate).unwrap()
+        );
+        assert_eq!(raw_exchange(&socket, line.as_bytes()).await, "ok\n");
+        assert_eq!(rx.recv().await.unwrap(), IpcMessage::Activate);
+
+        assert_eq!(
+            forward(&socket, IpcMessage::Activate).await,
+            Forward::Delivered
+        );
+        assert_eq!(rx.recv().await.unwrap(), IpcMessage::Activate);
+    }
+
+    #[tokio::test]
+    async fn malformed_request_gets_no_answer() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("db.sock");
+        serve_answering(&socket);
+
+        let reply = raw_exchange(&socket, b"{\"id\":\"1\",\"message\":{\"type\":nope}}\n").await;
+
+        assert_eq!(reply, "");
+    }
+
+    #[test]
+    fn request_without_a_socket_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let reply = request(&dir.path().join("none.sock"), IpcMessage::Current).unwrap();
+        assert_eq!(reply, None);
+    }
+
+    #[test]
+    fn request_to_an_instance_that_answers_ok_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("db.sock");
+        let server = canned_listener(&socket, "ok\n");
+
+        let result = request(&socket, IpcMessage::Current);
+
+        server.join().unwrap();
+        assert!(result.is_err(), "{result:?}");
+    }
+
+    #[test]
+    fn request_to_an_instance_that_closes_without_answering_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("db.sock");
+        let server = canned_listener(&socket, "");
+
+        let result = request(&socket, IpcMessage::Current);
+
+        server.join().unwrap();
+        assert!(result.is_err(), "{result:?}");
     }
 
     async fn forward(socket: &Path, message: IpcMessage) -> Forward {

@@ -5,7 +5,7 @@
  */
 import type { Address, ColumnEquals, Target } from "../api";
 
-const SCHEME = "databee://";
+export const SCHEME = "databee://";
 /** The path segment of saved queries; a table literally named `q` is written `%71`. */
 const QUERY_SEGMENT = "q";
 const UNRESERVED = /[A-Za-z0-9\-._~]/;

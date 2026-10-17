@@ -41,6 +41,7 @@ import type {
   HistoryEntry,
   Keybindings,
   LaunchEvent,
+  RemoteEvent,
   RecentConnection,
   Resolved,
   SessionInfo,
@@ -80,6 +81,8 @@ export const api = {
   logError: (message: string) => invoke<void>("log_frontend_error", { message }),
 
   takeLaunchEvents: () => invoke<LaunchEvent[]>("take_launch_events"),
+  /** Answers a `remote` event; a non-null `error` fails the request. */
+  remoteReply: (id: string, result: unknown, error: string | null) => invoke<void>("remote_reply", { id, result, error }),
   listRecents: () => invoke<RecentConnection[]>("list_recents"),
   removeRecent: (identity: string) => invoke<void>("remove_recent", { identity }),
   /** Rust validates the slug (`[a-z0-9-]`, unique among saved connections) and renames open sessions too. */
@@ -204,6 +207,9 @@ export const api = {
   /** Native menu items emit the id of the command they run. */
   onCommand: (handler: (id: string) => void): Promise<UnlistenFn> =>
     listen<string>("command", (e) => handler(e.payload)),
+  /** Requests from other processes (`databee open`, `databee command`); answer each with `remoteReply`. */
+  onRemote: (handler: (event: RemoteEvent) => void): Promise<UnlistenFn> =>
+    listen<RemoteEvent>("remote", (e) => handler(e.payload)),
 };
 
 /** Every `ErrorKind` Rust sends; the `Record` makes the compiler check the list is complete. */

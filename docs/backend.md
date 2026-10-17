@@ -11,9 +11,14 @@ Stage hook each have their own page.
    and `create_private_dir` (`store/json_file.rs`) makes it mode 0700. This happens before Tauri starts, because the CLI and the
    socket need the path first. The CLI reads `default_port` with `Settings::peek`, which never quarantines a
    corrupt file.
-2. **CLI.** `cli::parse` returns one of three outcomes:
+2. **CLI.** `cli::parse` returns one of four outcomes:
    - `Exit`: `--help` or `--version`.
    - `Run { launch, log_level }`: an `IpcMessage::Launch` with a connection, or `Activate` without one.
+   - `Mcp`: `databee mcp` serves MCP on stdio through `mcp::run` and exits with its code, before any
+     socket handoff, instance lock or Tauri ([below](#mcp-server)).
+   - `Remote { message }`: a subcommand (`open`, `command`) for the running app. `ask_running_instance`
+     sends it as a request and exits with its reply. With no instance running, `command` exits 2 ("DataBee
+     is not running") and `open` starts the app with the open queued.
    - An error: it becomes `IpcMessage::Error`, and the app shows it.
 3. **Single-instance handoff.** `ipc::try_forward` sends the message to a running instance (see
    [below](#cli-and-single-instance-handoff)). Only when no instance listens does startup continue, after
@@ -24,7 +29,8 @@ Stage hook each have their own page.
 5. **`start_app`** builds Tauri, with `.manage(state)` as the first builder call so plugins can use it:
    - plugins: log (stdout plus a rotating file, 3 × 5 MiB; `sqlx` is capped at Warn so SQL text stays out of
      the log), `init_logging` (a one-line plugin that sets the effective level right after the log plugin's
-     setup, which sets `Trace` because its dispatch level caps every later change) and opener;
+     setup, which sets `Trace` because its dispatch level caps every later change), opener, dialog and
+     deep-link;
    - `on_menu_event` → `menu::forward`.
 
    Then `setup` runs:
@@ -35,6 +41,10 @@ Stage hook each have their own page.
    - In debug builds `apply_dev_frame` applies `DATABEE_WINDOW_FRAME` (see [testing](testing.md#driving-the-app)).
    - `start_ipc` binds the IPC socket and serves it in a task; every message goes to
      `launch::on_ipc_message`. A bind error is logged and the app runs without single-instance handoff.
+   - `deep_link::listen` handles `databee://` links ([below](#deep-links)).
+
+   `start_app` also manages `remote::Bridge`, the pending requests only the page can answer
+   ([below](#requests-the-page-answers)).
 
 ### Settings side effects
 
@@ -134,9 +144,12 @@ the set and keeps the full text of its `longText` cells.
 |---|---|---|
 | `launch` | none | a second process handed over a request; the page then calls `take_launch_events` |
 | `command` | command id, e.g. `"tabs.new"` | a native menu item was clicked |
+| `remote` | `RemoteEvent {id, request}` | another process asks the page (open, command, current); answered with `remote_reply` |
 | `stage:collect`, `stage:act`, `stage:info` | `{ request, … }` | a Stage request needs the page ([stage.md](stage.md)) |
 
-A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}` or `{type:"error", message}`.
+A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}`, `{type:"error", message}` or
+`{type:"open", address, connection}` (a `databee open` that started the app; the page opens it after the
+connects, through `openFromOutside` in `src/state/outside.ts`).
 `launch.rs` defines the event name (`LAUNCH_EVENT`). A password from the CLI stays in Rust. The page calls
 `connect` with the `requestId`, and Rust looks the password up.
 
@@ -158,13 +171,29 @@ A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}
   counts as none. `--password-stdin` on empty stdin is an error.
 - **Argv caveat:** a forwarded launch keeps its password out of the running app's argv, but the process that
   becomes the app keeps its own argv, so a password in its URL shows in `ps` for the whole session.
+- **Subcommands** (`args_conflicts_with_subcommands`, so `databee <url>` keeps working and no connection flag
+  mixes with a subcommand):
+  - `databee open <address>`: checked with `Address::parse`, sent as `IpcMessage::Open`;
+  - `databee open <entity> <id> [-c/--connection <slug>]`: sent as the shorthand `<entity> <id>`, which the
+    page resolves in that connection's session (default: the active one) through `document`;
+  - `--background` on `open`: no focus change; otherwise the window comes to the front;
+  - `databee command <command-id>`: runs a command of the page's registry (`runMenuCommand`, so an open
+    dialog or the palette blocks it). Unknown or unavailable commands fail.
+  Errors print to stderr with exit 1; a result other than `null` prints to stdout.
 
 `ipc.rs`:
 
 - **Socket:** a Unix domain socket at `<config dir>/databee.sock`, with mode 0600 in a 0700 dir. `serve` drops
   peers with another uid.
-- **Protocol:** one line of JSON per connection (at most 64 KiB, within 5 s), answered with `ok\n`. Malformed,
-  oversized or incomplete lines get no answer.
+- **Protocol:** one line of JSON per connection (at most 64 KiB, within 5 s), in one of two forms:
+  - one-way (a bare `IpcMessage`): answered with `ok\n` before it is handled. `try_forward` sends `launch`,
+    `error` and `activate` this way, so old and new processes understand each other; `scripts/dev/js.sh`
+    sends `eval` this way.
+  - request (`IpcRequest {id, message}`, sent by `ipc::request`): answered once handled with one
+    `IpcReply {id, ok, result, error}` line. A reply that is not JSON or has another id is an error ("may be
+    older than this command").
+
+  Malformed, oversized or incomplete lines get no answer.
 - **`Forward` outcomes** of `try_forward`, and what `run` does with them:
   - `Delivered`: exit 0 (2 for a CLI error);
   - `NoInstance` (socket missing or refused): start the app;
@@ -177,14 +206,85 @@ A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}
   - `launch {spec, password, savePassword}`
   - `error {message}`
   - `activate`
+  - `open {address, connection, focus}`: `address` is an address or an entity shorthand (`order 4711`);
+    `connection` (a slug) picks the session of a shorthand
+  - `command {id}`
+  - `current`: replies with the active tab's address, or `null`
   - `eval {js}`: compiled into debug builds only, used by `scripts/dev/js.sh`.
-- **Handling** (`launch::on_ipc_message`): `eval` runs in the window; everything else is logged by type
-  (`IpcMessage::kind`, never the contents), goes through `LaunchQueue::push`, emits `launch` when it queued an
-  event, then unminimizes and focuses the window (not with `DATABEE_BACKGROUND=1`).
+- **Handling** (`launch::on_ipc_message`, async, returns the reply's result): `eval` runs in the window;
+  everything else is logged by type (`IpcMessage::kind`, never the contents). `open`, `command` and `current`
+  go to the page through `remote::Bridge` (`open` with `focus` first brings the window to the front). The
+  rest goes through `LaunchQueue::push`, emits `launch` when it queued an event, then unminimizes and focuses
+  the window (not with `DATABEE_BACKGROUND=1`).
 - The launch `password` is a `Secret`: plain string on the wire (`connection::serialize_exposed`), redacted in
   `IpcMessage`'s derived `Debug`.
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
   bind while a listener is alive.
+
+### Deep links
+
+`tauri-plugin-deep-link` registers the `databee` scheme (`tauri.conf.json` `plugins.deep-link.desktop.schemes`;
+the bundler writes it into the app's `Info.plist`). macOS delivers a link to the running app, or starts the app
+and then delivers it, as `RunEvent::Opened`; the plugin re-emits it, and `deep_link::listen`
+(`on_open_url`) takes it. No capability is needed, because the page never calls the plugin's commands.
+
+`deep_link::link_messages(url, is_open, saved_spec)` decides what a link takes, and `open` queues the result
+with `launch::queue_launches`. The queue is used instead of `remote::Bridge`, so a link that started the app
+waits until the page has loaded:
+
+- not an address: an `error` (a toast);
+- an open session has the slug (`Sessions::has_slug`): `open {address, focus: true}`;
+- only a saved connection (`RecentsStore`) has it: `launch` with its spec and no password, then `open`. The
+  connect takes the Keychain password, else shows the password dialog; `handleLaunchEvents` drops an `open`
+  that follows a failed connect;
+- neither: an `error`, "No open or saved connection is named …".
+
+Links only reach a bundled app (`bun run build:app` or a release bundle) that LaunchServices knows, e.g. after
+it was started once or linked by `scripts/install-app.sh`. The debug build needs no scheme of its own: it has
+the release build's identifier, socket and lock, so only one of them runs at a time, and macOS hands the link
+to the running one. When the registered bundle is not the one running (two bundles on disk, one of them
+running), macOS starts the other bundle, which only activates the running app through the socket, and the
+link is lost.
+
+### MCP server
+
+`src-tauri/src/mcp/` ([ADR 0025](adr/0025-standalone-mcp-server.md)) is built on `rmcp` (the official SDK;
+`server`, `transport-io`, `macros`, `schemars`). `mcp::run` starts its own Tokio runtime and serves
+`DataBeeServer` over stdin/stdout. It never builds Tauri, opens a window or takes the instance lock, and it
+installs no logger, so stdout carries only JSON-RPC. `cli::parse`'s stdin lock is released before `run`
+starts (`lib.rs` binds the outcome first): tokio's stdin would block on it otherwise.
+
+- **Data tools** (`mcp/data.rs` `Core`) run in the MCP process:
+  - Connections come from the saved connections (`RecentsStore`, read on every call), one detached session
+    per slug, connected on first use and again when the saved spec changed, with `session::open_detached`.
+    That uses the Keychain password and never touches `connections.json` or the history.
+  - Rules: the preset catalog loads at start; `ProjectsStore` and the settings are read on every call, so
+    project edits in the app apply without a restart.
+  - `connections`; `document(address)` (`document::open`); `rows(address, limit)` (`Session::browse`, a
+    row address by its single-column primary key); `query(connection, sql, limit)`, refused unless
+    `db::classify::is_read_only` passes, run with the query timeout from the settings and at most `limit`
+    rows per result (default 200, at most 1000); `references(connection, database)` (the lens's
+    `references_from` of every table); `link(address)` (the canonical form, no connection needed).
+  - No `find` tool yet: the only find-everywhere code is the WordPress layer's `wp/find.rs`, which a generic
+    find replaces.
+- **UI tools** (`mcp/ui.rs`): `current`, `open(address, focus = false)` and `command(id)` go to the app with
+  `ipc::request`. Without a listener they fail with "DataBee is not running".
+- **Read-only:** no tool writes. Plans, actions and project rules are not reachable.
+- **Keychain:** `databee mcp` normally runs the app's own binary (`scripts/install-cli.sh` links
+  `DataBee.app/Contents/MacOS/databee`). The Keychain trusts that binary for the items the app saved, so
+  there is no prompt. After a rebuild (ad-hoc signed debug builds get a new signature) or from another binary
+  (e.g. `target/debug/databee`), macOS shows its "wants to use your confidential information" dialog once
+  per item, as it does for the app. The lookup waits on a blocking thread until it is answered; after "Deny"
+  no password is sent, and the tool's error says why the login failed.
+
+### Requests the page answers
+
+`remote.rs`: `Bridge::ask` stores a oneshot sender under a fresh id, emits `remote` with
+`RemoteEvent {id, request: RemoteRequest}` (`open {address, connection}`, `command {id}`, `current`) and waits
+up to 4 s (below the 5 s IPC client timeout) for `remote_reply(id, result, error)`; a set `error` fails the
+request, and a late or unknown reply is dropped. On the page, `useBackendEvents` (`src/App.tsx`) hands each
+event to `answerRemote` (`src/commands/remote.ts`), which opens through `openFromOutside`, runs commands
+through `runMenuCommand` and reads the active tab's address, and always replies.
 
 ## Addresses
 
