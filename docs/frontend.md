@@ -688,6 +688,46 @@ Anchors: `readout`, `readout:value:<id>`, `readout:anomaly:<id>`, `readout:fix:<
 `readout:pinned:<id>`, `readout:recent:<address>`, `readout:collapse:<section>` (a band's chevron), and the tab
 `tab:readout:<db>`.
 
+### Rendering
+
+Long lists are virtualized with `@tanstack/react-virtual`, so no view mounts more than a few dozen rows of a
+list above 200:
+
+- `ResultsGrid` virtualizes its rows inside its own scroll box: table and query tabs, and the Rows view, whose
+  grids (`RowsView.tsx`) are 12 rows tall and browse up to the `rowLimit` setting.
+- `LongList` (`components/LongList.tsx`) renders the rows of the page-scrolling views: Document groups
+  (`groups.tsx`: fields, meta, rows, events), the Project page's references, value styles and kinds, and the
+  readout's `RowsTable` (a pinned query shown as rows). Up to `LONG_LIST` (200) rows it renders them all;
+  above that it renders the rows near the viewport of the nearest scrolling ancestor (found by its computed
+  `overflow-y`), between two spacers, with the list's offset in that container as `scrollMargin`. Every row of
+  a list must have the same height: the first rendered row is measured, `--row-h` until then. `revealWhere`
+  scrolls the focused row into view as `j`/`k` move it. A windowed readout table sizes its columns in `ch`
+  from every row (`charWidth`, `lib/format.ts`), not from the rendered ones. Rows that are not rendered have
+  no `data-stage` anchors.
+- Not virtualized, because they stay short: the palette (at most 80 items, `MAX_ITEMS`), the column stack
+  (only the columns that fit render in full, the rest as strips), anomalies, new objects and recent objects.
+  Rust caps most Document groups (`META_CAP`, 50 keys, and `ROWS_CAP`, 20 rows; `+n keys` opens the Rows
+  view), but not the own row of a wide table or the `events` group, so `LongList` covers them all.
+
+Store subscriptions return primitives or stable references (`useShallow` for filtered arrays), so hovering
+re-renders only what shows the hover: the status bar's address slot (`hover.src`, else the focused value
+from `selectFocusedValue`, whose text it builds in render) and a `GroupHeader` whose band lights for the
+hovered table. The object view itself does not subscribe to `hover`.
+
+Measured with React Profiler in jsdom (`components/object/rendering.test.tsx`; actual render durations, so
+the ratios matter, not the milliseconds):
+
+| | order 4711 | 5,000-key meta group, before | after |
+|---|---|---|---|
+| key/value rows mounted | 5 | 5,003 | 54 |
+| first render (sum of commits) | 24 ms | 352 ms | 35 ms |
+| focus change (`focusObject`) | 0.8 ms | 54 ms | 1.6 ms |
+| 50 value hovers: object view commits | 0 | 0 | 0 |
+| 50 linked-table hovers: object view commits | 49 (`GroupHeader` only, 0.08 ms each) | 49 | 49 |
+
+The `wp_write` fixture's post 9701 has 5,000 meta keys ([testing.md](testing.md#docker-fixtures)) for trying
+the long group and the Rows grid in the app.
+
 ## Styling
 
 The CSS is plain and global, imported in this order by `App.tsx`: `styles/fonts.css` (`@font-face` for the

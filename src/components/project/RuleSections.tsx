@@ -2,6 +2,7 @@
 import type { KindRow, ProjectChange, StyleRow } from "../../api";
 import { kindFormFromRow, kindText, originText, scopeText, styleFormFromRow, styleMatchText } from "../../lib/ruleForms";
 import { fail } from "../../state/store";
+import { LongList } from "../LongList";
 import type { ProjectContext } from "./context";
 
 function RowActions({ anchor, onEdit, change, ctx }: { anchor: string; onEdit(): void; change: ProjectChange; ctx: ProjectContext }) {
@@ -72,9 +73,7 @@ export function StylesSection({ ctx }: { ctx: ProjectContext }) {
         <span />
       </div>
       {styles.length === 0 && <div className="row empty o3">no value styles; add one with "Style…" on a value</div>}
-      {styles.map((row, i) => (
-        <StyleLine key={i} row={row} ctx={ctx} />
-      ))}
+      <LongList items={styles}>{(row, i) => <StyleLine key={i} row={row} ctx={ctx} />}</LongList>
     </section>
   );
 }
@@ -108,9 +107,7 @@ export function KindsSection({ ctx }: { ctx: ProjectContext }) {
         <span />
       </div>
       {kinds.length === 0 && <div className="row empty o3">no kinds</div>}
-      {kinds.map((row, i) => (
-        <KindLine key={i} row={row} ctx={ctx} />
-      ))}
+      <LongList items={kinds}>{(row, i) => <KindLine key={i} row={row} ctx={ctx} />}</LongList>
     </section>
   );
 }

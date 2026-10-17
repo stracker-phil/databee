@@ -1,12 +1,13 @@
 /** The readout tab (`databee://<slug>/<db>/`): status header, anomalies, new, pinned and recent; every line opens its address. */
-import { useEffect, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, type MouseEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { Address, AnomalyLine, NewObjects, Part, PinnedLine, ReadoutRow, RecentLine, Status, Value as StoredValue } from "../../api";
 import { formatAddress } from "../../lib/address";
-import { formatCount, relativeTime } from "../../lib/format";
+import { cellText, charWidth, formatCount, relativeTime } from "../../lib/format";
 import { readoutKey } from "../../state/slices/readout";
 import { useStore, type ReadoutTab } from "../../state/store";
 import { ErrorPanel } from "../ErrorPanel";
+import { LONG_LIST, LongList } from "../LongList";
 import { useCollapsedGroups } from "../object/useCollapsedGroups";
 import { useOpenValue } from "../value/useOpenValue";
 import { Value, type OpenValue } from "../value/Value";
@@ -163,9 +164,16 @@ function Anomalies({ part, collapse }: { part: Part<AnomalyLine>; collapse: Coll
   );
 }
 
+/** Columns fit their content; a windowed table sizes them from every row instead, as only some are rendered. */
+function tableTemplate(columns: string[], rows: ReadoutRow[]): string {
+  if (rows.length <= LONG_LIST) return `repeat(${Math.max(columns.length, 1)}, minmax(0, max-content)) 1fr`;
+  const widths = columns.map((column, col) => charWidth(column, rows.map((row) => (row.values[col] ? cellText(row.values[col].raw) : ""))));
+  return `${widths.join(" ")} 1fr`;
+}
+
 /** A header row of column names, then the rows; a row of a known table carries it for the linked table highlight. */
 function RowsTable({ columns, rows, table, onOpen }: { columns: string[]; rows: ReadoutRow[]; table?: string; onOpen: OpenValue }) {
-  const gridTemplateColumns = `repeat(${Math.max(columns.length, 1)}, minmax(0, max-content)) 1fr`;
+  const gridTemplateColumns = useMemo(() => tableTemplate(columns, rows), [columns, rows]);
   return (
     <div className="readout-table" style={{ gridTemplateColumns }}>
       <div className="row hdr">
@@ -173,15 +181,17 @@ function RowsTable({ columns, rows, table, onOpen }: { columns: string[]; rows: 
           <span key={c}>{c}</span>
         ))}
       </div>
-      {rows.map((row, i) => (
-        <div key={row.address ? formatAddress(row.address) : i} className="row" data-row-table={rowTableOf(row.address) ?? table}>
-          {row.values.map((value: StoredValue, col) => (
-            <span key={col}>
-              <Value value={value} density="grid" onOpen={onOpen} />
-            </span>
-          ))}
-        </div>
-      ))}
+      <LongList items={rows}>
+        {(row, i) => (
+          <div key={row.address ? formatAddress(row.address) : i} className="row" data-row-table={rowTableOf(row.address) ?? table}>
+            {row.values.map((value: StoredValue, col) => (
+              <span key={col}>
+                <Value value={value} density="grid" onOpen={onOpen} />
+              </span>
+            ))}
+          </div>
+        )}
+      </LongList>
     </div>
   );
 }

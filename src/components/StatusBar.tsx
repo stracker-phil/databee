@@ -45,11 +45,9 @@ function QuerySummary({ tab }: { tab: QueryTab }) {
 /** Where the hovered value is stored (or a hovered band's rule), else the focused value's (docs/ux.md, Value grammar). */
 function useProvenance(): string | null {
   const hovered = useStore((s) => s.hover.src);
-  const focused = useStore((s) => {
-    const value = selectFocusedValue(s);
-    return value ? provenanceText(value) : null;
-  });
-  return hovered ?? focused;
+  const focused = useStore(selectFocusedValue);
+  if (hovered !== null) return hovered;
+  return focused ? provenanceText(focused) : null;
 }
 
 /** The address slot: the provenance of the hovered or focused value, else where the active tab is, and a query tab's result summary. */

@@ -323,6 +323,16 @@ describe("Readout", () => {
       expect(section.getByText("SELECT ID, post_title FROM wp_posts LIMIT 2")).toBeInTheDocument();
       for (const cell of ["post_title", "Hello", "World"]) expect(section.getByText(cell)).toBeInTheDocument();
     });
+
+    it("renders only a window of 500 rows", async () => {
+      const rows = Array.from({ length: 500 }, (_, i) => ({ address: null, values: [value({ raw: text(`post_${String(i + 1).padStart(4, "0")}`) })] }));
+      const line: PinnedLine = { ...pinned(0), title: "Many posts", result: { show: "rows", columns: ["post_title"], rows } };
+      await shown(readoutOf({ pinned: { items: [line], error: null } }));
+      const section = within(screen.getByRole("region", { name: "Pinned queries" }));
+      expect(section.getByText("500 rows")).toBeInTheDocument();
+      expect(section.getByText("post_0001")).toBeInTheDocument();
+      expect(section.queryByText("post_0500")).not.toBeInTheDocument();
+    });
   });
 
   describe("row hover", () => {

@@ -279,7 +279,8 @@ INSERT INTO wp_write.wp_wc_orders (id, status, type, currency, total_amount, cus
   (9602, 'wc-processing', 'shop_order', 'EUR', 10.00, 0, 'address@shop.test', '2026-01-01 10:00:00', '2026-01-01 10:00:00', 0, 'bacs', 'Bank transfer', '');
 INSERT INTO wp_write.wp_posts (ID, post_author, post_date_gmt, post_modified_gmt, post_modified, post_title, post_name, post_status, post_type, post_parent) VALUES
   (9101, 0, '2026-01-01 10:00:00', '2026-01-01 10:00:00', '2026-01-01 11:00:00', '', '', 'wc-processing', 'shop_order', 0),
-  (9601, 1, '2026-01-01 10:00:00', '2026-01-01 10:00:00', '2026-01-01 11:00:00', 'Empty slug', '', 'publish', 'post', 0);
+  (9601, 1, '2026-01-01 10:00:00', '2026-01-01 10:00:00', '2026-01-01 11:00:00', 'Empty slug', '', 'publish', 'post', 0),
+  (9701, 1, '2026-01-01 10:00:00', '2026-01-01 10:00:00', '2026-01-01 11:00:00', 'Long meta', 'long-meta', 'publish', 'post', 0);
 INSERT INTO wp_write.wp_wc_orders_meta (order_id, meta_key, meta_value) VALUES
   (9103, '_keep', 'k'),
   (9103, '_to_delete', 'bye'),
@@ -300,6 +301,17 @@ INSERT INTO wp_write.wp_postmeta (meta_id, post_id, meta_key, meta_value) VALUES
   (9301, 123, 'zz_null_meta', NULL),
   (9302, 123, 'zz_duplicate_me', 'v'),
   (9303, 123, 'zz_sql_mode', 'before');
+-- Post 9701 has 5,000 meta keys (meta_id 100001 to 105000) for the long document group and Rows grid.
+-- Digits cross-joined instead of a recursive CTE: MySQL stops recursion at 1,000 rows by default.
+INSERT INTO wp_write.wp_postmeta (meta_id, post_id, meta_key, meta_value)
+SELECT 100000 + n, 9701, CONCAT('zz_long_', LPAD(n, 4, '0')), CONCAT('value ', n)
+FROM (
+  SELECT 1 + ones.d + 10 * tens.d + 100 * hundreds.d + 1000 * thousands.d AS n
+  FROM (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) AS ones
+  CROSS JOIN (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) AS tens
+  CROSS JOIN (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) AS hundreds
+  CROSS JOIN (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4) AS thousands
+) AS seq;
 INSERT INTO wp_write.wp_usermeta (user_id, meta_key, meta_value) VALUES
   (9501, 'dup_key', 'a'),
   (9501, 'dup_key', 'b');

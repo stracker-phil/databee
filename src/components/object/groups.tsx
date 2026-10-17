@@ -3,7 +3,8 @@ import { memo, useMemo } from "react";
 import type { Group, GroupRow, Value as StoredValue } from "../../api";
 import type { DocumentMarks } from "../../lib/diff";
 import { fieldOf, moreText, provenanceKey } from "../../lib/document";
-import { cellText } from "../../lib/format";
+import { cellText, charWidth } from "../../lib/format";
+import { LongList } from "../LongList";
 import { Field, isNumeric, type FieldChange } from "./fields";
 
 /** The focused and edited values, as provenance keys, and the change marks of live mode, a snapshot or compare. */
@@ -50,48 +51,44 @@ function KvRow({ name, value, table, marks }: { name: string; value: StoredValue
   );
 }
 
+const isFocused = (value: StoredValue | null, marks: Marks) => !!marks.focus && keyOf(value) === marks.focus;
+const holdsFocus = (row: GroupRow, marks: Marks) => row.fields.some(([, value]) => isFocused(value, marks));
+
 /** The own row: one key/value row per column. */
 export function FieldsGroup({ group, marks }: { group: Group; marks: Marks }) {
   const row = group.rows[0];
   if (!row) return null;
   return (
-    <>
-      {row.fields.map(([name, value]) => (
-        <KvRow key={name} name={name} value={value} table={group.table} marks={marks} />
-      ))}
-    </>
+    <LongList items={row.fields} revealWhere={([, value]) => isFocused(value, marks)}>
+      {([name, value]) => <KvRow key={name} name={name} value={value} table={group.table} marks={marks} />}
+    </LongList>
   );
 }
 
 /** Meta rows in stored order: the key as the label, the value editable on its own meta row. */
 export function MetaGroup({ group, marks }: { group: Group; marks: Marks }) {
   return (
-    <>
-      {group.rows.map((row, i) => {
+    <LongList items={group.rows} revealWhere={(row) => holdsFocus(row, marks)}>
+      {(row, i) => {
         const keyCell = row.fields[0]?.[1];
         const value = row.fields[1]?.[1] ?? null;
         const name = keyCell ? cellText(keyCell.raw) : "";
         return <KvRow key={keyOf(value) ?? i} name={name} value={value} table={group.table} marks={marks} />;
-      })}
-    </>
+      }}
+    </LongList>
   );
 }
 
-const MAX_CHARS = 40;
-
-/** A column's width in characters: its name or its longest shown value, capped. */
-function columnWidth(column: string, index: number, rows: GroupRow[]): string {
-  let longest = column.length;
+function* columnTexts(rows: GroupRow[], column: string, index: number) {
   for (const row of rows) {
     const value = fieldOf(row, column, index);
-    if (value) longest = Math.max(longest, cellText(value.raw).length);
+    if (value) yield cellText(value.raw);
   }
-  return `${Math.min(MAX_CHARS, longest) + 2}ch`;
 }
 
 /** Column widths from the header and the shown values; the last column takes the rest. */
 function template(columns: string[], rows: GroupRow[]): string {
-  const widths = columns.map((column, i) => columnWidth(column, i, rows));
+  const widths = columns.map((column, i) => charWidth(column, columnTexts(rows, column, i)));
   if (widths.length > 0) widths[widths.length - 1] = "minmax(0, 1fr)";
   return widths.join(" ");
 }
@@ -128,10 +125,12 @@ export function RowsGroup({ group, marks }: { group: Group; marks: Marks }) {
           </span>
         ))}
       </div>
-      {group.rows.map((row, i) => {
-        const key = row.key ? row.key.map((p) => p.value).join(",") : i;
-        return <TableRow key={key} row={row} columns={group.columns} table={group.table} style={style} marks={marks} />;
-      })}
+      <LongList items={group.rows} revealWhere={(row) => holdsFocus(row, marks)}>
+        {(row, i) => {
+          const key = row.key ? row.key.map((p) => p.value).join(",") : i;
+          return <TableRow key={key} row={row} columns={group.columns} table={group.table} style={style} marks={marks} />;
+        }}
+      </LongList>
     </>
   );
 }
@@ -147,16 +146,18 @@ export function EventsGroup({ group, marks }: { group: Group; marks: Marks }) {
         <span>table</span>
         <span>column or key</span>
       </div>
-      {group.rows.map((row, i) => {
-        const [name, value] = row.fields[0] ?? ["", null];
-        return (
-          <div key={i} className="row" style={EVENT_STYLE} data-row-table={value?.source?.table}>
-            <Field value={value} focused={marksFor(value, marks).focused} />
-            <span className="o2">{value?.source?.table}</span>
-            <span>{name}</span>
-          </div>
-        );
-      })}
+      <LongList items={group.rows} revealWhere={(row) => holdsFocus(row, marks)}>
+        {(row, i) => {
+          const [name, value] = row.fields[0] ?? ["", null];
+          return (
+            <div key={i} className="row" style={EVENT_STYLE} data-row-table={value?.source?.table}>
+              <Field value={value} focused={marksFor(value, marks).focused} />
+              <span className="o2">{value?.source?.table}</span>
+              <span>{name}</span>
+            </div>
+          );
+        }}
+      </LongList>
     </>
   );
 }

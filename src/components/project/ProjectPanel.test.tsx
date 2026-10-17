@@ -424,4 +424,30 @@ describe("ProjectPanel", () => {
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addKind", rule: { columns: [], meta_keys: ["_paid_via"], in: ["wc_orders_meta"], secret: true } });
     });
   });
+
+  describe("long rule lists", () => {
+    const pad = (n: number) => String(n).padStart(4, "0");
+
+    it("renders only a window of 500 references", async () => {
+      const references = Array.from({ length: 500 }, (_, i) =>
+        referenceRow({ id: `r${i}`, from: { table: "wp_wc_order_items", columns: [`ref_${pad(i + 1)}`] } }),
+      );
+      mocked.projectRules.mockResolvedValue(projectRules({ references }));
+      await openProjectPage();
+      const section = within(await screen.findByRole("region", { name: "References" }));
+      expect(await section.findByText("wp_wc_order_items.ref_0001")).toBeInTheDocument();
+      expect(section.queryByText("wp_wc_order_items.ref_0500")).not.toBeInTheDocument();
+      expect(section.getAllByRole("row").length).toBeLessThan(200);
+    });
+
+    it("renders only a window of 500 kinds", async () => {
+      const kinds = Array.from({ length: 500 }, (_, i) => ({ origin: { kind: "project" } as const, index: i, rule: { columns: [`kind_${pad(i + 1)}`], secret: true } }));
+      mocked.projectRules.mockResolvedValue(projectRules({ kinds }));
+      await openProjectPage();
+      const section = within(await screen.findByRole("region", { name: "Kinds" }));
+      expect(await section.findByText("kind_0001")).toBeInTheDocument();
+      expect(section.queryByText("kind_0500")).not.toBeInTheDocument();
+      expect(section.getAllByRole("row").length).toBeLessThan(200);
+    });
+  });
 });

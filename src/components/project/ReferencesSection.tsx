@@ -6,6 +6,7 @@ import { useState } from "react";
 import { api, toAppError, type ProjectChange, type ReferenceRow } from "../../api";
 import { originText, referenceFormFromRow } from "../../lib/ruleForms";
 import { fail } from "../../state/store";
+import { LongList } from "../LongList";
 import type { ProjectContext } from "./context";
 import { CoverageCell, type CoverageState } from "./coverage";
 
@@ -152,10 +153,12 @@ export function ReferencesSection({ ctx }: { ctx: ProjectContext }) {
         <span />
       </div>
       {rules.references.length === 0 && <div className="row empty o3">no references</div>}
-      {rules.references.map((row) => {
-        const rowKey = referenceKey(row);
-        return <ReferenceLine key={rowKey} row={row} rowKey={rowKey} coverage={coverage[rowKey]} onCheck={() => void check(row)} ctx={ctx} />;
-      })}
+      <LongList items={rules.references}>
+        {(row) => {
+          const rowKey = referenceKey(row);
+          return <ReferenceLine key={rowKey} row={row} rowKey={rowKey} coverage={coverage[rowKey]} onCheck={() => void check(row)} ctx={ctx} />;
+        }}
+      </LongList>
     </section>
   );
 }
