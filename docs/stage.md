@@ -112,7 +112,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   - the readout: `readout` (the panel), `readout:value:<id>` (a value-pinned query's title in the status
     line), `readout:anomaly:<id>` (`→ rows`), `readout:fix:<id>` (the anomaly's fix action),
     `readout:new:<entity>` (an entity's new rows), `readout:pinned:<id>` (a pinned query's title),
-    `readout:recent:<row address>` (a recent object's `#key`)
+    `readout:recent:<row address>` (a recent object's `#key`), `readout:collapse:<section>` (a band's chevron:
+    `anomalies`, `new`, `pinned`, `recent`)
   - `palette:search` and the palette results (list `palette:results`): `palette:item:<key>` with the keys
     `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `saved:<origin>:<id>` (a saved query), `cmd:<id>`
     and `recent:<title>`; holding ⌥ shows the selected hit's `peek`

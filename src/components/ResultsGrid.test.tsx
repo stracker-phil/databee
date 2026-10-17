@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useRef, type ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
@@ -10,6 +11,7 @@ import { syncRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
 import { connectedStore, num, resultSet, settings, text, value } from "../test/fixtures";
 import { ResultsGrid } from "./ResultsGrid";
+import { useValueHover } from "./value/useValueHover";
 
 const mocked = vi.mocked(api, true);
 const source = { sessionId: "s1", resultId: 1 };
@@ -78,6 +80,40 @@ describe("ResultsGrid editing", () => {
       fireEvent.contextMenu(bytes());
       expect(screen.getByRole("menuitem", { name: "Edit value" })).toBeDisabled();
     });
+  });
+});
+
+function HoverGrid(props: Omit<ComponentProps<typeof ResultsGrid>, "source">) {
+  const ref = useRef<HTMLDivElement>(null);
+  useValueHover(ref);
+  return (
+    <div ref={ref}>
+      <ResultsGrid {...props} source={source} />
+    </div>
+  );
+}
+
+describe("ResultsGrid row hover", () => {
+  const provenance = (table: string, id: string) => ({ table, column: "c", row: [{ column: "ID", value: id }] });
+  const rs = resultSet();
+  const rowOf = (cell: string) => screen.getByText(cell).closest<HTMLElement>('[role="row"]')!;
+
+  beforeEach(() => connectedStore());
+
+  it("links the table of a row whose values are all stored in one table", async () => {
+    const valueAt = (row: number, col: number) => value({ raw: rs.rows[row][col], source: provenance("wp_posts", "1") });
+    render(<HoverGrid columns={rs.columns} rows={rs.rows} valueAt={valueAt} />);
+    await userEvent.hover(rowOf("Hello world"));
+    await waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false }));
+  });
+
+  it("links no table for a row mixing values of several tables", async () => {
+    const valueAt = (row: number, col: number) => value({ raw: rs.rows[row][col], source: provenance(col === 0 ? "wp_posts" : "wp_users", "1") });
+    render(<HoverGrid columns={rs.columns} rows={rs.rows} valueAt={valueAt} />);
+    await userEvent.hover(screen.getByText("Hello world"));
+    await waitFor(() => expect(useStore.getState().hover.table).toBe("wp_users"));
+    await userEvent.hover(rowOf("Hello world"));
+    await waitFor(() => expect(useStore.getState().hover.table).toBeNull());
   });
 });
 

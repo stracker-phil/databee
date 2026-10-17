@@ -1,11 +1,15 @@
 import { useEffect, type RefObject } from "react";
 import { NO_HOVER, useStore, type ValueHover } from "../../state/store";
 
-/** The nearest value or table link: a value (`.val`) names its provenance, anything else with `data-table` links a table. */
+/**
+ * The nearest value, table link or row: a value (`.val`) names its provenance, anything else with `data-table`
+ * links a table, and a row with `data-row-table` stands for a value of its table wherever it has none.
+ */
 function hoverOf(target: EventTarget | null): ValueHover {
-  const found = target instanceof Element ? target.closest<HTMLElement>("[data-src], [data-table]") : null;
+  const found = target instanceof Element ? target.closest<HTMLElement>("[data-src], [data-table], [data-row-table]") : null;
   if (!found) return NO_HOVER;
-  return { src: found.dataset.src ?? null, table: found.dataset.table ?? null, linked: !found.classList.contains("val") };
+  const { src, table, rowTable } = found.dataset;
+  return { src: src ?? null, table: table ?? rowTable ?? null, linked: table !== undefined && !found.classList.contains("val") };
 }
 
 /**

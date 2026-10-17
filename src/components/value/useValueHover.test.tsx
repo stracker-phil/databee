@@ -15,6 +15,13 @@ function Area() {
       </span>
       <a data-table="wp_users">a table link</a>
       <span>plain</span>
+      <div data-row-table="wp_options">
+        <span>row space</span>
+        <span className="val" data-src="wp_options.option_value · option_id 3" data-table="wp_options">
+          row value
+        </span>
+        <span data-table="wp_users">row link</span>
+      </div>
     </div>
   );
 }
@@ -31,6 +38,24 @@ describe("useValueHover", () => {
   it("reports a hovered table link as linked, without provenance", async () => {
     render(<Area />);
     await userEvent.hover(screen.getByText("a table link"));
+    await waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_users", linked: true }));
+  });
+
+  it("reports the table of a hovered row as unlinked, without provenance", async () => {
+    render(<Area />);
+    await userEvent.hover(screen.getByText("row space"));
+    await waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_options", linked: false }));
+  });
+
+  it("prefers the value inside a row over the row's table", async () => {
+    render(<Area />);
+    await userEvent.hover(screen.getByText("row value"));
+    await waitFor(() => expect(useStore.getState().hover).toEqual({ src: "wp_options.option_value · option_id 3", table: "wp_options", linked: false }));
+  });
+
+  it("prefers a table link inside a row over the row's table", async () => {
+    render(<Area />);
+    await userEvent.hover(screen.getByText("row link"));
     await waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_users", linked: true }));
   });
 

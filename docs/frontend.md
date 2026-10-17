@@ -349,9 +349,13 @@ sets `color: var(--style-<name>)`. CSS classes are `val` and `val-<kind>` (`styl
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
 (`AppShell` in `App.tsx`) adds one delegated `mouseover`/`mouseleave` listener to the app, reads the nearest
-`[data-src]` or `[data-table]` at most once per animation frame and writes `hover` (`setHover` skips equal
-values): a `.val` element is a value (`linked: false`), anything else a table link (`linked: true`; a sidebar
-row, a section band, whose `data-src` is the rule's origin). The status
+`[data-src]`, `[data-table]` or `[data-row-table]` at most once per animation frame and writes `hover`
+(`setHover` skips equal values): a `.val` element is a value (`linked: false`), anything else with `data-table`
+a table link (`linked: true`; a sidebar row, a section band, whose `data-src` is the rule's origin). A row of a
+known table carries `data-row-table` and counts as a value of that table (`linked: false`) wherever the pointer
+is on no value: Document rows (`groups.tsx`, the group's table; events rows, the value's), grid rows
+(`ResultsGrid`, when every sourced value of the row shares one table), readout rows and palette hits
+(`PaletteList`, which runs its own `useValueHover` since the palette is outside `AppShell`). The status
 bar's address slot shows `hover.src`, else the provenance of `selectedCell.value`, else the address.
 Interactive values with a provenance are Stage anchors `value:<table>.<column>:<key>` (list `values`).
 A reference with one target also carries `data-ref` (the target address), `data-via` (its column) and `data-by`
@@ -626,20 +630,29 @@ through `loadReadout(sessionId, database, force?)`: once per `dataVersion`, so c
 apply, and again (`force`) whenever the tab is shown, since recent objects change without a data change. A
 failed load shows `ErrorPanel`; a failed part or line shows its error in its place.
 
-One column of at most 900px (mock `Readout`):
-- **Status line** (`section` "Status"): host, database, prefix, applied presets, server version, then each
-  value-pinned query as its title (opens the saved query) and its `Value`.
-- **anomalies** band, only when there are lines: the count right-aligned and uncolored, the rule text, the
-  `fix` action (queued with `queueAction` on the table address, so it lands in the pending tray) and `→ rows`,
-  which opens the saved query or the table with the anomaly's `where` as the typed filter.
-- **new** band, only when there are rows: per entity its rows as `Value`s (a primary key opens the row), the
-  SQL in tertiary text below.
-- **pinned** band, always: count lines (count, title, SQL) and row blocks (title, rows, SQL); a title opens
-  the saved query. A hint says how to pin.
-- **recent** band, only when there are objects: table, `#key` (opens the row), the peek values, relative time.
+The full width of the tab (mock `Readout`); every table aligns its columns with CSS subgrid (`.readout-table`):
+- **Header** (`section` "Status"): the database as the title, a meta line (host · prefix · applied presets ·
+  server version), then each value-pinned query as a key/value row: the value's source table and the query's
+  title (opens the saved query) | its `Value`.
+- Then one `Section` per part: a band as in the object view (chevron, name, hint, count), collapsed and
+  remembered through `useCollapsedGroups(tab.address)` under the keys `::anomalies`, `::new`, `::pinned`,
+  `::recent`; a click on the band outside its buttons toggles it too.
+- **anomalies**, only when there are lines: the count right-aligned and uncolored | the rule text | the `fix`
+  action (queued with `queueAction` on the table address, so it lands in the pending tray) | `→ rows`, which
+  opens the saved query or the table with the anomaly's `where` as the typed filter.
+- **new**, only when there are rows: one `Block` per entity in a responsive grid
+  (`repeat(auto-fill, minmax(600px, 1fr))`): a heading (entity, table button that opens the table, row count),
+  the SQL in tertiary text, then `RowsTable` (column headers, rows as `Value`s; a primary key opens the row).
+- **pinned**, always (an empty line when nothing is pinned; the band's hint says how to pin): count lines
+  (count | title | SQL) and full-width row blocks (title, row count, SQL, rows); a title opens the saved query.
+- **recent**, only when there are objects: table | `#key` (opens the row) | the peek values | relative time.
+
+Rows of a known table carry `data-row-table` ([Values](#values)), so hovering anywhere on them lights the
+table in the sidebar.
 
 Anchors: `readout`, `readout:value:<id>`, `readout:anomaly:<id>`, `readout:fix:<id>`, `readout:new:<entity>`,
-`readout:pinned:<id>`, `readout:recent:<address>`, and the tab `tab:readout:<db>`.
+`readout:pinned:<id>`, `readout:recent:<address>`, `readout:collapse:<section>` (a band's chevron), and the tab
+`tab:readout:<db>`.
 
 ## Styling
 

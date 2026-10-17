@@ -19,9 +19,9 @@ function marksFor(value: StoredValue | null, marks: Marks): { focused: boolean; 
   return { focused: !!key && key === marks.focus, editing: !!key && key === marks.editing };
 }
 
-function KvRow({ name, value, marks }: { name: string; value: StoredValue | null; marks: Marks }) {
+function KvRow({ name, value, table, marks }: { name: string; value: StoredValue | null; table: string; marks: Marks }) {
   return (
-    <div className="row kv">
+    <div className="row kv" data-row-table={table || undefined}>
       <span title={name}>{name}</span>
       <Field value={value} {...marksFor(value, marks)} />
     </div>
@@ -35,7 +35,7 @@ export function FieldsGroup({ group, marks }: { group: Group; marks: Marks }) {
   return (
     <>
       {row.fields.map(([name, value]) => (
-        <KvRow key={name} name={name} value={value} marks={marks} />
+        <KvRow key={name} name={name} value={value} table={group.table} marks={marks} />
       ))}
     </>
   );
@@ -49,7 +49,7 @@ export function MetaGroup({ group, marks }: { group: Group; marks: Marks }) {
         const keyCell = row.fields[0]?.[1];
         const value = row.fields[1]?.[1] ?? null;
         const name = keyCell ? cellText(keyCell.raw) : "";
-        return <KvRow key={keyOf(value) ?? i} name={name} value={value} marks={marks} />;
+        return <KvRow key={keyOf(value) ?? i} name={name} value={value} table={group.table} marks={marks} />;
       })}
     </>
   );
@@ -77,13 +77,14 @@ function template(columns: string[], rows: GroupRow[]): string {
 interface TableRowProps {
   row: GroupRow;
   columns: string[];
+  table: string;
   style: React.CSSProperties;
   marks: Marks;
 }
 
-const TableRow = memo(function TableRow({ row, columns, style, marks }: TableRowProps) {
+const TableRow = memo(function TableRow({ row, columns, table, style, marks }: TableRowProps) {
   return (
-    <div className="row" style={style}>
+    <div className="row" style={style} data-row-table={table || undefined}>
       {columns.map((column, i) => {
         const value = fieldOf(row, column, i);
         return <Field key={column} value={value} {...marksFor(value, marks)} numeric={isNumeric(value)} />;
@@ -107,7 +108,7 @@ export function RowsGroup({ group, marks }: { group: Group; marks: Marks }) {
       </div>
       {group.rows.map((row, i) => {
         const key = row.key ? row.key.map((p) => p.value).join(",") : i;
-        return <TableRow key={key} row={row} columns={group.columns} style={style} marks={marks} />;
+        return <TableRow key={key} row={row} columns={group.columns} table={group.table} style={style} marks={marks} />;
       })}
     </>
   );
@@ -127,7 +128,7 @@ export function EventsGroup({ group, marks }: { group: Group; marks: Marks }) {
       {group.rows.map((row, i) => {
         const [name, value] = row.fields[0] ?? ["", null];
         return (
-          <div key={i} className="row" style={EVENT_STYLE}>
+          <div key={i} className="row" style={EVENT_STYLE} data-row-table={value?.source?.table}>
             <Field value={value} focused={marksFor(value, marks).focused} />
             <span className="o2">{value?.source?.table}</span>
             <span>{name}</span>

@@ -160,7 +160,8 @@ of U2b: column name, type below) with the table's full columns, 12 rows high bef
 
 **Linked table highlight:** hovering a table in the sidebar lights every band of that table
 (`--lit` background, 3px accent bar on the left, accent table name); hovering a band lights its sidebar
-entry (`--lit` and a 1px accent outline). Hovering a value lights only its provenance table in the sidebar.
+entry (`--lit` and a 1px accent outline). Hovering a value lights only its provenance table in the sidebar; hovering
+anywhere else on a row of a known table (Document, grid, readout, palette hit) does the same for its table.
 
 ## Inputs
 
@@ -289,14 +290,20 @@ behavior: [presets.md](presets.md#the-project-page).
 
 ## Readout
 
-The readout tab (`databee://<slug>/<db>/`, mock `Readout`) is the home of a database, opened on connect: one
-column of at most 900px on `--bg`. First the status line in mono (host · database · prefix · presets in
-`--o2` · server version in `--o2` · each value-pinned query as `title value`), then section bands with rows:
-- **anomalies**: count right-aligned and uncolored, the rule text, the `fix` action and `→ rows` in `--o3`;
-  the band shows only while an anomaly's value is above 0;
-- **new**: the newest rows of each entity with a `created` column, the SQL in `--o3` below;
-- **pinned**: count lines (count, title, SQL in `--o3`) and row blocks; a hint says how to pin;
-- **recent**: table in `--o2`, `#key` in the accent, the peek values, the relative time in `--o3`.
+The readout tab (`databee://<slug>/<db>/`, mock `Readout`) is the home of a database, opened on connect. It
+uses the full width of the tab on `--bg`. A header block like the object view's: the database as the title in
+mono, a meta line in `--o2` (host · prefix · presets · server version), then the value-pinned queries as an
+aligned key/value grid (source table in `--o3` and query title | value). Then a collapsible section band per
+part (chevron, name, hint in `--o2`, count in `--o3`), remembered per database like the object view's groups;
+every part is an aligned grid with the row anatomy of the object view:
+- **anomalies**: count right-aligned and uncolored | the rule text | the `fix` action in the accent | `→ rows`
+  in `--o3`; the band shows only while an anomaly's value is above 0;
+- **new**: the newest rows of each entity with a `created` column, one block per entity (heading: entity,
+  table, row count; the SQL in `--o3` below; then column headers and rows), flowing into several columns of at
+  least 600px on wide screens;
+- **pinned**: count lines (count | title | SQL in `--o3`) and full-width row blocks; the band's hint says how
+  to pin;
+- **recent**: table in `--o2` | `#key` in the accent | the peek values | the relative time in `--o3`.
 
 Every line opens its address; counts refresh after every apply. A failed part or line shows its error in
 `--style-red` in its place; the rest stands.

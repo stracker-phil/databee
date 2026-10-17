@@ -57,6 +57,12 @@ function cellClass(cell: Cell, row: number, col: number, marks: { selected: Cell
   return name;
 }
 
+/** The table every sourced value of a row is stored in, when they share one, for the linked table highlight. */
+function rowTable(values: StoredValue[]): string | undefined {
+  const tables = new Set(values.flatMap((value) => (value.source ? [value.source.table] : [])));
+  return tables.size === 1 ? [...tables][0] : undefined;
+}
+
 interface KeyContext {
   at: CellPos;
   lastCol: number;
@@ -322,7 +328,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
           const row = rows[v.index];
           const values = rowValues(v.index);
           return (
-            <div key={v.key} className="grid-row" role="row" style={{ top: v.start, height: rowHeight, width: totalWidth }}>
+            <div key={v.key} className="grid-row" role="row" data-row-table={rowTable(values)} style={{ top: v.start, height: rowHeight, width: totalWidth }}>
               {row.map((cell, ci) => (
                 <div
                   key={ci}

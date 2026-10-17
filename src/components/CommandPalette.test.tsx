@@ -148,6 +148,13 @@ describe("CommandPalette", () => {
       expect(option).toHaveAttribute("data-stage", `palette:item:hit:${formatAddress(hit("4711").address)}`);
     });
 
+    it("links the table of a hovered hit without provenance", async () => {
+      mocked.paletteSearch.mockResolvedValue([hit("4711", "wp_posts")]);
+      await userEvent.type(openPalette(), "#4711");
+      await userEvent.hover(await screen.findByRole("option", { name: "wp_posts #4711" }));
+      await vi.waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false }));
+    });
+
     it("searches free text from 6 characters and not below", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       const input = openPalette();

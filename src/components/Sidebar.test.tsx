@@ -43,6 +43,25 @@ describe("Sidebar", () => {
     expect(screen.getByText("wp_options").closest("[role=treeitem]")).not.toHaveClass("sel");
   });
 
+  describe("with a hovered table", () => {
+    const entry = (name: string) => screen.getByText(name).closest("[role=treeitem]");
+
+    it("softly lights the entry when a row or value of that table is hovered", () => {
+      useStore.setState({ hover: { src: null, table: "wp_posts", linked: false } });
+      render(<Sidebar />);
+      expect(entry("wp_posts")).toHaveClass("lit-value");
+      expect(entry("wp_posts")).not.toHaveClass("lit");
+      expect(entry("wp_options")).not.toHaveClass("lit-value");
+    });
+
+    it("lights the entry fully when a link to that table is hovered", () => {
+      useStore.setState({ hover: { src: null, table: "wp_posts", linked: true } });
+      render(<Sidebar />);
+      expect(entry("wp_posts")).toHaveClass("lit");
+      expect(entry("wp_posts")).not.toHaveClass("lit-value");
+    });
+  });
+
   it("filters tables by name", async () => {
     render(<Sidebar />);
     await userEvent.type(screen.getByLabelText("Filter tables"), "post");
