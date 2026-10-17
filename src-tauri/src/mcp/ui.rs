@@ -8,16 +8,12 @@ pub const NOT_RUNNING: &str = "DataBee is not running";
 
 pub async fn ask(socket: &Path, message: IpcMessage) -> Result<serde_json::Value, String> {
     let socket: PathBuf = socket.to_path_buf();
-    let reply = tokio::task::spawn_blocking(move || ipc::request(&socket, message))
+    tokio::task::spawn_blocking(move || ipc::request(&socket, message))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| format!("Could not reach DataBee: {e}"))?
-        .ok_or_else(|| NOT_RUNNING.to_string())?;
-    if reply.ok {
-        Ok(reply.result)
-    } else {
-        Err(reply.error.unwrap_or_else(|| "The request failed".into()))
-    }
+        .ok_or_else(|| NOT_RUNNING.to_string())?
+        .into_result()
 }
 
 #[cfg(test)]

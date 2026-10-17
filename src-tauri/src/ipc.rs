@@ -116,6 +116,14 @@ impl IpcReply {
             },
         }
     }
+
+    pub fn into_result(self) -> HandlerResult {
+        if self.ok {
+            Ok(self.result)
+        } else {
+            Err(self.error.unwrap_or_else(|| "The request failed".into()))
+        }
+    }
 }
 
 /// What handling a message produced: a JSON result, or an error for the sender.
@@ -149,43 +157,40 @@ fn no_listener(e: &io::Error) -> bool {
     )
 }
 
-/// A timeout or other socket error is an `Err`: an instance may be alive but hung.
-pub fn try_forward(socket: &Path, message: &IpcMessage) -> io::Result<Forward> {
-    let mut stream = match UnixStream::connect(socket) {
-        Ok(s) => s,
-        Err(e) if no_listener(&e) => return Ok(Forward::NoInstance),
-        Err(e) => return Err(e),
-    };
-    stream.set_read_timeout(Some(CLIENT_TIMEOUT))?;
-    let mut line = serde_json::to_string(message).map_err(io::Error::other)?;
-    line.push('\n');
-    stream.write_all(line.as_bytes())?;
-    let mut reply = String::new();
-    BufReader::new(stream).read_line(&mut reply)?;
-    Ok(if reply.trim() == ACK {
-        Forward::Delivered
-    } else {
-        Forward::Rejected
-    })
-}
-
-/// Sends `message` as a request and waits for its reply; `None` when nothing listens.
-pub fn request(socket: &Path, message: IpcMessage) -> io::Result<Option<IpcReply>> {
+/// Sends `value` as one line and reads the answer line; `None` when nothing listens.
+fn send_line(socket: &Path, value: &impl Serialize) -> io::Result<Option<String>> {
     let mut stream = match UnixStream::connect(socket) {
         Ok(s) => s,
         Err(e) if no_listener(&e) => return Ok(None),
         Err(e) => return Err(e),
     };
     stream.set_read_timeout(Some(CLIENT_TIMEOUT))?;
-    let request = IpcRequest {
-        id: uuid::Uuid::new_v4().to_string(),
-        message,
-    };
-    let mut line = serde_json::to_string(&request).map_err(io::Error::other)?;
+    let mut line = serde_json::to_string(value).map_err(io::Error::other)?;
     line.push('\n');
     stream.write_all(line.as_bytes())?;
     let mut answer = String::new();
     BufReader::new(stream).read_line(&mut answer)?;
+    Ok(Some(answer))
+}
+
+/// A timeout or other socket error is an `Err`: an instance may be alive but hung.
+pub fn try_forward(socket: &Path, message: &IpcMessage) -> io::Result<Forward> {
+    Ok(match send_line(socket, message)? {
+        None => Forward::NoInstance,
+        Some(answer) if answer.trim() == ACK => Forward::Delivered,
+        Some(_) => Forward::Rejected,
+    })
+}
+
+/// Sends `message` as a request and waits for its reply; `None` when nothing listens.
+pub fn request(socket: &Path, message: IpcMessage) -> io::Result<Option<IpcReply>> {
+    let request = IpcRequest {
+        id: uuid::Uuid::new_v4().to_string(),
+        message,
+    };
+    let Some(answer) = send_line(socket, &request)? else {
+        return Ok(None);
+    };
     match serde_json::from_str::<IpcReply>(&answer) {
         Ok(reply) if reply.id == request.id => Ok(Some(reply)),
         _ => Err(io::Error::other(
@@ -256,7 +261,7 @@ where
     };
     match incoming {
         Incoming::OneWay(message) => {
-            send_line(&mut write, ACK).await;
+            write_line(&mut write, ACK).await;
             let kind = message.kind();
             if let Err(e) = handler(message).await {
                 log::warn!("Handling {kind} from another process failed: {e}");
@@ -265,14 +270,14 @@ where
         Incoming::Request(IpcRequest { id, message }) => {
             let reply = IpcReply::new(id, handler(message).await);
             match serde_json::to_string(&reply) {
-                Ok(line) => send_line(&mut write, &line).await,
+                Ok(line) => write_line(&mut write, &line).await,
                 Err(e) => log::warn!("IPC reply not serializable: {e}"),
             }
         }
     }
 }
 
-async fn send_line(write: &mut OwnedWriteHalf, line: &str) {
+async fn write_line(write: &mut OwnedWriteHalf, line: &str) {
     if let Err(e) = write.write_all(format!("{line}\n").as_bytes()).await {
         log::debug!("IPC reply failed: {e}");
     }

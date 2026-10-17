@@ -70,13 +70,31 @@ pub trait Database: Send + Sync {
     async fn apply(&self, statements: &[String], timeout: Duration) -> AppResult<u64>;
 }
 
-pub async fn open(
-    spec: &ConnectionSpec,
-    password: Option<&Secret>,
-    connect_timeout: Duration,
-    query_timeout: Duration,
-) -> AppResult<Box<dyn Database>> {
-    let session =
-        mysql::MySqlSession::connect(spec, password, connect_timeout, query_timeout).await?;
-    Ok(Box::new(session))
+/// Opens connections; the app uses `MySqlConnector`, tests swap in one that hands out fakes.
+#[async_trait]
+pub trait Connector: Send + Sync {
+    async fn open(
+        &self,
+        spec: &ConnectionSpec,
+        password: Option<&Secret>,
+        connect_timeout: Duration,
+        query_timeout: Duration,
+    ) -> AppResult<Box<dyn Database>>;
+}
+
+pub struct MySqlConnector;
+
+#[async_trait]
+impl Connector for MySqlConnector {
+    async fn open(
+        &self,
+        spec: &ConnectionSpec,
+        password: Option<&Secret>,
+        connect_timeout: Duration,
+        query_timeout: Duration,
+    ) -> AppResult<Box<dyn Database>> {
+        let session =
+            mysql::MySqlSession::connect(spec, password, connect_timeout, query_timeout).await?;
+        Ok(Box::new(session))
+    }
 }

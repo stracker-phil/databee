@@ -86,7 +86,7 @@ can do all of this:
 ### Add a driver
 
 `src-tauri/src/db/<engine>/mod.rs` implementing `Database`; an engine field on `Dialect`; a `kind` on
-`ConnectionSpec`; one arm in `db::open`. Nothing in `rules/` changes. Details:
+`ConnectionSpec`; one arm in `db::MySqlConnector` (or a connector that picks the engine by `kind`). Nothing in `rules/` changes. Details:
 [database.md](database.md#adding-another-database-engine).
 
 ### Swap the secret store

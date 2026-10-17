@@ -10,7 +10,9 @@ use tokio::sync::Mutex;
 
 use crate::address::{Address, Target};
 use crate::db::classify::is_read_only;
-use crate::db::{BrowsePage, BrowseRequest, ColumnEquals, ExecuteResponse};
+use crate::db::{
+    BrowsePage, BrowseRequest, ColumnEquals, Connector, ExecuteResponse, MySqlConnector,
+};
 use crate::document::{self, Document};
 use crate::error::{AppError, AppResult};
 use crate::lens::{self, ResolvedReference};
@@ -38,6 +40,7 @@ pub struct SavedConnection {
 pub struct Core {
     config_dir: PathBuf,
     secrets: Arc<dyn SecretStore>,
+    connector: Arc<dyn Connector>,
     presets: PresetCatalog,
     sessions: Mutex<HashMap<String, Arc<Session>>>,
 }
@@ -48,6 +51,7 @@ impl Core {
             presets: PresetCatalog::open(&config_dir),
             config_dir,
             secrets,
+            connector: Arc::new(MySqlConnector),
             sessions: Mutex::default(),
         }
     }
@@ -97,6 +101,7 @@ impl Core {
                 saved.spec,
                 saved.slug,
                 self.secrets.clone(),
+                self.connector.as_ref(),
                 &self.settings(),
             )
             .await?,

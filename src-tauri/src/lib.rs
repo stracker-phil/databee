@@ -16,6 +16,7 @@ mod lens;
 mod lock;
 mod mcp;
 mod menu;
+mod pending;
 mod readout;
 mod remote;
 pub mod rules;
@@ -98,19 +99,18 @@ fn forward(socket: &Path, message: &IpcMessage, exit_code: i32) {
 fn ask_running_instance(socket: &Path, message: &IpcMessage) {
     match ipc::request(socket, message.clone()) {
         Ok(None) => {}
-        Ok(Some(reply)) if reply.ok => {
-            if !reply.result.is_null() {
-                println!("{}", reply.result);
+        Ok(Some(reply)) => match reply.into_result() {
+            Ok(result) => {
+                if !result.is_null() {
+                    println!("{result}");
+                }
+                std::process::exit(0);
             }
-            std::process::exit(0);
-        }
-        Ok(Some(reply)) => {
-            eprintln!(
-                "{}",
-                reply.error.unwrap_or_else(|| "The request failed".into())
-            );
-            std::process::exit(1);
-        }
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        },
         Err(e) => fail(&format!(
             "Could not reach the running DataBee instance: {e}"
         )),

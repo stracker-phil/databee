@@ -1,17 +1,14 @@
 //! Requests from other processes that only the page can answer (open an address, run a command,
 //! the active tab's address): emitted as `REMOTE_EVENT` with an id, answered by `remote_reply`.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::oneshot;
 use ts_rs::TS;
 
 use crate::ipc::HandlerResult;
-use crate::lock::MutexExt;
+use crate::pending::{NoReply, PendingReplies};
 
 pub const REMOTE_EVENT: &str = "remote";
 
@@ -43,38 +40,30 @@ pub struct RemoteEvent {
 
 #[derive(Default)]
 pub struct Bridge {
-    pending: Mutex<HashMap<String, oneshot::Sender<HandlerResult>>>,
+    pending: PendingReplies<HandlerResult>,
 }
 
 impl Bridge {
     /// Asks the page and waits for its answer, at most `REPLY_TIMEOUT`.
     pub async fn ask(&self, handle: &AppHandle, request: RemoteRequest) -> HandlerResult {
-        let id = uuid::Uuid::new_v4().to_string();
-        let (tx, rx) = oneshot::channel();
-        self.pending.lock_unpoisoned().insert(id.clone(), tx);
-        let event = RemoteEvent {
-            id: id.clone(),
-            request,
-        };
-        if let Err(e) = handle.emit(REMOTE_EVENT, event) {
-            self.pending.lock_unpoisoned().remove(&id);
-            return Err(format!("Couldn't reach the DataBee window: {e}"));
-        }
-        let answer = tokio::time::timeout(REPLY_TIMEOUT, rx).await;
-        self.pending.lock_unpoisoned().remove(&id);
-        match answer {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err("The DataBee window dropped the request".into()),
-            Err(_) => Err("The DataBee window did not answer in time".into()),
+        let sent = self.pending.ask(REPLY_TIMEOUT, |id| {
+            let event = RemoteEvent {
+                id: id.to_string(),
+                request,
+            };
+            handle.emit(REMOTE_EVENT, event)
+        });
+        match sent.await {
+            Ok(result) => result,
+            Err(NoReply::NotSent(e)) => Err(format!("Couldn't reach the DataBee window: {e}")),
+            Err(NoReply::Dropped) => Err("The DataBee window dropped the request".into()),
+            Err(NoReply::TimedOut) => Err("The DataBee window did not answer in time".into()),
         }
     }
 
     /// False when no request with `id` waits (answered, timed out or unknown).
     pub fn answer(&self, id: &str, result: HandlerResult) -> bool {
-        let Some(tx) = self.pending.lock_unpoisoned().remove(id) else {
-            return false;
-        };
-        tx.send(result).is_ok()
+        self.pending.answer(id, result)
     }
 }
 

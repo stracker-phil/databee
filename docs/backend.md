@@ -64,7 +64,8 @@ mutex inside. Panics unwind ([ADR 0017](adr/0017-panic-unwind.md)), so a panic w
 `lock::RwLockExt::{read_unpoisoned, write_unpoisoned}` instead of `unwrap()`, and keeps working with the data.
 `AppState` holds no module data: per-session data of a module lives in `Session.ext`
 ([ADR 0013](adr/0013-session-extensions.md)). `AppState::rules()` bundles the preset catalog and the projects
-store as the `RuleSources` the rules lens reads.
+store as the `RuleSources` the rules lens reads; `AppState::rename_connection` renames a connection's slug across
+the stores and open sessions.
 
 | Field | Type | Holds |
 |---|---|---|
@@ -80,6 +81,7 @@ store as the `RuleSources` the rules lens reads.
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
+| `connector` | `Arc<dyn db::Connector>` | opens database connections for `session::open`; `MySqlConnector` in the app, tests replace it |
 | `config_dir` | `PathBuf` | handed to the plugins in `start_app` |
 | `log_override` | `Option<LogLevel>` | the CLI `--log-level`; wins over the stored level (`settings_effects`) |
 
@@ -108,7 +110,7 @@ use the same names in camelCase.
 
 | Module | Commands |
 |---|---|
-| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `choose_save_path(fileName, extension)` (the native save panel through `tauri-plugin-dialog`'s Rust API; the chosen path or `null`), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `rename_connection_slug` (validates, stores, renames the slug of open sessions of that connection and moves its projects), `list_history`, `clear_history` |
+| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `choose_save_path(fileName, extension)` (the native save panel through `tauri-plugin-dialog`'s Rust API; the chosen path or `null`), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `rename_connection_slug` (`AppState::rename_connection`: validates and stores the slug in the saved connections, which fails the rename; renames the slug of open sessions of that connection; then moves its projects, recent objects and snapshots, where a failure is logged and leaves that store under the old slug), `list_history`, `clear_history` |
 | `remote.rs` | `remote_reply(id, result, error)` (the page's answer to a `remote` event, see [Requests the page answers](#requests-the-page-answers)) |
 | `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `refresh_schema` (see [Schema cache](database.md#schema-cache)), `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `table_select_sql(sessionId, database, table)` (the quoted `SELECT *` with the new-query limit that "New query" on a table starts with), `resolve_address` (see [Addresses](#addresses)), `table_references` (declared and inferred references from and to a table, see [database.md](database.md#references-and-kinds)), `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), `value_condition(sessionId, database, provenance, raw)` (a value as a SQL condition, `value::value_condition`; see [database.md](database.md#value-conditions)), `narrow_refusal(sql)` and `narrow_query(sessionId, sql, column, value)` (one more `column = value` on a plain single-table `SELECT`, `db::narrow`; see [database.md](database.md#narrowing-a-query)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
@@ -120,7 +122,8 @@ use the same names in camelCase.
 | `rules/commands.rs` | `presets_list` (every known preset with its source and, for a file that does not load, the error; see [presets.md](presets.md)), `project_get` (the project of the session's slug and a database; an empty one when none is stored), `project_update` (applies one `ProjectChange` after checking it against the schema cache, returns the project), `project_export` (the project as preset TOML), `project_export_to(sessionId, database, path)` (writes it to a chosen path); see [presets.md](presets.md#projects); `project_rules`, `rule_draft(sessionId, database, provenance)` and `coverage_preview(sessionId, database, reference, replacing)` for the Project page ([presets.md](presets.md#the-project-page)); `rules_info` (prefixes, applied presets, entities); `reference_coverage(sessionId, database, reference)` (counts for a `ResolvedReference` as `table_references` returned it: total, resolved, NULL or `0`, a sample of unresolved values, `timedOut`; read-only, bounded by the query timeout; see [presets.md](presets.md#coverage)) |
 
 `session::open` is the connect service: it peeks the launch password, resolves the password
-(`resolve_password`, in `spawn_blocking` because the Keychain may block on a dialog), calls `db::open`, maps a
+(`resolve_password`, in `spawn_blocking` because the Keychain may block on a dialog), opens the connection through
+`AppState::connector` (a `db::Connector`: `MySqlConnector` in the app, a fake handing out `FakeDatabase`s in tests), maps a
 rejected login through the pure `auth_error`, saves a typed password to the Keychain when asked, touches
 recents (which returns the connection's slug) and registers the session with that slug. `SessionInfo::new` is
 pure and carries `identity`, `account` (the Keychain account that also scopes history), `displayName` and
@@ -198,7 +201,10 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
     sends `eval` this way.
   - request (`IpcRequest {id, message}`, sent by `ipc::request`): answered once handled with one
     `IpcReply {id, ok, result, error}` line. A reply that is not JSON or has another id is an error ("may be
-    older than this command").
+    older than this command"). `IpcReply::into_result` turns a reply into the `HandlerResult` the CLI and
+    `databee mcp` act on.
+  - Both client forms go through `ipc::send_line` (connect, write the line, read the answer line, 5 s read
+    timeout).
 
   Malformed, oversized or incomplete lines get no answer.
 - **`Forward` outcomes** of `try_forward`, and what `run` does with them:
@@ -286,7 +292,8 @@ starts (`lib.rs` binds the outcome first): tokio's stdin would block on it other
 
 ### Requests the page answers
 
-`remote.rs`: `Bridge::ask` stores a oneshot sender under a fresh id, emits `remote` with
+`remote.rs`: `Bridge::ask` registers a fresh id in its `pending::PendingReplies` (a map of request ids to
+oneshot senders, also used by the Stage hub), emits `remote` with
 `RemoteEvent {id, request: RemoteRequest}` (`open {address, connection}`, `command {id}`, `current`) and waits
 up to 4 s (below the 5 s IPC client timeout) for `remote_reply(id, result, error)`; a set `error` fails the
 request, and a late or unknown reply is dropped. On the page, `useBackendEvents` (`src/App.tsx`) hands each

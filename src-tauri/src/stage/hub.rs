@@ -2,18 +2,17 @@
 //! and waits, under a timeout, for the reply that carries the same id. The verbs are in
 //! `verbs.rs`; the page side is src/stage/hooks.ts.
 
-use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value;
-use tokio::sync::oneshot;
 
 use super::page::{ActEvent, ActReply, ActRequest, AnchorsReply, InfoReply, PageAnchor};
 use super::protocol::{MAIN, ScreenRect};
 use super::windows::Frame;
 use crate::lock::MutexExt;
+use crate::pending::PendingReplies;
 
 pub const COLLECT_EVENT: &str = "stage:collect";
 pub const ACT_EVENT: &str = "stage:act";
@@ -57,12 +56,6 @@ pub struct AppInfo {
     pub version: &'static str,
 }
 
-enum Waiter {
-    Anchors(oneshot::Sender<AnchorsReply>),
-    Act(oneshot::Sender<ActReply>),
-    Info(oneshot::Sender<InfoReply>),
-}
-
 #[derive(Serialize)]
 struct Request<'a> {
     request: &'a str,
@@ -72,7 +65,9 @@ pub struct Hub {
     pub(super) host: Box<dyn StageHost>,
     pub(super) timeouts: Timeouts,
     pub(super) app: AppInfo,
-    waiting: Mutex<HashMap<String, Waiter>>,
+    anchors: PendingReplies<AnchorsReply>,
+    acts: PendingReplies<ActReply>,
+    infos: PendingReplies<InfoReply>,
     last_request: Mutex<Option<chrono::DateTime<chrono::Utc>>>,
 }
 
@@ -86,7 +81,9 @@ impl Hub {
                 id: id.into(),
                 version: env!("CARGO_PKG_VERSION"),
             },
-            waiting: Mutex::default(),
+            anchors: PendingReplies::default(),
+            acts: PendingReplies::default(),
+            infos: PendingReplies::default(),
             last_request: Mutex::default(),
         }
     }
@@ -100,66 +97,50 @@ impl Hub {
         *self.last_request.lock_unpoisoned() = Some(chrono::Utc::now());
     }
 
-    /// The waiter for `request`; None once it timed out or for another page.
-    fn take(&self, request: &str, page: &str) -> Option<Waiter> {
-        if page != MAIN {
-            return None;
-        }
-        self.waiting.lock_unpoisoned().remove(request)
-    }
-
+    /// Replies from other pages are ignored, like those for requests that timed out.
     pub fn receive_anchors(&self, reply: AnchorsReply) {
-        if let Some(Waiter::Anchors(tx)) = self.take(&reply.request, &reply.page) {
-            let _ = tx.send(reply.cleaned());
+        if reply.page == MAIN {
+            self.anchors.answer(&reply.request.clone(), reply.cleaned());
         }
     }
 
     pub fn receive_act(&self, reply: ActReply) {
-        if let Some(Waiter::Act(tx)) = self.take(&reply.request, &reply.page) {
-            let _ = tx.send(reply);
+        if reply.page == MAIN {
+            self.acts.answer(&reply.request.clone(), reply);
         }
     }
 
     pub fn receive_info(&self, reply: InfoReply) {
-        if let Some(Waiter::Info(tx)) = self.take(&reply.request, &reply.page) {
-            let _ = tx.send(reply);
+        if reply.page == MAIN {
+            self.infos.answer(&reply.request.clone(), reply);
         }
     }
 
     /// Sends `event` to the page and waits for its answer; None when it didn't answer in time.
     async fn ask<T>(
         &self,
+        pending: &PendingReplies<T>,
         event: &str,
         act: Option<ActRequest>,
         wait: Duration,
-        waiter: fn(oneshot::Sender<T>) -> Waiter,
     ) -> Option<T> {
-        let request = uuid::Uuid::new_v4().to_string();
-        let payload = match act {
-            Some(act) => serde_json::to_value(ActEvent {
-                request: request.clone(),
-                act,
-            }),
-            None => serde_json::to_value(Request { request: &request }),
-        };
-        let payload = payload
-            .inspect_err(|e| log::warn!("Stage couldn't encode {event}: {e}"))
-            .ok()?;
-        let (tx, rx) = oneshot::channel();
-        self.waiting
-            .lock_unpoisoned()
-            .insert(request.clone(), waiter(tx));
-        self.host.emit(event, payload);
-        let reply = tokio::time::timeout(wait, rx)
-            .await
-            .ok()
-            .and_then(Result::ok);
-        self.waiting.lock_unpoisoned().remove(&request);
-        reply
+        let sent = pending.ask(wait, |request| {
+            let payload = match act {
+                Some(act) => serde_json::to_value(ActEvent {
+                    request: request.to_string(),
+                    act,
+                }),
+                None => serde_json::to_value(Request { request }),
+            }
+            .inspect_err(|e| log::warn!("Stage couldn't encode {event}: {e}"))?;
+            self.host.emit(event, payload);
+            Ok::<_, serde_json::Error>(())
+        });
+        sent.await.ok()
     }
 
     pub(super) async fn info(&self) -> Option<InfoReply> {
-        self.ask(INFO_EVENT, None, self.timeouts.collect, Waiter::Info)
+        self.ask(&self.infos, INFO_EVENT, None, self.timeouts.collect)
             .await
     }
 
@@ -169,7 +150,7 @@ impl Hub {
             return Vec::new();
         }
         let Some(reply) = self
-            .ask(COLLECT_EVENT, None, self.timeouts.collect, Waiter::Anchors)
+            .ask(&self.anchors, COLLECT_EVENT, None, self.timeouts.collect)
             .await
         else {
             return Vec::new();
@@ -184,7 +165,7 @@ impl Hub {
     }
 
     pub(super) async fn act_on_page(&self, act: ActRequest) -> Option<ActReply> {
-        self.ask(ACT_EVENT, Some(act), self.timeouts.act, Waiter::Act)
+        self.ask(&self.acts, ACT_EVENT, Some(act), self.timeouts.act)
             .await
     }
 }
@@ -204,8 +185,7 @@ mod tests {
             ok: true,
             ..ActReply::default()
         });
-        assert!(hub.take("unknown", "main").is_none());
-        assert!(hub.take("x", "settings").is_none());
+        assert!(hub.acts.is_empty());
     }
 
     #[tokio::test]
@@ -232,7 +212,6 @@ mod tests {
             ok: true,
             ..ActReply::default()
         });
-        assert!(hub.take(&request, "main").is_none());
-        assert!(hub.waiting.lock_unpoisoned().is_empty());
+        assert!(hub.acts.is_empty());
     }
 }

@@ -11,7 +11,7 @@ use crate::connection::{ConnectionSpec, Secret};
 use crate::db::cell_cache::CellCache;
 use crate::db::classify::changes_schema;
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
-use crate::db::{self, BrowsePage, BrowseRequest, CellLimit, Database, ExecuteResponse};
+use crate::db::{BrowsePage, BrowseRequest, CellLimit, Connector, Database, ExecuteResponse};
 use crate::error::{AppError, AppResult};
 use crate::lens;
 use crate::lock::{MutexExt, RwLockExt};
@@ -345,13 +345,15 @@ async fn connect(
     let explicit = args.password.clone().or(launch_password);
     let source = password_source(state.secrets.clone(), explicit, &args.spec).await;
     let settings = state.settings.get();
-    let connecting = db::open(
-        &args.spec,
-        source.secret(),
-        settings.connect_timeout(),
-        settings.query_timeout(),
-    )
-    .await;
+    let connecting = state
+        .connector
+        .open(
+            &args.spec,
+            source.secret(),
+            settings.connect_timeout(),
+            settings.query_timeout(),
+        )
+        .await;
     let launch_password_spent = matches!(connecting, Ok(_) | Err(AppError::AuthFailed(_)));
     if launch_password_spent && let Some(id) = &args.request_id {
         state.launches.take_password(id);
@@ -371,20 +373,22 @@ pub async fn open_detached(
     spec: ConnectionSpec,
     slug: String,
     secrets: Arc<dyn SecretStore>,
+    connector: &dyn Connector,
     settings: &Settings,
 ) -> AppResult<Session> {
     let source = password_source(secrets, None, &spec).await;
-    let db = db::open(
-        &spec,
-        source.secret(),
-        settings.connect_timeout(),
-        settings.query_timeout(),
-    )
-    .await
-    .map_err(|e| match e {
-        AppError::AuthFailed(message) => auth_error(&source, spec.account(), message),
-        e => e,
-    })?;
+    let db = connector
+        .open(
+            &spec,
+            source.secret(),
+            settings.connect_timeout(),
+            settings.query_timeout(),
+        )
+        .await
+        .map_err(|e| match e {
+            AppError::AuthFailed(message) => auth_error(&source, spec.account(), message),
+            e => e,
+        })?;
     let id = uuid::Uuid::new_v4().to_string();
     Ok(Session::new(id, spec, slug, db))
 }
@@ -1054,5 +1058,294 @@ mod tests {
             .unwrap();
 
         assert_eq!(session.ddl_writes(), 0);
+    }
+
+    #[derive(Default)]
+    struct FakeConnector {
+        failure: Mutex<Option<AppError>>,
+        passwords: Mutex<Vec<Option<String>>>,
+    }
+
+    impl FakeConnector {
+        fn failing(error: AppError) -> Arc<Self> {
+            Arc::new(Self {
+                failure: Mutex::new(Some(error)),
+                ..Self::default()
+            })
+        }
+
+        fn passwords(&self) -> Vec<Option<String>> {
+            self.passwords.lock_unpoisoned().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Connector for FakeConnector {
+        async fn open(
+            &self,
+            _: &ConnectionSpec,
+            password: Option<&Secret>,
+            _: Duration,
+            _: Duration,
+        ) -> AppResult<Box<dyn Database>> {
+            self.passwords
+                .lock_unpoisoned()
+                .push(password.map(|p| p.expose().to_string()));
+            match self.failure.lock_unpoisoned().take() {
+                Some(error) => Err(error),
+                None => Ok(Box::new(FakeDatabase::new())),
+            }
+        }
+    }
+
+    struct Fixture {
+        dir: tempfile::TempDir,
+        state: AppState,
+        secrets: Arc<crate::secrets::MemoryStore>,
+        connector: Arc<FakeConnector>,
+    }
+
+    fn fixture(connector: Arc<FakeConnector>) -> Fixture {
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = Arc::new(crate::secrets::MemoryStore::default());
+        let mut state = AppState::open(dir.path(), secrets.clone());
+        state.connector = connector.clone();
+        Fixture {
+            dir,
+            state,
+            secrets,
+            connector,
+        }
+    }
+
+    fn args(password: Option<&str>, request_id: Option<&str>, save_password: bool) -> OpenArgs {
+        OpenArgs {
+            spec: local_spec(),
+            password: password.map(Secret::new),
+            request_id: request_id.map(str::to_string),
+            save_password,
+        }
+    }
+
+    fn queue_launch_password(state: &AppState, password: &str) -> String {
+        state.launches.push(crate::ipc::IpcMessage::Launch {
+            spec: local_spec(),
+            password: Some(Secret::new(password)),
+            save_password: false,
+        });
+        match state.launches.take_events().pop() {
+            Some(crate::launch::LaunchEvent::Connect { request_id, .. }) => request_id,
+            other => panic!("expected a connect event, got {other:?}"),
+        }
+    }
+
+    fn stored(secrets: &crate::secrets::MemoryStore) -> Option<String> {
+        secrets
+            .get(&local_spec().account())
+            .unwrap()
+            .map(|s| s.expose().to_string())
+    }
+
+    #[tokio::test]
+    async fn the_launch_password_is_sent_and_spent_once_connected() {
+        let f = fixture(Arc::default());
+        let request = queue_launch_password(&f.state, "launch");
+
+        open(&f.state, args(None, Some(&request), false))
+            .await
+            .unwrap();
+
+        assert_eq!(f.connector.passwords(), [Some("launch".to_string())]);
+        assert!(f.state.launches.peek_password(&request).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_connection_error_keeps_the_launch_password_for_a_retry() {
+        let f = fixture(FakeConnector::failing(AppError::Connection(
+            "refused".into(),
+        )));
+        let request = queue_launch_password(&f.state, "launch");
+
+        let err = open(&f.state, args(None, Some(&request), false))
+            .await
+            .err()
+            .unwrap();
+
+        assert_eq!(err.kind(), ErrorKind::Connection);
+        assert!(f.state.launches.peek_password(&request).is_some());
+    }
+
+    #[tokio::test]
+    async fn a_rejected_launch_password_is_spent_and_reported_with_the_server_message() {
+        let f = fixture(FakeConnector::failing(AppError::AuthFailed(
+            "Access denied".into(),
+        )));
+        let request = queue_launch_password(&f.state, "launch");
+
+        let err = open(&f.state, args(None, Some(&request), false))
+            .await
+            .err()
+            .unwrap();
+
+        assert_eq!(err.kind(), ErrorKind::AuthFailed);
+        assert_eq!(err.to_string(), "Access denied");
+        assert!(f.state.launches.peek_password(&request).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_password_from_the_page_wins_and_the_launch_password_is_still_spent() {
+        let f = fixture(Arc::default());
+        let request = queue_launch_password(&f.state, "launch");
+
+        open(&f.state, args(Some("typed"), Some(&request), false))
+            .await
+            .unwrap();
+
+        assert_eq!(f.connector.passwords(), [Some("typed".to_string())]);
+        assert!(f.state.launches.peek_password(&request).is_none());
+    }
+
+    #[tokio::test]
+    async fn without_a_given_password_the_keychain_password_is_sent() {
+        let f = fixture(Arc::default());
+        f.secrets
+            .set(&local_spec().account(), &Secret::new("stored"))
+            .unwrap();
+
+        open(&f.state, args(None, None, false)).await.unwrap();
+
+        assert_eq!(f.connector.passwords(), [Some("stored".to_string())]);
+    }
+
+    #[tokio::test]
+    async fn a_provided_password_is_saved_to_the_keychain_only_when_asked_and_accepted() {
+        let f = fixture(Arc::default());
+        open(&f.state, args(Some("typed"), None, false))
+            .await
+            .unwrap();
+        assert_eq!(stored(&f.secrets), None);
+
+        open(&f.state, args(Some("typed"), None, true))
+            .await
+            .unwrap();
+        assert_eq!(stored(&f.secrets).as_deref(), Some("typed"));
+    }
+
+    #[tokio::test]
+    async fn a_rejected_password_is_not_saved_to_the_keychain() {
+        let f = fixture(FakeConnector::failing(AppError::AuthFailed(
+            "denied".into(),
+        )));
+
+        open(&f.state, args(Some("typed"), None, true))
+            .await
+            .err()
+            .unwrap();
+
+        assert_eq!(stored(&f.secrets), None);
+    }
+
+    #[tokio::test]
+    async fn without_a_password_a_rejected_login_asks_for_one() {
+        let f = fixture(FakeConnector::failing(AppError::AuthFailed(
+            "denied".into(),
+        )));
+
+        let err = open(&f.state, args(None, None, false)).await.err().unwrap();
+
+        assert_eq!(err.kind(), ErrorKind::PasswordRequired);
+        assert_eq!(f.connector.passwords(), [None]);
+    }
+
+    #[tokio::test]
+    async fn an_opened_session_is_registered_under_the_saved_connections_slug() {
+        let f = fixture(Arc::default());
+        f.state.recents.touch(&local_spec()).await.unwrap();
+        f.state
+            .recents
+            .rename_slug(&local_spec().identity(), "mine")
+            .await
+            .unwrap();
+
+        let session = open(&f.state, args(None, None, false)).await.unwrap();
+
+        assert_eq!(session.slug(), "mine");
+        assert!(Arc::ptr_eq(
+            &f.state.sessions.get(&session.id).unwrap(),
+            &session
+        ));
+    }
+
+    #[tokio::test]
+    async fn when_the_saved_connections_cannot_be_written_the_session_gets_the_default_slug() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let f = fixture(Arc::default());
+        f.state.recents.touch(&local_spec()).await.unwrap();
+        f.state
+            .recents
+            .rename_slug(&local_spec().identity(), "mine")
+            .await
+            .unwrap();
+        let mode = |m| std::fs::Permissions::from_mode(m);
+        std::fs::set_permissions(f.dir.path(), mode(0o500)).unwrap();
+
+        let opened = open(&f.state, args(None, None, false)).await;
+
+        std::fs::set_permissions(f.dir.path(), mode(0o700)).unwrap();
+        let session = opened.unwrap();
+        assert_eq!(session.slug(), default_slug(&local_spec()));
+        assert!(f.state.sessions.get(&session.id).is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_detached_session_connects_with_the_keychain_password_and_the_given_slug() {
+        let connector = FakeConnector::default();
+        let secrets = crate::secrets::MemoryStore::default();
+        secrets
+            .set(&local_spec().account(), &Secret::new("stored"))
+            .unwrap();
+
+        let session = open_detached(
+            local_spec(),
+            "given".into(),
+            Arc::new(secrets),
+            &connector,
+            &Settings::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(session.slug(), "given");
+        assert_eq!(connector.passwords(), [Some("stored".to_string())]);
+    }
+
+    #[tokio::test]
+    async fn a_detached_session_whose_keychain_password_is_rejected_says_so() {
+        let connector = FakeConnector {
+            failure: Mutex::new(Some(AppError::AuthFailed("Access denied".into()))),
+            ..FakeConnector::default()
+        };
+        let secrets = crate::secrets::MemoryStore::default();
+        secrets
+            .set(&local_spec().account(), &Secret::new("old"))
+            .unwrap();
+
+        let err = open_detached(
+            local_spec(),
+            "given".into(),
+            Arc::new(secrets),
+            &connector,
+            &Settings::default(),
+        )
+        .await
+        .err()
+        .unwrap();
+
+        assert_eq!(err.kind(), ErrorKind::AuthFailed);
+        assert_eq!(
+            err.to_string(),
+            "The password stored in the Keychain was rejected (Access denied)"
+        );
     }
 }

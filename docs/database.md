@@ -394,7 +394,7 @@ arm; nothing in `rules/` changes:
    escapes), the cancel SQL (`KILL QUERY` → `pg_cancel_backend`; SQLite uses an interrupt), `DELETE … LIMIT 1`,
    and `UTC_TIMESTAMP()` and `INTERVAL` in preset SQL.
 3. **Connection spec.** A `kind` (and a file `path`) on `ConnectionSpec`, the URL schemes in `cli.rs`, the
-   keychain account format, and one arm in `db::open`.
+   keychain account format, and one arm in the app's `db::Connector` (`MySqlConnector` today).
 4. **Cell decoding.** A `decode` per engine that maps into the same `Cell` enum.
 5. **Introspection.** Postgres: `information_schema` plus `pg_catalog`. SQLite: `sqlite_master` and
    `pragma_table_info` / `pragma_index_list`. Make `ColumnInfo` engine-neutral, replacing `key = "PRI"`,
