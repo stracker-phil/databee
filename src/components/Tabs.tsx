@@ -1,13 +1,15 @@
 import { FileCode2, FileText, Loader2, Plus, SlidersHorizontal, Table2, X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useBindingLabel } from "../commands";
-import { useStore, type Tab } from "../state/store";
+import { useStore, type QueryTab as QueryTabState, type Tab, type TableTab as TableTabState } from "../state/store";
 import { formatAddress } from "../lib/address";
+import { columnLabel, objectColumnAt } from "../lib/columns";
 import { documentText } from "../lib/document";
 import { ObjectPanel } from "./object/ObjectPanel";
 import { ProjectPanel } from "./project/ProjectPanel";
 import { QueryTab } from "./QueryTab";
 import { TableTab } from "./TableTab";
+import { ValueColumnView } from "./value/ValueColumnView";
 
 const ARROW_STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 };
 
@@ -33,16 +35,30 @@ function tabTooltip(tab: Tab): string {
 
 function tabStage(tab: Tab): string {
   if (tab.kind === "table") return `tab:table:${tab.database}.${tab.table}`;
-  if (tab.kind === "object") return `tab:object:${documentText(tab.address)}`;
+  if (tab.kind === "object") return `tab:object:${documentText(objectColumnAt(tab.columns, 0)?.address ?? tab.address)}`;
   if (tab.kind === "project") return `tab:project:${tab.database}`;
   return `tab:query:${tab.id}`;
 }
 
+/** A table or query tab with the value column opened from its grid on the right; the tab keeps its tree position. */
+function WithValueColumn({ tab, children }: { tab: QueryTabState | TableTabState; children: React.ReactNode }) {
+  const column = tab.valueColumn;
+  return (
+    <div className="tab-columns">
+      <div className="tab-main">{children}</div>
+      {column && (
+        <section className="column value-column" aria-label={columnLabel(column)} data-stage="value-column" data-stage-label={columnLabel(column)}>
+          <ValueColumnView column={column} onClose={() => useStore.getState().closeRightmostColumn()} onEdited={(text) => useStore.getState().updateValueColumn(tab.id, null, text)} />
+        </section>
+      )}
+    </div>
+  );
+}
+
 function TabPanel({ tab }: { tab: Tab }) {
-  if (tab.kind === "query") return <QueryTab tab={tab} />;
   if (tab.kind === "object") return <ObjectPanel tab={tab} />;
   if (tab.kind === "project") return <ProjectPanel tab={tab} />;
-  return <TableTab tab={tab} />;
+  return <WithValueColumn tab={tab}>{tab.kind === "query" ? <QueryTab tab={tab} /> : <TableTab tab={tab} />}</WithValueColumn>;
 }
 
 function TabItem({ tab, active }: { tab: Tab; active: boolean }) {

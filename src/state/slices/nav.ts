@@ -7,7 +7,8 @@ import { AddressError, formatAddress, parseAddress, sameAddress } from "../../li
 import { fail } from "../requests";
 import { isWpView, selectActiveTab, selectStructure } from "../selectors";
 import type { Slice, Store } from "../store";
-import { objectAddress, objectTitle } from "../../lib/document";
+import { objectColumnAt, type ColumnStack, type StackColumn } from "../../lib/columns";
+import { documentText, objectAddress, objectTitle } from "../../lib/document";
 import type { ObjectTab, Tab, TableTab } from "./tabs";
 
 /** Entries kept per direction and tab. */
@@ -118,11 +119,49 @@ function stepped(tab: Tab & { address: Address }, direction: "back" | "forward")
     : { back: leave(tab.nav.back), forward: tab.nav.forward.slice(0, -1) };
 }
 
-/** Object tab `tab` showing the row address `target` in the view it names. */
-function reobjected(tab: ObjectTab, target: Address, nav: TabNav): ObjectTab {
+/** The stacks of the addresses `nav` still holds, after leaving `tab` (whose stack is kept under its address). */
+function keptStacks(tab: ObjectTab, nav: TabNav): Record<string, ColumnStack> {
+  const stacks = { ...tab.stacks, [formatAddress(tab.address)]: { columns: tab.columns, active: tab.active } };
+  const held = new Set([...nav.back, ...nav.forward].map(formatAddress));
+  return Object.fromEntries(Object.entries(stacks).filter(([key]) => held.has(key)));
+}
+
+/** Object tab `tab` showing `stack`; leaving its address records it, with its stack, for back. */
+export function restacked(tab: ObjectTab, stack: ColumnStack, { record = true } = {}): ObjectTab {
+  const address = objectColumnAt(stack.columns, stack.active)?.address ?? tab.address;
+  const next: ObjectTab = { ...tab, ...stack, address };
+  if (!record || sameAddress(tab.address, address)) return next;
+  const nav = pushed(tab.nav, tab.address, address);
+  return { ...next, nav, stacks: keptStacks(tab, nav) };
+}
+
+/** Without a recorded stack, the active column moves to `target`; its focus stays on the same row. */
+function movedActive(tab: ObjectTab, target: Address): ColumnStack {
   const view = target.view === "rows" ? "rows" : "document";
-  const sameRow = objectTitle(target) === objectTitle(tab.address);
-  return { ...tab, address: objectAddress(target, view), view, title: sameRow ? tab.title : objectTitle(target), focus: sameRow ? tab.focus : null, nav };
+  const current = tab.columns[tab.active];
+  const focus = current?.kind === "object" && documentText(current.address) === documentText(target) ? current.focus : null;
+  const column: StackColumn = { kind: "object", address: objectAddress(target, view), view, focus };
+  return { columns: [...tab.columns.slice(0, tab.active), column], active: tab.active };
+}
+
+/** Object tab `tab` showing the row address `target` with the stack it had there. */
+function reobjected(tab: ObjectTab, target: Address, nav: TabNav): ObjectTab {
+  const stack = tab.stacks[formatAddress(target)] ?? movedActive(tab, target);
+  const root = stack.columns[0];
+  const oldRoot = tab.columns[0];
+  const sameRoot = root?.kind === "object" && oldRoot?.kind === "object" && documentText(root.address) === documentText(oldRoot.address);
+  const title = sameRoot || root?.kind !== "object" ? tab.title : objectTitle(root.address);
+  const address = objectColumnAt(stack.columns, stack.active)?.address ?? target;
+  return { ...tab, ...stack, address, title, nav, stacks: keptStacks(tab, nav) };
+}
+
+/** A tab of a renamed connection; recorded stacks are dropped rather than rewritten. */
+function renamed(tab: Tab, slug: string): Tab {
+  const moved = <A extends Address | null>(address: A): A => (address && { ...address, connection: slug }) as A;
+  const nav = { back: tab.nav.back.map(moved), forward: tab.nav.forward.map(moved) };
+  if (tab.kind !== "object") return { ...tab, address: moved(tab.address), nav } as Tab;
+  const columns = tab.columns.map((c): StackColumn => (c.kind === "object" ? { ...c, address: moved(c.address) } : c));
+  return { ...tab, columns, address: moved(tab.address), nav, stacks: {} };
 }
 
 export const navSlice: Slice<NavSlice> = {
@@ -200,13 +239,11 @@ export const navSlice: Slice<NavSlice> = {
 
       async renameConnectionSlug(identity, slug) {
         await api.renameConnectionSlug(identity, slug);
-        const moved = <A extends Address | null>(address: A): A => (address && { ...address, connection: slug }) as A;
-        const movedNav = (nav: TabNav): TabNav => ({ back: nav.back.map(moved), forward: nav.forward.map(moved) });
         set((s) => {
           const ids = new Set(s.sessions.filter((x) => x.identity === identity).map((x) => x.id));
           return {
             sessions: s.sessions.map((x) => (ids.has(x.id) ? { ...x, slug } : x)),
-            tabs: s.tabs.map((t): Tab => (ids.has(t.sessionId) ? ({ ...t, address: moved(t.address), nav: movedNav(t.nav) } as Tab) : t)),
+            tabs: s.tabs.map((t) => (ids.has(t.sessionId) ? renamed(t, slug) : t)),
           };
         });
       },

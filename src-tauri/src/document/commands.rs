@@ -4,7 +4,7 @@ use tauri::State;
 
 use super::actions::{self, ObjectAction};
 use super::context::Ctx;
-use super::{Document, parse_address};
+use super::{Document, Peek, parse_address};
 use crate::db::plans::PlannedChange;
 use crate::error::AppResult;
 use crate::state::AppState;
@@ -20,6 +20,20 @@ pub async fn document(
     let session = state.sessions.get(&session_id)?;
     let timeout = state.settings.get().query_timeout();
     super::open(&session, &address, database, state.rules(), timeout).await
+}
+
+/// The values that say which row `address` is: its entity's summary, else its first columns.
+#[tauri::command]
+pub async fn peek(
+    state: State<'_, AppState>,
+    session_id: String,
+    address: String,
+) -> AppResult<Peek> {
+    let session = state.sessions.get(&session_id)?;
+    let timeout = state.settings.get().query_timeout();
+    let address = parse_address(&session, &address)?;
+    let ctx = Ctx::load(&session, &address.database, state.rules(), timeout).await?;
+    super::peek::peek(&ctx, &address).await
 }
 
 /// The `scope = "table"` actions of `table`.

@@ -25,9 +25,6 @@ pub struct UiState {
     pub tables: BTreeMap<String, TableUi>,
     #[serde(alias = "splitWidth")]
     pub detail_pane_width: Option<u32>,
-    pub inspector_width: Option<u32>,
-    #[serde(alias = "paneHeight")]
-    pub bottom_pane_height: Option<u32>,
     #[serde(alias = "editorHeight")]
     pub sql_editor_height: Option<u32>,
     pub sidebar_hidden: bool,
@@ -90,8 +87,6 @@ mod tests {
             },
         );
         state.detail_pane_width = Some(520);
-        state.inspector_width = Some(400);
-        state.bottom_pane_height = Some(280);
         state.sql_editor_height = Some(90);
         store
             .set("root@127.0.0.1:52958/db", state.clone())
@@ -117,16 +112,15 @@ mod tests {
     }
 
     #[test]
-    fn old_pane_size_names_load_into_the_current_fields() {
+    fn old_pane_size_names_load_into_the_current_fields_and_retired_ones_are_ignored() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("ui_state.json"),
-            r#"{"a@b:1/db": {"splitWidth": 500, "paneHeight": 250, "editorHeight": 120}}"#,
+            r#"{"a@b:1/db": {"splitWidth": 500, "paneHeight": 250, "inspectorWidth": 410, "editorHeight": 120}}"#,
         )
         .unwrap();
         let state = UiStateStore::open(dir.path()).get("a@b:1/db");
         assert_eq!(state.detail_pane_width, Some(500));
-        assert_eq!(state.bottom_pane_height, Some(250));
         assert_eq!(state.sql_editor_height, Some(120));
     }
 
@@ -155,7 +149,6 @@ mod tests {
         .unwrap();
         let state = UiStateStore::open(dir.path()).get("a@b:1/db");
         assert!(!state.sidebar_hidden);
-        assert_eq!(state.inspector_width, Some(410));
         assert_eq!(state.tables["t"].widths["id"], 60);
     }
 
@@ -190,7 +183,6 @@ mod tests {
         .unwrap();
         let state = UiStateStore::open(dir.path()).get("a@b:1/db");
         assert!(state.collapsed_groups.is_empty());
-        assert_eq!(state.inspector_width, Some(410));
         assert!(state.sidebar_hidden);
         assert_eq!(state.tables["t"].widths["id"], 60);
     }
@@ -200,11 +192,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = UiStateStore::open(dir.path());
         let kept = UiState {
-            inspector_width: Some(300),
+            detail_pane_width: Some(300),
             ..UiState::default()
         };
         let gone = UiState {
-            inspector_width: Some(400),
+            detail_pane_width: Some(400),
             ..UiState::default()
         };
         store.set("keep", kept.clone()).await.unwrap();

@@ -2,6 +2,7 @@ import { TEXT_SIZES } from "../api";
 import { isWpView, selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, selectWp, useStore, type Store, type Tab, type WpList, type WpRoute } from "../state/store";
 import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
+import { COLUMN_COMMANDS } from "./columns";
 import { OBJECT_VALUE_COMMANDS, VALUE_COMMANDS } from "./values";
 
 export * from "./registry";
@@ -45,6 +46,13 @@ function zoom(step: number | null) {
 }
 
 const inScope = (scope: Scope) => () => activeScopes().includes(scope);
+
+/** `?` opens the overview of the scopes active now; pressed again it closes it. */
+function toggleShortcuts() {
+  const s = useStore.getState();
+  if (s.dialog?.type === "shortcuts") return s.closeDialog();
+  if (!s.dialog) s.openDialog({ type: "shortcuts", scopes: activeScopes() });
+}
 const inDb = inScope("db");
 const hasWp = () => !!selectWp(useStore.getState());
 
@@ -90,17 +98,8 @@ export const APP_COMMANDS: Command[] = [
     when: () => !!selectActiveSession(useStore.getState()),
     run: () => useStore.getState().toggleSidebar(),
   },
-  { id: "view.refresh", title: "Refresh current view", scope: "global", defaultBinding: "Mod+R", run: () => void useStore.getState().refreshView() },
-  {
-    id: "view.inspectorDock",
-    title: "Toggle inspector position (right / bottom)",
-    scope: "global",
-    menu: true,
-    run: () => {
-      const s = useStore.getState();
-      if (s.settings) void s.saveSettings({ ...s.settings, inspectorDock: s.settings.inspectorDock === "bottom" ? "right" : "bottom" }, { quiet: true });
-    },
-  },
+  { id: "view.refresh", title: "Refresh current view", scope: "global", defaultBinding: "Mod+R", menu: true, run: () => void useStore.getState().refreshView() },
+  { id: "help.shortcuts", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", run: toggleShortcuts },
   { id: "table.focusFilter", title: "Value filter (WHERE)", scope: "table", defaultBinding: "Mod+F", run: () => void window.dispatchEvent(new Event(EVENTS.focusWhere)) },
   { id: "sidebar.focusFilter", title: "Filter tables", scope: "db", defaultBinding: "Mod+Shift+F", run: () => void window.dispatchEvent(new Event(EVENTS.focusTableFilter)) },
   {
@@ -168,6 +167,7 @@ export const APP_COMMANDS: Command[] = [
   { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => selectCanUndo(useStore.getState()), run: () => void useStore.getState().undoLast() },
   ...VALUE_COMMANDS,
   ...OBJECT_VALUE_COMMANDS,
+  ...COLUMN_COMMANDS,
   ...SCREENS,
 ];
 
@@ -207,10 +207,10 @@ export function runCommand(id: string): boolean {
 }
 
 /** While a dialog or the palette is open, only these run; other keys belong to the overlay. */
-const MODAL_ALLOWED = new Set(["settings.open", "view.zoomIn", "view.zoomOut", "view.zoomReset"]);
+const MODAL_ALLOWED = new Set(["settings.open", "help.shortcuts", "view.zoomIn", "view.zoomOut", "view.zoomReset"]);
 
 /** Commands that keep firing while their key is held. */
-const REPEATABLE = new Set(["view.zoomIn", "view.zoomOut", "nav.back", "nav.forward", "tabs.next", "tabs.previous"]);
+const REPEATABLE = new Set(["view.zoomIn", "view.zoomOut", "nav.back", "nav.forward", "tabs.next", "tabs.previous", "object.down", "object.downArrow", "object.up", "object.upArrow"]);
 
 function blockedByOverlay(id: string): boolean {
   const s = useStore.getState();

@@ -1,5 +1,6 @@
 import { create, type StoreApi } from "zustand";
 import { changesSlice, type ChangesSlice } from "./slices/changes";
+import { columnsSlice, type ColumnsSlice } from "./slices/columns";
 import { dataSlice, type DataSlice } from "./slices/data";
 import { favoritesSlice, type FavoritesSlice } from "./slices/favorites";
 import { navSlice, type NavSlice } from "./slices/nav";
@@ -19,6 +20,7 @@ export {
   selectActiveTab,
   selectCanNav,
   selectCanUndo,
+  selectCollapsedGroups,
   selectDocument,
   selectFocusedValue,
   selectMaxCellChars,
@@ -39,7 +41,7 @@ export type { Dialog, Mode, RecentNav, Toast, ValueHover } from "./slices/ui";
 export type { WpList, WpRoute } from "./slices/wp";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
-export interface Store extends SettingsSlice, SessionSlice, TabsSlice, ChangesSlice, DataSlice, FavoritesSlice, UiSlice, WpSlice, NavSlice, ObjectsSlice, ProjectSlice {}
+export interface Store extends SettingsSlice, SessionSlice, TabsSlice, ChangesSlice, DataSlice, FavoritesSlice, UiSlice, WpSlice, NavSlice, ObjectsSlice, ColumnsSlice, ProjectSlice {}
 
 type SetStore = StoreApi<Store>["setState"];
 type GetStore = StoreApi<Store>["getState"];
@@ -83,4 +85,5 @@ registerSlice(uiSlice);
 registerSlice(wpSlice);
 registerSlice(navSlice);
 registerSlice(objectsSlice);
+registerSlice(columnsSlice);
 registerSlice(projectSlice);

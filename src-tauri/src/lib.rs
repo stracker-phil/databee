@@ -281,6 +281,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             rules::commands::coverage_preview,
             rules::commands::reference_coverage,
             document::commands::document,
+            document::commands::peek,
             document::commands::table_actions,
             document::commands::plan_action,
         ])

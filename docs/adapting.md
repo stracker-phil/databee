@@ -119,7 +119,7 @@ planning are core, in `db/changes.rs`). To remove them as well:
 3. Delete the `wp_test`/`wp_write`/`wp_legacy`/`wp_custom`/`wp_multi` sections of `dev/fixture.sql` and the
    preset tests in `src-tauri/tests/rules.rs`, then run `bun run lint && bun run test`.
 
-The Inspector's decoding and editing of PHP-serialized and JSON values is core (`src-tauri/src/decode/`) and
+The value column's decoding and editing of PHP-serialized and JSON values is core (`src-tauri/src/decode/`) and
 stays, and so do grid edits (`db/changes.rs`).
 
 ## Conventions to keep

@@ -50,7 +50,6 @@ function twoSessions(tabs: QueryTab[], active: { session: string; tab: string })
 const inspect = (tabId: string) =>
   useStore.setState({ selectedCell: { tabId, row: 0, col: 0, column: columnMeta("option_value", "LONGTEXT"), cell: text("hello"), source: { sessionId: "s1", resultId: 1 } } });
 
-const inspector = () => screen.queryByRole("complementary", { name: "Value inspector" });
 const tabTitles = () => screen.getAllByRole("tab").map((t) => t.querySelector(".title")?.textContent);
 
 const planned = (description: string) => ({ description, statements: [`-- ${description}`], canUndo: true });
@@ -152,15 +151,14 @@ describe("store behavior", () => {
       });
     });
 
-    it("closes the inspector when the inspected cell's tab belonged to the session", async () => {
+    it("clears the selected cell when its tab belonged to the session", async () => {
       twoSessions([queryTab({ id: "a" }), queryTab({ id: "b", sessionId: "s2", title: "Blog scratch" })], { session: "s1", tab: "a" });
       inspect("a");
-      render(<App />);
-      expect(inspector()).toBeInTheDocument();
+      expect(useStore.getState().selectedCell?.tabId).toBe("a");
 
       await act(() => useStore.getState().disconnect("s1"));
 
-      expect(inspector()).not.toBeInTheDocument();
+      expect(useStore.getState().selectedCell).toBeNull();
     });
   });
 
@@ -251,7 +249,7 @@ describe("store behavior", () => {
       expect(screen.getByRole("tab", { name: /Beta/ })).toHaveAttribute("aria-selected", "true");
     });
 
-    it("keeps the inspector open for the active tab's cell when another tab closes", async () => {
+    it("keeps the selected cell of the active tab when another tab closes", async () => {
       twoSessions(tabs(), { session: "s2", tab: "c" });
       inspect("c");
       render(<App />);
@@ -259,7 +257,7 @@ describe("store behavior", () => {
       await userEvent.click(screen.getByRole("button", { name: "Close Beta" }));
 
       expect(screen.queryByRole("tab", { name: /Beta/ })).not.toBeInTheDocument();
-      expect(inspector()).toBeInTheDocument();
+      expect(useStore.getState().selectedCell?.tabId).toBe("c");
     });
   });
 
@@ -351,15 +349,6 @@ describe("store behavior", () => {
       expect(useStore.getState().mode).toBe("wp");
     });
 
-    it("closes the inspector", async () => {
-      inspect("q1");
-      render(<App />);
-      expect(inspector()).toBeInTheDocument();
-
-      await act(() => useStore.getState().switchDatabase("s1", "other"));
-
-      expect(inspector()).not.toBeInTheDocument();
-    });
   });
 
   describe("navigate", () => {

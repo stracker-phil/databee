@@ -1,6 +1,6 @@
 # Decode
 
-`src-tauri/src/decode/` turns stored text into a value tree for the Inspector and the WordPress field views,
+`src-tauri/src/decode/` turns stored text into a value tree for value columns, inline trees and the WordPress field views,
 and edits one leaf of it. It is core: the WordPress lens builds on it, never the other way round.
 
 | File | Responsibility |

@@ -31,7 +31,7 @@ pub const MENU_ITEMS: &[MenuItemDef] = &[
     item("changes.apply", "Apply Pending Changes", "Mod+S"),
     item("nav.back", "Back", "Mod+["),
     item("nav.forward", "Forward", "Mod+]"),
-    item("view.inspectorDock", "Toggle Inspector Position", ""),
+    item("view.refresh", "Refresh", "Mod+R"),
 ];
 
 pub fn is_menu_command(id: &str) -> bool {
@@ -89,7 +89,7 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         .item(&item("favorites.add")?)
         .build()?;
     let view = SubmenuBuilder::new(app, "View")
-        .item(&item("view.inspectorDock")?)
+        .item(&item("view.refresh")?)
         .build()?;
     let go = SubmenuBuilder::new(app, "Go")
         .item(&item("nav.back")?)

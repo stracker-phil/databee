@@ -213,8 +213,8 @@ describe("SettingsDialog", () => {
     installCommands();
     render(<SettingsDialog />);
     await userEvent.click(screen.getByRole("button", { name: "Shortcuts" }));
-    await userEvent.type(screen.getByLabelText("Search shortcuts"), "inspectordock");
-    expect(screen.getByText("Toggle inspector position (right / bottom)")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Search shortcuts"), "view.sidebar");
+    expect(screen.getByText("Toggle sidebar")).toBeInTheDocument();
     expect(screen.queryByText("Zoom in")).not.toBeInTheDocument();
   });
 

@@ -2,7 +2,7 @@
 import { formatAddress } from "../lib/address";
 import type { StageInfoReply, StageRect, StageSurface } from "./types";
 import { resolveSettingsPage, settingsPages } from "../registry/settingsPages";
-import { selectActiveSession, selectActiveTab, selectSidebarHidden, selectWp, selectWpRoute, useStore } from "../state/store";
+import { selectActiveSession, selectActiveTab, selectSidebarHidden, selectWp, selectWpRoute, useStore, type ObjectTab } from "../state/store";
 
 type Flat = StageInfoReply["state"];
 
@@ -50,14 +50,27 @@ export function stageSurfaces(): StageSurface[] {
 }
 
 export function stageUi(): StageInfoReply["ui"] {
-  const s = useStore.getState();
-  return { inspector: s.selectedCell ? "open" : "closed", sidebar: sidebarState() };
+  return { valueColumn: valueColumnState(), sidebar: sidebarState() };
+}
+
+/** A value column is open in the active tab: in an object tab's stack, or next to a table or query tab's grid. */
+function valueColumnState(): "open" | "closed" {
+  const tab = selectActiveTab(useStore.getState());
+  if (tab?.kind === "object") return tab.columns.some((c) => c.kind === "value") ? "open" : "closed";
+  return tab && (tab.kind === "table" || tab.kind === "query") && tab.valueColumn ? "open" : "closed";
 }
 
 /** The database sidebar; WordPress mode and the connect screen have none. */
 function sidebarState(): "open" | "closed" {
   const s = useStore.getState();
   return stageView() === "db" && !selectSidebarHidden(s) ? "open" : "closed";
+}
+
+/** The active column's address and view, and the stack's size when it holds more than one column. */
+function objectState(tab: ObjectTab): string {
+  const column = tab.columns[tab.active];
+  const shown = column?.kind === "object" ? `${formatAddress(column.address)} (${column.view})` : `${formatAddress(tab.address)} (value)`;
+  return tab.columns.length > 1 ? `${shown} · column ${tab.active + 1} of ${tab.columns.length}` : shown;
 }
 
 export function stageState(): Flat {
@@ -74,7 +87,7 @@ export function stageState(): Flat {
     database: session?.database ?? null,
     tabs: s.tabs.filter((t) => t.sessionId === session?.id).length,
     tab: tab ? `${tab.kind}: ${tab.title}` : null,
-    inspector: s.selectedCell ? "open" : "closed",
+    valueColumn: valueColumnState(),
     sidebar: sidebarState(),
     settings: settingsPage() ?? "closed",
     palette: s.paletteOpen ? "open" : "closed",
@@ -82,7 +95,7 @@ export function stageState(): Flat {
     pendingChanges: s.pending.length,
   };
   if (tab?.kind === "table") state.table = `${tab.database}.${tab.table} (${tab.view})`;
-  if (tab?.kind === "object") state.object = `${formatAddress(tab.address)} (${tab.view})`;
+  if (tab?.kind === "object") state.object = objectState(tab);
   if (tab?.kind === "project") state.project = tab.form ? `${tab.database} (${tab.form.type} form)` : tab.database;
   if (tab?.kind === "query") state.query = tab.running ? "running" : tab.error ? "failed" : tab.response ? "done" : "not run";
   if (wp) {

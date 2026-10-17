@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useBindingLabel } from "../commands";
 import { selectActiveSession, selectVisibleDatabases, selectWp, useStore } from "../state/store";
 import { KeyCap } from "./Field";
+import { Path } from "./Path";
 
 type Session = NonNullable<ReturnType<typeof selectActiveSession>>;
 
@@ -88,6 +89,7 @@ export function Toolbar() {
         <span className="app-title">DataBee</span>
       )}
       {wp && <ModeSwitch />}
+      {session && <Path />}
       <div className="spacer" data-tauri-drag-region />
       {session && <SearchField />}
       <button data-stage="toolbar:new-connection" className="icon-btn" aria-label="New connection" title="New connection (⌘N)" onClick={() => openDialog({ type: "connect" })}>

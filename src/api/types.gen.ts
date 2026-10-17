@@ -280,11 +280,6 @@ export type DocField = { name: string, label: string | null, value: Cell, decode
  */
 autoload: Autoload | null, };
 
-/**
- * Where the value inspector and the WordPress detail pane sit next to the content.
- */
-export type Dock = "right" | "bottom";
-
 export type Document = { 
 /**
  * The row's canonical address.
@@ -617,6 +612,16 @@ export type ParamType = "text" | "int";
  */
 export type Pattern = { name: string, owner: string, owner_when?: { [key in string]: Match }, table: string, where: string, order?: string | null, limit?: number | null, };
 
+export type Peek = { 
+/**
+ * The single-column primary key that row addresses name, e.g. `ID` of `wp_users`.
+ */
+keyColumn: string | null, 
+/**
+ * The entity's `summary`, else the first five columns that are not part of the key.
+ */
+values: Array<[string, Value]>, };
+
 /**
  * A saved query a preset ships. Without `home` it is offered in the palette only.
  */
@@ -936,7 +941,7 @@ maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSyste
 /**
  * Loads avatars from Gravatar (sends hashed emails to gravatar.com).
  */
-gravatar: boolean, inspectorDock: Dock, };
+gravatar: boolean, };
 
 /**
  * A snapshot without its values, for lists.
@@ -1026,7 +1031,7 @@ export type TransientInfo = { name: string, siteWide: boolean, bytes: number,
  */
 expiresAt: number | null, expired: boolean, };
 
-export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: number | null, inspectorWidth: number | null, bottomPaneHeight: number | null, sqlEditorHeight: number | null, sidebarHidden: boolean, 
+export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: number | null, sqlEditorHeight: number | null, sidebarHidden: boolean, 
 /**
  * Collapsed object view groups by database, each as `<document table>::<group id>`.
  */

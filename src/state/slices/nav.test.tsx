@@ -170,7 +170,11 @@ describe("openAddress", () => {
 
   it("opens a row address as an object tab in the view it names, without describing the table", async () => {
     await act(() => useStore.getState().openAddress("databee://shop/db/wp_posts/7?view=rows"));
-    expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", view: "rows", address: { view: "rows", target: { kind: "row", table: "wp_posts", key: "7" } } });
+    expect(selectActiveTab(useStore.getState())).toMatchObject({
+      kind: "object",
+      columns: [{ kind: "object", view: "rows" }],
+      address: { view: "rows", target: { kind: "row", table: "wp_posts", key: "7" } },
+    });
     expect(mocked.describeTable).not.toHaveBeenCalled();
   });
 

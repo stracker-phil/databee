@@ -187,9 +187,11 @@ export async function browseOrderTables(_session: string, req: { table: string }
   return browsePage({ table: req.table, result: resultSet({ columns: [columnMeta("id", "BIGINT")], rows: [], totalRows: 0 }) });
 }
 
-/** The active tab, which must be an object tab. */
+/** The active tab, which must be an object tab, with the `view` and `focus` of its active (object) column. */
 export function activeObject() {
   const tab = selectActiveTab(useStore.getState());
   if (tab?.kind !== "object") throw new Error("the active tab is not an object tab");
-  return tab;
+  const column = tab.columns[tab.active];
+  if (column.kind !== "object") throw new Error("the active column is not an object column");
+  return { ...tab, view: column.view, focus: column.focus };
 }

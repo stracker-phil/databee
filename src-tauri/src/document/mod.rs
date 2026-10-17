@@ -15,6 +15,7 @@ mod incoming;
 mod meta;
 mod own;
 mod patterns;
+mod peek;
 mod pivot;
 #[cfg(test)]
 mod server_tests;
@@ -31,6 +32,8 @@ use crate::lens::ResolvedReference;
 use crate::rules::effective::RuleSources;
 use crate::session::Session;
 use crate::value::{RowKey, Value};
+
+pub use peek::Peek;
 
 /// Meta rows shown before the group is capped.
 pub const META_CAP: usize = 50;

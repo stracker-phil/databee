@@ -1,12 +1,7 @@
 import { useCallback } from "react";
 import type { Address } from "../../api";
-import { useStore } from "../../state/store";
-
-const NONE: string[] = [];
-
-const groupKey = (table: string, groupId: string) => `${table}::${groupId}`;
-
-const documentTable = (owner: Address) => ("table" in owner.target ? owner.target.table : "");
+import { collapseKey } from "../../lib/document";
+import { selectCollapsedGroups, useStore } from "../../state/store";
 
 /**
  * The collapsed groups of documents of the owner's table, remembered per connection and database
@@ -14,14 +9,13 @@ const documentTable = (owner: Address) => ("table" in owner.target ? owner.targe
  */
 export function useCollapsedGroups(owner: Address) {
   const identity = useStore((s) => s.sessions.find((x) => x.slug === owner.connection)?.identity ?? null);
-  const keys = useStore((s) => (identity ? s.uiState[identity]?.collapsedGroups?.[owner.database] : undefined) ?? NONE);
-  const table = documentTable(owner);
-  const isCollapsed = (groupId: string) => keys.includes(groupKey(table, groupId));
+  const keys = useStore((s) => selectCollapsedGroups(s, owner));
+  const isCollapsed = (groupId: string) => keys.includes(collapseKey(owner, groupId));
   const toggle = useCallback(
     (groupId: string) => {
-      if (identity) useStore.getState().toggleGroupCollapsed(identity, owner.database, groupKey(table, groupId));
+      if (identity) useStore.getState().toggleGroupCollapsed(identity, owner.database, collapseKey(owner, groupId));
     },
-    [identity, owner.database, table],
+    [identity, owner],
   );
   return { isCollapsed, toggle };
 }

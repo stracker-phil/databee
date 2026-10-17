@@ -20,7 +20,9 @@ export type Dialog =
   | { type: "password"; spec: ConnectionSpec; account: string | null; error?: string; savePassword: boolean }
   | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }
   | { type: "prompt"; title: string; value: string; onSubmit: (value: string) => void }
-  | { type: "insertRow"; database: string; table: string; columns: ColumnInfo[] };
+  | { type: "insertRow"; database: string; table: string; columns: ColumnInfo[] }
+  /** The shortcut overview of the scopes that were active when it opened. */
+  | { type: "shortcuts"; scopes: string[] };
 
 export type RecentNav =
   | { kind: "entity"; entity: string; id: string; title: string }

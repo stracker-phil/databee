@@ -1,5 +1,5 @@
 /** The Document view: a section band per group, then its key/value or table rows. */
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { Address, Document, Group, Provenance, Value as StoredValue } from "../../api";
 import { EDIT_VALUE_EVENT, RULE_MENU } from "../../commands";
 import { groupAnchors, isEmpty, provenanceKey } from "../../lib/document";
@@ -49,8 +49,19 @@ function useEditCommand(editable: boolean, focus: Provenance | null, setEditing:
   }, [editable, focus, setEditing]);
 }
 
+/** Keeps the focused value in view as `j`/`k` move it. */
+function useRevealFocus(focus: Provenance | null) {
+  const ref = useRef<HTMLDivElement>(null);
+  const key = focus ? provenanceKey(focus) : null;
+  useEffect(() => {
+    if (key) ref.current?.querySelector(".row .focus")?.scrollIntoView?.({ block: "nearest" });
+  }, [key]);
+  return ref;
+}
+
 export function DocumentView({ document, owner, focus, onFocus, onMore, editable }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
+  const ref = useRevealFocus(focus);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const { openValue, targetMenu } = useOpenValue(owner);
   const collapse = useCollapsedGroups(owner);
@@ -75,7 +86,7 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
 
   return (
     <DocumentContext.Provider value={actions}>
-      <div className="document">
+      <div className="document" ref={ref}>
         {shown.map((group) => {
           const collapsed = collapse.isCollapsed(group.id);
           return (

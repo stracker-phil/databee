@@ -1,9 +1,10 @@
 /** Object tabs (a row as its document or its rows) and the documents they show. */
 import { api, toAppError, type Address, type AppError, type Document, type Provenance } from "../../api";
 import { sameAddress } from "../../lib/address";
+import { objectColumn, type ObjectColumn } from "../../lib/columns";
 import { documentText, objectAddress, objectTitle, type ObjectView } from "../../lib/document";
 import type { Slice, Store } from "../store";
-import { EMPTY_NAV, pushed } from "./nav";
+import { EMPTY_NAV, pushed, restacked } from "./nav";
 import { withoutSession } from "./session";
 import { activate, newTabId, placed, previewTab, type ObjectTab } from "./tabs";
 
@@ -21,13 +22,16 @@ export interface ObjectsSlice {
   loadDocument(sessionId: string, text: string, database: string | null): Promise<void>;
   /** Keeps a document fetched elsewhere, so the tab that shows it next does not fetch it again. */
   keepDocument(sessionId: string, document: Document): void;
-  /** Opens a row address as an object tab; an open tab of the same row is reused. */
+  /** Opens a row address as an object tab; a tab that opened with the same row is reused. */
   openObject(address: Address, opts?: { preview?: boolean }): void;
-  /** Shows the document or the rows, recording the address being left; `focus` moves the focused value along. */
-  setObjectView(tabId: string, view: ObjectView, focus?: Provenance | null): void;
+  /**
+   * Shows the document or the rows in column `index` (default: the active one), recording the address being
+   * left; `focus` moves the focused value along.
+   */
+  setObjectView(tabId: string, view: ObjectView, focus?: Provenance | null, index?: number): void;
   /** `object.toggleView`: the other view, focused on the same provenance (a grid's selected cell in Rows view). */
-  toggleObjectView(tabId: string): void;
-  focusObject(tabId: string, focus: Provenance | null): void;
+  toggleObjectView(tabId: string, index?: number): void;
+  focusObject(tabId: string, focus: Provenance | null, index?: number): void;
 }
 
 export const documentKey = (sessionId: string, text: string) => `${sessionId}/${text}`;
@@ -39,6 +43,14 @@ function withObjectTab(s: Store, tab: ObjectTab): Partial<Store> {
 }
 
 const sameRow = (a: Address, b: Address) => sameAddress(objectAddress(a, "document"), objectAddress(b, "document"));
+
+/** The object column at `index` (default: the active one), with its index. */
+function columnOf(tab: ObjectTab, index = tab.active): { column: ObjectColumn; at: number } | null {
+  const column = tab.columns[index];
+  return column?.kind === "object" ? { column, at: index } : null;
+}
+
+const replaced = (tab: ObjectTab, at: number, column: ObjectColumn) => tab.columns.map((c, i) => (i === at ? column : c));
 
 export const objectsSlice: Slice<ObjectsSlice> = {
   create: (set, get) => ({
@@ -71,56 +83,62 @@ export const objectsSlice: Slice<ObjectsSlice> = {
       if (!session) return get().toast("error", `No open connection is named ${address.connection}`);
       if (get().activeSessionId !== session.id) get().setActiveSession(session.id);
       get().setMode("db");
-      const view: ObjectView = address.view === "rows" ? "rows" : "document";
-      const shown = objectAddress(address, view);
-      const existing = get().tabs.find((t): t is ObjectTab => t.kind === "object" && t.sessionId === session.id && sameRow(t.address, address));
+      const root = objectColumn(address);
+      const existing = get().tabs.find((t): t is ObjectTab => t.kind === "object" && t.sessionId === session.id && t.columns[0]?.kind === "object" && sameRow(t.columns[0].address, address));
       if (existing) {
-        const viewed = address.view ? { view, address: shown } : {};
-        const updated: ObjectTab = { ...existing, ...viewed, preview: existing.preview && opts.preview !== false };
+        const columns = address.view ? replaced(existing, 0, { ...(existing.columns[0] as ObjectColumn), view: root.view, address: root.address }) : existing.columns;
+        const updated = restacked({ ...existing, preview: existing.preview && opts.preview !== false }, { columns, active: 0 }, { record: false });
         set((s) => ({ ...withObjectTab(s, updated), ...activate(s, existing.id) }));
         return;
       }
       set((s) => {
-        const replaced = opts.preview ? previewTab(s, session.id) : undefined;
+        const replacedTab = opts.preview ? previewTab(s, session.id) : undefined;
         const tab: ObjectTab = {
           id: newTabId("object"),
           kind: "object",
           sessionId: session.id,
-          title: objectTitle(shown),
-          address: shown,
-          view,
-          focus: null,
+          title: objectTitle(root.address),
+          columns: [root],
+          active: 0,
+          address: root.address,
+          stacks: {},
           preview: opts.preview ?? false,
-          nav: replaced ? pushed(replaced.nav, replaced.address, shown) : EMPTY_NAV,
+          nav: replacedTab ? pushed(replacedTab.nav, replacedTab.address, root.address) : EMPTY_NAV,
         };
-        return { tabs: placed(s.tabs, tab, replaced), ...activate(s, tab.id) };
+        return { tabs: placed(s.tabs, tab, replacedTab), ...activate(s, tab.id) };
       });
     },
 
-    setObjectView(tabId, view, focus) {
+    setObjectView(tabId, view, focus, index) {
       set((s) => {
         const tab = findObjectTab(s, tabId);
-        if (!tab || tab.view === view) return {};
-        const address = objectAddress(tab.address, view);
-        const updated: ObjectTab = { ...tab, view, address, focus: focus === undefined ? tab.focus : focus, nav: pushed(tab.nav, tab.address, address) };
+        const found = tab && columnOf(tab, index);
+        if (!tab || !found || found.column.view === view) return {};
+        const { column, at } = found;
+        const shown: ObjectColumn = { ...column, view, address: objectAddress(column.address, view), focus: focus === undefined ? column.focus : focus };
+        const updated = restacked(tab, { columns: replaced(tab, at, shown), active: at });
         // The grids of the view being left unmount, so their selection goes too.
         return { ...withObjectTab(s, updated), selectedCell: s.selectedCell?.tabId === tabId ? null : s.selectedCell };
       });
     },
 
-    toggleObjectView(tabId) {
+    toggleObjectView(tabId, index) {
       const s = get();
       const tab = findObjectTab(s, tabId);
-      if (!tab) return;
-      if (tab.view === "document") return s.setObjectView(tabId, "rows");
-      const selected = s.selectedCell?.tabId === tabId ? s.selectedCell.value?.source : null;
-      s.setObjectView(tabId, "document", selected ?? tab.focus);
+      const found = tab && columnOf(tab, index);
+      if (!tab || !found) return;
+      const { column, at } = found;
+      if (column.view === "document") return s.setObjectView(tabId, "rows", undefined, at);
+      const selected = s.selectedCell?.tabId === tabId && at === tab.active ? s.selectedCell.value?.source : null;
+      s.setObjectView(tabId, "document", selected ?? column.focus, at);
     },
 
-    focusObject(tabId, focus) {
+    focusObject(tabId, focus, index) {
       set((s) => {
         const tab = findObjectTab(s, tabId);
-        return tab ? withObjectTab(s, { ...tab, focus }) : {};
+        const found = tab && columnOf(tab, index);
+        if (!tab || !found) return {};
+        return withObjectTab(s, { ...tab, columns: replaced(tab, found.at, { ...found.column, focus }) });
       });
     },
   }),

@@ -76,9 +76,10 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
 
 - **Windows.** `main` is the native window. Settings and the command palette are sheets inside it. The hook
   exposes them as the windows `settings` and `palette`, with `movable: false`; their bounds come from the page.
-  `settings` lists its pages as `sections`. `main.view` reports the current view; `main.ui.inspector` and
-  `main.ui.sidebar` report whether the inspector and the database sidebar are open or closed (the sidebar
-  toggles with the `view.sidebar` command).
+  `settings` lists its pages as `sections`. `main.view` reports the current view; `main.ui.valueColumn` and
+  `main.ui.sidebar` report whether the active tab shows a value column and whether the database sidebar is
+  open (the sidebar toggles with the `view.sidebar` command). `state.object` is the active column's address
+  and view, plus `column n of m` when the stack holds several.
 - **Anchors** are `data-stage` attributes, with optional `-label`, `-role` and `-list`. Ids follow the data
   where rows have stable ids:
   - `table:<db>.<table>` (list `tables`)
@@ -88,6 +89,12 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     table name (list `groups`; a second band of the same table is `group-<table>:<group id>`), `collapse:<group id>` (the band's
     collapse chevron), `more:<group id>`
     (`+n rows`), `also:<group id>` (the "Also linked" tables), `alternative:<row address>`
+  - the column stack: `column:<index>` on each column shown in full (list `columns`, label `table #key`),
+    `strip:<index>` on each strip (list `strips`), `toolbar:path` with the crumbs `path:<index>` (list `path`;
+    the last crumb is no button), `peek` on the peek card while ⌥ is held
+  - value columns: `value-column` (a table or query tab's), `value-column:tree`, `value-column:raw`,
+    `value-column:copy`, `value-column:close`
+  - `shortcuts:close` in the shortcut overview (`?`)
   - the Project page: `project` (the panel), `project:prefix`, `project:preset:<name>` (list `presets`, the
     switches), `project:presets-auto`, `project:export`, `project:check-all`; the rule form `project:form` with
     `project:form:source-table`, `:source-column`, `:when-column`, `:when-value`, `:target-table`,
@@ -119,6 +126,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   U4d removed `statusbar:site` (the site URL is no longer read; the `site_url` pinned query holds it).
   U8 removed `settings:wordpress` and `settings-nav:wordpress` (the WordPress settings page; the gravatar
   switch is gone).
+  U9 removed `inspector` and `inspector:close` (values open as value columns, `value-column:close`) and the
+  `view.inspectorDock` command (there is no dock); `main.ui.inspector` became `main.ui.valueColumn`.
   U7 removed the WordPress entity pages (they had no anchors of their own) and the view `wp:<entity>`: an
   entity opens as an object tab in the `db` view, which `stageState()` reports as `object`;
   `wp:open:<entity>:<id>` opens that object tab.

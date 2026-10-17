@@ -269,6 +269,12 @@ values that point into it.
 when it is capped), one per pivoted group and one per referenced table. Each uses the session's query
 timeout on the metadata pool.
 
+**Peek** (`peek.rs`): `peek(session_id, address)` returns `Peek { key_column, values }` for a row address
+without building its document: the row in one query (with its entity, as for `own`), then the entity's
+`summary` as the header has it (a column of the row, else the first meta row of the key, read only when a
+summary name is not a column), or, without a summary, the first five columns that are not part of the primary
+key. `key_column` is the single-column key row addresses name, for the peek's `via … → table.column` line.
+
 **Entity shorthand** (`shorthand.rs`): the tables that define the entity are tried with the key (a table
 only for the entity, without `filter`, before filtered ones); the first that holds it wins and the others are
 `alternatives`.

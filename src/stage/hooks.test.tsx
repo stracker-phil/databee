@@ -272,7 +272,7 @@ describe("Stage page hooks", () => {
     useStore.getState().openDialog({ type: "settings", page: "shortcuts" });
     render(<div role="dialog" data-stage-window="settings" data-rect="200,100,700,600" />);
     const reply = hooks().info();
-    expect(reply).toMatchObject({ request: "i1", page: "main", view: "db", ui: { inspector: "closed" } });
+    expect(reply).toMatchObject({ request: "i1", page: "main", view: "db", ui: { valueColumn: "closed" } });
     expect(reply.state).toMatchObject({ mode: "db", connection: "root@127.0.0.1:52958/db", tab: "query: Query 1", settings: "shortcuts", palette: "closed" });
     const settings = reply.surfaces.find((s) => s.id === "settings")!;
     expect(settings).toMatchObject({ title: "Settings", rect: { x: 200, y: 100, width: 700, height: 600 }, section: "shortcuts" });

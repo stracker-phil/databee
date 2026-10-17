@@ -63,7 +63,7 @@ pub async fn document(ctx: &Ctx<'_>, address: &Address) -> AppResult<Document> {
 
 /// A money value without its currency in its own row looks in the document's row (the owner of
 /// its meta rows), then in its meta keys.
-fn currency_lookup<'a>(
+pub(super) fn currency_lookup<'a>(
     own: &'a Own,
     plain: &'a [Value],
     meta: &'a MetaValues,
@@ -96,7 +96,7 @@ fn own_group(own: &Own, values: &[Value]) -> Group {
 
 /// Meta keys the document reads by name besides showing them: the header, the patterns'
 /// `{meta.…}` and money currencies. Read beyond the cap of the meta group.
-fn needed_meta_keys(ctx: &Ctx<'_>, own: &Own) -> Vec<String> {
+pub(super) fn needed_meta_keys(ctx: &Ctx<'_>, own: &Own) -> Vec<String> {
     let mut names: Vec<&str> = Vec::new();
     if let Some(entity) = &own.entity {
         for name in &entity.entity.summary {

@@ -2,16 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { toAppError, type Address, type Cell, type ColumnMeta, type Value as StoredValue } from "../api";
-import { EDIT_VALUE_EVENT, RULE_MENU } from "../commands";
+import { RULE_MENU } from "../commands";
 import { fullCellText, type CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import { cellText, rowsToJson, rowsToTsv } from "../lib/format";
 import { useRowHeight } from "../lib/theme";
-import { cellValue } from "../lib/values";
 import { selectNullLabel, useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
-import { openRowObject, useOpenValue } from "./value/useOpenValue";
+import { fitWidth, useEditValueCommand, useFocusCell, useRowValues, type CellPos } from "./gridHooks";
+import { openTarget, showValue } from "./value/open";
+import { useOpenValue } from "./value/useOpenValue";
 import { Value } from "./value/Value";
+
+export type { CellPos } from "./gridHooks";
 
 interface Props {
   columns: ColumnMeta[];
@@ -41,8 +44,6 @@ const MAX_FIT_REM = 40;
 
 /** Viewport the virtualizer assumes until the first layout measurement, so the first frame already has rows. */
 const INITIAL_VIEWPORT = { width: 1000, height: 800 };
-
-export type CellPos = { row: number; col: number };
 
 const samePos = <T extends CellPos>(a: T | null, row: number, col: number): a is T => a?.row === row && a.col === col;
 
@@ -81,65 +82,6 @@ const KEY_ACTIONS: Record<string, (c: KeyContext) => void> = {
 const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value));
 
 const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 13;
-
-/** Width that fits the header and the given rows; one character is ~0.6 of the data font size. */
-function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLabel: string, fontSize: number, cap: number): number {
-  const charWidth = fontSize * 0.6;
-  // The type sits under the name in smaller text, so the wider of the two sets the header's width.
-  const header = Math.max(col.name.length, col.typeName.length * 0.85) + 2;
-  const shown = (cell: Cell) => (cell.t === "null" ? nullLabel.length : cellText(cell).length);
-  const longest = rows.reduce((max, r) => Math.max(max, Math.min(shown(r[index]), 60)), 0);
-  return Math.round(Math.min(cap, Math.max(64, Math.max(header, longest) * charWidth + 20)));
-}
-
-/**
- * Values per row, built on the row's first render, so `Value` keeps its memo while the grid re-renders.
- * `valueAt` reads the result `rows` came from, so new rows are what makes the cache stale.
- */
-function useRowValues(rows: Cell[][], valueAt: Props["valueAt"]) {
-  const cache = useMemo(() => new Map<number, StoredValue[]>(), [rows]);
-  return (row: number): StoredValue[] => {
-    let values = cache.get(row);
-    if (!values) {
-      values = rows[row].map((cell, col) => (valueAt ? valueAt(row, col) : cellValue(cell)));
-      cache.set(row, values);
-    }
-    return values;
-  };
-}
-
-/** `value.edit` (e): the grid of the active tab that holds the selected cell starts editing it. */
-function useEditValueCommand(source: CellSource, startEdit: (at: CellPos) => void) {
-  const startEditRef = useRef(startEdit);
-  useEffect(() => {
-    startEditRef.current = startEdit;
-  });
-  useEffect(() => {
-    const edit = () => {
-      const s = useStore.getState();
-      const at = s.selectedCell;
-      if (!at || at.tabId !== s.activeTabId || at.source.sessionId !== source.sessionId || at.source.resultId !== source.resultId) return;
-      startEditRef.current({ row: at.row, col: at.col });
-    };
-    window.addEventListener(EDIT_VALUE_EVENT, edit);
-    return () => window.removeEventListener(EDIT_VALUE_EVENT, edit);
-  }, [source.sessionId, source.resultId]);
-}
-
-/** Selects `focus` when it changes or new rows arrive, and scrolls the grid to it. */
-function useFocusCell(focus: CellPos | null | undefined, rows: Cell[][], select: (row: number, col: number) => void, reveal: (row: number) => void) {
-  const apply = useRef({ select, reveal });
-  useEffect(() => {
-    apply.current = { select, reveal };
-  });
-  const row = focus?.row ?? -1;
-  const col = focus?.col ?? -1;
-  useEffect(() => {
-    if (row < 0 || row >= rows.length) return;
-    apply.current.select(row, col);
-    apply.current.reveal(row);
-  }, [row, col, rows]);
-}
 
 export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus }: Props) {
   const nullLabel = useStore(selectNullLabel);
@@ -231,7 +173,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
     selectCell({ row, col, column: columns[col], cell: rows[row][col], source, value: rowValues(row)[col] });
   };
 
-  const { openValue, targetMenu } = useOpenValue(owner ?? null);
+  const { openValue, openRow, place, targetMenu } = useOpenValue(owner ?? null);
 
   // Bytes cells carry a preview, not their value; editing it would write the preview back. Long text is fetched first.
   const canEdit = (cell: Cell) => !!onEditCell && cell.t !== "bytes";
@@ -258,10 +200,16 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
     scrollRef.current?.scrollIntoView?.({ block: "nearest" });
   });
 
-  /** A primary key cell opens its row as an object (double-click pinned, Enter in the preview tab); other cells edit. */
+  /**
+   * A primary key cell opens its row as an object (double-click pinned, Enter in the preview tab). Enter on a
+   * reference opens its target, on serialized data or long text a value column; other cells edit.
+   */
   const openOrEdit = (at: CellPos, preview: boolean) => {
     const value = rows[at.row] ? rowValues(at.row)[at.col] : null;
-    if (value?.kind.kind === "primaryKey" && value.kind.address.target.kind === "row") return openRowObject(value.kind.address, owner ?? null, preview);
+    const kind = value?.kind;
+    if (kind?.kind === "primaryKey" && kind.address.target.kind === "row") return openRow(kind.address, preview);
+    if (preview && kind?.kind === "reference" && kind.exists !== false && kind.targets.length === 1) return openTarget(kind.targets[0], place);
+    if (preview && value && (kind?.kind === "serialized" || rows[at.row][at.col].t === "longText")) return withFullText(at, (text) => void showValue(value, place, text));
     startEdit(at);
   };
 

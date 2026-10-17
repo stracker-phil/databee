@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Coverage, type Dashboard, type Document,type Keybindings, type Page, type PlannedChange, type Project, type ProjectRules, type Resolved, type RuleDraft, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Coverage, type Dashboard, type Document,type Keybindings, type Page, type Peek, type PlannedChange, type Project, type ProjectRules, type Resolved, type RuleDraft, type RulesInfo, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { NOW } from "./now";
 import { session } from "./session";
@@ -59,6 +59,7 @@ export function createApiMock(): typeof realApi {
     coveragePreview: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
     referenceCoverage: vi.fn().mockResolvedValue({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false } satisfies Coverage),
     document: vi.fn(async (_s, text): Promise<Document> => ({ address: parseAddress(text), entity: null, header: [], groups: [], alternatives: [], actions: [] })),
+    peek: vi.fn().mockResolvedValue({ keyColumn: null, values: [] } satisfies Peek),
     tableActions: vi.fn().mockResolvedValue([]),
     planAction: vi.fn(async (_s, _address, action) => planned(action)),
     rulesInfo: vi.fn().mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [], tableEntities: {} } satisfies RulesInfo),

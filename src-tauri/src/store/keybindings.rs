@@ -180,7 +180,7 @@ mod tests {
     fn command_without_default_has_no_menu_binding() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeybindingsStore::open(dir.path());
-        assert_eq!(store.menu_binding("view.inspectorDock"), None);
+        assert_eq!(store.menu_binding("help.shortcuts"), None);
     }
 
     #[test]

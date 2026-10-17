@@ -33,9 +33,11 @@ function focused(): Focused | null {
   const value = selectFocusedValue(s);
   if (!tab || !value) return null;
   const selected = s.selectedCell?.tabId === tab.id ? s.selectedCell : null;
+  const column = tab.kind === "object" ? tab.columns[tab.active] : null;
   const raw = async () => {
     if (value.raw.t === "null") return null;
-    return selected ? fullCellText(selected.cell, selected.source, selected.row, selected.col) : cellText(value.raw);
+    if (selected) return fullCellText(selected.cell, selected.source, selected.row, selected.col);
+    return column?.kind === "value" ? column.text : cellText(value.raw);
   };
   return { value, tab, database: databaseOf(s, tab), raw };
 }
@@ -89,7 +91,7 @@ function editable(): boolean {
   const found = sourced();
   if (!found) return false;
   if (found.tab.kind === "table") return true;
-  return found.tab.kind === "object" && found.source.row.length === 1;
+  return found.tab.kind === "object" && found.tab.columns[found.tab.active]?.kind === "object" && found.source.row.length === 1;
 }
 
 const editValue = () => void window.dispatchEvent(new Event(EDIT_VALUE_EVENT));

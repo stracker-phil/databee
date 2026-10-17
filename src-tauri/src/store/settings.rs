@@ -59,16 +59,6 @@ impl From<LogLevel> for log::LevelFilter {
     }
 }
 
-/// Where the value inspector and the WordPress detail pane sit next to the content.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, TS)]
-#[ts(export, export_to = "src/api/types.gen.ts")]
-#[serde(rename_all = "lowercase")]
-pub enum Dock {
-    #[default]
-    Right,
-    Bottom,
-}
-
 /// Accent hues; every color scheme defines each one. Values are uncolored by default, so no hue
 /// is reserved for status.
 pub const ACCENTS: &[&str] = &["orange", "gold", "blue", "purple", "graphite"];
@@ -139,8 +129,6 @@ pub struct Settings {
     pub log_level: LogLevel,
     /// Loads avatars from Gravatar (sends hashed emails to gravatar.com).
     pub gravatar: bool,
-    #[serde(deserialize_with = "lenient")]
-    pub inspector_dock: Dock,
 }
 
 impl Default for Settings {
@@ -165,7 +153,6 @@ impl Default for Settings {
             show_system_schemas: false,
             log_level: LogLevel::Info,
             gravatar: false,
-            inspector_dock: Dock::Right,
         }
     }
 }
@@ -273,7 +260,7 @@ mod tests {
         let changed = Settings {
             theme: Theme::Dark,
             row_limit: 250,
-            inspector_dock: Dock::Bottom,
+            null_label: "∅".into(),
             ..Settings::default()
         };
         store.update(changed.clone()).await.unwrap();
@@ -414,7 +401,7 @@ mod tests {
 
     #[test]
     fn unknown_enum_values_fall_back_without_quarantining_the_file() {
-        let json = r#"{"theme": "neon", "rowLimit": 42, "density": "compact", "logLevel": "loud", "inspectorDock": 5}"#;
+        let json = r#"{"theme": "neon", "rowLimit": 42, "density": "compact", "logLevel": "loud"}"#;
         let (dir, store) = open_with_json(json);
 
         let settings = store.get();
@@ -422,7 +409,6 @@ mod tests {
         assert_eq!(settings.row_limit, 42);
         assert_eq!(settings.row_padding, 1);
         assert_eq!(settings.log_level, LogLevel::Info);
-        assert_eq!(settings.inspector_dock, Dock::Right);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("settings.json")).unwrap(),
             json
@@ -432,6 +418,27 @@ mod tests {
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(names, vec![std::ffi::OsString::from("settings.json")]);
+    }
+
+    #[test]
+    fn retired_inspector_dock_key_loads_without_quarantine_and_keeps_other_fields() {
+        for dock in [r#""bottom""#, r#""right""#, "5"] {
+            let json = format!(r#"{{"inspectorDock": {dock}, "rowLimit": 42, "theme": "dark"}}"#);
+            let (dir, store) = open_with_json(&json);
+
+            let settings = store.get();
+            assert_eq!(settings.row_limit, 42, "{json}");
+            assert_eq!(settings.theme, Theme::Dark, "{json}");
+            let names: Vec<_> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect();
+            assert_eq!(
+                names,
+                vec![std::ffi::OsString::from("settings.json")],
+                "{json}"
+            );
+        }
     }
 
     #[test]

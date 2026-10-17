@@ -73,7 +73,7 @@ export type StageInfoReply = { request: string, page: string, state: Record<stri
  */
 view: string | null, 
 /**
- * The main window's toggleable panels: `{ "inspector": "open", "sidebar": "closed" }`.
+ * The main window's panels: `{ "valueColumn": "open", "sidebar": "closed" }`.
  */
 ui: Record<string, "open" | "closed">, surfaces: Array<StageSurface>, commands: Array<StageCommand>, };
 

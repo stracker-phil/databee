@@ -24,8 +24,8 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
   - cancel, timeout and row limit;
   - asks before `DROP`, `TRUNCATE` and unscoped `DELETE`/`UPDATE`.
 - **Results grid:** virtualized and typed, with inline editing. Copy cells or rows as TSV or JSON.
-- **Value inspector:** decodes PHP-serialized and JSON values into a tree, including serialized data nested
-  in strings. Values with broken string lengths are decoded leniently, with a warning.
+- **Value column:** Enter on serialized data or long text opens it as a column with a tree of PHP-serialized
+  or JSON values, including serialized data nested in strings, whose leaves you can edit. Values with broken string lengths are decoded leniently, with a warning.
 - **Favorites**, per-server **query history**, and a **⌘K command palette** for commands, tables, records and
   recent items.
 - **Passwords** live in the macOS Keychain and never in files or logs.

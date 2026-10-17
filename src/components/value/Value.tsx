@@ -1,7 +1,8 @@
 import { memo, useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { api, type DecodedValue, type Value as StoredValue } from "../../api";
 import { cellDisplay, cellText, relativeTime } from "../../lib/format";
-import { provenanceText } from "../../lib/provenance";
+import { formatAddress } from "../../lib/address";
+import { bySourceText, provenanceText } from "../../lib/provenance";
 import { fail, selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
 import { ValueTree } from "../ValueTree";
 
@@ -162,7 +163,17 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
   }
 }
 
-/** One stored value drawn by its kind; `data-src` and `data-table` feed the status bar (`useValueHover`). */
+/** What a peek of a reference needs (`Peek`): the target address, the source column and the rule. */
+function peekData(value: StoredValue) {
+  const kind = value.kind;
+  if (kind.kind !== "reference" || kind.exists === false || kind.targets.length !== 1) return {};
+  return { "data-ref": formatAddress(kind.targets[0]), "data-via": value.source?.column, "data-by": bySourceText(kind.by) };
+}
+
+/**
+ * One stored value drawn by its kind; `data-src` and `data-table` feed the status bar (`useValueHover`), a
+ * reference's `data-ref`, `data-via` and `data-by` the peek.
+ */
 export const Value = memo(function Value({ value, onOpen, density = "full" }: Props) {
   const acts = !!onOpen && opensOnClick(value, density);
   const onActivate = acts ? (e: MouseEvent) => onOpen(value, e) : undefined;
@@ -176,6 +187,7 @@ export const Value = memo(function Value({ value, onOpen, density = "full" }: Pr
       data-stage={stage}
       data-stage-label={stage ? cellText(value.raw) : undefined}
       data-stage-list={stage ? "values" : undefined}
+      {...peekData(value)}
       style={style}
     >
       <Body value={value} density={density} onActivate={onActivate} />

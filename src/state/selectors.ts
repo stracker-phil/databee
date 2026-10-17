@@ -1,4 +1,4 @@
-import type { DatabaseInfo, Value, WpInfo } from "../api";
+import type { Address, DatabaseInfo, Value, WpInfo } from "../api";
 import { documentText, findValue } from "../lib/document";
 import { documentKey, type DocumentEntry } from "./slices/objects";
 import type { StructureEntry } from "./slices/session";
@@ -28,15 +28,26 @@ export const selectDocument = (s: Store, sessionId: string, text: string): Docum
 
 /**
  * The value the value commands and the status bar act on: the selected grid cell of the active tab, else
- * the focused value of an object tab's document.
+ * the active column of an object tab: its focused document value, or the value a value column shows.
  */
 export const selectFocusedValue = (s: Store): Value | null => {
   const tab = selectActiveTab(s);
   if (!tab) return null;
   if (s.selectedCell?.tabId === tab.id && s.selectedCell.value) return s.selectedCell.value;
-  if (tab.kind !== "object" || tab.view !== "document" || !tab.focus) return null;
-  const document = s.documents[documentKey(tab.sessionId, documentText(tab.address))]?.document;
-  return document ? findValue(document, tab.focus) : null;
+  if (tab.kind !== "object") return null;
+  const column = tab.columns[tab.active];
+  if (column?.kind === "value") return column.value;
+  if (column?.kind !== "object" || column.view !== "document" || !column.focus) return null;
+  const document = s.documents[documentKey(tab.sessionId, documentText(column.address))]?.document;
+  return document ? findValue(document, column.focus) : null;
+};
+
+const NO_GROUPS: string[] = [];
+
+/** The collapsed group keys (`collapseKey`) of documents in `owner`'s database, kept per connection. */
+export const selectCollapsedGroups = (s: Store, owner: Address): string[] => {
+  const identity = s.sessions.find((x) => x.slug === owner.connection)?.identity;
+  return (identity ? s.uiState[identity]?.collapsedGroups?.[owner.database] : undefined) ?? NO_GROUPS;
 };
 
 /** Back or forward has somewhere to go: the active tab's history, or WordPress mode's own. */

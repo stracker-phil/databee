@@ -119,7 +119,6 @@ function AppearancePage({ s, set }: SettingsPageProps) {
             <RowPaddingPreview step={s.rowPadding} />
           </div>
         </Row>
-        <Segmented label="Inspector" description="Where the value inspector and the WordPress detail pane open. Drag the divider to resize." options={["right", "bottom"] as const} value={s.inspectorDock} onChange={(inspectorDock) => set({ inspectorDock })} />
       </Group>
       <Group title="Text">
         <NumberField

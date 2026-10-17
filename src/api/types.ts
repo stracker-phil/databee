@@ -40,6 +40,6 @@ export const BUNDLED_FONTS = { ui: "Geist", mono: "JetBrains Mono" } as const;
 /** Shortcut overrides by command id; `null` unbinds. Rust: the `Keybindings` alias (a map, so ts-rs can't export it). */
 export type Keybindings = Record<string, string | null>;
 
-export type PaneSize = "detailPaneWidth" | "inspectorWidth" | "bottomPaneHeight" | "sqlEditorHeight";
+export type PaneSize = "detailPaneWidth" | "sqlEditorHeight";
 
-export const EMPTY_UI_STATE: UiState = { tables: {}, detailPaneWidth: null, inspectorWidth: null, bottomPaneHeight: null, sqlEditorHeight: null, sidebarHidden: false, collapsedGroups: {} };
+export const EMPTY_UI_STATE: UiState = { tables: {}, detailPaneWidth: null, sqlEditorHeight: null, sidebarHidden: false, collapsedGroups: {} };

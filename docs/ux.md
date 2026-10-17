@@ -153,7 +153,7 @@ of space above it, 6px 12px inside.
 The object header is its own block above the groups: table name (`--o2`, large mono), `#key` (accent,
 semibold), the Document/Rows segmented control with its `Tab` key cap, the summary as `key value` pairs,
 closed by a hairline. A `⋯` button and a right-click on the block open the row's actions (`Run <action>`,
-`(no undo)` when it cannot be undone). In the Document view the focused value has a 1.5px accent outline.
+`(no undo)` when it cannot be undone). In the Document view the focused value has a 1.5px accent outline on a `--sel` background.
 
 **Rows view:** per group the same band, the group's `WHERE` in tertiary mono, then a compact grid (grid header
 of U2b: column name, type below) with the table's full columns, 12 rows high before it scrolls.
@@ -193,8 +193,8 @@ cell says otherwise.
 
 | Kind | Look | Click | Hover |
 |---|---|---|---|
-| PrimaryKey `#3297` | accent, mono | opens the object (Rows view when already in its Document, and back); in grids double-click and Enter open it too | provenance |
-| Reference, declared `customer_id 4` | accent, dotted underline | opens the target (grids: in the preview tab until U9's column stack) | provenance, `→` target and source (`foreign key …`, `project …`, `preset …`); ⌥ peeks (from U9) |
+| PrimaryKey `#3297` | accent, mono | opens the object (Rows view when already in its Document, and back; in an object tab another row's key opens as the next column); in grids double-click and Enter open it too | provenance |
+| Reference, declared `customer_id 4` | accent, dotted underline | opens the target: in an object tab as the next column of its stack, elsewhere in the preview tab | provenance, `→` target and source (`foreign key …`, `project …`, `preset …`); ⌥ peeks |
 | Reference, inferred | accent, dashed underline, tertiary "inferred" | as declared; several targets: a menu to choose | `→` target `· inferred · same name · indexed` |
 | Reference, dangling | tertiary, struck through | none | "no row `#4` in `wp_users`" |
 | No reference (`0` or `NULL` in a reference column) | tertiary, no underline | none | "0 = no reference" |
@@ -204,7 +204,7 @@ cell says otherwise.
 | Timestamp | raw value primary, relative time secondary (`1792167625  2 h ago`) | none | UTC and local time |
 | Null | italic tertiary `NULL` | none | provenance |
 | Empty | tertiary `""` (never rendered like `NULL`) | none | provenance |
-| Serialized | tertiary preview `▸ a:17{…}` / `{…17}`; in grids followed by the raw text, tertiary | expands inline as a tree (grids: selects the cell, so the Inspector shows the tree, until U9) | provenance |
+| Serialized | tertiary preview `▸ a:17{…}` / `{…17}`; in grids followed by the raw text, tertiary | expands inline as a tree (grids: opens a value column) | provenance |
 | Secret | masked | reveals | provenance |
 | Binary | tertiary `<n bytes>` | none | provenance |
 
@@ -227,8 +227,8 @@ cell says otherwise.
 ## Layout
 
 - **Toolbar** (`--chrome`): connection and database as plain mono text (`wc-pp / db`; a click opens the
-  connection or database picker), the path of the column stack (`order #4711 › user #12 › payment_token #7`,
-  from U9), the search field on the right, then icon buttons. The WordPress/Database mode switch stays as a
+  connection or database picker), the path of the column stack (`order #4711 › user #12 › payment_token #7`),
+  the search field on the right, then icon buttons. The WordPress/Database mode switch stays as a
   segmented control until U12.
 - **Tab bar** (`--chrome`): tabs are cells separated by `--line`; the active tab takes `--bg` and joins the
   content; preview tabs show italic titles. Tabs: query, table, object, project.
@@ -241,9 +241,27 @@ cell says otherwise.
   query tab its result summary after it,
   spacer, `presets wordpress · woocommerce` (the presets that apply to the current database; a click opens its
   Project page), `pending n` (a button to the tray when n > 0), `● live 2 s` in the accent while live
-  (from U13). Plain text, no chips; theme and inspector dock live in Settings and the palette.
-- **Column stack** (from U9): drilling opens a column to the right (minimum 420px); the oldest collapse to
-  34px strips with a vertical `table #key` label; the active column has a 2px accent line on top.
+  (from U13). Plain text, no chips; the theme lives in Settings and the palette.
+- **Column stack:** an object tab is a stack of columns. Enter or a click on a reference (or on another row's
+  key) opens its target as a new column right of the column it is in, closing any columns to the right of
+  it. Columns are at least 420px wide; when they don't fit, the oldest collapse to 34px strips with a
+  vertical `table #key` label (accent key), and a click on a strip pops back to it. The active column has a 2px
+  accent line on top; `h`/`l` move it, a click in a column activates it. Back and forward restore the stack
+  each address had.
+- **Path** in the toolbar, after the connection: the stack as crumbs, `order #4711 › user #12 › payment_token
+  #7`, mono, the name in `--o2` (the entity name the rules give the row, else the table name) and the key of the
+  active column in the accent. Every crumb but the last is a button that pops back to its column.
+- **Value column:** Enter on a serialized value, or Enter in a grid cell with serialized data or long text,
+  opens the value as a column: in an object tab the next column of the stack, in table and query tabs a
+  column on the right of the tab (at least 420px). Its head names `table.column` and the row key, offers
+  PHP/JSON or Raw, copy and close; the tree edits leaves (`edit_serialized`, queued as a cell edit through the
+  pending tray) when the value's row has a single-column key. There is no docked inspector.
+- **Peek:** holding ⌥ over a reference, or with a reference focused, shows a `--pop` overlay below it: head
+  `table #key` with "⌥ peek · ↵ open", the target's header values (its entity's summary, else its first five
+  non-key columns) as key/value rows, footer `via customer_id → wp_users.ID · preset woocommerce`. Releasing ⌥
+  hides it; ↵ while it shows opens the target like Enter.
+- **Shortcut overview:** `?` opens a dialog listing the bound commands of the scopes active at that moment,
+  most specific scope first, with their key caps; `?` or Esc closes it.
 
 ## Project page
 
@@ -272,17 +290,20 @@ behavior: [presets.md](presets.md#the-project-page).
 ## Keys
 
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys fire only in
-the object and grid scopes, never in inputs, the editor or dialogs; `Tab` keeps its normal meaning there.
+the object and grid scopes, never in inputs, the editor or dialogs; `Tab` keeps its normal meaning there. The
+column keys act only while the keyboard focus is in the stack (or nowhere), so the sidebar and the tab bar
+keep their arrow keys. A key and its arrow are two commands (`object.down`, `object.downArrow`), each
+rebindable.
 
 | Key | Scope | Action |
 |---|---|---|
-| `Tab` | object | Document ↔ Rows; focus stays on the same provenance (per column from U9) |
-| `j` / `k`, ↓ / ↑ | object, grid | move between values / rows (from U9) |
-| `h` / `l`, ← / → | object | move between columns (from U9) |
-| `Enter` | object, grid | drill into the focused reference / open the row as an object (from U9) |
-| `Esc` | object | close the rightmost column; overlays take `Esc` first (from U9) |
+| `Tab` | object | Document ↔ Rows of the active column; focus stays on the same provenance |
+| `j` / `k`, ↓ / ↑ | object, grid | move the focused value in a Document column (focus ring `--sel` and accent outline; the status bar shows its provenance when nothing is hovered); grids keep their arrow keys |
+| `h` / `l`, ← / → | object | move the active column (a focused grid keeps ← / →) |
+| `Enter` | object, grid | drill into the focused reference or another row's key (next column), open serialized data as a value column; grids: open the row as an object, a reference's target, a value column for serialized data or long text |
+| `Esc` | object, table, query | close the rightmost column (a stack's or a tab's value column); overlays, menus and inputs take `Esc` first |
 | ⌘[ / ⌘] | global | back / forward through the active tab's address history (WordPress mode: its own history until U12); without history the keys stay with the editor |
-| `⌥` (held) | object, grid | peek the focused or hovered reference (from U9) |
+| `⌥` (held) | object, grid | peek the hovered or focused reference; ↵ opens it |
 | `y` / `Y` / `e` / `f` | object, grid | copy raw / copy as SQL condition / edit / filter by value (grid: the `table` scope; documents and Rows grids: the `object` scope) |
 | `r` | object, grid | add a reference from this column or meta key: opens the Project page with the form prefilled (context menu: "Add reference…", "Kind…", "Style…") |
 | `w` | object | live mode on/off (from U13) |
@@ -292,12 +313,12 @@ the object and grid scopes, never in inputs, the editor or dialogs; `Tab` keeps 
 | ⌘\ | global | toggle the sidebar |
 | ⌘⇧F | db | focus the sidebar filter |
 | ⌘K | global | palette |
-| `?` | global | shortcut overview (from U9) |
+| `?` | global | shortcut overview |
 
 ## Palette prefixes
 
 The palette is the main navigation. Results render with the value grammar (from U10). Enter opens in the
-current tab (the object tab's column stack from U9); ⌘↵ opens a new tab.
+current tab (the object tab's column stack from U10); ⌘↵ opens a new tab.
 
 | Input | Result |
 |---|---|

@@ -36,17 +36,19 @@ Layout:
 App
 ├─ ConnectScreen                       (no session)
 └─ .app grid
-   ├─ Toolbar                          connection / database text (pickers), mode switch, search field (palette), icon buttons
+   ├─ Toolbar                          connection / database text (pickers), mode switch, Path, search field (palette), icon buttons
    ├─ FavoritesBar                     (Database mode)
    ├─ WpWorkspace                      (WordPress mode, see wordpress.md)
-   │  or DbWorkspace: [Sidebar |] TabBar + TabPanels [| Splitter | Inspector]
-   │       TabPanels → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel)
-   │                 → TableTab (filter bar + ResultsGrid | StructureView)
-   │                 → ObjectPanel (ObjectHeader, DocumentView | RowsView)
+   │  or DbWorkspace: [Sidebar |] TabBar + TabPanels
+   │       TabPanels → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel) [| value column]
+   │                 → TableTab (filter bar + ResultsGrid | StructureView) [| value column]
+   │                 → ObjectPanel: Strip | column (ObjectColumnView: ObjectHeader, DocumentView | RowsView,
+   │                                or ValueColumnView) per stack column
    │                 → ProjectPanel (presets and prefix, rule form, references, value styles, kinds)
    ├─ PendingTray
-   └─ StatusBar                        ▤ sidebar toggle, provenance or address, presets, pending n
-Dialogs · CommandPalette · Toasts
+   ├─ StatusBar                        ▤ sidebar toggle, provenance or address, presets, pending n
+   └─ PeekOverlay                      while ⌥ is held
+Dialogs (ShortcutsDialog among them) · CommandPalette · Toasts
 ```
 
 ## Store
@@ -56,7 +58,7 @@ root: it creates the store, keeps the slice registry and re-exports the selector
 and the state types, so components import everything from `state/store`.
 
 - `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs`, `changes`, `data`,
-  `favorites`, `ui`, `nav`, `objects`, `project`, and the temporary `wp` until it moves to the WordPress module). Each exports its
+  `favorites`, `ui`, `nav`, `objects`, `columns`, `project`, and the temporary `wp` until it moves to the WordPress module). Each exports its
   member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
   the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
 - `Store` is an interface extending every core slice's interface. A module adds its members with
@@ -76,7 +78,7 @@ and the state types, so components import everything from `state/store`.
 |---|---|
 | `settings` | `Settings \| null`; null until loaded |
 | `sessions`, `activeSessionId` | open connections (`SessionInfo`, with the connection `slug`) |
-| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error), `TableTab` (database, table, data/structure view, filter, structured `where`, preview) `ObjectTab` (a row address, `view: "document" \| "rows"`, `focus`, preview; [Object tabs](#object-tabs)) or `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
+| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error, `valueColumn?`), `TableTab` (database, table, data/structure view, filter, structured `where`, preview, `valueColumn?`) `ObjectTab` (the column stack `columns`, the `active` index, the recorded `stacks`, preview; [Column stack](#column-stack)) or `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
 | `documents` | `document` replies by `session/<address or shorthand>`, tagged with their `dataVersion` (`loadDocument`, `keepDocument`, `selectDocument`) |
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
@@ -84,13 +86,13 @@ and the state types, so components import everything from `state/store`.
 | `wp`, `wpNav` | detection results per `session/db`; navigation stack (max 100) of the WordPress screens |
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
-| `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`; opens the Inspector. `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets it fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
+| `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`, the selected grid cell of a tab (in an object tab: of its active column). `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets a value column and the value commands fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
 | `hover` | `{ src, table, linked }` under the pointer (`setHover`, from `useValueHover`): a value's provenance, or a table link (`linked`: a sidebar row, a section band); the status bar shows `src`, the linked table highlight reads `table` |
 | `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
 | `dataVersion` | bumped by ⌘R (`refreshView`, which first drops the session's schema cache with `refreshSchema`) and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
 | `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar's `pending n` button uses it) |
-| `uiState` | per connection identity: column widths, pane sizes, `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group |
+| `uiState` | per connection identity: column widths, pane sizes (the WordPress detail pane, the SQL editor), `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group (`selectCollapsedGroups` reads them) |
 | `paletteOpen`, `keybindings`, `favorites`, `toasts`, `recentNav` | as named |
 
 Conventions:
@@ -177,9 +179,9 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   `label` names the scope in Settings → Shortcuts.
 - **Keys.** `handleKeydown` runs in the capture phase, so app shortcuts beat CodeMirror and inputs. Inside text
   inputs, only `Mod`/`Ctrl` combinations and Escape fire. While a dialog or the palette is open, only the
-  commands in `MODAL_ALLOWED` (Settings toggle, zoom) run; other keys reach the overlay. Native menu items
+  commands in `MODAL_ALLOWED` (Settings toggle, the shortcut overview, zoom) run; other keys reach the overlay. Native menu items
   go through `runMenuCommand`, which applies the same rule. Auto-repeated keydowns are swallowed unless the
-  command is in `REPEATABLE` (zoom, back/forward, next/previous tab). Keys inside a `[data-recording]`
+  command is in `REPEATABLE` (zoom, back/forward, next/previous tab, the focus moves of the column stack). Keys inside a `[data-recording]`
   element (the Settings → Shortcuts recorder) are left alone, so already-bound combos can be recorded.
 - **Key names.** `bindingFromEvent` uses `e.key`, so punctuation follows the user's layout. With ⌥ held,
   for dead keys and for non-Latin characters it uses the physical key from `e.code` instead (`KeyK` → `K`,
@@ -222,13 +224,13 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 
 | Area | Components |
 |---|---|
-| Shell | `Toolbar`, `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`) |
+| Shell | `Toolbar`, `Path` (the column stack's crumbs), `FavoritesBar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `Inspector` + `ValueTree` (PHP/JSON decode) |
-| Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` (what a click on a value opens), see [Values](#values) |
-| Objects | `object/`: `ObjectPanel`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit; its hooks and `fitWidth` in `gridHooks.ts`), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
+| Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
+| Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `PresetsSection`, `ReferenceForm`, `KindStyleForms`, `ReferencesSection`, `RuleSections`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
-| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `CommandPalette`, `ContextMenu`, `Toasts` |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette`, `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens-until-u12) |
 
 ### Settings pages
@@ -263,22 +265,21 @@ registerSettingsPage({ id: "presentations", group: "System", label: "Presentatio
 ### Workspace layout
 
 `App.tsx`: `Workspace` returns the connect screen, the WordPress shell or the database shell (`AppShell`
-wraps the toolbar, pending tray and status bar). In `DbWorkspace`, `main` (`TabBar` + `TabPanels`) keeps
-the same tree position whatever the inspector or the sidebar does: docking only switches the class on
-`.workspace` (`dock-right`, `dock-bottom`) and the `--inspector-size` variable, and a hidden sidebar
-(`view.sidebar`, `selectSidebarHidden`) leaves an empty slot and adds `no-sidebar`, so CodeMirror history and
-table pages survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There are no inset
-panels: chrome (`--chrome`) and content (`--bg`) meet at `--line` hairlines, and the inspector splitter is
-one of them.
+wraps the toolbar, pending tray, status bar and `PeekOverlay`). In `DbWorkspace`, `main` (`TabBar` +
+`TabPanels`) keeps the same tree position whatever the sidebar does: a hidden sidebar (`view.sidebar`,
+`selectSidebarHidden`) leaves an empty slot and adds `no-sidebar`, so CodeMirror history and table pages
+survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There are no inset panels: chrome
+(`--chrome`) and content (`--bg`) meet at `--line` hairlines. Values open as columns, never in a docked pane.
 
 - **Toolbar:** `ConnectionText` shows `connection / database` as mono text; a transparent native select over
-  each name (`Connection` only with several sessions, `Database` always) opens the picker. `SearchField` is a
+  each name (`Connection` only with several sessions, `Database` always) opens the picker. `Path` shows the
+  active object tab's stack (see [Column stack](#column-stack)). `SearchField` is a
   button styled as a field (label "Go to") that opens the palette; its key cap follows `palette.open`.
 - **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (the provenance of
   the hovered or selected value while there is one, see [Values](#values); else in WordPress mode the
   table prefix; otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
   typed SQL filter applies; a query tab adds rows, time and statement count, with the row-limit warning), spacer, `PendingCount` (`pending n`, a button to the tray when n > 0).
-  The theme and dock chips are gone: both stay in Settings and the palette.
+  The theme chip is gone: the theme stays in Settings and the palette.
 - **Sidebar:** the Tables/History switch, the filter (`InsetField`, key cap from `sidebar.focusFilter`), a
   `db · N tables` caption, then the tree. Rows are `.si` items (`sel` for the active table). All tabs of the active session
 stay mounted; inactive panels are `hidden`. Tabs use a roving `tabIndex` with Left/Right arrows
@@ -293,9 +294,11 @@ component, drawn per kind as [ux.md](ux.md#value-grammar) lists. `density` is `g
 place to a `ValueTree`, decoded with `api.decodeValue` on first expand). `onOpen(value, event)` fires for
 the kinds that act on click (`opensOnClick`: a primary key with a row address, a reference with a target that is
 not known to be missing, an enum, serialized data in a grid); the caller decides what that does, usually through
-`useOpenValue(owner)`: a primary key opens its row as an object (the key of the object `owner` shows switches
-that object between Document and Rows instead), a reference opens its target (several: a menu), an enum runs
-`value.filter`. A secret reveals on its own. A style
+`useOpenValue(owner)` (functions in `value/open.ts`): a primary key opens its row as an object (the key of the
+object `owner` shows switches that object between Document and Rows instead), a reference opens its target
+(several: a menu), serialized data opens a value column (`showValue`), an enum runs `value.filter`. Inside an
+object tab's column (`ColumnContext`, `{ tabId, index }`) a target or another row opens as the next column
+(`drill`). A secret reveals on its own. A style
 sets `color: var(--style-<name>)`. CSS classes are `val` and `val-<kind>` (`styles/app.css`, values).
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
@@ -305,10 +308,20 @@ values): a `.val` element is a value (`linked: false`), anything else a table li
 row, a section band, whose `data-src` is the rule's origin). The status
 bar's address slot shows `hover.src`, else the provenance of `selectedCell.value`, else the address.
 Interactive values with a provenance are Stage anchors `value:<table>.<column>:<key>` (list `values`).
+A reference with one target also carries `data-ref` (the target address), `data-via` (its column) and `data-by`
+(the rule, `bySourceText`) for the peek.
+
+**Peek** (`value/Peek.tsx`, `PeekOverlay` in `AppShell`): window listeners in the capture phase. A keydown of ⌥
+alone (no dialog or palette open) peeks the hovered `[data-ref]` element, else the focused value
+(`selectFocusedValue`) when it is a reference with one target; moving the pointer onto another reference while
+⌥ is held peeks that one; keyup or a window blur hides it. The card sits below the element (fixed, kept in the
+window), reads `api.peek(sessionId, address)` (`Peek { keyColumn, values }`), cached by session, `dataVersion`
+and address, and draws the values with `Value` (grid density). ↵ while it shows opens the target with
+`openTarget` (the next column when the reference is in a stack column).
 
 **Value commands** (`commands/values.ts`: `VALUE_COMMANDS`, ids `value.*`, scope `table`, and
 `OBJECT_VALUE_COMMANDS`, ids `object.*`, scope `object`) act on the focused value, `selectFocusedValue`: the
-selected grid cell of the active tab, else the focused value of an object tab's Document view. They are rebindable
+selected grid cell of the active tab, else the active column of an object tab: the focused value of its Document view, or a value column's value. They are rebindable
 like every command.
 Bare keys never fire in inputs or the editor (`resolveKeydown`).
 
@@ -340,9 +353,11 @@ re-renders the grid. Cells render `Value` with `density="grid"`, from the `value
 values are built once per row and rows identity, so `Value`'s memo holds while the grid re-renders. The
 only kind class on a cell is `num` (right alignment for number cells). Clicks go through `useOpenValue(owner)`:
 a primary key opens its row as an object in the preview tab, a reference opens its target with
-`openAddress(…, { preview: true })` (several targets: a menu), an enum runs `value.filter`; serialized data
-opens in the Inspector through the selection. On a primary key cell, double-click opens the object pinned and
-Enter in the preview tab; on other cells both edit. Keys live in `KEY_ACTIONS` (arrows, Home/End,
+`openAddress(…, { preview: true })` (several targets: a menu), an enum runs `value.filter`, serialized data
+opens a value column (in an object tab's column: the next column of the stack, through `ColumnContext`). On a
+primary key cell, double-click opens the object pinned and Enter in the preview tab (in a stack: the next
+column); Enter on a reference with one target opens it, on serialized data or long text a value column with the
+full text; otherwise double-click and Enter edit. Keys live in `KEY_ACTIONS` (arrows, Home/End,
 PageUp/PageDown, Enter, ⌘C). `owner` names the object whose rows a grid shows (Rows view), `focus` selects and
 reveals a cell (the focus carried over from the Document view). `bytes`
 cells are never editable: they show a `0x…` preview, which an edit would write back.
@@ -351,7 +366,7 @@ Rust cuts text longer than the `maxCellChars` setting to a `longText { len, prev
 ([database.md](database.md#cell-decoding)); the grid shows the preview with its length in characters. The
 grid's `source` prop (`{ sessionId, resultId }`) names the result set: editing or copying a `longText` cell
 fetches its full value with `fullCellText` (`api.fetchCell`) first, never the preview, and without a
-`source` the cell is not editable. The Inspector fetches it the same way before showing or decoding it.
+`source` the cell is not editable. A value column gets the full text the same way before showing or decoding it.
 
 `QueryTab`'s results pane shows a partial script result (`ExecuteResponse.failure`) as an `ErrorPanel`
 titled "Statement N failed" above the results of the statements before it. A `timeout` error with
@@ -390,19 +405,22 @@ The page never builds SQL conditions. Opening rows in the Database view passes s
 
 ### Object tabs
 
-An `ObjectTab` shows one row (`components/object/`, mock `Main` and `Rows`): `address` is its row address,
-whose `view` mirrors the tab's `view` (`null` for the document, `rows`); `focus` is the provenance of the focused
-value. `openObject(address, { preview })` (`objects` slice) reuses an open tab of the same row and otherwise
-opens one, in the preview tab when asked: a preview of either kind (table or object) replaces the session's
+An `ObjectTab` shows rows as a stack of columns (`components/object/`, mock `Main`, `Rows` and `Drill`; see
+[Column stack](#column-stack)). Each object column (`ObjectColumn`, `lib/columns.ts`) has its row `address`,
+whose `view` mirrors the column's `view` (`null` for the document, `rows`), and `focus`, the provenance of its
+focused value. The tab's `address` is the active column's. `openObject(address, { preview })` (`objects` slice)
+reuses the tab whose first column is that row (and makes that column active) and otherwise opens one, in the
+preview tab when asked: a preview of either kind (table or object) replaces the session's
 previous preview and takes over its history (`previewTab`, `placed`). Rows open as objects from a primary key
 click, from a grid's double-click or Enter on a primary key cell, from `openAddress` with a row address, from
 the table tab's row menu ("Open as object") and from `openEntity(entity, id)` (WordPress records, see
 [wordpress.md](wordpress.md)).
 
-- **Loading:** `useDocument(sessionId, text, database)` reads `documents` and calls `loadDocument` once per
-  `dataVersion`, so ⌘R and applied writes refresh it; the previous document stays while reloading. The key
-  is the address without its view (`documentText`), so toggling never refetches. A failed load renders
-  `ErrorPanel`. The tab title becomes `<entity> #<key>` once the document names its entity.
+- **Loading:** each column (`ObjectColumnView`) calls `useDocument(sessionId, text, database)`, which reads
+  `documents` and calls `loadDocument` once per `dataVersion`, so ⌘R and applied writes refresh it; the previous
+  document stays while reloading. The key is the address without its view (`documentText`), so toggling never
+  refetches. A failed load renders `ErrorPanel`. The tab title becomes `<entity> #<key>` of the first column once
+  its document names its entity.
 - **`ObjectHeader`:** table name, `#key`, the Document/Rows segmented control with the `object.toggleView` key
   cap, the actions button, the summary (`Document.header`) as `key value` pairs, other rows an entity
   shorthand matched (`alternatives`). Right-click opens the actions menu (`actionMenu`): each action plans
@@ -413,18 +431,19 @@ the table tab's row menu ("Open as object") and from `openEntity(entity, id)` (W
   `FieldsGroup` and `MetaGroup` as `.row.kv` rows, `RowsGroup` as a `.row.hdr` header plus rows on a grid
   template sized in characters, `EventsGroup` as time, table and column or key. Values render through the
   memoized `Field` (no effects per value); a mousedown focuses its provenance (`focusObject`), the focused
-  value gets an accent outline. `+n keys` / `+n rows` under a capped group switches to Rows and scrolls to that
-  group. Zero-row groups collapse into `AlsoLinked` ("Also linked: …").
+  value gets an accent outline on `--sel`, and stays in view as `j`/`k` move it. `+n keys` / `+n rows` under a
+  capped group switches to Rows and scrolls to that group. Zero-row groups collapse into `AlsoLinked` ("Also linked: …").
 - **`RowsView`:** per group with a table its band, the `WHERE` of its rows address, and a compact `ResultsGrid`
   (12 rows high, then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and
   editable cells, or, for a group no address names (patterns), its document rows read-only.
 - **Toggle:** `object.toggleView` (`Tab`, scope `object`; never in inputs, the editor or dialogs) and the
-  segmented control call `toggleObjectView` / `setObjectView`, which push the address being left onto the
-  tab's history. Focus follows the provenance: Document → Rows selects the same cell in its group's grid,
-  Rows → Document takes the selected cell's provenance as `focus`. Both views share the `.object` scroll
-  container (`overflow-anchor: none`), so `useViewScroll` keeps each view's own offset: a view starts at the
+  segmented control call `toggleObjectView(tabId, index?)` / `setObjectView(tabId, view, focus?, index?)` on the
+  active column (or the column of the control), which push the address being left onto the tab's history.
+  Focus follows the provenance: Document → Rows selects the same cell in its group's grid, Rows → Document
+  takes the selected cell's provenance as `focus`. Both views of a column share its `.object` scroll container
+  (`overflow-anchor: none`), so `useViewScroll` keeps each view's own offset per column: a view starts at the
   top the first time, gets its offset back later (re-applied while its grids still load), then reveals the
-  focused value.
+  focused value. A column that collapses to a strip and back starts at the top again.
 - **Collapse:** every `GroupHeader` has a chevron button (`aria-expanded`, "Collapse/Expand <table>"); it and a
   click on the band outside its buttons call `toggleGroupCollapsed(identity, database, "<document table>::<group id>")`
   (`ui` slice), stored in `UiState.collapsedGroups` by database (`ui_state.json`, debounced), so the choice holds
@@ -433,6 +452,48 @@ the table tab's row menu ("Open as object") and from `openEntity(entity, id)` (W
   click or key in the view ends `useViewScroll`'s offset restore, so collapsing does not jump back.
 - **Linked table highlight:** a section band takes `lit` while `hover` is a table link to its table; sidebar
   rows take `lit` for a link and `lit-value` (lighter) for a hovered value of that table.
+
+### Column stack
+
+`ObjectTab.columns` (`StackColumn[]`, `lib/columns.ts`) holds `ObjectColumn`s and `ValueColumn`s
+(`{ value, text, database }`: a stored value and its full text, after a queued edit the edited text); `active`
+is the column `h`/`l` move, the path marks and the value commands act on. The `columns` slice
+(`slices/columns.ts`) changes it:
+
+- `drill(tabId, from, target)`: `target` as an object column after column `from`, closing any to its right,
+  active. Clicks and Enter reach it through `ColumnContext` (`value/open.ts`), which each column provides.
+- `openValueColumn(tabId, from, column)`: the same for a value column; for a table or query tab (`from` null)
+  it sets the tab's `valueColumn`, which `WithValueColumn` (`Tabs.tsx`) renders right of the tab.
+  `updateValueColumn` keeps an edited text.
+- `popToColumn(tabId, index)` (a strip, a crumb), `closeRightmostColumn()` (`Esc`, `columns.close`; a table or
+  query tab's value column first), `setActiveColumn(tabId, index)` (a mousedown in a column, in the capture
+  phase so the column is active before a grid selects), `moveActiveColumn(delta)` (`h`/`l`). A new active
+  column drops the tab's grid selection.
+
+`ObjectPanel` is the stack: it measures its width (`ResizeObserver`) and `shownColumns(count, active, width)`
+picks the columns shown in full (at least `MIN_COLUMN_WIDTH`, 420px, next to 34px strips for the others,
+ending at the newest unless the active column lies further left). The rest render as `Strip` buttons with a
+vertical `table #key`; one left of the active column pops back to it, one right of it becomes active. The active
+column (`aria-current`) gets a 2px accent line on top when there are several, and takes the keyboard focus
+(`tabIndex=-1`) when nothing outside the stack holds it.
+
+**Path** (`Path.tsx`, in the toolbar): one crumb per column, the name from the column's document entity, else
+the table's only entity in `rulesInfo.tableEntities`, else the table name; every crumb but the last pops to its
+column.
+
+**History** records the stack as the active column's address: `restacked(tab, stack, record)` (`slices/nav.ts`)
+pushes the address being left onto `nav` and keeps that address's stack in `stacks` (by `formatAddress`, pruned
+to the addresses `nav` still holds). Back and forward restore the stack an address had, else move the active
+column to it. Moving the active column records nothing.
+
+**Keys** (`commands/columns.ts`, `COLUMN_COMMANDS`, rebindable): `object.down`/`object.downArrow` (`J`, ↓) and
+`object.up`/`object.upArrow` (`K`, ↑) move the focus of a Document column through `focusOrder(document,
+collapsed)` (`lib/document.ts`: the values in view order, collapsed groups and the repeating `events` left out);
+`object.left`/`object.right` and their arrows move the active column; `object.drill` (Enter) opens the focused
+value (`openValueAt`: one reference target or another row's key as the next column, the own key toggles the
+view, serialized data as a value column); `columns.close` (Escape, scope `global`) closes the rightmost column.
+They act only while the keyboard focus is in `.stack` or on nothing, never in inputs; the arrows and Enter leave
+a focused grid alone, Enter a focused button, Escape an open menu.
 
 ### Addresses and history
 
@@ -476,10 +537,10 @@ address call it. It has no history (`nav` stays empty).
   (opening a row in place, clearing the column filter) and a replaced preview tab push the address being
   left and clear `forward`; an unchanged address pushes nothing. `navBack` / `navForward` (commands
   `nav.back` ⌘[ and `nav.forward` ⌘], global scope) move the active tab and restore its table and `where`;
-  a row address needs the primary key, so they load the structure first. An object tab moves to the row
-  address and view it recorded. They are enabled only while
+  a row address needs the primary key, so they load the structure first. They are enabled only while
   `selectCanNav` finds history, so ⌘[ still outdents in the editor. In WordPress mode both delegate to
-  `wpNav` (`goBack` / `goForward`) until WordPress mode is removed.
+  `wpNav` (`goBack` / `goForward`) until WordPress mode is removed. An object tab restores the stack its
+  target address had ([Column stack](#column-stack)).
 - **`openAddress(text, { preview? })`:** parses, finds the open session by slug, opens a row address as an
   object tab (`openObject`), a table address in a table tab (`openTableTab` with the matching `where`), in
   the preview tab when asked, and `?project` as the Project page (`openProject`). Other targets (home, saved
@@ -509,7 +570,8 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `sql.ts` | statement ranges and the statement at the cursor |
 | `theme.ts` | `applyAppearance` (scheme, accent, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `applyInitialScheme` (first paint) |
 | `codeTheme.ts` | CodeMirror theme and syntax colors from the scheme's `--code-*` tokens |
-| `document.ts` | object addresses (`objectAddress`, `documentText`, `objectTitle`), `findValue` / `provenanceKey`, group texts (`relationText`, `originText`, `countText`, `moreText`), `groupAnchors` |
+| `document.ts` | object addresses (`objectAddress`, `documentText`, `objectTitle`), `findValue` / `provenanceKey`, group texts (`relationText`, `originText`, `countText`, `moreText`), `groupAnchors`, `collapseKey`, `focusOrder` |
+| `columns.ts` | the column stack's types (`ObjectColumn`, `ValueColumn`, `StackColumn`, `ColumnStack`), `objectColumn`, `objectColumnAt`, `columnName` / `columnLabel`, `shownColumns` (see [Column stack](#column-stack)) |
 | `crumbs.ts` | WordPress breadcrumbs |
 | `wpFormat.ts` | WordPress formatting (absolute times, flags, initials, `shorten`) |
 

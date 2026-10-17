@@ -109,12 +109,14 @@ describe("ObjectPanel", () => {
       await waitFor(() => expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "table", table: "wp_wc_order_addresses", where: [{ column: "order_id", value: "4711" }] }));
     });
 
-    it("opens the row another primary key addresses as a preview object tab", async () => {
+    it("opens the row another primary key addresses as a new column of the same tab", async () => {
       await openOrder();
       await userEvent.click(screen.getByRole("link", { name: "4712" }));
-      expect(formatAddress(activeObject().address)).toBe("databee://shop/db/wp_wc_orders/4712");
-      expect(activeObject().preview).toBe(true);
-      expect(useStore.getState().tabs).toHaveLength(2);
+      const tab = activeObject();
+      expect(formatAddress(tab.address)).toBe("databee://shop/db/wp_wc_orders/4712");
+      expect(tab.columns.map((c) => c.kind === "object" && formatAddress(c.address))).toEqual([ORDER_URL, "databee://shop/db/wp_wc_orders/4712"]);
+      expect(tab.active).toBe(1);
+      expect(useStore.getState().tabs).toHaveLength(1);
     });
 
     it("switches to the Rows view when the object's own primary key is clicked", async () => {
@@ -203,7 +205,12 @@ describe("ObjectPanel", () => {
   });
 
   describe("per-view scroll", () => {
-    const container = () => document.querySelector<HTMLElement>('[data-stage="object"]')!;
+    const container = () => {
+      const el = document.querySelector<HTMLElement>('[data-column="0"] .object')!;
+      Object.defineProperty(el, "scrollHeight", { configurable: true, value: 10000 });
+      Object.defineProperty(el, "clientHeight", { configurable: true, value: 100 });
+      return el;
+    };
 
     function scrollTo(el: HTMLElement, top: number) {
       el.scrollTop = top;
@@ -212,23 +219,19 @@ describe("ObjectPanel", () => {
 
     it("keeps a scroll position per view and starts a first-visited view at the top", async () => {
       await openOrder();
-      const el = container();
-      Object.defineProperty(el, "scrollHeight", { configurable: true, value: 10000 });
-      Object.defineProperty(el, "clientHeight", { configurable: true, value: 100 });
-
-      scrollTo(el, 400);
+      scrollTo(container(), 400);
       await userEvent.keyboard("{Tab}");
       await waitFor(() => expect(activeObject().view).toBe("rows"));
-      expect(el.scrollTop).toBe(0);
+      expect(container().scrollTop).toBe(0);
 
-      scrollTo(el, 150);
+      scrollTo(container(), 150);
       await userEvent.keyboard("{Tab}");
       await waitFor(() => expect(activeObject().view).toBe("document"));
-      expect(el.scrollTop).toBe(400);
+      expect(container().scrollTop).toBe(400);
 
       await userEvent.keyboard("{Tab}");
       await waitFor(() => expect(activeObject().view).toBe("rows"));
-      expect(el.scrollTop).toBe(150);
+      expect(container().scrollTop).toBe(150);
     });
 
     it("leaves focus where it was when Tab toggles to the Rows view", async () => {

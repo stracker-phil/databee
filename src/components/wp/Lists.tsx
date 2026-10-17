@@ -16,7 +16,7 @@ import { formatCount, relativeTime } from "../../lib/format";
 import { shorten } from "../../lib/wpFormat";
 import { selectActiveSession, selectWpRoute, useStore, type WpList } from "../../state/store";
 import { ErrorPanel } from "../ErrorPanel";
-import { DEFAULT_PANE_HEIGHT, Splitter, usePaneSize, useWindowSize } from "../Splitter";
+import { Splitter, usePaneSize, useWindowSize } from "../Splitter";
 import { BreakdownChart } from "./BreakdownChart";
 import { StackedBars } from "./charts";
 import { Ago, Avatar, Card, StatusPill, Thumb } from "./ui";
@@ -370,12 +370,9 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
   const route = useStore(selectWpRoute);
   const session = useStore(selectActiveSession);
   const { replaceRoute, openEntity } = useStore.getState();
-  const bottom = useStore((s) => s.settings?.inspectorDock === "bottom");
-  const { width, height } = useWindowSize();
-  const side = usePaneSize("detailPaneWidth", DEFAULT_SPLIT, 360, width - 480);
-  const below = usePaneSize("bottomPaneHeight", DEFAULT_PANE_HEIGHT, 160, height - 260);
-  const pane = bottom ? below : side;
-  const split = bottom || width >= SPLIT_MIN_WIDTH;
+  const { width } = useWindowSize();
+  const pane = usePaneSize("detailPaneWidth", DEFAULT_SPLIT, 360, width - 480);
+  const split = width >= SPLIT_MIN_WIDTH;
   const selected = route.screen === "list" && route.list === list ? (route.selected ?? null) : null;
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -492,9 +489,9 @@ export function ListScreen({ list, params }: { list: Exclude<WpList, "settings">
 
   if (!split || !selected) return listPane;
   return (
-    <div className={`list-split${bottom ? " dock-bottom" : ""}`} style={bottom ? { gridTemplateRows: `minmax(0, 1fr) auto ${pane.size}px` } : { gridTemplateColumns: `minmax(0, 1fr) auto ${pane.size}px` }}>
+    <div className="list-split" style={{ gridTemplateColumns: `minmax(0, 1fr) auto ${pane.size}px` }}>
       {listPane}
-      <Splitter axis={bottom ? "y" : "x"} paneAfter label="Resize detail pane" {...pane} />
+      <Splitter axis="x" paneAfter label="Resize detail pane" {...pane} />
       <aside className="detail-pane" aria-label="Detail">
         <div className="detail-head">
           <span className="muted small">{selected.entity} #{selected.id}</span>

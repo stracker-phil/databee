@@ -8,7 +8,7 @@ import App from "./App";
 import { api, EMPTY_UI_STATE, type SessionInfo } from "./api";
 import { runCommand } from "./commands";
 import { resetStore, selectSidebarHidden, useStore } from "./state/store";
-import { connectedStore, queryTab, resultSet, session, settings } from "./test/fixtures";
+import { connectedStore, queryTab, resultSet, session } from "./test/fixtures";
 
 const mocked = vi.mocked(api, true);
 
@@ -65,26 +65,6 @@ describe("App", () => {
     expect(screen.queryByLabelText("Search everything")).not.toBeInTheDocument();
     await userEvent.keyboard("{Meta>}j{/Meta}");
     expect(await screen.findByLabelText("Search everything")).toBeInTheDocument();
-  });
-
-  it("keeps the same editor, with its text, when selecting a cell opens the bottom inspector", async () => {
-    vi.clearAllMocks();
-    const bottom = settings({ inspectorDock: "bottom" });
-    mocked.getSettings.mockResolvedValueOnce(bottom);
-    mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 3, database: "db", failure: null });
-    connectedStore({ tabs: [queryTab({ sql: "SELECT ID, post_title FROM wp_posts" })], settings: bottom });
-    const { container } = render(<App />);
-    await screen.findByText("wp_options");
-    const editor = container.querySelector(".cm-content") as HTMLElement;
-    expect(editor).toHaveTextContent("SELECT ID, post_title FROM wp_posts");
-
-    await userEvent.click(screen.getByRole("button", { name: /^Run$/ }));
-    await userEvent.click(await screen.findByText("Hello world"));
-
-    expect(screen.getByRole("complementary", { name: "Value inspector" })).toBeInTheDocument();
-    expect(editor).toBeInTheDocument();
-    expect(container.querySelector(".cm-content")).toBe(editor);
-    expect(editor).toHaveTextContent("SELECT ID, post_title FROM wp_posts");
   });
 
   it("toasts the message of a failed launch request instead of an object", async () => {

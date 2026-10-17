@@ -28,6 +28,7 @@ import type {
   SessionSummary,
   AppError,
   DecodedValue,
+  Peek,
   OptionsOverview,
   WpInfo,
   BrowsePage,
@@ -138,6 +139,8 @@ export const api = {
   /** The document of a row address, or of an entity shorthand (`order 4711`) in `database`. */
   document: (sessionId: string, address: string, database: string | null) =>
     invoke<Document>("document", { sessionId, address, database }),
+  /** What a peek shows of a row address: its entity's summary, else its first columns. */
+  peek: (sessionId: string, address: string) => invoke<Peek>("peek", { sessionId, address }),
   /** The `scope = "table"` rule actions of `table`. */
   tableActions: (sessionId: string, database: string, table: string) =>
     invoke<ObjectAction[]>("table_actions", { sessionId, database, table }),

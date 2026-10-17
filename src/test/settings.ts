@@ -21,7 +21,6 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     showSystemSchemas: false,
     logLevel: "info",
     gravatar: false,
-    inspectorDock: "right",
     ...patch,
   };
 }

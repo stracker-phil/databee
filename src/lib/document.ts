@@ -110,6 +110,36 @@ export function moreText(group: Group): string | null {
 /** A group with no rows, which collapses into the "Also linked" line; a failed group keeps its band. */
 export const isEmpty = (group: Group) => group.total === 0 && group.rows.length === 0 && !group.error && group.via.kind !== "own";
 
+/** The `UiState.collapsedGroups` key of a group: per table of the document, so it holds for every row of it. */
+export function collapseKey(owner: Address, groupId: string): string {
+  const table = "table" in owner.target ? owner.target.table : "";
+  return `${table}::${groupId}`;
+}
+
+/** The values of one group in the order the Document view shows them; `events` repeats values shown elsewhere. */
+function groupValues(group: Group): (Value | null)[] {
+  if (group.via.kind === "events") return [];
+  if (group.shape === "fields") return group.rows[0]?.fields.map(([, value]) => value) ?? [];
+  if (group.shape === "meta") return group.rows.map((row) => row.fields[1]?.[1] ?? null);
+  return group.rows.flatMap((row) => group.columns.map((column, i) => fieldOf(row, column, i)));
+}
+
+/** The provenance of every value `j`/`k` move through, top to bottom, skipping collapsed groups and repeats. */
+export function focusOrder(document: Document, collapsed: (groupId: string) => boolean): Provenance[] {
+  const seen = new Set<string>();
+  const order: Provenance[] = [];
+  for (const group of document.groups) {
+    if (isEmpty(group) || group.error || collapsed(group.id)) continue;
+    for (const value of groupValues(group)) {
+      const source = value?.source;
+      if (!source || seen.has(provenanceKey(source))) continue;
+      seen.add(provenanceKey(source));
+      order.push(source);
+    }
+  }
+  return order;
+}
+
 /** Stage anchors per group: `group-<table>`, with the group id added for a second group of the same table. */
 export function groupAnchors(groups: Group[]): Map<string, string> {
   const seen = new Set<string>();

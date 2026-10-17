@@ -4,9 +4,6 @@ import { selectActiveSession, useStore } from "../state/store";
 
 const KEY_STEP = 16;
 
-/** Inspector or detail pane docked at the bottom. */
-export const DEFAULT_PANE_HEIGHT = 320;
-
 const clamp = (v: number, min: number, max: number) => Math.round(Math.min(Math.max(v, min), Math.max(min, max)));
 
 export function useWindowSize() {

@@ -3,9 +3,7 @@ import { api, toAppError } from "./api";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { Dialogs } from "./components/Dialogs";
 import { FavoritesBar } from "./components/FavoritesBar";
-import { Inspector } from "./components/Inspector";
 import { Sidebar } from "./components/Sidebar";
-import { DEFAULT_PANE_HEIGHT, Splitter, usePaneSize, useWindowSize } from "./components/Splitter";
 import { StatusBar } from "./components/StatusBar";
 import { TabBar, TabPanels } from "./components/Tabs";
 import { Toasts } from "./components/Toasts";
@@ -13,6 +11,7 @@ import { Toolbar } from "./components/Toolbar";
 import { CommandPalette } from "./components/CommandPalette";
 import { handleKeydown, installCommands, runMenuCommand } from "./commands";
 import { PendingTray } from "./components/PendingTray";
+import { PeekOverlay } from "./components/value/Peek";
 import { useValueHover } from "./components/value/useValueHover";
 import { WpWorkspace } from "./components/wp/WpWorkspace";
 import { applyAppearance, syncRowHeight, useSystemDark } from "./lib/theme";
@@ -50,40 +49,19 @@ function useBackendEvents() {
   }, []);
 }
 
-/** Room the sidebar and tab area keep when the inspector is dragged wider. */
-const RESERVED_WIDTH = 700;
-/** Room the tab bar and a few result rows keep when the bottom inspector is dragged taller. */
-const RESERVED_HEIGHT = 260;
-
 /**
- * Sidebar, tabs and the value inspector, docked right or below the tabs. `main` keeps its tree position
- * in every layout, so docking never remounts the editors; only the grid template changes. Hiding the
- * sidebar removes it entirely (no rail); its child slot stays (as `false`), so `main` stays mounted too.
+ * Sidebar and tabs. Hiding the sidebar removes it entirely (no rail); its child slot stays (as `false`), so
+ * `main` keeps its tree position and the editors and table pages survive.
  */
 function DbWorkspace() {
-  const inspecting = useStore((s) => s.selectedCell !== null);
-  const bottom = useStore((s) => s.settings?.inspectorDock === "bottom");
-  const { width, height } = useWindowSize();
-  const side = usePaneSize("inspectorWidth", 360, 240, width - RESERVED_WIDTH);
-  const below = usePaneSize("bottomPaneHeight", DEFAULT_PANE_HEIGHT, 160, height - RESERVED_HEIGHT);
   const sidebarHidden = useStore(selectSidebarHidden);
-  const pane = bottom ? below : side;
-  const classes = ["workspace"];
-  if (inspecting) classes.push(bottom ? "dock-bottom" : "dock-right");
-  if (sidebarHidden) classes.push("no-sidebar");
   return (
-    <div className={classes.join(" ")} style={inspecting ? ({ "--inspector-size": `${pane.size}px` } as React.CSSProperties) : undefined}>
+    <div className={sidebarHidden ? "workspace no-sidebar" : "workspace"}>
       {!sidebarHidden && <Sidebar />}
       <main className="main">
         <TabBar />
         <TabPanels />
       </main>
-      {inspecting && (
-        <>
-          <Splitter axis={bottom ? "y" : "x"} paneAfter label="Resize inspector" {...pane} />
-          <Inspector />
-        </>
-      )}
     </div>
   );
 }
@@ -97,6 +75,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       {children}
       <PendingTray />
       <StatusBar />
+      <PeekOverlay />
     </div>
   );
 }

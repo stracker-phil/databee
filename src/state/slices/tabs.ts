@@ -1,6 +1,6 @@
-import { api, toAppError, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse, type Provenance, type Value } from "../../api";
+import { api, toAppError, type Address, type AppError, type Cell, type ColumnEquals, type ColumnMeta, type ExecuteResponse, type Value } from "../../api";
 import type { CellSource } from "../../lib/cells";
-import type { ObjectView } from "../../lib/document";
+import type { ColumnStack, StackColumn, ValueColumn } from "../../lib/columns";
 import type { ProjectForm } from "../../lib/ruleForms";
 import { fail } from "../requests";
 import { isWpView, selectActiveSession, selectActiveTab } from "../selectors";
@@ -22,6 +22,8 @@ export interface QueryTab {
   /** The database home; null while the session has no current database. */
   address: Address | null;
   nav: TabNav;
+  /** A value opened to the right of the results (Enter on serialized data or long text). */
+  valueColumn?: ValueColumn;
 }
 
 export interface TableTab {
@@ -42,19 +44,24 @@ export interface TableTab {
   address: Address;
   /** Addresses for back and forward. */
   nav: TabNav;
+  /** A value opened to the right of the rows (Enter on serialized data or long text). */
+  valueColumn?: ValueColumn;
 }
 
-/** A row as an object: its document, or one grid per group (`view`). */
+/** Rows as objects: a stack of columns, the row the tab opened first, then each drilled reference or opened value. */
 export interface ObjectTab {
   id: string;
   kind: "object";
   sessionId: string;
+  /** The first column's row. */
   title: string;
-  /** A row address; its `view` mirrors `view` (`null` for the document, the default). */
+  columns: StackColumn[];
+  /** The column `h`/`l` move, the path marks and history records. */
+  active: number;
+  /** The active column's row address (a value column's: the row it came from). */
   address: Address;
-  view: ObjectView;
-  /** The focused value, kept across the Document/Rows toggle. */
-  focus: Provenance | null;
+  /** The stacks of the addresses in `nav`, so back and forward restore the columns too; never stored. */
+  stacks: Record<string, ColumnStack>;
   preview?: boolean;
   nav: TabNav;
 }
@@ -96,7 +103,7 @@ export interface SelectedCell {
   col: number;
   column: ColumnMeta;
   cell: Cell;
-  /** Lets the Inspector fetch a `longText` cell in full. */
+  /** Lets a value column and the value commands fetch a `longText` cell in full. */
   source: CellSource;
   /** The cell as a value (kind and provenance) for the status bar and the value commands; grids always set it. */
   value?: Value;
