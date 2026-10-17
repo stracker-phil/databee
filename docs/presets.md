@@ -414,7 +414,8 @@ connection's slug moves its keys. A database without a stored project gets an em
 `addReference`, `updateReference` and `removeReference` by id; `addKind`, `updateKind`, `removeKind`,
 `addStyle`, `updateStyle`, `removeStyle` by index (these rules have no id); `disable` and `enable` an id;
 `setPrefix`, `setNetworkPrefix`, `setPresets`. Before storing, every table a rule names must exist under the
-prefix or the network prefix (the stored ones, else the suggestions), and every literal column (glob parts are
+prefix or the network prefix (the stored ones, else the suggestions), resolved as the effective rules resolve
+it (`Applied::existing_table`, see below), and every literal column (glob parts are
 not checked), `when` and `to_when` column must exist in its table. A prefix must start some table name,
 preset names must load. The error names the field: ``` `reference.when.meta_key`: `wp_posts` has no column
 `meta_key` ```. A reference without `id` gets its default id; when the project already uses it, `-><to>` is
@@ -653,6 +654,11 @@ a click finds. Conditions are said in SQL with the same meaning as in memory:
 - `regexp` runs as `REGEXP '(?-i)<pattern>'` (MySQL rejects a binary operand), in the server's regular
   expression dialect (ICU on MySQL, PCRE on MariaDB), which agrees with the in-memory one on common patterns;
 - `not` wraps the test in `NOT (...)`, so NULL matches neither the test nor its negation.
+
+The rule behind a reference (for its `when` and `to_when`) is `EffectiveRules::rule_for`: the same `by`, `from`
+and `to`, column names compared case-insensitively; the document's incoming groups use the same lookup. The
+SQL of conditions is `condition::conditions_sql` (`rules/condition.rs`), shared with incoming groups, action
+plans and text search.
 
 A reference from a column to the same column of its table (shared emails, external ids) counts a row as
 resolved only when another row matches (by primary key); a table without one finds the row itself.

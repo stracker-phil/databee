@@ -12,7 +12,7 @@ use super::effective::{
 };
 use super::kinds::ValueRule;
 use crate::db::{Cell, ColumnMeta, ResultSet};
-use crate::lens::{ColumnsRef, Lens, ResolvedReference, SchemaLens, TableColumns};
+use crate::lens::{Lens, ResolvedReference, SchemaLens, TableColumns};
 use crate::value::{
     CellAnnotations, CellKind, CellStyle, ColumnKind, ReferenceSource, ReferenceTarget,
 };
@@ -138,14 +138,6 @@ impl RulesLens {
             .map(|rule| rule_kind(&rule.value))
     }
 
-    fn rule_reference(&self, rule: &RuleReference) -> ResolvedReference {
-        ResolvedReference {
-            from: ColumnsRef::new(&rule.from.table, vec![rule.from.column.clone()]),
-            to: ColumnsRef::new(&rule.to.table, vec![rule.to.column.clone()]),
-            by: rule.by.clone(),
-        }
-    }
-
     /// Schema references minus inferred ones that are disabled or that an unconditional rule
     /// replaces.
     fn keep_schema_reference(&self, reference: &ResolvedReference) -> bool {
@@ -169,7 +161,7 @@ impl RulesLens {
                     .schema
                     .has_declared_foreign_key(&r.from.table, &r.from.column)
             })
-            .map(|r| self.rule_reference(r))
+            .map(RuleReference::resolved)
             .collect()
     }
 }
@@ -360,6 +352,7 @@ mod tests {
     use super::*;
     use crate::address::{Address, Target};
     use crate::db::{ColumnEquals, ForeignKey};
+    use crate::lens::ColumnsRef;
     use crate::rules::kinds::{KindRule, StyleColor, StyleMatch, StyleRule, Zone};
     use crate::rules::project::Project;
     use crate::rules::testing::{

@@ -10,7 +10,7 @@ pub use rows::{KindRow, PresetRow, ProjectRules, ReferenceRow, RuleOrigin, RuleT
 
 use crate::lens::{self, ColumnsRef, Lens, ResolvedReference, SchemaLens};
 use crate::rules::condition::conditions_text;
-use crate::rules::effective::{EffectiveRules, inferred_id, is_overridden};
+use crate::rules::effective::{EffectiveRules, inferred_id};
 use crate::rules::project::Project;
 use crate::rules::types::{ColumnRef, Conditions, Preset, Reference};
 use crate::schema::DatabaseSchema;
@@ -134,12 +134,8 @@ impl Overview<'_> {
     /// In precedence order (the last applied preset first), without rules the project overrides.
     fn preset_references(&self) -> Vec<ReferenceRow> {
         let mut rows = Vec::new();
-        for preset in self.rules.applied.presets.iter().rev() {
-            let implied = self.rules.meta_references(preset, self.schema);
-            for rule in preset.references.iter().chain(&implied) {
-                if is_overridden(self.project, rule) {
-                    continue;
-                }
+        for (preset, references) in self.rules.preset_reference_rules(self.project, self.schema) {
+            for rule in &references {
                 let origin = RuleOrigin::Preset {
                     preset: preset.name.clone(),
                 };

@@ -5,6 +5,7 @@
 use regex::Regex;
 
 use super::types::{Conditions, Match};
+use crate::db::{Dialect, escape_like};
 
 /// A `Match` ready to test values. LIKE patterns and regular expressions are compiled once.
 #[derive(Debug, Clone)]
@@ -174,10 +175,57 @@ fn match_text(column: &str, rule: &Match) -> String {
     }
 }
 
+/// `conditions` in SQL on the columns of `alias`, one term each.
+pub fn conditions_sql(dialect: Dialect, alias: &str, conditions: &[Condition]) -> Vec<String> {
+    conditions
+        .iter()
+        .map(|c| {
+            let column = format!("{alias}.{}", dialect.quote_ident(&c.column));
+            match_sql(dialect, &column, &c.rule)
+        })
+        .collect()
+}
+
+/// A condition in SQL, as exact as `Matcher` is in Rust: case-sensitive whatever the collation,
+/// NULL matching nothing (not even `not`). `=`, IN and LIKE test the plain column first so an
+/// index on it still narrows the rows; the binary test then makes them exact. MySQL rejects a
+/// binary operand to REGEXP, so a regular expression turns case-sensitivity on with `(?-i)`
+/// instead; it runs in the server's dialect (ICU on MySQL, PCRE on MariaDB), which agrees with
+/// Rust's on common patterns.
+fn match_sql(dialect: Dialect, column: &str, rule: &Match) -> String {
+    match rule {
+        Match::Eq(value) => exact(column, "=", &dialect.sql_string(value)),
+        // Never true, and NULL on NULL, so `not` of it holds on every non-NULL value as in Rust.
+        Match::In(values) if values.is_empty() => format!("({column} <> {column})"),
+        Match::In(values) => {
+            let list: Vec<String> = values.iter().map(|v| dialect.sql_string(v)).collect();
+            exact(column, "IN", &format!("({})", list.join(", ")))
+        }
+        Match::Glob { glob } => {
+            let like = escape_like(glob).replace('*', "%");
+            exact(column, "LIKE", &dialect.like(&like))
+        }
+        Match::Like { like } => exact(column, "LIKE", &dialect.like(like)),
+        Match::Regexp { regexp } => {
+            let pattern = dialect.sql_string(&format!("(?-i){regexp}"));
+            format!("({column} REGEXP {pattern})")
+        }
+        Match::Not { not } => format!("NOT {}", match_sql(dialect, column, not)),
+    }
+}
+
+fn exact(column: &str, op: &str, operand: &str) -> String {
+    format!("({column} {op} {operand} AND CAST({column} AS BINARY) {op} {operand})")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rules::preset;
+
+    const NO_BACKSLASH: Dialect = Dialect {
+        backslash_escapes: false,
+    };
 
     fn matcher(rule: Match) -> Matcher {
         Matcher::compile(&rule).unwrap()
@@ -390,5 +438,86 @@ mod tests {
         assert!(column_glob_match("*_GMT", "post_date_gmt"));
         assert!(column_glob_match("id", "ID"));
         assert!(!column_glob_match("*_gmt", "post_date"));
+    }
+
+    #[test]
+    fn match_sql_is_exact_and_escapes_per_dialect() {
+        let cases = [
+            (
+                Match::Eq("a".into()),
+                "(c = 'a' AND CAST(c AS BINARY) = 'a')",
+                "(c = 'a' AND CAST(c AS BINARY) = 'a')",
+            ),
+            (
+                Match::Eq("it's".into()),
+                "(c = 'it''s' AND CAST(c AS BINARY) = 'it''s')",
+                "(c = 'it''s' AND CAST(c AS BINARY) = 'it''s')",
+            ),
+            (
+                Match::Eq(r"a\b".into()),
+                r"(c = 'a\\b' AND CAST(c AS BINARY) = 'a\\b')",
+                r"(c = 'a\b' AND CAST(c AS BINARY) = 'a\b')",
+            ),
+            (
+                Match::In(vec!["a".into(), "b".into()]),
+                "(c IN ('a', 'b') AND CAST(c AS BINARY) IN ('a', 'b'))",
+                "(c IN ('a', 'b') AND CAST(c AS BINARY) IN ('a', 'b'))",
+            ),
+            (Match::In(Vec::new()), "(c <> c)", "(c <> c)"),
+            (
+                Match::Glob {
+                    glob: "abc*".into(),
+                },
+                "(c LIKE 'abc%' AND CAST(c AS BINARY) LIKE 'abc%')",
+                r"(c LIKE 'abc%' ESCAPE '\' AND CAST(c AS BINARY) LIKE 'abc%' ESCAPE '\')",
+            ),
+            (
+                Match::Glob {
+                    glob: r"a%b_c\d*".into(),
+                },
+                r"(c LIKE 'a\\%b\\_c\\\\d%' AND CAST(c AS BINARY) LIKE 'a\\%b\\_c\\\\d%')",
+                r"(c LIKE 'a\%b\_c\\d%' ESCAPE '\' AND CAST(c AS BINARY) LIKE 'a\%b\_c\\d%' ESCAPE '\')",
+            ),
+            (
+                Match::Like {
+                    like: r"a\_%".into(),
+                },
+                r"(c LIKE 'a\\_%' AND CAST(c AS BINARY) LIKE 'a\\_%')",
+                r"(c LIKE 'a\_%' ESCAPE '\' AND CAST(c AS BINARY) LIKE 'a\_%' ESCAPE '\')",
+            ),
+            (
+                Match::Regexp {
+                    regexp: "^[0-9]+$".into(),
+                },
+                "(c REGEXP '(?-i)^[0-9]+$')",
+                "(c REGEXP '(?-i)^[0-9]+$')",
+            ),
+            (
+                Match::Regexp {
+                    regexp: r"\d+".into(),
+                },
+                r"(c REGEXP '(?-i)\\d+')",
+                r"(c REGEXP '(?-i)\d+')",
+            ),
+            (
+                not(Match::Eq("a".into())),
+                "NOT (c = 'a' AND CAST(c AS BINARY) = 'a')",
+                "NOT (c = 'a' AND CAST(c AS BINARY) = 'a')",
+            ),
+            (
+                not(not(Match::Eq("a".into()))),
+                "NOT NOT (c = 'a' AND CAST(c AS BINARY) = 'a')",
+                "NOT NOT (c = 'a' AND CAST(c AS BINARY) = 'a')",
+            ),
+            (not(Match::In(Vec::new())), "NOT (c <> c)", "NOT (c <> c)"),
+        ];
+        for (rule, mysql, no_backslash) in cases {
+            assert_eq!(match_sql(Dialect::MYSQL, "c", &rule), mysql, "{rule:?}");
+            assert_eq!(
+                match_sql(NO_BACKSLASH, "c", &rule),
+                no_backslash,
+                "{rule:?} without backslash escapes"
+            );
+        }
     }
 }

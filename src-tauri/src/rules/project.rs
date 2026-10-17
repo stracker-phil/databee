@@ -76,18 +76,11 @@ impl Project {
         Preset {
             name: format!("{}-{}", self.connection, self.database),
             requires: self.presets.clone().unwrap_or_default(),
-            marker_tables: Vec::new(),
-            network_tables: Vec::new(),
-            meta: Vec::new(),
             references: self.references.clone(),
-            entities: Vec::new(),
             kinds: self.kinds.clone(),
             styles: self.styles.clone(),
-            patterns: Vec::new(),
             pinned: self.saved.iter().map(SavedQuery::to_pinned).collect(),
-            anomalies: Vec::new(),
-            actions: Vec::new(),
-            finds: Vec::new(),
+            ..Preset::default()
         }
     }
 

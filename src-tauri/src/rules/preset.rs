@@ -226,7 +226,7 @@ fn fill_reference_ids(references: &mut [Reference]) {
         let Some(id) = &defaults[i] else { continue };
         let shared = defaults.iter().filter(|d| d.as_ref() == Some(id)).count() > 1;
         reference.id = if shared {
-            format!("{id}->{}", reference.to)
+            reference.qualified_id()
         } else {
             id.clone()
         };

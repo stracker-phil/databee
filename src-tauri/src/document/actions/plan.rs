@@ -13,8 +13,7 @@ use crate::db::changes::{self, ChangeRequest, Plan};
 use crate::db::where_changes::{RowsDelete, RowsUpdate};
 use crate::error::{AppError, AppResult};
 use crate::rules::actions::{ActionEffect, ActionScope, DeleteSpec, SetValue, UpdateStep};
-use crate::rules::condition::holds;
-use crate::rules::coverage;
+use crate::rules::condition::{conditions_sql, holds};
 use crate::rules::effective::RuleAction;
 use crate::rules::placeholder::{Placeholder, scan};
 
@@ -209,11 +208,7 @@ impl Scope<'_> {
         }
         if table == self.action.rule.table {
             let table_ref = ctx.table_ref(table);
-            parts.extend(coverage::conditions(
-                ctx.dialect,
-                &table_ref,
-                &self.action.when,
-            ));
+            parts.extend(conditions_sql(ctx.dialect, &table_ref, &self.action.when));
         }
         if let Some(w) = r#where {
             parts.push(format!("({})", self.sql(w)?));

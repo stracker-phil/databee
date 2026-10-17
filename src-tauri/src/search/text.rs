@@ -9,7 +9,7 @@ use futures_util::future::{join, join_all};
 use super::hits;
 use super::{PaletteHit, SECTION_CAP};
 use crate::document::{Ctx, entity_filter};
-use crate::rules::coverage::conditions;
+use crate::rules::condition::conditions_sql;
 use crate::rules::effective::{AppliedEntity, MetaRef, RuleReference};
 use crate::rules::types::Entity;
 
@@ -175,7 +175,7 @@ fn external_targets<'r>(ctx: &'r Ctx<'_>) -> Vec<(&'r RuleReference, Vec<String>
             ctx.single_key(&r.to.table)
                 .is_none_or(|key| !key.eq_ignore_ascii_case(&r.to.column))
         })
-        .map(|r| (r, conditions(ctx.dialect, ALIAS, &r.to_when)))
+        .map(|r| (r, conditions_sql(ctx.dialect, ALIAS, &r.to_when)))
         .filter(|(r, to_when)| {
             seen.insert((r.to.table.clone(), r.to.column.clone(), to_when.clone()))
         })

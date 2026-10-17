@@ -76,17 +76,18 @@ impl TryFrom<KindRuleFields> for KindRule {
 
     fn try_from(f: KindRuleFields) -> Result<Self, String> {
         let set = [
-            f.money.is_some(),
-            f.timestamp.is_some(),
-            f.r#enum,
-            f.secret,
-            f.number,
+            ("money", f.money.is_some()),
+            ("timestamp", f.timestamp.is_some()),
+            ("enum = true", f.r#enum),
+            ("secret = true", f.secret),
+            ("number = true", f.number),
         ];
-        if set.iter().filter(|on| **on).count() != 1 {
-            return Err(
-                "a kind rule sets exactly one of money, timestamp, enum = true, secret = true, number = true"
-                    .into(),
-            );
+        if set.iter().filter(|(_, on)| *on).count() != 1 {
+            let names: Vec<&str> = set.iter().map(|(name, _)| *name).collect();
+            return Err(format!(
+                "a kind rule sets exactly one of {}",
+                names.join(", ")
+            ));
         }
         let value = match (f.money, f.timestamp) {
             (Some(money), _) => ValueRule::Money(money),

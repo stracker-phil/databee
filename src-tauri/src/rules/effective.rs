@@ -23,6 +23,7 @@ use super::project::Project;
 use super::queries::Pattern;
 use super::types::{ColumnGlob, ColumnRef, Entity, FindSource, Preset, Reference};
 use crate::db::ColumnEquals;
+use crate::lens::{ColumnsRef, ResolvedReference};
 use crate::lock::MutexExt;
 use crate::schema::DatabaseSchema;
 use crate::session::Session;
@@ -59,6 +60,16 @@ pub struct RuleReference {
     pub label: Option<String>,
     /// The incoming group's columns: source columns, or keys of the source's meta table.
     pub columns: Vec<String>,
+}
+
+impl RuleReference {
+    pub fn resolved(&self) -> ResolvedReference {
+        ResolvedReference {
+            from: ColumnsRef::new(&self.from.table, vec![self.from.column.clone()]),
+            to: ColumnsRef::new(&self.to.table, vec![self.to.column.clone()]),
+            by: self.by.clone(),
+        }
+    }
 }
 
 /// A `[[pattern]]` of an applied preset, with real table names and `owner_when` compiled.
@@ -145,16 +156,11 @@ impl EffectiveRules {
             disabled,
         };
         rules.add_references(&project.references, None);
-        let presets = rules.applied.presets.clone();
-        for preset in presets.iter().rev() {
-            let implied = rules.meta_references(preset, schema);
-            let kept: Vec<Reference> = preset
-                .references
-                .iter()
-                .chain(&implied)
+        let preset_rules: Vec<_> = rules.preset_reference_rules(project, schema).collect();
+        for (preset, references) in preset_rules {
+            let kept: Vec<Reference> = references
+                .into_iter()
                 .filter(|r| !rules.disabled.contains(&r.id))
-                .filter(|r| !is_overridden(project, r))
-                .cloned()
                 .collect();
             rules.add_references(&kept, Some(&preset.name));
             rules.kinds.extend(preset.kinds.iter().cloned());
@@ -162,12 +168,29 @@ impl EffectiveRules {
                 .styles
                 .extend(preset.styles.iter().filter_map(to_rule_style));
         }
+        let presets = rules.applied.presets.clone();
         for preset in &presets {
             rules.add_preset_tables(preset);
         }
         // Stable, so file order holds among filtered and among unfiltered entities.
         rules.entities.sort_by_key(|e| e.entity.filter.is_none());
         rules
+    }
+
+    /// The rule behind `reference`: the same source, `from` and `to`; `None` for declared and
+    /// inferred references.
+    pub fn rule_for(&self, reference: &ResolvedReference) -> Option<&RuleReference> {
+        let ([from], [to]) = (
+            reference.from.columns.as_slice(),
+            reference.to.columns.as_slice(),
+        ) else {
+            return None;
+        };
+        self.references.iter().find(|r| {
+            r.by == reference.by
+                && r.from.is(&reference.from.table, from)
+                && r.to.is(&reference.to.table, to)
+        })
     }
 
     /// Whether the rules change nothing the schema lens shows.
@@ -235,13 +258,30 @@ impl EffectiveRules {
         })
     }
 
+    /// The reference rules of each applied preset in precedence order (the last applied first):
+    /// its own and those its meta tables imply, without the ones a project rule replaces.
+    /// Disabled rules are kept.
+    pub(super) fn preset_reference_rules<'a>(
+        &'a self,
+        project: &'a Project,
+        schema: &'a DatabaseSchema,
+    ) -> impl Iterator<Item = (Arc<Preset>, Vec<Reference>)> + 'a {
+        self.applied.presets.iter().rev().map(move |preset| {
+            let implied = self.meta_references(preset, schema);
+            let references = preset
+                .references
+                .iter()
+                .chain(&implied)
+                .filter(|r| !is_overridden(project, r))
+                .cloned()
+                .collect();
+            (preset.clone(), references)
+        })
+    }
+
     /// The reference `fk → owner` that each owned `[[meta]]` table declares, to the owner's
     /// single-column primary key.
-    pub(super) fn meta_references(
-        &self,
-        preset: &Preset,
-        schema: &DatabaseSchema,
-    ) -> Vec<Reference> {
+    fn meta_references(&self, preset: &Preset, schema: &DatabaseSchema) -> Vec<Reference> {
         preset
             .meta
             .iter()
@@ -252,18 +292,11 @@ impl EffectiveRules {
                     table: meta.table.clone(),
                     column: fk.clone(),
                 };
-                Some(Reference {
-                    id: from.to_string(),
-                    from,
-                    when: Default::default(),
-                    to: ColumnRef {
-                        table: owner.clone(),
-                        column: key.to_string(),
-                    },
-                    to_when: Default::default(),
-                    label: None,
-                    columns: Vec::new(),
-                })
+                let to = ColumnRef {
+                    table: owner.clone(),
+                    column: key.to_string(),
+                };
+                Some(Reference::plain(from, to))
             })
             .collect()
     }
@@ -420,7 +453,7 @@ fn single_key<'s>(schema: &'s DatabaseSchema, table: &str) -> Option<&'s str> {
 }
 
 /// A project reference with the same `from` and `when` replaces the preset rule.
-pub(super) fn is_overridden(project: &Project, rule: &Reference) -> bool {
+fn is_overridden(project: &Project, rule: &Reference) -> bool {
     project
         .references
         .iter()
@@ -649,6 +682,34 @@ to = "threads.thread_id"
                 by_preset("base", "threads.author"),
             ]
         );
+    }
+
+    #[test]
+    fn the_rule_for_a_reference_matches_its_source_from_and_to_with_any_column_case() {
+        let narrowed = Reference {
+            when: when("title", Match::Eq("x".into())),
+            ..reference("p", "threads.person_id", "people.person_id")
+        };
+        let own = Project {
+            prefix: Some("f_".into()),
+            references: vec![
+                narrowed,
+                reference("p", "threads.author", "people.person_id"),
+            ],
+            ..project()
+        };
+        let rules = build(&own, &[]);
+        let resolved = |from: &str| ResolvedReference {
+            from: ColumnsRef::new("f_threads", vec![from.into()]),
+            to: ColumnsRef::new("f_people", vec!["Person_ID".into()]),
+            by: by_project("p"),
+        };
+
+        let rule = rules.rule_for(&resolved("AUTHOR")).unwrap();
+
+        assert_eq!(rule.from.column, "author");
+        assert!(rule.when.is_empty());
+        assert!(rules.rule_for(&resolved("title")).is_none());
     }
 
     #[test]

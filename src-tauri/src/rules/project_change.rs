@@ -104,22 +104,47 @@ pub fn apply(project: &mut Project, change: ProjectChange, ctx: &ChangeContext) 
     apply_checked(project, change, ctx).map_err(invalid)
 }
 
+/// Stores `reference` as `apply` does for `addReference`, or for `updateReference` of the
+/// reference `replacing`, and returns the id it is stored under.
+pub fn put_reference(
+    project: &mut Project,
+    reference: Reference,
+    replacing: Option<&str>,
+    ctx: &ChangeContext,
+) -> AppResult<String> {
+    put_checked(project, reference, replacing, ctx).map_err(invalid)
+}
+
+fn put_checked(
+    project: &mut Project,
+    mut reference: Reference,
+    replacing: Option<&str>,
+    ctx: &ChangeContext,
+) -> Result<String, FieldError> {
+    let index = replacing
+        .map(|id| reference_index(&project.references, id))
+        .transpose()?;
+    Tables::new(project, ctx).check_reference(&reference)?;
+    reference.id = new_reference_id(&project.references, &reference, index)?;
+    let id = reference.id.clone();
+    match index {
+        Some(index) => project.references[index] = reference,
+        None => project.references.push(reference),
+    }
+    Ok(id)
+}
+
 fn apply_checked(
     project: &mut Project,
     change: ProjectChange,
     ctx: &ChangeContext,
 ) -> Result<(), FieldError> {
     match change {
-        ProjectChange::AddReference { mut reference } => {
-            Tables::new(project, ctx).check_reference(&reference)?;
-            reference.id = new_reference_id(&project.references, &reference, None)?;
-            project.references.push(reference);
+        ProjectChange::AddReference { reference } => {
+            put_checked(project, reference, None, ctx)?;
         }
-        ProjectChange::UpdateReference { id, mut reference } => {
-            let index = reference_index(&project.references, &id)?;
-            Tables::new(project, ctx).check_reference(&reference)?;
-            reference.id = new_reference_id(&project.references, &reference, Some(index))?;
-            project.references[index] = reference;
+        ProjectChange::UpdateReference { id, reference } => {
+            put_checked(project, reference, Some(&id), ctx)?;
         }
         ProjectChange::RemoveReference { id } => {
             let index = reference_index(&project.references, &id)?;
@@ -240,7 +265,7 @@ fn new_reference_id(
     if !taken(&default) {
         return Ok(default);
     }
-    let qualified = format!("{default}->{}", reference.to);
+    let qualified = reference.qualified_id();
     if taken(&qualified) {
         let message = format!("`{qualified}` is already used; give this reference an `id`");
         return Err(FieldError::new("reference.id", message));
@@ -264,42 +289,33 @@ fn check_presets(names: Option<&[String]>, presets: &[Arc<Preset>]) -> Result<()
     Ok(())
 }
 
-/// Resolves rule table names (written without a prefix) against the schema.
+/// Resolves rule table names (written without a prefix) against the schema as the effective
+/// rules do (`Applied::existing_table`), so a rule that passes here checks the table it applies to.
 struct Tables<'a> {
     schema: &'a DatabaseSchema,
-    prefix: String,
-    network_prefix: String,
+    applied: Applied,
 }
 
 impl<'a> Tables<'a> {
-    /// The prefixes the effective rules would use (`Applied`), so a rule that passes here
-    /// resolves the same way when it applies.
     fn new(project: &Project, ctx: &'a ChangeContext) -> Self {
         let schema = ctx.schema.as_ref();
-        let applied = Applied::new(project, schema, &ctx.presets);
         Self {
             schema,
-            prefix: applied.prefix,
-            network_prefix: applied.network_prefix,
+            applied: Applied::new(project, schema, &ctx.presets),
         }
     }
 
     /// The real table `name` stands for, under the prefix or the network prefix.
     fn resolve(&self, field: &str, name: &str) -> Result<String, FieldError> {
-        let candidates = [
-            format!("{}{name}", self.prefix),
-            format!("{}{name}", self.network_prefix),
-        ];
-        if let Some(found) = candidates.iter().find(|t| self.schema.table(t).is_some()) {
-            return Ok(found.clone());
+        if let Some(found) = self.applied.existing_table(name) {
+            return Ok(found);
         }
-        let message = if candidates[0] == candidates[1] {
-            format!("no table `{}` in this database", candidates[0])
+        let prefixed = format!("{}{name}", self.applied.prefix);
+        let networked = format!("{}{name}", self.applied.network_prefix);
+        let message = if prefixed == networked {
+            format!("no table `{prefixed}` in this database")
         } else {
-            format!(
-                "no table `{}` or `{}` in this database",
-                candidates[0], candidates[1]
-            )
+            format!("no table `{prefixed}` or `{networked}` in this database")
         };
         Err(FieldError::new(field, message))
     }
@@ -422,19 +438,9 @@ mod tests {
         let names = |items: &[&str]| items.iter().map(|s| s.to_string()).collect();
         Arc::new(Preset {
             name: name.into(),
-            requires: Vec::new(),
             marker_tables: names(markers),
             network_tables: names(network),
-            meta: Vec::new(),
-            references: Vec::new(),
-            entities: Vec::new(),
-            kinds: Vec::new(),
-            styles: Vec::new(),
-            patterns: Vec::new(),
-            pinned: Vec::new(),
-            anomalies: Vec::new(),
-            actions: Vec::new(),
-            finds: Vec::new(),
+            ..Preset::default()
         })
     }
 
@@ -920,6 +926,39 @@ mod tests {
         assert_eq!(
             message,
             "`reference.to`: no table `wp_2_users` in this database"
+        );
+    }
+
+    #[test]
+    fn a_network_table_that_also_exists_under_the_site_prefix_is_checked_where_it_applies() {
+        let both = schema(&[
+            ("wp_2_posts", &["ID", "post_author"]),
+            ("wp_2_users", &["ID"]),
+            ("wp_users", &["ID", "user_login"]),
+        ]);
+        let ctx = ctx_of(both, vec![preset("core", &["posts"], &["users"])]);
+        let mut project = Project {
+            prefix: Some("wp_2_".into()),
+            network_prefix: Some("wp_".into()),
+            ..project()
+        };
+
+        apply(
+            &mut project,
+            add(reference("posts.post_author", "users.user_login")),
+            &ctx,
+        )
+        .unwrap();
+        let message = rejection(
+            &mut project,
+            add(reference("posts.ID", "users.missing")),
+            &ctx,
+        );
+
+        assert_eq!(project.references.len(), 1);
+        assert_eq!(
+            message,
+            "`reference.to`: `wp_users` has no column `missing`"
         );
     }
 }

@@ -209,16 +209,18 @@ WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](prese
   resolve under (also used to check project changes).
 - `condition.rs`: `when`/`to_when` and value-style matches compiled once (`Matcher`; the `regex` crate for
   LIKE and REGEXP) and evaluated in memory over a page; `conditions_text` says them as SQL-like text for
-  the Project page.
+  the Project page, `conditions_sql` as exact SQL terms (coverage, incoming groups, action plans, search).
 - `effective.rs`: `EffectiveRules` (applied presets ⊕ project, real table names, precedence order, the
-  `fk → owner` reference of each owned `[[meta]]` table, kind lookups shared with the lens) and its
+  `fk → owner` reference of each owned `[[meta]]` table, kind lookups shared with the lens, `rule_for`, the
+  rule behind a `ResolvedReference`) and its
   cache in `Session.ext`, keyed by the schema (`Arc`), the preset list (`Arc`) and the project (value), so
   DDL, a refresh, a preset file change or a project change rebuilds it. `RuleSources` (from
   `AppState::rules`) is what `Session::browse`, `Session::execute` and `table_references` take.
 - `lens.rs`: `RulesLens` (see the lens seam above).
 - `coverage.rs`: `reference_coverage`, read-only counts of how many rows of one reference resolve
   (`CoverageQuery` builds the SQL from the reference and its rule's conditions), and `coverage_preview`,
-  the same count for an unsaved rule on a checked copy of the project.
+  the same count for an unsaved rule on a checked copy of the project (`project_change::put_reference`
+  stores it and returns its id).
 - `overview/`: `project_rules`, everything the Project page lists (references of every origin, switched-off
   ones included, kinds, styles, presets, the tables rules can name).
 - `draft.rs`: `rule_draft`, a value's column as rules name it and, on a meta value, its meta key.

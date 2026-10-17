@@ -14,7 +14,7 @@ use super::kinds::{KindRule, StyleRule};
 use super::queries::{Anomaly, Pattern, Pinned};
 
 /// One preset: rules for tables named without the prefix.
-#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[derive(Serialize, Debug, Clone, Default, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 pub struct Preset {
     pub name: String,
@@ -67,6 +67,13 @@ pub trait Check {
 pub struct ColumnRef {
     pub table: String,
     pub column: String,
+}
+
+impl ColumnRef {
+    /// Whether this is `table.column`, the column name compared case-insensitively as MySQL does.
+    pub fn is(&self, table: &str, column: &str) -> bool {
+        self.table == table && self.column.eq_ignore_ascii_case(column)
+    }
 }
 
 /// `table.column` where either side may hold `*` globs (`*.*_gmt`).
@@ -268,6 +275,19 @@ pub struct Reference {
 }
 
 impl Reference {
+    /// An unconditional reference from `from` to `to` under its default id.
+    pub fn plain(from: ColumnRef, to: ColumnRef) -> Self {
+        Self {
+            id: from.to_string(),
+            from,
+            when: Conditions::new(),
+            to,
+            to_when: Conditions::new(),
+            label: None,
+            columns: Vec::new(),
+        }
+    }
+
     /// `<from>[?<column><match>&…]`, e.g. `postmeta.meta_value?meta_key=_customer_user`.
     pub fn default_id(&self) -> String {
         let mut id = self.from.to_string();
@@ -277,6 +297,11 @@ impl Reference {
             id.push_str(&matcher.to_string());
         }
         id
+    }
+
+    /// The default id with `-><to>` appended, for a rule whose default id another rule shares.
+    pub fn qualified_id(&self) -> String {
+        format!("{}->{}", self.default_id(), self.to)
     }
 }
 

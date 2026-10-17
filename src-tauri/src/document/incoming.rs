@@ -17,10 +17,8 @@ use crate::address::{Address, Target};
 use crate::db::ColumnEquals;
 use crate::error::AppResult;
 use crate::lens::ResolvedReference;
-use crate::rules::condition::{self, Condition};
-use crate::rules::coverage::conditions;
+use crate::rules::condition::{self, Condition, conditions_sql};
 use crate::rules::effective::{RuleReference, inferred_id};
-use crate::rules::types::ColumnRef;
 use crate::value::ReferenceSource;
 
 const ALIAS: &str = "s";
@@ -101,7 +99,7 @@ fn is_meta_of(ctx: &Ctx<'_>, reference: &ResolvedReference, owner: &str) -> bool
 /// `None` when the reference cannot point at this row: its `to_when` does not hold on it, or an
 /// earlier unconditional rule on the same column decides every source row.
 fn plan<'r>(ctx: &'r Ctx<'_>, own: &Own, reference: ResolvedReference) -> Option<Incoming<'r>> {
-    let rule = find_rule(ctx, &reference);
+    let rule = ctx.rules.rule_for(&reference);
     if let Some(rule) = rule
         && !condition::holds(&rule.to_when, |c| own.rows.text(0, c))
     {
@@ -127,24 +125,6 @@ fn plan<'r>(ctx: &'r Ctx<'_>, own: &Own, reference: ResolvedReference) -> Option
     })
 }
 
-fn find_rule<'r>(ctx: &'r Ctx<'_>, reference: &ResolvedReference) -> Option<&'r RuleReference> {
-    let ([from], [to]) = (
-        reference.from.columns.as_slice(),
-        reference.to.columns.as_slice(),
-    ) else {
-        return None;
-    };
-    ctx.rules.references.iter().find(|r| {
-        r.by == reference.by
-            && same_column(&r.from, &reference.from.table, from)
-            && same_column(&r.to, &reference.to.table, to)
-    })
-}
-
-fn same_column(column: &ColumnRef, table: &str, name: &str) -> bool {
-    column.table == table && column.column.eq_ignore_ascii_case(name)
-}
-
 /// The conditional rules on the source column before `rule` (before any unconditional one for an
 /// inferred reference); `None` when an unconditional rule comes first.
 fn earlier_conditions<'r>(
@@ -160,7 +140,7 @@ fn earlier_conditions<'r>(
         if rule.is_some_and(|r| r.group == other.group) {
             break;
         }
-        if !same_column(&other.from, &reference.from.table, column) {
+        if !other.from.is(&reference.from.table, column) {
             continue;
         }
         if other.when.is_empty() {
@@ -244,10 +224,10 @@ fn filter_sql(ctx: &Ctx<'_>, own: &Own, incoming: &Incoming<'_>) -> String {
         })
         .collect();
     if let Some(rule) = incoming.rule {
-        parts.extend(conditions(ctx.dialect, ALIAS, &rule.when));
+        parts.extend(conditions_sql(ctx.dialect, ALIAS, &rule.when));
     }
     for when in &incoming.earlier {
-        let held = conditions(ctx.dialect, ALIAS, when).join(" AND ");
+        let held = conditions_sql(ctx.dialect, ALIAS, when).join(" AND ");
         parts.push(format!("NOT COALESCE(({held}), FALSE)"));
     }
     if source == own.table()

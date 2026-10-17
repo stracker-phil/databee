@@ -11,11 +11,11 @@ use std::time::Duration;
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::condition::Condition;
+use super::condition::{Condition, conditions_sql};
 use super::effective::{self, EffectiveRules, RuleSources};
-use super::project_change::{self, ChangeContext, ProjectChange};
-use super::types::{Match, Reference};
-use crate::db::{Dialect, ResultSet, escape_like};
+use super::project_change::{self, ChangeContext};
+use super::types::Reference;
+use crate::db::{Dialect, ResultSet};
 use crate::error::{AppError, AppResult};
 use crate::lens::{self, ColumnsRef, ResolvedReference};
 use crate::schema::{self, DatabaseSchema};
@@ -93,7 +93,7 @@ impl CoverageQuery<'_> {
     }
 
     fn source_filter(&self, dialect: Dialect) -> Vec<String> {
-        conditions(dialect, "s", self.when)
+        conditions_sql(dialect, "s", self.when)
     }
 
     /// NULL in any column (a composite key with a NULL part is not checked, as in SQL), or a
@@ -130,7 +130,7 @@ impl CoverageQuery<'_> {
                 )
             })
             .collect();
-        on.extend(conditions(dialect, "t", self.to_when));
+        on.extend(conditions_sql(dialect, "t", self.to_when));
         if !self.self_key.is_empty() {
             let same: Vec<String> = self
                 .self_key
@@ -156,45 +156,6 @@ fn where_clause(filter: &[String]) -> String {
 
 fn column(dialect: Dialect, alias: &str, name: &str) -> String {
     format!("{alias}.{}", dialect.quote_ident(name))
-}
-
-pub(crate) fn conditions(dialect: Dialect, alias: &str, conditions: &[Condition]) -> Vec<String> {
-    conditions
-        .iter()
-        .map(|c| match_sql(dialect, &column(dialect, alias, &c.column), &c.rule))
-        .collect()
-}
-
-/// A condition in SQL, as exact as `Matcher` is in Rust: case-sensitive whatever the collation,
-/// NULL matching nothing (not even `not`). `=`, IN and LIKE test the plain column first so an
-/// index on it still narrows the rows; the binary test then makes them exact. MySQL rejects a
-/// binary operand to REGEXP, so a regular expression turns case-sensitivity on with `(?-i)`
-/// instead; it runs in the server's dialect (ICU on MySQL, PCRE on MariaDB), which agrees with
-/// Rust's on common patterns.
-fn match_sql(dialect: Dialect, column: &str, rule: &Match) -> String {
-    match rule {
-        Match::Eq(value) => exact(column, "=", &dialect.sql_string(value)),
-        // Never true, and NULL on NULL, so `not` of it holds on every non-NULL value as in Rust.
-        Match::In(values) if values.is_empty() => format!("({column} <> {column})"),
-        Match::In(values) => {
-            let list: Vec<String> = values.iter().map(|v| dialect.sql_string(v)).collect();
-            exact(column, "IN", &format!("({})", list.join(", ")))
-        }
-        Match::Glob { glob } => {
-            let like = escape_like(glob).replace('*', "%");
-            exact(column, "LIKE", &dialect.like(&like))
-        }
-        Match::Like { like } => exact(column, "LIKE", &dialect.like(like)),
-        Match::Regexp { regexp } => {
-            let pattern = dialect.sql_string(&format!("(?-i){regexp}"));
-            format!("({column} REGEXP {pattern})")
-        }
-        Match::Not { not } => format!("NOT {}", match_sql(dialect, column, not)),
-    }
-}
-
-fn exact(column: &str, op: &str, operand: &str) -> String {
-    format!("({column} {op} {operand} AND CAST({column} AS BINARY) {op} {operand})")
 }
 
 /// The coverage of `reference` in `database`; read-only queries on the metadata pool, each
@@ -224,40 +185,20 @@ pub async fn coverage_preview(
     let schema = schema::database(session, database).await?;
     let loaded = effective::loaded_presets(&sources.presets.entries());
     let mut project = sources.projects.get(&session.slug(), database);
-    let index = match &replacing {
-        Some(id) => project.references.iter().position(|r| &r.id == id),
-        None => Some(project.references.len()),
-    };
-    let change = match replacing {
-        Some(id) => ProjectChange::UpdateReference {
-            id,
-            reference: rule,
-        },
-        None => ProjectChange::AddReference { reference: rule },
-    };
     let ctx = ChangeContext {
         schema: schema.clone(),
         presets: loaded.clone(),
     };
-    project_change::apply(&mut project, change, &ctx)?;
-    let Some(stored) = index.and_then(|i| project.references.get(i)) else {
-        return Err(AppError::InvalidInput("the rule was not stored".into()));
-    };
-    let by = ReferenceSource::Project {
-        id: stored.id.clone(),
-    };
+    let from = rule.from.clone();
+    let id = project_change::put_reference(&mut project, rule, replacing.as_deref(), &ctx)?;
+    let by = ReferenceSource::Project { id };
     let rules = Arc::new(EffectiveRules::build(&project, &schema, &loaded));
     let Some(applied) = rules.references.iter().find(|r| r.by == by) else {
         return Err(AppError::InvalidInput(format!(
-            "`{}` names a table this database does not have",
-            stored.from
+            "`{from}` names a table this database does not have"
         )));
     };
-    let reference = ResolvedReference {
-        from: ColumnsRef::new(&applied.from.table, vec![applied.from.column.clone()]),
-        to: ColumnsRef::new(&applied.to.table, vec![applied.to.column.clone()]),
-        by,
-    };
+    let reference = applied.resolved();
     count(session, database, &schema, rules, &reference, timeout).await
 }
 
@@ -285,7 +226,9 @@ async fn count(
             reference.from.table, reference.to.table
         )));
     }
-    let (when, to_when) = rule_conditions(&rules, reference);
+    let (when, to_when) = rules
+        .rule_for(reference)
+        .map_or((&[][..], &[][..]), |r| (&r.when[..], &r.to_when[..]));
     let self_key = self_key_columns(schema, reference);
     let query = CoverageQuery {
         database,
@@ -316,26 +259,6 @@ async fn count(
         Err(e) => return Err(e),
     }
     Ok(coverage)
-}
-
-/// The `when` and `to_when` of a project or preset rule; declared and inferred references have
-/// none.
-fn rule_conditions<'r>(
-    rules: &'r EffectiveRules,
-    reference: &ResolvedReference,
-) -> (&'r [Condition], &'r [Condition]) {
-    if !matches!(
-        reference.by,
-        ReferenceSource::Project { .. } | ReferenceSource::Preset { .. }
-    ) {
-        return (&[], &[]);
-    }
-    let rule = rules.references.iter().find(|r| {
-        r.by == reference.by
-            && r.to.table == reference.to.table
-            && reference.to.columns == [r.to.column.clone()]
-    });
-    rule.map_or((&[], &[]), |r| (&r.when, &r.to_when))
 }
 
 fn self_key_columns<'s>(schema: &'s DatabaseSchema, reference: &ResolvedReference) -> &'s [String] {
@@ -391,7 +314,7 @@ mod tests {
     use crate::rules::catalog::PresetCatalog;
     use crate::rules::condition::Matcher;
     use crate::rules::testing::reference;
-    use crate::rules::types::{Conditions, Reference};
+    use crate::rules::types::{Conditions, Match, Reference};
     use crate::test_support::{connect_to, servers, spec};
 
     const NO_BACKSLASH: Dialect = Dialect {
@@ -425,87 +348,6 @@ mod tests {
     fn not(rule: Match) -> Match {
         Match::Not {
             not: Box::new(rule),
-        }
-    }
-
-    #[test]
-    fn match_sql_is_exact_and_escapes_per_dialect() {
-        let cases = [
-            (
-                Match::Eq("a".into()),
-                "(c = 'a' AND CAST(c AS BINARY) = 'a')",
-                "(c = 'a' AND CAST(c AS BINARY) = 'a')",
-            ),
-            (
-                Match::Eq("it's".into()),
-                "(c = 'it''s' AND CAST(c AS BINARY) = 'it''s')",
-                "(c = 'it''s' AND CAST(c AS BINARY) = 'it''s')",
-            ),
-            (
-                Match::Eq(r"a\b".into()),
-                r"(c = 'a\\b' AND CAST(c AS BINARY) = 'a\\b')",
-                r"(c = 'a\b' AND CAST(c AS BINARY) = 'a\b')",
-            ),
-            (
-                Match::In(vec!["a".into(), "b".into()]),
-                "(c IN ('a', 'b') AND CAST(c AS BINARY) IN ('a', 'b'))",
-                "(c IN ('a', 'b') AND CAST(c AS BINARY) IN ('a', 'b'))",
-            ),
-            (Match::In(Vec::new()), "(c <> c)", "(c <> c)"),
-            (
-                Match::Glob {
-                    glob: "abc*".into(),
-                },
-                "(c LIKE 'abc%' AND CAST(c AS BINARY) LIKE 'abc%')",
-                r"(c LIKE 'abc%' ESCAPE '\' AND CAST(c AS BINARY) LIKE 'abc%' ESCAPE '\')",
-            ),
-            (
-                Match::Glob {
-                    glob: r"a%b_c\d*".into(),
-                },
-                r"(c LIKE 'a\\%b\\_c\\\\d%' AND CAST(c AS BINARY) LIKE 'a\\%b\\_c\\\\d%')",
-                r"(c LIKE 'a\%b\_c\\d%' ESCAPE '\' AND CAST(c AS BINARY) LIKE 'a\%b\_c\\d%' ESCAPE '\')",
-            ),
-            (
-                Match::Like {
-                    like: r"a\_%".into(),
-                },
-                r"(c LIKE 'a\\_%' AND CAST(c AS BINARY) LIKE 'a\\_%')",
-                r"(c LIKE 'a\_%' ESCAPE '\' AND CAST(c AS BINARY) LIKE 'a\_%' ESCAPE '\')",
-            ),
-            (
-                Match::Regexp {
-                    regexp: "^[0-9]+$".into(),
-                },
-                "(c REGEXP '(?-i)^[0-9]+$')",
-                "(c REGEXP '(?-i)^[0-9]+$')",
-            ),
-            (
-                Match::Regexp {
-                    regexp: r"\d+".into(),
-                },
-                r"(c REGEXP '(?-i)\\d+')",
-                r"(c REGEXP '(?-i)\d+')",
-            ),
-            (
-                not(Match::Eq("a".into())),
-                "NOT (c = 'a' AND CAST(c AS BINARY) = 'a')",
-                "NOT (c = 'a' AND CAST(c AS BINARY) = 'a')",
-            ),
-            (
-                not(not(Match::Eq("a".into()))),
-                "NOT NOT (c = 'a' AND CAST(c AS BINARY) = 'a')",
-                "NOT NOT (c = 'a' AND CAST(c AS BINARY) = 'a')",
-            ),
-            (not(Match::In(Vec::new())), "NOT (c <> c)", "NOT (c <> c)"),
-        ];
-        for (rule, mysql, no_backslash) in cases {
-            assert_eq!(match_sql(Dialect::MYSQL, "c", &rule), mysql, "{rule:?}");
-            assert_eq!(
-                match_sql(NO_BACKSLASH, "c", &rule),
-                no_backslash,
-                "{rule:?} without backslash escapes"
-            );
         }
     }
 
@@ -1000,6 +842,42 @@ to_when = { active = "1" }
                  COALESCE(SUM(CASE WHEN (s.`author` IS NULL OR CAST(s.`author` AS BINARY) = '0') THEN 0 \
                  WHEN EXISTS (SELECT 1 FROM `wp`.`f_people` AS t WHERE t.`person_id` = s.`author`) THEN 1 ELSE 0 END), 0) AS resolved \
                  FROM `wp`.`f_threads` AS s WHERE (s.`kind` = 'b' AND CAST(s.`kind` AS BINARY) = 'b')"]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_project_reference_uses_the_rule_with_its_own_from_when_two_share_an_id() {
+        let rig = Rig::new(shop().on("COUNT(*)", counts(2, 0, 2)));
+        rig.projects
+            .update("local", "wp", |p| {
+                p.prefix = Some("f_".into());
+                p.references = vec![
+                    reference("mine", "threads.author", "people.person_id"),
+                    Reference {
+                        when: Conditions::from([("kind".to_string(), Match::Eq("b".into()))]),
+                        ..reference("mine", "threads.kind", "people.person_id")
+                    },
+                ];
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let author_rule = rig
+            .outgoing("f_threads")
+            .await
+            .into_iter()
+            .find(|r| r.from.columns == ["author"])
+            .unwrap();
+
+        rig.coverage(&author_rule).await.unwrap();
+
+        assert_eq!(
+            rig.db.queries(),
+            ["SELECT COUNT(*) AS total, \
+                 COALESCE(SUM((s.`author` IS NULL OR CAST(s.`author` AS BINARY) = '0')), 0) AS zero_or_null, \
+                 COALESCE(SUM(CASE WHEN (s.`author` IS NULL OR CAST(s.`author` AS BINARY) = '0') THEN 0 \
+                 WHEN EXISTS (SELECT 1 FROM `wp`.`f_people` AS t WHERE t.`person_id` = s.`author`) THEN 1 ELSE 0 END), 0) AS resolved \
+                 FROM `wp`.`f_threads` AS s"]
         );
     }
 
