@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { toAppError, type Address, type Cell, type ColumnMeta, type Value as StoredValue } from "../api";
-import { RULE_MENU } from "../commands";
-import { fullCellText, type CellSource } from "../lib/cells";
+import type { Address, Cell, ColumnMeta, Value as StoredValue } from "../api";
+import type { CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
-import { cellText, rowsToJson, rowsToTsv } from "../lib/format";
 import { useRowHeight } from "../lib/theme";
-import { selectNullLabel, useStore } from "../state/store";
+import { useStore } from "../state/store";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
-import { fitWidth, useEditValueCommand, useFocusCell, useRowValues, type CellPos } from "./gridHooks";
+import { cellMenu } from "./grid/cellMenu";
+import { useCellEditing } from "./grid/useCellEditing";
+import { useColumnSizing } from "./grid/useColumnSizing";
+import { useEditValueCommand, useFocusCell, useRowValues, type CellPos } from "./gridHooks";
 import { openTarget, showValue } from "./value/open";
 import { useOpenValue } from "./value/useOpenValue";
 import { Value } from "./value/Value";
@@ -40,9 +41,6 @@ interface Props {
   /** The menu of a column header (right-click), opened where the pointer is. */
   columnMenu?: (col: number, at: { x: number; y: number }) => MenuEntry[] | Promise<MenuEntry[]>;
 }
-
-const MIN_WIDTH_REM = 3;
-const MAX_FIT_REM = 40;
 
 /** Viewport the virtualizer assumes until the first layout measurement, so the first frame already has rows. */
 const INITIAL_VIEWPORT = { width: 1000, height: 800 };
@@ -89,41 +87,19 @@ const KEY_ACTIONS: Record<string, (c: KeyContext) => void> = {
 
 const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value));
 
-const remPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 13;
-
 export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus, columnMenu }: Props) {
-  const nullLabel = useStore(selectNullLabel);
-  const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
   const selectCell = useStore((s) => s.selectCell);
-  const toast = useStore((s) => s.toast);
   const rowHeight = useRowHeight();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const stopDrag = useRef<(() => void) | null>(null);
   const [selected, setSelected] = useState<CellPos | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
-  const [editing, setEditing] = useState<(CellPos & { text: string }) | null>(null);
-  // Widths changed in this grid (drag / auto-fit); win over saved and measured widths.
-  const [manual, setManual] = useState<Record<string, number>>({});
   const [selectionRows, setSelectionRows] = useState(rows);
-  // An edit pre-filled from `fetchCell` must not open on rows that replaced the ones it was for.
-  const currentRows = useRef(rows);
-  useEffect(() => {
-    currentRows.current = rows;
-  }, [rows]);
   // New rows invalidate cell positions; resetting during render keeps stale indices out of every frame.
   if (selectionRows !== rows) {
     setSelectionRows(rows);
     setSelected(null);
-    setEditing(null);
   }
-  useEffect(() => () => stopDrag.current?.(), []);
-
-  const measured = useMemo(() => columns.map((c, i) => fitWidth(c, i, rows.slice(0, 50), nullLabel, dataFontSize, 380)), [columns, rows, nullLabel, dataFontSize]);
-  const widths = columns.map((c, i) => manual[c.name] ?? columnWidths?.[c.name] ?? measured[i]);
-  const totalWidth = widths.reduce((a, b) => a + b, 0);
-  const names = columns.map((c) => c.name);
-  // Per-column CSS variables on the grid root; cells only reference them.
-  const colVars = Object.fromEntries(widths.map((w, i) => [`--col-${i}`, `${w}px`])) as React.CSSProperties;
+  const { editing, startEdit, withFullText, setText, cancel, commit } = useCellEditing(rows, source, onEditCell);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -135,44 +111,14 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   // Row height follows the data size setting; re-measure so rows neither overlap nor gap.
   useEffect(() => virtualizer.measure(), [rowHeight, virtualizer]);
 
-  const commitWidths = (next: Record<string, number>) => {
-    setManual(next);
-    onColumnWidthsChange?.(Object.fromEntries(columns.map((c, i) => [c.name, next[c.name] ?? widths[i]])));
-  };
-
-  const startResize = (e: React.MouseEvent, index: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
-    const startWidth = widths[index];
-    const min = MIN_WIDTH_REM * remPx();
-    const name = columns[index].name;
-    let latest = startWidth;
-    const move = (ev: MouseEvent) => {
-      latest = Math.max(min, Math.round(startWidth + ev.clientX - startX));
-      setManual((m) => ({ ...m, [name]: latest }));
-    };
-    const stop = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      stopDrag.current = null;
-    };
-    const up = () => {
-      stop();
-      commitWidths({ ...manual, [name]: latest });
-    };
-    stopDrag.current = stop;
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  };
-
-  const autoFit = (index: number) => {
-    const visible = virtualizer.getVirtualItems().map((v) => rows[v.index]);
-    const sample = visible.length ? visible : rows.slice(0, 50);
-    const width = fitWidth(columns[index], index, sample, nullLabel, dataFontSize, MAX_FIT_REM * remPx());
-    commitWidths({ ...manual, [columns[index].name]: Math.max(MIN_WIDTH_REM * remPx(), width) });
-  };
-
+  const { totalWidth, colVars, startResize, autoFit } = useColumnSizing({
+    columns,
+    rows,
+    saved: columnWidths,
+    onChange: onColumnWidthsChange,
+    visibleRows: () => virtualizer.getVirtualItems().map((v) => rows[v.index]),
+  });
+  const names = columns.map((c) => c.name);
 
   const rowValues = useRowValues(rows, valueAt);
 
@@ -182,23 +128,6 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   };
 
   const { openValue, openRow, place, targetMenu } = useOpenValue(owner ?? null);
-
-  // Bytes cells carry a preview, not their value; editing it would write the preview back. Long text is fetched first.
-  const canEdit = (cell: Cell) => !!onEditCell && cell.t !== "bytes";
-
-  /** Calls `apply` with the cell's full text: right away, or after fetching a `longText` cell. */
-  const withFullText = ({ row, col }: CellPos, apply: (text: string) => void) => {
-    const cell = rows[row][col];
-    if (cell.t !== "longText") return apply(cellText(cell));
-    fullCellText(cell, source, row, col).then(apply, (e) => toast("error", `Could not load the value: ${toAppError(e).message}`));
-  };
-
-  const startEdit = ({ row, col }: CellPos) => {
-    const cell = rows[row]?.[col];
-    if (!cell || !canEdit(cell)) return;
-    const shown = rows;
-    withFullText({ row, col }, (text) => currentRows.current === shown && setEditing({ row, col, text }));
-  };
 
   const copyCell = (at: CellPos) => withFullText(at, (text) => void copyText(text, "value"));
 
@@ -227,22 +156,17 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
     setMenu({
       x: e.clientX,
       y: e.clientY,
-      items: [
-        { label: "Copy value", action: () => copyCell({ row, col }) },
-        ...(onEditCell
-          ? ([
-              { label: "Edit value", disabled: !canEdit(rows[row][col]), action: () => startEdit({ row, col }) },
-              { label: "Set to NULL", action: () => onEditCell(row, col, null) },
-            ] as MenuEntry[])
-          : []),
-        ...(rowValues(row)[col]?.source && rows[row][col].t !== "bytes" ? (["separator", ...RULE_MENU, "separator"] as MenuEntry[]) : []),
-        { label: "Copy row as TSV", action: () => void copyText(rowsToTsv(names, [rows[row]]), "row") },
-        { label: "Copy row as JSON", action: () => void copyText(rowsToJson(names, [rows[row]]), "row as JSON") },
-        "separator",
-        { label: `Copy all ${rows.length} rows as TSV`, action: () => void copyText(rowsToTsv(names, rows), `${rows.length} rows`) },
-        { label: `Copy all ${rows.length} rows as JSON`, action: () => void copyText(rowsToJson(names, rows), `${rows.length} rows as JSON`) },
-        ...(rowActions ? (["separator", ...rowActions(row)] as MenuEntry[]) : []),
-      ],
+      items: cellMenu({
+        row,
+        col,
+        rows,
+        names,
+        value: rowValues(row)[col],
+        copy: (text, what) => void copyText(text, what),
+        copyValue: () => copyCell({ row, col }),
+        edit: onEditCell && { start: () => startEdit({ row, col }), setNull: () => onEditCell(row, col, null) },
+        rowActions: rowActions?.(row),
+      }),
     });
   };
 
@@ -345,16 +269,13 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
                       autoFocus
                       aria-label="Edit cell"
                       value={editing.text}
-                      onChange={(e) => setEditing({ ...editing, text: e.target.value })}
+                      onChange={(e) => setText(e.target.value)}
                       onKeyDown={(e) => {
                         e.stopPropagation();
-                        if (e.key === "Escape") setEditing(null);
-                        if (e.key === "Enter") {
-                          onEditCell?.(editing.row, editing.col, editing.text);
-                          setEditing(null);
-                        }
+                        if (e.key === "Escape") cancel();
+                        if (e.key === "Enter") commit();
                       }}
-                      onBlur={() => setEditing(null)}
+                      onBlur={cancel}
                     />
                   ) : (
                     <Value value={values[ci]} onOpen={openValue} density="grid" />
