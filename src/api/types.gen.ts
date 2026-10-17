@@ -611,6 +611,41 @@ export type ProductSummary = { id: string, name: string, status: string, kind: s
 export type ProductView = { doc: EntityDoc, name: string, status: string, kind: string | null, image: string | null, sku: string | null, price: string | null, regularPrice: string | null, salePrice: string | null, stockStatus: string | null, stock: string | null, totalSales: string | null, terms: Array<[string, Array<string>]>, attributes: Array<[string, Array<string>]>, variations: Array<Variation>, related: Array<RelatedChip>, };
 
 /**
+ * One database of one connection. Fields use the snake_case of the rule types, so the stored
+ * rules and the project around them read alike.
+ */
+export type Project = { 
+/**
+ * The connection slug (`databee://<slug>/…`).
+ */
+connection: string, database: string, 
+/**
+ * `None`: suggested from the presets' marker tables.
+ */
+prefix: string | null, 
+/**
+ * Where `network_tables` live (multisite). `None`: suggested, else the prefix.
+ */
+network_prefix: string | null, 
+/**
+ * Enabled presets by name. `None`: every preset whose marker tables exist.
+ */
+presets: Array<string> | null, 
+/**
+ * Added rules, and rules that override a preset rule with the same `from` and `when`.
+ */
+references: Array<Reference>, 
+/**
+ * Ids of preset or inferred rules switched off.
+ */
+disabled: Array<string>, kinds: Array<KindRule>, styles: Array<StyleRule>, saved: Array<SavedQuery>, };
+
+/**
+ * Kind and style rules have no id, so they are addressed by their index in the project.
+ */
+export type ProjectChange = { "op": "addReference", reference: Reference, } | { "op": "updateReference", id: string, reference: Reference, } | { "op": "removeReference", id: string, } | { "op": "addKind", rule: KindRule, } | { "op": "updateKind", index: number, rule: KindRule, } | { "op": "removeKind", index: number, } | { "op": "addStyle", rule: StyleRule, } | { "op": "updateStyle", index: number, rule: StyleRule, } | { "op": "removeStyle", index: number, } | { "op": "disable", id: string, } | { "op": "enable", id: string, } | { "op": "setPrefix", prefix: string | null, } | { "op": "setNetworkPrefix", prefix: string | null, } | { "op": "setPresets", presets: Array<string> | null, };
+
+/**
  * Where a value was read: rendered as `wp_postmeta.meta_value · meta_id 9123`.
  */
 export type Provenance = { table: string, column: string, row: RowKey, };
@@ -715,6 +750,12 @@ serialized: Array<SerializedCell>, };
 export type RowKey = Array<KeyPart>;
 
 export type RowRef = { table: string, idColumn: string, id: string, };
+
+/**
+ * A query the user saved, optionally pinned to the readout home. `pin` shares the shape of a
+ * preset's `[[pinned]] home`, so a project query exports as a pinned query.
+ */
+export type SavedQuery = { id: string, title: string, sql: string, pin?: Home | null, };
 
 export type SearchHit = { entity: string, id: string, title: string, subtitle: string | null, 
 /**

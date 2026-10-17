@@ -51,6 +51,8 @@ import type {
   TableInfo,
   TableReferences,
   PresetInfo,
+  Project,
+  ProjectChange,
   TableStructure,
   UiState,
 } from "./types";
@@ -102,6 +104,13 @@ export const api = {
   tableReferences: (sessionId: string, database: string, table: string) =>
     invoke<TableReferences>("table_references", { sessionId, database, table }),
   presetsList: () => invoke<PresetInfo[]>("presets_list"),
+  /** The project of the session's connection and `database`; empty when none is stored. */
+  projectGet: (sessionId: string, database: string) => invoke<Project>("project_get", { sessionId, database }),
+  /** Checks the change against the database's tables and columns; errors name the field. */
+  projectUpdate: (sessionId: string, database: string, change: ProjectChange) =>
+    invoke<Project>("project_update", { sessionId, database, change }),
+  /** The project's rules as a preset file (TOML). */
+  projectExport: (sessionId: string, database: string) => invoke<string>("project_export", { sessionId, database }),
   /** The "New query" SQL for a table, quoted by Rust. */
   tableSelectSql: (sessionId: string, database: string, table: string) =>
     invoke<string>("table_select_sql", { sessionId, database, table }),

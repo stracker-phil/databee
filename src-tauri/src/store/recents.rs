@@ -100,8 +100,8 @@ impl RecentsStore {
             .await
     }
 
-    /// Validates `slug` and stores it for the connection `identity`.
-    pub async fn rename_slug(&self, identity: &str, slug: &str) -> AppResult<()> {
+    /// Validates `slug` and stores it for the connection `identity`; returns the old slug.
+    pub async fn rename_slug(&self, identity: &str, slug: &str) -> AppResult<String> {
         slug::validate(slug)?;
         let identity = identity.to_string();
         let slug = slug.to_string();
@@ -118,8 +118,7 @@ impl RecentsStore {
                     .ok_or_else(|| {
                         AppError::InvalidInput(format!("No saved connection {identity}"))
                     })?;
-                entry.slug = slug;
-                Ok(())
+                Ok(std::mem::replace(&mut entry.slug, slug))
             })
             .await?
     }
@@ -315,6 +314,25 @@ mod tests {
 
         assert_eq!(slugs(&store), ["wc-pp"]);
         assert_eq!(slugs(&RecentsStore::open(dir.path())), ["wc-pp"]);
+    }
+
+    #[tokio::test]
+    async fn renaming_a_slug_returns_the_old_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = RecentsStore::open(dir.path());
+        let first = store.touch(&spec("a")).await.unwrap();
+
+        let old = store
+            .rename_slug(&spec("a").identity(), "mine")
+            .await
+            .unwrap();
+        let older = store
+            .rename_slug(&spec("a").identity(), "yours")
+            .await
+            .unwrap();
+
+        assert_eq!(old, first);
+        assert_eq!(older, "mine");
     }
 
     #[tokio::test]

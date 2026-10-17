@@ -5,9 +5,9 @@ reference which rows, what kind of value a column or meta key holds, which value
 queries, anomalies and actions belong to it. The code is generic (`src-tauri/src/rules/`); application
 knowledge lives only in preset files. Rules follow [`.claude/rules/presets.md`](../.claude/rules/presets.md).
 
-Status: presets are parsed, checked and listed (`presets_list`). The rules lens that applies them to
-browsing and the projects that add rules per database come next; until then no rule changes what the app
-shows.
+Status: presets are parsed, checked and listed (`presets_list`); projects are stored and edited
+(`project_get`, `project_update`, `project_export`). The rules lens that applies presets and projects to
+browsing comes next; until then no rule changes what the app shows.
 
 ## Where presets live
 
@@ -237,3 +237,37 @@ Each rule is read on its own, so an error names the file, the rule and the field
 ```
 
 TOML syntax errors keep the parser's line and column.
+
+## Projects
+
+A project holds the rules a user adds for one database of one connection (`rules/project.rs`). Projects
+live in `projects.json` in the config directory, keyed by `<connection slug>/<database>`; renaming a
+connection's slug moves its keys. A database without a stored project gets an empty one.
+
+| Field | Means |
+|---|---|
+| `connection`, `database` | the key's parts |
+| `prefix` | the table prefix; `null`: suggested from the presets' marker tables |
+| `network_prefix` | where `network_tables` live (multisite: one project per prefix, `wp_2_` with network prefix `wp_`); `null`: the shortest prefix that holds them, else the prefix |
+| `presets` | enabled presets by name; `null`: every preset whose marker tables exist |
+| `references`, `kinds`, `styles` | rules in the preset shape above |
+| `disabled` | ids of preset or inferred rules switched off |
+| `saved` | saved queries `{ id, title, sql, pin }`; `pin` has the shape of `[[pinned]] home` |
+
+**Editing.** `project_update(session_id, database, change)` applies one `ProjectChange` (`op`):
+`addReference`, `updateReference` and `removeReference` by id; `addKind`, `updateKind`, `removeKind`,
+`addStyle`, `updateStyle`, `removeStyle` by index (these rules have no id); `disable` and `enable` an id;
+`setPrefix`, `setNetworkPrefix`, `setPresets`. Before storing, every table a rule names must exist under the
+prefix or the network prefix (the stored ones, else the suggestions), and every literal column (glob parts are
+not checked), `when` and `to_when` column must exist in its table. A prefix must start some table name,
+preset names must load. The error names the field: ``` `reference.when.meta_key`: `wp_posts` has no column
+`meta_key` ```. A reference without `id` gets its default id; when the project already uses it, `-><to>` is
+appended.
+
+**Overrides.** A project reference with the same `from` and `when` (the same default id) as a preset
+reference overrides it; `disabled` removes preset or inferred ids. Applying both comes with the effective
+rules (next part of this step).
+
+**Export.** `project_export` returns the project as a preset file named `<slug>-<database>`: its references,
+kinds and styles, saved queries as `[[pinned]]` (`pin` as `home`) and explicit presets as `requires`. The
+prefixes, `disabled` and the automatic preset choice have no preset form and are left out.

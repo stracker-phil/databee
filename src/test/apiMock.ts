@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Resolved, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
+import { EMPTY_UI_STATE, type ActionHistogram, type BrowsePage, type Dashboard, type EntityViewData, type Keybindings, type Page, type PlannedChange, type Project, type Resolved, type SnapshotInfo, type TableReferences, type TableStructure, type UiState } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { NOW } from "./now";
 import { session } from "./session";
@@ -9,6 +9,10 @@ import { settings } from "./settings";
 
 function emptyPage(): Page<never> {
   return { items: [], hasMore: false, limit: 50, facets: [], kinds: [] };
+}
+
+function emptyProject(database: string): Project {
+  return { connection: "local", database, prefix: null, network_prefix: null, presets: null, references: [], disabled: [], kinds: [], styles: [], saved: [] };
 }
 
 const emptyDashboard: Dashboard = {
@@ -45,6 +49,9 @@ export function createApiMock(): typeof realApi {
     describeTable: vi.fn().mockResolvedValue({ columns: [], indexes: [], primaryKey: [], foreignKeys: [], ddl: null } satisfies TableStructure),
     tableReferences: vi.fn().mockResolvedValue({ outgoing: [], incoming: [] } satisfies TableReferences),
     presetsList: vi.fn().mockResolvedValue([]),
+    projectGet: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
+    projectUpdate: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
+    projectExport: vi.fn().mockResolvedValue(""),
     refreshSchema: vi.fn().mockResolvedValue(undefined),
     completionSchema: vi.fn().mockResolvedValue({}),
     useDatabase: vi.fn().mockResolvedValue(undefined),

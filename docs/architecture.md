@@ -75,7 +75,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/schema.rs            per-session schema cache: tables, columns, keys, foreign keys, structures
   src/value/               Value, ValueKind, ColumnKind, RowKey: what a cell is and where it came from
   src/lens/                the lens seam: SchemaLens (keys, foreign keys, same-name inference), result kinds
-  src/rules/               presets: rule types, TOML parsing, the preset catalog, prefix suggestion
+  src/rules/               presets and projects: rule types, TOML parsing, the preset catalog, projects.json
   src/commands.rs          settings, keybindings, favorites, history, misc
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
@@ -191,6 +191,9 @@ WordPress and WooCommerce are preset files.
   `src-tauri/presets/*.toml`) plus `<config dir>/presets/*.toml`, reread when the directory's files or
   mtimes change; `requires_order` resolves `requires`.
 - `prefix.rs`: `suggest_prefix`, the shortest prefix under which a preset's marker tables exist.
+- `project.rs`, `project_change.rs`: `Project` per connection slug and database in `ProjectsStore`
+  (`projects.json`, in `AppState`), edited by `ProjectChange`s that are checked against the schema cache;
+  `Project::export` writes it as a preset file.
 
 ## A request, end to end
 

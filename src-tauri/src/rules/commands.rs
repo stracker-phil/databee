@@ -1,10 +1,53 @@
 use tauri::State;
 
 use super::PresetInfo;
+use super::project::Project;
+use super::project_change::{self, ChangeContext, ProjectChange};
+use crate::error::AppResult;
 use crate::state::AppState;
 
 /// Every known preset, with the parse error of a user file that does not load.
 #[tauri::command]
 pub fn presets_list(state: State<'_, AppState>) -> Vec<PresetInfo> {
     state.presets.list()
+}
+
+/// The project of the session's connection and `database`; an empty one when none is stored.
+#[tauri::command]
+pub fn project_get(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+) -> AppResult<Project> {
+    let session = state.sessions.get(&session_id)?;
+    Ok(state.projects.get(&session.slug(), &database))
+}
+
+/// Checks `change` against the database's tables and columns, then stores it.
+#[tauri::command]
+pub async fn project_update(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    change: ProjectChange,
+) -> AppResult<Project> {
+    let session = state.sessions.get(&session_id)?;
+    let ctx = ChangeContext::load(&session, &database, &state.presets).await?;
+    state
+        .projects
+        .update(&session.slug(), &database, move |project| {
+            project_change::apply(project, change, &ctx)
+        })
+        .await
+}
+
+/// The project's rules as a preset file (TOML).
+#[tauri::command]
+pub fn project_export(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+) -> AppResult<String> {
+    let session = state.sessions.get(&session_id)?;
+    state.projects.get(&session.slug(), &database).export()
 }

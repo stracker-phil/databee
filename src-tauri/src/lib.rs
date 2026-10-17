@@ -267,6 +267,9 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             decode::commands::decode_value,
             decode::commands::edit_serialized,
             rules::commands::presets_list,
+            rules::commands::project_get,
+            rules::commands::project_update,
+            rules::commands::project_export,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
