@@ -1,5 +1,5 @@
-pub mod address;
-pub mod cli;
+mod address;
+mod cli;
 mod commands;
 pub mod connection;
 pub mod db;
@@ -8,9 +8,9 @@ pub mod decode;
 mod deep_link;
 #[cfg(debug_assertions)]
 mod dev;
-pub mod document;
+mod document;
 pub mod error;
-pub mod ipc;
+mod ipc;
 mod launch;
 mod lens;
 mod lock;
@@ -20,20 +20,20 @@ mod pending;
 mod query;
 mod readout;
 mod remote;
-pub mod rules;
-pub mod saved;
+mod rules;
+mod saved;
 mod schema;
 mod search;
-pub mod secrets;
+mod secrets;
 mod session;
-pub mod stage;
+mod stage;
 mod state;
 #[cfg(test)]
 mod statement_counts;
-pub mod store;
+mod store;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_support;
-pub mod value;
+mod value;
 mod value_counts;
 mod window;
 

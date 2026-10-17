@@ -4,7 +4,7 @@ import { api, type Peek } from "../../api";
 import { formatAddress, parseAddress } from "../../lib/address";
 import { bySourceText } from "../../lib/provenance";
 import { useApiResult } from "../../lib/useApiResult";
-import { selectActiveTab, selectFocusedValue, useStore } from "../../state/store";
+import { selectActiveTab, selectFocusedValue, selectSessionBySlug, useStore } from "../../state/store";
 import { openTarget, type ColumnPlace } from "./open";
 import { Value } from "./Value";
 
@@ -135,7 +135,7 @@ function cachedPeek(sessionId: string, address: string, dataVersion: number): Pr
 
 function usePeekData(address: string) {
   const slug = parseAddress(address).connection;
-  const sessionId = useStore((s) => s.sessions.find((x) => x.slug === slug)?.id ?? null);
+  const sessionId = useStore((s) => selectSessionBySlug(s, slug)?.id ?? null);
   const dataVersion = useStore((s) => s.dataVersion);
   const key = sessionId ? JSON.stringify([sessionId, dataVersion, address]) : null;
   return useApiResult(key, () => cachedPeek(sessionId!, address, dataVersion));

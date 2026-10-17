@@ -3,7 +3,7 @@ import type { Address } from "../api";
 import { objectColumn, type StackColumn } from "../lib/columns";
 import { connectedStore, queryTab, readoutTab, session, tableTab, value } from "../test/fixtures";
 import { resetStore, useStore, type ObjectTab, type ProjectTab, type Tab } from "./store";
-import { TAB_KINDS, tabDatabase, tabKind } from "./tabKinds";
+import { tabDatabase, tabKind } from "./tabKinds";
 
 const rowAddress = (database: string, key: string): Address => ({
   connection: session.slug,
@@ -101,23 +101,14 @@ describe("tabDatabase", () => {
   });
 });
 
-describe("TAB_KINDS", () => {
-  it("has an entry for every tab kind", () => {
-    expect(Object.keys(TAB_KINDS).sort()).toEqual(["object", "project", "query", "readout", "table"]);
-  });
-
+describe("tabKind", () => {
   it.each([
-    ["table", true],
-    ["object", true],
-    ["query", false],
-    ["project", false],
-    ["readout", false],
-  ] as const)("marks %s previewable: %s", (kind, preview) => {
-    expect(TAB_KINDS[kind].preview).toBe(preview);
-  });
-
-  it("resolves a tab to the entry of its kind", () => {
-    expect(tabKind(tableTab())).toBe(TAB_KINDS.table);
-    expect(tabKind(queryTab())).toBe(TAB_KINDS.query);
+    ["table", tableTab(), true],
+    ["object", objectTab([], 0), true],
+    ["query", queryTab(), false],
+    ["project", projectTab("shop"), false],
+    ["readout", readoutTab(), false],
+  ])("marks a %s tab previewable: %s", (_kind, tab, preview) => {
+    expect(tabKind(tab).preview).toBe(preview);
   });
 });

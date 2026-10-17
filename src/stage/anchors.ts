@@ -7,7 +7,7 @@ import { isInView, visiblePart } from "./rect";
 import type { PageAnchor, StageRect, StageWindow } from "./types";
 
 /** The one label limit of the hook; Rust passes labels through as the page reports them. */
-export const MAX_LABEL = 80;
+const MAX_LABEL = 80;
 export const FIELD = "input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea, [contenteditable='true'], [contenteditable='']";
 
 function text(value: string | null | undefined): string {
@@ -20,7 +20,7 @@ export function rectOf(element: Element): StageRect {
 }
 
 /** `data-stage-label` (on the element or inside it), aria-label, title, or the text. */
-export function labelOf(element: Element): string {
+function labelOf(element: Element): string {
   const inner = element.querySelector<HTMLElement>("[data-stage-label]");
   const label =
     text(element.getAttribute("data-stage-label")) ||
@@ -45,7 +45,7 @@ export function isField(element: Element): boolean {
 }
 
 /** `data-stage-role`, else what the element is: a field, toggle, tab, list row, link or button. */
-export function roleOf(element: Element): string {
+function roleOf(element: Element): string {
   const explicit = element.getAttribute("data-stage-role");
   if (explicit) return explicit;
   const role = element.getAttribute("role");
@@ -65,7 +65,7 @@ function bool(value: string | null): boolean | undefined {
 }
 
 /** `role`, `list` and the ARIA states Stage can narrate. */
-export function detailsOf(element: Element): Pick<PageAnchor, "role" | "list" | "selected" | "checked" | "expanded" | "disabled"> {
+function detailsOf(element: Element): Pick<PageAnchor, "role" | "list" | "selected" | "checked" | "expanded" | "disabled"> {
   const details: ReturnType<typeof detailsOf> = { role: roleOf(element) };
   const list = element.getAttribute("data-stage-list");
   if (list) details.list = list;

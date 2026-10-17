@@ -20,10 +20,6 @@ impl Rows {
         self.result.rows.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.result.rows.is_empty()
-    }
-
     pub fn column(&self, name: &str) -> Option<usize> {
         self.result
             .columns

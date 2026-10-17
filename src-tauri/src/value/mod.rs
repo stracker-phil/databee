@@ -2,8 +2,8 @@
 //! it is and where it was read.
 //!
 //! Results carry one `ColumnKind` per column plus the few cells that decode as serialized data,
-//! and the page derives each cell's `Value` from them (`src/lib/values.ts`; `value_at` here is
-//! the same rule in Rust). A page of 500 rows would otherwise send 500 copies of each kind.
+//! and the page derives each cell's `Value` from them (`src/lib/values.ts`; `ResultValues` here
+//! is the same rule in Rust). A page of 500 rows would otherwise send 500 copies of each kind.
 
 mod condition;
 mod rows;
@@ -14,8 +14,10 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub use condition::{stored_key, value_condition};
-pub use rows::{ResultValues, page_value_at, row_keys, value_at};
-pub use serialized::{find_serialized, serialized};
+#[cfg(test)]
+pub use rows::value_at;
+pub use rows::{ResultValues, row_keys};
+pub use serialized::find_serialized;
 pub use time::utc_seconds;
 
 use crate::address::Address;

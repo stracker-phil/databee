@@ -108,7 +108,7 @@ function PinDialog({ title, pin, onSubmit }: { title: string; pin: Home | null; 
   );
 }
 
-export function PasswordDialog({
+function PasswordDialog({
   spec,
   account,
   error,

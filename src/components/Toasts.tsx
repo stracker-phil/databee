@@ -38,7 +38,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 }
 
 /** First line is the headline; the raw remainder (stack, SQL, codes) hides behind "Details". */
-export function errorLines(message: string): string[] {
+function errorLines(message: string): string[] {
   const clean = message.replace(/^Unexpected error:\s*/, "").trim();
   const [first, ...rest] = clean.split(/\n+/);
   const headline = first.length > 160 ? `${first.slice(0, 157)}…` : first;

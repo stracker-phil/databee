@@ -8,7 +8,7 @@ import { pinLabel } from "../lib/pins";
 import { useApiResult } from "../lib/useApiResult";
 import { resultValueAt } from "../lib/values";
 import { useResolvedScheme } from "../lib/theme";
-import { isPreset, originText } from "../state/slices/saved";
+import { isPreset, savedOriginText } from "../state/slices/saved";
 import { fail, queryMarksKey, useStore, type QueryTab as QueryTabState } from "../state/store";
 import type { MenuEntry } from "./ContextMenu";
 import { ErrorPanel } from "./ErrorPanel";
@@ -146,7 +146,7 @@ function SavedActions({ tab }: { tab: QueryTabState }) {
   const origin = tab.saved?.origin;
   return (
     <>
-      {origin && <span className="o2 small mono" data-stage="query:origin">{originText(origin)}</span>}
+      {origin && <span className="o2 small mono" data-stage="query:origin">{savedOriginText(origin)}</span>}
       {origin && isPreset(origin) && (
         <button data-stage="query:copy-to-project" className="btn" onClick={() => void copyPresetQuery(tab.id)}>
           <Copy size="0.923rem" /> Copy to project

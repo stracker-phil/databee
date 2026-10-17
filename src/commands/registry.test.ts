@@ -6,7 +6,6 @@ import {
   clearCommands,
   conflicts,
   getCommand,
-  normalizeBinding,
   registerCommands,
   resolveKeydown,
   setOverrides,
@@ -30,16 +29,18 @@ function cmd(id: string, scope: Command["scope"], defaultBinding?: string, extra
 
 describe("bindings", () => {
   it("normalizes modifier order and key case", () => {
-    expect(normalizeBinding("shift+mod+k")).toBe("Mod+Shift+K");
-    expect(normalizeBinding("Cmd+[")).toBe("Mod+[");
-    expect(normalizeBinding("Ctrl+Tab")).toBe("Ctrl+Tab");
-    expect(normalizeBinding("Mod+")).toBeNull();
-    expect(normalizeBinding("mod+-")).toBe("Mod+-");
+    const normalized = (binding: string) => bindingFor("unregistered", { unregistered: binding });
+    expect(normalized("shift+mod+k")).toBe("Mod+Shift+K");
+    expect(normalized("Cmd+[")).toBe("Mod+[");
+    expect(normalized("Ctrl+Tab")).toBe("Ctrl+Tab");
+    expect(normalized("Mod+")).toBeNull();
+    expect(normalized("mod+-")).toBe("Mod+-");
   });
 
   it("treats a trailing ++ as the plus key", () => {
-    expect(normalizeBinding("Mod++")).toBe("Mod++");
-    expect(normalizeBinding("shift+mod++")).toBe("Mod+Shift++");
+    const normalized = (binding: string) => bindingFor("unregistered", { unregistered: binding });
+    expect(normalized("Mod++")).toBe("Mod++");
+    expect(normalized("shift+mod++")).toBe("Mod+Shift++");
     expect(bindingLabel("Mod+Shift++")).toBe("⌘⇧+");
   });
 

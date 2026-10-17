@@ -287,7 +287,6 @@ impl Scope<'_> {
             None => String::new(),
         };
         Ok(Plan {
-            database: ctx.database.clone(),
             description: format!("free SQL on {} (no undo{preview})", self.action.rule.table),
             statements: vec![statement],
             undo: Vec::new(),

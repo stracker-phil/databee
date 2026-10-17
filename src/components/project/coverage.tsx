@@ -5,7 +5,7 @@ export type CoverageState = { status: "running" } | { status: "done"; coverage: 
 const SAMPLE_SHOWN = 3;
 
 /** Source rows that hold a value (not 0 or NULL) but find no target. */
-export const unresolved = (c: Coverage) => c.total - c.resolved - c.zeroOrNull;
+const unresolved = (c: Coverage) => c.total - c.resolved - c.zeroOrNull;
 
 /** Nothing that holds a value finds a target: the rule is probably wrong. */
 export const nothingResolves = (c: Coverage) => !c.timedOut && c.resolved === 0 && unresolved(c) > 0;

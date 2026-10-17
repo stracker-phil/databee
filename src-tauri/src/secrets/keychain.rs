@@ -27,12 +27,4 @@ impl SecretStore for Keychain {
         )
         .map_err(|e| AppError::Keychain(e.to_string()))
     }
-
-    fn delete(&self, account: &str) -> AppResult<()> {
-        match security_framework::passwords::delete_generic_password(SERVICE, account) {
-            Ok(()) => Ok(()),
-            Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(()),
-            Err(e) => Err(AppError::Keychain(e.to_string())),
-        }
-    }
 }

@@ -17,6 +17,8 @@ export function formatCount(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+export const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
+
 /** `950`, `1.2k`, `12k`, `3.4M` for tight spots (table sizes, chart labels). */
 export function compactCount(n: number): string {
   if (n < 1000) return String(n);

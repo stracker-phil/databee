@@ -6,7 +6,7 @@ import { useApiResult } from "../lib/useApiResult";
 import { Value } from "./value/Value";
 
 /** What Rust counts (`value_counts`), capped there too. */
-export const VALUE_COUNTS_LIMIT = 50;
+const VALUE_COUNTS_LIMIT = 50;
 
 export interface ValueCountsTarget {
   sessionId: string;

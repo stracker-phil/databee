@@ -85,7 +85,7 @@ function splitBinding(binding: string): string[] {
 }
 
 /** Normalizes `shift+mod+k` to `Mod+Shift+K`; returns null for an unparsable string. */
-export function normalizeBinding(binding: string): string | null {
+function normalizeBinding(binding: string): string | null {
   const parts = splitBinding(binding).map((p) => p.trim());
   if (parts.length === 0) return null;
   const mods = new Set<string>();
@@ -185,7 +185,7 @@ export function isRecordingTarget(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest("[data-recording]");
 }
 
-export function scopesOverlap(a: Scope, b: Scope): boolean {
+function scopesOverlap(a: Scope, b: Scope): boolean {
   return a === b || isAncestor(a, b) || isAncestor(b, a);
 }
 
@@ -203,7 +203,7 @@ export function resolveKeydown(e: KeyLike & { target?: EventTarget | null }, act
   return matches[0] ?? null;
 }
 
-export interface Conflict {
+interface Conflict {
   binding: string;
   a: Command;
   b: Command;

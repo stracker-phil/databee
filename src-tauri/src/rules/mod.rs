@@ -26,6 +26,5 @@ mod server_tests;
 mod testing;
 pub mod types;
 
-pub use catalog::{PresetCatalog, PresetInfo, PresetSource};
+pub use catalog::{PresetCatalog, PresetInfo};
 pub use project::ProjectsStore;
-pub use types::Preset;

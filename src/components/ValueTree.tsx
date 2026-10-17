@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import type { DecodedValue, NewValue, ValueChild, ValueNode } from "../api";
 
 /** Called with the child-index path of an edited leaf and its new typed value. */
-export type TreeEdit = (path: number[], value: NewValue) => void;
+type TreeEdit = (path: number[], value: NewValue) => void;
 
 function LeafEditor({ node, onSave, onCancel }: { node: ValueNode; onSave: (v: NewValue) => void; onCancel: () => void }) {
   const [text, setText] = useState(node.kind === "null" ? "" : (node.text ?? ""));

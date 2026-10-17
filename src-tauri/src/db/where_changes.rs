@@ -140,7 +140,6 @@ fn build_update(
         (undo_steps.into_iter().rev().flatten().collect(), "")
     };
     Ok(Plan {
-        database: database.to_string(),
         description: format!("Update {}{note}", counts.join(", ")),
         statements,
         undo,
@@ -212,7 +211,6 @@ fn build_delete(
     let t = dialect.table_ref(database, &delete.table);
     let keys = Keys::read(dialect, &delete.key_columns, rows)?;
     Ok(Plan {
-        database: database.to_string(),
         description: format!(
             "Delete {}{}",
             rows_text(&delete.table, rows.rows.len()),
@@ -380,7 +378,6 @@ mod tests {
         assert_eq!(
             plan,
             Plan {
-                database: "wp".into(),
                 description: "Update 2 orders rows, 1 posts row".into(),
                 statements: strings(&[
                     "UPDATE `wp`.`orders` SET `status` = 'x' WHERE `id` IN ('1', '2')",
@@ -593,7 +590,6 @@ mod tests {
         assert_eq!(
             plan,
             Plan {
-                database: "wp".into(),
                 description: "Delete 2 people rows".into(),
                 statements: strings(&["DELETE FROM `wp`.`people` WHERE `id` IN ('1', '2')"]),
                 undo: strings(&[

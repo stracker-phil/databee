@@ -11,7 +11,7 @@ import { objectColumn, objectColumnAt, type ColumnStack, type StackColumn } from
 import { documentText, objectTitle } from "../../lib/document";
 import { findTab, replaceTab, type ObjectTab, type Tab, type TableTab, type TabOfKind } from "./tabs";
 
-export const NAV_LIMIT = 50;
+const NAV_LIMIT = 50;
 
 export interface TabNav {
   back: Address[];
@@ -23,7 +23,7 @@ export const EMPTY_NAV: TabNav = { back: [], forward: [] };
 type Direction = keyof TabNav;
 
 /** What a table tab shows, as far as an address can say it. */
-export interface TableLocation {
+interface TableLocation {
   database: string;
   table: string;
   where: ColumnEquals[];

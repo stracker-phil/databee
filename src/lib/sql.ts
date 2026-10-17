@@ -1,10 +1,10 @@
-export interface Range {
+interface Range {
   from: number;
   to: number;
 }
 
 /** Statement ranges (trimmed, non-empty), splitting on `;` outside strings and comments. */
-export function statementRanges(sql: string): Range[] {
+function statementRanges(sql: string): Range[] {
   const ranges: Range[] = [];
   let start = 0;
   let i = 0;

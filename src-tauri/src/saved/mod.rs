@@ -122,11 +122,11 @@ pub fn checked_title(title: &str) -> AppResult<String> {
     Ok(title.to_string())
 }
 
-pub fn is_project_query(project: &Project, id: &str) -> bool {
+fn is_project_query(project: &Project, id: &str) -> bool {
     project.saved.iter().any(|q| q.id == id)
 }
 
-pub fn replace(queries: &mut [SavedQuery], query: &SavedQuery) -> AppResult<()> {
+fn replace(queries: &mut [SavedQuery], query: &SavedQuery) -> AppResult<()> {
     let stored = queries
         .iter_mut()
         .find(|q| q.id == query.id)
@@ -215,8 +215,8 @@ mod tests {
 
     use super::*;
     use crate::error::ErrorKind;
-    use crate::rules::Preset;
     use crate::rules::preset;
+    use crate::rules::types::Preset;
     use crate::schema::DatabaseSchema;
 
     const ALPHA: &str = r#"

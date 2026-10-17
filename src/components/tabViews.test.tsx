@@ -7,9 +7,9 @@ import type { Address } from "../api";
 import { formatAddress } from "../lib/address";
 import { objectColumn } from "../lib/columns";
 import { documentText } from "../lib/document";
-import type { ObjectTab, ProjectTab } from "../state/store";
+import type { ObjectTab, ProjectTab, Tab } from "../state/store";
 import { queryTab, readoutTab, session, tableTab } from "../test/fixtures";
-import { TAB_VIEWS, tabView } from "./tabViews";
+import { tabView } from "./tabViews";
 
 const rowAddress: Address = {
   connection: session.slug,
@@ -44,7 +44,7 @@ const projectTab: ProjectTab = {
 };
 
 describe("table view", () => {
-  const view = TAB_VIEWS.table;
+  const view = tabView(tableTab());
 
   it("names the table and the stage anchor by database and table", () => {
     const tab = tableTab({ database: "shop", table: "wp_posts" });
@@ -75,47 +75,49 @@ describe("table view", () => {
 });
 
 describe("object view", () => {
-  const view = TAB_VIEWS.object;
-
   it("anchors the stage id at the document of the first object column", () => {
     const first: Address = { ...rowAddress, target: { kind: "row", table: "wp_posts", key: "1" } };
     const tab = objectTab({ columns: [objectColumn(first), objectColumn(rowAddress)], active: 1 });
-    expect(view.stage(tab)).toBe(`tab:object:${documentText(first)}`);
+    expect(tabView(tab).stage(tab)).toBe(`tab:object:${documentText(first)}`);
   });
 
   it("uses the formatted address as tooltip, with the preview hint for a preview tab", () => {
-    expect(view.tooltip(objectTab())).toBe(formatAddress(rowAddress));
-    expect(view.tooltip(objectTab({ preview: true }))).toBe(`${formatAddress(rowAddress)} · preview (double-click to keep)`);
+    const plain = objectTab();
+    const preview = objectTab({ preview: true });
+    expect(tabView(plain).tooltip(plain)).toBe(formatAddress(rowAddress));
+    expect(tabView(preview).tooltip(preview)).toBe(`${formatAddress(rowAddress)} · preview (double-click to keep)`);
   });
 });
 
 describe("project and readout views", () => {
   it("anchor the stage id by database and use the formatted address as tooltip", () => {
-    expect(TAB_VIEWS.project.stage(projectTab)).toBe("tab:project:shop");
-    expect(TAB_VIEWS.project.tooltip(projectTab)).toBe(formatAddress(projectTab.address));
+    expect(tabView(projectTab).stage(projectTab)).toBe("tab:project:shop");
+    expect(tabView(projectTab).tooltip(projectTab)).toBe(formatAddress(projectTab.address));
 
     const readout = readoutTab({ database: "shop" });
-    expect(TAB_VIEWS.readout.stage(readout)).toBe("tab:readout:shop");
-    expect(TAB_VIEWS.readout.tooltip(readout)).toBe(formatAddress(readout.address));
+    expect(tabView(readout).stage(readout)).toBe("tab:readout:shop");
+    expect(tabView(readout).tooltip(readout)).toBe(formatAddress(readout.address));
   });
 });
 
 describe("query view", () => {
   it("anchors the stage id by tab id and uses the title as tooltip", () => {
     const tab = queryTab({ id: "q9", title: "Slow orders" });
-    expect(TAB_VIEWS.query.stage(tab)).toBe("tab:query:q9");
-    expect(TAB_VIEWS.query.tooltip(tab)).toBe("Slow orders");
+    expect(tabView(tab).stage(tab)).toBe("tab:query:q9");
+    expect(tabView(tab).tooltip(tab)).toBe("Slow orders");
   });
 });
 
 describe("tabView", () => {
   it("resolves a tab to the view of its kind", () => {
-    expect(tabView(tableTab())).toBe(TAB_VIEWS.table);
-    expect(tabView(readoutTab())).toBe(TAB_VIEWS.readout);
+    const table = tableTab({ database: "shop", table: "wp_posts" });
+    const readout = readoutTab({ database: "shop" });
+    expect(tabView(table).stage(table)).toBe("tab:table:shop.wp_posts");
+    expect(tabView(readout).stage(readout)).toBe("tab:readout:shop");
   });
 
   it("gives only the query view a summary", () => {
-    const withSummary = Object.entries(TAB_VIEWS).filter(([, v]) => v.Summary);
-    expect(withSummary.map(([kind]) => kind)).toEqual(["query"]);
+    const tabs: Tab[] = [queryTab(), tableTab(), objectTab(), projectTab, readoutTab()];
+    expect(tabs.filter((tab) => tabView(tab).Summary).map((tab) => tab.kind)).toEqual(["query"]);
   });
 });

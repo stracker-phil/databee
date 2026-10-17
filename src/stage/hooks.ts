@@ -88,7 +88,7 @@ function handle(request: StageActRequest): Promise<Outcome> {
   }
 }
 
-export async function perform(request: StageActRequest): Promise<StageActReply> {
+async function perform(request: StageActRequest): Promise<StageActReply> {
   const base = { request: request.request, page: PAGE };
   try {
     return { ...base, ...(await handle(request)) };

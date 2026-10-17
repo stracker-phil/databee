@@ -21,7 +21,7 @@ const WORDS: Record<string, string> = { Mod: "cmd", Ctrl: "ctrl", Alt: "alt", Sh
 const ORDER = ["ctrl", "alt", "shift", "cmd"];
 
 /** `Mod+Shift+K` → `shift+cmd+k`: lowercase words, modifiers ordered ctrl alt shift cmd. */
-export function stageShortcut(binding: string | null): string | undefined {
+function stageShortcut(binding: string | null): string | undefined {
   if (!binding) return undefined;
   const parts = binding.split("+");
   const key = parts.pop()!.toLowerCase();

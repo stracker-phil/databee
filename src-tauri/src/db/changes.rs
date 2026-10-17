@@ -59,8 +59,6 @@ pub enum ChangeRequest {
 /// A planned write, kept in the session until it is applied or discarded.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
-    /// The database the statements write to, so caches of it can be refreshed.
-    pub database: String,
     pub description: String,
     pub statements: Vec<String>,
     /// Restores the previous state; empty when a change can't be undone automatically.
@@ -332,7 +330,6 @@ fn build_set_cell(
     };
     let (undo, note) = restore_undo(dialect, &t, column, &old.rows[0][0], undo_filter.as_deref());
     Ok(Plan {
-        database: row.database.to_string(),
         description: format!("{table}.{column} of {key_column} {key}{note}"),
         statements: vec![format!(
             "UPDATE {t} SET {} = {} WHERE {filter}",
@@ -364,7 +361,6 @@ fn build_delete_row(
     }
     let t = row.table_ref(dialect);
     Ok(Plan {
-        database: row.database.to_string(),
         description: format!(
             "Delete {table} row {key_column} {key}{}",
             reinsert_note(rows)
@@ -403,7 +399,6 @@ fn build_duplicate_row(
         .join(", ");
     let t = row.table_ref(dialect);
     Ok(Plan {
-        database: row.database.to_string(),
         description: format!("Duplicate {table} row {key_column} {key}"),
         statements: vec![format!(
             "INSERT INTO {t} ({cols}) SELECT {cols} FROM {t} WHERE {}",
@@ -430,7 +425,6 @@ fn build_insert_row(
         .collect::<Vec<_>>()
         .join(", ");
     Plan {
-        database: database.to_string(),
         description: format!("Insert into {table}"),
         statements: vec![format!(
             "INSERT INTO {} ({cols}) VALUES ({vals})",
@@ -554,7 +548,6 @@ mod tests {
         assert_eq!(
             plan,
             Plan {
-                database: "wp".into(),
                 description: "t.name of id 7".into(),
                 statements: vec!["UPDATE `wp`.`t` SET `name` = 'it''s' WHERE `id` = '7'".into()],
                 undo: vec!["UPDATE `wp`.`t` SET `name` = 'before' WHERE `id` = '7'".into()],
@@ -682,7 +675,6 @@ mod tests {
         assert_eq!(
             plan,
             Plan {
-                database: "wp".into(),
                 description: "Delete t row id 7".into(),
                 statements: vec!["DELETE FROM `wp`.`t` WHERE `id` = '7' LIMIT 1".into()],
                 undo: vec!["INSERT INTO `wp`.`t` (`id`, `name`) VALUES ('7', 'a')".into()],
@@ -754,7 +746,6 @@ mod tests {
         assert_eq!(
             plan,
             Plan {
-                database: "wp".into(),
                 description: "Duplicate t row id 7".into(),
                 statements: vec![
                     "INSERT INTO `wp`.`t` (`name`, `slug`) SELECT `name`, `slug` FROM `wp`.`t` WHERE `id` = '7'"
@@ -791,7 +782,6 @@ mod tests {
         assert_eq!(
             plan,
             Plan {
-                database: "wp".into(),
                 description: "Insert into t".into(),
                 statements: vec![
                     "INSERT INTO `wp`.`t` (`name`, `slug`) VALUES ('it''s', NULL)".into()
@@ -814,7 +804,6 @@ mod tests {
         assert_eq!(
             plan,
             Plan {
-                database: "wp".into(),
                 description: "Add a t row".into(),
                 statements: vec![
                     "INSERT INTO `wp`.`t` (`post_id`, `meta_key`, `meta_value`) VALUES ('7', 'it''s', NULL)"
@@ -1088,7 +1077,6 @@ mod tests {
         assert_eq!(
             plan,
             Plan {
-                database: "wp".into(),
                 description: "t.name of id 7".into(),
                 statements: vec!["UPDATE `wp`.`t` SET `name` = 'x' WHERE `id` = '7'".into()],
                 undo: vec!["UPDATE `wp`.`t` SET `name` = 'before' WHERE `id` = '7'".into()],

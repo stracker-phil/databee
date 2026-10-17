@@ -79,7 +79,7 @@ the stores and open sessions.
 | `recent_objects` | `RecentObjectsStore` | `recent_objects.json` (rows opened per project, for the readout) |
 | `snapshots` | `SnapshotStore` | `snapshots/v2/` (snapshots of rows and saved queries, see [Watches and snapshots](#watches-and-snapshots)) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
-| `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)` or the `test-util` feature) |
+| `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)`) |
 | `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
 | `connector` | `Arc<dyn db::Connector>` | opens database connections for `session::open`; `MySqlConnector` in the app, tests replace it |
 | `config_dir` | `PathBuf` | handed to the plugins in `start_app` |
@@ -416,16 +416,14 @@ the row its `?compare=<key>` names, in parallel, and returns them with `compare_
 
 ## Secrets
 
-`secrets/mod.rs` defines the `SecretStore` trait (`get`, `set`, `delete`) and `resolve_password`; each
+`secrets/mod.rs` defines the `SecretStore` trait (`get`, `set`) and `resolve_password`; each
 implementation has its own file:
 
 - `keychain.rs`, `Keychain`: the only file that imports `security_framework`. Generic passwords with service `"databee"` and account `ConnectionSpec::account()`
   (`user@host:port`, or `user@socket`), so one password covers every database on a server. `%`, `@` and `:` in
   the user are percent-encoded, so `a@b` on `c` and `a` on `b@c` get different entries; other users keep
   their plain name.
-- `memory.rs`, `MemoryStore`: for tests, behind `#[cfg(any(test, feature = "test-util"))]`. The crate lists
-  itself with `test-util` as a dev-dependency, so integration tests in `tests/` can use it
-  ([ADR 0019](adr/0019-test-doubles-behind-test-util.md)); release builds never contain it.
+- `memory.rs`, `MemoryStore`: for unit tests, behind `#[cfg(test)]`; release builds never contain it.
 
 The implementation is chosen in exactly one line, `Arc::new(secrets::Keychain)` where `run` builds `AppState`
 in `lib.rs`. To use another store, see [adapting.md](adapting.md#swap-the-secret-store).

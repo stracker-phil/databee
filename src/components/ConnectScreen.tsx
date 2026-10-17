@@ -35,7 +35,7 @@ function toForm(spec: ConnectionSpec | undefined, defaultPort: number): FormStat
 }
 
 /** Returns the spec, or an error message describing the first invalid field. */
-export function validate(form: FormState, defaultPort: number): ConnectionSpec | string {
+function validate(form: FormState, defaultPort: number): ConnectionSpec | string {
   const port = Number(form.port);
   if (!form.useSocket && !form.host.trim()) return "Host is required";
   if (!form.useSocket && (!Number.isInteger(port) || port < 1 || port > 65535)) return "Port must be between 1 and 65535";

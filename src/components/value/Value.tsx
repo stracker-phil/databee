@@ -8,7 +8,7 @@ import { ValueTree } from "../ValueTree";
 import { useDecoded } from "./useDecoded";
 
 /** `grid`: one line, cut to the cell; `full`: the whole value, serialized data expands in place. */
-export type Density = "grid" | "full";
+type Density = "grid" | "full";
 
 /** Called when a value that acts on click is clicked: a primary key, a reference, an enum, serialized data in a grid. */
 export type OpenValue = (value: StoredValue, event: MouseEvent) => void;
@@ -19,7 +19,7 @@ interface Props {
   density?: Density;
 }
 
-export function opensOnClick(value: StoredValue, density: Density): boolean {
+function opensOnClick(value: StoredValue, density: Density): boolean {
   const kind = value.kind;
   if (kind.kind === "primaryKey") return kind.address.target.kind === "row";
   if (kind.kind === "reference") return kind.exists !== false && kind.targets.length > 0;

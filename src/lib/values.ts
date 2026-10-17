@@ -85,7 +85,7 @@ function currency(result: ResultSet, row: number, names: string[], source: Prove
  * Unix seconds of `text` read in `zone`: `null` for a zone that is not stored (`local`, none), zero dates
  * and text that is no time. A port of Rust's `value::time::utc_seconds`.
  */
-export function utcSeconds(text: string, zone: Zone | null): number | null {
+function utcSeconds(text: string, zone: Zone | null): number | null {
   if (zone === "unix") {
     const digits = /^\d+/.exec(text)?.[0];
     const seconds = digits ? Number(digits) : 0;

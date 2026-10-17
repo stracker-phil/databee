@@ -1,6 +1,6 @@
 import type { Address, Document, Group, GroupRow, Provenance, Value } from "../api";
 import { formatAddress } from "./address";
-import { formatCount } from "./format";
+import { formatCount, plural } from "./format";
 import { bySourceText } from "./provenance";
 
 export type ObjectView = "document" | "rows";
@@ -78,7 +78,7 @@ export function relationText(group: Group): string {
 }
 
 /** Where the group's rule comes from, for the status bar while the band is hovered. */
-export function originText(group: Group): string | null {
+export function groupOriginText(group: Group): string | null {
   const via = group.via;
   if (via.kind === "incoming") {
     const { from, to, by } = via.reference;
@@ -89,7 +89,6 @@ export function originText(group: Group): string | null {
   return null;
 }
 
-const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
 /** `13 columns`, `9 keys · stored order`, `2 rows`. */
 export function countText(group: Group): string {

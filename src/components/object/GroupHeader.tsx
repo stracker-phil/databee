@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { memo, type MouseEvent } from "react";
 import type { Group } from "../../api";
 import { formatAddress } from "../../lib/address";
-import { countText, originText, relationText } from "../../lib/document";
+import { countText, groupOriginText, relationText } from "../../lib/document";
 import { useStore } from "../../state/store";
 
 /** Opens the group's rows in a table tab: its exact rows when an address names them, else the whole table. */
@@ -33,7 +33,7 @@ export const GroupHeader = memo(function GroupHeader({ group, database, anchor, 
     <div
       className={`sh${lit ? " lit" : ""}`}
       data-table={group.table || undefined}
-      data-src={originText(group) ?? undefined}
+      data-src={groupOriginText(group) ?? undefined}
       onClick={onBandClick}
     >
       <button

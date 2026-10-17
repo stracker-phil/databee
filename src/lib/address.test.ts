@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Address } from "../api";
 import shared from "../test/fixtures/addresses.json";
-import { AddressError, encodePart, formatAddress, parseAddress, sameAddress } from "./address";
+import { AddressError,formatAddress, parseAddress, sameAddress } from "./address";
 
 const cases = shared as unknown as { text: string; address: Address }[];
 
@@ -79,11 +79,9 @@ describe("formatAddress", () => {
     const text = formatAddress({ ...base, target: { kind: "table", table: "t", filter: [{ column: "c", value: "a&b=c d" }] } });
     expect(text).toBe("databee://shop/db/t?c=a%26b%3Dc%20d");
   });
-});
 
-describe("encodePart", () => {
   it("encodes non-ASCII text as uppercase UTF-8 escapes", () => {
-    expect(encodePart("ä")).toBe("%C3%A4");
+    expect(formatAddress({ ...base, target: { kind: "table", table: "t", filter: [{ column: "c", value: "ä" }] } })).toBe("databee://shop/db/t?c=%C3%A4");
   });
 });
 

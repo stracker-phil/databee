@@ -8,7 +8,8 @@ use super::{Stage, StageStatus};
 use crate::error::AppResult;
 
 /// Registered in `build.rs` too, which grants them to the main window.
-pub const COMMANDS: &[&str] = &[
+#[cfg(test)]
+const COMMANDS: &[&str] = &[
     "stage_anchors",
     "stage_done",
     "stage_info",

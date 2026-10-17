@@ -1,5 +1,5 @@
 import type { KindRow, ProjectChange, StyleRow } from "../../api";
-import { kindFormFromRow, kindText, originText, scopeText, styleFormFromRow, styleMatchText } from "../../lib/ruleForms";
+import { kindFormFromRow, kindText, ruleOriginText, scopeText, styleFormFromRow, styleMatchText } from "../../lib/ruleForms";
 import { fail } from "../../state/store";
 import { LongList } from "../LongList";
 import type { ProjectContext } from "./context";
@@ -25,14 +25,14 @@ function RowActions({ anchor, onEdit, change, ctx }: { anchor: string; onEdit: (
 function StyleLine({ row, ctx }: { row: StyleRow; ctx: ProjectContext }) {
   const { rule, index } = row;
   const own = index !== null;
-  const anchor = `style:${own ? index : `${originText(row.origin)}:${scopeText(rule)}:${rule.value}`}`;
+  const anchor = `style:${own ? index : `${ruleOriginText(row.origin)}:${scopeText(rule)}:${rule.value}`}`;
   return (
     <div className={`row styles${own ? "" : " o2"}${rule.enabled ? "" : " off"}`} role="row" aria-label={`${scopeText(rule)} ${styleMatchText(rule)}`} data-stage={anchor} data-stage-list="styles">
       <span className="src">{scopeText(rule)}</span>
       <span>{styleMatchText(rule)}</span>
       <span style={{ color: `var(--style-${rule.color})` }}>{rule.color}</span>
       <span>
-        {originText(row.origin)}
+        {ruleOriginText(row.origin)}
         {!rule.enabled && <span className="o3"> · off</span>}
       </span>
       {own ? <RowActions anchor={anchor} ctx={ctx} onEdit={() => ctx.setForm(styleFormFromRow(row))} change={{ op: "removeStyle", index }} /> : <SwitchOn row={row} anchor={anchor} ctx={ctx} />}
@@ -80,12 +80,12 @@ export function StylesSection({ ctx }: { ctx: ProjectContext }) {
 function KindLine({ row, ctx }: { row: KindRow; ctx: ProjectContext }) {
   const { rule, index } = row;
   const own = index !== null;
-  const anchor = `kind:${own ? index : `${originText(row.origin)}:${scopeText(rule)}`}`;
+  const anchor = `kind:${own ? index : `${ruleOriginText(row.origin)}:${scopeText(rule)}`}`;
   return (
     <div className={`row kinds${own ? "" : " o2"}`} role="row" aria-label={`${scopeText(rule)} ${kindText(rule)}`} data-stage={anchor} data-stage-list="kinds">
       <span className="src">{scopeText(rule)}</span>
       <span>{kindText(rule)}</span>
-      <span>{originText(row.origin)}</span>
+      <span>{ruleOriginText(row.origin)}</span>
       {own ? <RowActions anchor={anchor} ctx={ctx} onEdit={() => ctx.setForm(kindFormFromRow(row))} change={{ op: "removeKind", index }} /> : <span />}
     </div>
   );

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, toAppError, type ProjectChange, type ReferenceRow } from "../../api";
-import { originText, referenceFormFromRow } from "../../lib/ruleForms";
+import { ruleOriginText, referenceFormFromRow } from "../../lib/ruleForms";
 import { fail } from "../../state/store";
 import { LongList } from "../LongList";
 import type { ProjectContext } from "./context";
@@ -8,7 +8,7 @@ import { CoverageCell, type CoverageState } from "./coverage";
 
 const columnsText = (ref: { table: string; columns: string[] }) => `${ref.table}.${ref.columns.join(", ")}`;
 
-export const referenceKey = (row: ReferenceRow) => `${originText(row.origin)}:${columnsText(row.from)}->${columnsText(row.to)}${row.id ? `#${row.id}` : ""}`;
+const referenceKey = (row: ReferenceRow) => `${ruleOriginText(row.origin)}:${columnsText(row.from)}->${columnsText(row.to)}${row.id ? `#${row.id}` : ""}`;
 
 function rowClass(row: ReferenceRow): string {
   if (row.disabled) return "row refs off";
@@ -28,7 +28,7 @@ function OriginCell({ row }: { row: ReferenceRow }) {
   }
   return (
     <span>
-      {originText(origin)}
+      {ruleOriginText(origin)}
       {row.disabled && <span className="o3"> · disabled</span>}
     </span>
   );

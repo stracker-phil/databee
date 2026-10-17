@@ -76,7 +76,6 @@ impl RuleReference {
 /// A `[[pattern]]` of an applied preset, with real table names and `owner_when` compiled.
 #[derive(Debug, Clone)]
 pub struct RulePattern {
-    pub preset: String,
     /// `owner` and `table` are real table names; `where` is as written.
     pub rule: Pattern,
     pub owner_when: Vec<Condition>,
@@ -339,7 +338,7 @@ impl EffectiveRules {
             });
         }
         for pattern in &preset.patterns {
-            self.add_pattern(&preset.name, pattern);
+            self.add_pattern(pattern);
         }
         for action in &preset.actions {
             self.add_action(&preset.name, action);
@@ -375,7 +374,7 @@ impl EffectiveRules {
         });
     }
 
-    fn add_pattern(&mut self, preset: &str, pattern: &Pattern) {
+    fn add_pattern(&mut self, pattern: &Pattern) {
         let (Some(owner), Some(table)) = (
             self.applied.existing_table(&pattern.owner),
             self.applied.existing_table(&pattern.table),
@@ -390,7 +389,6 @@ impl EffectiveRules {
             }
         };
         self.patterns.push(RulePattern {
-            preset: preset.to_string(),
             rule: Pattern {
                 owner,
                 table,
@@ -1013,12 +1011,11 @@ where = "1"
     fn patterns_name_real_tables_and_keep_the_rule_as_written() {
         let rules = build(&prefixed(), &[preset(PATTERNS)]);
 
-        let patterns: Vec<(&str, &str, &str, &str)> = rules
+        let patterns: Vec<(&str, &str, &str)> = rules
             .patterns
             .iter()
             .map(|p| {
                 (
-                    p.preset.as_str(),
                     p.rule.name.as_str(),
                     p.rule.owner.as_str(),
                     p.rule.table.as_str(),
@@ -1028,8 +1025,8 @@ where = "1"
         assert_eq!(
             patterns,
             [
-                ("pat", "audit", "f_threads", "f_notes"),
-                ("pat", "audit", "f_threads", "f_replies"),
+                ("audit", "f_threads", "f_notes"),
+                ("audit", "f_threads", "f_replies"),
             ]
         );
         let first = &rules.patterns[0];

@@ -45,8 +45,6 @@ pub struct AppliedBatch {
     pub id: BatchId,
     /// Undo statements, last applied plan first.
     pub undo: Vec<String>,
-    /// Every database the batch wrote to.
-    pub databases: Vec<String>,
     /// Every plan of the batch could be undone.
     pub can_undo: bool,
 }
@@ -108,12 +106,6 @@ impl Plans {
 
     /// Records an applied batch for undo; the oldest batch beyond `MAX_BATCHES` is dropped.
     pub fn record_applied(&self, plans: &[(PlanId, Plan)]) -> AppliedBatch {
-        let mut databases: Vec<String> = Vec::new();
-        for (_, plan) in plans {
-            if !databases.contains(&plan.database) {
-                databases.push(plan.database.clone());
-            }
-        }
         let batch = AppliedBatch {
             id: self.next_id(),
             undo: plans
@@ -121,7 +113,6 @@ impl Plans {
                 .rev()
                 .flat_map(|(_, plan)| plan.undo.iter().cloned())
                 .collect(),
-            databases,
             can_undo: plans.iter().all(|(_, plan)| !plan.undo.is_empty()),
         };
         let mut applied = self.applied.lock_unpoisoned();
@@ -160,7 +151,6 @@ mod tests {
 
     fn plan(name: &str, undo: &[&str]) -> Plan {
         Plan {
-            database: "wp".into(),
             description: format!("change {name}"),
             statements: vec![format!("DO {name}")],
             undo: undo.iter().map(ToString::to_string).collect(),
@@ -275,23 +265,7 @@ mod tests {
         let undone = plans.take_undo(batch.id).unwrap();
 
         assert_eq!(undone.undo, ["UNDO last 1", "UNDO last 2", "UNDO first"]);
-        assert_eq!(undone.databases, ["wp"]);
         assert!(undone.can_undo);
-    }
-
-    #[test]
-    fn batch_lists_each_written_database_once() {
-        let plans = Plans::default();
-        let mut other = plan("b", &["UNDO b"]);
-        other.database = "blog".into();
-        let a = plans.add(plan("a", &["UNDO a"]));
-        let b = plans.add(other);
-        let c = plans.add(plan("c", &["UNDO c"]));
-        let taken = plans.take(&[a.id, b.id, c.id]).unwrap();
-
-        let batch = plans.record_applied(&taken);
-
-        assert_eq!(batch.databases, ["wp", "blog"]);
     }
 
     #[test]

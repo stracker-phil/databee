@@ -13,7 +13,6 @@ import { connectedStore } from "../test/fixtures";
 import { activeObject, objectDocument } from "../test/objectFixtures";
 import { registerCoreSettingsPages } from "../components/settings/pages";
 import { stageApi } from "./api";
-import { perform } from "./hooks";
 import { installStage } from "./install";
 import type { StageAct, StageActRequest, StageKeys } from "./types";
 
@@ -237,45 +236,46 @@ describe("Stage page hooks", () => {
     expect(useStore.getState().paletteOpen).toBe(false);
   });
 
-  describe("perform", () => {
+  describe("stage:act replies", () => {
     it("replies to a window request after opening the sheet", async () => {
       connectedStore();
-      expect(await perform({ request: "r9", kind: "window", window: "palette", action: "show" })).toEqual({ request: "r9", page: "main", handled: true, ok: true });
+      expect(await hooks().act({ kind: "window", window: "palette", action: "show" })).toEqual({ request: "r1", page: "main", handled: true, ok: true });
       expect(useStore.getState().paletteOpen).toBe(true);
     });
 
     it("replies to a command request with the command's failure", async () => {
       connectedStore();
       installCommands();
-      expect(await perform({ request: "r9", kind: "command", command: "view:palette" })).toMatchObject({ handled: true, ok: true });
+      const { act } = hooks();
+      expect(await act({ kind: "command", command: "view:palette" })).toMatchObject({ handled: true, ok: true });
       expect(useStore.getState().paletteOpen).toBe(true);
-      expect(await perform({ request: "r9", kind: "command", command: "nope" })).toMatchObject({ handled: true, ok: false, status: 404 });
+      expect(await act({ kind: "command", command: "nope" })).toMatchObject({ handled: true, ok: false, status: 404 });
     });
 
     it("replies to a keys request with the window that had the keys", async () => {
       const onKey = vi.fn();
       render(<input aria-label="Field" onKeyDown={(e) => onKey(e.key)} autoFocus />);
-      expect(await perform({ request: "r9", kind: "keys", keys: key("a", "KeyA"), focused: false })).toMatchObject({ handled: true, ok: true, window: "main" });
+      expect(await hooks().act({ kind: "keys", keys: key("a", "KeyA"), focused: false })).toMatchObject({ handled: true, ok: true, window: "main" });
       expect(onKey).toHaveBeenCalledWith("a");
     });
 
     it("clicks the anchor and replies with its rect", async () => {
       const onClick = vi.fn();
       render(<button data-stage="tray:apply" data-rect="1,2,30,40" onClick={onClick}>Apply</button>);
-      expect(await perform({ request: "r9", kind: "click", anchor: "tray:apply" })).toMatchObject({ handled: true, ok: true, rect: { x: 1, y: 2, width: 30, height: 40 } });
+      expect(await hooks().act({ kind: "click", anchor: "tray:apply" })).toMatchObject({ handled: true, ok: true, rect: { x: 1, y: 2, width: 30, height: 40 } });
       expect(onClick).toHaveBeenCalled();
     });
 
     it("appends typed text to the field's current value in append mode", async () => {
       render(<input data-stage="palette:search" data-rect="0,0,200,24" aria-label="Search" defaultValue="wp_" />);
-      expect(await perform({ request: "r9", kind: "type", anchor: "palette:search", text: "posts", mode: "append" })).toMatchObject({ handled: true, ok: true });
+      expect(await hooks().act({ kind: "type", anchor: "palette:search", text: "posts", mode: "append" })).toMatchObject({ handled: true, ok: true });
       expect(screen.getByLabelText("Search")).toHaveValue("wp_posts");
     });
 
     it("reveals an anchor without acting on it", async () => {
       const onClick = vi.fn();
       render(<button data-stage="tray:apply" data-rect="1,2,30,40" onClick={onClick}>Apply</button>);
-      expect(await perform({ request: "r9", kind: "reveal", anchor: "tray:apply" })).toMatchObject({ handled: true, ok: true, window: "main" });
+      expect(await hooks().act({ kind: "reveal", anchor: "tray:apply" })).toMatchObject({ handled: true, ok: true, window: "main" });
       expect(onClick).not.toHaveBeenCalled();
     });
 
@@ -285,7 +285,7 @@ describe("Stage page hooks", () => {
       Object.defineProperty(area, "scrollHeight", { value: 2000 });
       Object.defineProperty(area, "clientHeight", { value: 300 });
       area.scrollTo = vi.fn() as typeof area.scrollTo;
-      expect(await perform({ request: "r9", kind: "scroll", anchor: "results", to: "top" })).toMatchObject({ handled: true, ok: true });
+      expect(await hooks().act({ kind: "scroll", anchor: "results", to: "top" })).toMatchObject({ handled: true, ok: true });
       expect(area.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
     });
   });

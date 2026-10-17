@@ -29,20 +29,15 @@ export {
   selectFocusedValue,
   selectMaxCellChars,
   selectNullLabel,
+  selectSessionBySlug,
   selectSidebarHidden,
   selectStructure,
   selectVisibleDatabases,
 } from "./selectors";
-export type { TabNav, TableLocation } from "./slices/nav";
-export type { SchemaState, StructureEntry } from "./slices/session";
-export type { DocumentEntry } from "./slices/objects";
 export { hasValueColumn } from "./slices/tabs";
 export type { ObjectTab, ProjectTab, QueryTab, ReadoutTab, SelectedCell, Tab, TableTab } from "./slices/tabs";
-export type { ProjectRulesEntry } from "./slices/project";
-export type { Dialog, RecentNav, Toast, ValueHover } from "./slices/ui";
-export type { ReadoutEntry } from "./slices/readout";
-export type { ChangeTarget, LiveWatch } from "./slices/live";
-export { queryMarksKey, selectActiveLive, selectActiveMarks, selectCanDismissMarks, selectChangeTarget } from "./slices/live";
+export type { RecentNav, Toast, ValueHover } from "./slices/ui";
+export { queryMarksKey, selectActiveLive, selectCanDismissMarks, selectChangeTarget } from "./slices/live";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
 export interface Store extends SettingsSlice, SessionSlice, TabsSlice, QuerySlice, ChangesSlice, DataSlice, SavedSlice, UiSlice, ViewStateSlice, NavSlice, ObjectsSlice, ColumnsSlice, ProjectSlice, ReadoutSlice, LiveSlice {}

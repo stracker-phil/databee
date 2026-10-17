@@ -14,7 +14,7 @@ import { Readout } from "./readout/Readout";
 import { TableTab } from "./TableTab";
 import { ValueColumnView } from "./value/ValueColumnView";
 
-export interface TabView<T extends Tab = Tab> {
+interface TabView<T extends Tab = Tab> {
   icon: (tab: T) => ReactNode;
   tooltip: (tab: T) => string;
   /** The tab's `data-stage` anchor. */
@@ -70,7 +70,7 @@ function tableTooltip(tab: TableTabState): string {
   return `${tab.database}.${tab.table}${columns}${filter}${previewHint(tab)}`;
 }
 
-export const TAB_VIEWS: { [K in Tab["kind"]]: TabView<TabOfKind<K>> } = {
+const TAB_VIEWS: { [K in Tab["kind"]]: TabView<TabOfKind<K>> } = {
   query: {
     icon: (tab) => (tab.running ? <Loader2 size={ICON_SIZE} className="spin" /> : <FileCode2 size={ICON_SIZE} />),
     tooltip: (tab) => tab.title,

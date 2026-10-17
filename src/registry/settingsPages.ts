@@ -8,7 +8,7 @@ export interface SettingsPageProps {
   set: (patch: Partial<Settings>) => void;
 }
 
-export interface SettingsPage {
+interface SettingsPage {
   id: string;
   group: string;
   label: string;

@@ -1,21 +1,27 @@
+import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { settings } from "../test/settings";
-import { applyAppearance, resolveScheme } from "./theme";
+import { applyAppearance, useResolvedScheme } from "./theme";
 
 const root = document.documentElement;
 
-describe("resolveScheme", () => {
+describe("useResolvedScheme", () => {
+  const resolved = (s: Parameters<typeof useResolvedScheme>[0]) => renderHook(() => useResolvedScheme(s)).result.current;
+
   it.each([
-    ["dark", false, "ayu-mirage", true],
-    ["light", true, "ayu-light", false],
-    ["system", true, "ayu-mirage", true],
-    ["system", false, "ayu-light", false],
-  ] as const)("picks the scheme for theme %s with system dark %s", (theme, systemDark, id, dark) => {
-    expect(resolveScheme(settings({ theme }), systemDark)).toEqual({ id, dark });
+    ["dark", "ayu-mirage", true],
+    ["light", "ayu-light", false],
+    ["system", "ayu-light", false],
+  ] as const)("picks the scheme for theme %s with a light system", (theme, id, dark) => {
+    expect(resolved(settings({ theme }))).toEqual({ id, dark });
   });
 
   it("uses the chosen scheme of the active side", () => {
-    expect(resolveScheme(settings({ theme: "light", lightScheme: "ayu-mirage" }), false)).toEqual({ id: "ayu-mirage", dark: true });
+    expect(resolved(settings({ theme: "light", lightScheme: "ayu-mirage" }))).toEqual({ id: "ayu-mirage", dark: true });
+  });
+
+  it("falls back to the default scheme before settings load", () => {
+    expect(resolved(null)).toEqual({ id: "ayu-light", dark: false });
   });
 });
 

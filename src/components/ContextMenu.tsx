@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-export interface MenuItem {
+interface MenuItem {
   label: string;
   action: () => void;
   disabled?: boolean;

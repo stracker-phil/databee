@@ -6,7 +6,7 @@ use crate::connection::Secret;
 use crate::error::AppResult;
 use crate::lock::MutexExt;
 
-/// In-memory store for tests; not compiled into the app.
+/// In-memory store for tests.
 #[derive(Default)]
 pub struct MemoryStore(Mutex<HashMap<String, Secret>>);
 
@@ -20,20 +20,5 @@ impl SecretStore for MemoryStore {
             .lock_unpoisoned()
             .insert(account.to_string(), secret.clone());
         Ok(())
-    }
-
-    fn delete(&self, account: &str) -> AppResult<()> {
-        self.0.lock_unpoisoned().remove(account);
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn deleting_a_missing_entry_succeeds() {
-        assert!(MemoryStore::default().delete("missing").is_ok());
     }
 }

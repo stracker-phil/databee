@@ -26,8 +26,8 @@ export interface ColumnStack {
   active: number;
 }
 
-export const MIN_COLUMN_WIDTH = 420;
-export const STRIP_WIDTH = 34;
+const MIN_COLUMN_WIDTH = 420;
+const STRIP_WIDTH = 34;
 /** How much of a value without provenance names its column. */
 const UNSOURCED_NAME_CHARS = 20;
 

@@ -3,7 +3,7 @@ import type { PaletteHit, SavedEntry, TableInfo } from "../../api";
 import { allCommands, bindingFor, bindingLabel, type Command } from "../../commands";
 import { AddressError, formatAddress, parseAddress } from "../../lib/address";
 import { projectKey } from "../../state/slices/project";
-import { originText } from "../../state/slices/saved";
+import { savedOriginText } from "../../state/slices/saved";
 import { selectActiveSession, selectActiveTab, useStore, type RecentNav } from "../../state/store";
 import { objectActionCommands } from "../object/actions";
 import { parsePrefix, score, searchesRows, type Prefix } from "./parse";
@@ -33,7 +33,7 @@ const recentTitle = (r: RecentNav) => (r.kind === "entity" ? r.title : `${r.data
 const close = () => useStore.getState().setPaletteOpen(false);
 
 /** Enter: the next column of the active object tab, else an object tab; `newTab` always opens a tab. */
-export function openHit(hit: PaletteHit, newTab: boolean) {
+function openHit(hit: PaletteHit, newTab: boolean) {
   close();
   const s = useStore.getState();
   if (hit.address.target.kind !== "row") return void s.openAddress(formatAddress(hit.address), { preview: !newTab });
@@ -96,10 +96,10 @@ function savedItems(entries: SavedEntry[], sessionId: string | null, database: s
     .filter(({ s }) => s > 0)
     .sort((a, b) => b.s - a.s)
     .map(({ entry }): Item => ({
-      key: `saved:${originText(entry.origin)}:${entry.id}`,
+      key: `saved:${savedOriginText(entry.origin)}:${entry.id}`,
       section: "Saved queries",
       title: entry.title,
-      note: originText(entry.origin),
+      note: savedOriginText(entry.origin),
       badge: entry.pin ? "pinned" : undefined,
       go: () => {
         close();

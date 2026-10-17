@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { centerOf, intersectRect, isInView, visiblePart } from "./rect";
+import { centerOf, isInView, visiblePart } from "./rect";
 
 const list = { x: 0, y: 100, width: 300, height: 200 };
 const page = { x: 0, y: 0, width: 800, height: 600 };
 
 describe("stage rectangles", () => {
   it("tells which part of an element its scroll areas let through", () => {
-    expect(intersectRect({ x: 0, y: 0, width: 10, height: 10 }, { x: 5, y: 5, width: 10, height: 10 })).toEqual({ x: 5, y: 5, width: 5, height: 5 });
-    expect(intersectRect({ x: 0, y: 0, width: 10, height: 10 }, { x: 10, y: 0, width: 5, height: 5 })).toBeNull();
+    expect(visiblePart({ x: 0, y: 0, width: 10, height: 10 }, [{ x: 5, y: 5, width: 10, height: 10 }])).toEqual({ x: 5, y: 5, width: 5, height: 5 });
+    expect(visiblePart({ x: 0, y: 0, width: 10, height: 10 }, [{ x: 10, y: 0, width: 5, height: 5 }])).toBeNull();
     expect(visiblePart({ x: 10, y: 280, width: 100, height: 40 }, [list, page])).toEqual({ x: 10, y: 280, width: 100, height: 20 });
     expect(visiblePart({ x: 10, y: 400, width: 100, height: 40 }, [list, page])).toBeNull();
   });

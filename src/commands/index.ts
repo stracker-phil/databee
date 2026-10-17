@@ -59,7 +59,7 @@ function withQueryTab(run: (tab: Extract<Tab, { kind: "query" }>) => unknown) {
 const inResults = () => !!document.activeElement?.closest(".results [role='grid']");
 const hasDatabase = () => !!selectActiveSession(useStore.getState())?.database;
 
-export const APP_COMMANDS: Command[] = [
+const APP_COMMANDS: Command[] = [
   { id: "palette.open", title: "Command palette", scope: "global", defaultBinding: "Mod+K", run: () => useStore.getState().setPaletteOpen(true) },
   { id: "palette.openTable", title: "Open table or entity", scope: "global", defaultBinding: "Mod+P", run: () => useStore.getState().setPaletteOpen(true, "t:") },
   // Without history the keys stay with the editor (⌘[ outdents there).

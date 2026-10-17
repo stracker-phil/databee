@@ -4,13 +4,14 @@
  * map them to the names rules store. Kind and style scopes are typed as rules store them (globs allowed).
  */
 import type { AppError, KindRow, KindRule, Provenance, Reference, ReferenceRow, RuleDraft, RuleOrigin, RuleTable, StyleColor, StyleMatch, StyleRow, StyleRule, Zone } from "../api";
+import { sourceText } from "./provenance";
 
 export interface ColumnPick {
   table: string;
   column: string;
 }
 
-export interface WhenDraft {
+interface WhenDraft {
   column: string;
   value: string;
 }
@@ -81,9 +82,8 @@ const list = (text: string) =>
 
 const joined = (items: string[] | undefined) => (items ?? []).join(", ");
 
-export function openerText(command: string, source: Provenance): string {
-  const key = source.row.map((part) => `${part.column} ${part.value}`).join(", ");
-  return `${command} on ${source.table}.${source.column}${key ? ` · ${key}` : ""}`;
+function openerText(command: string, source: Provenance): string {
+  return `${command} on ${sourceText(source)}`;
 }
 
 function scopeOf(draft: RuleDraft): ScopeDraft {
@@ -171,7 +171,7 @@ export function styleFormFromRow(row: StyleRow): StyleForm {
 }
 
 /** The name rules store for a real table; a table outside the prefix keeps its name and Rust refuses it. */
-export function ruleTableName(tables: RuleTable[], table: string): string {
+function ruleTableName(tables: RuleTable[], table: string): string {
   return tables.find((t) => t.table === table)?.name ?? table;
 }
 
@@ -240,7 +240,7 @@ export function fieldError({ field, message }: AppError): FieldError {
   return { field: "form", message };
 }
 
-export function originText(origin: RuleOrigin): string {
+export function ruleOriginText(origin: RuleOrigin): string {
   switch (origin.kind) {
     case "project":
       return "project";

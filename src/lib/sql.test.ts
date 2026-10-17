@@ -1,39 +1,41 @@
 import { describe, expect, it } from "vitest";
-import { statementAt, statementRanges } from "./sql";
+import { statementAt } from "./sql";
 
 const text = (sql: string, r: { from: number; to: number } | null) => (r ? sql.slice(r.from, r.to) : null);
+const at = (sql: string, needle: string) => text(sql, statementAt(sql, sql.indexOf(needle)));
+const atEnd = (sql: string) => text(sql, statementAt(sql, sql.length));
 
-describe("statementRanges", () => {
+describe("statement splitting", () => {
   it("splits on semicolons outside of strings and comments", () => {
     const sql = "SELECT 'a;b'; -- c;d\nSELECT `x;y` /* ; */;";
-    expect(statementRanges(sql).map((r) => text(sql, r))).toEqual([
-      "SELECT 'a;b'",
-      "-- c;d\nSELECT `x;y` /* ; */",
-    ]);
+    expect(at(sql, "SELECT 'a")).toBe("SELECT 'a;b'");
+    expect(at(sql, "SELECT `x")).toBe("-- c;d\nSELECT `x;y` /* ; */");
   });
 
   it("drops comment-only fragments", () => {
-    expect(statementRanges("SELECT 1; -- end")).toHaveLength(1);
+    expect(atEnd("SELECT 1; -- end")).toBe("SELECT 1");
   });
 
   describe("double dashes", () => {
-    const texts = (sql: string) => statementRanges(sql).map((r) => text(sql, r));
-
     it("keeps `--x` in the statement, since MySQL reads it as arithmetic, not a comment", () => {
-      expect(texts("SELECT 1 --x")).toEqual(["SELECT 1 --x"]);
+      expect(atEnd("SELECT 1 --x")).toBe("SELECT 1 --x");
     });
 
     it("splits on a semicolon after `--x`, which hides nothing", () => {
-      expect(texts("SELECT 1 --x;\nSELECT 2")).toEqual(["SELECT 1 --x", "SELECT 2"]);
+      const sql = "SELECT 1 --x;\nSELECT 2";
+      expect(at(sql, "SELECT 1")).toBe("SELECT 1 --x");
+      expect(at(sql, "SELECT 2")).toBe("SELECT 2");
     });
 
     it("hides a semicolon behind `-- x`, a comment", () => {
-      expect(texts("SELECT 1 -- x;\nSELECT 2")).toEqual(["SELECT 1 -- x;\nSELECT 2"]);
+      const sql = "SELECT 1 -- x;\nSELECT 2";
+      expect(at(sql, "SELECT 1")).toBe(sql);
+      expect(at(sql, "SELECT 2")).toBe(sql);
     });
 
     it("reads `--` at the end of the input as a comment", () => {
-      expect(texts("SELECT 1; --")).toEqual(["SELECT 1"]);
-      expect(texts("--")).toEqual([]);
+      expect(atEnd("SELECT 1; --")).toBe("SELECT 1");
+      expect(atEnd("--")).toBeNull();
     });
   });
 });

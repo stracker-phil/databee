@@ -31,7 +31,7 @@ function documentColumn() {
 }
 
 /** From no focus (-1) the first step lands on the first or the last value; the ends hold. */
-export function nextFocusIndex(current: number, delta: number, length: number): number {
+function nextFocusIndex(current: number, delta: number, length: number): number {
   if (current < 0) return delta > 0 ? 0 : length - 1;
   return Math.max(0, Math.min(length - 1, current + delta));
 }

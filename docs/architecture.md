@@ -180,8 +180,8 @@ status kind: color comes only from value styles.
   them another kind (`ResultSet.cell_kinds`: conditional references, meta-key kinds), the cells a value
   style colors (`ResultSet.styles`) and, for a browse page, every row's key (`BrowsePage.keys`). The page builds a cell's `Value` from them (`valueAt` in
   `src/lib/values.ts`), so 500 rows don't carry 500 copies of each kind. This is the one rule the page
-  ports from Rust, for payload size: `value::value_at` (`ResultValues` for many cells) is the reference
-  implementation that Rust callers outside the page use, and tests on both sides keep them equal.
+  ports from Rust, for payload size: `value::ResultValues` is the reference implementation that Rust
+  callers outside the page use, and tests on both sides keep them equal.
 - **The lens seam.** `lens::Lens` answers `kinds(table, columns)`, `references_from(table)`,
   `references_to(table)` and `cells(columns, result)` (per-row kinds and styles). `SchemaLens` answers
   from the schema cache: primary keys, declared foreign keys and same-name inference

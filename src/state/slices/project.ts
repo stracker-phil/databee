@@ -7,7 +7,7 @@ import { EMPTY_NAV } from "./nav";
 import { withoutSession } from "./session";
 import { activate, findTab, newTabId, replaceTab, type ProjectTab } from "./tabs";
 
-export interface ProjectRulesEntry {
+interface ProjectRulesEntry {
   version: number;
   rules: ProjectRules | null;
   error: AppError | null;

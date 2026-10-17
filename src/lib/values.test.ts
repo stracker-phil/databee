@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Address, BrowsePage, Cell, ColumnKind, ResultSet } from "../api";
 import { browsePage, columnMeta, num, resultSet, text } from "../test/fixtures";
-import { resultValueAt, utcSeconds, valueAt } from "./values";
+import { resultValueAt, valueAt } from "./values";
 
 const tableAddress = (table: string): Address => ({ connection: "local", database: "db", target: { kind: "table", table, filter: [] }, view: null, compare: null });
 const rowAddress = (table: string, key: string): Address => ({ ...tableAddress(table), target: { kind: "row", table, key } });
@@ -277,7 +277,13 @@ describe("resultValueAt", () => {
   });
 });
 
-describe("utcSeconds", () => {
+describe("timestamp seconds", () => {
+  const utcSeconds = (input: string, zone: "unix" | "utc" | "local" | null) => {
+    const result = resultSet({ columns: [columnMeta("t", "DATETIME")], rows: [[text(input)]], kinds: [{ kind: "timestamp", zone }] });
+    const kind = resultValueAt(result, 0, 0).kind;
+    return kind.kind === "timestamp" ? kind.utc : undefined;
+  };
+
   it.each([
     ["unix", "1700000000", 1700000000],
     ["unix", "1700000000:42", 1700000000],

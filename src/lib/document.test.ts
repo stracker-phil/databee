@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Group } from "../api";
 import { address } from "./address";
-import { countText, documentText, findValue, focusOrder, groupAnchors, moreText, objectAddress, objectTitle, originText, provenanceKey, relationText } from "./document";
+import { countText, documentText, findValue, focusOrder, groupAnchors, moreText, objectAddress, objectTitle, groupOriginText, provenanceKey, relationText } from "./document";
 import { incomingLink, objectDocument, orderAddress, orderGroups, paidViaSource, source } from "../test/objectFixtures";
 
 const { own, meta, addresses, refunds, items, events, coupons } = orderGroups;
@@ -87,18 +87,18 @@ describe("relationText", () => {
   });
 });
 
-describe("originText", () => {
+describe("groupOriginText", () => {
   it("names the rule behind an incoming reference", () => {
-    expect(originText(addresses)).toBe("wp_wc_order_addresses.order_id → wp_wc_orders.id · preset woocommerce");
+    expect(groupOriginText(addresses)).toBe("wp_wc_order_addresses.order_id → wp_wc_orders.id · preset woocommerce");
   });
 
   it("names the meta columns and the foreign key", () => {
-    expect(originText(meta)).toBe("wp_wc_orders_meta.meta_key → wp_wc_orders_meta.meta_value · order_id → this row");
+    expect(groupOriginText(meta)).toBe("wp_wc_orders_meta.meta_key → wp_wc_orders_meta.meta_value · order_id → this row");
   });
 
   it("is null for the own row and the events", () => {
-    expect(originText(own)).toBeNull();
-    expect(originText(events)).toBeNull();
+    expect(groupOriginText(own)).toBeNull();
+    expect(groupOriginText(events)).toBeNull();
   });
 });
 

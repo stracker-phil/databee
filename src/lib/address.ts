@@ -14,7 +14,7 @@ const utf8 = new TextEncoder();
 export class AddressError extends Error {}
 
 /** Everything but `A-Z a-z 0-9 - . _ ~`, as uppercase UTF-8 escapes (unlike `encodeURIComponent`, also `!'()*`). */
-export function encodePart(text: string): string {
+function encodePart(text: string): string {
   let out = "";
   for (const char of text) {
     if (UNRESERVED.test(char)) {

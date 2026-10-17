@@ -1,4 +1,4 @@
-export interface ScopeDef {
+interface ScopeDef {
   id: string;
   /** Null only for the root scope; any other parent must already be registered. */
   parent: string | null;

@@ -31,7 +31,7 @@ in `src-tauri/src/db_commands.rs`.
 Outside `db/`:
 - `connection.rs` has `ConnectionSpec` and `Secret`.
 - `session.rs` has `Session { id, spec, db: Box<dyn Database>, ext, plans, cells }` and the `Sessions` map
-  (`writes(db)` counts applied batches, `ddl_writes()` counts user scripts with DDL). `ext` is a
+  (`ddl_writes()` counts user scripts with DDL). `ext` is a
   type-keyed `Extensions` map where a module keeps per-session data that dies with the session
   ([ADR 0013](adr/0013-session-extensions.md)); the rules keep their effective-rules cache there, the core its
   `SchemaCache` ([Schema cache](#schema-cache)).
@@ -373,8 +373,7 @@ apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/
 4. `apply_changes(ids)` takes the plans (atomically: an unknown id fails and leaves every plan pending) and
    runs their statements in **one transaction** on a pool connection (`Database::apply`). This is atomic only
    for transactional engines; MyISAM tables and implicit DDL commits are not covered. On failure the plans
-   stay pending for a retry; on success it returns `{ batchId, affected, canUndo }` and bumps the session's
-   write counter of each written database (`Session::writes`), which caches compare to notice changed data.
+   stay pending for a retry; on success it returns `{ batchId, affected, canUndo }`.
 5. `undo_batch(batchId)` replays the batch's undo statements, last plan first. The last 20 applied batches
    are kept; a batch with a change that has no undo can't be undone. Plans and undo history die with the
    session.

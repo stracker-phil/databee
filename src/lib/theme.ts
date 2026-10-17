@@ -27,13 +27,13 @@ type SchemeSettings = Pick<Settings, "theme" | "lightScheme" | "darkScheme">;
 
 const DEFAULT_SCHEMES: SchemeSettings = { theme: "system", lightScheme: "ayu-light", darkScheme: "ayu-mirage" };
 
-export interface ResolvedScheme {
+interface ResolvedScheme {
   id: SchemeId;
   dark: boolean;
 }
 
 /** The scheme that applies: the dark one when the theme (or, for `system`, the OS) is dark. */
-export function resolveScheme(settings: SchemeSettings, systemDark: boolean): ResolvedScheme {
+function resolveScheme(settings: SchemeSettings, systemDark: boolean): ResolvedScheme {
   const dark = settings.theme === "system" ? systemDark : settings.theme === "dark";
   const wanted = dark ? settings.darkScheme : settings.lightScheme;
   const scheme = SCHEMES.find((s) => s.id === wanted) ?? SCHEMES.find((s) => s.dark === dark) ?? SCHEMES[0];

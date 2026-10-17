@@ -9,7 +9,7 @@ export interface Toast {
   count: number;
 }
 
-export type Dialog =
+type Dialog =
   /** `page`: the Settings page shown (ids from `settingsPages()` in `registry/settingsPages.ts`); the first one when absent. */
   | { type: "settings"; page?: string }
   | { type: "connect"; spec?: ConnectionSpec; error?: AppError }

@@ -2,17 +2,16 @@ use crate::connection::{ConnectionSpec, Secret};
 use crate::error::AppResult;
 
 mod keychain;
-#[cfg(any(test, feature = "test-util"))]
+#[cfg(test)]
 mod memory;
 
 pub use keychain::Keychain;
-#[cfg(any(test, feature = "test-util"))]
+#[cfg(test)]
 pub use memory::MemoryStore;
 
 pub trait SecretStore: Send + Sync {
     fn get(&self, account: &str) -> AppResult<Option<Secret>>;
     fn set(&self, account: &str, secret: &Secret) -> AppResult<()>;
-    fn delete(&self, account: &str) -> AppResult<()>;
 }
 
 /// Where a password came from.
@@ -112,9 +111,6 @@ mod tests {
         fn set(&self, _: &str, _: &Secret) -> AppResult<()> {
             Err(AppError::Keychain("locked".into()))
         }
-        fn delete(&self, _: &str) -> AppResult<()> {
-            Err(AppError::Keychain("locked".into()))
-        }
     }
 
     #[test]
@@ -136,16 +132,5 @@ mod tests {
         );
         assert_eq!(PasswordSource::None.secret(), None);
         assert_eq!(PasswordSource::Unavailable("x".into()).secret(), None);
-    }
-
-    #[test]
-    fn deleted_password_is_no_longer_resolved() {
-        let store = MemoryStore::default();
-        store.set(&spec().account(), &Secret::new("x")).unwrap();
-        store.delete(&spec().account()).unwrap();
-        assert_eq!(
-            resolve_password(None, &store, &spec()),
-            PasswordSource::None
-        );
     }
 }

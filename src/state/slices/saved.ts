@@ -22,11 +22,11 @@ export interface SavedSlice {
 
 export const isPreset = (origin: SavedOrigin): origin is Extract<SavedOrigin, { kind: "preset" }> => origin.kind === "preset";
 
-export function originText(origin: SavedOrigin): string {
+export function savedOriginText(origin: SavedOrigin): string {
   return origin.kind === "preset" ? `preset:${origin.preset}` : origin.kind;
 }
 
-const sameOrigin = (a: SavedOrigin, b: SavedOrigin) => originText(a) === originText(b);
+const sameOrigin = (a: SavedOrigin, b: SavedOrigin) => savedOriginText(a) === savedOriginText(b);
 
 /** The database a tab's query is saved in: the one it was saved to, else the session's current one. */
 function tabDatabase(s: Store, tab: QueryTab): string | null {

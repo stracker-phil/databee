@@ -11,7 +11,7 @@ import { withoutSession } from "./session";
 import type { Tab, TabOfKind } from "./tabs";
 
 /** A live object column; `id` is the Rust watch, null while it starts. */
-export interface LiveWatch {
+interface LiveWatch {
   sessionId: string;
   /** The row address (`documentText`). */
   address: string;
@@ -19,7 +19,7 @@ export interface LiveWatch {
 }
 
 /** What the live and snapshot commands act on: the active object column, or a query tab of a saved query. */
-export interface ChangeTarget {
+interface ChangeTarget {
   /** The `changeMarks` key: the document key of an object column, `<session>/q:<tab id>` for a query tab. */
   key: string;
   kind: "object" | "query";
@@ -86,7 +86,7 @@ export function selectActiveLive(s: Store): number | null {
   return target && s.live[target.key] ? (s.settings?.liveIntervalSecs ?? 2) : null;
 }
 
-export const selectActiveMarks = (s: Store): ChangeMarks | undefined => {
+const selectActiveMarks = (s: Store): ChangeMarks | undefined => {
   const target = selectChangeTarget(s);
   return target ? s.changeMarks[target.key] : undefined;
 };

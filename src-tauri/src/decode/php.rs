@@ -47,11 +47,6 @@ impl PhpValue {
         entries.iter().find(|(k, _)| k.is(key)).map(|(_, v)| v)
     }
 
-    /// The entry at `key` as text, see `as_text`.
-    pub fn text_at(&self, key: &str) -> Option<String> {
-        self.get(key)?.as_text().map(Cow::into_owned)
-    }
-
     /// Strings (lossy UTF-8), ints and floats as text.
     pub fn as_text(&self) -> Option<Cow<'_, str>> {
         match self {

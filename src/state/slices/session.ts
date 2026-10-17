@@ -12,7 +12,7 @@ export interface StructureEntry {
   error: AppError | null;
 }
 
-export interface SchemaState {
+interface SchemaState {
   databases: DatabaseInfo[];
   tables: Record<string, TableInfo[]>;
 }

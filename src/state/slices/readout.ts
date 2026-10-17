@@ -5,7 +5,7 @@ import { EMPTY_NAV, homeAddress } from "./nav";
 import { withoutSession } from "./session";
 import { activate, newTabId, replaceTab, type ReadoutTab } from "./tabs";
 
-export interface ReadoutEntry {
+interface ReadoutEntry {
   version: number;
   readout: Readout | null;
   error: AppError | null;

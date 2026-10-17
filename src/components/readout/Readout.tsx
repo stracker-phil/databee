@@ -2,7 +2,7 @@ import { useEffect, useMemo, type MouseEvent, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { Address, AnomalyLine, NewObjects, Part, PinnedLine, ReadoutRow, RecentLine, Status, Value as StoredValue } from "../../api";
 import { formatAddress } from "../../lib/address";
-import { cellText, charWidth, formatCount, relativeTime } from "../../lib/format";
+import { cellText, charWidth, plural, relativeTime } from "../../lib/format";
 import { readoutKey } from "../../state/slices/readout";
 import { useStore, type ReadoutTab } from "../../state/store";
 import { ErrorPanel } from "../ErrorPanel";
@@ -15,7 +15,6 @@ const open = (address: Address) => void useStore.getState().openAddress(formatAd
 
 const rowTableOf = (address: Address | null) => (address && "table" in address.target ? address.target.table : undefined);
 
-const plural = (n: number, one: string, many: string) => `${formatCount(n)} ${n === 1 ? one : many}`;
 
 type Collapse = ReturnType<typeof useCollapsedGroups>;
 

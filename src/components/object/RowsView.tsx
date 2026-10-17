@@ -15,7 +15,7 @@ import { columnIndex, DEFAULT_ROW_LIMIT, singleKey } from "../../lib/cells";
 import { fieldOf, groupAnchors, isEmpty, provenanceKey } from "../../lib/document";
 import { useApiResult } from "../../lib/useApiResult";
 import { valueAt } from "../../lib/values";
-import { useStore } from "../../state/store";
+import { selectSessionBySlug, useStore } from "../../state/store";
 import { ErrorPanel } from "../ErrorPanel";
 import { ResultsGrid, type CellPos } from "../ResultsGrid";
 import { AlsoLinked } from "./AlsoLinked";
@@ -27,7 +27,7 @@ const VISIBLE_ROWS = 12;
 const sameKey = (a: RowKey, b: RowKey) =>
   a.length === b.length && a.every((p, i) => p.column.toLowerCase() === b[i].column.toLowerCase() && p.value === b[i].value);
 
-const useSessionId = (owner: Address) => useStore((s) => s.sessions.find((x) => x.slug === owner.connection)?.id ?? null);
+const useSessionId = (owner: Address) => useStore((s) => selectSessionBySlug(s, owner.connection)?.id ?? null);
 
 /** The group's rows as a browse page; not browsed for a group whose rows no address names (patterns). */
 function useGroupPage(sessionId: string | null, database: string, group: Group) {

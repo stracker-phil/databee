@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toAppError, type AppError } from "../api";
 
-export type ApiResult<T> =
+type ApiResult<T> =
   | { state: "loading"; data: T | null; error: null }
   | { state: "loaded"; data: T; error: null }
   | { state: "failed"; data: T | null; error: AppError };

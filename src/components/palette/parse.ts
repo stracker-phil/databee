@@ -3,7 +3,7 @@ export type Prefix = ">" | "t:" | "q:" | "#" | "@" | "=" | "databee://" | null;
 const PREFIXES = [">", "t:", "q:", "#", "@", "=", "databee://"] as const;
 
 /** Free text shorter than this matches only tables and commands (Rust's `search::MIN_TEXT`). */
-export const MIN_TEXT = 6;
+const MIN_TEXT = 6;
 
 /** The prefix and the rest; an address keeps its whole text as the needle. */
 export function parsePrefix(input: string): { prefix: Prefix; needle: string } {

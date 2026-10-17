@@ -94,7 +94,7 @@ const editValue = () => void window.dispatchEvent(new Event(EDIT_VALUE_EVENT));
 type RuleFormKind = "reference" | "kind" | "style";
 
 /** Opens the Project page with a rule form prefilled from the focused value's provenance (and, for a style, its text). */
-export async function openRuleForm(kind: RuleFormKind) {
+async function openRuleForm(kind: RuleFormKind) {
   const found = sourced();
   if (!found) return;
   const { tab, source, database } = found;
@@ -112,7 +112,7 @@ export const RULE_MENU = [
   { label: "Style…", action: () => void openRuleForm("style") },
 ];
 
-export const canAddRule = () => !!sourced();
+const canAddRule = () => !!sourced();
 
 function valueCommands(scope: Scope, idPrefix: string): Command[] {
   return [

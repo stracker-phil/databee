@@ -279,7 +279,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 `saved_queries` lists, for the active session's database, the
 project's queries (`origin: { kind: "project" }`), the global ones (`global`, from migrated favorites, offered in
 every project) and the `[[pinned]]` queries of the applied presets (`{ kind: "preset", preset }`, `readOnly`;
-`originText` shows `preset:<name>`), `{p}` and `{np}`
+`savedOriginText` shows `preset:<name>`), `{p}` and `{np}`
 replaced. The `saved` slice keeps them by `session/database`.
 
 - `q:` in the palette lists them (`savedItems` in `usePaletteItems.ts`, scored by title, then id): the title,
@@ -614,7 +614,7 @@ test checks it against `src/test/fixtures/addresses.json`, which a Rust test wri
 
 `lib/values.ts` turns a cell into a `Value` (kind and provenance): `valueAt(page, row, col)` for a browse
 page (sourced from `page.table` and `page.keys[row]`), `resultValueAt(result, row, col)` for query
-results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's `value::value_at`
+results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's `value::ResultValues`
 ([architecture](architecture.md#values-and-the-lens)).
 
 - **Tab addresses** (`slices/nav.ts`): a `TableTab`'s `address` is derived from its table and `where` by
@@ -663,7 +663,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `sql.ts` | statement ranges and the statement at the cursor |
 | `theme.ts` | `applyAppearance` (scheme, accent, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `applyInitialScheme` (first paint) |
 | `codeTheme.ts` | CodeMirror theme and syntax colors from the scheme's `--code-*` tokens |
-| `document.ts` | object addresses (`objectAddress`, `documentText`, `objectTitle`), `findValue` / `provenanceKey`, group texts (`relationText`, `originText`, `countText`, `moreText`), `groupAnchors`, `collapseKey`, `focusOrder` |
+| `document.ts` | object addresses (`objectAddress`, `documentText`, `objectTitle`), `findValue` / `provenanceKey`, group texts (`relationText`, `groupOriginText`, `countText`, `moreText`), `groupAnchors`, `collapseKey`, `focusOrder` |
 | `diff.ts` | change marks of live mode, snapshots and compare (`ChangeMarks`, `withDelta`, `documentMarks`, `compareMarks`, `withRemovedRows`, `FLASH_MS`; see [Live mode, snapshots, compare](#live-mode-snapshots-compare)) |
 | `pins.ts` | a saved query's pin and the pin dialog's choices (`pinChoice`, `pinOf`, `pinLabel`) |
 | `nativeMenu.ts` | `installNativeMenuGuard` (see [Boot](#boot)) |

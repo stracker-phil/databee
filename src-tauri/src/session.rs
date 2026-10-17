@@ -1,7 +1,7 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use crate::db::classify::changes_schema;
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
 use crate::db::{BrowsePage, BrowseRequest, CellLimit, Connector, Database, ExecuteResponse};
 use crate::error::{AppError, AppResult};
-use crate::lock::{MutexExt, RwLockExt};
+use crate::lock::RwLockExt;
 use crate::rules::annotate;
 use crate::rules::effective::{self, RuleSources};
 use crate::schema;
@@ -32,8 +32,6 @@ pub struct Session {
     pub plans: Plans,
     /// Full values of the long text cells sent as previews, for `fetch_cell`.
     pub cells: CellCache,
-    /// Applied writes per database; caches compare it to notice that their data changed.
-    writes: Mutex<HashMap<String, u64>>,
     /// User scripts with DDL; the schema cache reloads when it changes. Session-wide, because a
     /// statement may name any database.
     ddl_writes: AtomicU64,
@@ -115,7 +113,6 @@ impl Session {
             ext: Extensions::default(),
             plans: Plans::default(),
             cells: CellCache::default(),
-            writes: Mutex::default(),
             ddl_writes: AtomicU64::new(0),
         }
     }
@@ -126,23 +123,6 @@ impl Session {
 
     pub fn set_slug(&self, slug: &str) {
         *self.slug.write_unpoisoned() = slug.to_string();
-    }
-
-    pub fn bump_writes(&self, database: &str) {
-        *self
-            .writes
-            .lock_unpoisoned()
-            .entry(database.to_string())
-            .or_default() += 1;
-    }
-
-    /// How many applied batches wrote to `database` in this session.
-    pub fn writes(&self, database: &str) -> u64 {
-        self.writes
-            .lock_unpoisoned()
-            .get(database)
-            .copied()
-            .unwrap_or(0)
     }
 
     /// How many user scripts with DDL ran in this session.
@@ -230,9 +210,6 @@ impl Session {
             }
         };
         let batch = self.plans.record_applied(&plans);
-        for database in &batch.databases {
-            self.bump_writes(database);
-        }
         Ok(AppliedBatchInfo {
             batch_id: batch.id,
             affected,
@@ -249,12 +226,7 @@ impl Session {
             self.spec.identity()
         );
         match self.db.apply(&batch.undo, timeout).await {
-            Ok(affected) => {
-                for database in &batch.databases {
-                    self.bump_writes(database);
-                }
-                Ok(affected)
-            }
+            Ok(affected) => Ok(affected),
             Err(e) => {
                 self.plans.restore_undo(batch);
                 Err(e)
@@ -465,10 +437,13 @@ impl Sessions {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
     use crate::db::changes::Plan;
     use crate::db::{FakeDatabase, ResultSet};
     use crate::error::ErrorKind;
+    use crate::lock::MutexExt;
 
     fn session(id: &str) -> Session {
         Session::new(
@@ -492,9 +467,8 @@ mod tests {
 
     const TIMEOUT: Duration = Duration::from_secs(1);
 
-    fn plan(name: &str, database: &str, undo: &[&str]) -> Plan {
+    fn plan(name: &str, undo: &[&str]) -> Plan {
         Plan {
-            database: database.into(),
             description: format!("change {name}"),
             statements: vec![format!("DO {name}")],
             undo: undo.iter().map(ToString::to_string).collect(),
@@ -514,8 +488,8 @@ mod tests {
     async fn applying_plans_sends_their_statements_in_the_given_order_in_one_batch() {
         let db = Arc::new(FakeDatabase::new());
         let session = session_over(&db);
-        let first = session.plans.add(plan("first", "wp", &["UNDO first"]));
-        let second = session.plans.add(plan("second", "wp", &["UNDO second"]));
+        let first = session.plans.add(plan("first", &["UNDO first"]));
+        let second = session.plans.add(plan("second", &["UNDO second"]));
 
         let info = session
             .apply_plans(&[second.id, first.id], TIMEOUT)
@@ -528,29 +502,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn applying_plans_bumps_the_write_counter_of_each_written_database() {
+    async fn applied_batch_is_undone_with_the_last_plans_undo_first() {
         let db = Arc::new(FakeDatabase::new());
         let session = session_over(&db);
-        let a = session.plans.add(plan("a", "wp", &["UNDO a"]));
-        let b = session.plans.add(plan("b", "blog", &["UNDO b"]));
-        let c = session.plans.add(plan("c", "wp", &["UNDO c"]));
-
-        session
-            .apply_plans(&[a.id, b.id, c.id], TIMEOUT)
-            .await
-            .unwrap();
-
-        assert_eq!(session.writes("wp"), 1);
-        assert_eq!(session.writes("blog"), 1);
-        assert_eq!(session.writes("other"), 0);
-    }
-
-    #[tokio::test]
-    async fn applied_batch_is_undone_with_the_last_plans_undo_first_and_bumps_writes() {
-        let db = Arc::new(FakeDatabase::new());
-        let session = session_over(&db);
-        let first = session.plans.add(plan("first", "wp", &["UNDO first"]));
-        let second = session.plans.add(plan("second", "wp", &["UNDO second"]));
+        let first = session.plans.add(plan("first", &["UNDO first"]));
+        let second = session.plans.add(plan("second", &["UNDO second"]));
         let info = session
             .apply_plans(&[first.id, second.id], TIMEOUT)
             .await
@@ -560,7 +516,6 @@ mod tests {
 
         assert_eq!(affected, 2);
         assert_eq!(db.applied()[1], ["UNDO second", "UNDO first"]);
-        assert_eq!(session.writes("wp"), 2);
         assert_eq!(
             session
                 .undo_batch(info.batch_id, TIMEOUT)
@@ -575,7 +530,7 @@ mod tests {
     async fn applying_an_unknown_plan_fails_and_leaves_the_known_plans_pending() {
         let db = Arc::new(FakeDatabase::new());
         let session = session_over(&db);
-        let known = session.plans.add(plan("a", "wp", &["UNDO a"]));
+        let known = session.plans.add(plan("a", &["UNDO a"]));
 
         let err = session
             .apply_plans(&[known.id, known.id + 100], TIMEOUT)
@@ -584,7 +539,6 @@ mod tests {
 
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert!(db.applied().is_empty());
-        assert_eq!(session.writes("wp"), 0);
         assert!(session.apply_plans(&[known.id], TIMEOUT).await.is_ok());
     }
 
@@ -592,7 +546,7 @@ mod tests {
     async fn applying_a_plan_without_undo_reports_that_it_cannot_be_undone() {
         let db = Arc::new(FakeDatabase::new());
         let session = session_over(&db);
-        let a = session.plans.add(plan("a", "wp", &[]));
+        let a = session.plans.add(plan("a", &[]));
 
         let info = session.apply_plans(&[a.id], TIMEOUT).await.unwrap();
 
@@ -612,7 +566,7 @@ mod tests {
     async fn applied_batch_info_serializes_camel_case() {
         let db = Arc::new(FakeDatabase::new());
         let session = session_over(&db);
-        let a = session.plans.add(plan("a", "wp", &["UNDO a"]));
+        let a = session.plans.add(plan("a", &["UNDO a"]));
 
         let info = session.apply_plans(&[a.id], TIMEOUT).await.unwrap();
 
@@ -698,7 +652,6 @@ mod tests {
         let err = session.apply_plans(&[999], TIMEOUT).await.unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
-        assert_eq!(session.writes("wp_write"), 0);
     }
 
     #[test]
@@ -929,9 +882,6 @@ mod tests {
             Err(AppError::Keychain("locked".into()))
         }
         fn set(&self, _: &str, _: &Secret) -> AppResult<()> {
-            Err(AppError::Keychain("locked".into()))
-        }
-        fn delete(&self, _: &str) -> AppResult<()> {
             Err(AppError::Keychain("locked".into()))
         }
     }

@@ -2,7 +2,7 @@
 
 use super::{ColumnKind, KeyPart, Provenance, ReferenceTarget, RowKey, Value, ValueKind, time};
 use crate::address::{Address, Target};
-use crate::db::{BrowsePage, Cell, ColumnEquals, ResultSet};
+use crate::db::{Cell, ColumnEquals, ResultSet};
 
 /// The primary key of every row, or none at all when a key column is missing from the result
 /// or holds a value that is not text (binary keys only arrive as a preview).
@@ -42,21 +42,9 @@ fn column_indexes(result: &ResultSet, names: &[String]) -> Option<Vec<usize>> {
         .collect()
 }
 
-/// The value of one cell of a browse page, sourced from the page's table and the row's key.
+/// The value of one cell, for tests that check the cell rule `src/lib/values.ts` ports.
 /// Panics when `row` or `col` is out of range.
-pub fn page_value_at(page: &BrowsePage, row: usize, col: usize) -> Value {
-    let source = page.keys.get(row).map(|key| Provenance {
-        table: page.table.clone(),
-        column: page.result.columns[col].name.clone(),
-        row: key.clone(),
-    });
-    value_at(&page.result, row, col, source)
-}
-
-/// The value of one cell, from the result's column kinds and serialized cells. The reference
-/// implementation of the cell rule: `src/lib/values.ts` ports it for the page (payload size),
-/// and Rust callers outside the page (the MCP server) use it directly. For many cells of one
-/// result, use `ResultValues`. Panics when `row` or `col` is out of range.
+#[cfg(test)]
 pub fn value_at(result: &ResultSet, row: usize, col: usize, source: Option<Provenance>) -> Value {
     ResultValues::new(result).value(row, col, source)
 }
@@ -792,42 +780,5 @@ mod tests {
             panic!("{:?}", value.kind);
         };
         assert_eq!(currency.source, None);
-    }
-
-    fn page(keys: Vec<RowKey>) -> BrowsePage {
-        BrowsePage {
-            table: "wp_posts".into(),
-            result: result(
-                &["ID", "title"],
-                vec![ColumnKind::Number, ColumnKind::Text],
-                vec![vec![number("7"), text("Hello")]],
-            ),
-            keys,
-            has_more: false,
-            limit: 10,
-            filter: None,
-            columns_filter: None,
-        }
-    }
-
-    #[test]
-    fn page_value_is_sourced_from_the_pages_table_and_the_rows_key() {
-        let page = page(vec![key_of(&[("ID", "7")])]);
-
-        let value = page_value_at(&page, 0, 1);
-
-        assert_eq!(
-            value.source,
-            Some(Provenance {
-                table: "wp_posts".into(),
-                column: "title".into(),
-                row: key_of(&[("ID", "7")]),
-            })
-        );
-    }
-
-    #[test]
-    fn page_value_without_row_keys_has_no_source() {
-        assert_eq!(page_value_at(&page(Vec::new()), 0, 0).source, None);
     }
 }

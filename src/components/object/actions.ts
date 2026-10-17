@@ -26,7 +26,7 @@ function askParams(action: ObjectAction, params: Record<string, string>, index: 
   });
 }
 
-export function runAction(address: Address, action: ObjectAction) {
+function runAction(address: Address, action: ObjectAction) {
   askParams(action, {}, 0, (params) => {
     void useStore.getState().queueAction(objectAddress(address, "document"), action.name, params);
   });
