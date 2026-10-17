@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
@@ -473,6 +473,53 @@ describe("ProjectPanel", () => {
       await userEvent.type(value, "wc-cancelled");
       await userEvent.click(within(form).getByRole("button", { name: "Save to project" }));
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateStyle", index: 3, rule: expect.objectContaining({ columns: ["wc_orders.status"], value: "wc-cancelled", color: "red" }) });
+    });
+
+    describe("revealing the edit form", () => {
+      const scrolled: Element[] = [];
+      const otherStyleRow = { origin: { kind: "project" } as const, index: 4, rule: { columns: ["wc_orders.total"], match: "=" as const, value: "wc-held", color: "blue" as const, enabled: true } };
+
+      beforeEach(() => {
+        scrolled.length = 0;
+        Element.prototype.scrollIntoView = function (this: Element) {
+          scrolled.push(this);
+        };
+      });
+
+      afterEach(() => {
+        delete (Element.prototype as Partial<Element>).scrollIntoView;
+      });
+
+      it("scrolls the edit kind form into view and focuses its first field", async () => {
+        await openProjectPage();
+        await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status secret" })).getByRole("button", { name: "edit" }));
+        const form = await screen.findByRole("region", { name: "edit kind" });
+        expect(scrolled).toContain(form);
+        expect(within(form).getByRole("textbox", { name: "columns" })).toHaveFocus();
+      });
+
+      it("scrolls the edit value style form into view and focuses its first field", async () => {
+        await openProjectPage();
+        await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status = 'wc-failed'" })).getByRole("button", { name: "edit" }));
+        const form = await screen.findByRole("region", { name: "edit value style" });
+        expect(scrolled).toContain(form);
+        expect(within(form).getByRole("textbox", { name: "columns" })).toHaveFocus();
+      });
+
+      it("scrolls to the form again when edit is clicked on another style while one is open", async () => {
+        mocked.projectRules.mockResolvedValue(projectRules({ kinds: [kindRow], styles: [styleRow, otherStyleRow] }));
+        await openProjectPage();
+        await userEvent.click(within(await screen.findByRole("row", { name: "wc_orders.status = 'wc-failed'" })).getByRole("button", { name: "edit" }));
+        const first = await screen.findByRole("region", { name: "edit value style" });
+        expect(within(first).getByRole("textbox", { name: "columns" })).toHaveValue("wc_orders.status");
+        scrolled.length = 0;
+
+        await userEvent.click(within(screen.getByRole("row", { name: "wc_orders.total = 'wc-held'" })).getByRole("button", { name: "edit" }));
+        const second = await screen.findByRole("region", { name: "edit value style" });
+        expect(scrolled).toContain(second);
+        expect(within(second).getByRole("textbox", { name: "columns" })).toHaveValue("wc_orders.total");
+        expect(within(second).getByRole("textbox", { name: "Value" })).toHaveValue("wc-held");
+      });
     });
 
     it("removes a kind by index", async () => {

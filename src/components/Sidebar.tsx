@@ -7,7 +7,7 @@ import { copyText } from "../lib/clipboard";
 import { compactCount, formatBytes, formatCount, relativeTime } from "../lib/format";
 import { useApiResult } from "../lib/useApiResult";
 import { fail, selectActiveSession, selectActiveTab, selectVisibleDatabases, useStore, type Tab } from "../state/store";
-import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { useContextMenu } from "./ContextMenu";
 import { InsetField } from "./Field";
 
 const dbKey = (name: string) => `db:${name}`;
@@ -97,7 +97,7 @@ function TablesPanel() {
   const { loadTables, loadDatabases, openTableTab, openQueryTab } = useStore.getState();
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
+  const menu = useContextMenu();
   const filterRef = useRef<HTMLInputElement>(null);
   const filterKeys = useBindingLabel("sidebar.focusFilter");
 
@@ -142,18 +142,13 @@ function TablesPanel() {
   if (!session) return null;
 
   const tableMenu = (db: string, t: TableInfo, e: MouseEvent) => {
-    e.preventDefault();
-    setMenu({
-      x: e.clientX,
-      y: e.clientY,
-      items: [
-        { label: "Open data", action: () => openTableTab(db, t.name, "data") },
-        { label: "Show structure", action: () => openTableTab(db, t.name, "structure") },
-        { label: "New query: SELECT …", action: () => void openSelectQuery(db, t.name) },
-        "separator",
-        { label: "Copy name", action: () => void copyText(t.name, "name") },
-      ],
-    });
+    menu.open(e, [
+      { label: "Open data", action: () => openTableTab(db, t.name, "data") },
+      { label: "Show structure", action: () => openTableTab(db, t.name, "structure") },
+      { label: "New query: SELECT …", action: () => void openSelectQuery(db, t.name) },
+      "separator",
+      { label: "Copy name", action: () => void copyText(t.name, "name") },
+    ]);
   };
 
   return (
@@ -235,7 +230,7 @@ function TablesPanel() {
           </div>
         ))}
       </div>
-      {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
+      {menu.element}
     </>
   );
 }

@@ -23,9 +23,9 @@ function useProjectRules(sessionId: string, database: string) {
 function OpenForm({ tab, ctx }: { tab: ProjectTab; ctx: ProjectContext }) {
   const form = tab.form;
   if (!form) return null;
-  if (form.type === "reference") return <ReferenceForm form={form} ctx={ctx} />;
-  if (form.type === "kind") return <KindForm form={form} ctx={ctx} />;
-  return <StyleForm form={form} ctx={ctx} />;
+  if (form.type === "reference") return <ReferenceForm key={`reference:${form.opener}`} form={form} ctx={ctx} />;
+  if (form.type === "kind") return <KindForm key={`kind:${form.index}:${form.opener}`} form={form} ctx={ctx} />;
+  return <StyleForm key={`style:${form.index}:${form.opener}`} form={form} ctx={ctx} />;
 }
 
 export function ProjectPanel({ tab }: { tab: ProjectTab }) {

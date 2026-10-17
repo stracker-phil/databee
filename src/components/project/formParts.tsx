@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { RuleTable } from "../../api";
 import type { ColumnPick, FieldError, FormField } from "../../lib/ruleForms";
 import { selectStructure, useStore } from "../../state/store";
@@ -89,9 +89,15 @@ interface FrameProps {
   onSave: () => void;
 }
 
+/** Scrolls itself into view and focuses its first field when it opens, wherever the page is scrolled. */
 export function FormFrame({ title, opener, anchor, children, footer, saving, error, onCancel, onSave }: FrameProps) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+    ref.current?.querySelector<HTMLElement>(".form-grid :is(input, select, textarea, button):not(:disabled)")?.focus({ preventScroll: true });
+  }, []);
   return (
-    <section className="rule-form" aria-label={title} data-stage={anchor} data-stage-label={title}>
+    <section ref={ref} className="rule-form" aria-label={title} data-stage={anchor} data-stage-label={title}>
       <div className="sh">
         <span className="tn sans">{title}</span>
         <span className="via">from {opener}</span>

@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface MenuItem {
   label: string;
@@ -10,6 +11,9 @@ interface MenuItem {
 
 export type MenuEntry = MenuItem | "separator";
 
+/** Where a menu opens: a point, or the pointer event that asked for it (its default menu is suppressed). */
+export type MenuAnchor = { x: number; y: number } | { clientX: number; clientY: number; preventDefault: () => void };
+
 interface Props {
   x: number;
   y: number;
@@ -19,6 +23,7 @@ interface Props {
 
 const EDGE = 4;
 
+/** The app's only context menu: rendered into `document.body`, so it never takes the font of the area it opened from. */
 export function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -63,8 +68,18 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
     buttons[(i + step + buttons.length) % buttons.length].focus();
   };
 
-  return (
-    <div className="menu" role="menu" ref={ref} style={pos} onKeyDown={onKeyDown}>
+  return createPortal(
+    <div
+      className="menu"
+      role="menu"
+      ref={ref}
+      style={pos}
+      onKeyDown={onKeyDown}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
       {items.map((item, i) =>
         item === "separator" ? (
           <hr key={`separator-${i}`} />
@@ -83,8 +98,20 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
           </button>
         ),
       )}
-    </div>
+    </div>,
+    document.body,
   );
+}
+
+/** Opens a context menu built from `MenuEntry` data; render `element` anywhere in the component. */
+export function useContextMenu() {
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
+  const open = useCallback((at: MenuAnchor, items: MenuEntry[]) => {
+    if ("clientX" in at) at.preventDefault();
+    setMenu({ ...("clientX" in at ? { x: at.clientX, y: at.clientY } : at), items });
+  }, []);
+  const element = menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />;
+  return { open, element };
 }
 
 function menuButtons(menu: HTMLElement | null): HTMLButtonElement[] {

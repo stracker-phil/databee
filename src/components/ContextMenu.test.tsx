@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { ContextMenu, type MenuEntry, useContextMenu } from "./ContextMenu";
 
 const renderMenu = (items: MenuEntry[], onClose = vi.fn()) => {
   render(<ContextMenu x={10} y={10} items={items} onClose={onClose} />);
@@ -101,6 +101,40 @@ describe("ContextMenu", () => {
       unmount();
       expect(opener).toHaveFocus();
       opener.remove();
+    });
+  });
+
+  describe("useContextMenu", () => {
+    function Area({ action }: { action: () => void }) {
+      const { open, element } = useContextMenu();
+      return (
+        <>
+          <div data-testid="area" className="mono" onContextMenu={(e) => open(e, [{ label: "Copy", action }])}>
+            Cell
+          </div>
+          <button onClick={() => open({ x: 20, y: 30 }, [{ label: "Paste", action }])}>Open from point</button>
+          {element}
+        </>
+      );
+    }
+
+    it("opens on right-click outside the area that opened it and suppresses the native menu", () => {
+      render(<Area action={vi.fn()} />);
+      const area = screen.getByTestId("area");
+      const notPrevented = fireEvent.contextMenu(area, { clientX: 5, clientY: 6 });
+      const menu = screen.getByRole("menu");
+      expect(notPrevented).toBe(false);
+      expect(area).not.toContainElement(menu);
+      expect(menu.parentElement).toBe(document.body);
+    });
+
+    it("opens from a point and removes the menu after running the clicked item", async () => {
+      const action = vi.fn();
+      render(<Area action={action} />);
+      await userEvent.click(screen.getByRole("button", { name: "Open from point" }));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Paste" }));
+      expect(action).toHaveBeenCalled();
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
   });
 });

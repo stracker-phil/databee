@@ -153,7 +153,7 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | J / K, ↓ / ↑ | Next / previous value | object |
 | H / L, ← / → | Column to the left / right | object |
 | ↵ | Open the focused reference in a new column | object |
-| Tab | Switch between Document and Rows | object |
+| ⌘1 / ⌘2 | Document / Rows view | object |
 | W / S / X | Live mode / snapshot / dismiss change marks | object |
 | ⌥ (hold) | Peek the hovered or focused reference | object, grid |
 | Y / ⇧Y | Copy the value / copy it as a SQL condition | object, grid |

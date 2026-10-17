@@ -6,7 +6,7 @@ import type { CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import { useRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
-import { ContextMenu, type MenuEntry } from "./ContextMenu";
+import { useContextMenu, type MenuEntry } from "./ContextMenu";
 import { cellMenu } from "./grid/cellMenu";
 import { useCellEditing } from "./grid/useCellEditing";
 import { useColumnSizing } from "./grid/useColumnSizing";
@@ -92,7 +92,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   const rowHeight = useRowHeight();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<CellPos | null>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
+  const menu = useContextMenu();
   const [selectionRows, setSelectionRows] = useState(rows);
   // New rows invalidate cell positions; resetting during render keeps stale indices out of every frame.
   if (selectionRows !== rows) {
@@ -151,12 +151,10 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   };
 
   const openMenu = (e: React.MouseEvent, row: number, col: number) => {
-    e.preventDefault();
     select(row, col);
-    setMenu({
-      x: e.clientX,
-      y: e.clientY,
-      items: cellMenu({
+    menu.open(
+      e,
+      cellMenu({
         row,
         col,
         rows,
@@ -167,7 +165,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
         edit: onEditCell && { start: () => startEdit({ row, col }), setNull: () => onEditCell(row, col, null) },
         rowActions: rowActions?.(row),
       }),
-    });
+    );
   };
 
   const openColumnMenu = async (e: React.MouseEvent, col: number) => {
@@ -175,7 +173,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
     e.preventDefault();
     const at = { x: e.clientX, y: e.clientY };
     const items = await columnMenu(col, at);
-    if (items.length > 0) setMenu({ ...at, items });
+    if (items.length > 0) menu.open(at, items);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -286,7 +284,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
           );
         })}
       </div>
-      {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
+      {menu.element}
       {targetMenu}
     </div>
   );

@@ -4,7 +4,7 @@ import { EDIT_VALUE_EVENT, RULE_MENU } from "../../commands";
 import { withRemovedRows, type DocumentMarks } from "../../lib/diff";
 import { groupAnchors, isEmpty, provenanceKey } from "../../lib/document";
 import { useStore } from "../../state/store";
-import { ContextMenu } from "../ContextMenu";
+import { useContextMenu } from "../ContextMenu";
 import { useOpenValue } from "../value/useOpenValue";
 import { DocumentContext, type DocumentActions } from "./fields";
 import { GroupHeader } from "./GroupHeader";
@@ -62,7 +62,7 @@ function useRevealFocus(focus: Provenance | null) {
 export function DocumentView({ document, owner, focus, onFocus, onMore, editable, diff = null }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const ref = useRevealFocus(focus);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const { open: openMenu, element: menu } = useContextMenu();
   const { openValue, targetMenu } = useOpenValue(owner);
   const collapse = useCollapsedGroups(owner);
   useEditCommand(editable, focus, setEditing);
@@ -76,9 +76,9 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
         saveValue(owner, value, text);
       },
       cancelEdit: () => setEditing(null),
-      menu: (e) => setMenu({ x: e.clientX, y: e.clientY }),
+      menu: (e) => openMenu(e, RULE_MENU),
     }),
-    [openValue, onFocus, owner],
+    [openValue, onFocus, owner, openMenu],
   );
   const marks: Marks = { focus: focus ? provenanceKey(focus) : null, editing, diff };
   const groups = useMemo(() => withRemovedRows(document.groups, diff?.removedRows ?? []), [document.groups, diff]);
@@ -101,7 +101,7 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
         <AlsoLinked groups={groups} database={owner.database} />
       </div>
       {targetMenu}
-      {menu && <ContextMenu {...menu} items={RULE_MENU} onClose={() => setMenu(null)} />}
+      {menu}
     </DocumentContext.Provider>
   );
 }

@@ -56,6 +56,14 @@ function withQueryTab(run: (tab: Extract<Tab, { kind: "query" }>) => unknown) {
   if (tab?.kind === "query") return run(tab);
 }
 
+function showObjectView(view: "document" | "rows") {
+  const s = useStore.getState();
+  const tab = selectActiveTab(s);
+  if (tab?.kind !== "object") return;
+  const column = tab.columns[tab.active];
+  if (column?.kind === "object" && column.view !== view) s.toggleObjectView(tab.id);
+}
+
 const inResults = () => !!document.activeElement?.closest(".results [role='grid']");
 const hasDatabase = () => !!selectActiveSession(useStore.getState())?.database;
 
@@ -106,16 +114,8 @@ const APP_COMMANDS: Command[] = [
   { id: "tabs.previous", title: "Previous tab", scope: "db", defaultBinding: "Ctrl+Shift+Tab", run: () => useStore.getState().cycleTab(-1) },
   { id: "editor.run", title: "Run statement at cursor", scope: "editor", defaultBinding: "Mod+Enter", run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "statement" })) },
   { id: "editor.runAll", title: "Run all statements", scope: "editor", defaultBinding: "Mod+Shift+Enter", run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "all" })) },
-  {
-    id: "object.toggleView",
-    title: "Switch between Document and Rows",
-    scope: "object",
-    defaultBinding: "Tab",
-    run: () => {
-      const tab = selectActiveTab(useStore.getState());
-      if (tab?.kind === "object") useStore.getState().toggleObjectView(tab.id);
-    },
-  },
+  { id: "object.viewDocument", title: "Show Document", scope: "object", defaultBinding: "Mod+1", run: () => showObjectView("document") },
+  { id: "object.viewRows", title: "Show Rows", scope: "object", defaultBinding: "Mod+2", run: () => showObjectView("rows") },
   { id: "readout.open", title: "Readout", scope: "global", when: hasDatabase, run: () => useStore.getState().openReadout() },
   { id: "project.open", title: "Project", scope: "global", when: hasDatabase, run: () => useStore.getState().openProject() },
   { id: "connection.new", title: "New connection…", scope: "global", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "connect" }) },

@@ -144,7 +144,11 @@ Conventions:
 - Overlays: `Modal` traps Tab inside the sheet, focuses the first control unless a child has `autoFocus`,
   and returns focus to the opener on close unless the closing action focused something else. It handles
   Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]`
-  pass through). The palette renders inside `Modal` too. `ContextMenu` focuses its first item, moves
+  pass through). The palette renders inside `Modal` too. Every context menu is `ContextMenu.tsx`: callers build
+  `MenuEntry[]` (items `{ label, action, disabled?, title? }` and `"separator"`) and call `open(anchor, entries)`
+  from `useContextMenu()`, rendering its `element`; the anchor is a pointer event (its default menu is
+  suppressed) or a point. The menu portals into `document.body`, so it never inherits the font of the grid or
+  document it opened from, and `.menu` in `app.css` sets the UI font itself. It focuses its first item, moves
   with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
 - Writes: `queueChange` asks Rust to plan a row edit (`planChange`) and keeps the returned plan; `queueAction(address, action, params)` plans a rule action (`planAction`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
   (`undoBatch`); `discardChange` / `discardAll` drop plans in Rust too. The page never sends SQL to write.
@@ -215,10 +219,10 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 - **Overrides** come from `keybindings.json` (`null` unbinds). Settings → Shortcuts records new bindings and
   flags conflicts in overlapping scopes.
 - **Palette** (`CommandPalette.tsx`, `components/palette/`) is the main navigation. Its sections, in order:
-  Recent, row hits (an `Address` item for `databee://…`, then Rust's sections), Saved queries (`q:`), Tables, Commands (those
+  Recent, row hits (an `Address` item for `databee://…`, then Rust's sections), Saved queries (`q:`), Connections and Databases (`c:`), Tables, Commands (those
   whose `when()` passes, plus the active object's rule actions, `objectActionCommands()`).
   - `parsePrefix` (`palette/parse.ts`) reads `>` (commands), `t:` (tables), `q:` (saved queries, see
-    [Saved queries](#saved-queries)), `#`, `@`, `=` and `databee://` (the whole text is the needle). `searchesRows` says when Rust is asked:
+    [Saved queries](#saved-queries)), `c:` (switch connection), `#`, `@`, `=` and `databee://` (the whole text is the needle). `searchesRows` says when Rust is asked:
     `#<digits>`, `@`/`=` with 2+ characters, free text with 6+ (`MIN_TEXT`); shorter text matches only tables
     and commands (substring `score`).
   - `useRowHits` calls `api.paletteSearch` 200 ms after the last keystroke; a newer input drops older
@@ -234,6 +238,11 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
     `openAddress`. Tables open in the preview tab, pinned with ⌘↵. Holding ⌥ peeks the selected hit
     (`PeekCard` under its row). `openAddress` of a `?find=<value>` address opens the palette with `=<value>`,
     and so does "Find everywhere" on a value.
+  - `c:` (`connection.switch`, ⌘⇧P) is the connection switcher, `useSwitchItems` (`palette/useSwitchItems.ts`):
+    Connections (open sessions, the active one first, then `api.listRecents` minus the open identities) and
+    Databases (`selectVisibleDatabases` of the active session), scored with `fuzzyScore`. Enter runs
+    `setActiveSession`, `connect` (its password dialog included) or `switchDatabase`. `CommandPalette` keys the
+    sheet by `paletteSeed`, so a palette command that reopens it with a prefix starts fresh.
 - **Menu.** Native menu items emit `command` events. See [backend.md](backend.md#native-menu) for the Rust side
   of `menu: true`.
 
@@ -271,7 +280,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `PresetsSection`, `ReferenceForm`, `KindStyleForms`, `ReferencesSection`, `RuleSections`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
-| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
 | Readout | `readout/Readout.tsx`, see [Readout](#readout) |
 
 ### Saved queries
@@ -498,8 +507,8 @@ the [readout](#readout) lists.
   document stays while reloading. The key is the address without its view (`documentText`), so toggling never
   refetches. A failed load renders `ErrorPanel`. The tab title becomes `<entity> #<key>` of the first column once
   its document names its entity.
-- **`ObjectHeader`:** table name, `#key`, the Document/Rows segmented control with the `object.toggleView` key
-  cap, the actions button, the summary (`Document.header`) as `key value` pairs, other rows an entity
+- **`ObjectHeader`:** table name, `#key`, the Document/Rows segmented control with the `object.viewDocument` /
+  `object.viewRows` key caps, the actions button, the summary (`Document.header`) as `key value` pairs, other rows an entity
   shorthand matched (`alternatives`). Right-click opens the actions menu (`actionMenu`): each action plans
   through `queueAction` after a prompt per required parameter (choices in the title; optional parameters keep
   their default). The palette lists the same actions.
@@ -513,8 +522,8 @@ the [readout](#readout) lists.
 - **`RowsView`:** per group with a table its band, the `WHERE` of its rows address, and a compact `ResultsGrid`
   (12 rows high, then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and
   editable cells, or, for a group no address names (patterns), its document rows read-only.
-- **Toggle:** `object.toggleView` (`Tab`, scope `object`; never in inputs, the editor or dialogs) and the
-  segmented control call `toggleObjectView(tabId, index?)` / `setObjectView(tabId, view, focus?, index?)` on the
+- **Toggle:** `object.viewDocument` / `object.viewRows` (`⌘1` / `⌘2`, scope `object`; `Tab` stays focus
+  navigation) and the segmented control call `toggleObjectView(tabId, index?)` / `setObjectView(tabId, view, focus?, index?)` on the
   active column (or the column of the control), which push the address being left onto the tab's history.
   Focus follows the provenance: Document → Rows selects the same cell in its group's grid, Rows → Document
   takes the selected cell's provenance as `focus`. Both views of a column share its `.object` scroll container
@@ -686,7 +695,9 @@ address call it. It has no history (`nav` stays empty).
 - **Forms** (`lib/ruleForms.ts`): form state lives in the tab, so it survives switching tabs. `referenceRule`
   maps the real tables of the pickers to rule names through `ProjectRules.tables`; `fieldError` maps the
   path of `AppError.field` (`reference.when.meta_key`, `kind.in[0]`) to the form field it shows under. `ReferenceForm` previews coverage
-  with `api.coveragePreview` 400 ms after the last change.
+  with `api.coveragePreview` 400 ms after the last change. `OpenForm` keys each form by type, index and
+  opener, so editing another row remounts it; `FormFrame` scrolls itself into view and focuses its first field
+  on mount, wherever the page is scrolled.
 - **Export:** `api.chooseSavePath(<slug>-<database>.toml, "toml")`, then `api.projectExportTo(…, path)`.
 
 ### Readout

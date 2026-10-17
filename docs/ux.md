@@ -121,7 +121,9 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
 - **Hairline:** every row has a 1px `--line` below it.
 - **Row hover:** the whole row takes `--row-hover` (subtle).
 - **Cell hover:** the hovered value itself takes `--cell` (stronger), with a 3px radius.
-- **Selected cell:** a 1.5px accent outline.
+- **Selected cell:** a 1.5px accent outline. While its grid has the keyboard focus it also takes `--sel`, like the Document view's
+  focused value; the grid itself draws no focus outline (a focused grid without a selected cell underlines
+  its header in the accent).
 - **No row-number column.** The primary key identifies a row; result sets without one show no number.
 - **Kinds without color:** numbers are right-aligned with tabular figures, `NULL` is italic tertiary, binary
   values are tertiary. There are no type tints.
@@ -150,7 +152,7 @@ of space above it, 6px 12px inside.
   bar; clicking the table name opens the group's rows in a table tab.
 
 The object header is its own block above the groups: table name (`--o2`, large mono), `#key` (accent,
-semibold), the Document/Rows segmented control with its `Tab` key cap, the summary as `key value` pairs,
+semibold), the Document/Rows segmented control with a `⌘1` / `⌘2` key cap on each segment, the summary as `key value` pairs,
 closed by a hairline. A `⋯` button and a right-click on the block open the row's actions (`Run <action>`,
 `(no undo)` when it cannot be undone). In the Document view the focused value has a 1.5px accent outline on a `--sel` background.
 
@@ -182,7 +184,9 @@ Inputs look like inputs, never like rows.
 Palette, peek, popovers, context menus, toasts and dialogs: `--pop` background, 1px `--field-line` border,
 10px radius, `--shadow` (a glow with zero offset, no 3D lift). Modal dialogs and the palette sit over
 `--scrim`. Overlays take `Esc` first. Palette results use the row anatomy; the active one is `--sel` with a
-2px accent bar on the left, and command shortcuts show as key caps.
+2px accent bar on the left, and command shortcuts show as key caps. Context menus use the UI font wherever they
+open (grid, document, sidebar); the hovered or keyboard-focused item is `--accent` with `--on-accent` text,
+disabled items `--o3`, separators a 1px `--line`.
 
 ## Value grammar
 
@@ -336,14 +340,14 @@ separate tool.
 ## Keys
 
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys fire only in
-the object and grid scopes, never in inputs, the editor or dialogs; `Tab` keeps its normal meaning there. The
+the object and grid scopes, never in inputs, the editor or dialogs. `Tab` is never bound: it moves the keyboard focus everywhere. The
 column keys act only while the keyboard focus is in the stack (or nowhere), so the sidebar and the tab bar
 keep their arrow keys. A key and its arrow are two commands (`object.down`, `object.downArrow`), each
 rebindable.
 
 | Key | Scope | Action |
 |---|---|---|
-| `Tab` | object | Document ↔ Rows of the active column; focus stays on the same provenance (`object.toggleView`) |
+| `⌘1` / `⌘2` | object | Document / Rows of the active column; focus stays on the same provenance (`object.viewDocument`, `object.viewRows`) |
 | `j` / `k`, ↓ / ↑ | object | move the focused value in a Document column (focus ring `--sel` and accent outline; the status bar shows its provenance when nothing is hovered); grids keep their arrow keys |
 | `h` / `l`, ← / → | object | move the active column (a focused grid keeps ← / →) |
 | `Enter` | object | drill into the focused reference or another row's key (next column), open serialized data as a value column (`object.drill`); grids handle Enter themselves: open the row as an object, a reference's target, a value column for serialized data or long text |

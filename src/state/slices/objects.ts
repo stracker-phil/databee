@@ -33,7 +33,7 @@ export interface ObjectsSlice {
    * left; `focus` moves the focused value along.
    */
   setObjectView: (tabId: string, view: ObjectView, focus?: Provenance | null, index?: number) => void;
-  /** `object.toggleView`: the other view, focused on the same provenance (a grid's selected cell in Rows view). */
+  /** The other view, focused on the same provenance (a grid's selected cell in Rows view); `object.viewDocument`/`object.viewRows` and opening a value use it. */
   toggleObjectView: (tabId: string, index?: number) => void;
   focusObject: (tabId: string, focus: Provenance | null, index?: number) => void;
 }

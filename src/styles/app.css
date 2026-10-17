@@ -234,6 +234,11 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .grid-cell.null { color: var(--o3); font-style: italic; }
 .grid-cell.bytes { color: var(--o3); }
 .grid-cell.selected { box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* The scroll container's own outline would be clipped by .main and covered by the sticky header, so focus
+   shows on the selected cell like the Document view's focused value, or under the header without one. */
+.grid:focus-visible { outline: none; }
+.grid:focus .grid-cell.selected { background: var(--sel); }
+.grid:focus-visible:not(:has(.grid-cell.selected)) .grid-head { box-shadow: inset 0 -2px 0 0 var(--accent), 0 -2px 0 0 var(--bg); }
 /* Header: the column name, then its type on a second line. */
 .grid-hcell {
   flex: none; position: relative; display: flex; flex-direction: column; justify-content: flex-end;
@@ -409,12 +414,14 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .switch:focus-visible { outline: none; box-shadow: 0 0 0 0.231rem var(--sel); }
 
 /* ---------- menus & toasts ---------- */
+/* The one context menu (ContextMenu.tsx), portaled to <body>; it sets its own type so no area restyles it. */
 .menu {
   position: fixed; z-index: 60; min-width: 13.846rem; padding: 0.385rem; border-radius: 10px;
   background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow);
+  font-family: var(--font-ui); font-size: var(--fs-base); font-weight: 400; line-height: normal; color: var(--text); white-space: nowrap;
 }
 .menu button { display: flex; width: 100%; align-items: center; gap: 0.615rem; height: 1.846rem; padding: 0 0.615rem; border: none; border-radius: 5px; background: none; text-align: left; }
-.menu button:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
 .menu button:disabled { color: var(--o3); }
 .menu hr { border: none; border-top: 1px solid var(--line); margin: 0.308rem 0; }
 .toasts { position: fixed; right: 1.231rem; bottom: 2.769rem; z-index: 70; display: flex; flex-direction: column; gap: 0.615rem; align-items: flex-end; }

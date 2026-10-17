@@ -1,8 +1,8 @@
-import { useCallback, useContext, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useContext, useLayoutEffect, useRef, type MouseEvent } from "react";
 import type { Address, Value } from "../../api";
 import { runCommand } from "../../commands";
 import { formatAddress } from "../../lib/address";
-import { ContextMenu, type MenuEntry } from "../ContextMenu";
+import { useContextMenu } from "../ContextMenu";
 import { ColumnContext, openRowObject, openTarget, showValue } from "./open";
 
 /**
@@ -12,7 +12,7 @@ import { ColumnContext, openRowObject, openTarget, showValue } from "./open";
  */
 export function useOpenValue(owner: Address | null) {
   const place = useContext(ColumnContext);
-  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
+  const { open: openMenu, element: targetMenu } = useContextMenu();
   const ownerRef = useRef(owner);
   useLayoutEffect(() => {
     ownerRef.current = owner;
@@ -25,14 +25,13 @@ export function useOpenValue(owner: Address | null) {
       if (kind.kind === "serialized") return void showValue(value, place);
       if (kind.kind !== "reference") return;
       if (kind.targets.length === 1) return openTarget(kind.targets[0], place);
-      setMenu({ x: e.clientX, y: e.clientY, items: kind.targets.map((t) => ({ label: `Open ${formatAddress(t)}`, action: () => openTarget(t, place) })) });
+      openMenu({ x: e.clientX, y: e.clientY }, kind.targets.map((t) => ({ label: `Open ${formatAddress(t)}`, action: () => openTarget(t, place) })));
     },
-    [place],
+    [place, openMenu],
   );
   const openRow = useCallback(
     (address: Address, preview: boolean) => openRowObject(address, ownerRef.current, preview, place),
     [place],
   );
-  const targetMenu = menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />;
   return { openValue, openRow, place, targetMenu };
 }

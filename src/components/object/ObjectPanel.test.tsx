@@ -17,6 +17,9 @@ const mocked = vi.mocked(api, true);
 const rows4711: Address = { ...orderAddress, view: "rows" };
 const ORDER_URL = "databee://shop/db/wp_wc_orders/4711";
 
+const toDocument = "{Meta>}1{/Meta}";
+const toRows = "{Meta>}2{/Meta}";
+
 const tables = ["wp_wc_orders", "wp_wc_orders_meta", "wp_wc_order_addresses", "wp_wc_order_items", "wp_wc_order_coupon_lookup"].map((name) => table(name));
 
 async function openOrder(address: Address = orderAddress) {
@@ -165,11 +168,11 @@ describe("ObjectPanel", () => {
     });
   });
 
-  describe("Tab (object.toggleView)", () => {
+  describe("⌘1 / ⌘2 (object.viewDocument / object.viewRows)", () => {
     it("selects the focused value's cell in the Rows view", async () => {
       await openOrder();
       await userEvent.click(screen.getByText("bacs"));
-      await userEvent.keyboard("{Tab}");
+      await userEvent.keyboard(toRows);
       await waitFor(() => expect(useStore.getState().selectedCell?.value?.source).toEqual(paidViaSource));
       expect(activeObject().view).toBe("rows");
       expect(useStore.getState().selectedCell?.tabId).toBe(activeObject().id);
@@ -179,7 +182,7 @@ describe("ObjectPanel", () => {
       await openOrder(rows4711);
       await userEvent.click(await screen.findByText("bacs"));
       expect(useStore.getState().selectedCell?.value?.source).toEqual(paidViaSource);
-      await userEvent.keyboard("{Tab}");
+      await userEvent.keyboard(toDocument);
       expect(activeObject()).toMatchObject({ view: "document", focus: paidViaSource });
       expect(useStore.getState().selectedCell).toBeNull();
       expect(await screen.findByRole("button", { name: "Document" })).toHaveAttribute("aria-pressed", "true");
@@ -188,19 +191,49 @@ describe("ObjectPanel", () => {
     it("keeps the same value across a round trip", async () => {
       await openOrder();
       await userEvent.click(screen.getByText("Happy birthday"));
-      await userEvent.keyboard("{Tab}");
+      await userEvent.keyboard(toRows);
       await waitFor(() => expect(useStore.getState().selectedCell?.value?.raw).toEqual({ t: "text", v: "Happy birthday" }));
-      await userEvent.keyboard("{Tab}");
+      await userEvent.keyboard(toDocument);
       expect(activeObject()).toMatchObject({ view: "document", focus: { table: "wp_wc_orders_meta", column: "meta_value", row: [{ column: "id", value: "92" }] } });
     });
 
-    it("does not toggle while typing in an input", async () => {
+    it("keeps the Document view when Tab is pressed in the value editor", async () => {
       await openOrder();
       await userEvent.click(screen.getByText("bacs"));
       await userEvent.keyboard("e");
       await screen.findByLabelText("Edit value");
       await userEvent.keyboard("{Tab}");
       expect(activeObject().view).toBe("document");
+    });
+
+    it("keeps the Document view when Tab is pressed", async () => {
+      await openOrder();
+      await userEvent.keyboard("{Tab}");
+      expect(activeObject().view).toBe("document");
+      expect(screen.getByRole("button", { name: "Document" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("keeps the Rows view when Tab is pressed", async () => {
+      await openOrder(rows4711);
+      await userEvent.keyboard("{Tab}");
+      expect(activeObject().view).toBe("rows");
+      expect(screen.getByRole("button", { name: "Rows" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("does nothing for ⌘1 while already in the Document view", async () => {
+      await openOrder();
+      const before = formatAddress(activeObject().address);
+      await userEvent.keyboard(toDocument);
+      expect(activeObject().view).toBe("document");
+      expect(formatAddress(activeObject().address)).toBe(before);
+    });
+
+    it("does nothing for ⌘2 while already in the Rows view", async () => {
+      await openOrder(rows4711);
+      const before = formatAddress(activeObject().address);
+      await userEvent.keyboard(toRows);
+      expect(activeObject().view).toBe("rows");
+      expect(formatAddress(activeObject().address)).toBe(before);
     });
   });
 
@@ -220,24 +253,24 @@ describe("ObjectPanel", () => {
     it("keeps a scroll position per view and starts a first-visited view at the top", async () => {
       await openOrder();
       scrollTo(container(), 400);
-      await userEvent.keyboard("{Tab}");
+      await userEvent.keyboard(toRows);
       await waitFor(() => expect(activeObject().view).toBe("rows"));
       expect(container().scrollTop).toBe(0);
 
       scrollTo(container(), 150);
-      await userEvent.keyboard("{Tab}");
+      await userEvent.keyboard(toDocument);
       await waitFor(() => expect(activeObject().view).toBe("document"));
       expect(container().scrollTop).toBe(400);
 
-      await userEvent.keyboard("{Tab}");
+      await userEvent.keyboard(toRows);
       await waitFor(() => expect(activeObject().view).toBe("rows"));
       expect(container().scrollTop).toBe(150);
     });
 
-    it("leaves focus where it was when Tab toggles to the Rows view", async () => {
+    it("leaves focus where it was when ⌘2 switches to the Rows view", async () => {
       await openOrder();
       const before = document.activeElement;
-      await userEvent.keyboard("{Tab}");
+      await userEvent.keyboard(toRows);
       await waitFor(() => expect(activeObject().view).toBe("rows"));
       expect(document.activeElement).toBe(before);
     });
