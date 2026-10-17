@@ -21,6 +21,23 @@ export type ActionHistogram = { days: Array<DayBucket>, labels: SeriesLabels, };
  */
 export type ActionKind = "navigate" | "change";
 
+/**
+ * A parameter as the page asks for it.
+ */
+export type ActionParam = { name: string, type: ParamType, 
+/**
+ * The first column of `choices_sql`, as stored.
+ */
+choices: Array<string>, 
+/**
+ * A value outside `choices` is accepted.
+ */
+free: boolean, default: string | null, optional: boolean, 
+/**
+ * `choices_sql` failed.
+ */
+error: string | null, };
+
 export type ActionScope = "row" | "table";
 
 export type ActionStats = { total: number, byStatus: Array<Facet>, recentFailed: Array<ActionSummary>, 
@@ -298,7 +315,11 @@ groups: Array<Group>,
 /**
  * Other rows an entity shorthand (`order 4711`) matched, in other tables.
  */
-alternatives: Array<Address>, };
+alternatives: Array<Address>, 
+/**
+ * The row actions whose `when` holds on this row.
+ */
+actions: Array<ObjectAction>, };
 
 /**
  * A name, header and search columns for rows of one table. A `filter` (SQL) narrows the rows;
@@ -583,6 +604,18 @@ export type NewFavorite = { name: string, scope?: string | null, target: Favorit
 export type NewValue = { "kind": "string", "text": string } | { "kind": "int", "text": string } | { "kind": "float", "text": string } | { "kind": "bool", "text": boolean } | { "kind": "null" };
 
 export type NodeKind = "null" | "bool" | "int" | "float" | "string" | "array" | "object" | "ref" | "enum" | "custom";
+
+export type ObjectAction = { name: string, 
+/**
+ * The preset that defines it.
+ */
+preset: string, kind: ObjectActionKind, 
+/**
+ * Applying it can be undone.
+ */
+undo: boolean, params: Array<ActionParam>, };
+
+export type ObjectActionKind = "update" | "delete" | "sql";
 
 export type OpenArgs = { spec: ConnectionSpec, password?: string, 
 /**

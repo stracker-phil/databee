@@ -90,7 +90,7 @@ fn condition_sql(ctx: &Ctx<'_>, own: &Own, meta: &MetaValues, rules: &[&RulePatt
         .iter()
         .filter(|p| condition::holds(&p.owner_when, |c| own.rows.text(0, c)))
         .filter_map(|p| {
-            render(&p.rule.r#where, |placeholder| {
+            render(&ctx.qualified(&p.rule.r#where), |placeholder| {
                 value(ctx, own, meta, placeholder)
             })
         })
@@ -257,7 +257,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prefix_placeholders_are_filled_in_as_text() {
+    async fn prefix_placeholders_are_filled_in_and_qualified_with_the_database() {
         let rig = Rig::new(
             shop().on(LOG, log_rows(0)),
             &log_rule("EXISTS (SELECT 1 FROM {p}people) AND 1 = (SELECT 1 FROM {np}people)"),
@@ -269,7 +269,8 @@ mod tests {
             found[0].group.via,
             GroupLink::Pattern {
                 rule: "audit".into(),
-                sql: "(EXISTS (SELECT 1 FROM f_people) AND 1 = (SELECT 1 FROM f_people))".into()
+                sql: "(EXISTS (SELECT 1 FROM `wp`.f_people) AND 1 = (SELECT 1 FROM `wp`.f_people))"
+                    .into()
             }
         );
     }

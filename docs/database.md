@@ -335,6 +335,13 @@ apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/
    undo; `addRow` (a row whose `keyColumn` the server assigns, such as a new meta key) undoes by deleting the
    newest row that holds exactly the inserted values (`<=>`, ordered by `keyColumn` descending, `LIMIT 1`),
    since the new key is only known after the insert.
+   `updateWhere` and `deleteWhere` (`db/where_changes.rs`) are built by the backend only (rule actions,
+   [presets.md](presets.md#action)) and cannot be sent by the page. They select rows by an SQL condition,
+   `updateWhere` in several tables at once (`RowsUpdate { table, key_columns, filter, set }`, `set` as SQL
+   expressions). Planning reads the matched rows (their key and set columns, or every column for a delete),
+   at most 10,000, and refuses no match at all; the statements address exactly those rows by primary key,
+   so a condition may read the table it changes. Undo restores each row's set columns by key, last step
+   first, or re-inserts the deleted rows; a binary value means no undo. Updating a key column is refused.
 3. The plan is stored in the session (`Session.plans`, `db/plans.rs`) under an id; the page receives a
    `PlannedChange { id, description, statements, canUndo }`, where `statements` are for display only.
    `discard_change` drops one. The pending tray lists each plan's description and statements as returned.

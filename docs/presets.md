@@ -221,6 +221,24 @@ delete = { where = "status = 'failed'" }
 
 Params: `name`, `choices_sql`, `free`, `type = "int"`, `default`, `optional`.
 
+**Listing.** A document lists the row actions of its table whose `when` holds on the row
+(`Document.actions`); `table_actions` lists the table actions. Actions on tables the database lacks are
+dropped (`EffectiveRules.actions`).
+
+**Planning** (`plan_action`, `document/actions/plan.rs`):
+- Params are checked first: unknown names and missing required values (without `default`, not `optional`)
+  are refused, an empty value counts as missing (`optional` makes it NULL), `type = "int"` must parse as an
+  integer, and unless `free` the value must be one of the `choices_sql` rows.
+- A row action is refused when its `when` no longer holds on the row.
+- `update`: each step selects its rows by the row itself (the first step without `table` and `key`), or by
+  `key` (default: the step table's primary key) `= {id}`, plus the action's `when` on the action's table and
+  the step's `where`; a step on a missing table is skipped. A table action selects by `when` and `where`.
+  The steps become one `UpdateWhere` request ([database.md](database.md#editing-rows)). A text `set` value
+  that is a single placeholder is that placeholder's literal (NULL stays NULL); other text is one string
+  literal with the placeholders filled in as text. `{ sql = "…" }` is an expression.
+- `delete`: the same selection, as a `DeleteWhere` request.
+- `sql`: run as written, without undo; the first value of `preview_sql` goes into the description.
+
 ### `[[find]]`
 
 Extra sources for find everywhere, besides meta values and entity search columns.
@@ -239,11 +257,17 @@ Preset SQL is trusted configuration in the MySQL/MariaDB dialect. Placeholders (
 | Placeholder | Renders | Allowed in |
 |---|---|---|
 | `{p}`, `{np}` | the prefix, the network prefix, as text | all SQL and titles |
-| `{id}` | the row's primary key, as a literal | patterns, row-scope actions |
+| `{id}` | the row's primary key, as a literal (a number when it parses as one) | patterns, row-scope actions |
 | `{owner.<column>}`, `{meta.<key>}` | the owner row's value, as a literal | patterns |
 | `{param.<name>}` | a declared param, as a literal (NULL when empty) | actions |
 
 Braces with any other content are SQL and stay as written (`'^[0-9a-f]{32}$'`).
+
+The metadata pool has no default database, so in SQL that documents and actions run (pattern `where`,
+entity `filter`, action SQL, `choices_sql`, `preview_sql`) every `{p}` and `{np}` outside quotes is qualified
+with the database (`placeholder::qualify_prefixes`, `Ctx::qualified`): `{p}options` reads and writes
+`` `db`.wp_options `` whatever the connection's default database is. Inside quotes (`'{p}capabilities'`)
+they stay plain text.
 
 ## Errors
 

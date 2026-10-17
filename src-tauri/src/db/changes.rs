@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use ts_rs::TS;
 
+use super::where_changes::{self, RowsDelete, RowsUpdate};
 use super::{Cell, ColumnInfo, Database, Dialect, ResultSet};
 use crate::error::{AppError, AppResult};
 
@@ -53,6 +54,20 @@ pub enum ChangeRequest {
         key_column: String,
         values: Vec<(String, Option<String>)>,
     },
+    /// Rows selected by SQL conditions, in several tables at once; built by the backend only
+    /// (rule actions), never sent by the page.
+    #[serde(skip_deserializing)]
+    #[ts(skip)]
+    UpdateWhere {
+        database: String,
+        updates: Vec<RowsUpdate>,
+    },
+    #[serde(skip_deserializing)]
+    #[ts(skip)]
+    DeleteWhere {
+        database: String,
+        delete: RowsDelete,
+    },
 }
 
 impl ChangeRequest {
@@ -62,7 +77,9 @@ impl ChangeRequest {
             | ChangeRequest::DeleteRow { database, .. }
             | ChangeRequest::DuplicateRow { database, .. }
             | ChangeRequest::InsertRow { database, .. }
-            | ChangeRequest::AddRow { database, .. } => database,
+            | ChangeRequest::AddRow { database, .. }
+            | ChangeRequest::UpdateWhere { database, .. }
+            | ChangeRequest::DeleteWhere { database, .. } => database,
         }
     }
 }
@@ -287,6 +304,12 @@ pub async fn plan(db: &dyn Database, change: &ChangeRequest, timeout: Duration) 
             key_column,
             values,
         } => Ok(build_add_row(dialect, database, table, key_column, values)),
+        ChangeRequest::UpdateWhere { database, updates } => {
+            where_changes::plan_update(db, database, updates, timeout).await
+        }
+        ChangeRequest::DeleteWhere { database, delete } => {
+            where_changes::plan_delete(db, database, delete, timeout).await
+        }
     }
 }
 
@@ -1051,6 +1074,31 @@ mod tests {
 
         for request in requests {
             assert_eq!(request.database(), "wp", "{request:?}");
+        }
+    }
+
+    #[test]
+    fn the_page_cannot_send_where_requests() {
+        let update = serde_json::json!({
+            "type": "updateWhere",
+            "database": "wp",
+            "updates": [],
+        });
+        let delete = serde_json::json!({
+            "type": "deleteWhere",
+            "database": "wp",
+            "delete": {
+                "table": "t",
+                "key_columns": ["id"],
+                "filter": "1",
+            },
+        });
+
+        for request in [update, delete] {
+            assert!(
+                serde_json::from_value::<ChangeRequest>(request.clone()).is_err(),
+                "{request}"
+            );
         }
     }
 

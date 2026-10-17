@@ -14,6 +14,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::ProjectsStore;
+use super::actions::Action;
 use super::applied::Applied;
 use super::catalog::{PresetCatalog, PresetEntry};
 use super::condition::{self, Condition, Matcher, column_glob_match, glob_match};
@@ -85,6 +86,14 @@ pub struct MetaRef {
     pub value: String,
 }
 
+/// An `[[action]]` of an applied preset: `table` is the real table name, `when` compiled.
+#[derive(Debug, Clone)]
+pub struct RuleAction {
+    pub preset: String,
+    pub rule: Action,
+    pub when: Vec<Condition>,
+}
+
 /// A value style that is switched on, ready to match.
 #[derive(Debug, Clone)]
 pub struct RuleStyle {
@@ -111,6 +120,8 @@ pub struct EffectiveRules {
     pub entities: Vec<AppliedEntity>,
     /// In apply order.
     pub patterns: Vec<RulePattern>,
+    /// In apply order.
+    pub actions: Vec<RuleAction>,
     pub disabled: HashSet<String>,
 }
 
@@ -131,6 +142,7 @@ impl EffectiveRules {
             meta: Vec::new(),
             entities: Vec::new(),
             patterns: Vec::new(),
+            actions: Vec::new(),
             disabled,
         };
         rules.add_references(&project.references, None);
@@ -292,6 +304,30 @@ impl EffectiveRules {
         for pattern in &preset.patterns {
             self.add_pattern(&preset.name, pattern);
         }
+        for action in &preset.actions {
+            self.add_action(&preset.name, action);
+        }
+    }
+
+    fn add_action(&mut self, preset: &str, action: &Action) {
+        let Some(table) = self.applied.existing_table(&action.table) else {
+            return;
+        };
+        let when = match condition::compile(&action.when) {
+            Ok(conditions) => conditions,
+            Err(e) => {
+                log::warn!("Action {} skipped: {e}", action.name);
+                return;
+            }
+        };
+        self.actions.push(RuleAction {
+            preset: preset.to_string(),
+            rule: Action {
+                table,
+                ..action.clone()
+            },
+            when,
+        });
     }
 
     fn add_pattern(&mut self, preset: &str, pattern: &Pattern) {

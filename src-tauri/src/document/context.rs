@@ -9,6 +9,7 @@ use crate::db::{Cell, Dialect, ResultSet};
 use crate::error::AppResult;
 use crate::lens::{self, Lens};
 use crate::rules::effective::{self, EffectiveRules, RuleSources};
+use crate::rules::placeholder::qualify_prefixes;
 use crate::schema::{self, DatabaseSchema};
 use crate::session::Session;
 use crate::value::{self, ColumnKind, Provenance, ResultValues, RowKey, Value, ValueKind};
@@ -63,6 +64,11 @@ impl<'a> Ctx<'a> {
             Some(alias) => format!("{alias}.{}", self.ident(name)),
             None => self.ident(name),
         }
+    }
+
+    /// Preset SQL whose `{p}`/`{np}` tables are qualified with this database.
+    pub fn qualified(&self, sql: &str) -> String {
+        qualify_prefixes(sql, &format!("{}.", self.ident(&self.database)))
     }
 
     pub fn literal(&self, value: &str) -> String {

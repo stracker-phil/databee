@@ -55,6 +55,7 @@ import type {
   RulesInfo,
   Coverage,
   Document,
+  ObjectAction,
   ResolvedReference,
   Project,
   ProjectChange,
@@ -127,6 +128,12 @@ export const api = {
   /** The document of a row address, or of an entity shorthand (`order 4711`) in `database`. */
   document: (sessionId: string, address: string, database: string | null) =>
     invoke<Document>("document", { sessionId, address, database }),
+  /** The `scope = "table"` rule actions of `table`. */
+  tableActions: (sessionId: string, database: string, table: string) =>
+    invoke<ObjectAction[]>("table_actions", { sessionId, database, table }),
+  /** Plans a rule action on a row address, or on a table address without a filter (table actions). */
+  planAction: (sessionId: string, address: string, action: string, params: Record<string, string>) =>
+    invoke<PlannedChange>("plan_action", { sessionId, address, action, params }),
   /** The "New query" SQL for a table, quoted by Rust. */
   tableSelectSql: (sessionId: string, database: string, table: string) =>
     invoke<string>("table_select_sql", { sessionId, database, table }),

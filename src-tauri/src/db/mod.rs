@@ -12,6 +12,7 @@ pub mod mysql;
 pub mod plans;
 pub mod safety;
 mod types;
+pub mod where_changes;
 
 use std::collections::BTreeMap;
 use std::time::Duration;

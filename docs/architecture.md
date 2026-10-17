@@ -220,7 +220,8 @@ schema alone; no code names an application. `document(session_id, address, datab
 `<entity> <key>` (`order 4711`) in `database` (default: the session's current one).
 
 ```rust
-Document { address, entity, header: Vec<(String, Value)>, groups: Vec<Group>, alternatives: Vec<Address> }
+Document { address, entity, header: Vec<(String, Value)>, groups: Vec<Group>, alternatives: Vec<Address>,
+           actions: Vec<ObjectAction> }
 Group { id, table, via: GroupLink, shape: Fields | Meta | Rows, columns, total, rows: Vec<GroupRow>, capped,
         rows_address, error }
 GroupLink = Own | Meta { fk, key, value } | Incoming { reference, label } | Pattern { rule, sql } | Events
@@ -271,6 +272,14 @@ only for the entity, without `filter`, before filtered ones); the first that hol
 meta table's primary key is the key), deleting a meta row is `deleteRow`, and adding a meta key is `addRow`
 of `(fk, key, value)` into the meta table (`GroupLink::Meta`), all through `plan_change` like grid edits
 ([database.md](database.md#editing-rows)).
+
+**Actions** (`actions/`): `actions` lists the table's row-scope `[[action]]` rules whose `when` holds on the
+row, as `ObjectAction { name, preset, kind: update | delete | sql, undo, params }`; each `ActionParam` carries
+the `choices` its `choices_sql` returns (one query per listed param). `table_actions(session_id, database,
+table)` lists the `scope = "table"` ones. `plan_action(session_id, address, action, params)` plans one on a
+row address, or on a table address without a filter for a table action, and returns a `PlannedChange` like
+`plan_change`, so the pending tray applies and undoes it (`actions/plan.rs`, see
+[presets.md](presets.md#action)).
 
 ## A request, end to end
 

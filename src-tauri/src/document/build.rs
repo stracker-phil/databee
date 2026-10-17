@@ -8,7 +8,9 @@ use futures_util::future::join;
 use super::context::{Ctx, non_empty};
 use super::meta::{self, MetaValues};
 use super::own::{self, Own};
-use super::{Document, Group, GroupLink, GroupRow, GroupShape, events, exists, incoming, patterns};
+use super::{
+    Document, Group, GroupLink, GroupRow, GroupShape, actions, events, exists, incoming, patterns,
+};
 use crate::address::{Address, Target};
 use crate::db::ColumnEquals;
 use crate::error::{AppError, AppResult};
@@ -48,12 +50,14 @@ pub async fn document(ctx: &Ctx<'_>, address: &Address) -> AppResult<Document> {
     let mut header = header(&own, &groups[0].rows[0].fields, &groups, &meta_values);
     exists::check(ctx, &mut header, &mut groups).await;
     groups.push(events::group(&groups, &orders));
+    let actions = actions::for_row(ctx, &own).await;
     Ok(Document {
         address: canonical(ctx, &table, filter),
         entity: own.entity.as_ref().map(|e| e.entity.name.clone()),
         header,
         groups,
         alternatives: Vec::new(),
+        actions,
     })
 }
 

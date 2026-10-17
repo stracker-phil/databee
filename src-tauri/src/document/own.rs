@@ -22,7 +22,12 @@ impl Own {
 
     /// The row's text in `column`: `None` without such a column or for NULL.
     pub fn text(&self, column: &str) -> Option<&str> {
-        self.rows.text(0, column).flatten()
+        self.column_text(column).flatten()
+    }
+
+    /// `None` without such a column, `Some(None)` for NULL, as conditions test it.
+    pub fn column_text(&self, column: &str) -> Option<Option<&str>> {
+        self.rows.text(0, column)
     }
 
     /// The single-column key's value, for `{id}` and the `fk` of meta rows.
@@ -110,10 +115,14 @@ pub async fn load(ctx: &Ctx<'_>, table: &str, filter: &[ColumnEquals]) -> AppRes
     })
 }
 
-/// An entity `filter` with the prefixes filled in.
+/// An entity `filter` with the prefixes filled in, its tables qualified with the database.
 pub fn entity_filter(ctx: &Ctx<'_>, filter: &str) -> String {
     let applied = &ctx.rules.applied;
-    with_prefixes(filter, &applied.prefix, &applied.network_prefix)
+    with_prefixes(
+        &ctx.qualified(filter),
+        &applied.prefix,
+        &applied.network_prefix,
+    )
 }
 
 /// `a = 'x' AND b IS NULL`, the columns qualified with `alias`.

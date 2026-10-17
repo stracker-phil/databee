@@ -107,6 +107,46 @@ pub fn with_prefixes(sql: &str, prefix: &str, network_prefix: &str) -> String {
     out
 }
 
+/// `sql` with `qualifier` (such as `` `db`. ``) before every `{p}` and `{np}` outside quotes, so
+/// the tables they start resolve in one database whatever the connection's default is.
+pub fn qualify_prefixes(sql: &str, qualifier: &str) -> String {
+    let starts: Vec<usize> = scan(sql)
+        .into_iter()
+        .filter(|(_, p)| matches!(p, Placeholder::Prefix | Placeholder::NetworkPrefix))
+        .map(|(range, _)| range.start)
+        .collect();
+    let bytes = sql.as_bytes();
+    let mut out = String::with_capacity(sql.len() + starts.len() * qualifier.len());
+    let mut quote: Option<u8> = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if quote.is_none() && starts.contains(&i) {
+            out.push_str(qualifier);
+        }
+        match quote {
+            None if matches!(b, b'\'' | b'"' | b'`') => quote = Some(b),
+            Some(q) if b == q && bytes.get(i + 1) == Some(&q) => {
+                out.push_str(&sql[i..i + 2]);
+                i += 2;
+                continue;
+            }
+            Some(q) if b == q => quote = None,
+            Some(q) if b == b'\\' && q != b'`' && i + 1 < bytes.len() => {
+                let next = sql[i + 1..].chars().next().map_or(1, char::len_utf8);
+                out.push_str(&sql[i..i + 1 + next]);
+                i += 1 + next;
+                continue;
+            }
+            _ => {}
+        }
+        let len = sql[i..].chars().next().map_or(1, char::len_utf8);
+        out.push_str(&sql[i..i + len]);
+        i += len;
+    }
+    out
+}
+
 /// `sql` with every placeholder replaced by what `value` gives for it; `None` as soon as one has
 /// no value, so the caller can skip the SQL.
 pub fn render(sql: &str, value: impl Fn(Placeholder<'_>) -> Option<String>) -> Option<String> {
@@ -187,6 +227,55 @@ mod tests {
     fn with_prefixes_accepts_empty_prefixes_and_plain_sql() {
         assert_eq!(with_prefixes("SELECT {p}a", "", ""), "SELECT a");
         assert_eq!(with_prefixes("SELECT 1", "wp_", "wp_"), "SELECT 1");
+    }
+
+    const DB: &str = "`wp`.";
+
+    #[test]
+    fn qualify_prefixes_qualifies_both_prefixes_outside_quotes() {
+        assert_eq!(
+            qualify_prefixes(
+                "SELECT * FROM {p}posts JOIN {np}users ON {p}posts.a = 1",
+                DB
+            ),
+            "SELECT * FROM `wp`.{p}posts JOIN `wp`.{np}users ON `wp`.{p}posts.a = 1"
+        );
+    }
+
+    #[test]
+    fn qualify_prefixes_leaves_prefixes_inside_quotes_alone() {
+        for sql in [
+            "SELECT '{p}x'",
+            "SELECT \"{p}x\"",
+            "SELECT `{p}x`",
+            "SELECT 'a ''{p}'' b'",
+            "SELECT 'it\\'s {p}x'",
+            "SELECT \"say \\\"{np}\\\"\"",
+            "SELECT 'a\\\\' '{p}'",
+        ] {
+            assert_eq!(qualify_prefixes(sql, DB), sql, "{sql}");
+        }
+    }
+
+    #[test]
+    fn qualify_prefixes_resumes_after_a_quote_closes() {
+        for (sql, qualified) in [
+            ("SELECT 'a' FROM {p}t", "SELECT 'a' FROM `wp`.{p}t"),
+            ("SELECT 'a\\'' FROM {p}t", "SELECT 'a\\'' FROM `wp`.{p}t"),
+            ("SELECT 'a\\\\' FROM {p}t", "SELECT 'a\\\\' FROM `wp`.{p}t"),
+            ("SELECT 'a''' FROM {p}t", "SELECT 'a''' FROM `wp`.{p}t"),
+            ("SELECT `a\\` FROM {p}t", "SELECT `a\\` FROM `wp`.{p}t"),
+            ("SELECT 'ä' FROM {p}t", "SELECT 'ä' FROM `wp`.{p}t"),
+        ] {
+            assert_eq!(qualify_prefixes(sql, DB), qualified, "{sql}");
+        }
+    }
+
+    #[test]
+    fn qualify_prefixes_ignores_braces_that_are_not_prefixes() {
+        let sql = "SELECT {id}, '{param.x}' FROM t WHERE h REGEXP '^[0-9a-f]{32}$'";
+
+        assert_eq!(qualify_prefixes(sql, DB), sql);
     }
 
     fn known(placeholder: Placeholder<'_>) -> Option<String> {

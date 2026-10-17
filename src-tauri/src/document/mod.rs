@@ -5,6 +5,7 @@
 //! The number of queries is bounded by the rules, never by the rows: one per group (two when it
 //! is capped), one per pivoted group, one per referenced table for `exists`.
 
+pub mod actions;
 mod build;
 pub mod commands;
 mod context;
@@ -50,6 +51,8 @@ pub struct Document {
     pub groups: Vec<Group>,
     /// Other rows an entity shorthand (`order 4711`) matched, in other tables.
     pub alternatives: Vec<Address>,
+    /// The row actions whose `when` holds on this row.
+    pub actions: Vec<actions::ObjectAction>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
@@ -133,14 +136,7 @@ pub async fn open(
     timeout: Duration,
 ) -> AppResult<Document> {
     if text.starts_with(SCHEME) {
-        let address = Address::parse(text)?;
-        if address.connection != session.slug() {
-            return Err(AppError::InvalidInput(format!(
-                "Unknown connection `{}`; this connection is `{}`",
-                address.connection,
-                session.slug()
-            )));
-        }
+        let address = parse_address(session, text)?;
         let ctx = context::Ctx::load(session, &address.database, sources, timeout).await?;
         return build::document(&ctx, &address).await;
     }
@@ -155,6 +151,19 @@ pub async fn open(
     let mut document = build::document(&ctx, &named.address).await?;
     document.alternatives = named.alternatives;
     Ok(document)
+}
+
+/// A `databee://` address of this session's connection.
+pub fn parse_address(session: &Session, text: &str) -> AppResult<Address> {
+    let address = Address::parse(text)?;
+    if address.connection != session.slug() {
+        return Err(AppError::InvalidInput(format!(
+            "Unknown connection `{}`; this connection is `{}`",
+            address.connection,
+            session.slug()
+        )));
+    }
+    Ok(address)
 }
 
 impl Group {
