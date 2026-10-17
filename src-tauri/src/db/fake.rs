@@ -1,7 +1,6 @@
 //! In-memory `Database` for unit tests; not compiled into the app.
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -24,7 +23,6 @@ pub struct FakeDatabase {
     applied: Mutex<Vec<Vec<String>>>,
     /// Structures by database and table, behind `tables`, `structure` and `keys`.
     schema: Mutex<BTreeMap<(String, String), TableStructure>>,
-    closed: AtomicBool,
 }
 
 impl Default for FakeDatabase {
@@ -42,7 +40,6 @@ impl FakeDatabase {
             fetch_timeouts: Mutex::default(),
             applied: Mutex::default(),
             schema: Mutex::default(),
-            closed: AtomicBool::new(false),
         }
     }
 
@@ -90,10 +87,6 @@ impl FakeDatabase {
         self.applied.lock_unpoisoned().clone()
     }
 
-    pub fn is_closed(&self) -> bool {
-        self.closed.load(Ordering::SeqCst)
-    }
-
     fn respond(&self, sql: &str) -> AppResult<ResultSet> {
         self.queries.lock_unpoisoned().push(sql.to_string());
         self.responses
@@ -118,9 +111,7 @@ impl Database for FakeDatabase {
         self.database.lock_unpoisoned().clone()
     }
 
-    async fn close(&self) {
-        self.closed.store(true, Ordering::SeqCst);
-    }
+    async fn close(&self) {}
 
     async fn execute(
         &self,

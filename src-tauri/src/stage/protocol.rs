@@ -269,7 +269,8 @@ pub fn parse_keys(text: &str) -> Option<StageKeys> {
 }
 
 /// One spelling per combination, so "⌘F2" and "cmd+f2" compare equal.
-pub fn canonical_keys(keys: &StageKeys) -> String {
+#[cfg(test)]
+fn canonical_keys(keys: &StageKeys) -> String {
     let name = if let Some(letter) = keys.code.strip_prefix("Key") {
         letter.to_lowercase()
     } else if let Some(digit) = keys.code.strip_prefix("Digit") {

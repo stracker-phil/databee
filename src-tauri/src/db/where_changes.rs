@@ -97,7 +97,7 @@ fn select_sql(
 }
 
 /// `befores[i]` holds the key columns, then the set columns, of every row `updates[i]` matches.
-pub fn build_update(
+fn build_update(
     dialect: Dialect,
     database: &str,
     updates: &[RowsUpdate],
@@ -198,7 +198,7 @@ fn no_rows() -> AppError {
 
 /// `rows` holds every column of every row `delete` matches; `generated` are left out of the
 /// re-inserts.
-pub fn build_delete(
+fn build_delete(
     dialect: Dialect,
     database: &str,
     delete: &RowsDelete,

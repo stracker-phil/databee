@@ -10,12 +10,12 @@ pub(super) enum Part {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IdFilter {
+pub(crate) struct IdFilter {
     pub(super) parts: Vec<Part>,
 }
 
 /// Parses the shorthand; `None` when the input is not purely IDs, ranges and commas.
-pub fn parse_ids(input: &str) -> Option<IdFilter> {
+pub(crate) fn parse_ids(input: &str) -> Option<IdFilter> {
     let text = input.trim();
     if text.is_empty() {
         return None;

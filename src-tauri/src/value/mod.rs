@@ -122,7 +122,7 @@ pub struct Secondary {
     pub source: Option<Provenance>,
 }
 
-/// A row's primary key, in key order. Unlike `db::changes::RowKey` it owns its values and
+/// A row's primary key, in key order. Unlike `db::changes::ChangeKey` it owns its values and
 /// covers composite keys.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]

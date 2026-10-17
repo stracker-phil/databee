@@ -33,11 +33,6 @@ where
     pub fn open_with(path: PathBuf, normalize: impl FnOnce(T) -> T) -> Self {
         let file = JsonFile::new(path);
         let value = normalize(file.load());
-        Self::from_loaded(file, value)
-    }
-
-    /// For callers that parse the file themselves, e.g. to migrate an older format.
-    pub fn from_loaded(file: JsonFile, value: T) -> Self {
         Self {
             inner: Arc::new(Inner {
                 file,

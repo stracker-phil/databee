@@ -12,14 +12,14 @@ use tokio::net::{TcpListener, TcpStream};
 use super::hub::Hub;
 use super::protocol::{Params, StageError, StageResult};
 
-pub const MAX_BODY_BYTES: usize = 16 * 1024;
+const MAX_BODY_BYTES: usize = 16 * 1024;
 const MAX_HEAD_BYTES: usize = 8 * 1024;
 const READ_TIMEOUT: Duration = Duration::from_secs(10);
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
 /// A request line and its headers (names lowercased).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Head {
+struct Head {
     pub method: String,
     pub path: String,
     pub query: String,
@@ -52,14 +52,14 @@ impl Head {
 }
 
 /// The head ends at the first blank line; None while it is incomplete.
-pub fn head_end(buffer: &[u8]) -> Option<usize> {
+fn head_end(buffer: &[u8]) -> Option<usize> {
     buffer
         .windows(4)
         .position(|w| w == b"\r\n\r\n")
         .map(|i| i + 4)
 }
 
-pub fn parse_head(raw: &[u8]) -> StageResult<Head> {
+fn parse_head(raw: &[u8]) -> StageResult<Head> {
     let text = std::str::from_utf8(raw).map_err(|_| StageError::bad("The request isn't UTF-8."))?;
     let mut lines = text.split("\r\n");
     let mut line = lines.next().unwrap_or_default().split(' ');
@@ -95,7 +95,7 @@ fn token_matches(given: Option<&str>, expected: &str) -> bool {
 
 /// The verb, once the request passed the checks that need no body. Only `127.0.0.1` and
 /// `localhost` are accepted as Host, with or without a port; an IPv6 literal (`[::1]`) is refused.
-pub fn check(head: &Head, token: &str) -> StageResult<String> {
+fn check(head: &Head, token: &str) -> StageResult<String> {
     // Only local tools: a browser page (Origin) or a foreign Host (DNS rebinding) is refused.
     let host = head.header("host").unwrap_or_default();
     let host = host.rsplit_once(':').map_or(host, |(h, port)| {
@@ -138,7 +138,7 @@ pub fn check(head: &Head, token: &str) -> StageResult<String> {
 
 /// Query string, then a JSON object of primitives (nested values are ignored) or a form body;
 /// without the token, which may come as `?token=`.
-pub fn params(head: &Head, body: &[u8]) -> StageResult<Params> {
+fn params(head: &Head, body: &[u8]) -> StageResult<Params> {
     let mut params = read_params(head, body)?;
     params.remove("token");
     Ok(params)

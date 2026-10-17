@@ -326,9 +326,8 @@ and only then swaps it in, so a failed save leaves memory unchanged instead of s
 on restart. Readers take the lock only for the clone and the swap, never during the save. The synchronous
 `update` does the same on the calling thread, for startup code and sync commands (Stage settings, the
 favorites migration). Store methods that write are `async` and the commands calling them are async commands.
-`JsonStore::open_with` normalizes the loaded value (settings use it for `Settings::sanitized`);
-`JsonStore::from_loaded` takes a value the caller parsed itself. The file itself is
-`JsonFile` (`store/json_file.rs`), which:
+`JsonStore::open_with` normalizes the loaded value (settings use it for `Settings::sanitized`). The file
+itself is `JsonFile` (`store/json_file.rs`), which:
 
 - writes pretty-printed JSON to `<name>.tmp` (mode 0600), `sync_all`s it and renames it over the target;
   on error the temp file is removed. The parent dir is created 0700 with `create_private_dir`;

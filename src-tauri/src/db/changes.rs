@@ -95,7 +95,7 @@ pub struct Plan {
     pub undo: Vec<String>,
 }
 
-pub fn sql_value(dialect: Dialect, v: Option<&str>) -> String {
+fn sql_value(dialect: Dialect, v: Option<&str>) -> String {
     v.map_or_else(|| "NULL".to_string(), |v| dialect.sql_string(v))
 }
 
@@ -159,7 +159,7 @@ pub fn reinsert_note(rows: &ResultSet) -> &'static str {
 
 /// The plan's `undo` restoring `column` from `old`, plus a description note when there is
 /// none.
-pub fn restore_undo(
+fn restore_undo(
     dialect: Dialect,
     table: &str,
     column: &str,
@@ -193,20 +193,28 @@ pub fn generated_columns(columns: &[ColumnInfo]) -> Vec<String> {
 
 /// A row addressed by a unique key column.
 #[derive(Debug, Clone, Copy)]
-pub struct RowKey<'a> {
-    pub database: &'a str,
-    pub table: &'a str,
-    pub key_column: &'a str,
-    pub key: &'a str,
+struct ChangeKey<'a> {
+    database: &'a str,
+    table: &'a str,
+    key_column: &'a str,
+    key: &'a str,
 }
 
-impl RowKey<'_> {
+impl ChangeKey<'_> {
     fn table_ref(&self, dialect: Dialect) -> String {
         dialect.table_ref(self.database, self.table)
     }
 
     fn filter(&self, dialect: Dialect) -> String {
         key_filter(dialect, self.key_column, self.key)
+    }
+
+    fn select(&self, dialect: Dialect, what: &str) -> String {
+        format!(
+            "SELECT {what} FROM {} WHERE {}",
+            self.table_ref(dialect),
+            self.filter(dialect)
+        )
     }
 }
 
@@ -230,20 +238,13 @@ pub async fn plan(db: &dyn Database, change: &ChangeRequest, timeout: Duration) 
             column,
             value,
         } => {
-            let row = RowKey {
+            let row = ChangeKey {
                 database,
                 table,
                 key_column,
                 key,
             };
-            let sql = format!(
-                "SELECT {} FROM {} WHERE {}",
-                dialect.quote_ident(column),
-                row.table_ref(dialect),
-                row.filter(dialect)
-            );
-            let old = db.fetch(&sql, timeout).await?;
-            build_set_cell(dialect, row, column, value.as_deref(), &old)
+            plan_set_cell(db, row, column, value.as_deref(), timeout).await
         }
         ChangeRequest::DeleteRow {
             database,
@@ -251,20 +252,13 @@ pub async fn plan(db: &dyn Database, change: &ChangeRequest, timeout: Duration) 
             key_column,
             key,
         } => {
-            let row = RowKey {
+            let row = ChangeKey {
                 database,
                 table,
                 key_column,
                 key,
             };
-            let sql = format!(
-                "SELECT * FROM {} WHERE {}",
-                row.table_ref(dialect),
-                row.filter(dialect)
-            );
-            let rows = db.fetch(&sql, timeout).await?;
-            let structure = db.structure(database, table).await?;
-            build_delete_row(dialect, row, &rows, &generated_columns(&structure.columns))
+            plan_delete_row(db, row, timeout).await
         }
         ChangeRequest::DuplicateRow {
             database,
@@ -272,26 +266,13 @@ pub async fn plan(db: &dyn Database, change: &ChangeRequest, timeout: Duration) 
             key_column,
             key,
         } => {
-            let row = RowKey {
+            let row = ChangeKey {
                 database,
                 table,
                 key_column,
                 key,
             };
-            let sql = format!(
-                "SELECT COUNT(*) FROM {} WHERE {}",
-                row.table_ref(dialect),
-                row.filter(dialect)
-            );
-            let count = db.fetch(&sql, timeout).await?;
-            let matches = count
-                .rows
-                .first()
-                .and_then(|r| r[0].as_text())
-                .and_then(|n| n.parse().ok())
-                .unwrap_or(0);
-            let structure = db.structure(database, table).await?;
-            build_duplicate_row(dialect, row, matches, &structure.columns)
+            plan_duplicate_row(db, row, timeout).await
         }
         ChangeRequest::InsertRow {
             database,
@@ -313,15 +294,57 @@ pub async fn plan(db: &dyn Database, change: &ChangeRequest, timeout: Duration) 
     }
 }
 
+async fn plan_set_cell(
+    db: &dyn Database,
+    row: ChangeKey<'_>,
+    column: &str,
+    value: Option<&str>,
+    timeout: Duration,
+) -> AppResult<Plan> {
+    let dialect = db.dialect();
+    let old = db
+        .fetch(&row.select(dialect, &dialect.quote_ident(column)), timeout)
+        .await?;
+    build_set_cell(dialect, row, column, value, &old)
+}
+
+async fn plan_delete_row(
+    db: &dyn Database,
+    row: ChangeKey<'_>,
+    timeout: Duration,
+) -> AppResult<Plan> {
+    let dialect = db.dialect();
+    let rows = db.fetch(&row.select(dialect, "*"), timeout).await?;
+    let structure = db.structure(row.database, row.table).await?;
+    build_delete_row(dialect, row, &rows, &generated_columns(&structure.columns))
+}
+
+async fn plan_duplicate_row(
+    db: &dyn Database,
+    row: ChangeKey<'_>,
+    timeout: Duration,
+) -> AppResult<Plan> {
+    let dialect = db.dialect();
+    let count = db.fetch(&row.select(dialect, "COUNT(*)"), timeout).await?;
+    let matches = count
+        .rows
+        .first()
+        .and_then(|r| r[0].as_text())
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0);
+    let structure = db.structure(row.database, row.table).await?;
+    build_duplicate_row(dialect, row, matches, &structure.columns)
+}
+
 /// `old` holds the edited column of every row the key matches.
-pub fn build_set_cell(
+fn build_set_cell(
     dialect: Dialect,
-    row: RowKey,
+    row: ChangeKey,
     column: &str,
     value: Option<&str>,
     old: &ResultSet,
 ) -> AppResult<Plan> {
-    let RowKey {
+    let ChangeKey {
         table,
         key_column,
         key,
@@ -355,13 +378,13 @@ pub fn build_set_cell(
 }
 
 /// `rows` holds every row the key matches, all columns.
-pub fn build_delete_row(
+fn build_delete_row(
     dialect: Dialect,
-    row: RowKey,
+    row: ChangeKey,
     rows: &ResultSet,
     generated: &[String],
 ) -> AppResult<Plan> {
-    let RowKey {
+    let ChangeKey {
         table,
         key_column,
         key,
@@ -389,13 +412,13 @@ pub fn build_delete_row(
 }
 
 /// `matches` is how many rows the key selects; `columns` is the table's structure.
-pub fn build_duplicate_row(
+fn build_duplicate_row(
     dialect: Dialect,
-    row: RowKey,
+    row: ChangeKey,
     matches: u64,
     columns: &[ColumnInfo],
 ) -> AppResult<Plan> {
-    let RowKey {
+    let ChangeKey {
         table,
         key_column,
         key,
@@ -424,7 +447,7 @@ pub fn build_duplicate_row(
     })
 }
 
-pub fn build_insert_row(
+fn build_insert_row(
     dialect: Dialect,
     database: &str,
     table: &str,
@@ -453,7 +476,7 @@ pub fn build_insert_row(
 
 /// `build_insert_row` with an undo that deletes the newest row (by `key_column`) holding exactly
 /// the inserted values, since the new key is only known once the insert ran.
-pub fn build_add_row(
+fn build_add_row(
     dialect: Dialect,
     database: &str,
     table: &str,
@@ -491,7 +514,7 @@ mod tests {
 
     const TIMEOUT: Duration = Duration::from_secs(1);
 
-    const ROW: RowKey<'static> = RowKey {
+    const ROW: ChangeKey<'static> = ChangeKey {
         database: "wp",
         table: "t",
         key_column: "id",

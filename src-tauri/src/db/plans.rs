@@ -79,6 +79,7 @@ impl Plans {
         self.pending.lock_unpoisoned().retain(|(p, _)| *p != id);
     }
 
+    #[cfg(test)]
     pub fn discard_all(&self) {
         self.pending.lock_unpoisoned().clear();
     }
