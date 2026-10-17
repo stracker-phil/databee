@@ -202,6 +202,44 @@ describe("ObjectPanel", () => {
     });
   });
 
+  describe("per-view scroll", () => {
+    const container = () => document.querySelector<HTMLElement>('[data-stage="object"]')!;
+
+    function scrollTo(el: HTMLElement, top: number) {
+      el.scrollTop = top;
+      fireEvent.scroll(el);
+    }
+
+    it("keeps a scroll position per view and starts a first-visited view at the top", async () => {
+      await openOrder();
+      const el = container();
+      Object.defineProperty(el, "scrollHeight", { configurable: true, value: 10000 });
+      Object.defineProperty(el, "clientHeight", { configurable: true, value: 100 });
+
+      scrollTo(el, 400);
+      await userEvent.keyboard("{Tab}");
+      await waitFor(() => expect(activeObject().view).toBe("rows"));
+      expect(el.scrollTop).toBe(0);
+
+      scrollTo(el, 150);
+      await userEvent.keyboard("{Tab}");
+      await waitFor(() => expect(activeObject().view).toBe("document"));
+      expect(el.scrollTop).toBe(400);
+
+      await userEvent.keyboard("{Tab}");
+      await waitFor(() => expect(activeObject().view).toBe("rows"));
+      expect(el.scrollTop).toBe(150);
+    });
+
+    it("leaves focus where it was when Tab toggles to the Rows view", async () => {
+      await openOrder();
+      const before = document.activeElement;
+      await userEvent.keyboard("{Tab}");
+      await waitFor(() => expect(activeObject().view).toBe("rows"));
+      expect(document.activeElement).toBe(before);
+    });
+  });
+
   describe("editing a meta value", () => {
     it("queues a setCell on the meta row's id after e, typing and Enter", async () => {
       await openOrder();

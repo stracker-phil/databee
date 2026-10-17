@@ -225,7 +225,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs`, `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `Inspector` + `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` (what a click on a value opens), see [Values](#values) |
-| Objects | `object/`: `ObjectPanel`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, see [Object tabs](#object-tabs) |
+| Objects | `object/`: `ObjectPanel`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `EntityDocument`, `useViewScroll`, see [Object tabs](#object-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT), `SettingsDialog` (see [Settings pages](#settings-pages)), `CommandPalette`, `ContextMenu`, `Toasts` |
 | WordPress | `components/wp/`, see [wordpress.md](wordpress.md#screens-until-u12) |
 
@@ -414,7 +414,10 @@ the table tab's row menu ("Open as object") and from `openEntity(entity, id)` (W
 - **Toggle:** `object.toggleView` (`Tab`, scope `object`; never in inputs, the editor or dialogs) and the
   segmented control call `toggleObjectView` / `setObjectView`, which push the address being left onto the
   tab's history. Focus follows the provenance: Document → Rows selects the same cell in its group's grid,
-  Rows → Document takes the selected cell's provenance as `focus`.
+  Rows → Document takes the selected cell's provenance as `focus`. Both views share the `.object` scroll
+  container (`overflow-anchor: none`), so `useViewScroll` keeps each view's own offset: a view starts at the
+  top the first time, gets its offset back later (re-applied while its grids still load), then reveals the
+  focused value.
 - **Linked table highlight:** a section band takes `lit` while `hover` is a table link to its table; sidebar
   rows take `lit` for a link and `lit-value` (lighter) for a hovered value of that table.
 

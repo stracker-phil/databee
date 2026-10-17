@@ -496,7 +496,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 
 /* ---------- object view ---------- */
 /* mock Main: the header block, section bands (.sh) and rows (.row, .kv, .hdr) share the row anatomy. */
-.object { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.object { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .object-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 1.231rem; border-bottom: 1px solid var(--line); }
 .object-title { display: flex; align-items: center; gap: 0.923rem; flex-wrap: wrap; }
 .object-title .tn { font-family: var(--font-mono); font-size: var(--fs-large); color: var(--o2); }
