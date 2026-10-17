@@ -45,12 +45,12 @@ App
 └─ .app grid
    ├─ Toolbar                          connection / database text (pickers), Path, search field (palette), icon buttons
    ├─ Workspace: [Sidebar |] TabBar + TabPanels
-   │       TabPanels → Readout (header, anomalies, new, pinned, recent; [Readout](#readout))
+   │       TabPanels → Readout (header, needs attention, recently created, pinned, recently opened; [Readout](#readout))
    │                 → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel) [| value column]
    │                 → TableTab (filter bar + ResultsGrid | StructureView) [| value column]
    │                 → ObjectPanel: Strip | column (ObjectColumnView: ObjectHeader, DocumentView | RowsView,
    │                                or ValueColumnView) per stack column
-   │                 → ProjectPanel (presets and prefix, rule form, references, value styles, kinds)
+   │                 → ProjectPanel (header, table filter, a band per table, rule sheet)
    ├─ PendingTray
    ├─ StatusBar                        ▤ sidebar toggle, provenance or address, presets, pending n, live
    └─ PeekOverlay                      while ⌥ is held
@@ -150,7 +150,7 @@ Conventions:
   suppressed) or a point. The menu portals into `document.body`, so it never inherits the font of the grid or
   document it opened from, and `.menu` in `app.css` sets the UI font itself. It focuses its first item, moves
   with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
-- Writes: `queueChange` asks Rust to plan a row edit (`planChange`) and keeps the returned plan; `queueAction(address, action, params)` plans a rule action (`planAction`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
+- Writes: `queueChange` asks Rust to plan a row edit (`planChange`) and keeps the returned plan; `queueActionPreview(sessionId, id)` queues the plan of a rule action's preview (`queueActionPreview`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
   (`undoBatch`); `discardChange` / `discardAll` drop plans in Rust too. The page never sends SQL to write.
 - In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
@@ -279,7 +279,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip, structure view), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
-| Project | `project/`: `ProjectPanel`, `PresetsSection`, `ReferenceForm`, `KindStyleForms`, `ReferencesSection`, `RuleSections`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
+| Project | `project/`: `ProjectPanel`, `ProjectHeader`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
 | Readout | `readout/Readout.tsx`, see [Readout](#readout) |
 
@@ -408,9 +408,18 @@ A reference with one target also carries `data-ref` (the target address), `data-
 alone (no dialog or palette open) peeks the hovered `[data-ref]` element, else the focused value
 (`selectFocusedValue`) when it is a reference with one target; moving the pointer onto another reference while
 ⌥ is held peeks that one; keyup or a window blur hides it. The card sits below the element (fixed, kept in the
-window), reads `api.peek(sessionId, address)` (`Peek { keyColumn, values }`), cached by session, `dataVersion`
-and address, and draws the values with `Value` (grid density). ↵ while it shows opens the target with
-`openTarget` (the next column when the reference is in a stack column).
+window), reads `api.peek(sessionId, address)` (`Peek { address, keyColumn, summary, matches }`), cached by
+session, `dataVersion` and address, and draws `summary` with `SummaryLine`. For a set (`matches`) it heads the
+card with the table and its filter and lists the match rows (`#key` + `SummaryLine`, buttons that open the row;
+the card is `pointer-events: none` except for them). `PeekTarget.from` is the row the reference is stored in
+(`data-from` on the value, `rowIdentity` in `lib/provenance.ts`): a match with that identity is dropped and the
+total lowered, and a set that resolved to that very row reads "no other row matches". ↵ while it shows opens
+the target with `openTarget` (the next column when the reference is in a stack column).
+
+**Summary line** (`value/SummaryLine.tsx`): renders a `Summary` (Rust's one row-summary rule) as
+`name value` pairs, the name tertiary and the value as `Value` in grid density (NULL as the null label). The
+object header, the peek and the readout's timeline and recently opened rows all use it; palette hits keep their
+unnamed `detail` values.
 
 **Value commands** (`commands/values.ts`: `VALUE_COMMANDS`, ids `value.*`, scope `table`, and
 `OBJECT_VALUE_COMMANDS`, ids `object.*`, scope `object`) act on the focused value, `selectFocusedValue`: the
@@ -508,10 +517,14 @@ the [readout](#readout) lists.
   refetches. A failed load renders `ErrorPanel`. The tab title becomes `<entity> #<key>` of the first column once
   its document names its entity.
 - **`ObjectHeader`:** table name, `#key`, the Document/Rows segmented control with the `object.viewDocument` /
-  `object.viewRows` key caps, the actions button, the summary (`Document.header`) as `key value` pairs, other rows an entity
-  shorthand matched (`alternatives`). Right-click opens the actions menu (`actionMenu`): each action plans
-  through `queueAction` after a prompt per required parameter (choices in the title; optional parameters keep
-  their default). The palette lists the same actions.
+  `object.viewRows` key caps, the actions button, the summary (`Document.header`) as a `SummaryLine`, other rows an entity
+  shorthand matched (`alternatives`). The `Actions` button (only when the row has actions) and a right-click
+  open the actions menu (`actionMenu`), each item with what it writes as its `detail` line (`writesSummary`).
+  An action opens the `ActionSheet` dialog (`object/ActionSheet.tsx`, dialog type `action`): a field per param
+  (choices as a datalist, free text allowed), and the `previewAction` result, fetched again 250 ms after a param
+  changes: per row `table #key` and per column `old → new` as `Value`s, deleted rows, or the statements of free
+  SQL; then the row count, undo, and that the change is queued for review in the pending tray. "Queue change"
+  queues that preview (`queueActionPreview`). The palette lists the same actions.
 - **`DocumentView`:** per group a `GroupHeader` band (`data-table`, relation text from `relationText`, count,
   the rule's origin as `data-src`; the table name opens the group's rows in a table tab), then the body:
   `FieldsGroup` and `MetaGroup` as `.row.kv` rows, `RowsGroup` as a `.row.hdr` header plus rows on a grid
@@ -689,15 +702,26 @@ address call it. It has no history (`nav` stays empty).
 - **Loading:** `loadProjectRules(sessionId, database)` keeps `api.projectRules` per `dataVersion` in
   `projectRules`; `changeProject(sessionId, database, change)` calls `api.projectUpdate`, then `bumpData`, so
   documents and grids reload with the new rules, and returns the `AppError` instead of showing it.
-- **Sections:** `PresetsSection`, the open form (`ReferenceForm`, `KindForm`, `StyleForm`), `ReferencesSection`
-  (coverage per row in component state: `api.referenceCoverage` with the row's `reference`), `StylesSection`,
-  `KindsSection`. They share `ProjectContext` (`context.ts`) and the `:is(.object, .project)` band and row classes.
-- **Forms** (`lib/ruleForms.ts`): form state lives in the tab, so it survives switching tabs. `referenceRule`
-  maps the real tables of the pickers to rule names through `ProjectRules.tables`; `fieldError` maps the
-  path of `AppError.field` (`reference.when.meta_key`, `kind.in[0]`) to the form field it shows under. `ReferenceForm` previews coverage
-  with `api.coveragePreview` 400 ms after the last change. `OpenForm` keys each form by type, index and
-  opener, so editing another row remounts it; `FormFrame` scrolls itself into view and focuses its first field
-  on mount, wherever the page is scrolled.
+- **Layout:** `ProjectHeader` (prefix, preset switches, "Refresh coverage", export), a filter over
+  `ProjectRules.groups` by table name (component state), then a `TableSection` per group: a band collapsed
+  through `useCollapsedGroups(tab.address)` with the id `project:<table>`, `ReferenceLines` (rows and the
+  `ReferencedByLine`), and from `RuleSections` `StyleLines`, `KindLines` and `EntityActionLines`. Rows get a
+  `RuleSwitch` and `ActionButtons`; the Rust rows decide which (`id`, `origin`, `edited`). They share
+  `ProjectContext` (`context.ts`) and the `:is(.object, .project)` band and row classes.
+- **Coverage** (`coverage.tsx`): `useAutoCoverage(sessionId, database, references)` counts every applied
+  reference the cache lacks with `api.referenceCoverage`, `COVERAGE_CONCURRENCY` (3) at a time; unmounting
+  stops the queue and drops the counts still running. The cache is `coverage[session/database]` in the
+  `project` slice (`setCoverage`, by `coverageKey` of the `ResolvedReference`), kept for the session;
+  `refreshCoverage` empties it and bumps its `generation`, which reruns the hook.
+- **Forms** (`lib/ruleForms.ts`): form state lives in the tab, so it survives switching tabs, and every opener
+  (a row's "edit", `openProject({ form })` from a value) shows it as the same sheet: `FormFrame` renders a
+  `Modal` with the palette's classes (`palette rule-sheet`, Stage window `rule-form`); ⎋ closes through the
+  modal, ⌘↵ saves from any field. `referenceFormFromRow` sets `replacing` for a row the project stores
+  (`storedInProject`: project or `edited`) and `ruleId` to a preset row's id, so saving overrides it;
+  `referenceRule` maps the real tables of the pickers to rule names through `ProjectRules.tables`;
+  `fieldError` maps the path of `AppError.field` (`reference.when.meta_key`, `kind.in[0]`) to the form field
+  it shows under. `ReferenceForm` previews coverage with `api.coveragePreview` 400 ms after the last change.
+  `FormSheet` keys each form by type, index and opener, so editing another row remounts it.
 - **Export:** `api.chooseSavePath(<slug>-<database>.toml, "toml")`, then `api.projectExportTo(…, path)`.
 
 ### Readout
@@ -710,28 +734,33 @@ through `loadReadout(sessionId, database, force?)`: once per `dataVersion`, so c
 apply, and again (`force`) whenever the tab is shown, since recent objects change without a data change. A
 failed load shows `ErrorPanel`; a failed part or line shows its error in its place.
 
-The tab uses its full width; every table aligns its columns with CSS subgrid (`.readout-table`):
-- **Header** (`StatusHeader`, a `section` labelled "Status"): the database as the title, a meta line (host · prefix · applied presets ·
-  server version), then each value-pinned query as a key/value row: the value's source table and the query's
-  title (opens the saved query) | its `Value`.
+The tab uses its full width; tables align their columns with CSS subgrid (`.readout-table`):
+- **Header** (`StatusHeader`, a `section` labelled "Status"): the database as the title, one meta line (host ·
+  prefix · applied presets · server version), then each value-pinned query as a key/value row: the query's
+  title (opens the saved query) | its `Value` | the value's source table.
 - Then one `Section` per part: a band as in the object view (chevron, name, hint, count), collapsed and
-  remembered through `useCollapsedGroups(tab.address)` under the keys `::anomalies`, `::new`, `::pinned`,
+  remembered through `useCollapsedGroups(tab.address)` under the keys `::anomalies`, `::created`, `::pinned`,
   `::recent`; a click on the band outside its buttons toggles it too.
-- **anomalies**, only when there are lines: the count right-aligned and uncolored | the rule text | the `fix`
-  action (queued with `queueAction` on the table address, so it lands in the pending tray) | `→ rows`, which
-  opens the saved query or the table with the anomaly's `where` as the typed filter.
-- **new**, only when there are rows: one `Block` per entity in a responsive grid
-  (`repeat(auto-fill, minmax(600px, 1fr))`): a heading (entity, table button that opens the table, row count),
-  the SQL in tertiary text, then `RowsTable` (column headers, rows as `Value`s; a primary key opens the row).
+- **needs attention** (region "Needs attention"), only when there are lines: one `.attention` card per
+  anomaly: the count, the rule text with `preset · id`, a "Show rows" button (opens the saved query or the
+  table with the anomaly's `where` as the typed filter) and the `fix` action's name as a button
+  (`runTableAction`: the action sheet on the table address).
+- **recently created** (region "Recently created"), when there are entities: `EntityChip`s (group
+  "Entities"), each a toggle (`aria-pressed`, all on by default, kept in component state) with
+  `countInWindow` or `failed`, and a chevron ("Query of <entity>") that discloses `EntityQuery` (table button,
+  preset, SQL, error). Below, `readout.recentlyCreated.items` filtered to the shown entities, one `CreatedLine`
+  each: relative time of `created` (when its kind is a timestamp with UTC; else the stored text; the tooltip
+  names the stored value and its source column) | entity | `#key` (opens the row) | `SummaryLine`.
 - **pinned**, always (an empty line when nothing is pinned; the band's hint says how to pin): count lines
   (count | title | SQL) and full-width row blocks (title, row count, SQL, rows); a title opens the saved query.
-- **recent**, only when there are objects: table | `#key` (opens the row) | the peek values | relative time.
+- **recently opened** (region "Recently opened"), only when there are objects: table | `#key` (opens the row) |
+  `SummaryLine` | relative time.
 
 Rows of a known table carry `data-row-table` ([Values](#values)), so hovering anywhere on them lights the
 table in the sidebar.
 
-Anchors: `readout`, `readout:value:<id>`, `readout:anomaly:<id>`, `readout:fix:<id>`, `readout:new:<entity>`,
-`readout:pinned:<id>`, `readout:recent:<address>`, `readout:collapse:<section>` (a band's chevron), and the tab
+Anchors: `readout`, `readout:value:<id>`, `readout:anomaly:<id>`, `readout:fix:<id>`, `readout:entity:<entity>`,
+`readout:created:<row address>`, `readout:pinned:<id>`, `readout:recent:<address>`, `readout:collapse:<section>` (a band's chevron), and the tab
 `tab:readout:<db>`.
 
 ### Rendering
@@ -751,7 +780,7 @@ list above 200:
   from every row (`charWidth`, `lib/format.ts`), not from the rendered ones. Rows that are not rendered have
   no `data-stage` anchors.
 - Not virtualized, because they stay short: the palette (at most 80 items, `MAX_ITEMS`), the column stack
-  (only the columns that fit render in full, the rest as strips), anomalies, new objects and recent objects.
+  (only the columns that fit render in full, the rest as strips), anomalies, the created timeline and recent objects.
   Rust caps most Document groups (`META_CAP`, 50 keys, and `ROWS_CAP`, 20 rows; `+n keys` opens the Rows
   view), but not the own row of a wide table or the `events` group, so `LongList` covers them all.
 

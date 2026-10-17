@@ -364,7 +364,7 @@ apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/
    `plan_update` and `plan_delete` in `db/where_changes.rs`, which the page cannot reach. They select rows
    by an SQL condition, an update in several tables at once (`RowsUpdate { table, key_columns, filter, set }`,
    `set` as SQL expressions). Planning reads the matched rows (their key and set columns, or every column for a delete),
-   at most 10,000, and refuses no match at all; the statements address exactly those rows by primary key,
+   at most 10,000, returns them with the plan (an action preview's old values), and refuses no match at all; the statements address exactly those rows by primary key,
    so a condition may read the table it changes. Undo restores each row's set columns by key, last step
    first, or re-inserts the deleted rows; a binary value means no undo. Updating a key column is refused.
 3. The plan is stored in the session (`Session.plans`, `db/plans.rs`) under an id; the page receives a
@@ -418,12 +418,19 @@ along with its `SELECT`. Unit tests count with `FakeDatabase::queries()`.
 |---|---|---|---|
 | `document` | order 4711 (`wp_wc_orders`) | 18 | 18 |
 | `peek` | order 4711 | 1 | 1 |
-| `palette_search` | `#4711` | 37 | 35 |
+| `palette_search` | `#4711` | 35 | 43 |
 | `palette_search` | `=sandbox` | 28 | 16 |
-| `readout` | `wp_test` | 19 | 19 |
+| `readout` | `wp_test` | 19 | 20 |
 | `reference_coverage` | each of the 40 references of the Project page | 43 | 43 |
 
-What was batched: the find sources of one table (`search/find.rs`) and the incoming reference groups from
+The last change gave every row one summary (architecture.md, "Summaries"). `#4711` reads the rows of its
+`rows that reference` section again by key, one query per table (8): group rows hold only the group's
+columns, and the hit must show the summary the row's own document shows. The readout reads the meta keys of
+the summaries in its created timeline in one query per meta table (`wp_postmeta` for the products and the
+order post). Peeks read meta keys with one `IN` query per meta table instead of the capped meta page, so a
+peek of a posts-shaped order needs 2 statements, not 2 to 4.
+
+What was batched earlier: the find sources of one table (`search/find.rs`) and the incoming reference groups from
 one source table (`document/incoming.rs`) run as one `UNION ALL` of the per-filter `SELECT`s, each tagged
 with `__databee_part` and ordered by it and the key (`Ctx::rows_per_filter`, `Ctx::capped_each`); a capped
 group still counts on its own. Order 4711's document has no two incoming groups on one table, so its count

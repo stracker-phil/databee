@@ -152,9 +152,18 @@ of space above it, 6px 12px inside.
   bar; clicking the table name opens the group's rows in a table tab.
 
 The object header is its own block above the groups: table name (`--o2`, large mono), `#key` (accent,
-semibold), the Document/Rows segmented control with a `⌘1` / `⌘2` key cap on each segment, the summary as `key value` pairs,
-closed by a hairline. A `⋯` button and a right-click on the block open the row's actions (`Run <action>`,
-`(no undo)` when it cannot be undone). In the Document view the focused value has a 1.5px accent outline on a `--sel` background.
+semibold), the Document/Rows segmented control with a `⌘1` / `⌘2` key cap on each segment, the [summary line](#summary-line),
+closed by a hairline. An `Actions` button (only when the row has actions) and a right-click on the block open
+the row's actions (`Run <action>`, `(no undo)` when it cannot be undone), each with a tertiary second line of
+what it writes (`ObjectAction.writes`, e.g. `wp_wc_orders: date_updated_gmt, status · wp_posts: post_status`;
+`deletes rows` or `free SQL` for those). Menu items take that line through `MenuEntry.detail` (`ContextMenu.tsx`).
+Running an action opens the action sheet (a modal like the palette, `ActionSheet.tsx`): the action name
+(mono), `table #key · preset`, the writes line, a field per param, then every row it writes as
+`table #key` with one `column  old → new` line per set column (raw values, mono column names, the arrow
+tertiary), deleted rows as `table #key deleted`, or for free SQL "affects rows not known in advance" and
+its statements. It previews again 250 ms after a param changes. Below: `<n> rows · undo available` or
+`no undo`, and that the change is queued for review in the pending tray before `⌘S`. Buttons: Cancel and
+Queue change (accent, disabled while the preview loads or failed; a failure shows in red). In the Document view the focused value has a 1.5px accent outline on a `--sel` background.
 
 **Rows view:** per group the same band, the group's `WHERE` in tertiary mono, then a compact grid (grid header:
 column name, type below) with the table's full columns, 12 rows high before it scrolls.
@@ -261,55 +270,79 @@ value, else the current address. The Hover column is what the status bar shows.
   PHP/JSON or Raw, copy and close; the tree edits leaves (`edit_serialized`, queued as a cell edit through the
   pending tray) when the value's row has a single-column key. There is no docked inspector.
 - **Peek:** holding ⌥ over a reference, or with a reference focused, shows a `--pop` overlay below it: head
-  `table #key` with "⌥ peek · ↵ open", the target's header values (its entity's summary, else its first five
-  non-key columns) as key/value rows, footer `via customer_id → wp_users.ID · preset woocommerce`. Releasing ⌥
-  hides it; ↵ while it shows opens the target like Enter.
+  `table #key` with "⌥ peek · ↵ open", the target's [summary](#summary-line) (wrapping), footer
+  `via customer_id → wp_users.ID · preset woocommerce`. A reference to a set (a table address, e.g. a guest
+  order's `billing_email`) heads the card `wp_wc_orders · billing_email = x` and lists "N rows match" with up to
+  5 rows (`#key` and summary, each opens its row on click), "N more · ↵ opens all" beyond them, and "no row
+  matches" for none. The row the reference is stored in is left out of the set and the count ("N other rows
+  match", "no other row matches"). Releasing ⌥ hides it; ↵ while it shows opens the target like Enter.
 - **Shortcut overview:** `?` opens a dialog listing the bound commands of the scopes active at that moment,
   most specific scope first, with their key caps; `?` or Esc closes it.
 
 ## Project page
 
 A `project` tab (`databee://<slug>/<db>/?project`; the `project.open` command, palette `>Project`; the status
-bar's preset text) shows the rules of one database as section bands with rows, in this order: presets and
-prefix (prefix field with `suggested: wp_`, a switch per preset with its marker tables in `--o3`, "Export as
-preset…" to a save panel), the rule form when one is open, references, value styles, kinds. Details and
-behavior: [presets.md](presets.md#the-project-page).
+bar's preset text) shows the rules of one database per table. Details and behavior:
+[presets.md](presets.md#the-project-page).
 
-- **References:** columns source, when, target, origin, coverage, actions; mono rows with the row anatomy.
-  Project rows in primary text (edit, remove); preset and foreign-key rows in `--o2`, read-only (preset:
-  disable); inferred rows with a dashed target and `same name · indexed` / `not indexed` in `--o3` (promote,
-  disable); switched-off rows in `--o3`, struck through (enable). Coverage is on demand: "check" per row,
-  "Check coverage for all" in the band; it reads `6 of 7 · 1 is 0 or NULL`, `running…`, `not checked`,
-  `timed out`.
-- **Rule form:** a band `new reference · from r on <table>.<column> · <key>`, then labelled fields (source and
-  target as table and column selects, `when` as column `=` value, label), the live coverage line in mono
-  (`0 of 1 resolve`) with the warning "no source value matches a target; the rule is probably wrong ·
-  unresolved: …" in `--o2`, then Cancel (`--o2`) and Save to project (accent). A Rust error shows in
-  `--style-red` small text under the field it names.
-- **Value styles:** column or meta key, match (`= 'wc-failed'`), color (its name in its `--style-*` color;
-  the form picks from swatches of the scheme's style colors), origin. None by default.
-- **Kinds:** column or meta key, kind (`money · currency from currency`, `timestamp · unix`), origin.
-- Actions are plain accent text buttons separated by ` · `; no chips or icons.
+- **Header:** one compact row in `--fs-small`: prefix field with `suggested: wp_` in `--o3`, a switch per
+  preset (marker tables in its tooltip), `auto` in `--o3` or "back to auto", then "Refresh coverage" and
+  "Export as preset…" (a save panel).
+- **Filter:** a mono field "filter tables" with `n of m tables` in `--o3`.
+- **Tables:** a section band per table (chevron, mono table name, counts on the right), collapsible and
+  remembered like document groups. Inside, small `--o3` captions (references, value styles, kinds) over mono
+  rows with the row anatomy:
+  - **References:** source column (`when …` in `--o3`), `→ target` (`where …`), origin in UI type
+    (`project`, `preset woocommerce`, `inferred · same name · indexed`, `foreign key …`, plus `· edited in
+    project`), coverage, a small switch, actions. Project and edited rows in primary text, preset and
+    foreign-key rows in `--o2`, inferred targets dashed, switched-off rows in `--o3` and struck through.
+    Coverage counts on its own: `counting…`, then a 3rem bar (resolved in `--o2`, 0 or NULL lighter) and
+    `6 of 7`; `1 is 0 or NULL · unresolved 9` is the tooltip; `timed out`, or `off` / `not applied`.
+  - A **referenced by** line in `--o2`: the sources pointing at the table, struck through when off.
+  - **Value styles:** column or meta key, match (`= 'wc-failed'`), color (its name in its `--style-*` color),
+    origin, switch, actions. None by default.
+  - **Kinds:** column or meta key, kind (`money · currency from currency`, `timestamp · unix`), origin.
+  - **Entities and actions:** read-only `--o2` lines `entity order where … · preset woocommerce`,
+    `action mark_paid · row · preset woocommerce`.
+- **Rule sheet:** forms open in a modal sheet styled like the palette (same width, pop animation): a head
+  with the title (`edit reference`) and `from <opener>` in mono `--o3`, labelled fields in two columns
+  (source and target as table and column selects, `when` as column `=` value, label), a foot with the live
+  coverage line (`0 of 1 resolve`, the warning "no source value matches a target; the rule is probably wrong ·
+  unresolved: …" in `--o2`), Cancel `⎋` (`--o2`) and Save to project `⌘↵` (accent). A Rust error shows in
+  `--style-red` small text under the field it names. ⎋ closes, ⌘↵ saves.
+- Actions are plain accent text buttons separated by ` · `: edit, reset (an edited preset or inferred rule),
+  remove (a project rule); no chips or icons.
 
 ## Readout
 
-The readout tab (`databee://<slug>/<db>/`) is the home of a database, opened on connect. It
-uses the full width of the tab on `--bg`. A header block like the object view's: the database as the title in
-mono, a meta line in `--o2` (host · prefix · presets · server version), then the value-pinned queries as an
-aligned key/value grid (source table in `--o3` and query title | value). Then a collapsible section band per
-part (chevron, name, hint in `--o2`, count in `--o3`), remembered per database like the object view's groups;
-every part is an aligned grid with the row anatomy of the object view:
-- **anomalies**: count right-aligned and uncolored | the rule text | the `fix` action in the accent | `→ rows`
-  in `--o3`; the band shows only while an anomaly's value is above 0;
-- **new**: the newest rows of each entity with a `created` column, one block per entity (heading: entity,
-  table, row count; the SQL in `--o3` below; then column headers and rows), flowing into several columns of at
-  least 600px on wide screens;
+The readout tab (`databee://<slug>/<db>/`) is the home of a database, opened on connect. It uses the full
+width of the tab on `--bg` and reads top to bottom, calm and scannable; SQL is provenance, never inline by
+default. A header block like the object view's: the database as the title in mono, one meta line in `--o2`
+(host · prefix · presets · server version), then the value-pinned queries as a compact key/value list (query
+title | value | source table in `--o3`). Then a collapsible section band per part (chevron, name, hint in
+`--o2`, count in `--o3`), remembered per database like the object view's groups:
+- **needs attention** (anomalies), only while an anomaly's value is above 0: one card-like row per anomaly
+  (`--chrome`, rounded, 1px `--line`): the count large in mono and uncolored | the rule text as stored, with
+  `preset · id` in `--o3` below | buttons "Show rows" and, when the preset offers one, the fix action's name
+  (mono, accent), which opens the action sheet;
+- **recently created**: one timeline of the newest rows across every entity with a `created` column, newest
+  first. Above it a chip per entity (entity name and its count in the window; a failed entity says `failed` in
+  `--style-red`, its error in the tooltip). A chip toggles its entity in the timeline (all on by default); its
+  chevron discloses the entity's table (opens it), preset and SQL. Each line: relative time in `--o3` (the
+  stored value and its source column on hover) | entity in `--o2` | `#key` in the accent | the
+  [summary](#summary-line);
 - **pinned**: count lines (count | title | SQL in `--o3`) and full-width row blocks; the band's hint says how
   to pin;
-- **recent**: table in `--o2` | `#key` in the accent | the peek values | the relative time in `--o3`.
+- **recently opened**: table in `--o2` | `#key` in the accent | the summary | the relative time in `--o3`.
 
-Every line opens its address; counts refresh after every apply. A failed part or line shows its error in
-`--style-red` in its place; the rest stands.
+Every line opens its address and lights its table in the sidebar on hover; counts refresh after every apply.
+A failed part or line shows its error in `--style-red` in its place; the rest stands.
+
+### Summary line
+
+A row's summary (Rust's one summary rule) renders the same everywhere it shows: the object header, the peek,
+the readout's timeline and recently opened rows. Each value is `name value`: the column or meta key in `--o3`,
+then the value with its kind (`Value`, grid density); NULL shows as NULL, never dropped.
 
 ## Live mode, snapshots, compare
 
@@ -355,7 +388,7 @@ rebindable.
 | ⌘[ / ⌘] | global | back / forward through the active tab's address history; without history the keys stay with the editor |
 | `⌥` (held) | object, grid | peek the hovered or focused reference; ↵ opens it (not a command) |
 | `y` / `Y` / `e` / `f` | table, object | copy raw / copy as SQL condition / edit / filter by value (table grids: the `table` scope; documents and Rows grids: the `object` scope) |
-| `r` | table, object | add a reference from this column or meta key: opens the Project page with the form prefilled (context menu: "Add reference…", "Kind…", "Style…") |
+| `r` | table, object | add a reference from this column or meta key: opens the Project page with the rule sheet prefilled (context menu: "Add reference…", "Kind…", "Style…") |
 | `w` | object | live mode on/off for the active column (`object.live`) |
 | `s` | object | take a snapshot of the active column's row, after a label prompt (`object.snapshot`) |
 | `x` | object | dismiss the change marks of the active column (`object.dismissChanges`) |

@@ -17,6 +17,12 @@ Ideas not built yet. Not ordered by priority. Shipped features are in the [READM
   "promote to reference" turns a hit into a project reference with a condition. Needs its own rule in
   [`.claude/rules/presets.md`](../.claude/rules/presets.md).
 
+## Project page
+- Inferred references collapsed into one group per table with "enable all" / "disable all".
+- Actions listed per table with what they write (the tables and columns of `update`, `delete`, free SQL).
+- Kinds folded into a details disclosure per table.
+- Filter by origin (project, preset, inferred, foreign key, edited).
+
 ## Core client
 - SQLite driver: a second `Driver` variant; the SQL lexer and value model already apply.
 - Export results (CSV/JSON/SQL), and import.

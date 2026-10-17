@@ -85,7 +85,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   - `table:<db>.<table>` (list `tables`)
   - `tab:table:<db>.<table>`, `tab:object:<row address>`, `tab:project:<db>`, `tab:readout:<db>`,
     `tab:query:<tab id>`
-  - object tabs: `object` (the panel), `object-header`, `object-actions` (the actions menu button),
+  - object tabs: `object` (the panel), `object-header`, `object-actions` (the Actions button, only when the row has actions),
     `view-toggle` with `view-toggle:document` and `view-toggle:rows`, `group-<table>` on each section band's
     table name (list `groups`; a second band of the same table is `group-<table>:<group id>`), `collapse:<group id>` (the band's
     collapse chevron), `more:<group id>`
@@ -106,19 +106,21 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `grid:value-count:<index>` (list `grid:value-counts`, most frequent first)
   - `shortcuts:close` in the shortcut overview (`?`)
   - the Project page: `project` (the panel), `project:prefix`, `project:preset:<name>` (list `presets`, the
-    switches), `project:presets-auto`, `project:export`, `project:check-all`; the rule form `project:form` with
-    `project:form:source-table`, `:source-column`, `:when-column`, `:when-value`, `:target-table`,
-    `:target-column`, `:label`, `:columns`, `:metaKeys`, `:inMeta`, `:kind`, `:zone`, `:currency`, `:match`,
-    `:value`, `:color:<color>` (list `project:form:color`), `:save` and `:cancel`; reference rows
-    `reference:<origin>:<from>-><to>[#<id>]` (list `references`) with `:check`, `:edit`, `:remove`, `:disable`,
-    `:enable`, `:promote`; value styles `style:<index>` or `style:<preset>:<scope>:<value>` (list `styles`) with
-    `:edit`, `:remove`, `:on`; kinds `kind:<index>` or `kind:<preset>:<scope>` (list `kinds`) with `:edit`,
-    `:remove`
+    switches), `project:presets-auto`, `project:refresh-coverage`, `project:export`, `project:filter`; table
+    bands `project:table:<table>` (list `project-tables`) with `project:collapse:<table>`; the rule sheet
+    (Stage window `rule-form`) `project:form` with `project:form:source-table`, `:source-column`,
+    `:when-column`, `:when-value`, `:target-table`, `:target-column`, `:label`, `:columns`, `:metaKeys`,
+    `:inMeta`, `:kind`, `:zone`, `:currency`, `:match`, `:value`, `:color:<color>` (list
+    `project:form:color`), `:save` and `:cancel`; reference rows `reference:<from>-><to>[#<id>]` (list
+    `references`) with `:switch`, `:edit`, `:reset`, `:remove`; value styles `style:<id>` (list `styles`) with
+    `:switch`, `:edit`, `:reset`, `:remove`; kinds `kind:<index>` or `kind:<origin>:<scope>` (list `kinds`)
+    with `:edit`, `:remove`
   - the readout: `readout` (the panel), `readout:value:<id>` (a value-pinned query's title in the status
-    line), `readout:anomaly:<id>` (`→ rows`), `readout:fix:<id>` (the anomaly's fix action),
-    `readout:new:<entity>` (an entity's new rows), `readout:pinned:<id>` (a pinned query's title),
-    `readout:recent:<row address>` (a recent object's `#key`), `readout:collapse:<section>` (a band's chevron:
-    `anomalies`, `new`, `pinned`, `recent`)
+    line), `readout:anomaly:<id>` (the anomaly's "Show rows"), `readout:fix:<id>` (the anomaly's fix action),
+    `readout:entity:<entity>` (an entity's filter chip in recently created), `readout:created:<row address>`
+    (a timeline line's `#key`), `readout:pinned:<id>` (a pinned query's title), `readout:recent:<row address>`
+    (a recently opened row's `#key`), `readout:collapse:<section>` (a band's chevron: `anomalies`, `created`,
+    `pinned`, `recent`)
   - `palette:search` and the palette results (list `palette:results`): `palette:item:<key>` with the keys
     `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `saved:<origin>:<id>` (a saved query), `cmd:<id>`
     and `recent:<title>`; holding ⌥ shows the selected hit's `peek`

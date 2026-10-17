@@ -95,7 +95,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
   src/decode/              PHP serialize and JSON value trees, leaf edits
-  src/readout/             the readout: the home page of a database (status, anomalies, new, pinned, recent)
+  src/readout/             the readout: the home page of a database (status, anomalies, recently created, pinned, recent)
   src/store/               JSON stores in the config dir
   src/stage/               Stage plugin: HTTP API, request hub, commands
   src/test_support.rs      fixture-server helpers for tests (`test-util`)
@@ -251,8 +251,9 @@ schema alone; no code names an application. `document(session_id, address, datab
 `<entity> <key>` (`order 4711`) in `database` (default: the session's current one).
 
 ```rust
-Document { address, entity, header: Vec<(String, Value)>, groups: Vec<Group>, alternatives: Vec<Address>,
+Document { address, entity, header: Summary, groups: Vec<Group>, alternatives: Vec<Address>,
            actions: Vec<ObjectAction> }
+Summary { values: Vec<SummaryValue { name, value: Value }> }
 Group { id, table, via: GroupLink, shape: Fields | Meta | Rows, columns, total, rows: Vec<GroupRow>, capped,
         rows_address, error }
 GroupLink = Own | Meta { fk, key, value } | Incoming { reference, label } | Pattern { rule, sql } | Events
@@ -261,8 +262,8 @@ GroupRow { key: Option<RowKey>, fields: Vec<(String, Value)> }
 
 **Groups, in order** (`build.rs`):
 1. **own** (`own.rs`): the row, read in one query together with the `filter` of every entity of its table; the
-   row's `entity` is the first whose filter holds (filtered entities come first), and `header` is its
-   `summary` (a column of the row, else the first meta row of the key).
+   row's `entity` is the first whose filter holds (filtered entities come first), and `header` is the row's
+   [summary](#summaries).
 2. **meta** (`meta.rs`): one group per owned `[[meta]]` table, rows in stored order (the meta table's primary
    key), at most 50. When capped, the keys the document reads by name (header, `{meta.…}` of patterns,
    currencies) are read in one more query.
@@ -297,11 +298,30 @@ source table of the incoming groups (several references from one table share a `
 and one per referenced table. The measured counts are in [database.md](database.md#statement-counts). Each uses the session's query
 timeout on the metadata pool.
 
-**Peek** (`peek.rs`): `peek(session_id, address)` returns `Peek { key_column, values }` for a row address
-without building its document: the row in one query (with its entity, as for `own`), then the entity's
-`summary` as the header has it (a column of the row, else the first meta row of the key, read only when a
-summary name is not a column), or, without a summary, the first five columns that are not part of the primary
-key. `key_column` is the single-column key row addresses name, for the peek's `via … → table.column` line.
+**Summaries** (`summary.rs`): one rule gives the summary of a row wherever it shows: the document header,
+peeks, palette hits and the readout's timeline and recent objects. With an entity `summary` (the row's entity,
+picked as `own` picks it): every name in order, a column of the row (any case, named as the table spells it),
+else a meta key of the row's `[[meta]]` tables (the first stored row of the key, the meta tables in rule
+order), else NULL, so a configured field that is empty shows instead of dropping out. Without one: the first
+4 columns outside the primary key that are neither NULL nor `''`, in schema order. Money takes its currency
+from the row's own columns, then its meta keys (also for a meta value in the summary). `summary::rule` is the
+pure rule; `of_document` feeds it the document's own row and meta rows; `of_rows` summarizes rows of one table
+together and reads the meta keys they need (summary names that are no column, and money currencies when a
+summary shows money without one) with one `fk IN (…) AND key IN (…)` query per meta table, only for rows that
+need them; `entities` tests the entity filters of found rows by key (one query, only when the table has
+filtered entities); `of_keys` reads rows again by key with their entities (for document group rows, which may
+hold only some columns). The document header additionally gets `exists` on its reference values.
+
+**Peek** (`peek.rs`): `peek(session_id, address)` returns `Peek { address, key_column, summary, matches }`
+without building a document. For a row address: the row in one query (with its entity, as for `own`) and its
+summary (meta rows only when it needs them); `address` is the row's canonical address. A table address that
+is not one row (a reference to a non-key column, e.g. `guest_orders`: `wp_wc_orders?customer_id=0&billing_email=…`)
+peeks at the set: `SELECT … ORDER BY <key> LIMIT 6` with the entity tests; exactly one match is peeked as that
+row (with its row `address`); otherwise `summary` is empty and `matches: PeekMatches { total, rows:
+Vec<PeekMatch { address, key, summary }> }` holds the first 5 (a `COUNT(*)` only when there are more); no
+match is `total: 0`, not an error. The row a reference starts from is not part of the address, so a
+reference to its own table may list that row among the matches. `key_column` is the single-column key row
+addresses name, for the peek's `via … → table.column` line.
 
 **Referencing** (`build.rs`): `referencing` gives the incoming reference and pattern groups of a row without
 its document, for the palette's search (meta rows only when a pattern of the table needs them); `own::resolve`
@@ -322,23 +342,28 @@ removed rows; watches keep the last one per row in `Session.ext`, snapshots stor
 (`store/snapshots.rs`), compare aligns two rows of one table ([backend.md](backend.md#watches-and-snapshots)).
 
 **Actions** (`actions/`): `actions` lists the table's row-scope `[[action]]` rules whose `when` holds on the
-row, as `ObjectAction { name, preset, kind: update | delete | sql, undo, params }`; each `ActionParam` carries
+row, as `ObjectAction { name, preset, kind: update | delete | sql, undo, params, writes }` (`writes`: per step
+the stored table and its set columns, or that it deletes rows or runs free SQL); each `ActionParam` carries
 the `choices` its `choices_sql` returns (one query per listed param). `table_actions(session_id, database,
-table)` lists the `scope = "table"` ones. `plan_action(session_id, address, action, params)` plans one on a
-row address, or on a table address without a filter for a table action, and returns a `PlannedChange` like
-`plan_change`, so the pending tray applies and undoes it (`actions/plan.rs`, see
-[presets.md](presets.md#action)).
+table)` lists the `scope = "table"` ones. `preview_action(session_id, address, action, params)` plans one on a
+row address, or on a table address without a filter for a table action, without queueing it: the
+`ActionPreview` lists every row and value it writes (old → new) and the session keeps the plan;
+`queue_action_preview(session_id, id)` queues that plan and returns a `PlannedChange` like `plan_change`, so
+the pending tray applies and undoes it. `plan_action` plans and queues in one step (`actions/plan.rs`,
+`actions/preview.rs`, see [presets.md](presets.md#action)).
 
 ## Readout
 
 `src-tauri/src/readout/` builds the home page of a database (`databee://<slug>/<db>/`):
-`readout(session_id, database) -> Readout { address, status, anomalies, newObjects, pinned, recent }`. Every
-part is a `Part { items, error }` with its own timeout, so a slow anomaly or a broken pinned query shows as an
-error line and the rest stands. The status line comes from the session and the effective rules plus the saved
-queries pinned as values; anomalies are the applied presets' `[[anomaly]]` rules with a non-zero value; new
-objects are the newest rows of each entity with a `created` column; pinned are the saved queries pinned as
-count or rows; recent are the row addresses `remember_object` kept per project in `recent_objects.json` (`store::recent_objects`, at most 20), each with
-its peek values. Details: [presets.md](presets.md#the-readout). The page shows it in the readout tab
+`readout(session_id, database) -> Readout { address, status, anomalies, recentlyCreated, pinned, recent }`.
+Every part has its own timeout (`Part { items, error }`, `RecentlyCreated { items, entities, error }`), so a
+slow anomaly or a broken pinned query shows as an error line and the rest stands. The status line comes from
+the session and the effective rules plus the saved queries pinned as values; anomalies are the applied
+presets' `[[anomaly]]` rules with a non-zero value; `recentlyCreated` is one timeline of the newest rows over
+every entity with a `created` column (`CreatedItem { entity, table, address, created, summary }`, with each
+entity's query as `CreatedEntity { entity, preset, table, sql, countInWindow, error }`); pinned are the saved
+queries pinned as count or rows; recent are the row addresses `remember_object` kept per project in
+`recent_objects.json` (`store::recent_objects`, at most 20), each with its peek's summary. Details: [presets.md](presets.md#the-readout). The page shows it in the readout tab
 (`src/components/readout/Readout.tsx`, [frontend.md](frontend.md#readout)), opened on connect.
 
 ## Palette search
@@ -348,7 +373,7 @@ the MCP `find` tool) from the effective rules and the schema alone. `search::par
 
 | Input | `Query` | Sections |
 |---|---|---|
-| `#<digits>` | `Id` (`ids.rs`) | `objects with id <n>`: each entity table with a single-column key that holds the key (one `own` query per table, the summary as a peek reads it); `rows that reference <n>`: the incoming reference and pattern groups of the first 5 found rows (`document::referencing`; meta rows only when a pattern of the table needs them) |
+| `#<digits>` | `Id` (`ids.rs`) | `objects with id <n>`: each entity table with a single-column key that holds the key (one `own` query per table, its summary as a peek reads it); `rows that reference <n>`: the incoming reference and pattern groups of the first 5 found rows (`document::referencing`; meta rows only when a pattern of the table needs them) |
 | `@<text>` (2+ characters) | `People` (`text.rs`) | `people matching <text>`: entities with `people = true`, on their `search` columns (`LIKE` contains) and `search_exact` columns (`=`); names that are no column are keys of the entity's own `[[meta]]` table (`pk IN (SELECT fk … )`) |
 | free text (6+ characters, no prefix) | `Text` (`text.rs`) | `external id <text>`: the targets of rule references that are not the target table's key (`=` plus the `to_when` conditions), a meta row as its owner row; then `objects matching <text>`: every entity's `search`/`search_exact` |
 | `=<value>` (2+ characters) | `Find` (`find.rs`) | one section per `table.column`: the value column of every `[[meta]]` table (exact), the `[[find]]` sources (their `match`), the entities' `search` (contains) and `search_exact` columns; the sources of one table share one `UNION ALL` (`Ctx::rows_per_filter`) |
@@ -357,8 +382,11 @@ Without entities, `#` reads every base table with a single-column key and fewer 
 (`PLAIN_TABLE_ROWS`). Each query runs with `QUERY_TIMEOUT` (3 s, or the query timeout when lower); a failed
 or timed-out query drops only its own hits. Each section has at most `SECTION_CAP` (20) hits, and each row
 appears once (the first section keeps it). A `PaletteHit { section, address, source, title, detail }` opens
-`address` (a meta value's owner row); `title` is the opened row's key and `detail` its summary values (for a
-meta value its key and value), all `Value`s with provenance.
+`address` (a meta value's owner row); `title` is the opened row's key and `detail` the values of its
+[summary](#summaries), led by the matched value when the summary does not show it (for a meta value its key
+and value), all `Value`s with provenance. Hits of found rows get their row's entity from the search query
+itself (`document::Selection` adds the entity tests) or from `summary::entities`; `rows that reference <n>`
+reads its rows again by key per table (`summary::of_keys`), since group rows may hold only some columns.
 
 ## A request, end to end
 

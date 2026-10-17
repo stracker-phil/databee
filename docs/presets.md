@@ -119,6 +119,15 @@ search_exact = ["_txn_id"]          # exact; may name meta keys
 people = true                       # found by the palette's `@`
 ```
 
+`summary` is what a row shows wherever it is named: the document header, peeks, palette hits and the
+readout. Each name in order is a column of the table (any case) or a meta key of the row's `[[meta]]` tables
+(the first stored row of the key); a name that is neither, or a meta key the row lacks, shows as NULL, so an
+empty configured field is visible and never silently missing. Money shows with its currency (from the row,
+then its meta keys). A row whose entity has no `summary`, or a table without an entity, shows its first 4
+columns outside the primary key that are neither NULL nor `''`. The entity is the one the row's document
+shows (the first whose `filter` holds). Names are not validated when the preset loads: a meta key only proves
+itself in the data.
+
 ### `[[kind]]`
 
 Exactly one of `money`, `timestamp`, `enum = true`, `secret = true`, `number = true`, scoped to `columns`
@@ -142,16 +151,23 @@ secret = true                       # masked until clicked
 
 Scoped like kinds, never global. `match` is `"="`, `"LIKE"` or `"REGEXP"`; `color` one of the scheme's
 style colors `red green yellow blue purple`. `enabled` defaults to `true`; preset styles ship with
-`enabled = false` and a project switches them on.
+`enabled = false` and a project switches them on by id.
 
 ```toml
 [[style]]
+id = "failed_orders"                # optional
 columns = ["orders.status"]
 match = "="
 value = "failed"
 color = "red"
 enabled = false
 ```
+
+**Ids.** Without `id`, a style's id is `style:<columns>|<meta_keys>|<in><match>`: each list joined with `,`,
+trailing empty parts left out, the match written as in reference ids (`=x`, `=like(x)`, `=regexp(x)`). So
+`style:orders.status=failed`, `style:|_status|order_meta=like(ok%)`. When two styles of a preset would get the
+same id, both get `-><color>` appended. Ids are unique per preset; a project switches a style and overrides it
+by its id (`StyleRule::default_id`, `fill_style_ids` in `rules/preset.rs`).
 
 ### `[[pattern]]` groups matched by SQL
 
@@ -236,9 +252,13 @@ Params: `name`, `choices_sql`, `free`, `type = "int"`, `default`, `optional`.
 
 **Listing.** A document lists the row actions of its table whose `when` holds on the row
 (`Document.actions`); `table_actions` lists the table actions. Actions on tables the database lacks are
-dropped (`EffectiveRules.actions`).
+dropped (`EffectiveRules.actions`). Each listed `ObjectAction` carries `undo` and `writes`
+(`document/actions/mod.rs`), one `ActionWrite` per step in planning order: `set` with the stored table name
+(prefix included) and the `set` columns (sorted by name), `deleteRows` or `freeSql` with the action's table.
+An update step on a table the database lacks is left out, as planning skips it. Free SQL may touch other
+tables; only its own table is named.
 
-**Planning** (`plan_action`, `document/actions/plan.rs`):
+**Planning** (`planned` in `document/actions/plan.rs`, for `preview_action` and `plan_action`):
 - Params are checked first: unknown names and missing required values (without `default`, not `optional`)
   are refused, an empty value counts as missing (`optional` makes it NULL), `type = "int"` must parse as an
   integer, and unless `free` the value must be one of the `choices_sql` rows.
@@ -249,8 +269,20 @@ dropped (`EffectiveRules.actions`).
   The steps become one `where_changes::plan_update` plan ([database.md](database.md#editing-rows)). A text `set` value
   that is a single placeholder is that placeholder's literal (NULL stays NULL); other text is one string
   literal with the placeholders filled in as text. `{ sql = "…" }` is an expression.
+- Every `set` value of every step is evaluated once, at planning, in one `SELECT <value>, <value>, …`
+  (`resolve`), and the statements write the resulting literals. `UTC_TIMESTAMP()` is therefore the same
+  moment in every step, and the preview shows exactly what is written. A `{ sql = "…" }` value cannot read
+  the row it is written to (there is no `FROM`), and a value that resolves to binary data is refused.
 - `delete`: the same selection, planned by `where_changes::plan_delete`.
 - `sql`: run as written, without undo; the first value of `preview_sql` goes into the description.
+
+**Preview** (`preview_action`, `document/actions/preview.rs`): the same planning without queueing. An
+`ActionPreview` holds the description, `canUndo`, and per written row (`PreviewRow`) the stored table, the
+`RowKey` and either `update` with `ColumnWrite { column, old, new }` per set column (old from the
+before-image, new as resolved; raw stored values) or `delete`. Free SQL has no rows; its `sql` holds the
+statements, whose rows are not known in advance. The session keeps the latest previewed plan (`Previews`);
+`queue_action_preview(id)` moves exactly that plan to the pending changes, so a resolved `UTC_TIMESTAMP()`
+does not move between preview and queue. An older preview id is refused.
 
 ### `[[find]]`
 
@@ -359,15 +391,16 @@ summary = ["form_id", "status"]
 created = "created_at"
 ```
 
-Then open the Project page and press "Check coverage for all": a reference that resolves none of its
-values is probably wrong. For one database only, add the same references on the Project page (or with
+Then open the Project page: it counts the coverage of every reference on its own, and a reference that
+resolves none of its values is probably wrong. For one database only, add the same references on the Project page (or with
 "Add reference…" on a value) instead: they are stored in the project and can be exported as a preset later.
 
 ### Add a value style
 
 For one database: "Style…" on a value (context menu) opens the Project page with a style form for that
-column, or that meta key in its meta table, prefilled with the value. A preset style that ships off is
-switched on with "switch on" in the Value styles section, which copies it into the project.
+column, or that meta key in its meta table, prefilled with the value. A preset style is switched on or off
+with "enable" / "disable" in the Value styles section, which stores only its id; "edit" stores a project
+override under the same id.
 
 In a preset, a style is scoped to columns or meta keys, never global, and `enabled` defaults to `true` (the
 built-in presets set `enabled = false` so a project opts in):
@@ -381,7 +414,8 @@ value = "^(spam|failed)$"
 color = "red"                           # red, green, yellow, blue or purple
 ```
 
-The first matching style wins, project styles before preset styles.
+The first matching style wins, project styles before preset styles (an override takes its preset style's
+place).
 
 ### Remove the built-in presets
 
@@ -412,22 +446,34 @@ connection's slug moves its keys. A database without a stored project gets an em
 | `network_prefix` | where `network_tables` live (multisite: one project per prefix, `wp_2_` with network prefix `wp_`); `null`: the shortest prefix that holds them, else the prefix |
 | `presets` | enabled presets by name; `null`: every preset whose marker tables exist |
 | `references`, `kinds`, `styles` | rules in the preset shape above |
-| `disabled` | ids of preset or inferred rules switched off |
+| `disabled` | ids of preset or inferred rules switched off, preset styles that ship on included |
+| `enabled` | ids of preset styles that ship off (`enabled = false`) and are switched on |
 | `saved` | saved queries `{ id, title, sql, pin }`; `pin` has the shape of `[[pinned]] home`. Saved queries for every project are `global` in `projects.json`, beside `projects` |
 
 **Editing.** `project_update(session_id, database, change)` applies one `ProjectChange` (`op`):
-`addReference`, `updateReference` and `removeReference` by id; `addKind`, `updateKind`, `removeKind`,
-`addStyle`, `updateStyle`, `removeStyle` by index (these rules have no id); `disable` and `enable` an id;
-`setPrefix`, `setNetworkPrefix`, `setPresets`. Before storing, every table a rule names must exist under the
+`addReference`, `updateReference` and `removeReference` by id; `addKind`, `updateKind`, `removeKind` by
+index (kinds have no id); `addStyle`, `updateStyle`, `removeStyle` by id; `enableStyle` and `disableStyle` a
+preset style's id (idempotent: they add or remove the id in `enabled` or `disabled`, depending on how the style
+ships); `disable` and `enable` a reference or inferred id; `setPrefix`, `setNetworkPrefix`, `setPresets`. Before storing, every table a rule names must exist under the
 prefix or the network prefix (the stored ones, else the suggestions), resolved as the effective rules resolve
 it (`Applied::existing_table`, see below), and every literal column (glob parts are
 not checked), `when` and `to_when` column must exist in its table. A prefix must start some table name,
 preset names must load. The error names the field: ``` `reference.when.meta_key`: `wp_posts` has no column
 `meta_key` ```. A reference without `id` gets its default id; when the project already uses it, `-><to>` is
-appended.
+appended. A style without `id` likewise gets its default id or `-><color>`; an exact copy of a project style
+(same scope, match and color) is refused. `updateStyle` of a preset style's id stores a project override.
 
-**Overrides.** A project reference with the same `from` and `when` as a preset reference overrides it;
-`disabled` removes preset or inferred ids ([Effective rules](#effective-rules)).
+**Overrides.** A project reference with the id of a preset reference, or the same `from` and `when`,
+overrides it; `disabled` switches off project, preset or inferred ids ([Effective rules](#effective-rules)). A project style with the id
+of a preset style overrides that style; it stays on or off with the preset style's switch, and removing it
+brings back the preset's rule. Adding a style whose id is a preset style's (`addStyle`) also switches it on.
+
+**Migration.** Before styles had ids, a preset style was switched on by copying it into the project's
+`styles`. At startup (`AppState::open`, `ProjectsStore::migrate_styles`) every project style stored without
+an id is migrated against the loaded presets: an enabled copy of a preset style (same scope, match and color)
+becomes that style's id in `enabled` (or leaves `disabled` for one that ships on), an exact duplicate of a
+project style is dropped, and any other style gets its default id (or `-><color>`); one under a preset
+style's id overrides it and switches it on. Projects without such styles are not rewritten.
 
 **Export.** `project_export` returns the project as a preset file named `<slug>-<database>`: its references,
 kinds and styles, saved queries as `[[pinned]]` (`pin` as `home`) and explicit presets as `requires`. The
@@ -439,8 +485,8 @@ the page has no dialog permission).
 ## The Project page
 
 The Project page (`?project`, a `project` tab; frontend in `src/components/project/`) shows and edits the
-rules of one database. It opens from the `project.open` command (palette `>Project`, no default key), the
-status bar's `presets …` text and the address. `project_rules(session_id, database)`
+rules of one database, grouped by table. It opens from the `project.open` command (palette `>Project`, no
+default key), the status bar's `presets …` text and the address. `project_rules(session_id, database)`
 (`rules/overview/`; the row types in `rows.rs`) returns everything it lists in one `ProjectRules`:
 
 | Field | Means |
@@ -449,32 +495,53 @@ status bar's `presets …` text and the address. `project_rules(session_id, data
 | `prefix`, `suggestedPrefix` | the effective prefix and the suggestion from marker tables |
 | `presets` | every loaded preset: `name`, `markerTables` (real names under the prefix), `applied` |
 | `foreignKeys` | how many declared foreign keys apply |
-| `references` | `ReferenceRow`s: project rules, then preset rules (last applied preset first, overridden ones left out, owned `[[meta]]` tables' `fk` references included), then foreign keys and inferred references, then inferred references the project switched off |
-| `kinds`, `styles` | project rules (with their `index`), then the applied presets' rules |
 | `tables` | `RuleTable { table, name }`: every real table and the name rules write it as (tables outside the prefixes are missing) |
+| `groups` | `TableRules` per real table with any rule, sorted by name, then one with `table: null` for value styles and kinds whose scope covers no table here |
+
+A `TableRules` holds `references` (the `ReferenceRow`s from the table, by source column), `referencedBy`
+(`{ from, to, when, disabled }` of references from other tables to it), `styles` and `kinds` (each rule in
+every table one of whose columns its column globs cover, or every `[[meta]]` table its meta keys and `in`
+cover), `entities` (`{ preset, name, filter }`) and `actions` (`{ preset, name, scope }`) on the table.
 
 A `ReferenceRow` has its `origin` (`project`, `preset`, `foreignKey`, `inferred` with `indexed`), the `id`
-that `disable`, `enable` and `removeReference` take (`inferred:<table>.<column>` for inferred rows; none for
-a foreign key, which is a fact and cannot be switched off), real `from` and `to`, `when` and `toWhen` as
-SQL-like text (`meta_key = '_customer_user'`; `glob` reads `GLOB`), `label`, `disabled`, the
-`ResolvedReference` that `reference_coverage` takes (none while it does not apply: switched off, or shadowed by
-a foreign key), and `rule`: the stored rule of a project or preset row, or for an inferred row the project
-rule that promotes it (`promote` adds it; an unconditional project rule replaces the inference).
+that `disable` and `enable` take, real `from` and `to`, `when` and `toWhen` as SQL-like text
+(`meta_key = '_customer_user'`; `glob` reads `GLOB`), `label`, `disabled`, `edited`, the `ResolvedReference`
+that `reference_coverage` takes (none while it does not apply: switched off, or shadowed by a foreign key),
+and `rule`: the stored rule, or for an inferred row the project rule that would replace it (empty id).
 
-Sections, each a section band with rows:
-1. **Presets and prefix:** the prefix field (empty: the suggestion applies, shown as `suggested: wp_`), each
-   preset with its marker tables and a switch (`presets: null` is auto; a switch stores the applied presets as
-   an explicit list, "back to auto" clears it), and "Export as preset…".
-2. **The rule form**, when one is open: a reference, kind or value-style form.
-3. **References:** source, when, target, origin, coverage, actions. Project rows: check, edit, remove. Preset
-   rows (`--o2`): check, disable. Foreign keys (`--o2`): check. Inferred rows: dashed target, `same name ·
-   indexed` / `not indexed`, check, promote, disable. Switched-off rows are struck through with enable.
-   Coverage runs on demand per row ("check") or for all rows one after another ("Check coverage for all"),
-   and shows `resolved of total`, `· n are 0 or NULL`, up to three unresolved values, or "timed out".
-4. **Value styles:** column or meta key, match, color (in its `--style-*` color), origin; project rows edit and
-   remove, preset styles (shipped off) "switch on", which copies them into the project with `enabled = true`.
-5. **Kinds:** column or meta key, kind, origin; project rows edit and remove. Preset kinds are read-only (a
-   project kind rule comes first and so wins).
+**One model for every reference.** Project, preset and inferred references each have a switch and "edit";
+a foreign key is a fact (no id, no switch). Editing stores a project rule:
+- a project row is updated by its id (`updateReference`);
+- a preset row becomes a project rule under the preset rule's id (`addReference` with that `id`), which
+  overrides it (as does a project rule with the same `from` and `when`); its row keeps the preset origin with
+  `edited`, and `id` is the project rule's;
+- an inferred row becomes an unconditional project rule from its column, which replaces the inference; its
+  row keeps the inferred origin with `edited`.
+
+"reset" removes the project rule (`removeReference`), which brings back the preset rule or the inference;
+project rows have "remove". The switch is `disable` / `enable` by `id`: a project rule's id switches the
+project rule (and with it the preset rule it overrides); a switched-off unconditional project rule keeps the
+inference on its column off.
+
+Layout:
+1. **Header**, one row: the prefix field (empty: the suggestion applies, shown as `suggested: wp_`), a switch
+   per preset (marker tables in its tooltip; `presets: null` is auto; a switch stores the applied presets as
+   an explicit list, "back to auto" clears it), "Refresh coverage" and "Export as preset…".
+2. **Filter:** narrows the tables by name.
+3. **A band per table** (collapsible, remembered per database like a document group): references (source
+   column and `when`, target and `where`, origin, coverage, switch, actions), a "referenced by" line, value
+   styles, kinds, then read-only entity and action lines. Origins read `project`, `preset woocommerce`,
+   `inferred · same name · indexed`, `foreign key <constraint>`, with `· edited in project` for an edited row.
+   Value styles follow the reference pattern: a switch (`enableStyle` / `disableStyle`, project styles too),
+   edit (a preset style stores an override under its id), reset (`removeStyle` of the override) or, for a
+   project style, remove. Preset kinds are read-only (a project kind rule comes first and so wins); project
+   kinds have edit and remove.
+
+**Coverage** runs on its own: when the page opens, every reference that applies is counted with
+`reference_coverage`, three at a time, and leaving the page stops the queue. Results are cached per database
+for the session (`coverage` in the project slice); "Refresh coverage" counts again. A row shows `resolved of
+total` with a bar (resolved, then 0 or NULL); `n are 0 or NULL` and up to three unresolved values are in
+its tooltip, or it reads "timed out".
 
 **From a value.** `value.addReference` (`r`, grid and object scopes as `value.` and `object.`),
 `value.setKind` and `value.setStyle` (context menu "Add reference…", "Kind…", "Style…") call
@@ -485,12 +552,15 @@ Project page opens with the form prefilled: a reference from the column with `wh
 value; a kind or style scoped to the column, or to the meta key in that meta table (a style also takes the
 value's text).
 
+**The rule sheet.** Every form (from a row's "edit", or from a value) opens in a modal sheet styled like
+the palette over the Project page: ⎋ closes it, ⌘↵ saves.
+
 **Reference form.** Source and target are table and column pickers over `tables` and the schema cache (a
 new target table preselects its single-column primary key); `when` is one `column = value` (a stored rule
 with a richer `when` keeps it unchanged); label. While typing, `coverage_preview(session_id, database,
 reference, replacing)` counts the unsaved rule (debounced): it checks the rule like `project_update`
-(`addReference`, or `updateReference` of `replacing`) on a copy of the project, builds the effective rules
-from that copy and counts exactly like a saved rule. Zero resolved values with orphans show "no source value
+(`addReference`, or `updateReference` of `replacing`) on a copy of the project, switches it on there, builds
+the effective rules from that copy and counts exactly like a saved rule. Zero resolved values with orphans show "no source value
 matches a target; the rule is probably wrong" with the unresolved sample. Saving calls `project_update`; an
 error shows next to the field it names (`reference.from` at the source, `reference.when.*` at when,
 `reference.to` and `reference.to_when.*` at the target, `reference.label` at the label). Kind and style
@@ -535,9 +605,11 @@ unconditional reference; a conditional reference that comes before it decides pe
 of one source with the same `from` and `when` (one column pointing at two tables) become one reference with
 several targets.
 
-**Overrides and disabling.** A project reference with the same `from` and `when` as a preset reference
-replaces it. `disabled` drops preset references by id (in every applied preset) and same-name inference by
-`inferred:<table>.<column>` (real names, e.g. `inferred:wp_actionscheduler_logs.action_id`).
+**Overrides and disabling.** A project reference with the id of a preset reference, or the same `from` and
+`when`, replaces it. `disabled` drops project references and preset references by id (in every applied
+preset) and same-name inference by `inferred:<table>.<column>` (real names, e.g.
+`inferred:wp_actionscheduler_logs.action_id`). A switched-off unconditional project reference keeps the
+inference on its column off, so switching off an edited inferred reference switches the reference off.
 
 **Kinds.** Kind rules apply where no key or reference does (to columns the SQL type made text, number or
 timestamp). The first matching rule wins, project rules before preset rules (`EffectiveRules::column_kind_rule`,
@@ -568,9 +640,11 @@ They reach the page as `ResultSet.cell_kinds` (only where the kind differs from 
 by the value, plus the `=` conditions of `to_when` (other `to_when` operators cannot be part of an address
 and apply where documents query the target).
 
-**Value styles** apply only when `enabled`; preset styles ship switched off, and a project switches one on
-by adding it (with `enabled = true`) to its own `styles` (`project_update` with `addStyle`). The path: the
-project's and the applied presets' enabled styles (project first) become `EffectiveRules.styles`;
+**Value styles** apply when switched on: a project style when `enabled`, a preset style as it ships unless the
+project lists its id (`enabled` for one that ships off, `disabled` for one that ships on;
+`Project::preset_style_on`). The path: the project's own styles, then the applied presets' switched-on styles
+(last applied first), each replaced by its project override, become `EffectiveRules.styles`
+(`EffectiveRules::add_styles`);
 `RulesLens::cells` matches each cell of a covered column (or of a meta value column whose row key matches
 `meta_keys`, with the key column in the result) and adds `{ row, col, style }` to `ResultSet.styles` of browse
 pages and query results; `valueAt` (`src/lib/values.ts`) puts it on the cell's `Value.style`. The first
@@ -600,9 +674,9 @@ primary key has a document.
 |---|---|
 | `status` | host (or socket), slug, database, prefix, applied presets, server version; `values`: saved queries pinned with `show = "value"`, the first column of their first row as a `Value` |
 | `anomalies` | each applied preset's `[[anomaly]]` whose value is a non-zero number (or whose query failed), with `count`, `text`, the `address` `open` names (a saved query, or a table address with the `where` as `filter`) and `fix` (the `scope = "table"` action of the same preset and the table address to plan it on) |
-| `newObjects` | per entity with a `created` column: its key, the `summary` names that are columns and `created`, newest 5 by `created` (the entity's `filter` applies), as `Value` rows with provenance, and the SQL |
+| `recentlyCreated` | one timeline of the 20 newest rows over every entity with a `created` column, newest first, each row once: each entity's newest 20 by `created` (its `filter` applies; one query each, kept as `entities[].sql` with `countInWindow` and `error`), merged by moment (zero dates last); each item is the row's address, the entity its document shows, its `created` value and its [summary](#entity) |
 | `pinned` | saved queries pinned with `show = "count"` (`COUNT(*)` of the query) or `"rows"` (the query with `LIMIT <limit>`, 5 by default, unless it has a `LIMIT`) |
-| `recent` | the project's recent objects (`store::recent_objects`), newest first: each row address with when it was opened and its peek values |
+| `recent` | the project's recent objects (`store::recent_objects`), newest first: each row address with when it was opened and its summary |
 
 Each part is a `Part { items, error }`: it runs with its own timeout (10 s for the part, each query at most
 5 s or the query timeout when lower), and a part or a line whose query fails carries the error while the rest
