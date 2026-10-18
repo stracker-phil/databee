@@ -99,7 +99,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
   grid-template-rows: var(--toolbar-height) minmax(0, 1fr) auto 2rem;
   grid-template-areas: "toolbar" "work" "tray" "status";
 }
-.app > .toolbar { grid-area: toolbar; }
+.app > .toolbar { grid-area: toolbar; min-width: 0; }
 .app > .workspace { grid-area: work; }
 .app > .tray { grid-area: tray; }
 .app > .statusbar { grid-area: status; }
@@ -562,7 +562,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .strip .key { color: var(--accent); }
 
 /* ---------- path ---------- */
-.path { display: flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: var(--data-font-size); }
+.path { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: var(--data-font-size); }
 .path .crumb { border: none; background: none; padding: 0; color: var(--text); font: inherit; }
 .path button.crumb:hover, .path button.crumb:hover .o2 { color: var(--accent); }
 .path .key { color: var(--accent); }
