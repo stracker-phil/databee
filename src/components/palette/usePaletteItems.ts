@@ -21,6 +21,8 @@ export interface Item {
   note?: string;
   binding?: string;
   hit?: PaletteHit;
+  /** The own accent of the database a connection or database item opens, shown as a dot. */
+  accent?: string;
   /** The table a table item opens, for its icon. */
   table?: { database: string; table: string };
   go: () => void;

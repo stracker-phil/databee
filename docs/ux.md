@@ -15,7 +15,8 @@ structure): [frontend.md](frontend.md#styling).
 - Hierarchy comes from opacity and space, not from size, color or boxes. No pills, badges or cards.
 - The accent marks interactive things only: keys, links, focus, selection, the live flash. Nothing else is
   colored unless a value style says so.
-- Icons appear in chrome buttons and fields, never in data.
+- Icons appear in chrome buttons and fields. In data only two kinds: a table's configured icon (`[[icon]]`) before
+  its name and before references to it, and the passive click indicator on hover.
 
 ## Surfaces
 
@@ -59,6 +60,10 @@ file; a Vitest scan enforces it.
 | `--a-gold` | `#ffcc66` | `#f2ae49` | accent hue |
 | `--a-blue` | `#73d0ff` | `#399ee6` | accent hue |
 | `--a-purple` | `#d4bfff` | `#a37acc` | accent hue |
+| `--a-red` | `#f28779` | `#e65050` | accent hue; close to `--style-red`, so danger never relies on color alone |
+| `--a-magenta` | `#f29ed4` | `#c75aa3` | accent hue |
+| `--a-indigo` | `#a6b0ff` | `#6672d9` | accent hue |
+| `--a-teal` | `#95e6cb` | `#2ea38a` | accent hue |
 | `--a-graphite` | `#8a919e` | `#8a9199` | accent hue |
 | `--style-red` | `#ff6666` | `#e65050` | value-style color |
 | `--style-green` | `#87d96c` | `#6cbf43` | value-style color |
@@ -72,7 +77,7 @@ Derived tokens in `src/styles/theme.css`, the same for every scheme:
 
 | Token | Value | Role |
 |---|---|---|
-| `--accent` | `var(--a-<choice>)` via `html[data-accent]` | interactive things only |
+| `--accent` | `var(--a-<choice>)` via `html[data-accent]`: the open database's own accent, else the setting | interactive things only |
 | `--o2`, `--o3` | `--text` at 62% and 40% | secondary and tertiary text (see opacity levels) |
 | `--cell` | `--accent` at 24% | hovered value |
 | `--sel` | `--accent` at 20% | selected row or sidebar entry, focused value |
@@ -256,7 +261,7 @@ value, else the current address. The Hover column is what the status bar shows.
 ## Layout
 
 - **Toolbar** (`--chrome`): connection and database as plain mono text (`wc-pp / db`; a click opens the
-  connection or database picker), back and forward (‹ ›, for a table or object tab, disabled without history),
+  connection or database picker; a database with its own accent has a dot in that hue before its name), back and forward (‹ ›, for a table or object tab, disabled without history),
   the search field on the right, then icon buttons. An object tab shows where it stands in its trail (below),
   a table tab its table in its title and header. There is no mode switch: WordPress is a preset.
 - **Tab bar** (`--chrome`): tabs are cells separated by `--line`; the active tab takes `--bg` and joins the
@@ -325,8 +330,10 @@ broken. Every rule per table sits one click further. Details and behavior:
 build-setting levels, a Problems panel.
 
 - **Header:** one compact row in `--fs-small`: `presets` in `--o2`, a switch per preset (marker tables in its
-  tooltip), `auto` in `--o3` or "back to auto", the prefix field with `suggested: wp_` in `--o3`, "Export as
-  preset…" (a save panel), and on the right a segmented control **Overview | All rules**.
+  tooltip), `auto` in `--o3` or "back to auto", the prefix field with `suggested: wp_` in `--o3`, `accent` in
+  `--o2` with small swatches and "default (app accent: orange)" (the database's own accent replaces the app's
+  while it is open: one hue per site shows which database is open), "Export as preset…" (a save panel), and on
+  the right a segmented control **Overview | All rules**.
 - **Overview**, two bands and a link:
   - **Your changes:** only the project's deviations from the presets, one row each: what in UI type and
     `--o2` (`switched off reference · preset woocommerce · guest_orders`), the rule in mono with real names
@@ -496,6 +503,6 @@ tab; holding ⌥ peeks the selected hit. The footer lists the keys and the prefi
 | `@john` | entities whose rule marks them `people = true`, searched on their `search` and `search_exact` columns and meta keys |
 | text of 6+ characters | values in the entities' `search` columns and non-key reference targets (external ids); shorter text matches only tables and commands |
 | `q:` | saved queries: the project's, the global ones and the presets' pinned ones, with their origin |
-| `c:` | switch connection (⌘⇧P): open sessions (the active one marked `current`, others `open`), then recent connections, each with its name, `host:port / database` and slug; then the active connection's databases (`current` marked). Fuzzy: substring, else the characters in order within one field. Enter activates an open session, connects a recent one (asking for the password when needed; the other sessions stay open), or switches the database |
+| `c:` | switch connection (⌘⇧P): open sessions (the active one marked `current`, others `open`), then recent connections, each with its name, `host:port / database` and slug; then the active connection's databases (`current` marked). A database with its own accent has a dot in that hue before its name. Fuzzy: substring, else the characters in order within one field. Enter activates an open session, connects a recent one (asking for the password when needed; the other sessions stay open), or switches the database |
 | `=value` | find everywhere: every `[[meta]]` value, the `[[find]]` sources and the entities' search columns, one section per table and column |
 | `databee://…` | open the address |

@@ -41,4 +41,8 @@
 :root[data-accent="gold"] { --accent: var(--a-gold); }
 :root[data-accent="blue"] { --accent: var(--a-blue); }
 :root[data-accent="purple"] { --accent: var(--a-purple); }
+:root[data-accent="red"] { --accent: var(--a-red); }
+:root[data-accent="magenta"] { --accent: var(--a-magenta); }
+:root[data-accent="indigo"] { --accent: var(--a-indigo); }
+:root[data-accent="teal"] { --accent: var(--a-teal); }
 :root[data-accent="graphite"] { --accent: var(--a-graphite); }

@@ -28,6 +28,11 @@ export interface ProjectSlice {
   rulesInfo: Record<string, RulesInfo>;
   /** By `session/database`. */
   coverage: Record<string, CoverageCache>;
+  /** Each database's own accent by `accentKey` (connection slug, not session: every session of it shares it). */
+  accents: Record<string, string>;
+  loadAccents: () => Promise<void>;
+  /** Stores the database's accent (`null`: the app's) and applies it at once; nothing reloads, since no rule changed. */
+  setAccent: (sessionId: string, database: string, accent: string | null) => Promise<void>;
   /** Stores one result (`null` drops it, e.g. a run cancelled before it answered). */
   setCoverage: (key: string, reference: string, state: CoverageState | null) => void;
   /** Forgets every result of the database, so the Project page counts again. */
@@ -49,6 +54,19 @@ export interface ProjectSlice {
 
 export const projectKey = (sessionId: string, database: string) => `${sessionId}/${database}`;
 
+/** Rust's project key: the accents are stored per connection slug and database. */
+export const accentKey = (slug: string, database: string) => `${slug}/${database}`;
+
+/** The database's own accent; `undefined` when it uses the app's. */
+export const selectDatabaseAccent = (s: Store, slug: string, database: string | null | undefined): string | undefined =>
+  database ? s.accents[accentKey(slug, database)] : undefined;
+
+/** The accent in effect: the active session's current database's own, else the app's (`null` before settings load). */
+export function selectEffectiveAccent(s: Store): string | null {
+  const session = selectActiveSession(s);
+  return (session && selectDatabaseAccent(s, session.slug, session.database)) || (s.settings?.accent ?? null);
+}
+
 const loadingRulesInfo = new Set<string>();
 
 /** The session and database a Project page is for: the given ones, else the active session's current database. */
@@ -63,6 +81,7 @@ export const projectSlice: Slice<ProjectSlice> = {
     projectRules: {},
     rulesInfo: {},
     coverage: {},
+    accents: {},
 
     setCoverage(key, reference, state) {
       set((s) => {
@@ -76,6 +95,31 @@ export const projectSlice: Slice<ProjectSlice> = {
 
     refreshCoverage(key) {
       set((s) => ({ coverage: { ...s.coverage, [key]: { generation: (s.coverage[key]?.generation ?? 0) + 1, results: {} } } }));
+    },
+
+    async loadAccents() {
+      try {
+        set({ accents: await api.projectAccents() });
+      } catch (e) {
+        fail(e, "Could not load the database accents");
+      }
+    },
+
+    async setAccent(sessionId, database, accent) {
+      const session = get().sessions.find((x) => x.id === sessionId);
+      if (!session) return;
+      try {
+        const stored = await api.projectSetAccent(sessionId, database, accent);
+        set((s) => {
+          const accents = { ...s.accents };
+          const key = accentKey(session.slug, database);
+          if (stored) accents[key] = stored;
+          else delete accents[key];
+          return { accents };
+        });
+      } catch (e) {
+        fail(e, "Could not set the accent");
+      }
     },
 
     async loadProjectRules(sessionId, database) {

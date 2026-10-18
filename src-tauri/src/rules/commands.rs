@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use tauri::State;
 
 use super::PresetInfo;
@@ -56,6 +58,29 @@ pub async fn project_update(
         .update(&session.slug(), &database, move |project| {
             project_change::apply(project, change, &ctx)
         })
+        .await
+}
+
+/// Every project's accent by `<slug>/<database>`, read from the projects file only (no server
+/// round trip), so the page knows a database's accent before anything of it loads.
+#[tauri::command]
+pub fn project_accents(state: State<'_, AppState>) -> BTreeMap<String, String> {
+    state.projects.accents()
+}
+
+/// Sets the accent of the session's connection and `database`; `null` uses the app's again.
+/// Not a `ProjectChange`: it changes no rule, so nothing reloads and "Your changes" stays as it is.
+#[tauri::command]
+pub async fn project_set_accent(
+    state: State<'_, AppState>,
+    session_id: String,
+    database: String,
+    accent: Option<String>,
+) -> AppResult<Option<String>> {
+    let session = state.sessions.get(&session_id)?;
+    state
+        .projects
+        .set_accent(&session.slug(), &database, accent)
         .await
 }
 

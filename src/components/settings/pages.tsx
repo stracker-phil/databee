@@ -2,10 +2,12 @@
 import { FolderOpen, Keyboard, Palette, Plug, ScrollText, SquareTerminal, Table2 } from "lucide-react";
 import { useId, type CSSProperties } from "react";
 import {
-  ACCENTS, api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, SETTINGS_LIMITS, TEXT_SIZES, type LogLevel, type SchemeId,
+  api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, SETTINGS_LIMITS, TEXT_SIZES, type LogLevel, type SchemeId,
 } from "../../api";
 import { ROW_PADDING_PX, rowPaddingPx } from "../../lib/theme";
 import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
+import { selectActiveSession, selectDatabaseAccent, useStore } from "../../state/store";
+import { AccentSwatches } from "../Accent";
 import { ConnectionSlugs } from "./ConnectionSlugs";
 import { capitalize, Group, NumberField, Row, Segmented, SegmentedButtons, Switch, TextField } from "./controls";
 import { ShortcutsPage } from "./ShortcutsPage";
@@ -67,6 +69,19 @@ function RowPaddingPreview({ step }: { step: number }) {
   );
 }
 
+/** The app's accent, the default of every database; says so when the open database has its own. */
+function AccentRow({ accent, onChange }: { accent: string; onChange: (accent: string) => void }) {
+  const session = useStore(selectActiveSession);
+  const own = useStore((st) => (session ? selectDatabaseAccent(st, session.slug, session.database) : undefined));
+  const description = "Keys, links, selection and focus. The default accent; a database can override it on its Project page."
+    + (own && session?.database ? ` ${session.database} uses its own: ${own}.` : "");
+  return (
+    <Row label="Accent" description={description}>
+      <AccentSwatches value={accent} stage="appearance:accent" onChange={onChange} />
+    </Row>
+  );
+}
+
 function AppearancePage({ s, set }: SettingsPageProps) {
   return (
     <>
@@ -93,22 +108,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
           stage="appearance:dark-scheme"
           onChange={(darkScheme) => set({ darkScheme })}
         />
-        <Row label="Accent" description="Keys, links, selection and focus.">
-          <div className="accent-swatches">
-            {ACCENTS.map((a) => (
-              <button
-                key={a}
-                type="button"
-                aria-label={`Accent ${a}`}
-                aria-pressed={s.accent === a}
-                data-stage={`appearance:accent:${a}`}
-                data-stage-list="appearance:accent"
-                style={{ background: `var(--a-${a})` }}
-                onClick={() => set({ accent: a })}
-              />
-            ))}
-          </div>
-        </Row>
+        <AccentRow accent={s.accent} onChange={(accent) => set({ accent })} />
         <Row label="Row padding" description="Space above and below every row in grids and lists.">
           <div className="row-padding">
             <SegmentedButtons

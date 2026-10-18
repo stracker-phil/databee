@@ -240,7 +240,8 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
     and so does "Find everywhere" on a value.
   - `c:` (`connection.switch`, ⌘⇧P) is the connection switcher, `useSwitchItems` (`palette/useSwitchItems.ts`):
     Connections (open sessions, the active one first, then `api.listRecents` minus the open identities) and
-    Databases (`selectVisibleDatabases` of the active session), scored with `fuzzyScore`. Enter runs
+    Databases (`selectVisibleDatabases` of the active session), scored with `fuzzyScore`. An item whose database
+    has its own accent (`accents`, see [Styling](#styling)) shows an `AccentDot` before its title. Enter runs
     `setActiveSession`, `connect` (its password dialog included) or `switchDatabase`. `CommandPalette` keys the
     sheet by `paletteSeed`, so a palette command that reopens it with a prefix starts fresh.
 - **Menu.** Native menu items emit `command` events. See [backend.md](backend.md#native-menu) for the Rust side
@@ -360,7 +361,8 @@ survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There 
 (`--chrome`) and content (`--bg`) meet at `--line` hairlines. Values open as columns, never in a docked pane.
 
 - **Toolbar:** `ConnectionText` shows `connection / database` as mono text; a transparent native select over
-  each name (`Connection` only with several sessions, `Database` always) opens the picker. `NavButtons` (back
+  each name (`Connection` only with several sessions, `Database` always) opens the picker. A database with its
+  own accent gets an `AccentDot` before its name (aria-hidden; the title names the accent). `NavButtons` (back
   and forward, `toolbar:back`/`toolbar:forward`) show for a table or object tab, run `nav.back`/`nav.forward`
   through `runCommand`, are disabled while `selectCanNav` finds no history and name the bound key in their
   title. Nothing between them and the search field: an object tab's place is its trail (see
@@ -793,7 +795,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `clipboard.ts` | `copyText` with a success or error toast |
 | `address.ts` | `parseAddress` / `formatAddress`, the port of Rust's `address` module |
 | `sql.ts` | statement ranges and the statement at the cursor |
-| `theme.ts` | `applyAppearance` (scheme, accent, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `applyInitialScheme` (first paint) |
+| `theme.ts` | `applyAppearance` (scheme, the accent in effect, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `applyInitialScheme` (first paint) |
 | `codeTheme.ts` | CodeMirror theme and syntax colors from the scheme's `--code-*` tokens |
 | `document.ts` | object addresses (`objectAddress`, `documentText`, `objectTitle`), `findValue` / `provenanceKey`, group texts (`relationText`, `groupOriginText`, `countText`, `moreText`), `groupAnchors`, `collapseKey`, `focusOrder` |
 | `diff.ts` | change marks of live mode, snapshots and compare (`ChangeMarks`, `withDelta`, `documentMarks`, `compareMarks`, `withRemovedRows`, `FLASH_MS`; see [Live mode, snapshots, compare](#live-mode-snapshots-compare)) |
@@ -812,7 +814,8 @@ address call it. It has no history (`nav` stays empty).
 - **Loading:** `loadProjectRules(sessionId, database)` keeps `api.projectRules` per `dataVersion` in
   `projectRules`; `changeProject(sessionId, database, change)` calls `api.projectUpdate`, then `bumpData`, so
   documents and grids reload with the new rules, and returns the `AppError` instead of showing it.
-- **Layout:** `ProjectHeader` (preset switches, prefix, export; its `children` are the section switch), then
+- **Layout:** `ProjectHeader` (preset switches, prefix, the accent field, export; its `children` are the
+  section switch), then
   by `ProjectTab.section` (`setProjectSection`; default `overview`) either `Overview` or the per-table listing.
   `Overview` (`Overview.tsx`) renders `ProjectRules.changes` as `ChangeLine`s (the text opens
   `openTableTab(database, table, "structure")`; "edit" finds the listed row by `line.edit` and opens its form;
@@ -941,7 +944,16 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
   a `color-mix()` of tokens.
 - **Derived tokens.** `theme.css` derives the opacity levels (`--o2`, `--o3`), the accent mixes (`--cell`,
   `--sel`, `--lit`), `--accent` from `html[data-accent]` (default orange), the type sizes (`--fs-*`) and the
-  row height `--row-h` from `--pad`. Old names that older rules in `app.css` still read remain as aliases
+  row height `--row-h` from `--pad`.
+- **Accent per database.** `data-accent` is the accent in effect, `selectEffectiveAccent` (`project` slice):
+  the active session's current database's own accent, else `settings.accent` (also on the connect screen).
+  `App.tsx` passes it to `applyAppearance(settings, systemDark, accent)`, so switching the session, the
+  database or the accent applies at once. The project slice keeps `accents` by `accentKey(slug, database)`
+  (`api.projectAccents`, loaded at startup and after `renameConnectionSlug`); every session of a connection
+  shares them. `setAccent(sessionId, database, accent)` stores one through `api.projectSetAccent` and patches
+  `accents`; nothing reloads. `selectDatabaseAccent(s, slug, database)` reads one. `components/Accent.tsx` has
+  `AccentSwatches` (Settings → Appearance and the Project header; Stage anchors `<stage>:<accent>` in list
+  `<stage>`) and `AccentDot` (toolbar, connection switcher), both colored by `--a-<accent>`. Old names that older rules in `app.css` still read remain as aliases
   onto scheme tokens; new CSS and components use only the new names.
 - **Sizing.** Everything is in rem. `html { font-size: var(--ui-font-size) }`, so ⌘= and ⌘- scale the whole UI.
   `--data-font-size` sizes the grid, the editor and the value trees. The row-padding setting (steps 1 to 4)

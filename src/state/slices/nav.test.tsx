@@ -403,6 +403,21 @@ describe("renameConnectionSlug", () => {
     expect(table.nav.forward.map((e) => formatAddress(e.address))).toEqual(["databee://store/db/wp_posts"]);
   });
 
+  it("reloads the accents, which Rust keys by the slug", async () => {
+    useStore.setState({ accents: { "shop/db": "gold" } });
+    mocked.projectAccents.mockResolvedValueOnce({ "store/db": "gold" });
+    await useStore.getState().renameConnectionSlug(session.identity, "store");
+    await waitFor(() => expect(useStore.getState().accents).toEqual({ "store/db": "gold" }));
+  });
+
+  it("keeps the accents when Rust rejects the slug", async () => {
+    useStore.setState({ accents: { "shop/db": "gold" } });
+    mocked.renameConnectionSlug.mockRejectedValueOnce({ kind: "invalid", message: "Slug is taken", code: null, account: null });
+    await expect(useStore.getState().renameConnectionSlug(session.identity, "taken")).rejects.toBeDefined();
+    expect(mocked.projectAccents).not.toHaveBeenCalled();
+    expect(useStore.getState().accents).toEqual({ "shop/db": "gold" });
+  });
+
   it("changes nothing when Rust rejects the slug", async () => {
     mocked.renameConnectionSlug.mockRejectedValueOnce({ kind: "invalid", message: "Slug is taken", code: null, account: null });
     await expect(useStore.getState().renameConnectionSlug(session.identity, "taken")).rejects.toMatchObject({ message: "Slug is taken" });

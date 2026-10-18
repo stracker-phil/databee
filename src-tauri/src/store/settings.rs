@@ -61,7 +61,13 @@ impl From<LogLevel> for log::LevelFilter {
 
 /// Accent hues; every color scheme defines each one. Values are uncolored by default, so no hue
 /// is reserved for status.
-pub const ACCENTS: &[&str] = &["orange", "gold", "blue", "purple", "graphite"];
+pub const ACCENTS: &[&str] = &[
+    "orange", "gold", "red", "magenta", "purple", "indigo", "blue", "teal", "graphite",
+];
+
+pub fn is_accent(name: &str) -> bool {
+    ACCENTS.contains(&name)
+}
 
 /// Built-in color schemes (`src/styles/schemes/<id>.css`).
 pub const SCHEMES: &[&str] = &["ayu-mirage", "ayu-light"];
@@ -182,7 +188,7 @@ impl Settings {
     pub fn sanitized(mut self) -> Self {
         let d = Settings::default();
         // Retired accents (`pink`, the old `green`) and typos all land on the default.
-        if !ACCENTS.contains(&self.accent.as_str()) {
+        if !is_accent(&self.accent) {
             self.accent = d.accent;
         }
         if !SCHEMES.contains(&self.light_scheme.as_str()) {
@@ -482,6 +488,24 @@ mod tests {
         assert_eq!(settings.font_mono, None);
         assert_eq!(settings.light_scheme, "ayu-light");
         assert_eq!(settings.dark_scheme, "ayu-mirage");
+    }
+
+    #[test]
+    fn only_the_listed_accent_names_are_accents() {
+        for (name, expected) in [
+            ("orange", true),
+            ("gold", true),
+            ("blue", true),
+            ("purple", true),
+            ("graphite", true),
+            ("pink", false),
+            ("green", false),
+            ("Gold", false),
+            (" gold", false),
+            ("", false),
+        ] {
+            assert_eq!(is_accent(name), expected, "{name:?}");
+        }
     }
 
     #[test]

@@ -491,6 +491,7 @@ connection's slug moves its keys. A database without a stored project gets an em
 | `disabled` | ids of preset or inferred rules switched off, preset styles that ship on included |
 | `enabled` | ids of preset styles that ship off (`enabled = false`) and are switched on |
 | `saved` | saved queries `{ id, title, sql, pin }`; `pin` has the shape of `[[pinned]] home`. Saved queries for every project are `global` in `projects.json`, beside `projects` |
+| `accent` | the accent while this database is open, one of the settings' accents (`ACCENTS`); left out when unset, so the app's accent applies. An unknown or retired accent loads as unset (`known_accent`). Personalization, not a rule ([Accent](#accent)) |
 
 **Editing.** `project_update(session_id, database, change)` applies one `ProjectChange` (`op`):
 `addReference`, `updateReference` and `removeReference` by id; `addKind`, `updateKind`, `removeKind` by
@@ -499,7 +500,7 @@ preset style's id (idempotent: they add or remove the id in `enabled` or `disabl
 ships); `disable` and `enable` a reference or inferred id; `setIcon` stores the project's icon rule for its `table`
 (replacing one with the same `table`; a name must resolve like any rule table, a glob is not checked) and
 `removeIcon` removes it by `table`, which brings back the presets' icon; `setPrefix`, `setNetworkPrefix`,
-`setPresets`. Before storing, every table a rule names must exist under the
+`setPresets`. The accent is not a `ProjectChange` ([Accent](#accent)). Before storing, every table a rule names must exist under the
 prefix or the network prefix (the stored ones, else the suggestions), resolved as the effective rules resolve
 it (`Applied::existing_table`, see below), and every literal column (glob parts are
 not checked), `when` and `to_when` column must exist in its table. A prefix must start some table name,
@@ -522,10 +523,19 @@ style's id overrides it and switches it on. Projects without such styles are not
 
 **Export.** `project_export` returns the project as a preset file named `<slug>-<database>`: its references,
 kinds, styles and icons, saved queries as `[[pinned]]` (`pin` as `home`) and explicit presets as `requires`. The
-prefixes, `disabled` and the automatic preset choice have no preset form and are left out.
+prefixes, `disabled`, the automatic preset choice and the accent have no preset form and are left out.
 `project_export_to(session_id, database, path)` writes that text to a path the user chose in the native
 save panel (`choose_save_path(file_name, extension)` in `commands.rs`, from `tauri-plugin-dialog`'s Rust API;
 the page has no dialog permission).
+
+**Accent.** A database can have its own accent, so the open database shows at a glance. The hues are the
+settings' accents; status colors stay separate. `project_set_accent(session_id, database, accent)` (`ProjectsStore::set_accent`)
+stores it for the session's slug and the database, `null` clears it, and an accent outside `ACCENTS` is refused
+with the field `accent`. It is a command of its own, not a `ProjectChange`: it changes no rule, so it needs no
+schema check, does not bump `dataVersion` (nothing reloads) and is no line in [Your changes](#your-changes).
+`project_accents()` (`ProjectsStore::accents`) returns every stored accent by `<slug>/<database>` from the
+projects file alone (no server query); the page loads it at startup and after a slug rename, which moves the
+accent with its project. Frontend: [frontend.md](frontend.md#styling).
 
 ## The Project page
 
@@ -575,7 +585,8 @@ inference on its column off.
 Layout:
 1. **Header**, one row: a switch per preset (marker tables in its tooltip; `presets: null` is auto; a switch
    stores the applied presets as an explicit list, "back to auto" clears it), the prefix field (empty: the
-   suggestion applies, shown as `suggested: wp_`), "Export as preset…", and a segmented control
+   suggestion applies, shown as `suggested: wp_`), the accent (a swatch per accent and "default (app accent:
+   orange)", [Accent](#accent)), "Export as preset…", and a segmented control
    **Overview | All rules** (`ProjectTab.section`, default the overview).
 2. **Overview:** "Your changes", "Problems", then "All rules…".
 3. **All rules:** a filter that narrows the tables by name, "Refresh coverage", then **a band per table** (collapsible, remembered per database like a document group): references (source

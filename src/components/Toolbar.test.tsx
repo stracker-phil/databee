@@ -40,6 +40,24 @@ describe("Toolbar", () => {
     expect(screen.getByRole("button", { name: "Go to" })).toHaveTextContent("⌘K");
   });
 
+  describe("database accent", () => {
+    const connection = () => screen.getByTitle(/root@127\.0\.0\.1:52958\/db/);
+
+    it("shows a dot before the database and names the accent in the title when the database has its own", () => {
+      useStore.setState({ accents: { "shop/db": "purple" } });
+      render(<Toolbar />);
+      expect(connection()).toHaveAttribute("title", expect.stringContaining("accent purple"));
+      expect(connection().querySelector("[data-accent]")).toHaveAttribute("data-accent", "purple");
+    });
+
+    it("shows no dot and no accent in the title without one", () => {
+      useStore.setState({ accents: { "shop/other": "purple" } });
+      render(<Toolbar />);
+      expect(connection()).not.toHaveAttribute("title", expect.stringContaining("accent"));
+      expect(connection().querySelector("[data-accent]")).not.toBeInTheDocument();
+    });
+  });
+
   describe("Back and Forward", () => {
     const post7 = address("shop", "db", { kind: "row", table: "wp_posts", key: "7" });
 

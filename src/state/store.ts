@@ -39,6 +39,7 @@ export { hasValueColumn } from "./slices/tabs";
 export type { ObjectTab, ProjectTab, QueryTab, ReadoutTab, SelectedCell, Tab, TableTab } from "./slices/tabs";
 export type { RecentNav, Toast, ValueHover } from "./slices/ui";
 export { queryMarksKey, selectActiveLive, selectCanDismissMarks, selectChangeTarget } from "./slices/live";
+export { accentKey, selectDatabaseAccent, selectEffectiveAccent } from "./slices/project";
 
 /** Every slice's members; modules add theirs with `declare module "../state/store" { interface Store { … } }`. */
 export interface Store extends SettingsSlice, SessionSlice, TabsSlice, QuerySlice, ChangesSlice, DataSlice, SavedSlice, UiSlice, ViewStateSlice, NavSlice, ObjectsSlice, ColumnsSlice, ProjectSlice, ReadoutSlice, LiveSlice {}

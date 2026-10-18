@@ -53,7 +53,7 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
   (order status, autoload, retry or cancel a scheduled action). The tray applies everything in one
   transaction (⌘S), and you can undo it.
 - **Presets:** describe your plugin's tables in a preset of your own; the Project page adds references,
-  kinds and value styles per database.
+  kinds and value styles per database, and an accent of its own so you see which database is open.
 
 **Presentations:** an optional local API lets the [Stage](docs/stage.md) presenter app drive the UI in a
 demo.

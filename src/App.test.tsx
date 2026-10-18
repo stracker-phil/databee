@@ -216,6 +216,69 @@ describe("App", () => {
     });
   });
 
+  describe("database accent", () => {
+    const root = document.documentElement;
+    const blog: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:52958/blog", displayName: "Blog", database: "blog", slug: "blog" };
+    const accentIs = (accent: string) => waitFor(() => expect(root.dataset.accent).toBe(accent));
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      connectedStore();
+      mocked.projectAccents.mockResolvedValue({ "shop/db": "blue", "shop/shop2": "gold", "blog/blog": "purple" });
+    });
+
+    it("sets the open database's accent on the page instead of the app's", async () => {
+      render(<App />);
+      await accentIs("blue");
+    });
+
+    it("keeps the app's accent for a database without its own", async () => {
+      mocked.projectAccents.mockResolvedValue({ "shop/other": "blue" });
+      render(<App />);
+      await screen.findByText("wp_options");
+      expect(root.dataset.accent).toBe("orange");
+    });
+
+    it("changes at once when the database is switched", async () => {
+      render(<App />);
+      await accentIs("blue");
+      await act(() => useStore.getState().switchDatabase("s1", "shop2"));
+      await accentIs("gold");
+    });
+
+    it("changes at once when another session is activated", async () => {
+      useStore.setState({ sessions: [session, blog] });
+      render(<App />);
+      await accentIs("blue");
+      act(() => useStore.getState().setActiveSession("s2"));
+      await accentIs("purple");
+    });
+
+    it("changes at once when the accent is set and falls back to the app's when cleared", async () => {
+      render(<App />);
+      await accentIs("blue");
+      await act(() => useStore.getState().setAccent("s1", "db", "graphite"));
+      await accentIs("graphite");
+      await act(() => useStore.getState().setAccent("s1", "db", null));
+      await accentIs("orange");
+    });
+
+    it("returns to the app's accent after the session is disconnected", async () => {
+      render(<App />);
+      await accentIs("blue");
+      await act(() => useStore.getState().disconnect("s1"));
+      await accentIs("orange");
+    });
+
+    it("is shared by two sessions of the same connection and database", async () => {
+      useStore.setState({ sessions: [session, { ...session, id: "s3" }] });
+      render(<App />);
+      await accentIs("blue");
+      act(() => useStore.getState().setActiveSession("s3"));
+      expect(root.dataset.accent).toBe("blue");
+    });
+  });
+
   describe("palette commands across sessions", () => {
     const planned = { id: 1, description: "Set post_title", statements: ["UPDATE wp_posts SET post_title = 'x'"], canUndo: true };
     const other: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:52958/blog", displayName: "Blog", database: "db", slug: "blog" };

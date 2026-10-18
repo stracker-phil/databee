@@ -14,7 +14,7 @@ import { PendingTray } from "./components/PendingTray";
 import { PeekOverlay } from "./components/value/Peek";
 import { useValueHover } from "./components/value/useValueHover";
 import { applyAppearance, syncRowHeight, useSystemDark } from "./lib/theme";
-import { flushUiState, selectSidebarHidden, useStore } from "./state/store";
+import { flushUiState, selectEffectiveAccent, selectSidebarHidden, useStore } from "./state/store";
 import "./styles/fonts.css";
 import "./styles/schemes/ayu-mirage.css";
 import "./styles/schemes/ayu-light.css";
@@ -23,12 +23,13 @@ import "./styles/app.css";
 
 function useBackendEvents() {
   useEffect(() => {
-    const { loadSettings, handleLaunchEvents, toast } = useStore.getState();
+    const { loadSettings, loadAccents, handleLaunchEvents, toast } = useStore.getState();
     const drainLaunches = () =>
       api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
     void loadSettings().then(() => (installCommands(), drainLaunches()));
+    void loadAccents();
     const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), api.onRemote((e) => void answerRemote(e))];
 
     const onKey = handleKeydown;
@@ -91,15 +92,16 @@ function Main() {
 
 export default function App() {
   const settings = useStore((s) => s.settings);
+  const accent = useStore(selectEffectiveAccent);
   const systemDark = useSystemDark();
   useBackendEvents();
 
   useEffect(() => {
     if (settings) {
-      applyAppearance(settings, systemDark);
+      applyAppearance(settings, systemDark, accent ?? settings.accent);
       syncRowHeight();
     }
-  }, [settings, systemDark]);
+  }, [settings, systemDark, accent]);
 
   return (
     <>

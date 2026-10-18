@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { CornerDownLeft } from "lucide-react";
 import type { PaletteHit } from "../../api";
+import { AccentDot } from "../Accent";
 import { KeyCap } from "../Field";
 import { TableIcon } from "../TableIcon";
 import { useValueHover } from "../value/useValueHover";
@@ -49,6 +50,7 @@ function PlainRow({ item }: { item: Item }) {
       {item.badge && <span className="palette-kind">{item.badge}</span>}
       <span className="grow-text">
         {item.table && <TableIcon database={item.table.database} table={item.table.table} />}
+        {item.accent && <AccentDot accent={item.accent} />}
         {item.title}
         {item.subtitle && <span className="muted"> · {item.subtitle}</span>}
         {item.note && <span className="o2 palette-note"> {item.note}</span>}

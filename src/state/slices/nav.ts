@@ -304,6 +304,7 @@ export const navSlice: Slice<NavSlice> = {
             tabs: s.tabs.map((t) => (ids.has(t.sessionId) ? renamed(t, slug) : t)),
           };
         });
+        void get().loadAccents();
       },
     };
   },

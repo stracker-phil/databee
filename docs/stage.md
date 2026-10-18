@@ -112,7 +112,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `grid:value-count:<index>` (list `grid:value-counts`, most frequent first)
   - `shortcuts:close` in the shortcut overview (`?`)
   - the Project page: `project` (the panel), `project:prefix`, `project:preset:<name>` (list `presets`, the
-    switches), `project:presets-auto`, `project:refresh-coverage`, `project:export`, `project:filter`; table
+    switches), `project:presets-auto`, `project:accent` (the accent field) with swatches `project:accent:<id>`
+    (list `project:accent`) and `project:accent:default`, `project:refresh-coverage`, `project:export`, `project:filter`; table
     bands `project:table:<table>` (list `project-tables`) with `project:collapse:<table>`; the rule sheet
     (Stage window `rule-form`) `project:form` with `project:form:source-table`, `:source-column`,
     `:when-column`, `:when-value`, `:target-table`, `:target-column`, `:label`, `:columns`, `:metaKeys`,

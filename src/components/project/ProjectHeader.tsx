@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { api, type PresetRow } from "../../api";
-import { fail, useStore } from "../../state/store";
+import { fail, selectDatabaseAccent, useStore } from "../../state/store";
+import { AccentSwatches } from "../Accent";
 import type { ProjectContext } from "./context";
 
 function PrefixField({ ctx }: { ctx: ProjectContext }) {
@@ -65,6 +66,23 @@ function PresetSwitch({ preset, ctx }: { preset: PresetRow; ctx: ProjectContext 
   );
 }
 
+/** The database's own accent, which replaces the app's while it is open; personalization, not a rule. */
+function AccentField({ ctx }: { ctx: ProjectContext }) {
+  const { tab } = ctx;
+  const own = useStore((s) => selectDatabaseAccent(s, tab.address.connection, tab.database)) ?? null;
+  const appAccent = useStore((s) => s.settings?.accent);
+  const set = (accent: string | null) => void useStore.getState().setAccent(tab.sessionId, tab.database, accent);
+  return (
+    <span className="head-field" data-stage="project:accent" data-stage-label="Accent">
+      <span className="o2">accent</span>
+      <AccentSwatches value={own} stage="project:accent" small onChange={set} />
+      <button className="act" aria-pressed={!own} data-stage="project:accent:default" onClick={() => set(null)}>
+        {appAccent ? `default (app accent: ${appAccent})` : "default"}
+      </button>
+    </span>
+  );
+}
+
 async function exportPreset(ctx: ProjectContext) {
   const { tab } = ctx;
   try {
@@ -77,7 +95,7 @@ async function exportPreset(ctx: ProjectContext) {
   }
 }
 
-/** One row: a switch per preset with auto or "back to auto", the prefix, export, then the section switch (`children`). */
+/** One row: a switch per preset with auto or "back to auto", the prefix, the accent, export, then the section switch (`children`). */
 export function ProjectHeader({ ctx, children }: { ctx: ProjectContext; children?: ReactNode }) {
   const auto = ctx.rules.project.presets === null;
   const toAuto = async () => {
@@ -102,6 +120,7 @@ export function ProjectHeader({ ctx, children }: { ctx: ProjectContext; children
         )}
       </span>
       <PrefixField key={ctx.rules.project.prefix ?? ""} ctx={ctx} />
+      <AccentField ctx={ctx} />
       <button className="act" data-stage="project:export" data-stage-label="Export as preset" onClick={() => void exportPreset(ctx)}>
         Export as preset…
       </button>

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { api, type ConnectionSpec, type DatabaseInfo, type RecentConnection, type SessionInfo } from "../../api";
 import { useApiResult } from "../../lib/useApiResult";
-import { fail, selectActiveSession, selectVisibleDatabases, useStore } from "../../state/store";
+import { accentKey, fail, selectActiveSession, selectVisibleDatabases, useStore } from "../../state/store";
 import { fuzzyScore, type Prefix } from "./parse";
 import type { Item } from "./usePaletteItems";
 
@@ -27,7 +27,9 @@ function connections(sessions: SessionInfo[], activeId: string | null, recents: 
   ];
 }
 
-function connectionItems(list: Connection[], activeId: string | null, needle: string): Item[] {
+type Accents = Record<string, string>;
+
+function connectionItems(list: Connection[], activeId: string | null, accents: Accents, needle: string): Item[] {
   return list
     .map((c) => {
       const title = c.spec.name ?? c.session?.displayName ?? c.spec.host;
@@ -42,6 +44,7 @@ function connectionItems(list: Connection[], activeId: string | null, needle: st
       title,
       subtitle: database ? `${endpoint(c.spec)} / ${database}` : endpoint(c.spec),
       note: c.slug,
+      accent: database ? accents[accentKey(c.slug, database)] : undefined,
       badge: c.session ? (c.session.id === activeId ? "current" : "open") : undefined,
       go: () => {
         close();
@@ -52,7 +55,7 @@ function connectionItems(list: Connection[], activeId: string | null, needle: st
     }));
 }
 
-function databaseItems(session: SessionInfo | null, databases: DatabaseInfo[], needle: string): Item[] {
+function databaseItems(session: SessionInfo | null, databases: DatabaseInfo[], accents: Accents, needle: string): Item[] {
   if (!session) return [];
   return databases
     .map((d) => ({ d, s: fuzzyScore([d.name], needle) }))
@@ -63,6 +66,7 @@ function databaseItems(session: SessionInfo | null, databases: DatabaseInfo[], n
       section: "Databases",
       title: d.name,
       badge: d.name === session.database ? "current" : undefined,
+      accent: accents[accentKey(session.slug, d.name)],
       go: () => {
         close();
         if (d.name !== session.database) void useStore.getState().switchDatabase(session.id, d.name);
@@ -78,8 +82,12 @@ export function useSwitchItems(prefix: Prefix, needle: string): Item[] {
   const activeId = useStore((s) => s.activeSessionId);
   const session = useStore(selectActiveSession) ?? null;
   const databases = useStore(useShallow(selectVisibleDatabases));
+  const accents = useStore((s) => s.accents);
   return useMemo(() => {
     if (!active) return [];
-    return [...connectionItems(connections(sessions, activeId, recents.data ?? []), activeId, needle), ...databaseItems(session, databases, needle)];
-  }, [active, sessions, activeId, recents.data, needle, session, databases]);
+    return [
+      ...connectionItems(connections(sessions, activeId, recents.data ?? []), activeId, accents, needle),
+      ...databaseItems(session, databases, accents, needle),
+    ];
+  }, [active, sessions, activeId, recents.data, needle, session, databases, accents]);
 }

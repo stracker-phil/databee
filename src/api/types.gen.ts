@@ -785,7 +785,12 @@ styles: Array<StyleRule>,
 /**
  * Table icons; one per `table`, which beats a preset's icon for the tables it names.
  */
-icons: Array<IconRule>, saved: Array<SavedQuery>, };
+icons: Array<IconRule>, saved: Array<SavedQuery>, 
+/**
+ * The accent while this database is open, one of the settings' accents; `None`: the app's.
+ * Personalization, not a rule: exports leave it out.
+ */
+accent?: string, };
 
 /**
  * Kind rules have no id, so they are addressed by their index in the project.

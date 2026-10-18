@@ -628,6 +628,16 @@ icon = "list"
     }
 
     #[test]
+    fn a_project_that_only_sets_an_accent_has_no_changes() {
+        let lines = changes(Project {
+            accent: Some("gold".into()),
+            ..project()
+        });
+
+        assert_eq!(lines, Vec::<ProjectChangeLine>::new());
+    }
+
+    #[test]
     fn choosing_presets_explicitly_is_a_setting_that_remembers_what_auto_would_apply() {
         for (chosen, text) in [(vec!["kit".to_string()], "kit"), (Vec::new(), "none")] {
             let lines = changes(Project {

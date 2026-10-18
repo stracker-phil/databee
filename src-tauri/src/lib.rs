@@ -315,6 +315,8 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             rules::commands::rules_info,
             rules::commands::project_get,
             rules::commands::project_update,
+            rules::commands::project_accents,
+            rules::commands::project_set_accent,
             rules::commands::project_export,
             rules::commands::project_export_to,
             rules::commands::project_rules,

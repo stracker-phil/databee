@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import App from "../../App";
-import { api, type Coverage, type IconRow, type KindRow, type ProjectRules, type ReferenceRow, type RuleDraft, type StyleRow, type TableRules } from "../../api";
+import { ACCENTS, api, type Coverage, type IconRow, type KindRow, type ProjectRules, type ReferenceRow, type RuleDraft, type StyleRow, type TableRules } from "../../api";
 import { installCommands, runCommand } from "../../commands";
 import { referenceFormFor, type ProjectForm, type ReferenceForm } from "../../lib/ruleForms";
 import { resultValueAt } from "../../lib/values";
@@ -189,6 +189,45 @@ describe("ProjectPanel", () => {
       expect(within(header).queryByText("auto")).not.toBeInTheDocument();
       await userEvent.click(within(header).getByRole("button", { name: "back to auto" }));
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setPresets", presets: null });
+    });
+  });
+
+  describe("accent", () => {
+    const field = async (accents: Record<string, string> = {}) => {
+      await openProjectPage();
+      act(() => useStore.setState({ accents }));
+      return within(screen.getByRole("region", { name: "Presets and prefix" }));
+    };
+    const defaultName = "default (app accent: orange)";
+
+    it("offers a swatch per accent and presses the stored one", async () => {
+      const header = await field({ "shop/db": "purple" });
+      const swatches = header.getAllByRole("button", { name: /^Accent / });
+      expect(swatches.map((b) => b.getAttribute("aria-label"))).toEqual(ACCENTS.map((a) => `Accent ${a}`));
+      expect(header.getByRole("button", { name: "Accent purple" })).toHaveAttribute("aria-pressed", "true");
+      expect(header.getByRole("button", { name: "Accent gold" })).toHaveAttribute("aria-pressed", "false");
+      expect(header.getByRole("button", { name: defaultName })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("presses the default button, naming the app's accent, when the database has none", async () => {
+      const header = await field();
+      expect(header.getByRole("button", { name: defaultName })).toHaveAttribute("aria-pressed", "true");
+      expect(header.getAllByRole("button", { name: /^Accent / }).every((b) => b.getAttribute("aria-pressed") === "false")).toBe(true);
+    });
+
+    it("sends the chosen accent and presses its swatch", async () => {
+      const header = await field();
+      await userEvent.click(header.getByRole("button", { name: "Accent gold" }));
+      expect(mocked.projectSetAccent).toHaveBeenCalledWith("s1", "db", "gold");
+      await waitFor(() => expect(header.getByRole("button", { name: "Accent gold" })).toHaveAttribute("aria-pressed", "true"));
+      expect(header.getByRole("button", { name: defaultName })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("sends null when the default is chosen and presses it", async () => {
+      const header = await field({ "shop/db": "gold" });
+      await userEvent.click(header.getByRole("button", { name: defaultName }));
+      expect(mocked.projectSetAccent).toHaveBeenCalledWith("s1", "db", null);
+      await waitFor(() => expect(header.getByRole("button", { name: defaultName })).toHaveAttribute("aria-pressed", "true"));
     });
   });
 

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use ts_rs::TS;
 
 use super::icons::IconRule;
@@ -15,6 +15,7 @@ use super::queries::{Home, Pinned};
 use super::types::{Preset, Reference};
 use crate::error::{AppError, AppResult};
 use crate::store::json_store::JsonStore;
+use crate::store::settings::is_accent;
 
 /// One database of one connection. Fields use the snake_case of the rule types, so the stored
 /// rules and the project around them read alike.
@@ -54,6 +55,31 @@ pub struct Project {
     pub icons: Vec<IconRule>,
     #[serde(default)]
     pub saved: Vec<SavedQuery>,
+    /// The accent while this database is open, one of the settings' accents; `None`: the app's.
+    /// Personalization, not a rule: exports leave it out.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "known_accent"
+    )]
+    #[ts(optional)]
+    pub accent: Option<String>,
+}
+
+/// A stored accent that is no longer (or never was) an accent loads as `None`, the app's accent.
+fn known_accent<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(deserializer)?;
+    Ok(match raw {
+        serde_json::Value::String(name) if is_accent(&name) => Some(name),
+        serde_json::Value::Null => None,
+        other => {
+            log::warn!("Ignoring the unknown project accent {other}");
+            None
+        }
+    })
 }
 
 /// A query the user saved, optionally pinned to the readout home. `pin` shares the shape of a
@@ -258,6 +284,38 @@ impl ProjectsStore {
                 Ok(project)
             })
             .await?
+    }
+
+    /// The accent of every project that has one, by project key (`slug/database`).
+    pub fn accents(&self) -> BTreeMap<String, String> {
+        self.store.read(|file| {
+            file.projects
+                .iter()
+                .filter_map(|(key, project)| Some((key.clone(), project.accent.clone()?)))
+                .collect()
+        })
+    }
+
+    /// Stores the database's accent; `None` goes back to the app's. An unknown accent is refused.
+    pub async fn set_accent(
+        &self,
+        connection: &str,
+        database: &str,
+        accent: Option<String>,
+    ) -> AppResult<Option<String>> {
+        if let Some(name) = accent.as_deref().filter(|name| !is_accent(name)) {
+            return Err(AppError::InvalidField {
+                field: "accent".into(),
+                message: format!("`{name}` is not an accent"),
+            });
+        }
+        let project = self
+            .update(connection, database, move |project| {
+                project.accent = accent;
+                Ok(())
+            })
+            .await?;
+        Ok(project.accent)
     }
 
     pub fn global(&self) -> Vec<SavedQuery> {
@@ -465,6 +523,7 @@ mod tests {
                     pin: None,
                 },
             ],
+            accent: None,
         }
     }
 
@@ -598,6 +657,186 @@ mod tests {
                     home: None,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn an_accent_survives_json_and_an_unset_one_is_omitted() {
+        let project = Project {
+            accent: Some("gold".into()),
+            ..Project::new("shop", "wp")
+        };
+
+        let json = serde_json::to_value(&project).unwrap();
+        assert_eq!(json["accent"], serde_json::json!("gold"));
+        assert_eq!(serde_json::from_value::<Project>(json).unwrap(), project);
+
+        let unset = serde_json::to_value(Project::new("shop", "wp")).unwrap();
+        assert!(unset.get("accent").is_none());
+    }
+
+    #[test]
+    fn a_stored_accent_that_is_not_an_accent_loads_as_none() {
+        for accent in [
+            serde_json::json!("pink"),
+            serde_json::json!("neon"),
+            serde_json::json!(42),
+            serde_json::json!(["gold"]),
+            serde_json::Value::Null,
+        ] {
+            let project: Project = serde_json::from_value(serde_json::json!({
+                "connection": "shop",
+                "database": "wp",
+                "accent": accent,
+            }))
+            .unwrap();
+
+            assert_eq!(project.accent, None, "{accent}");
+        }
+    }
+
+    #[test]
+    fn the_accent_is_not_part_of_the_exported_preset() {
+        let plain = full_project();
+        let accented = Project {
+            accent: Some("gold".into()),
+            ..full_project()
+        };
+
+        assert_eq!(accented.to_preset(), plain.to_preset());
+        assert_eq!(accented.export().unwrap(), plain.export().unwrap());
+        assert!(!accented.export().unwrap().contains("gold"));
+    }
+
+    #[tokio::test]
+    async fn set_accent_stores_and_returns_the_accent_and_none_clears_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+
+        let set = store
+            .set_accent("shop", "wp", Some("gold".into()))
+            .await
+            .unwrap();
+
+        assert_eq!(set.as_deref(), Some("gold"));
+        assert_eq!(store.get("shop", "wp").accent.as_deref(), Some("gold"));
+        assert_eq!(
+            ProjectsStore::open(dir.path())
+                .get("shop", "wp")
+                .accent
+                .as_deref(),
+            Some("gold")
+        );
+
+        let cleared = store.set_accent("shop", "wp", None).await.unwrap();
+
+        assert_eq!(cleared, None);
+        assert_eq!(store.get("shop", "wp").accent, None);
+    }
+
+    #[tokio::test]
+    async fn set_accent_keeps_the_projects_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = full_project();
+        let store = store_with(dir.path(), vec![project.clone()]).await;
+
+        store
+            .set_accent("shop", "wp", Some("blue".into()))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store.get("shop", "wp"),
+            Project {
+                accent: Some("blue".into()),
+                ..project
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unknown_accent_is_refused_naming_the_field_and_stores_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with(
+            dir.path(),
+            vec![Project {
+                accent: Some("gold".into()),
+                ..Project::new("shop", "wp")
+            }],
+        )
+        .await;
+
+        for name in ["pink", "Gold", ""] {
+            let err = store
+                .set_accent("shop", "wp", Some(name.into()))
+                .await
+                .unwrap_err();
+
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{name:?}");
+            assert!(
+                matches!(&err, AppError::InvalidField { field, .. } if field == "accent"),
+                "{name:?}: {err:?}"
+            );
+            assert_eq!(store.get("shop", "wp").accent.as_deref(), Some("gold"));
+        }
+
+        let other = store
+            .set_accent("blog", "db", Some("pink".into()))
+            .await
+            .unwrap_err();
+        assert_eq!(other.kind(), ErrorKind::InvalidInput);
+        assert!(!store.accents().contains_key("blog/db"));
+    }
+
+    #[tokio::test]
+    async fn accents_lists_only_projects_with_one_keyed_by_slug_and_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with(
+            dir.path(),
+            vec![
+                Project {
+                    accent: Some("gold".into()),
+                    ..Project::new("shop", "wp")
+                },
+                Project {
+                    accent: Some("purple".into()),
+                    ..Project::new("shop", "staging")
+                },
+                Project::new("shop", "plain"),
+            ],
+        )
+        .await;
+
+        let expected = BTreeMap::from([
+            ("shop/staging".to_string(), "purple".to_string()),
+            ("shop/wp".to_string(), "gold".to_string()),
+        ]);
+        assert_eq!(store.accents(), expected);
+        assert_eq!(ProjectsStore::open(dir.path()).accents(), expected);
+        assert!(
+            ProjectsStore::open(tempfile::tempdir().unwrap().path())
+                .accents()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn renaming_a_connection_carries_the_accent() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_with(
+            dir.path(),
+            vec![Project {
+                accent: Some("graphite".into()),
+                ..Project::new("old", "db")
+            }],
+        )
+        .await;
+
+        store.rename_connection("old", "new").await.unwrap();
+
+        assert_eq!(
+            store.accents(),
+            BTreeMap::from([("new/db".to_string(), "graphite".to_string())])
         );
     }
 

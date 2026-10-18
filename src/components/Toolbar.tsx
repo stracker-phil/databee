@@ -1,7 +1,8 @@
 import { ChevronLeft, ChevronRight, FilePlus2, PlugZap, Search, Settings as SettingsIcon, Unplug } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { runCommand, useBindingLabel } from "../commands";
-import { selectActiveSession, selectActiveTab, selectCanNav, selectVisibleDatabases, useStore } from "../state/store";
+import { selectActiveSession, selectActiveTab, selectCanNav, selectDatabaseAccent, selectVisibleDatabases, useStore } from "../state/store";
+import { AccentDot } from "./Accent";
 import { KeyCap } from "./Field";
 
 type Session = NonNullable<ReturnType<typeof selectActiveSession>>;
@@ -11,14 +12,16 @@ const ICON_SIZE = "1.077rem";
 
 /**
  * Connection and database as plain mono text. A transparent native select covers each name, so a click opens
- * the existing picker as a menu while the toolbar shows only text.
+ * the existing picker as a menu while the toolbar shows only text. A database with its own accent gets a dot in it.
  */
 function ConnectionText({ session }: { session: Session }) {
   const sessions = useStore((s) => s.sessions);
   const databases = useStore(useShallow(selectVisibleDatabases));
+  const accent = useStore((s) => selectDatabaseAccent(s, session.slug, session.database));
   const { setActiveSession, switchDatabase } = useStore.getState();
+  const title = `${session.identity} · ${session.serverVersion}${accent ? ` · accent ${accent} (Project page)` : ""}`;
   return (
-    <div className="conn-text mono" data-stage="toolbar:connection" data-stage-label={`Connection ${session.identity}`} title={`${session.identity} · ${session.serverVersion}`}>
+    <div className="conn-text mono" data-stage="toolbar:connection" data-stage-label={`Connection ${session.identity}`} title={title}>
       <span className="menu-text">
         <span>{session.displayName}</span>
         {sessions.length > 1 && (
@@ -30,6 +33,7 @@ function ConnectionText({ session }: { session: Session }) {
         )}
       </span>
       <span className="o3"> / </span>
+      {accent && <AccentDot accent={accent} />}
       <span className="menu-text o2">
         <span>{session.database ?? "no database"}</span>
         <select data-stage="toolbar:database" aria-label="Database" value={session.database ?? ""} onChange={(e) => void switchDatabase(session.id, e.target.value)}>

@@ -57,11 +57,14 @@ function setOrRemove(style: CSSStyleDeclaration, name: string, value: string | n
   else style.removeProperty(name);
 }
 
-/** Applies appearance settings to <html> so CSS tokens pick them up. */
-export function applyAppearance(settings: Settings, systemDark = systemIsDark()) {
+/**
+ * Applies appearance settings to <html> so CSS tokens pick them up. `accent` is the one in effect: the open
+ * database's own (`selectEffectiveAccent`), else the setting.
+ */
+export function applyAppearance(settings: Settings, systemDark = systemIsDark(), accent = settings.accent) {
   const root = document.documentElement;
   root.dataset.scheme = resolveScheme(settings, systemDark).id;
-  root.dataset.accent = settings.accent;
+  root.dataset.accent = accent;
   root.style.setProperty("--pad", `${rowPaddingPx(settings.rowPadding)}px`);
   root.style.setProperty("--ui-font-size", `${settings.uiFontSize}px`);
   root.style.setProperty("--data-font-size", `${settings.dataFontSize}px`);

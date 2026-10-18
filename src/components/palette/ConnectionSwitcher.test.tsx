@@ -127,6 +127,36 @@ describe("Switch connection (⌘⇧P)", () => {
     await waitFor(() => expect(selectActiveSession(useStore.getState())?.database).toBe("shop2"));
   });
 
+  describe("database accents", () => {
+    const dot = (title: string) => option(title)?.querySelector("[data-accent]");
+
+    beforeEach(() => {
+      useStore.setState({ accents: { "shop/db": "purple", "staging/stage": "gold", "shop/shop2": "blue" } });
+    });
+
+    it("shows a dot on connections whose current database has its own accent", async () => {
+      await openSwitcher();
+      await waitFor(() => expect(option("Blog")).toBeDefined());
+      expect(dot("Shop")).toHaveAttribute("data-accent", "purple");
+      expect(dot("Staging")).toHaveAttribute("data-accent", "gold");
+      expect(dot("Blog")).not.toBeInTheDocument();
+    });
+
+    it("shows a dot on the active connection's databases that have their own accent", async () => {
+      await openSwitcher();
+      expect(dot("db")).toHaveAttribute("data-accent", "purple");
+      expect(dot("shop2")).toHaveAttribute("data-accent", "blue");
+    });
+
+    it("shows no dot without accents", async () => {
+      useStore.setState({ accents: {} });
+      await openSwitcher();
+      await waitFor(() => expect(option("Blog")).toBeDefined());
+      expect(dot("Shop")).not.toBeInTheDocument();
+      expect(dot("db")).not.toBeInTheDocument();
+    });
+  });
+
   it("reopens in switch mode when run from the palette's commands", async () => {
     render(<CommandPalette />);
     useStore.getState().setPaletteOpen(true);

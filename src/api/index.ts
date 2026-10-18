@@ -114,6 +114,11 @@ export const api = {
   /** Checks the change against the database's tables and columns; errors name the field. */
   projectUpdate: (sessionId: string, database: string, change: ProjectChange) =>
     invoke<Project>("project_update", { sessionId, database, change }),
+  /** Every database's own accent by `<slug>/<database>` (`accentKey`); read from the projects file, no server query. */
+  projectAccents: () => invoke<Record<string, string>>("project_accents"),
+  /** Sets the accent of the session's connection and `database` (`null`: the app's); returns the stored one. */
+  projectSetAccent: (sessionId: string, database: string, accent: string | null) =>
+    invoke<string | null>("project_set_accent", { sessionId, database, accent }),
   /** The project's rules as a preset file (TOML). */
   projectExport: (sessionId: string, database: string) => invoke<string>("project_export", { sessionId, database }),
   /** Writes the project's rules as a preset file to `path`. */

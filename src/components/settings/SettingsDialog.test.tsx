@@ -140,6 +140,25 @@ describe("SettingsDialog", () => {
       expect(root.dataset.accent).toBe("gold");
     });
 
+    describe("accent override note", () => {
+      beforeEach(() => {
+        connectedStore();
+        useStore.setState({ dialog: { type: "settings" } });
+      });
+
+      it("says the open database uses its own accent", () => {
+        useStore.setState({ accents: { "shop/db": "purple" } });
+        render(<SettingsDialog />);
+        expect(screen.getByText(/db uses its own: purple\./)).toBeInTheDocument();
+      });
+
+      it("only mentions the Project page when the open database has none", () => {
+        render(<SettingsDialog />);
+        expect(screen.getByText(/can override it on its Project page/)).toBeInTheDocument();
+        expect(screen.queryByText(/uses its own/)).not.toBeInTheDocument();
+      });
+    });
+
     it.each([
       ["Dark", "dark", "ayu-mirage"],
       ["Light", "light", "ayu-light"],

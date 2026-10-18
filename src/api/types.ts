@@ -27,7 +27,7 @@ const LOG_LEVEL_RANK: Record<LogLevel, number> = { error: 0, warn: 1, info: 2, d
 export const LOG_LEVELS = (Object.keys(LOG_LEVEL_RANK) as LogLevel[]).sort((a, b) => LOG_LEVEL_RANK[a] - LOG_LEVEL_RANK[b]);
 
 /** Accent hues, defined by every scheme. Rust's `ACCENTS` is the source of truth; keep these equal. */
-export const ACCENTS = ["orange", "gold", "blue", "purple", "graphite"] as const;
+export const ACCENTS = ["orange", "gold", "red", "magenta", "purple", "indigo", "blue", "teal", "graphite"] as const;
 
 /** Built-in color schemes (`src/styles/schemes/<id>.css`). Ids match Rust's `SCHEMES`. */
 export const SCHEMES = [

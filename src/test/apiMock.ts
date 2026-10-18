@@ -49,6 +49,8 @@ export function createApiMock(): typeof realApi {
     presetsList: vi.fn().mockResolvedValue([]),
     projectGet: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
     projectUpdate: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
+    projectAccents: vi.fn().mockResolvedValue({}),
+    projectSetAccent: vi.fn().mockImplementation(async (_s: string, _d: string, accent: string | null) => accent),
     projectExport: vi.fn().mockResolvedValue(""),
     projectExportTo: vi.fn().mockResolvedValue(undefined),
     projectRules: vi.fn().mockImplementation(async (_sessionId: string, database: string): Promise<ProjectRules> => ({ project: emptyProject(database), prefix: "wp_", suggestedPrefix: null, presets: [], foreignKeys: 0, changes: [], groups: [], tables: [] })),

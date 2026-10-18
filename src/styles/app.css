@@ -385,6 +385,10 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .accent-swatches { display: flex; gap: 0.615rem; }
 .accent-swatches button { width: 1.538rem; height: 1.538rem; border-radius: 50%; border: none; }
 .accent-swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pop), 0 0 0 0.308rem var(--o2); }
+.accent-swatches.small { gap: 0.462rem; }
+.accent-swatches.small button { width: 1rem; height: 1rem; }
+.accent-swatches.small button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pop), 0 0 0 0.231rem var(--o2); }
+.accent-dot { display: inline-block; flex: none; align-self: center; width: 0.538rem; height: 0.538rem; margin-right: 0.385rem; border-radius: 50%; }
 .scheme-select { display: flex; align-items: center; gap: 0.615rem; }
 .scheme-preview { display: inline-flex; gap: 0.308rem; }
 .scheme-preview > span {
