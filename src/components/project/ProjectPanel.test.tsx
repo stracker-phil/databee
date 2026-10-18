@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import App from "../../App";
-import { api, type Coverage, type KindRow, type ProjectRules, type ReferenceRow, type RuleDraft, type StyleRow, type TableRules } from "../../api";
+import { api, type Coverage, type IconRow, type KindRow, type ProjectRules, type ReferenceRow, type RuleDraft, type StyleRow, type TableRules } from "../../api";
 import { installCommands, runCommand } from "../../commands";
 import { referenceFormFor, type ProjectForm, type ReferenceForm } from "../../lib/ruleForms";
 import { resultValueAt } from "../../lib/values";
@@ -14,6 +14,7 @@ import { selectActiveTab, useStore, type TableTab } from "../../state/store";
 import { connectedStore, readoutOf, resultSet, table } from "../../test/fixtures";
 import { browseOrderTables, objectDocument, orderAddress, paidViaSource } from "../../test/objectFixtures";
 import { changeLine, describeRuleTable, orderItemsRule, projectRules, referenceRow, tableRules, woocommercePreset } from "../../test/projectFixtures";
+import { rulesInfoOf } from "../../test/iconFixtures";
 import { ResultsGrid } from "../ResultsGrid";
 
 const mocked = vi.mocked(api, true);
@@ -96,7 +97,7 @@ describe("ProjectPanel", () => {
     mocked.readout.mockResolvedValue(readoutOf());
     mocked.referenceCoverage.mockResolvedValue(coverage());
     mocked.chooseSavePath.mockResolvedValue(null);
-    mocked.rulesInfo.mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: ["woocommerce"], availablePresets: ["woocommerce"], entities: [], tableEntities: {} });
+    mocked.rulesInfo.mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: ["woocommerce"], availablePresets: ["woocommerce"], entities: [], tableEntities: {}, tableIcons: {} });
   });
 
   describe("opening the page", () => {
@@ -288,6 +289,27 @@ describe("ProjectPanel", () => {
         );
         await openOverview();
         expect(await screen.findByRole("row", { name: "set presets woocommerce" })).toHaveTextContent("· auto woocommerce, yoast");
+      });
+
+      it("lists an icon change with the icon it replaced and undoes it with removeIcon", async () => {
+        const line = changeLine({ action: "edited", rule: "icon", origin: { kind: "project" }, id: null, text: "users → user", was: "users → menu", table: "wp_users", undo: { op: "removeIcon", table: "users" }, edit: null });
+        mocked.projectRules.mockResolvedValue(projectRules({ changes: [line] }));
+        await openOverview();
+        const row = await screen.findByRole("row", { name: "edited icon users → user" });
+        expect(row).toHaveTextContent("edited icon · project");
+        expect(row).toHaveTextContent("· was users → menu");
+        await userEvent.click(within(row).getByRole("button", { name: "reset" }));
+        expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeIcon", table: "users" });
+      });
+
+      it("removes an added icon rule", async () => {
+        const line = changeLine({ action: "added", rule: "icon", origin: { kind: "project" }, id: null, text: "orders → receipt", was: null, table: "wp_wc_orders", undo: { op: "removeIcon", table: "orders" }, edit: null });
+        mocked.projectRules.mockResolvedValue(projectRules({ changes: [line] }));
+        await openOverview();
+        const row = await screen.findByRole("row", { name: "added icon orders → receipt" });
+        expect(within(row).queryByRole("button", { name: "edit" })).not.toBeInTheDocument();
+        await userEvent.click(within(row).getByRole("button", { name: "remove" }));
+        expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeIcon", table: "orders" });
       });
 
       it.each([
@@ -959,6 +981,111 @@ describe("ProjectPanel", () => {
         expect(row).toHaveTextContent("preset woocommerce");
         expect(within(row).queryByRole("button")).not.toBeInTheDocument();
       });
+    });
+  });
+
+  describe("table icons", () => {
+    const iconRow = (patch: Partial<IconRow> = {}): IconRow => ({ origin: { kind: "preset", preset: "wordpress" }, icon: "menu", pattern: "*meta", shipped: null, ...patch });
+    const showIcon = async (icon: IconRow | null) => {
+      mocked.projectRules.mockResolvedValue(rulesWith({ icon }));
+      await openProjectPage();
+      return within(await screen.findByRole("group", { name: "icon of wp_wc_order_items" }));
+    };
+    const picker = () => screen.findByRole("dialog", { name: "Icon for wp_wc_order_items" });
+    const openPicker = async (icon: IconRow | null) => {
+      const control = await showIcon(icon);
+      await userEvent.click(control.getByRole("button", { name: "icon…" }));
+      return within(await picker());
+    };
+
+    it("shows the icon, its name, its origin and the rule's pattern", async () => {
+      const control = await showIcon(iconRow());
+      expect(control.getByText("menu")).toBeInTheDocument();
+      expect(control.getByText(/preset wordpress:/)).toHaveTextContent("preset wordpress: *meta");
+      expect(screen.getByRole("group", { name: "icon of wp_wc_order_items" }).querySelector("[data-icon=menu]")).not.toBeNull();
+    });
+
+    it("says no icon for a table without an icon rule", async () => {
+      const control = await showIcon(null);
+      expect(control.getByText("no icon")).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "icon of wp_wc_order_items" }).querySelector("[data-icon]")).toBeNull();
+    });
+
+    it("shows no glyph for a rule that stores none", async () => {
+      const control = await showIcon(iconRow({ icon: "none", origin: { kind: "project" }, pattern: "wc_order_items" }));
+      expect(control.getByText("none")).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "icon of wp_wc_order_items" }).querySelector("[data-icon]")).toBeNull();
+    });
+
+    it("says what the preset shipped for a project icon that overrides it", async () => {
+      const shipped = { preset: "wordpress", icon: "menu" as const, pattern: "*meta" };
+      const control = await showIcon(iconRow({ origin: { kind: "project" }, icon: "users", pattern: "wc_order_items", shipped }));
+      expect(control.getByText(/edited in project, was menu/)).toBeInTheDocument();
+    });
+
+    it("sends the chosen icon for the table's rule name and closes the picker", async () => {
+      const sheet = await openPicker(iconRow());
+      expect(sheet.getByRole("button", { name: "menu" })).toHaveAttribute("aria-pressed", "true");
+      expect(sheet.getByRole("button", { name: "users" })).toHaveAttribute("aria-pressed", "false");
+      await userEvent.click(sheet.getByRole("button", { name: "users" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setIcon", rule: { table: "wc_order_items", icon: "users" } });
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("sends none to switch off an icon a preset gives", async () => {
+      const sheet = await openPicker(iconRow());
+      await userEvent.click(sheet.getByRole("button", { name: "None" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setIcon", rule: { table: "wc_order_items", icon: "none" } });
+    });
+
+    it("closes the picker on Cancel without storing anything", async () => {
+      const sheet = await openPicker(iconRow());
+      await userEvent.click(sheet.getByRole("button", { name: /^Cancel/ }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(mocked.projectUpdate).not.toHaveBeenCalled();
+    });
+
+    it("toasts when the icon cannot be stored", async () => {
+      mocked.projectUpdate.mockRejectedValue({ kind: "invalid_input", message: "Unknown icon", code: null });
+      const sheet = await openPicker(iconRow());
+      await userEvent.click(sheet.getByRole("button", { name: "users" }));
+      await waitFor(() => expect(useStore.getState().toasts.at(-1)?.message).toContain("Unknown icon"));
+    });
+
+    it("resets a project icon that overrides a preset's to the preset with removeIcon", async () => {
+      const shipped = { preset: "wordpress", icon: "menu" as const, pattern: "*meta" };
+      const sheet = await openPicker(iconRow({ origin: { kind: "project" }, icon: "users", pattern: "wc_order_items", shipped }));
+      await userEvent.click(sheet.getByRole("button", { name: "Reset to preset" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeIcon", table: "wc_order_items" });
+    });
+
+    it("removes a project icon that overrides nothing by its pattern", async () => {
+      const sheet = await openPicker(iconRow({ origin: { kind: "project" }, icon: "users", pattern: "wc_order_*" }));
+      expect(sheet.queryByRole("button", { name: "Reset to preset" })).not.toBeInTheDocument();
+      await userEvent.click(sheet.getByRole("button", { name: "Remove wc_order_*" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeIcon", table: "wc_order_*" });
+    });
+
+    it("offers neither reset nor remove for a preset's icon", async () => {
+      const sheet = await openPicker(iconRow());
+      expect(sheet.queryByRole("button", { name: "Reset to preset" })).not.toBeInTheDocument();
+      expect(sheet.queryByRole("button", { name: /^Remove / })).not.toBeInTheDocument();
+    });
+
+    it("offers no icon… for a table outside the prefixes, where no rule can name it", async () => {
+      mocked.projectRules.mockResolvedValue(projectRules({ groups: [tableRules("legacy_orders", { icon: null })] }));
+      await openProjectPage();
+      const control = within(await screen.findByRole("group", { name: "icon of legacy_orders" }));
+      expect(control.getByText("no icon")).toBeInTheDocument();
+      expect(control.queryByRole("button", { name: "icon…" })).not.toBeInTheDocument();
+    });
+
+    it("draws the table's icon in its band", async () => {
+      mocked.rulesInfo.mockResolvedValue(rulesInfoOf({ wp_wc_order_items: "package" }));
+      mocked.projectRules.mockResolvedValue(rulesWith({ icon: iconRow({ icon: "package" }) }));
+      await openProjectPage();
+      const band = (await tableRegion()).querySelector(".tn")!;
+      await waitFor(() => expect(band.querySelector("[data-icon=package]")).not.toBeNull());
     });
   });
 

@@ -11,10 +11,10 @@ import { ActionButtons, referenceLabel } from "./ReferenceLines";
 
 const ACTION_TEXT: Record<ChangeAction, string> = { added: "added", edited: "edited", switchedOff: "switched off", switchedOn: "switched on", set: "set" };
 
-const RULE_TEXT: Record<ChangedRule, string> = { reference: "reference", valueStyle: "value style", kind: "kind", prefix: "prefix", networkPrefix: "network prefix", presets: "presets", unknown: "rule" };
+const RULE_TEXT: Record<ChangedRule, string> = { reference: "reference", valueStyle: "value style", kind: "kind", icon: "icon", prefix: "prefix", networkPrefix: "network prefix", presets: "presets", unknown: "rule" };
 
 /** What `was` is to the line: the shipped rule, or the value without the project's setting. */
-const WAS_TEXT: Record<ChangedRule, string> = { reference: "was", valueStyle: "was", kind: "was", prefix: "suggested", networkPrefix: "suggested", presets: "auto", unknown: "was" };
+const WAS_TEXT: Record<ChangedRule, string> = { reference: "was", valueStyle: "was", kind: "was", icon: "was", prefix: "suggested", networkPrefix: "suggested", presets: "auto", unknown: "was" };
 
 function undoText(line: ProjectChangeLine): string {
   if (line.action === "added") return "remove";

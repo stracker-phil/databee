@@ -44,10 +44,14 @@ interface Props {
   onResize: (px: number) => void;
   onCommit: (px: number) => void;
   label: string;
+  /** A double-click: back to the default sizes. */
+  onReset?: () => void;
+  /** The handle's Stage anchor. */
+  stage?: string;
 }
 
 /** Drag handle between two panes; arrow keys resize in steps. */
-export function Splitter({ axis, paneAfter, size, min, max, onResize, onCommit, label }: Props) {
+export function Splitter({ axis, paneAfter, size, min, max, onResize, onCommit, label, onReset, stage }: Props) {
   const sign = paneAfter ? -1 : 1;
   // Removes the window listeners and the body cursor class of a drag in progress.
   const stopDrag = useRef<(() => void) | null>(null);
@@ -91,7 +95,10 @@ export function Splitter({ axis, paneAfter, size, min, max, onResize, onCommit, 
       aria-valuenow={size}
       aria-valuemin={min}
       aria-valuemax={max}
+      data-stage={stage}
+      data-stage-label={stage && label}
       onMouseDown={start}
+      onDoubleClick={onReset}
       onKeyDown={onKeyDown}
     />
   );

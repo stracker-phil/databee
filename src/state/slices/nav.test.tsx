@@ -285,34 +285,6 @@ describe("navigateTab", () => {
     expect(useStore.getState().activeTabId).toBe("t1");
   });
 
-  describe("with a second row", () => {
-    const user12 = address("shop", "db", { kind: "row", table: "wp_users", key: "12" });
-
-    it("opens both rows as columns with the second one active and addresses the second", () => {
-      act(() => useStore.getState().navigateTab("t1", post7, user12));
-      const tab = tabById("t1")!;
-      expect(tab).toMatchObject({
-        kind: "object",
-        preview: true,
-        columns: [{ kind: "object", address: { target: { table: "wp_posts", key: "7" } } }, { kind: "object", address: { target: { table: "wp_users", key: "12" } } }],
-        active: 1,
-        address: { target: { kind: "row", table: "wp_users", key: "12" } },
-      });
-      expect(entries(tab, "back")).toEqual([["table", "databee://shop/db/wp_posts"]]);
-    });
-
-    it("ignores a second address that is not a row", () => {
-      act(() => useStore.getState().navigateTab("t1", post7, options));
-      expect(tabById("t1")).toMatchObject({ kind: "object", columns: [{ address: { target: { key: "7" } } }], active: 0 });
-    });
-
-    it("goes back to the table the row pair was opened from", async () => {
-      act(() => useStore.getState().navigateTab("t1", post7, user12));
-      await act(() => useStore.getState().navBack());
-      expect(tabById("t1")).toMatchObject({ kind: "table", table: "wp_posts", where: [] });
-    });
-  });
-
   it("turns an object tab into the whole table in the data view", () => {
     act(() => useStore.getState().navigateTab("t1", post7));
     act(() => useStore.getState().navigateTab("t1", wholeTable(post7)));

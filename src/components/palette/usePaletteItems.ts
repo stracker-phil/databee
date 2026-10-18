@@ -21,6 +21,8 @@ export interface Item {
   note?: string;
   binding?: string;
   hit?: PaletteHit;
+  /** The table a table item opens, for its icon. */
+  table?: { database: string; table: string };
   go: () => void;
   /** ⌘↵: tables and addresses open in a kept tab, row hits in a new tab. */
   goAlt?: () => void;
@@ -117,6 +119,7 @@ function recentItems(recent: RecentNav[], prefix: Prefix, needle: string): Item[
     section: "Recent",
     title: recentTitle(r),
     badge: r.kind === "entity" ? r.entity : "table",
+    table: r.kind === "entity" ? undefined : { database: r.database, table: r.table },
     go: () => {
       close();
       if (r.kind === "entity") void openEntity(r.entity, r.id);
@@ -138,7 +141,7 @@ function tableItems(tables: TableInfo[], database: string | null, prefix: Prefix
         close();
         if (database) openTableTab(database, t.name, undefined, undefined, { preview });
       };
-      return { key: `table:${t.name}`, section: "Tables", title: t.name, badge: t.isView ? "view" : "table", go: () => open(true), goAlt: () => open(false) };
+      return { key: `table:${t.name}`, section: "Tables", title: t.name, badge: t.isView ? "view" : "table", table: database ? { database, table: t.name } : undefined, go: () => open(true), goAlt: () => open(false) };
     });
 }
 

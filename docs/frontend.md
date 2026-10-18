@@ -43,13 +43,13 @@ Layout:
 App
 ├─ ConnectScreen                       (no session)
 └─ .app grid
-   ├─ Toolbar                          connection / database text (pickers), back/forward, Path, search field (palette), icon buttons
+   ├─ Toolbar                          connection / database text (pickers), back/forward, search field (palette), icon buttons
    ├─ Workspace: [Sidebar |] TabBar + TabPanels
    │       TabPanels → Readout (header, needs attention, recently created, pinned, recently opened; [Readout](#readout))
    │                 → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel) [| value column]
    │                 → TableTab (filter bar + ResultsGrid | StructureView) [| value column]
-   │                 → ObjectPanel: Strip | column (ObjectColumnView: ObjectHeader, DocumentView | RowsView,
-   │                                or ValueColumnView) per stack column
+   │                 → ObjectPanel: Trail, then the shown panes with Splitters between them (ObjectColumnView:
+   │                                ObjectHeader, DocumentView | RowsView, or ValueColumnView)
    │                 → ProjectPanel (header, Overview: changes + problems | all rules: filter, a band per table; rule sheet)
    ├─ PendingTray
    ├─ StatusBar                        ▤ sidebar toggle, provenance or address, presets, pending n, live
@@ -274,11 +274,11 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 
 | Area | Components |
 |---|---|
-| Shell | `Toolbar`, `Path` (the column stack's crumbs), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
+| Shell | `Toolbar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
-| Objects | `object/`: `ObjectPanel` (the stack, strips), `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
+| Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
 | Readout | `readout/Readout.tsx`, see [Readout](#readout) |
@@ -363,8 +363,8 @@ survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There 
   each name (`Connection` only with several sessions, `Database` always) opens the picker. `NavButtons` (back
   and forward, `toolbar:back`/`toolbar:forward`) show for a table or object tab, run `nav.back`/`nav.forward`
   through `runCommand`, are disabled while `selectCanNav` finds no history and name the bound key in their
-  title. `Path` shows the active object tab's table and stack (see [Column stack](#column-stack)), or a table
-  tab's table with `(filtered)`. `SearchField` is a
+  title. Nothing between them and the search field: an object tab's place is its trail (see
+  [Column stack](#column-stack)), a table tab's table is its title. `SearchField` is a
   button styled as a field (label "Go to") that opens the palette; its key cap follows `palette.open`.
 - **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (the provenance of
   the hovered or selected value while there is one, see [Values](#values); otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
@@ -390,17 +390,19 @@ not known to be missing, an enum, serialized data in a grid); the caller decides
 object `owner` shows switches that object between Document and Rows instead), a reference opens its target
 (several: a menu), serialized data opens a value column (`showValue`), an enum runs `value.filter`. Inside an
 object tab's column (`ColumnContext`, `{ tabId, index }`) a target or another row opens as the next column
-(`drill`). A reference opens in an `OpenMode` (`openTarget(target, place, mode, from)`): `drill` (the next
-column; in a table tab `navigateTab(tab.id, from's row, target)`, the row with the target drilled) or `go`
-(`navigateTab` of the stack's or table tab to the target; elsewhere the preview tab); a click uses
-`clickMode(place)` (`drill` in a stack, `go` elsewhere), a menu of several targets keeps the mode it was opened
-with, and without a mode (Peek) it is a column of the stack or the preview tab. A reference that acts on click
-also renders `RefActions`: `.val-act` icon buttons (ExternalLink = `go`, ChevronRight = `drill`, in the modes
-`useOpenModes(value)` allows: both in a stack and in a table tab for a value whose row key is one column, else
-`go`) that call `onOpen(value, event, mode)`. They sit in `.val-acts`, absolute at the right edge of the nearest
-cell (`.grid-cell`, a `.row` child, `.summary-pair`), shown on hover or focus over a gradient to `--acts-bg`
-(set per cell state in `styles/app.css`); they stop mousedown, click and double-click from reaching the grid or
-field and take no tab stop. A secret reveals on its own. A style
+(`drill`). `clickEffect(value, density, owner, place)` says what a click does: `drill` (a column opens: the next
+column of the stack for a row target or another row's key, a value column for serialized data in a grid), `go`
+(the whole view moves or a tab opens: `openTarget` moves a table tab in place with `navigateTab`, elsewhere the
+preview tab) or `null` (an enum filters, the own row's key toggles the view). The handlers use the same
+predicates (`targetEffect` for reference targets, the own-row test of `openRowObject`). The `openValue` that
+`useOpenValue` returns carries `effect(value, density)` (`OpenValue` in `Value.tsx`), and `Value` renders
+`OpenHint` (`value/OpenHint.tsx`) with it: ChevronRight for `drill`, ExternalLink for `go`, `aria-hidden`, no
+button and no handlers. With `edge` it is a `.val-acts` span, absolute at the right edge of the nearest cell
+(`.grid-cell`, a `.row` child, `.summary-pair`), shown while that cell is hovered or focused over a gradient to
+`--acts-bg` (set per cell state in `styles/app.css`); a number cell reserves its width on hover. Without `edge`
+it is an inline `.open-hint` after a link's text (group bands, object header, "Also matched", readout links),
+visible while its parent is hovered. A reference also shows its target table's icon before its text
+(`TargetIcon`, when every target is in one table; [Table icons](#table-icons)). A secret reveals on its own. A style
 sets `color: var(--style-<name>)`. CSS classes are `val` and `val-<kind>` (`styles/app.css`, values).
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
@@ -413,8 +415,7 @@ is on no value: Document rows (`groups.tsx`, the group's table; events rows, the
 (`ResultsGrid`, when every sourced value of the row shares one table), readout rows and palette hits
 (`PaletteList`, which runs its own `useValueHover` since the palette is outside `AppShell`). The status
 bar's address slot shows `hover.src`, else the provenance of `selectedCell.value`, else the address.
-Interactive values with a provenance are Stage anchors `value:<table>.<column>:<key>` (list `values`), a
-reference's icons `value-go:…` and `value-drill:…`.
+Interactive values with a provenance are Stage anchors `value:<table>.<column>:<key>` (list `values`).
 A reference with one target also carries `data-ref` (the target address), `data-via` (its column) and `data-by`
 (the rule, `bySourceText`) for the peek.
 
@@ -453,6 +454,27 @@ Bare keys never fire in inputs or the editor (`resolveKeydown`).
 Binary cells offer none of `Y`, `e`, `f` and the rule commands, since their cell holds only a preview. The grid's
 cell menu and the Document view's value menu (right-click) list `RULE_MENU`: "Add reference…", "Kind…",
 "Style…".
+
+### Table icons
+
+`components/TableIcon.tsx` maps the curated icon names (the `TableIcon` type, generated from the Rust enum
+`rules::icons::TableIcon`) to lucide components in `TABLE_ICONS` (static imports; `Record<Exclude<TableIcon,
+"none">, LucideIcon>`, so tsc fails when the two lists differ) and `ICON_NAMES` lists them for the picker.
+`useTableIcon(database, table, sessionId?)` reads `rulesInfo[projectKey(session, database)].tableIcons[table]`
+(session: the given one, else the active one), a string, so one selector per component is cheap; when the
+database's `rulesInfo` is missing it calls `ensureRulesInfo` (`project` slice), which loads it once however many
+components ask. `<TableIcon database table sessionId? fallback? />` renders `IconGlyph` (`.tbl-icon`, `1em`,
+`--o2`, `aria-hidden`, `data-icon=<name>`) or `fallback`. It is placed before table names: `Sidebar` rows,
+table and object tabs (`tabViews.tsx`, the generic icon as fallback), `GroupHeader`, `ObjectHeader` (and its
+"Also matched"), palette table items and hits (`PaletteList`), the readout (status values, entity queries,
+recently created, recently opened), `TableSection`; and in `Value` before a reference (`TargetIcon`).
+
+`project/IconControl.tsx` shows a table's `IconRow` (`[icon] menu · preset wordpress: *meta`, `· edited in
+project, was …`) and "icon…", which opens `IconPicker` in a `Modal` (`rule-sheet icon-sheet`): a grid of
+`ICON_NAMES` (the current one pressed), "None" (`setIcon` with `none`), "Reset to preset" or "Remove <pattern>"
+for a project rule (`removeIcon` of its pattern), Cancel. A choice stores `setIcon { rule: { table: <rule
+name>, icon } }` through `ProjectContext.change` (`changeProject`), so it bumps `dataVersion` and reloads
+`rulesInfo` like any rule edit. Without a rule name (a table outside the prefixes) there is no picker.
 
 ### Results grid
 
@@ -507,7 +529,8 @@ column. One grid row per column (`role="row"`, Stage anchor `structure:column:<n
 `nullable`/`not null`, `default …`, extras, comment in `--o3`), key marks (`PK`, `UNI`/`idx` with the index name and the column's
 position in it), then the kind, reference and value-style cells, each a stack of rule items. Below:
 a "meta keys" block per `MetaKeyRules`, "Referenced by", "Entities", "Actions" (`writesSummary` from
-`object/actions.ts`) and the DDL.
+`object/actions.ts`) and the DDL. Above the columns, the table's `IconControl` (`TableProfile.icon`;
+[Table icons](#table-icons)).
 
 - **Rule items** (`structure/RuleItems.tsx`): `ReferenceItem`, `KindItem`, `StyleItem`, each a mono main line
   and a meta line with the origin (`ruleOriginText`, a glob kind or style adds its pattern), coverage
@@ -584,7 +607,7 @@ the [readout](#readout) lists.
   takes the selected cell's provenance as `focus`. Both views of a column share its `.object` scroll container
   (`overflow-anchor: none`), so `useViewScroll` keeps each view's own offset per column: a view starts at the
   top the first time, gets its offset back later (re-applied while its grids still load), then reveals the
-  focused value. A column that collapses to a strip and back starts at the top again.
+  focused value. A column that is hidden and shown again starts at the top.
 - **Collapse:** every `GroupHeader` has a chevron button (`aria-expanded`, "Collapse/Expand <table>"); it and a
   click on the band outside its buttons call `toggleGroupCollapsed(identity, database, "<document table>::<group id>")`
   (`ui` slice), stored in `UiState.collapsedGroups` by database (`ui_state.json`, debounced), so the choice holds
@@ -631,7 +654,8 @@ Rust diffs; the page keeps the marks and draws them ([backend](backend.md#watche
 
 `ObjectTab.columns` (`StackColumn[]`, `lib/columns.ts`) holds `ObjectColumn`s and `ValueColumn`s
 (`{ value, text, database }`: a stored value and its full text, after a queued edit the edited text); `active`
-is the column `h`/`l` move, the path marks and the value commands act on. The `columns` slice
+is the column `h`/`l` move, the trail marks and the value commands act on; `paneWidths` and `maximized` are the
+tab's pane layout (never stored). The `columns` slice
 (`slices/columns.ts`) changes it:
 
 - `drill(tabId, from, target)`: `target` as an object column after column `from`, closing any to its right,
@@ -639,22 +663,46 @@ is the column `h`/`l` move, the path marks and the value commands act on. The `c
 - `openValueColumn(tabId, from, column)`: the same for a value column; for a table or query tab (`from` null)
   it sets the tab's `valueColumn`, which `WithValueColumn` (`tabViews.tsx`) renders right of the tab.
   `updateValueColumn` keeps an edited text.
-- `popToColumn(tabId, index)` (a strip, a crumb, the close button of a drilled column), `closeRightmostColumn()` (`Esc`, `columns.close`; a table or
-  query tab's value column first), `setActiveColumn(tabId, index)` (a mousedown in a column, in the capture
-  phase so the column is active before a grid selects), `moveActiveColumn(delta)` (`h`/`l`). A new active
-  column drops the tab's grid selection.
+- `popToColumn(tabId, index)` (the close button of a drilled column), `closeRightmostColumn()` (`Esc`,
+  `columns.close`; a table or query tab's value column first, then a maximized stack is restored before any
+  column closes), `setActiveColumn(tabId, index)` (a mousedown in a column, in the capture phase so the column
+  is active before a grid selects; a trail crumb), `moveActiveColumn(delta)` (`h`/`l`). A new active column
+  drops the tab's grid selection.
+- `setPaneWidths(tabId, widths)`: the shares of the shown panes (summing to 1; null: equal).
+  `toggleMaximized(tabId)`: only the active column shows. A stack down to one column drops `maximized`
+  (`withTab`); drilling, popping and back/forward keep it (`objectified` carries the layout of an object tab),
+  so the new active column shows maximized.
 
-`ObjectPanel` is the stack: it measures its width (`ResizeObserver`) and `shownColumns(count, active, width)`
-picks the columns shown in full (at least `MIN_COLUMN_WIDTH`, 420px, next to 34px strips for the others,
-ending at the newest unless the active column lies further left). The rest render as `Strip` buttons with a
-vertical `table #key`; one left of the active column pops back to it, one right of it becomes active. The active
-column (`aria-current`) gets a 2px accent line on top when there are several, and takes the keyboard focus
-(`tabIndex=-1`) when nothing outside the stack holds it.
+`ObjectPanel` is the trail and the stack: it measures the stack's width (`useWidth`, a `ResizeObserver`) and
+`shownColumns(count, active, width, maxPanes)` (`lib/columns.ts`) picks the panes, `[start, end)`: at most
+`maxPanes` (`selectMaxPanes`, the `maxPanes` setting), as many as fit at `MIN_PANE_WIDTH` (560px) with
+`DIVIDER_WIDTH` between them, one always, ending at the newest unless the active column lies further left. A
+maximized tab shows only the active column. Only the shown columns mount; a hidden one has no DOM. Each pane is
+a `section` (`aria-current` when active, a 2px accent line on top while several show) with `flex-grow` from
+`paneShares(tab.paneWidths, panes)` and, beside others, `min-width: MIN_PANE_WIDTH`. Shares of another number
+of panes are cleared (`useResetShares`), except while maximized. The active column takes the keyboard focus
+(`tabIndex=-1`) when it or the shown panes change and nothing outside the panel holds it (`useFocusActive`).
 
-**Path** (`Path.tsx`, in the toolbar): `TableCrumb` first, the root row's table, which calls
-`navigateTab(tab.id, wholeTable(root address))`; then one crumb per column, the name from the column's document
-entity, else the table's only entity in `rulesInfo.tableEntities`, else the table name; every crumb but the
-last pops to its column. For a table tab `TablePath` shows the table as the current location.
+`PaneDivider` is a `Splitter` between two panes (`role="separator"`, vertical, `aria-valuenow` the left pane's
+width in px, ← / → in 16px steps, "Resize <left> and <right>"): a drag sets the two panes' `flex-grow` directly
+and commits the shares with `setPaneWidths` on release, clamped so both keep `MIN_PANE_WIDTH`; a double-click
+(`onReset`) makes them equal. `Splitter` takes an optional `stage` anchor and `onReset`.
+
+`PaneMaximize` (`PaneMaximize.tsx`) is the toggle in a pane's header ("Maximize pane" / "Restore panes",
+`aria-pressed`, `Maximize2` / `Minimize2`): `ObjectHeader` renders it when it has a `place`, `ValueColumnView`
+always; it reads `PaneContext`, which each pane provides while `maximizable(tab, maxPanes)` holds (several
+columns and `maxPanes` > 1, or maximized), so it is absent in table and query tabs. It makes its pane active,
+then calls `toggleMaximized`.
+
+**Trail** (`Trail.tsx`, `nav` "Trail" above the stack): the root row's table ("Open table <table>", which calls
+`navigateTab(tab.id, wholeTable(root address))`), then one crumb per column, the name from the column's
+document entity, else the table's only entity in `rulesInfo.tableEntities`, else the table name (`crumbName`), a
+value column's column name; `aria-current="location"` on the active one. The crumbs of the shown panes are
+wrapped in `.trail-panes`. Every column crumb calls `setActiveColumn`, so a hidden column shows without closing
+any. `trailUnits(count, start, end, table, steps)` (`lib/trail.ts`) folds hidden crumbs into "…" buttons
+(`TrailMore`, before and after the panes) whose `ContextMenu` lists them; `useFolds` adds one fold per layout
+pass while the `nav` overflows (`scrollWidth > clientWidth`) and starts over when the width, the panes or a
+crumb change. With nothing left to fold (`.tight`) names end in an ellipsis instead.
 
 **Object header** (`ObjectHeader.tsx`): with a `place` (`ColumnPlace`: tab id and column index, passed by
 `ObjectColumnView` and to the left side of `CompareView`) the table name is a button ("Open table <table>",
@@ -669,11 +717,13 @@ from the entry's own `stack` when the tab was a table tab in between), else move
 **Keys** (`commands/columns.ts`, `COLUMN_COMMANDS`, rebindable): `object.down`/`object.downArrow` (`J`, ↓) and
 `object.up`/`object.upArrow` (`K`, ↑) move the focus of a Document column through `focusOrder(document,
 collapsed)` (`lib/document.ts`: the values in view order, collapsed groups and the repeating `events` left out);
-`object.left`/`object.right` and their arrows move the active column; `object.drill` (Enter) opens the focused
+`object.left`/`object.right` and their arrows move the active column (a hidden one shows); `object.drill` (Enter) opens the focused
 value (`openValueAt`: one reference target or another row's key as the next column, the own key toggles the
-view, serialized data as a value column); `columns.close` (Escape, scope `global`) closes the rightmost column.
-They act only while the keyboard focus is in `.stack` or on nothing, never in inputs; the arrows and Enter leave
-a focused grid alone, Enter a focused button, Escape an open menu.
+view, serialized data as a value column); `columns.close` (Escape, scope `global`) restores a maximized stack, else closes the rightmost column;
+`column.maximize` (⌘⇧↵, scope `object`, no conflict with `editor.runAll` in the `editor` scope) toggles
+maximize of the active pane while `maximizable` holds. They act only while the keyboard focus is in `.stack`,
+the `.trail` or on nothing, never in inputs; the arrows and Enter leave a focused grid or pane divider alone,
+Enter a focused button, Escape an open menu.
 
 ### Addresses and history
 
@@ -704,10 +754,9 @@ results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's
   needs the primary key, so they load the structure first), an object entry the stack its address had
   ([Column stack](#column-stack)). They are enabled only while `selectCanNav` finds history, so ⌘[ still
   outdents in the editor.
-- **`navigateTab(tabId, address, then?)`:** moves a table or object tab in place (same id, tab bar position, preview
+- **`navigateTab(tabId, address)`:** moves a table or object tab in place (same id, tab bar position, preview
   flag and history), recording the entry being left: a row address makes it an object tab with that row as its
-  only column (with row `then` as a second, active column: a table tab's reference opened in the side panel),
-  a table address a table tab of it (Data view; a table tab keeps its view). The title is
+  only column, a table address a table tab of it (Data view; a table tab keeps its view). The title is
   recomputed and the tab's grid selection cleared; the panel remounts with the kind, so no table page state
   survives. `wholeTable(address)` is a row's unfiltered table address. A value click handler moves the active
   tab with `const tab = selectActiveTab(s); if (tab?.kind === "table" || tab?.kind === "object")
@@ -772,7 +821,8 @@ address call it. It has no history (`nav` stays empty).
   (`loadReadout`, the `readouts` cache); "Open rows" opens the source table with the coverage's `rows` filter.
   The per-table listing is a filter over `ProjectRules.groups` by table name (component state) and "Refresh
   coverage", then a `TableSection` per group: a band collapsed
-  through `useCollapsedGroups(tab.address)` with the id `project:<table>`, `ReferenceLines` (rows and the
+  through `useCollapsedGroups(tab.address)` with the id `project:<table>` (the table's icon before its name),
+  the table's `IconControl` ([Table icons](#table-icons)), `ReferenceLines` (rows and the
   `ReferencedByLine`), and from `RuleSections` `StyleLines`, `KindLines` and `EntityActionLines`. Rows get a
   `RuleSwitch` and `ActionButtons`; the Rust rows decide which (`id`, `origin`, `edited`). They share
   `ProjectContext` (`context.ts`) and the `:is(.object, .project)` band and row classes.
@@ -848,7 +898,7 @@ list above 200:
   from every row (`charWidth`, `lib/format.ts`), not from the rendered ones. Rows that are not rendered have
   no `data-stage` anchors.
 - Not virtualized, because they stay short: the palette (at most 80 items, `MAX_ITEMS`), the column stack
-  (only the columns that fit render in full, the rest as strips), anomalies, the created timeline and recent objects.
+  (only the shown panes render), anomalies, the created timeline and recent objects.
   Rust caps most Document groups (`META_CAP`, 50 keys, and `ROWS_CAP`, 20 rows; `+n keys` opens the Rows
   view), but not the own row of a wide table or the `events` group, so `LongList` covers them all.
 

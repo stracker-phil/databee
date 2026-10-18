@@ -203,7 +203,7 @@ export type ChangeRequest = { "type": "setCell", database: string, table: string
 /**
  * `Unknown`: a switched-off id that names no rule of this database.
  */
-export type ChangedRule = "reference" | "valueStyle" | "kind" | "prefix" | "networkPrefix" | "presets" | "unknown";
+export type ChangedRule = "reference" | "valueStyle" | "kind" | "icon" | "prefix" | "networkPrefix" | "presets" | "unknown";
 
 /**
  * `column = value`, or `column IS NULL` for a `None` value.
@@ -512,6 +512,29 @@ truncated: boolean, executedAt: string, elapsedMs: number, error: string | null,
 
 export type Home = { "show": "rows", limit?: number | null, } | { "show": "count" } | { "show": "value" };
 
+/**
+ * The icon rule that applies to a table, `none` included.
+ */
+export type IconRow = { 
+/**
+ * `project` or `preset`.
+ */
+origin: RuleOrigin, icon: TableIcon, 
+/**
+ * The rule's `table` as written: a name without prefix or a glob.
+ */
+pattern: string, 
+/**
+ * The presets' rule for the table, which a project rule overrides and `removeIcon` brings
+ * back.
+ */
+shipped: ShippedIcon | null, };
+
+/**
+ * `table` is a name without prefix or a glob (`*meta`).
+ */
+export type IconRule = { table: string, icon: TableIcon, };
+
 export type IndexInfo = { name: string, unique: boolean, columns: Array<string>, };
 
 /**
@@ -699,7 +722,7 @@ marker_tables: Array<string>,
 /**
  * Tables that exist once per network, resolved under the network prefix (`{np}`).
  */
-network_tables: Array<string>, meta: Array<MetaTable>, references: Array<Reference>, entities: Array<Entity>, kinds: Array<KindRule>, styles: Array<StyleRule>, patterns: Array<Pattern>, pinned: Array<Pinned>, anomalies: Array<Anomaly>, actions: Array<Action>, finds: Array<FindSource>, };
+network_tables: Array<string>, meta: Array<MetaTable>, references: Array<Reference>, entities: Array<Entity>, kinds: Array<KindRule>, styles: Array<StyleRule>, patterns: Array<Pattern>, pinned: Array<Pinned>, anomalies: Array<Anomaly>, actions: Array<Action>, finds: Array<FindSource>, icons: Array<IconRule>, };
 
 /**
  * One row of `presets_list`. A preset with an `error` does not apply.
@@ -758,12 +781,16 @@ enabled: Array<string>, kinds: Array<KindRule>,
 /**
  * Added styles, and styles that override the preset style with the same `id`.
  */
-styles: Array<StyleRule>, saved: Array<SavedQuery>, };
+styles: Array<StyleRule>, 
+/**
+ * Table icons; one per `table`, which beats a preset's icon for the tables it names.
+ */
+icons: Array<IconRule>, saved: Array<SavedQuery>, };
 
 /**
  * Kind rules have no id, so they are addressed by their index in the project.
  */
-export type ProjectChange = { "op": "addReference", reference: Reference, } | { "op": "updateReference", id: string, reference: Reference, } | { "op": "removeReference", id: string, } | { "op": "addKind", rule: KindRule, } | { "op": "updateKind", index: number, rule: KindRule, } | { "op": "removeKind", index: number, } | { "op": "addStyle", rule: StyleRule, } | { "op": "updateStyle", id: string, rule: StyleRule, } | { "op": "removeStyle", id: string, } | { "op": "enableStyle", id: string, } | { "op": "disableStyle", id: string, } | { "op": "disable", id: string, } | { "op": "enable", id: string, } | { "op": "setPrefix", prefix: string | null, } | { "op": "setNetworkPrefix", prefix: string | null, } | { "op": "setPresets", presets: Array<string> | null, };
+export type ProjectChange = { "op": "addReference", reference: Reference, } | { "op": "updateReference", id: string, reference: Reference, } | { "op": "removeReference", id: string, } | { "op": "addKind", rule: KindRule, } | { "op": "updateKind", index: number, rule: KindRule, } | { "op": "removeKind", index: number, } | { "op": "addStyle", rule: StyleRule, } | { "op": "updateStyle", id: string, rule: StyleRule, } | { "op": "removeStyle", id: string, } | { "op": "enableStyle", id: string, } | { "op": "disableStyle", id: string, } | { "op": "disable", id: string, } | { "op": "enable", id: string, } | { "op": "setIcon", rule: IconRule, } | { "op": "removeIcon", table: string, } | { "op": "setPrefix", prefix: string | null, } | { "op": "setNetworkPrefix", prefix: string | null, } | { "op": "setPresets", presets: Array<string> | null, };
 
 export type ProjectChangeLine = { action: ChangeAction, rule: ChangedRule, 
 /**
@@ -1011,7 +1038,11 @@ appliedPresets: Array<string>, availablePresets: Array<string>, entities: Array<
 /**
  * Entity names by real table, filtered entities first.
  */
-tableEntities: { [key in string]: Array<string> }, };
+tableEntities: { [key in string]: Array<string> }, 
+/**
+ * The icon by real table, for tables that have one.
+ */
+tableIcons: { [key in string]: TableIcon }, };
 
 /**
  * A saved query as the palette offers it, with `{p}`/`{np}` replaced. Preset queries are
@@ -1076,7 +1107,11 @@ fontUi: string | null,
 /**
  * An installed font family; `None` uses the bundled JetBrains Mono.
  */
-fontMono: string | null, rowLimit: number, queryTimeoutSecs: number, 
+fontMono: string | null, 
+/**
+ * How many columns of an object tab show side by side at most (1 to 3).
+ */
+maxPanes: number, rowLimit: number, queryTimeoutSecs: number, 
 /**
  * How often a live object column reads its row again.
  */
@@ -1085,6 +1120,8 @@ liveIntervalSecs: number, confirmDestructive: boolean, nullLabel: string,
  * Longer text cells cross IPC as a preview; `fetch_cell` returns the full value.
  */
 maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSystemSchemas: boolean, logLevel: LogLevel, };
+
+export type ShippedIcon = { preset: string, icon: TableIcon, pattern: string, };
 
 /**
  * What changed since snapshot `id`: its address read now against the stored cells.
@@ -1189,13 +1226,23 @@ export type SummaryValue = {
  */
 name: string, value: Value, };
 
+/**
+ * The icons a rule may name (lucide names; the page maps each to its component). `none` switches
+ * off an icon another rule gives.
+ */
+export type TableIcon = "none" | "user" | "users" | "menu" | "file-text" | "files" | "message-square" | "tag" | "tags" | "folder" | "settings" | "shopping-cart" | "receipt" | "package" | "credit-card" | "wallet" | "truck" | "clock" | "calendar" | "list" | "list-checks" | "database" | "key" | "lock" | "link" | "image" | "mail" | "globe" | "map-pin" | "star" | "bell" | "box" | "archive" | "layers" | "hash" | "activity" | "chart-bar" | "coins" | "store" | "ticket" | "bookmark" | "shield" | "code";
+
 export type TableInfo = { name: string, isView: boolean, rowsEstimate: number | null, sizeBytes: number | null, comment: string, };
 
 export type TableProfile = { table: string, 
 /**
  * The name rules write the table as (without prefix); `None` outside the prefix.
  */
-ruleName: string | null, columns: Array<ColumnProfile>, 
+ruleName: string | null, 
+/**
+ * The icon rule that applies to the table, as the Project page lists it.
+ */
+icon: IconRow | null, columns: Array<ColumnProfile>, 
 /**
  * The table's own meta-key rules when it is a meta table, then those of the meta tables
  * that describe its rows.
@@ -1214,7 +1261,7 @@ export type TableReferences = { outgoing: Array<ResolvedReference>, incoming: Ar
  * table), and the entities and actions on it. `table` is `None` for styles and kinds that cover
  * no table of this database.
  */
-export type TableRules = { table: string | null, references: Array<ReferenceRow>, referencedBy: Array<ReferencedBy>, styles: Array<StyleRow>, kinds: Array<KindRow>, entities: Array<EntityLine>, actions: Array<ActionLine>, };
+export type TableRules = { table: string | null, references: Array<ReferenceRow>, referencedBy: Array<ReferencedBy>, styles: Array<StyleRow>, kinds: Array<KindRow>, entities: Array<EntityLine>, actions: Array<ActionLine>, icon: IconRow | null, };
 
 export type TableStructure = { columns: Array<ColumnInfo>, indexes: Array<IndexInfo>, 
 /**

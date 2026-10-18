@@ -4,6 +4,7 @@ use ts_rs::TS;
 use super::changes::ProjectChangeLine;
 use crate::lens::{ColumnsRef, ResolvedReference};
 use crate::rules::actions::ActionScope;
+use crate::rules::icons::TableIcon;
 use crate::rules::kinds::{KindRule, StyleRule};
 use crate::rules::project::Project;
 use crate::rules::types::Reference;
@@ -96,6 +97,31 @@ pub struct TableRules {
     pub kinds: Vec<KindRow>,
     pub entities: Vec<EntityLine>,
     pub actions: Vec<ActionLine>,
+    pub icon: Option<IconRow>,
+}
+
+/// The icon rule that applies to a table, `none` included.
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct IconRow {
+    /// `project` or `preset`.
+    pub origin: RuleOrigin,
+    pub icon: TableIcon,
+    /// The rule's `table` as written: a name without prefix or a glob.
+    pub pattern: String,
+    /// The presets' rule for the table, which a project rule overrides and `removeIcon` brings
+    /// back.
+    pub shipped: Option<ShippedIcon>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct ShippedIcon {
+    pub preset: String,
+    pub icon: TableIcon,
+    pub pattern: String,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]

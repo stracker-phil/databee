@@ -74,6 +74,11 @@ const ROW_PADDING_MIN: u8 = 1;
 const ROW_PADDING_MAX: u8 = 4;
 const DEFAULT_ROW_PADDING: u8 = 2;
 
+/// Object columns shown side by side at most; the frontend shows fewer when they don't fit.
+const MAX_PANES_MIN: u8 = 1;
+const MAX_PANES_MAX: u8 = 3;
+const DEFAULT_MAX_PANES: u8 = 2;
+
 /// Reads `rowPadding`, or the retired `density` key it replaced (`compact` is the tightest step).
 /// Anything unreadable falls back to the default step instead of failing the file.
 fn row_padding<'de, D>(deserializer: D) -> Result<u8, D::Error>
@@ -116,6 +121,8 @@ pub struct Settings {
     /// An installed font family; `None` uses the bundled JetBrains Mono.
     #[serde(deserialize_with = "lenient")]
     pub font_mono: Option<String>,
+    /// How many columns of an object tab show side by side at most (1 to 3).
+    pub max_panes: u8,
     pub row_limit: u32,
     pub query_timeout_secs: u32,
     /// How often a live object column reads its row again.
@@ -143,6 +150,7 @@ impl Default for Settings {
             row_padding: DEFAULT_ROW_PADDING,
             font_ui: None,
             font_mono: None,
+            max_panes: DEFAULT_MAX_PANES,
             row_limit: 1000,
             query_timeout_secs: 30,
             live_interval_secs: 2,
@@ -184,6 +192,7 @@ impl Settings {
             self.dark_scheme = d.dark_scheme;
         }
         self.row_padding = self.row_padding.clamp(ROW_PADDING_MIN, ROW_PADDING_MAX);
+        self.max_panes = self.max_panes.clamp(MAX_PANES_MIN, MAX_PANES_MAX);
         self.font_ui = family_name(self.font_ui);
         self.font_mono = family_name(self.font_mono);
         self.ui_font_size = self.ui_font_size.clamp(10, 24);
@@ -505,6 +514,44 @@ mod tests {
             let (_dir, store) = open_with_json(json);
             assert_eq!(store.get().row_padding, expected, "{json}");
         }
+    }
+
+    #[test]
+    fn max_panes_defaults_to_two_when_the_stored_file_lacks_it() {
+        let (_dir, store) = open_with_json(r#"{"rowLimit": 42}"#);
+        assert_eq!(store.get().max_panes, 2);
+        assert_eq!(Settings::default().max_panes, 2);
+    }
+
+    #[test]
+    fn max_panes_is_clamped_to_one_through_three() {
+        for (json, expected) in [
+            (r#"{"maxPanes": 0}"#, 1),
+            (r#"{"maxPanes": 1}"#, 1),
+            (r#"{"maxPanes": 3}"#, 3),
+            (r#"{"maxPanes": 9}"#, 3),
+        ] {
+            let (_dir, store) = open_with_json(json);
+            assert_eq!(store.get().max_panes, expected, "{json}");
+        }
+        for (max_panes, expected) in [(0, 1), (2, 2), (9, 3)] {
+            let settings = Settings {
+                max_panes,
+                ..Settings::default()
+            };
+            assert_eq!(settings.sanitized().max_panes, expected, "{max_panes}");
+        }
+    }
+
+    #[test]
+    fn max_panes_serializes_as_camel_case() {
+        let value = serde_json::to_value(Settings {
+            max_panes: 3,
+            ..Settings::default()
+        })
+        .unwrap();
+        assert_eq!(value["maxPanes"], serde_json::json!(3));
+        assert!(value.get("max_panes").is_none());
     }
 
     #[test]

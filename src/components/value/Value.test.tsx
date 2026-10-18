@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,11 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type Address, type DecodedValue, type Provenance, type ReferenceSource, type Value as StoredValue } from "../../api";
-import { address, formatAddress } from "../../lib/address";
+import { address } from "../../lib/address";
+import { useStore } from "../../state/store";
 import { connectedStore, num, tableTab, text, value } from "../../test/fixtures";
 import { NOW } from "../../test/now";
+import { rulesInfoOf, showTableIcons } from "../../test/iconFixtures";
 import { ColumnContext } from "./open";
-import { Value } from "./Value";
+import { useOpenValue } from "./useOpenValue";
+import { Value, type OpenValue } from "./Value";
 
 const mocked = vi.mocked(api, true);
 
@@ -39,7 +42,7 @@ describe("Value", () => {
 
   describe("reference", () => {
     it("is a link that opens the value on click", async () => {
-      const onOpen = vi.fn();
+      const onOpen = vi.fn<OpenValue>();
       const ref = reference();
       render(<Value value={ref} onOpen={onOpen} />);
       await userEvent.click(screen.getByRole("link", { name: "12" }));
@@ -53,117 +56,121 @@ describe("Value", () => {
     });
 
     it("marks a reference inferred from a same-named column", () => {
-      render(<Value value={reference({ by: { kind: "sameName", column: "ID", indexed: true } })} onOpen={vi.fn()} />);
+      render(<Value value={reference({ by: { kind: "sameName", column: "ID", indexed: true } })} onOpen={vi.fn<OpenValue>()} />);
       expect(screen.getByText("inferred")).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "12" })).toHaveClass("inferred");
     });
 
     it("shows no inferred note for a declared reference", () => {
-      render(<Value value={reference()} onOpen={vi.fn()} />);
+      render(<Value value={reference()} onOpen={vi.fn<OpenValue>()} />);
       expect(screen.queryByText("inferred")).not.toBeInTheDocument();
       expect(screen.getByRole("link", { name: "12" })).not.toHaveClass("inferred");
     });
 
     it("is not a link when the target row does not exist", () => {
-      render(<Value value={reference({ exists: false })} onOpen={vi.fn()} />);
+      render(<Value value={reference({ exists: false })} onOpen={vi.fn<OpenValue>()} />);
       expect(screen.queryByRole("link")).not.toBeInTheDocument();
       expect(screen.getByText("12")).toHaveClass("val-dang");
     });
 
-    describe("icons", () => {
-      const target = formatAddress(row("wp_users", "12"));
-      const goTo = () => screen.getByRole("button", { name: `Go to ${target}` });
-      const sidePanel = () => screen.getByRole("button", { name: `Open ${target} in side panel` });
-      const sourced = (key: { column: string; value: string }[] = [{ column: "ID", value: "7" }]): StoredValue => ({
-        ...reference(),
-        source: { table: "wp_posts", column: "post_author", row: key },
-      });
-      const inColumn = (ui: ReactNode) => (
-        <ColumnContext.Provider value={{ tabId: "t1", index: 0 }}>{ui}</ColumnContext.Provider>
-      );
+    describe("target table icon", () => {
+      const twoTables = value({ raw: num("12"), kind: { kind: "reference", targets: [row("wp_users", "12"), row("wp_posts", "12")], by: preset, exists: null } });
+      const sameTable = value({ raw: num("12"), kind: { kind: "reference", targets: [row("wp_users", "12"), row("wp_users", "13")], by: preset, exists: null } });
+      const icon = (container: HTMLElement) => container.querySelector("[data-icon]");
 
-      it("offers only Go to outside a column stack and a table tab", () => {
-        render(<Value value={reference()} onOpen={vi.fn()} />);
-        expect(goTo()).toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: /in side panel/ })).not.toBeInTheDocument();
+      it("shows the icon of the target's table before the key", () => {
+        showTableIcons({ wp_users: "user" });
+        const { container } = render(<Value value={reference()} />);
+        const glyph = container.querySelector("[data-icon=user]")!;
+        expect(glyph).toHaveAttribute("aria-hidden", "true");
+        expect(screen.getByText("12")).toContainElement(glyph as HTMLElement);
       });
 
-      it("calls onOpen with mode go for Go to", async () => {
-        const onOpen = vi.fn();
-        const ref = reference();
-        render(<Value value={ref} onOpen={onOpen} />);
-        await userEvent.click(goTo());
-        expect(onOpen).toHaveBeenCalledOnce();
-        expect(onOpen).toHaveBeenCalledWith(ref, expect.anything(), "go");
+      it("shows the icon when every target is in the same table", () => {
+        showTableIcons({ wp_users: "user" });
+        const { container } = render(<Value value={sameTable} />);
+        expect(icon(container)).toHaveAttribute("data-icon", "user");
       });
 
-      it("offers both icons inside a column stack and calls onOpen with mode drill for the side panel", async () => {
-        const onOpen = vi.fn();
-        const ref = reference();
-        render(inColumn(<Value value={ref} onOpen={onOpen} />));
-        expect(goTo()).toBeInTheDocument();
-        await userEvent.click(sidePanel());
-        expect(onOpen).toHaveBeenCalledOnce();
-        expect(onOpen).toHaveBeenCalledWith(ref, expect.anything(), "drill");
+      it("shows no icon when the targets are in different tables", () => {
+        showTableIcons({ wp_users: "user", wp_posts: "file-text" });
+        const { container } = render(<Value value={twoTables} />);
+        expect(icon(container)).toBeNull();
       });
 
-      it("names every target of a reference with several targets", () => {
-        const both = value({ raw: num("12"), kind: { kind: "reference", targets: [row("wp_users", "12"), row("wp_posts", "12")], by: preset, exists: null } });
-        render(<Value value={both} onOpen={vi.fn()} />);
-        expect(screen.getByRole("button", { name: `Go to ${target} or ${formatAddress(row("wp_posts", "12"))}` })).toBeInTheDocument();
+      it("shows no icon for a table without one", () => {
+        showTableIcons({ wp_posts: "file-text" });
+        const { container } = render(<Value value={reference()} />);
+        expect(icon(container)).toBeNull();
       });
 
-      it("has the icons for an inferred reference", () => {
-        render(inColumn(<Value value={reference({ by: { kind: "sameName", column: "ID", indexed: true } })} onOpen={vi.fn()} />));
-        expect(goTo()).toBeInTheDocument();
-        expect(sidePanel()).toBeInTheDocument();
+      it("loads the database's icons when they are not known yet", async () => {
+        mocked.rulesInfo.mockResolvedValue(rulesInfoOf({ wp_users: "user" }));
+        const { container } = render(<Value value={reference()} />);
+        await waitFor(() => expect(icon(container)).toHaveAttribute("data-icon", "user"));
+        expect(mocked.rulesInfo).toHaveBeenCalledWith("s1", "db");
       });
+    });
+  });
 
-      it("has no icons for a dangling reference", () => {
-        render(inColumn(<Value value={reference({ exists: false })} onOpen={vi.fn()} />));
-        expect(screen.queryByRole("button")).not.toBeInTheDocument();
-      });
+  describe("click indicator", () => {
+    const opener = (value: StoredValue, density: "grid" | "full", owner: Address | null) => {
+      function Opens() {
+        const { openValue, targetMenu } = useOpenValue(owner);
+        return (
+          <>
+            <Value value={value} density={density} onOpen={openValue} />
+            {targetMenu}
+          </>
+        );
+      }
+      return <Opens />;
+    };
+    const inColumn = (ui: ReactNode) => <ColumnContext.Provider value={{ tabId: "t1", index: 0 }}>{ui}</ColumnContext.Provider>;
+    const wholePosts = address("shop", "db", { kind: "table", table: "wp_posts", filter: [] });
+    const key = (target: Address) => value({ raw: num("7"), kind: { kind: "primaryKey", address: target } });
+    const serialized = value({ raw: text("a:0:{}"), kind: { kind: "serialized", format: "php", preview: "a:0:{}" } });
+    const toTable = value({ raw: num("12"), kind: { kind: "reference", targets: [wholePosts], by: preset, exists: true } });
+    const toRows = value({ raw: num("12"), kind: { kind: "reference", targets: [row("wp_users", "12"), row("wp_users", "13")], by: preset, exists: true } });
 
-      it("has no icons without an open handler", () => {
-        render(inColumn(<Value value={reference()} />));
-        expect(screen.queryByRole("button")).not.toBeInTheDocument();
-      });
+    it.each<[string, StoredValue, "grid" | "full", Address | null, boolean, "drill" | "go" | null]>([
+      ["a reference in a column stack", reference(), "full", null, true, "drill"],
+      ["a reference with several row targets in a column stack", toRows, "full", null, true, "drill"],
+      ["a reference to a table in a column stack", toTable, "full", null, true, "go"],
+      ["a reference outside a column stack", reference(), "grid", null, false, "go"],
+      ["another row's key in a column stack", key(row("wp_posts", "7")), "full", row("wp_posts", "8"), true, "drill"],
+      ["another row's key outside a column stack", key(row("wp_posts", "7")), "grid", null, false, "go"],
+      ["the key of the shown row", key(row("wp_posts", "7")), "full", row("wp_posts", "7"), true, null],
+      ["a table's key", key(wholePosts), "full", null, true, null],
+      ["serialized data in a grid", serialized, "grid", null, false, "drill"],
+      ["serialized data in a grid in a column stack", serialized, "grid", null, true, "drill"],
+      ["serialized data in a document", serialized, "full", null, true, null],
+      ["an enum", value({ raw: text("wc-completed"), kind: { kind: "enum" } }), "grid", null, false, null],
+      ["a dangling reference", reference({ exists: false }), "full", null, true, null],
+    ])("indicates the click effect for %s", (_name, stored, density, owner, stacked, expected) => {
+      const ui = opener(stored, density, owner);
+      const { container } = render(stacked ? inColumn(ui) : ui);
+      expect(container.querySelector("[data-open]")?.getAttribute("data-open") ?? null).toBe(expected);
+    });
 
-      it("has no icons for a value that is not a reference", () => {
-        const key = value({ raw: num("7"), kind: { kind: "primaryKey", address: row("wp_posts", "7") } });
-        render(inColumn(<Value value={key} onOpen={vi.fn()} />));
-        expect(screen.queryByRole("button")).not.toBeInTheDocument();
-      });
+    it("is decorative: hidden from assistive technology and not a button", () => {
+      const { container } = render(opener(reference(), "grid", null));
+      const hint = container.querySelector("[data-open]")!;
+      expect(hint).toHaveAttribute("aria-hidden", "true");
+      expect(hint.closest("button")).toBeNull();
+      expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    });
 
-      describe("in a table tab", () => {
-        beforeEach(() => connectedStore({ tabs: [tableTab()] }));
+    it("is absent without an open handler", () => {
+      const { container } = render(<Value value={reference()} />);
+      expect(container.querySelector("[data-open]")).toBeNull();
+    });
 
-        it("offers both icons for a value sourced from a single-column key", () => {
-          render(<Value value={sourced()} onOpen={vi.fn()} />);
-          expect(goTo()).toBeInTheDocument();
-          expect(sidePanel()).toBeInTheDocument();
-        });
-
-        it("offers only Go to for a value without a source", () => {
-          render(<Value value={reference()} onOpen={vi.fn()} />);
-          expect(goTo()).toBeInTheDocument();
-          expect(screen.queryByRole("button", { name: /in side panel/ })).not.toBeInTheDocument();
-        });
-
-        it("offers only Go to for a value from a multi-column key", () => {
-          render(
-            <Value
-              value={sourced([
-                { column: "post_id", value: "7" },
-                { column: "meta_key", value: "k" },
-              ])}
-              onOpen={vi.fn()}
-            />,
-          );
-          expect(goTo()).toBeInTheDocument();
-          expect(screen.queryByRole("button", { name: /in side panel/ })).not.toBeInTheDocument();
-        });
-      });
+    it("leaves the click to the value, which still acts", async () => {
+      connectedStore({ tabs: [tableTab()] });
+      render(opener(reference(), "grid", null));
+      await userEvent.click(screen.getByRole("link", { name: "12" }));
+      expect(useStore.getState().tabs[0]).toMatchObject({ kind: "object", address: { target: { table: "wp_users", key: "12" } } });
     });
   });
 
@@ -183,7 +190,7 @@ describe("Value", () => {
     const status = value({ raw: text("wc-completed"), kind: { kind: "enum" } });
 
     it("is a button that opens the value on click", async () => {
-      const onOpen = vi.fn();
+      const onOpen = vi.fn<OpenValue>();
       render(<Value value={status} onOpen={onOpen} />);
       await userEvent.click(screen.getByRole("button", { name: "wc-completed" }));
       expect(onOpen).toHaveBeenCalledWith(status, expect.anything());
@@ -245,7 +252,7 @@ describe("Value", () => {
     });
 
     it("opens the value on click in a grid", async () => {
-      const onOpen = vi.fn();
+      const onOpen = vi.fn<OpenValue>();
       render(<Value value={serialized} density="grid" onOpen={onOpen} />);
       await userEvent.click(screen.getByRole("button", { name: "▸ a:3:{…}" }));
       expect(onOpen).toHaveBeenCalledWith(serialized, expect.anything());
@@ -416,7 +423,7 @@ describe("Value", () => {
     });
 
     it("is a Stage anchor named by table, column and row key when it acts on click", () => {
-      const { container } = render(<Value value={value({ raw: text("wc-completed"), kind: { kind: "enum" }, source: stored })} onOpen={vi.fn()} />);
+      const { container } = render(<Value value={value({ raw: text("wc-completed"), kind: { kind: "enum" }, source: stored })} onOpen={vi.fn<OpenValue>()} />);
       expect(root(container)).toHaveAttribute("data-stage", "value:wp_wc_orders_meta.meta_value:9123");
       expect(root(container)).toHaveAttribute("data-stage-label", "wc-completed");
       expect(root(container)).toHaveAttribute("data-stage-list", "values");

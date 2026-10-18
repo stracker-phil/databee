@@ -8,6 +8,7 @@ import { formatCount } from "../lib/format";
 import { columnLabel, objectColumnAt } from "../lib/columns";
 import { documentText } from "../lib/document";
 import { ObjectPanel } from "./object/ObjectPanel";
+import { TableIcon } from "./TableIcon";
 import { ProjectPanel } from "./project/ProjectPanel";
 import { QueryTab } from "./QueryTab";
 import { Readout } from "./readout/Readout";
@@ -83,7 +84,7 @@ const TAB_VIEWS: { [K in Tab["kind"]]: TabView<TabOfKind<K>> } = {
     Summary: QuerySummary,
   },
   table: {
-    icon: () => <Table2 size={ICON_SIZE} />,
+    icon: (tab) => <TableIcon database={tab.database} table={tab.table} sessionId={tab.sessionId} fallback={<Table2 size={ICON_SIZE} />} />,
     tooltip: tableTooltip,
     stage: (tab) => `tab:table:${tab.database}.${tab.table}`,
     Panel: ({ tab }) => (
@@ -99,7 +100,11 @@ const TAB_VIEWS: { [K in Tab["kind"]]: TabView<TabOfKind<K>> } = {
       ) : null,
   },
   object: {
-    icon: () => <FileText size={ICON_SIZE} />,
+    icon: (tab) => {
+      const root = objectColumnAt(tab.columns, 0)?.address ?? tab.address;
+      const table = "table" in root.target ? root.target.table : null;
+      return <TableIcon database={root.database} table={table} sessionId={tab.sessionId} fallback={<FileText size={ICON_SIZE} />} />;
+    },
     tooltip: (tab) => `${formatAddress(tab.address)}${previewHint(tab)}`,
     stage: (tab) => `tab:object:${documentText(objectColumnAt(tab.columns, 0)?.address ?? tab.address)}`,
     Panel: ({ tab }) => <ObjectPanel tab={tab} />,

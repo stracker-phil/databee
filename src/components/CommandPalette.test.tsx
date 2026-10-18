@@ -11,6 +11,7 @@ import { projectKey } from "../state/slices/project";
 import { selectActiveTab, useStore } from "../state/store";
 import { connectedStore, session, table } from "../test/fixtures";
 import { paletteHit } from "../test/paletteFixtures";
+import { showTableIcons } from "../test/iconFixtures";
 import { CommandPalette } from "./CommandPalette";
 import { parsePrefix } from "./palette/parse";
 
@@ -18,7 +19,7 @@ const mocked = vi.mocked(api, true);
 
 const hit = (key: string, source = "wp_wc_orders"): PaletteHit => paletteHit(source, key);
 const objectTabs = () => useStore.getState().tabs.filter((t) => t.kind === "object");
-const rulesInfo = (entities: string[]): RulesInfo => ({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: entities.map((name) => ({ preset: "woocommerce", entity: { name, table: "wp_wc_orders" } })), tableEntities: {} });
+const rulesInfo = (entities: string[]): RulesInfo => ({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: entities.map((name) => ({ preset: "woocommerce", entity: { name, table: "wp_wc_orders" } })), tableEntities: {}, tableIcons: {} });
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -363,6 +364,30 @@ describe("CommandPalette", () => {
       render(<CommandPalette />);
       await act(() => useStore.getState().openAddress(`databee://${session.slug}/db/?find=x`));
       expect(await screen.findByLabelText("Search everything")).toHaveValue("=x");
+    });
+  });
+
+  describe("table icons", () => {
+    beforeEach(() => showTableIcons({ wp_posts: "file-text" }));
+
+    it("draws the icon of the table in a table item and none for one without", async () => {
+      await userEvent.type(openPalette(), "t:wp_");
+      expect(screen.getByRole("option", { name: /wp_posts/ }).querySelector("[data-icon=file-text]")).not.toBeNull();
+      expect(screen.getByRole("option", { name: /wp_options/ }).querySelector("[data-icon]")).toBeNull();
+    });
+
+    it("draws the icon of the table in a recent table item", () => {
+      useStore.setState({ recentNav: [{ kind: "table", database: "db", table: "wp_posts" }] });
+      openPalette();
+      expect(screen.getByRole("option", { name: /wp_posts/ }).querySelector("[data-icon=file-text]")).not.toBeNull();
+    });
+
+    it("draws the icon of the hit's table before its source", async () => {
+      mocked.paletteSearch.mockResolvedValue([hit("1", "wp_posts"), hit("1", "wp_options")]);
+      await userEvent.type(openPalette(), "#1");
+      const posts = await screen.findByRole("option", { name: "wp_posts #1" });
+      expect(posts.querySelector("[data-icon=file-text]")).not.toBeNull();
+      expect(screen.getByRole("option", { name: "wp_options #1" }).querySelector("[data-icon]")).toBeNull();
     });
   });
 

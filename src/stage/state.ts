@@ -62,11 +62,12 @@ function sidebarState(): "open" | "closed" {
   return stageView() === "db" && !selectSidebarHidden(s) ? "open" : "closed";
 }
 
-/** The active column's address and view, and the stack's size when it holds more than one column. */
+/** The active column's address and view, and the stack's size (and whether it is maximized) when it holds more than one column. */
 function objectState(tab: ObjectTab): string {
   const column = tab.columns[tab.active];
   const shown = column?.kind === "object" ? `${formatAddress(column.address)} (${column.view})` : `${formatAddress(tab.address)} (value)`;
-  return tab.columns.length > 1 ? `${shown} · column ${tab.active + 1} of ${tab.columns.length}` : shown;
+  if (tab.columns.length < 2) return shown;
+  return `${shown} · column ${tab.active + 1} of ${tab.columns.length}${tab.maximized ? " · maximized" : ""}`;
 }
 
 /** The active tab's line in the state, under its kind. */

@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use super::actions::{Action, ActionScope};
+use super::icons::IconRule;
 use super::kinds::{KindRule, StyleRule};
 use super::queries::{Anomaly, AnomalyOpen, Pattern, Pinned};
 use super::types::{Check, Entity, FieldError, FindSource, MetaTable, Preset, Reference};
@@ -77,6 +78,8 @@ struct RawFile {
     action: Vec<toml::Spanned<toml::Table>>,
     #[serde(default)]
     find: Vec<toml::Spanned<toml::Table>>,
+    #[serde(default)]
+    icon: Vec<toml::Spanned<toml::Table>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -181,6 +184,7 @@ pub fn parse(file: &str, src: &str) -> Result<Preset, PresetError> {
         ("anomaly", lines_of(&raw.anomaly)),
         ("action", lines_of(&raw.action)),
         ("style", lines_of(&raw.style)),
+        ("icon", lines_of(&raw.icon)),
     ]);
     let header_at = reader.at("preset", 0, raw.preset.span());
     let header: Header = reader.decode(&header_at, raw.preset.into_inner())?;
@@ -199,6 +203,7 @@ pub fn parse(file: &str, src: &str) -> Result<Preset, PresetError> {
         anomalies: reader.rules("anomaly", raw.anomaly)?,
         actions: reader.rules("action", raw.action)?,
         finds: reader.rules("find", raw.find)?,
+        icons: reader.rules("icon", raw.icon)?,
     };
     fill_reference_ids(&mut preset.references);
     fill_style_ids(&mut preset.styles);
@@ -300,6 +305,11 @@ fn check_preset(preset: &Preset) -> Result<(), Bad> {
     unique("style", preset.styles.iter().map(|s| s.id.clone()), "id")?;
     unique("pinned", preset.pinned.iter().map(|p| p.id.clone()), "id")?;
     unique(
+        "icon",
+        preset.icons.iter().map(|i| i.table.clone()),
+        "table",
+    )?;
+    unique(
         "anomaly",
         preset.anomalies.iter().map(|a| a.id.clone()),
         "id",
@@ -366,6 +376,8 @@ struct FileOut<'a> {
     action: &'a [Action],
     #[serde(skip_serializing_if = "<[_]>::is_empty")]
     find: &'a [FindSource],
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    icon: &'a [IconRule],
 }
 
 /// `preset` as a preset file; `parse` reads it back to an equal preset.
@@ -387,6 +399,7 @@ pub fn to_toml(preset: &Preset) -> Result<String, toml::ser::Error> {
         anomaly: &preset.anomalies,
         action: &preset.actions,
         find: &preset.finds,
+        icon: &preset.icons,
     })
 }
 
@@ -396,6 +409,7 @@ mod tests {
 
     use super::super::actions::{ActionEffect, DeleteSpec, Param, ParamType, SetValue, UpdateStep};
     use super::super::catalog::BUILT_IN;
+    use super::super::icons::TableIcon;
     use super::super::kinds::{Money, StyleColor, StyleMatch, ValueRule, Zone};
     use super::super::queries::Home;
     use super::super::types::{ColumnGlob, Conditions, FindMatch, Match};
@@ -1323,6 +1337,58 @@ columns = ["email"]
     }
 
     #[test]
+    fn icons_parse_by_table_or_glob() {
+        let preset = parsed(
+            "[[icon]]\ntable = \"users\"\nicon = \"user\"\n\n[[icon]]\ntable = \"*meta\"\nicon = \"menu\"\n\n[[icon]]\ntable = \"log\"\nicon = \"none\"\n",
+        );
+        assert_eq!(
+            preset.icons,
+            [
+                IconRule {
+                    table: "users".into(),
+                    icon: TableIcon::User
+                },
+                IconRule {
+                    table: "*meta".into(),
+                    icon: TableIcon::Menu
+                },
+                IconRule {
+                    table: "log".into(),
+                    icon: TableIcon::None
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn unknown_icon_name_is_rejected_at_the_rules_line() {
+        let error = rejected("[[icon]]\ntable = \"users\"\nicon = \"unicorn\"\n");
+        let rule = rule_of(&error);
+        assert_eq!((rule.section, rule.index), ("icon", 1));
+        assert!((4..=5).contains(&rule.line), "{error}");
+        assert_eq!(error.field.as_deref(), Some("icon"));
+        assert!(error.message.contains("unicorn"), "{error}");
+    }
+
+    #[test]
+    fn icon_for_the_same_table_twice_is_rejected() {
+        let error = rejected(
+            "[[icon]]\ntable = \"users\"\nicon = \"user\"\n\n[[icon]]\ntable = \"users\"\nicon = \"users\"\n",
+        );
+        let rule = rule_of(&error);
+        assert_eq!((rule.section, rule.index, rule.line), ("icon", 2, 8));
+        assert_eq!(error.field.as_deref(), Some("table"));
+        assert_eq!(error.message, "`users` is used twice");
+    }
+
+    #[test]
+    fn icon_without_a_table_name_is_rejected() {
+        let error = rejected("[[icon]]\ntable = \"\"\nicon = \"user\"\n");
+        assert_eq!(error.field.as_deref(), Some("table"));
+        assert_eq!(error.message, "names no table");
+    }
+
+    #[test]
     fn find_source_without_columns_is_rejected() {
         let error = rejected("[[find]]\ntable = \"log\"\ncolumns = []\n");
         assert_eq!(error.field.as_deref(), Some("columns"));
@@ -1563,5 +1629,17 @@ preview_sql = "SELECT COUNT(*) FROM {p}log"
 table = "log"
 columns = ["message"]
 match = "contains"
+
+[[icon]]
+table = "orders"
+icon = "shopping-cart"
+
+[[icon]]
+table = "*meta"
+icon = "menu"
+
+[[icon]]
+table = "log"
+icon = "none"
 "#;
 }

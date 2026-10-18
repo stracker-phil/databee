@@ -1,8 +1,8 @@
 # Presets
 
 A preset is a TOML file of rules that tells DataBee what the tables of an application mean: which columns
-reference which rows, what kind of value a column or meta key holds, which values get a color, and which
-queries, anomalies and actions belong to it. The code is generic (`src-tauri/src/rules/`); application
+reference which rows, what kind of value a column or meta key holds, which values get a color, which icon a
+table shows, and which queries, anomalies and actions belong to it. The code is generic (`src-tauri/src/rules/`); application
 knowledge lives only in preset files. Rules follow [`.claude/rules/presets.md`](../.claude/rules/presets.md).
 
 Status: presets are parsed, checked and listed (`presets_list`); projects are stored and edited
@@ -168,6 +168,32 @@ trailing empty parts left out, the match written as in reference ids (`=x`, `=li
 `style:orders.status=failed`, `style:|_status|order_meta=like(ok%)`. When two styles of a preset would get the
 same id, both get `-><color>` appended. Ids are unique per preset; a project switches a style and overrides it
 by its id (`StyleRule::default_id`, `fill_style_ids` in `rules/preset.rs`).
+
+### `[[icon]]` table icons
+
+```toml
+[[icon]]
+table = "users"                     # a name without prefix
+icon = "user"
+
+[[icon]]
+table = "*meta"                     # or a glob over the names without prefix
+icon = "menu"
+```
+
+`icon` is one of a curated set of lucide names (`rules::icons::TableIcon`; the page maps each to its component,
+`src/components/TableIcon.tsx`): `user users menu file-text files message-square tag tags folder settings
+shopping-cart receipt package credit-card wallet truck clock calendar list list-checks database key lock link
+image mail globe map-pin star bell box archive layers hash activity chart-bar coins store ticket bookmark shield
+code`, plus `none`, which switches off an icon another rule gives. Another name is a load error naming the
+field (`[[icon]] #2 (line 30)`, field `icon`: unknown variant …); a `table` is unique per preset.
+
+**Which icon a table gets** (`icons::table_icons`, `EffectiveRules.icons`): for each real table, its names
+without prefix (`Applied::rule_names`) are matched first against the project's icon rules, then against each
+applied preset's, the last applied first; within one source a rule naming the table exactly beats a glob, and
+among globs the first in file order wins. The first source with a match decides; `none` gives no icon. Globs
+compare case-sensitively. The icon is shown before the table's name and before every reference into the table
+([ux.md](ux.md#value-grammar)); it is chrome, the table name stays.
 
 ### `[[pattern]]` groups matched by SQL
 
@@ -417,6 +443,21 @@ color = "red"                           # red, green, yellow, blue or purple
 The first matching style wins, project styles before preset styles (an override takes its preset style's
 place).
 
+### Give a table an icon
+
+For one database: on the Project page (All rules) or in the table's Structure view, "icon…" opens the picker;
+a choice stores a project rule for the table (`setIcon`), "None" stores `none`, "Reset to preset" removes the
+project rule. In a preset, name the table or a glob:
+
+```toml
+[[icon]]
+table = "acmeforms_entries"
+icon = "list-checks"
+```
+
+The WordPress preset's `*meta` already gives every table ending in `meta` (a plugin's too) the `menu` icon; a
+rule naming the table exactly, or any rule of a later preset or the project, beats it.
+
 ### Remove the built-in presets
 
 - **For one database:** on the Project page, switch the presets off. The switches store an explicit
@@ -446,6 +487,7 @@ connection's slug moves its keys. A database without a stored project gets an em
 | `network_prefix` | where `network_tables` live (multisite: one project per prefix, `wp_2_` with network prefix `wp_`); `null`: the shortest prefix that holds them, else the prefix |
 | `presets` | enabled presets by name; `null`: every preset whose marker tables exist |
 | `references`, `kinds`, `styles` | rules in the preset shape above |
+| `icons` | `[[icon]]` rules, one per `table`; they beat every preset icon for the tables they name (`none` switches one off) |
 | `disabled` | ids of preset or inferred rules switched off, preset styles that ship on included |
 | `enabled` | ids of preset styles that ship off (`enabled = false`) and are switched on |
 | `saved` | saved queries `{ id, title, sql, pin }`; `pin` has the shape of `[[pinned]] home`. Saved queries for every project are `global` in `projects.json`, beside `projects` |
@@ -454,7 +496,10 @@ connection's slug moves its keys. A database without a stored project gets an em
 `addReference`, `updateReference` and `removeReference` by id; `addKind`, `updateKind`, `removeKind` by
 index (kinds have no id); `addStyle`, `updateStyle`, `removeStyle` by id; `enableStyle` and `disableStyle` a
 preset style's id (idempotent: they add or remove the id in `enabled` or `disabled`, depending on how the style
-ships); `disable` and `enable` a reference or inferred id; `setPrefix`, `setNetworkPrefix`, `setPresets`. Before storing, every table a rule names must exist under the
+ships); `disable` and `enable` a reference or inferred id; `setIcon` stores the project's icon rule for its `table`
+(replacing one with the same `table`; a name must resolve like any rule table, a glob is not checked) and
+`removeIcon` removes it by `table`, which brings back the presets' icon; `setPrefix`, `setNetworkPrefix`,
+`setPresets`. Before storing, every table a rule names must exist under the
 prefix or the network prefix (the stored ones, else the suggestions), resolved as the effective rules resolve
 it (`Applied::existing_table`, see below), and every literal column (glob parts are
 not checked), `when` and `to_when` column must exist in its table. A prefix must start some table name,
@@ -476,7 +521,7 @@ project style is dropped, and any other style gets its default id (or `-><color>
 style's id overrides it and switches it on. Projects without such styles are not rewritten.
 
 **Export.** `project_export` returns the project as a preset file named `<slug>-<database>`: its references,
-kinds and styles, saved queries as `[[pinned]]` (`pin` as `home`) and explicit presets as `requires`. The
+kinds, styles and icons, saved queries as `[[pinned]]` (`pin` as `home`) and explicit presets as `requires`. The
 prefixes, `disabled` and the automatic preset choice have no preset form and are left out.
 `project_export_to(session_id, database, path)` writes that text to a path the user chose in the native
 save panel (`choose_save_path(file_name, extension)` in `commands.rs`, from `tauri-plugin-dialog`'s Rust API;
@@ -498,12 +543,14 @@ default key), the status bar's `presets …` text and the address. `project_rule
 | `foreignKeys` | how many declared foreign keys apply |
 | `tables` | `RuleTable { table, name }`: every real table and the name rules write it as (tables outside the prefixes are missing) |
 | `changes` | `ProjectChangeLine`s: every deviation from the presets as they ship ([Your changes](#your-changes)) |
-| `groups` | `TableRules` per real table with any rule, sorted by name, then one with `table: null` for value styles and kinds whose scope covers no table here |
+| `groups` | `TableRules` per real table with any rule (an icon counts), sorted by name, then one with `table: null` for value styles and kinds whose scope covers no table here |
 
 A `TableRules` holds `references` (the `ReferenceRow`s from the table, by source column), `referencedBy`
 (`{ from, to, when, disabled }` of references from other tables to it), `styles` and `kinds` (each rule in
 every table one of whose columns its column globs cover, or every `[[meta]]` table its meta keys and `in`
-cover), `entities` (`{ preset, name, filter }`) and `actions` (`{ preset, name, scope }`) on the table.
+cover), `entities` (`{ preset, name, filter }`) and `actions` (`{ preset, name, scope }`) on the table, and
+`icon`: the `IconRow` of the rule that applies (`origin` project or preset, `icon`, `pattern` as the rule writes
+the table, and `shipped`, the presets' rule a project rule overrides), `none` included.
 
 A `ReferenceRow` has its `origin` (`project`, `preset`, `foreignKey`, `inferred` with `indexed`), the `id`
 that `disable` and `enable` take, real `from` and `to`, `when` and `toWhen` as SQL-like text
@@ -538,7 +585,10 @@ Layout:
    Value styles follow the reference pattern: a switch (`enableStyle` / `disableStyle`, project styles too),
    edit (a preset style stores an override under its id), reset (`removeStyle` of the override) or, for a
    project style, remove. Preset kinds are read-only (a project kind rule comes first and so wins); project
-   kinds have edit and remove.
+   kinds have edit and remove. Each table band starts with its icon line: the icon, its origin and pattern
+   (`preset wordpress: *meta`, `project: users · edited in project, was user`) and "icon…", the picker
+   (every icon, "None" storing `none`, "Reset to preset" or "Remove <pattern>" for a project rule). The
+   Structure view shows the same control.
 
 **Coverage** runs on its own: when the page opens, every reference that applies is counted with
 `reference_coverage`, three at a time, and leaving the page stops the queue. Results are cached per database
@@ -579,19 +629,21 @@ that name nothing here.
 
 | Field | Means |
 |---|---|
-| `action`, `rule` | `added`, `edited`, `switchedOff`, `switchedOn` or `set`; `reference`, `valueStyle`, `kind`, `prefix`, `networkPrefix`, `presets` or `unknown` |
+| `action`, `rule` | `added`, `edited`, `switchedOff`, `switchedOn` or `set`; `reference`, `valueStyle`, `kind`, `icon`, `prefix`, `networkPrefix`, `presets` or `unknown` |
 | `origin`, `id` | the preset or inferred rule the change is about (none for added rules and settings), and the rule's id |
 | `text` | the rule or setting as it applies now, with real names: `wp_wc_orders.billing_email when … → wp_users.user_email`, `wc_orders.status = 'wc-failed' · red`, `wc_orders.total · money`, `wp_` |
 | `was` | an edited rule's shipped form; the suggested prefix; the presets auto would apply |
 | `off` | an added rule stored switched off |
 | `table` | the real table the rule is about (a style or kind: the first its scope covers); the line opens its Structure view |
-| `undo` | the `ProjectChange` that undoes it: `removeReference` / `removeStyle` / `removeKind` (added or edited), `enable` / `enableStyle` (switched off), `disableStyle` (a preset style switched on), `setPresets` / `setPrefix` / `setNetworkPrefix` with `null` |
+| `undo` | the `ProjectChange` that undoes it: `removeReference` / `removeStyle` / `removeKind` / `removeIcon` (added or edited), `enable` / `enableStyle` (switched off), `disableStyle` (a preset style switched on), `setPresets` / `setPrefix` / `setNetworkPrefix` with `null` |
 | `edit` | the project rule the line opens in its form (`reference` / `style` by id, `kind` by index) |
 
 The deviations: an explicit preset list, a prefix or network prefix; a project reference (added; or edited,
 when it overrides a preset rule or replaces an inference); a switched-off preset or inferred reference; a
 project style (added, or edited when its id is a preset style's); a preset style switched on or off; a
-project kind. An edited rule that is also switched off gives two lines. The page renders each line as a
+project kind; a project icon (edited when a preset gives the first table it covers an icon, with `was` the
+preset's `pattern · icon`; `text` is the real table, or the glob, and the icon; no `edit`). An edited rule that
+is also switched off gives two lines. The page renders each line as a
 sentence ("switched off reference · preset woocommerce · guest_orders  wp_wc_orders.billing_email → …
 [reset]") with "edit" where the rule is listed and the undo labelled "remove" (added), "switch off"
 (switched on) or "reset"; without lines it says "No changes — this database uses the presets as shipped."
@@ -615,6 +667,7 @@ switches, edits and resets are the Project page's:
 | Field | Means |
 |---|---|
 | `table`, `ruleName` | the real table and the name rules write it as (`null` outside the prefixes) |
+| `icon` | the table's `IconRow`, as on the Project page |
 | `columns` | a `ColumnProfile` per column in table order: `column` (`ColumnInfo`), `primaryKey`, `indexes` (`{ name, unique, position }` of each index that holds it), `kinds`, `references`, `styles` |
 | `meta` | `MetaKeyRules` of the table when it is a `[[meta]]` table, then of each meta table that describes its rows: `table`, `keyColumn`, `valueColumn`, the `kinds` and `styles` whose `meta_keys` (and `in`) cover it, and the conditional `references` from its value column |
 | `referencedBy` | the `ReferenceRow`s from other tables to it, with origin and controls |
@@ -754,8 +807,9 @@ object. Recent objects are no rules: projects and their exports do not hold them
 ## `rules_info`
 
 `rules_info(session_id, database)` returns `RulesInfo { prefix, networkPrefix, suggestedPrefix,
-appliedPresets, availablePresets, entities, tableEntities }`. `entities` are `{ preset, entity }` with the
-real table name; `tableEntities` maps a real table to its entity names. Entities with a `filter` come first
+appliedPresets, availablePresets, entities, tableEntities, tableIcons }`. `entities` are `{ preset, entity }` with the
+real table name; `tableEntities` maps a real table to its entity names; `tableIcons` maps each real table that
+has an icon to it ([`[[icon]]`](#icon-table-icons); tables whose rule is `none` are left out). Entities with a `filter` come first
 on their table: a row takes the first entity whose filter holds.
 
 
@@ -835,6 +889,9 @@ shortest one under which a preset's marker tables exist, so multisite sub-sites 
   `network_plugins`, `content`, `users`, `options_by_prefix`, `options_largest_autoload`, `transients`.
 - Anomalies `autoload_heavy` and `transients_expired` (fix: `delete_expired_transients`); actions
   `set_autoload` and `delete_expired_transients`; find source `options`.
+- Icons: `*meta` `menu` (every meta table, plugins' included), `users` `user`, `posts` `file-text`, `comments`
+  `message-square`, `terms` `tag`, `term_taxonomy` and `term_relationships` `tags`, `options` `settings`,
+  `links` `link`, `blogs` and `site` `globe`, `signups` `mail`, `registration_log` `list`.
 
 **`woocommerce.toml`**
 - Both order shapes: HPOS (`wc_orders`, its meta, addresses, operational data) and posts (`shop_order*` posts
@@ -858,6 +915,11 @@ shortest one under which a preset's marker tables exist, so multisite sub-sites 
 - Anomalies `hpos_drift` (only while data sync is on, checked in its SQL) and `log_errors`; actions
   `set_status` (on both shapes, each also updating the other table) and `delete_logs_before`; find sources for
   log messages and order ids.
+- Icons: `wc_orders` `shopping-cart`, `wc_order_addresses` `map-pin`, `wc_order_operational_data` `layers`,
+  `woocommerce_order_items` `package`, `woocommerce_payment_tokens` `credit-card`, `woocommerce_sessions`
+  `clock`, `wc_customer_lookup` `users`, `wc_order_product_lookup` and `wc_product_meta_lookup` `box`,
+  `wc_order_stats` `chart-bar`, `woocommerce_downloadable_product_permissions` `key`, `woocommerce_log` `list`;
+  the meta tables get `menu` from `wordpress`.
 
 **`action-scheduler.toml`**
 - References `group_id`, `claim_id` and `logs`; entity `action`; enums `status` and `hook`; timestamps
@@ -865,6 +927,8 @@ shortest one under which a preset's marker tables exist, so multisite sub-sites 
   for `failed` and `complete`, shipped off.
 - Pinned queries `actions`, `actions_failed_by_hook`, `actions_overdue`; anomalies `actions_failed`,
   `actions_overdue`; actions `retry` and `cancel`; find source `args`/`extended_args`.
+- Icons: `actionscheduler_actions` `clock`, `actionscheduler_logs` `list`, `actionscheduler_groups` `folder`,
+  `actionscheduler_claims` `lock`.
 
 To change a preset for one machine, copy it to `<config dir>/presets/` and edit it: a user preset with the same
 `name` replaces the built-in ([Where presets live](#where-presets-live)). The pre-preset

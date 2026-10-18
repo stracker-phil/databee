@@ -141,3 +141,23 @@ update = [{ set = { status = "canceled" } }]
 table = "actionscheduler_actions"
 columns = ["args", "extended_args"]
 match = "contains"
+
+# ---------------------------------------------------------------------------------------------
+# Table icons
+# ---------------------------------------------------------------------------------------------
+
+[[icon]]
+table = "actionscheduler_actions"
+icon = "clock"
+
+[[icon]]
+table = "actionscheduler_logs"
+icon = "list"
+
+[[icon]]
+table = "actionscheduler_groups"
+icon = "folder"
+
+[[icon]]
+table = "actionscheduler_claims"
+icon = "lock"

@@ -297,7 +297,7 @@ describe("TableTab", () => {
   describe("structure view", () => {
     const structureTab: TableTabState = { ...tab, view: "structure" };
 
-    const profile: TableProfile = { table: "wp_posts", ruleName: "posts", columns: [], meta: [], referencedBy: [], entities: [], actions: [], ddl: null };
+    const profile: TableProfile = { table: "wp_posts", ruleName: "posts", columns: [], meta: [], referencedBy: [], entities: [], actions: [], icon: null, ddl: null };
 
     it("shows the DDL with a copy button when the table has a DDL", async () => {
       mocked.tableRules.mockResolvedValue({ ...profile, ddl: "CREATE TABLE wp_posts (...)" });

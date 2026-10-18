@@ -20,6 +20,7 @@ use super::actions::Action;
 use super::applied::Applied;
 use super::catalog::{PresetCatalog, PresetEntry, loaded};
 use super::condition::{self, Condition, Matcher, column_glob_match, glob_match};
+use super::icons::{self, TableIcon};
 use super::kinds::{KindRule, StyleRule};
 use super::project::Project;
 use super::queries::Pattern;
@@ -134,6 +135,8 @@ pub struct EffectiveRules {
     /// `[[find]]` sources with real table names, in apply order.
     pub finds: Vec<FindSource>,
     pub disabled: HashSet<String>,
+    /// The icon of each real table that has one (`icons::table_icons`).
+    pub icons: BTreeMap<String, TableIcon>,
 }
 
 /// The id that disables the same-name inference of `table.column` (real names).
@@ -145,6 +148,7 @@ impl EffectiveRules {
     pub fn build(project: &Project, schema: &DatabaseSchema, loaded: &[Arc<Preset>]) -> Self {
         let applied = Applied::new(project, schema, loaded);
         let disabled: HashSet<String> = project.disabled.iter().cloned().collect();
+        let icons = icons::table_icons(&applied, &project.icons, schema);
         let mut rules = Self {
             applied,
             references: Vec::new(),
@@ -156,6 +160,7 @@ impl EffectiveRules {
             actions: Vec::new(),
             finds: Vec::new(),
             disabled,
+            icons,
         };
         rules.add_styles(project);
         let (own_on, own_off): (Vec<Reference>, Vec<Reference>) = project
@@ -529,6 +534,8 @@ pub struct RulesInfo {
     pub entities: Vec<AppliedEntity>,
     /// Entity names by real table, filtered entities first.
     pub table_entities: BTreeMap<String, Vec<String>>,
+    /// The icon by real table, for tables that have one.
+    pub table_icons: BTreeMap<String, TableIcon>,
 }
 
 impl RulesInfo {
@@ -542,6 +549,7 @@ impl RulesInfo {
             available_presets: loaded.iter().map(|p| p.name.clone()).collect(),
             entities: rules.entities.clone(),
             table_entities: rules.table_entities(),
+            table_icons: rules.icons.clone(),
         }
     }
 }
@@ -620,6 +628,7 @@ mod tests {
     use super::*;
     use crate::connection::ConnectionSpec;
     use crate::db::{CellLimit, ColumnInfo, FakeDatabase, ResultSet, TableStructure};
+    use crate::rules::icons::IconRule;
     use crate::rules::kinds::{StyleColor, StyleMatch, ValueRule, Zone};
     use crate::rules::testing::{
         TableSpec, forum, forum_schema, preset, project, reference, schema as schema_of,
@@ -1545,7 +1554,30 @@ to_when = { k = { not = "x" } }
                     "entity": { "name": "thread", "table": "f_threads" },
                 }],
                 "tableEntities": { "f_threads": ["thread"] },
+                "tableIcons": {},
             })
+        );
+    }
+
+    #[test]
+    fn rules_info_keys_icons_by_real_table_and_leaves_none_out() {
+        let icons = preset(
+            "[preset]\nname = \"icons\"\nmarker_tables = [\"threads\"]\n\n[[icon]]\ntable = \"threads\"\nicon = \"list\"\n\n[[icon]]\ntable = \"people\"\nicon = \"users\"\n",
+        );
+        let project = Project {
+            icons: vec![IconRule {
+                table: "people".into(),
+                icon: TableIcon::None,
+            }],
+            ..project()
+        };
+        let rules = build(&project, std::slice::from_ref(&icons));
+
+        let info = RulesInfo::new(&rules, std::slice::from_ref(&icons));
+
+        assert_eq!(
+            serde_json::to_value(&info.table_icons).unwrap(),
+            serde_json::json!({ "f_threads": "list" })
         );
     }
 
@@ -1569,6 +1601,7 @@ to_when = { k = { not = "x" } }
                 "availablePresets": ["mini"],
                 "entities": [],
                 "tableEntities": {},
+                "tableIcons": {},
             })
         );
     }

@@ -7,6 +7,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { address, formatAddress } from "../../lib/address";
 import { useStore } from "../../state/store";
 import { connectedStore, text, value } from "../../test/fixtures";
+import { showTableIcons } from "../../test/iconFixtures";
 import { activeObject, objectDocument, orderAddress } from "../../test/objectFixtures";
 import { ObjectHeader } from "./ObjectHeader";
 
@@ -57,6 +58,21 @@ describe("ObjectHeader in a column stack", () => {
     expect(useStore.getState().tabs[0]).toMatchObject({ id, kind: "table", table: "wp_wc_orders", where: [] });
   });
 
+  it("hints that the table name goes to the whole table, with the table's icon", () => {
+    showTableIcons({ wp_wc_orders: "receipt" });
+    inTab(0);
+    const button = screen.getByRole("button", { name: "Open table wp_wc_orders" });
+    expect(button.querySelector("[data-open]")).toHaveAttribute("data-open", "go");
+    expect(button.querySelector("[data-icon=receipt]")).not.toBeNull();
+  });
+
+  it("draws the table's icon but no hint for the plain table name outside a tab", () => {
+    showTableIcons({ wp_wc_orders: "receipt" });
+    const { container } = header([]);
+    expect(screen.getByText("wp_wc_orders").querySelector("[data-icon=receipt]")).not.toBeNull();
+    expect(container.querySelector("[data-open]")).toBeNull();
+  });
+
   it("offers no Close column on the first column", () => {
     inTab(0);
     expect(screen.queryByRole("button", { name: "Close column" })).not.toBeInTheDocument();
@@ -81,6 +97,17 @@ describe("ObjectHeader alternatives", () => {
     expect(screen.getByText(/Also matched:/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "wp_posts #4711" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "wp_users #4711" })).toBeInTheDocument();
+  });
+
+  it("draws the icon of each alternative's table and hints that a click goes there", () => {
+    showTableIcons({ wp_users: "user" });
+    header();
+    const users = screen.getByRole("button", { name: "wp_users #4711" });
+    const posts = screen.getByRole("button", { name: "wp_posts #4711" });
+    expect(users.querySelector("[data-icon=user]")).not.toBeNull();
+    expect(posts.querySelector("[data-icon]")).toBeNull();
+    expect(users.querySelector("[data-open]")).toHaveAttribute("data-open", "go");
+    expect(posts.querySelector("[data-open]")).toHaveAttribute("data-open", "go");
   });
 
   it("opens the row of an alternative as an object", async () => {

@@ -56,6 +56,12 @@ describe("value column of a table tab", () => {
     expect(mocked.decodeValue).toHaveBeenCalledWith(PHP);
   });
 
+  it("offers no maximize button, as there are no panes to maximize against", async () => {
+    await openValueColumn();
+    await screen.findByRole("tree", { name: "PHP value" });
+    expect(screen.queryByRole("button", { name: "Maximize pane" })).not.toBeInTheDocument();
+  });
+
   it("queues the edited value as a setCell on the cell's row", async () => {
     mocked.editSerialized.mockResolvedValue(EDITED);
     await openValueColumn();

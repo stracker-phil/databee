@@ -360,3 +360,59 @@ option_id IN (
 table = "options"
 columns = ["option_name", "option_value"]
 match = "exact"
+
+# ---------------------------------------------------------------------------------------------
+# Table icons (shown before table names and references; plugins' meta tables match the glob too)
+# ---------------------------------------------------------------------------------------------
+
+[[icon]]
+table = "*meta"
+icon = "menu"
+
+[[icon]]
+table = "users"
+icon = "user"
+
+[[icon]]
+table = "posts"
+icon = "file-text"
+
+[[icon]]
+table = "comments"
+icon = "message-square"
+
+[[icon]]
+table = "terms"
+icon = "tag"
+
+[[icon]]
+table = "term_taxonomy"
+icon = "tags"
+
+[[icon]]
+table = "term_relationships"
+icon = "tags"
+
+[[icon]]
+table = "options"
+icon = "settings"
+
+[[icon]]
+table = "links"
+icon = "link"
+
+[[icon]]
+table = "blogs"
+icon = "globe"
+
+[[icon]]
+table = "site"
+icon = "globe"
+
+[[icon]]
+table = "signups"
+icon = "mail"
+
+[[icon]]
+table = "registration_log"
+icon = "list"

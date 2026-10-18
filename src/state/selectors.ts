@@ -1,4 +1,5 @@
 import type { Address, DatabaseInfo, Value } from "../api";
+import { DEFAULT_MAX_PANES } from "../lib/columns";
 import { documentText, findValue } from "../lib/document";
 import { documentKey, type DocumentEntry } from "./slices/objects";
 import type { StructureEntry } from "./slices/session";
@@ -25,6 +26,7 @@ export const selectSidebarHidden = (s: Store): boolean => {
 /** How grids and values show NULL and how much text a cell shows; the defaults match Rust's settings. */
 export const selectNullLabel = (s: Store) => s.settings?.nullLabel ?? "NULL";
 export const selectMaxCellChars = (s: Store) => s.settings?.maxCellChars ?? 500;
+export const selectMaxPanes = (s: Store) => s.settings?.maxPanes ?? DEFAULT_MAX_PANES;
 
 export const selectActiveTab = (s: Store) => s.tabs.find((t) => t.id === s.activeTabId) ?? null;
 

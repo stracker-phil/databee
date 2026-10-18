@@ -69,6 +69,10 @@ export interface ObjectTab {
   address: Address;
   /** The stacks of the addresses in `nav`, so back and forward restore the columns too; never stored. */
   stacks: Record<string, ColumnStack>;
+  /** The shares of the shown panes after a divider moved (summing to 1); never stored. */
+  paneWidths?: number[];
+  /** Only the active column shows, at the full width; never stored. */
+  maximized?: boolean;
   preview?: boolean;
   nav: TabNav;
 }

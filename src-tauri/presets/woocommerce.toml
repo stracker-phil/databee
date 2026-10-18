@@ -649,3 +649,55 @@ match = "contains"
 table = "wc_orders"
 columns = ["transaction_id", "billing_email"]
 match = "exact"
+
+# ---------------------------------------------------------------------------------------------
+# Table icons (the meta tables get `menu` from the wordpress preset's `*meta`)
+# ---------------------------------------------------------------------------------------------
+
+[[icon]]
+table = "wc_orders"
+icon = "shopping-cart"
+
+[[icon]]
+table = "wc_order_addresses"
+icon = "map-pin"
+
+[[icon]]
+table = "wc_order_operational_data"
+icon = "layers"
+
+[[icon]]
+table = "woocommerce_order_items"
+icon = "package"
+
+[[icon]]
+table = "woocommerce_payment_tokens"
+icon = "credit-card"
+
+[[icon]]
+table = "woocommerce_sessions"
+icon = "clock"
+
+[[icon]]
+table = "wc_customer_lookup"
+icon = "users"
+
+[[icon]]
+table = "wc_order_product_lookup"
+icon = "box"
+
+[[icon]]
+table = "wc_product_meta_lookup"
+icon = "box"
+
+[[icon]]
+table = "wc_order_stats"
+icon = "chart-bar"
+
+[[icon]]
+table = "woocommerce_downloadable_product_permissions"
+icon = "key"
+
+[[icon]]
+table = "woocommerce_log"
+icon = "list"

@@ -8,6 +8,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use super::icons::IconRule;
 use super::kinds::{KindRule, StyleRule};
 use super::preset;
 use super::queries::{Home, Pinned};
@@ -48,6 +49,9 @@ pub struct Project {
     /// Added styles, and styles that override the preset style with the same `id`.
     #[serde(default)]
     pub styles: Vec<StyleRule>,
+    /// Table icons; one per `table`, which beats a preset's icon for the tables it names.
+    #[serde(default)]
+    pub icons: Vec<IconRule>,
     #[serde(default)]
     pub saved: Vec<SavedQuery>,
 }
@@ -86,6 +90,7 @@ impl Project {
             references: self.references.clone(),
             kinds: self.kinds.clone(),
             styles: self.styles.clone(),
+            icons: self.icons.clone(),
             pinned: self.saved.iter().map(SavedQuery::to_pinned).collect(),
             ..Preset::default()
         }
@@ -345,6 +350,7 @@ impl ProjectsStore {
 mod tests {
     use super::*;
     use crate::error::ErrorKind;
+    use crate::rules::icons::TableIcon;
     use crate::rules::kinds::{Money, StyleColor, StyleMatch, ValueRule, Zone};
     use crate::rules::types::{ColumnGlob, ColumnRef, Conditions, Match};
 
@@ -427,6 +433,16 @@ mod tests {
                     value: "ok%".into(),
                     color: StyleColor::Green,
                     enabled: false,
+                },
+            ],
+            icons: vec![
+                IconRule {
+                    table: "users".into(),
+                    icon: TableIcon::User,
+                },
+                IconRule {
+                    table: "*meta".into(),
+                    icon: TableIcon::None,
                 },
             ],
             saved: vec![
@@ -559,6 +575,7 @@ mod tests {
         assert_eq!(preset.references, project.references);
         assert_eq!(preset.kinds, project.kinds);
         assert_eq!(preset.styles, project.styles);
+        assert_eq!(preset.icons, project.icons);
         assert_eq!(
             preset.pinned,
             [
@@ -582,6 +599,21 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn to_preset_carries_the_icons() {
+        let project = full_project();
+
+        assert_eq!(project.to_preset().icons, project.icons);
+    }
+
+    #[test]
+    fn a_project_stored_before_icons_existed_has_none() {
+        let project: Project =
+            serde_json::from_str(r#"{ "connection": "shop", "database": "wp" }"#).unwrap();
+
+        assert!(project.icons.is_empty());
     }
 
     #[test]

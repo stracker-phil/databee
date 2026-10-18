@@ -9,6 +9,7 @@ use ts_rs::TS;
 
 use super::applied::Applied;
 use super::catalog::PresetCatalog;
+use super::icons::IconRule;
 use super::kinds::{KindRule, StyleRule};
 use super::project::Project;
 use super::types::{Check, ColumnGlob, Conditions, FieldError, Preset, Reference};
@@ -72,6 +73,15 @@ pub enum ProjectChange {
     },
     Enable {
         id: String,
+    },
+    /// Stores the project's icon for `rule.table`, replacing one it has; `none` switches off the
+    /// presets' icon there.
+    SetIcon {
+        rule: IconRule,
+    },
+    /// Removing the project's icon brings back the presets' one.
+    RemoveIcon {
+        table: String,
     },
     SetPrefix {
         prefix: Option<String>,
@@ -231,6 +241,23 @@ fn apply_checked(
         ProjectChange::Enable { id } => {
             check_rule_id(&id)?;
             project.disabled.retain(|d| *d != id);
+        }
+        ProjectChange::SetIcon { rule } => {
+            Tables::new(project, ctx).check_icon(&rule)?;
+            match project.icons.iter_mut().find(|i| i.table == rule.table) {
+                Some(own) => *own = rule,
+                None => project.icons.push(rule),
+            }
+        }
+        ProjectChange::RemoveIcon { table } => {
+            let index = project
+                .icons
+                .iter()
+                .position(|i| i.table == table)
+                .ok_or_else(|| {
+                    FieldError::new("table", format!("the project has no icon for `{table}`"))
+                })?;
+            project.icons.remove(index);
         }
         ProjectChange::SetPrefix { prefix } => {
             check_prefix(&ctx.schema, "prefix", prefix.as_deref())?;
@@ -478,6 +505,15 @@ impl<'a> Tables<'a> {
         Ok(())
     }
 
+    /// A glob matches whatever exists; a name must resolve.
+    fn check_icon(&self, rule: &IconRule) -> Result<(), FieldError> {
+        rule.check().map_err(|e| nested("icon", e))?;
+        if !rule.is_glob() {
+            self.resolve("icon.table", &rule.table)?;
+        }
+        Ok(())
+    }
+
     fn check_style(&self, rule: &StyleRule) -> Result<(), FieldError> {
         rule.check().map_err(|e| nested("style", e))?;
         self.check_globs("style", &rule.columns, &rule.r#in)
@@ -491,6 +527,7 @@ mod tests {
     use super::*;
     use crate::db::TableInfo;
     use crate::error::ErrorKind;
+    use crate::rules::icons::TableIcon;
     use crate::rules::kinds::{StyleColor, StyleMatch, ValueRule};
     use crate::rules::preset;
     use crate::rules::types::{ColumnRef, Match};
@@ -1080,6 +1117,115 @@ color = "blue"
             apply(&mut project, ProjectChange::AddKind { rule }, &ctx())
                 .unwrap_or_else(|e| panic!("{label}: {e}"));
         }
+    }
+
+    fn icon(table: &str, icon: TableIcon) -> IconRule {
+        IconRule {
+            table: table.into(),
+            icon,
+        }
+    }
+
+    fn set_icon(table: &str, icon_: TableIcon) -> ProjectChange {
+        ProjectChange::SetIcon {
+            rule: icon(table, icon_),
+        }
+    }
+
+    fn invalid_field(result: AppResult<()>) -> (String, String) {
+        match result.unwrap_err() {
+            AppError::InvalidField { field, message } => (field, message),
+            other => panic!("expected InvalidField, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn setting_an_icon_adds_it_and_replaces_the_one_for_the_same_table() {
+        let mut project = project();
+
+        apply(&mut project, set_icon("users", TableIcon::User), &ctx()).unwrap();
+        apply(&mut project, set_icon("posts", TableIcon::Files), &ctx()).unwrap();
+        apply(&mut project, set_icon("users", TableIcon::None), &ctx()).unwrap();
+
+        assert_eq!(
+            project.icons,
+            [
+                icon("users", TableIcon::None),
+                icon("posts", TableIcon::Files)
+            ]
+        );
+    }
+
+    #[test]
+    fn an_icon_for_a_table_that_does_not_exist_is_rejected() {
+        let mut project = project();
+
+        let (field, message) = invalid_field(apply(
+            &mut project,
+            set_icon("orders", TableIcon::Package),
+            &ctx(),
+        ));
+
+        assert_eq!(field, "icon.table");
+        assert_eq!(message, "no table `wp_orders` in this database");
+        assert!(project.icons.is_empty());
+    }
+
+    #[test]
+    fn an_icon_without_a_table_name_is_rejected() {
+        let mut project = project();
+
+        let (field, _) = invalid_field(apply(&mut project, set_icon("", TableIcon::User), &ctx()));
+
+        assert_eq!(field, "icon.table");
+    }
+
+    #[test]
+    fn an_icon_glob_is_not_checked_against_the_tables() {
+        let mut project = project();
+
+        apply(&mut project, set_icon("nothing*", TableIcon::Menu), &ctx()).unwrap();
+
+        assert_eq!(project.icons, [icon("nothing*", TableIcon::Menu)]);
+    }
+
+    #[test]
+    fn removing_an_icon_drops_it_by_table_and_a_missing_one_is_rejected() {
+        let mut project = project();
+        apply(&mut project, set_icon("users", TableIcon::User), &ctx()).unwrap();
+        apply(&mut project, set_icon("*meta", TableIcon::Menu), &ctx()).unwrap();
+        let remove = |table: &str| ProjectChange::RemoveIcon {
+            table: table.into(),
+        };
+
+        apply(&mut project, remove("users"), &ctx()).unwrap();
+        let (field, message) = invalid_field(apply(&mut project, remove("users"), &ctx()));
+
+        assert_eq!(project.icons, [icon("*meta", TableIcon::Menu)]);
+        assert_eq!(field, "table");
+        assert_eq!(message, "the project has no icon for `users`");
+    }
+
+    #[test]
+    fn icon_changes_read_from_the_pages_camel_case_tags() {
+        let set: ProjectChange = serde_json::from_value(serde_json::json!({
+            "op": "setIcon",
+            "rule": { "table": "users", "icon": "user" },
+        }))
+        .unwrap();
+        let remove: ProjectChange = serde_json::from_value(serde_json::json!({
+            "op": "removeIcon",
+            "table": "users",
+        }))
+        .unwrap();
+
+        assert_eq!(set, set_icon("users", TableIcon::User));
+        assert_eq!(
+            remove,
+            ProjectChange::RemoveIcon {
+                table: "users".into()
+            }
+        );
     }
 
     #[test]

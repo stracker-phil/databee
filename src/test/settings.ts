@@ -9,6 +9,7 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     uiFontSize: 13,
     dataFontSize: 12,
     rowPadding: 2,
+    maxPanes: 2,
     fontUi: null,
     fontMono: null,
     rowLimit: 1000,

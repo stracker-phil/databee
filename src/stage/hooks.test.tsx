@@ -211,7 +211,7 @@ describe("Stage page hooks", () => {
     });
 
     it("opens the row the entity and id name", async () => {
-      useStore.setState({ rulesInfo: { [projectKey("s1", "db")]: { prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [{ preset: "woocommerce", entity: { name: "order", table: "wp_wc_orders" } }], tableEntities: {} } } });
+      useStore.setState({ rulesInfo: { [projectKey("s1", "db")]: { prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [{ preset: "woocommerce", entity: { name: "order", table: "wp_wc_orders" } }], tableEntities: {}, tableIcons: {} } } });
       expect(await hooks().act({ kind: "command", command: "entity:open:order:4711" })).toMatchObject({ ok: true });
       await vi.waitFor(() => expect(activeObject().title).toBe("wp_wc_orders #4711"));
       expect(mocked_api.document).toHaveBeenCalledWith("s1", "order 4711", "db");

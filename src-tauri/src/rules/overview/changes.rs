@@ -12,6 +12,7 @@ use crate::lens::{ColumnsRef, ResolvedReference};
 use crate::rules::applied::Applied;
 use crate::rules::condition::conditions_text;
 use crate::rules::effective::overrides;
+use crate::rules::icons::{self, IconRule};
 use crate::rules::kinds::{KindRule, StyleMatch, StyleRule, ValueRule};
 use crate::rules::project::Project;
 use crate::rules::project_change::ProjectChange;
@@ -36,6 +37,7 @@ pub enum ChangedRule {
     Reference,
     ValueStyle,
     Kind,
+    Icon,
     Prefix,
     NetworkPrefix,
     Presets,
@@ -176,6 +178,7 @@ impl Overview<'_> {
         lines.extend(self.reference_changes(references));
         lines.extend(self.style_changes());
         lines.extend(self.kind_changes());
+        lines.extend(self.icon_changes());
         lines.extend(self.unknown_switches(references));
         lines
     }
@@ -397,6 +400,59 @@ impl Overview<'_> {
             .collect()
     }
 
+    /// The real tables an icon rule names: by name, or every table its glob covers.
+    fn icon_tables(&self, rule: &IconRule) -> Vec<String> {
+        let applied = &self.rules.applied;
+        self.schema
+            .tables
+            .iter()
+            .filter(|t| {
+                icons::rule_for(std::slice::from_ref(rule), &applied.rule_names(&t.name)).is_some()
+            })
+            .map(|t| t.name.clone())
+            .collect()
+    }
+
+    /// Each project icon: edited where a preset gives the table an icon, else added.
+    fn icon_changes(&self) -> Vec<ProjectChangeLine> {
+        self.project
+            .icons
+            .iter()
+            .map(|own| {
+                let table = self.icon_tables(own).into_iter().next();
+                let names = table
+                    .as_deref()
+                    .map(|t| self.rules.applied.rule_names(t))
+                    .unwrap_or_default();
+                let shipped = icons::preset_rule_for(&self.rules.applied.presets, &names);
+                let action = if shipped.is_some() {
+                    ChangeAction::Edited
+                } else {
+                    ChangeAction::Added
+                };
+                let shown = match &table {
+                    Some(real) if !own.is_glob() => real.clone(),
+                    _ => own.table.clone(),
+                };
+                let undo = ProjectChange::RemoveIcon {
+                    table: own.table.clone(),
+                };
+                ProjectChangeLine {
+                    origin: shipped.map(|(preset, _)| preset_origin(preset)),
+                    id: Some(own.table.clone()),
+                    was: shipped.map(|(_, rule)| format!("{} · {}", rule.table, rule.icon.name())),
+                    table,
+                    ..ProjectChangeLine::new(
+                        action,
+                        ChangedRule::Icon,
+                        format!("{shown} · {}", own.icon.name()),
+                        undo,
+                    )
+                }
+            })
+            .collect()
+    }
+
     /// Switched-off ids that no listed reference or applied preset style carries.
     fn unknown_switches(&self, rows: &[ReferenceRow]) -> Vec<ProjectChangeLine> {
         let known = |id: &String| {
@@ -429,6 +485,7 @@ mod tests {
     use super::super::project_rules;
     use super::*;
     use crate::rules::effective::EffectiveRules;
+    use crate::rules::icons::TableIcon;
     use crate::rules::kinds::StyleColor;
     use crate::rules::testing::{preset, project, reference, schema};
     use crate::rules::types::{ColumnGlob, Conditions, Match};
@@ -461,6 +518,10 @@ columns = ["threads.parent_id"]
 match = "="
 value = "0"
 color = "green"
+
+[[icon]]
+table = "threads"
+icon = "list"
 "#;
 
     const AUTHOR_X: &str = "style:threads.author=x";
@@ -990,6 +1051,149 @@ color = "green"
                     )
                 },
             ]
+        );
+    }
+
+    fn icon_rule(table: &str, icon: TableIcon) -> IconRule {
+        IconRule {
+            table: table.into(),
+            icon,
+        }
+    }
+
+    fn remove_icon(table: &str) -> ProjectChange {
+        ProjectChange::RemoveIcon {
+            table: table.into(),
+        }
+    }
+
+    #[test]
+    fn a_project_icon_over_a_preset_icon_is_an_edit_that_remembers_the_shipped_rule() {
+        let lines = changes(Project {
+            icons: vec![icon_rule("threads", TableIcon::Star)],
+            ..project()
+        });
+
+        assert_eq!(
+            lines,
+            [ProjectChangeLine {
+                origin: kit(),
+                id: some("threads"),
+                was: some("threads · list"),
+                table: some("f_threads"),
+                ..line(
+                    ChangeAction::Edited,
+                    ChangedRule::Icon,
+                    "f_threads · star",
+                    remove_icon("threads"),
+                )
+            }]
+        );
+    }
+
+    #[test]
+    fn a_project_icon_none_over_a_preset_icon_is_an_edit() {
+        let lines = changes(Project {
+            icons: vec![icon_rule("threads", TableIcon::None)],
+            ..project()
+        });
+
+        assert_eq!(
+            lines,
+            [ProjectChangeLine {
+                origin: kit(),
+                id: some("threads"),
+                was: some("threads · list"),
+                table: some("f_threads"),
+                ..line(
+                    ChangeAction::Edited,
+                    ChangedRule::Icon,
+                    "f_threads · none",
+                    remove_icon("threads"),
+                )
+            }]
+        );
+    }
+
+    #[test]
+    fn a_project_icon_where_no_preset_gives_one_is_added() {
+        let lines = changes(Project {
+            icons: vec![icon_rule("replies", TableIcon::MessageSquare)],
+            ..project()
+        });
+
+        assert_eq!(
+            lines,
+            [ProjectChangeLine {
+                id: some("replies"),
+                table: some("f_replies"),
+                ..line(
+                    ChangeAction::Added,
+                    ChangedRule::Icon,
+                    "f_replies · message-square",
+                    remove_icon("replies"),
+                )
+            }]
+        );
+    }
+
+    #[test]
+    fn a_glob_icon_shows_its_pattern_and_names_the_first_table_it_covers() {
+        let lines = changes(Project {
+            icons: vec![icon_rule("*s", TableIcon::Tag)],
+            ..project()
+        });
+
+        assert_eq!(
+            lines,
+            [ProjectChangeLine {
+                origin: kit(),
+                id: some("*s"),
+                was: some("threads · list"),
+                table: some("f_threads"),
+                ..line(
+                    ChangeAction::Edited,
+                    ChangedRule::Icon,
+                    "*s · tag",
+                    remove_icon("*s"),
+                )
+            }]
+        );
+    }
+
+    #[test]
+    fn an_icon_for_a_table_the_database_lacks_is_added_with_its_stored_name_and_no_table() {
+        let lines = changes(Project {
+            icons: vec![icon_rule("ghosts", TableIcon::Box)],
+            ..project()
+        });
+
+        assert_eq!(
+            lines,
+            [ProjectChangeLine {
+                id: some("ghosts"),
+                ..line(
+                    ChangeAction::Added,
+                    ChangedRule::Icon,
+                    "ghosts · box",
+                    remove_icon("ghosts"),
+                )
+            }]
+        );
+    }
+
+    #[test]
+    fn icon_lines_come_after_kinds_and_before_unknown_ids() {
+        let lines = changes(Project {
+            disabled: vec!["ghost.id".into()],
+            kinds: vec![number_kind(&["threads.author"])],
+            icons: vec![icon_rule("replies", TableIcon::Tag)],
+            ..project()
+        });
+
+        assert_eq!(
+            lines.iter().map(|l| l.rule).collect::<Vec<_>>(),
+            [ChangedRule::Kind, ChangedRule::Icon, ChangedRule::Unknown]
         );
     }
 

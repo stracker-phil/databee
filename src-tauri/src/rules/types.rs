@@ -10,6 +10,7 @@ use ts_rs::TS;
 
 use super::actions::Action;
 use super::condition::Matcher;
+use super::icons::IconRule;
 use super::kinds::{KindRule, StyleRule};
 use super::queries::{Anomaly, Pattern, Pinned};
 
@@ -34,6 +35,7 @@ pub struct Preset {
     pub anomalies: Vec<Anomaly>,
     pub actions: Vec<Action>,
     pub finds: Vec<FindSource>,
+    pub icons: Vec<IconRule>,
 }
 
 /// A rule's problem in one field, before the loader adds the file and the rule index.

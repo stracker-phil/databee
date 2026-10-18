@@ -7,6 +7,7 @@ import { formatCount } from "../../lib/format";
 import { sourceText } from "../../lib/provenance";
 import { fail, useStore } from "../../state/store";
 import { ValueTree } from "../ValueTree";
+import { PaneMaximize } from "../object/PaneMaximize";
 import { useDecoded } from "./useDecoded";
 
 /** The row a value column's edits go to: its provenance row, when a single-column key names it. */
@@ -70,6 +71,7 @@ export function ValueColumnView({ column, onClose, onEdited }: Props) {
         <button className="icon-btn" aria-label="Copy value" data-stage="value-column:copy" onClick={() => void copyText(column.text, "value")}>
           <Copy size="1rem" />
         </button>
+        <PaneMaximize />
         <button className="icon-btn" aria-label="Close value column" data-stage="value-column:close" onClick={onClose}>
           <X size="1rem" />
         </button>

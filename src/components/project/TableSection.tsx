@@ -3,8 +3,10 @@ import type { MouseEvent } from "react";
 import type { TableRules } from "../../api";
 import { plural } from "../../lib/format";
 import type { useCollapsedGroups } from "../object/useCollapsedGroups";
+import { TableIcon } from "../TableIcon";
 import type { ProjectContext } from "./context";
 import type { CoverageState } from "./coverage";
+import { IconControl } from "./IconControl";
 import { ReferencedByLine, ReferenceLines } from "./ReferenceLines";
 import { EntityActionLines, KindLines, StyleLines } from "./RuleSections";
 
@@ -55,6 +57,7 @@ export function TableSection({ group, coverage, collapse, ctx }: Props) {
           {collapsed ? <ChevronRight size="0.923rem" /> : <ChevronDown size="0.923rem" />}
         </button>
         <span className={`tn${group.table ? "" : " sans"}`} data-stage={`project:table:${name}`} data-stage-label={name} data-stage-list="project-tables">
+          {group.table && <TableIcon database={ctx.tab.database} table={group.table} sessionId={ctx.tab.sessionId} />}
           {name}
         </span>
         {!group.table && <span className="via">value styles and kinds whose scope covers no table here</span>}
@@ -63,6 +66,11 @@ export function TableSection({ group, coverage, collapse, ctx }: Props) {
       </div>
       {!collapsed && (
         <>
+          {group.table && (
+            <div className="row facts icon-line">
+              <IconControl table={group.table} ruleName={ctx.rules.tables.find((t) => t.table === group.table)?.name ?? null} icon={group.icon} ctx={ctx} />
+            </div>
+          )}
           {group.references.length > 0 && <Caption text="references" />}
           <ReferenceLines rows={group.references} coverage={coverage} ctx={ctx} />
           <ReferencedByLine incoming={group.referencedBy} />

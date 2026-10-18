@@ -7,7 +7,7 @@ import { session } from "./session";
 import { settings } from "./settings";
 
 function emptyProject(database: string): Project {
-  return { connection: "local", database, prefix: null, network_prefix: null, presets: null, references: [], disabled: [], enabled: [], kinds: [], styles: [], saved: [] };
+  return { connection: "local", database, prefix: null, network_prefix: null, presets: null, references: [], disabled: [], enabled: [], kinds: [], styles: [], icons: [], saved: [] };
 }
 
 /** A readout with nothing in it, as for a database without presets, pins or recent objects. */
@@ -44,7 +44,7 @@ export function createApiMock(): typeof realApi {
     listDatabases: vi.fn().mockResolvedValue([]),
     listTables: vi.fn().mockResolvedValue([]),
     describeTable: vi.fn().mockResolvedValue({ columns: [], indexes: [], primaryKey: [], foreignKeys: [], ddl: null } satisfies TableStructure),
-    tableRules: vi.fn().mockResolvedValue({ table: "wp_posts", ruleName: "posts", columns: [], meta: [], referencedBy: [], entities: [], actions: [], ddl: null } satisfies TableProfile),
+    tableRules: vi.fn().mockResolvedValue({ table: "wp_posts", ruleName: "posts", icon: null, columns: [], meta: [], referencedBy: [], entities: [], actions: [], ddl: null } satisfies TableProfile),
     tableReferences: vi.fn().mockResolvedValue({ outgoing: [], incoming: [] } satisfies TableReferences),
     presetsList: vi.fn().mockResolvedValue([]),
     projectGet: vi.fn().mockImplementation(async (_sessionId: string, database: string) => emptyProject(database)),
@@ -73,7 +73,7 @@ export function createApiMock(): typeof realApi {
     tableActions: vi.fn().mockResolvedValue([]),
     previewAction: vi.fn(async (_s, _address, action): Promise<ActionPreview> => ({ id: 1, description: `${action}: Update 1 row`, canUndo: true, rows: [], sql: [] })),
     queueActionPreview: vi.fn(async () => planned("action")),
-    rulesInfo: vi.fn().mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [], tableEntities: {} } satisfies RulesInfo),
+    rulesInfo: vi.fn().mockResolvedValue({ prefix: "wp_", networkPrefix: "wp_", suggestedPrefix: null, appliedPresets: [], availablePresets: [], entities: [], tableEntities: {}, tableIcons: {} } satisfies RulesInfo),
     refreshSchema: vi.fn().mockResolvedValue(undefined),
     completionSchema: vi.fn().mockResolvedValue({}),
     useDatabase: vi.fn().mockResolvedValue(undefined),

@@ -11,6 +11,7 @@ import { useContextMenu, type MenuAnchor, type MenuEntry } from "../ContextMenu"
 import { ErrorPanel } from "../ErrorPanel";
 import { writesSummary } from "../object/actions";
 import { useAutoCoverage, type CoverageState } from "../project/coverage";
+import { IconControl } from "../project/IconControl";
 import { KindForm, StyleForm } from "../project/KindStyleForms";
 import { ReferenceForm } from "../project/ReferenceForm";
 import { newKindForm, newReferenceForm, newStyleForm, type ColumnTarget } from "./forms";
@@ -202,6 +203,9 @@ function Profile({ tab, profile }: { tab: TableTabState; profile: TableProfile }
 
   return (
     <div className="structure" data-stage="table:structure-view" data-stage-label="Table structure">
+      <div className="structure-icon">
+        <IconControl table={profile.table} ruleName={profile.ruleName} icon={profile.icon} ctx={ctx} />
+      </div>
       <div>
         <h3>Columns</h3>
         <div className="structure-grid" role="table" aria-label={`Columns of ${profile.table}`}>

@@ -1,23 +1,26 @@
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { ChevronRight, ExternalLink } from "lucide-react";
 import type { Value as StoredValue } from "../../api";
 import { cellDisplay, cellText, relativeTime } from "../../lib/format";
 import { formatAddress } from "../../lib/address";
 import { bySourceText, provenanceText, rowIdentity } from "../../lib/provenance";
 import { selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
+import { TableIcon } from "../TableIcon";
 import { ValueTree } from "../ValueTree";
-import { useOpenModes, type OpenMode } from "./open";
+import { OpenHint } from "./OpenHint";
+import type { ClickEffect } from "./open";
 import { useAltHeld } from "./useAltHeld";
 import { useDecoded } from "./useDecoded";
 
 /** `grid`: one line, cut to the cell; `full`: the whole value, serialized data expands in place. */
-type Density = "grid" | "full";
+export type Density = "grid" | "full";
 
 /**
  * Called when a value that acts on click is clicked: a primary key, a reference, an enum, serialized data in a
- * grid. A reference's icons pass the mode they stand for; a click passes none.
+ * grid. `effect` (from `useOpenValue`) says what the click does, for the indicator shown on hover.
  */
-export type OpenValue = (value: StoredValue, event: MouseEvent, mode?: OpenMode) => void;
+export type OpenValue = ((value: StoredValue, event: MouseEvent) => void) & {
+  effect?: (value: StoredValue, density: Density) => ClickEffect | null;
+};
 
 interface Props {
   value: StoredValue;
@@ -133,6 +136,7 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
       const inferred = kind.by.kind === "sameName";
       const link = (
         <span className={inferred ? "val-ref inferred" : "val-ref"} role={onActivate ? "link" : undefined} onClick={onActivate}>
+          <TargetIcon value={value} />
           {text}
         </span>
       );
@@ -166,46 +170,14 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
   }
 }
 
-const MODES: Record<OpenMode, { Icon: typeof ChevronRight; label: (target: string) => string; title: string; stage: string }> = {
-  go: { Icon: ExternalLink, label: (target) => `Go to ${target}`, title: "Go to (replaces this view)", stage: "value-go" },
-  drill: { Icon: ChevronRight, label: (target) => `Open ${target} in side panel`, title: "Open in side panel", stage: "value-drill" },
-};
-
-const stop = (e: MouseEvent) => e.stopPropagation();
-
-/** A reference's icons, shown while its cell or line is hovered: go to the target, or open it in the side panel. */
-function RefActions({ value, onOpen }: { value: StoredValue; onOpen: OpenValue }) {
-  const modes = useOpenModes(value);
-  if (value.kind.kind !== "reference") return null;
-  const target = value.kind.targets.map(formatAddress).join(" or ");
-  return (
-    <span className="val-acts">
-      {modes.map((mode) => {
-        const { Icon, label, title, stage } = MODES[mode];
-        const id = stageId(value, stage);
-        return (
-          <button
-            key={mode}
-            type="button"
-            className="val-act"
-            tabIndex={-1}
-            aria-label={label(target)}
-            title={title}
-            data-stage={id}
-            data-stage-label={id ? label(target) : undefined}
-            onMouseDown={stop}
-            onDoubleClick={stop}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen(value, e, mode);
-            }}
-          >
-            <Icon size="0.923rem" />
-          </button>
-        );
-      })}
-    </span>
-  );
+/** The icon of the table a reference points into; none when its targets are in different tables. */
+function TargetIcon({ value }: { value: StoredValue }) {
+  const kind = value.kind;
+  if (kind.kind !== "reference" || kind.targets.length === 0) return null;
+  const tables = new Set(kind.targets.map((t) => ("table" in t.target ? t.target.table : null)));
+  if (tables.size !== 1) return null;
+  const first = kind.targets[0];
+  return <TableIcon database={first.database} table={"table" in first.target ? first.target.table : null} />;
 }
 
 function peekData(value: StoredValue) {
@@ -227,6 +199,7 @@ function peekData(value: StoredValue) {
 export const Value = memo(function Value({ value, onOpen, density = "full" }: Props) {
   const acts = !!onOpen && opensOnClick(value, density);
   const onActivate = acts ? (e: MouseEvent) => onOpen(value, e) : undefined;
+  const effect = acts ? (onOpen.effect?.(value, density) ?? null) : null;
   const style = value.style ? { color: `var(--style-${value.style})` } : undefined;
   const stage = acts || value.kind.kind === "secret" ? stageId(value) : undefined;
   return (
@@ -242,7 +215,7 @@ export const Value = memo(function Value({ value, onOpen, density = "full" }: Pr
     >
       <Body value={value} density={density} onActivate={onActivate} />
       {value.secondary && <span className="val-sec">{value.secondary.text}</span>}
-      {acts && value.kind.kind === "reference" && <RefActions value={value} onOpen={onOpen} />}
+      {effect && <OpenHint effect={effect} edge />}
     </span>
   );
 });

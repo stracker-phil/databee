@@ -8,6 +8,7 @@ import { api } from "../api";
 import { installCommands } from "../commands";
 import { useStore } from "../state/store";
 import { connectedStore, session, tableTab } from "../test/fixtures";
+import { rulesInfoOf, showTableIcons } from "../test/iconFixtures";
 import { Sidebar } from "./Sidebar";
 
 const mocked = vi.mocked(api, true);
@@ -28,6 +29,24 @@ describe("Sidebar", () => {
   it("captions the current database with its table count", () => {
     render(<Sidebar />);
     expect(screen.getByText("db · 3 tables")).toBeInTheDocument();
+  });
+
+  describe("table icons", () => {
+    const entry = (name: string) => screen.getByText(name).closest<HTMLElement>("[role=treeitem]")!;
+
+    it("draws the icon of a table before its name and none for a table without one", () => {
+      showTableIcons({ wp_posts: "file-text" });
+      render(<Sidebar />);
+      expect(entry("wp_posts").querySelector("[data-icon=file-text]")).not.toBeNull();
+      expect(entry("wp_options").querySelector("[data-icon]")).toBeNull();
+    });
+
+    it("loads the database's icons when they are not known yet", async () => {
+      mocked.rulesInfo.mockResolvedValue(rulesInfoOf({ wp_options: "settings" }));
+      render(<Sidebar />);
+      await waitFor(() => expect(entry("wp_options").querySelector("[data-icon=settings]")).not.toBeNull());
+      expect(mocked.rulesInfo).toHaveBeenCalledWith("s1", "db");
+    });
   });
 
   it("shows the filter shortcut as a key cap", () => {

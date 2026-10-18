@@ -14,21 +14,28 @@ export interface ColumnsSlice {
   updateValueColumn: (tabId: string, index: number | null, text: string) => void;
   /** Pops back to column `index`: it becomes active and the columns to its right close. */
   popToColumn: (tabId: string, index: number) => void;
-  /** `Esc`: closes the rightmost column of the active tab, an object column or a value column. */
+  /** `Esc`: restores a maximized stack, else closes the rightmost column of the active tab, an object column or a value column. */
   closeRightmostColumn: () => void;
   /** Makes column `index` active without closing any; history does not record it. */
   setActiveColumn: (tabId: string, index: number) => void;
   /** `h`/`l`: the column left (-1) or right (+1) of the active one becomes active. */
   moveActiveColumn: (delta: number) => void;
+  /** The shares of object tab `tabId`'s shown panes; null makes them equal. */
+  setPaneWidths: (tabId: string, widths: number[] | null) => void;
+  /** Shows only the active column of object tab `tabId`, or all panes again; a single column never stays maximized. */
+  toggleMaximized: (tabId: string) => void;
 }
 
 /** The active column of an object tab, to tell whether an update moved it. */
 const activeColumn = (tab: Tab | undefined) => (tab?.kind === "object" ? tab.columns[tab.active] : undefined);
 
+/** A stack down to one column has nothing to maximize against. */
+const unmaximizedAlone = (tab: Tab): Tab => (tab.kind === "object" && tab.maximized && tab.columns.length < 2 ? { ...tab, maximized: undefined } : tab);
+
 /** The tab with `tab` in its place; a new active column leaves the tab's grid selection behind. */
 function withTab(s: Store, tab: Tab): Partial<Store> {
   const moved = activeColumn(findTab(s, tab.id)) !== activeColumn(tab);
-  const replaced = replaceTab(s, tab);
+  const replaced = replaceTab(s, unmaximizedAlone(tab));
   return moved && s.selectedCell?.tabId === tab.id ? { ...replaced, selectedCell: null } : replaced;
 }
 
@@ -90,6 +97,10 @@ export const columnsSlice: Slice<ColumnsSlice> = {
         set(withTab(s, { ...tab, valueColumn: undefined }));
         return;
       }
+      if (tab.kind === "object" && tab.maximized) {
+        set(withTab(s, { ...tab, maximized: undefined }));
+        return;
+      }
       if (tab.kind !== "object" || tab.columns.length < 2) return;
       const columns = tab.columns.slice(0, -1);
       set(withTab(s, restacked(tab, { columns, active: Math.min(tab.active, columns.length - 1) })));
@@ -107,6 +118,21 @@ export const columnsSlice: Slice<ColumnsSlice> = {
       const tab = selectActiveTab(get());
       if (tab?.kind !== "object") return;
       get().setActiveColumn(tab.id, Math.max(0, Math.min(tab.columns.length - 1, tab.active + delta)));
+    },
+
+    setPaneWidths(tabId, widths) {
+      set((s) => {
+        const tab = findTab(s, tabId, "object");
+        return tab ? replaceTab(s, { ...tab, paneWidths: widths ?? undefined }) : {};
+      });
+    },
+
+    toggleMaximized(tabId) {
+      set((s) => {
+        const tab = findTab(s, tabId, "object");
+        if (!tab || (!tab.maximized && tab.columns.length < 2)) return {};
+        return replaceTab(s, { ...tab, maximized: tab.maximized ? undefined : true });
+      });
     },
   }),
 };

@@ -200,11 +200,11 @@ status kind: color comes only from value styles.
 ## Rules and presets
 
 `src-tauri/src/rules/` is the generic configuration layer ([presets.md](presets.md)). A preset is a TOML file
-of rules for tables named without their prefix: key/value tables, references, entities, kinds, value styles,
+of rules for tables named without their prefix: key/value tables, references, entities, kinds, value styles, table icons,
 patterns, pinned queries, anomalies, actions and find sources. No application name appears in its Rust code;
 WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](presets.md#built-in-presets)).
 
-- `types.rs`, `kinds.rs`, `queries.rs`, `actions.rs`: the rule types. Each has one serialized form, the TOML
+- `types.rs`, `kinds.rs`, `icons.rs`, `queries.rs`, `actions.rs`: the rule types (`icons.rs` also resolves the icon of each table, `table_icons`). Each has one serialized form, the TOML
   shape, shared by preset files, projects and the page (exported to `types.gen.ts`). Shapes with exclusive
   fields (`KindRule`, `Action`) read a flat `*Fields` struct and convert with `try_from`.
 - `preset.rs`: `parse(file, src)` reads every rule on its own, so a `PresetError` names the file, the rule

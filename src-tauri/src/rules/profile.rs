@@ -10,7 +10,9 @@ use crate::db::{ColumnInfo, IndexInfo, TableStructure};
 use crate::error::AppResult;
 use crate::rules::actions::{ActionScope, ActionWrite, writes};
 use crate::rules::effective::{self, EffectiveRules, MetaRef, RuleSources};
-use crate::rules::overview::{self, KindRow, ProjectRules, ReferenceRow, StyleRow, TableRules};
+use crate::rules::overview::{
+    self, IconRow, KindRow, ProjectRules, ReferenceRow, StyleRow, TableRules,
+};
 use crate::rules::types::ColumnGlob;
 use crate::schema;
 use crate::session::Session;
@@ -22,6 +24,8 @@ pub struct TableProfile {
     pub table: String,
     /// The name rules write the table as (without prefix); `None` outside the prefix.
     pub rule_name: Option<String>,
+    /// The icon rule that applies to the table, as the Project page lists it.
+    pub icon: Option<IconRow>,
     pub columns: Vec<ColumnProfile>,
     /// The table's own meta-key rules when it is a meta table, then those of the meta tables
     /// that describe its rows.
@@ -199,6 +203,7 @@ pub fn table_profile(
             .rule_names(table)
             .first()
             .map(ToString::to_string),
+        icon: group.icon.clone(),
         columns,
         meta,
         referenced_by,
@@ -325,7 +330,8 @@ mod tests {
     use super::*;
     use crate::db::ForeignKey;
     use crate::lens::ColumnsRef;
-    use crate::rules::overview::{RuleOrigin, project_rules};
+    use crate::rules::icons::{IconRule, TableIcon};
+    use crate::rules::overview::{RuleOrigin, ShippedIcon, project_rules};
     use crate::rules::project::Project;
     use crate::rules::testing::{preset, project, schema, with_foreign_key};
     use crate::schema::DatabaseSchema;
@@ -399,6 +405,10 @@ name = "purge"
 table = "threads"
 scope = "table"
 delete = { where = "status = 'spam'" }
+
+[[icon]]
+table = "threads"
+icon = "list"
 "#;
 
     const THREADS: &[&str] = &["thread_id", "author", "origin", "status", "created_gmt"];
@@ -453,9 +463,18 @@ delete = { where = "status = 'spam'" }
     }
 
     fn profile_with(table: &str, columns: &[&str], indexes: Vec<IndexInfo>) -> TableProfile {
+        profile_for(project(), table, columns, indexes)
+    }
+
+    fn profile_for(
+        own: Project,
+        table: &str,
+        columns: &[&str],
+        indexes: Vec<IndexInfo>,
+    ) -> TableProfile {
         let own = Project {
             prefix: Some("f_".into()),
-            ..project()
+            ..own
         };
         let loaded = [preset(KIT)];
         let schema = Arc::new(db_schema());
@@ -650,6 +669,46 @@ delete = { where = "status = 'spam'" }
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn the_icon_is_the_one_the_project_page_lists_for_the_table() {
+        let preset_icon = IconRow {
+            origin: kit(),
+            icon: TableIcon::List,
+            pattern: "threads".into(),
+            shipped: None,
+        };
+        let own = Project {
+            icons: vec![IconRule {
+                table: "threads".into(),
+                icon: TableIcon::Star,
+            }],
+            ..project()
+        };
+
+        let shipped = threads();
+        let overridden = profile_for(own, "f_threads", THREADS, Vec::new());
+
+        assert_eq!(shipped.icon, Some(preset_icon));
+        assert_eq!(
+            overridden.icon,
+            Some(IconRow {
+                origin: RuleOrigin::Project,
+                icon: TableIcon::Star,
+                pattern: "threads".into(),
+                shipped: Some(ShippedIcon {
+                    preset: "kit".into(),
+                    icon: TableIcon::List,
+                    pattern: "threads".into(),
+                }),
+            })
+        );
+    }
+
+    #[test]
+    fn a_table_without_an_icon_rule_has_none() {
+        assert_eq!(profile_of("f_people", &["person_id"]).icon, None);
     }
 
     #[test]

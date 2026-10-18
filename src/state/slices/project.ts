@@ -34,6 +34,8 @@ export interface ProjectSlice {
   refreshCoverage: (key: string) => void;
   loadProjectRules: (sessionId: string, database: string) => Promise<void>;
   loadRulesInfo: (sessionId: string, database: string) => Promise<void>;
+  /** Loads the database's `rulesInfo` unless it is loaded or loading (table icons ask for it from many places). */
+  ensureRulesInfo: (sessionId: string, database: string) => void;
   /**
    * Opens the Project page of `database` (default: the active session's current one); an open one is reused.
    * A `form` replaces the page's form.
@@ -46,6 +48,8 @@ export interface ProjectSlice {
 }
 
 export const projectKey = (sessionId: string, database: string) => `${sessionId}/${database}`;
+
+const loadingRulesInfo = new Set<string>();
 
 /** The session and database a Project page is for: the given ones, else the active session's current database. */
 function projectTarget(s: Store, opts: { sessionId?: string; database?: string }): { session: SessionInfo; database: string } | null {
@@ -97,6 +101,15 @@ export const projectSlice: Slice<ProjectSlice> = {
       } catch (e) {
         fail(e, "Could not load the presets");
       }
+    },
+
+    ensureRulesInfo(sessionId, database) {
+      const key = projectKey(sessionId, database);
+      if (key in get().rulesInfo || loadingRulesInfo.has(key)) return;
+      loadingRulesInfo.add(key);
+      void get()
+        .loadRulesInfo(sessionId, database)
+        .finally(() => loadingRulesInfo.delete(key));
     },
 
     openProject(opts = {}) {

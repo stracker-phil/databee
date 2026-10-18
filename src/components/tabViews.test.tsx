@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
@@ -8,7 +8,8 @@ import { formatAddress } from "../lib/address";
 import { objectColumn } from "../lib/columns";
 import { documentText } from "../lib/document";
 import type { ObjectTab, ProjectTab, Tab } from "../state/store";
-import { queryTab, readoutTab, session, tableTab } from "../test/fixtures";
+import { connectedStore, queryTab, readoutTab, session, tableTab } from "../test/fixtures";
+import { showTableIcons } from "../test/iconFixtures";
 import { tabView } from "./tabViews";
 
 const rowAddress: Address = {
@@ -86,6 +87,36 @@ describe("object view", () => {
     const preview = objectTab({ preview: true });
     expect(tabView(plain).tooltip(plain)).toBe(formatAddress(rowAddress));
     expect(tabView(preview).tooltip(preview)).toBe(`${formatAddress(rowAddress)} · preview (double-click to keep)`);
+  });
+});
+
+describe("tab icons", () => {
+  const draw = (tab: Tab) => render(<>{tabView(tab).icon(tab)}</>).container;
+  const icon = (container: HTMLElement) => container.querySelector("[data-icon]")?.getAttribute("data-icon") ?? null;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore();
+    showTableIcons({ wp_posts: "file-text" });
+  });
+
+  it("gives a table tab the icon of its table", () => {
+    expect(icon(draw(tableTab({ table: "wp_posts" })))).toBe("file-text");
+  });
+
+  it("gives an object tab the icon of the table of its first column", () => {
+    const other: Address = { ...rowAddress, target: { kind: "row", table: "wp_users", key: "1" } };
+    expect(icon(draw(objectTab()))).toBe("file-text");
+    expect(icon(draw(objectTab({ columns: [objectColumn(rowAddress), objectColumn(other)], active: 1 })))).toBe("file-text");
+  });
+
+  it.each([
+    ["a table tab", () => tableTab({ table: "wp_options" })],
+    ["an object tab", () => objectTab({ columns: [objectColumn({ ...rowAddress, target: { kind: "row", table: "wp_options", key: "1" } })] })],
+  ])("keeps the default glyph of %s for a table without an icon", (_name, make) => {
+    const container = draw(make());
+    expect(icon(container)).toBeNull();
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 });
 

@@ -11,6 +11,7 @@ pub mod condition;
 pub mod coverage;
 pub mod draft;
 pub mod effective;
+pub mod icons;
 pub mod kinds;
 pub mod lens;
 pub mod overview;

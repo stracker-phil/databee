@@ -1,22 +1,23 @@
 /** Keys of the column stack (docs/ux.md, Keys); they act only while the keyboard focus is in the stack or nowhere. */
 import { collapseKey, documentText, focusOrder, provenanceKey } from "../lib/document";
-import { objectColumnAt } from "../lib/columns";
+import { maximizable, objectColumnAt } from "../lib/columns";
 import { drillable, openValueAt } from "../components/value/open";
-import { hasValueColumn, selectActiveTab, selectCollapsedGroups, selectDocument, selectFocusedValue, useStore, type ObjectTab } from "../state/store";
+import { hasValueColumn, selectActiveTab, selectCollapsedGroups, selectDocument, selectFocusedValue, selectMaxPanes, useStore, type ObjectTab } from "../state/store";
 import { isTextInput, type Command } from "./registry";
 
 const focused = () => document.activeElement;
 const typing = () => isTextInput(focused());
 const inGrid = () => !!focused()?.closest('[role="grid"]');
+const onDivider = () => !!focused()?.closest('[role="separator"]');
 const menuOpen = () => !!document.querySelector('[role="menu"]');
 
-/** The keyboard focus is in an object tab's stack, or on nothing in particular (the body, a hidden tab). */
+/** The keyboard focus is in an object tab's stack or its trail, or on nothing in particular (the body, a hidden tab). */
 function inStack(): boolean {
   const el = focused();
-  return !el || el === document.body || !!el.closest(".stack, [hidden]");
+  return !el || el === document.body || !!el.closest(".stack, .trail, [hidden]");
 }
 
-const onControl = () => !!focused()?.closest("button, a, [role='button'], [role='link']");
+const onControl = () => !!focused()?.closest("button, a, [role='button'], [role='link'], [role='separator']");
 
 function activeObjectTab(): ObjectTab | null {
   const tab = selectActiveTab(useStore.getState());
@@ -55,7 +56,7 @@ const canMoveFocus = () => !typing() && inStack() && !inGrid() && !!documentColu
 
 function canMoveColumn(arrow: boolean) {
   const tab = activeObjectTab();
-  return !!tab && tab.columns.length > 1 && !typing() && inStack() && !(arrow && inGrid());
+  return !!tab && tab.columns.length > 1 && !typing() && inStack() && !(arrow && (inGrid() || onDivider()));
 }
 
 function drill() {
@@ -71,12 +72,22 @@ function canDrill(): boolean {
   return !!value && drillable(value);
 }
 
-/** A column to close: one of several in an object tab, or a table or query tab's value column. */
+/** A column to close: one of several in an object tab, or a table or query tab's value column; or a maximized pane to restore. */
 function canClose(): boolean {
   const tab = selectActiveTab(useStore.getState());
   if (!tab || typing() || menuOpen()) return false;
-  if (tab.kind === "object") return tab.columns.length > 1;
+  if (tab.kind === "object") return tab.columns.length > 1 || !!tab.maximized;
   return hasValueColumn(tab);
+}
+
+function canMaximize(): boolean {
+  const tab = activeObjectTab();
+  return !!tab && !menuOpen() && maximizable(tab, selectMaxPanes(useStore.getState()));
+}
+
+function toggleMaximized() {
+  const tab = activeObjectTab();
+  if (tab) useStore.getState().toggleMaximized(tab.id);
 }
 
 const vertical = (id: string, title: string, key: string, delta: number): Command => ({ id, title, scope: "object", defaultBinding: key, when: canMoveFocus, run: () => moveFocus(delta) });
@@ -100,5 +111,6 @@ export const COLUMN_COMMANDS: Command[] = [
   sideways("object.right", "Move to the column on the right", "L", 1),
   sideways("object.rightArrow", "Move to the column on the right (arrow)", "ArrowRight", 1),
   { id: "object.drill", title: "Open the focused reference in a new column", scope: "object", defaultBinding: "Enter", when: canDrill, run: drill },
-  { id: "columns.close", title: "Close the rightmost column", scope: "global", defaultBinding: "Escape", when: canClose, run: () => useStore.getState().closeRightmostColumn() },
+  { id: "column.maximize", title: "Maximize or restore the active pane", scope: "object", defaultBinding: "Mod+Shift+Enter", when: canMaximize, run: toggleMaximized },
+  { id: "columns.close", title: "Close the rightmost column (restores a maximized pane first)", scope: "global", defaultBinding: "Escape", when: canClose, run: () => useStore.getState().closeRightmostColumn() },
 ];

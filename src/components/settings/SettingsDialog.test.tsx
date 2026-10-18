@@ -157,6 +157,19 @@ describe("SettingsDialog", () => {
       expect(root.style.getPropertyValue("--pad")).toBe("1px");
     });
 
+    it.each([1, 2, 3])("saves %i panes side by side", async (panes) => {
+      start({ maxPanes: panes === 1 ? 2 : 1 });
+      await userEvent.click(within(await screen.findByRole("group", { name: "Panes side by side" })).getByRole("button", { name: String(panes) }));
+      expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ maxPanes: panes }));
+    });
+
+    it("marks the saved number of panes as pressed", async () => {
+      start({ maxPanes: 3 });
+      const group = await screen.findByRole("group", { name: "Panes side by side" });
+      expect(within(group).getByRole("button", { name: "3" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(group).getByRole("button", { name: "2" })).toHaveAttribute("aria-pressed", "false");
+    });
+
     it("saves a typed mono font on Enter and applies it", async () => {
       start();
       await userEvent.type(await screen.findByLabelText("Mono font"), "Fira Code{Enter}");

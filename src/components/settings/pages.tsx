@@ -12,6 +12,8 @@ import { ShortcutsPage } from "./ShortcutsPage";
 
 // Segmented buttons take string options; the keys of the px table are the only list of steps.
 const ROW_PADDING_STEPS: readonly string[] = Object.keys(ROW_PADDING_PX);
+const { min: MIN_PANES, max: MAX_PANES } = SETTINGS_LIMITS.maxPanes;
+const MAX_PANES_STEPS = Array.from({ length: MAX_PANES - MIN_PANES + 1 }, (_, i) => String(MIN_PANES + i));
 
 /** A stored scheme id narrowed to a known one; unknown ids (hand-edited settings) show the first scheme. */
 const toSchemeId = (id: string): SchemeId => SCHEMES.find((scheme) => scheme.id === id)?.id ?? SCHEMES[0].id;
@@ -119,6 +121,16 @@ function AppearancePage({ s, set }: SettingsPageProps) {
             <RowPaddingPreview step={s.rowPadding} />
           </div>
         </Row>
+      </Group>
+      <Group title="Layout">
+        <Segmented
+          label="Panes side by side"
+          description="Columns of an object tab shown next to each other at most; fewer when the window is narrow."
+          options={MAX_PANES_STEPS}
+          value={String(s.maxPanes)}
+          stage="appearance:max-panes"
+          onChange={(step) => set({ maxPanes: Number(step) })}
+        />
       </Group>
       <Group title="Text">
         <NumberField

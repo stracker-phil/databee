@@ -5,7 +5,7 @@ import type { api, Document, Group, Value } from "../api";
 import { address } from "../lib/address";
 import { useStore } from "../state/store";
 import { browseOrderTables } from "./objectFixtures";
-import { num, text, value } from "./fixtures";
+import { connectedStore, num, settings, text, value } from "./fixtures";
 
 const rowOf = (table: string, key: string) => address("shop", "db", { kind: "row", table, key });
 
@@ -64,6 +64,19 @@ export const userDocument = documentOf(user, "user", "ID", [
 export function stubDocuments(mocked: typeof api) {
   vi.mocked(mocked.document).mockImplementation(async (_s, addressText) => (addressText.includes("/wp_users/") ? userDocument : orderDocument));
   vi.mocked(mocked.browseTable).mockImplementation(browseOrderTables);
+}
+
+/** Every element measures `width` px wide; returns the function that restores the default. */
+export function stubOffsetWidth(width: number): () => void {
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")!;
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => width });
+  return () => Object.defineProperty(HTMLElement.prototype, "offsetWidth", original);
+}
+
+/** A connected store without tabs whose settings (also those the app loads) allow `maxPanes` panes side by side. */
+export function connectWithMaxPanes(mocked: typeof api, maxPanes: number) {
+  vi.mocked(mocked.getSettings).mockResolvedValue(settings({ maxPanes }));
+  connectedStore({ tabs: [], settings: { maxPanes } });
 }
 
 /** Renders the app and opens the order 4711 as an object tab. */

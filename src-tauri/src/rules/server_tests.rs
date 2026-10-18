@@ -484,6 +484,42 @@ async fn the_built_in_presets_apply_where_their_marker_tables_exist() {
 
 #[tokio::test]
 #[ignore]
+async fn the_built_in_presets_give_the_wordpress_fixture_its_table_icons() {
+    let cases = [
+        ("wp_users", "user"),
+        ("wp_postmeta", "menu"),
+        ("wp_wc_orders_meta", "menu"),
+        ("wp_wc_orders", "shopping-cart"),
+        ("wp_actionscheduler_actions", "clock"),
+    ];
+    let rig = Rig::new();
+    for (host, port) in servers() {
+        let session = session_on(&host, port, "wp_test").await;
+
+        let info = rig.info(&session, "wp_test").await;
+
+        for (table, icon) in cases {
+            let shown = info.table_icons.get(table).map(|i| i.name());
+            assert_eq!(shown.as_deref(), Some(icon), "{host}:{port}: {table}");
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn a_database_no_preset_fits_has_no_table_icons() {
+    let rig = Rig::new();
+    for (host, port) in servers() {
+        let session = session_on(&host, port, "databee_test").await;
+
+        let info = rig.info(&session, "databee_test").await;
+
+        assert!(info.table_icons.is_empty(), "{host}:{port}");
+    }
+}
+
+#[tokio::test]
+#[ignore]
 async fn a_subsite_project_resolves_the_users_table_under_the_network_prefix() {
     for (host, port) in servers() {
         let rig = Rig::new();

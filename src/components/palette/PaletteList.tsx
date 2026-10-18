@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import { CornerDownLeft } from "lucide-react";
 import type { PaletteHit } from "../../api";
 import { KeyCap } from "../Field";
+import { TableIcon } from "../TableIcon";
 import { useValueHover } from "../value/useValueHover";
 import { Value } from "../value/Value";
 import type { Prefix } from "./parse";
@@ -20,7 +21,10 @@ interface Props {
 function HitRow({ hit }: { hit: PaletteHit }) {
   return (
     <span className="palette-hit mono">
-      <span className="tn">{hit.source}</span>
+      <span className="tn">
+        <TableIcon database={hit.address.database} table={"table" in hit.address.target ? hit.address.target.table : null} />
+        {hit.source}
+      </span>
       <span className="key">
         #
         {hit.title.map((value, i) => (
@@ -44,6 +48,7 @@ function PlainRow({ item }: { item: Item }) {
     <>
       {item.badge && <span className="palette-kind">{item.badge}</span>}
       <span className="grow-text">
+        {item.table && <TableIcon database={item.table.database} table={item.table.table} />}
         {item.title}
         {item.subtitle && <span className="muted"> · {item.subtitle}</span>}
         {item.note && <span className="o2 palette-note"> {item.note}</span>}

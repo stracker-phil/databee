@@ -57,7 +57,7 @@ export const woocommercePreset: PresetRow = { name: "woocommerce", markerTables:
 
 export function projectRules(patch: Partial<ProjectRules> = {}): ProjectRules {
   return {
-    project: { connection: "shop", database: "db", prefix: null, network_prefix: null, presets: null, references: [], disabled: [], enabled: [], kinds: [], styles: [], saved: [] },
+    project: { connection: "shop", database: "db", prefix: null, network_prefix: null, presets: null, references: [], disabled: [], enabled: [], kinds: [], styles: [], icons: [], saved: [] },
     prefix: "wp_",
     suggestedPrefix: "wp_",
     presets: [woocommercePreset],
@@ -88,5 +88,5 @@ export function changeLine(patch: Partial<ProjectChangeLine> = {}): ProjectChang
 
 /** A table's group with nothing in it; `table: null` is the group without a table. */
 export function tableRules(table: string | null, patch: Partial<TableRules> = {}): TableRules {
-  return { table, references: [], referencedBy: [], styles: [], kinds: [], entities: [], actions: [], ...patch };
+  return { table, references: [], referencedBy: [], styles: [], kinds: [], entities: [], actions: [], icon: null, ...patch };
 }

@@ -26,8 +26,12 @@ export interface ColumnStack {
   active: number;
 }
 
-const MIN_COLUMN_WIDTH = 420;
-const STRIP_WIDTH = 34;
+/** The narrowest a pane gets while others show next to it. */
+export const MIN_PANE_WIDTH = 560;
+/** Before the settings load; Rust's `Settings::default` is the source of truth. */
+export const DEFAULT_MAX_PANES = 2;
+/** The hairline divider between two panes. */
+export const DIVIDER_WIDTH = 1;
 /** How much of a value without provenance names its column. */
 const UNSOURCED_NAME_CHARS = 20;
 
@@ -60,12 +64,22 @@ export function columnLabel(column: StackColumn): string {
 }
 
 /**
- * The columns shown in full, `[start, end)`: as many as fit at `MIN_COLUMN_WIDTH` next to the strips of the
- * others, ending at the newest unless the active column lies further left.
+ * The columns shown as panes, `[start, end)`: at most `maxPanes` and as many as fit at `MIN_PANE_WIDTH` (one
+ * always), ending at the newest unless the active column lies further left.
  */
-export function shownColumns(count: number, active: number, width: number): { start: number; end: number } {
-  const fit = Math.floor((width - count * STRIP_WIDTH) / (MIN_COLUMN_WIDTH - STRIP_WIDTH));
-  const shown = Math.max(1, Math.min(count, fit));
+export function shownColumns(count: number, active: number, width: number, maxPanes: number): { start: number; end: number } {
+  const fit = Math.floor((width + DIVIDER_WIDTH) / (MIN_PANE_WIDTH + DIVIDER_WIDTH));
+  const shown = Math.max(1, Math.min(count, maxPanes, fit));
   const start = Math.max(0, Math.min(active, count - shown));
   return { start, end: start + shown };
+}
+
+/** A pane can be maximized next to others (several columns, several panes allowed); a maximized one can always be restored. */
+export function maximizable(stack: { columns: StackColumn[]; maximized?: boolean }, maxPanes: number): boolean {
+  return !!stack.maximized || (stack.columns.length > 1 && maxPanes > 1);
+}
+
+/** The share of each of `count` panes: `widths` when it has one per pane, else equal shares. */
+export function paneShares(widths: number[] | undefined, count: number): number[] {
+  return widths?.length === count ? widths : Array<number>(count).fill(1 / count);
 }

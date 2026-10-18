@@ -207,8 +207,8 @@ value, else the current address. The Hover column is what the status bar shows.
 | Kind | Look | Click | Hover |
 |---|---|---|---|
 | PrimaryKey `#3297` | accent, mono | opens the object (Rows view when already in its Document, and back; in an object tab another row's key opens as the next column); in grids double-click and Enter open it too | provenance |
-| Reference, declared `customer_id 4` | accent, dotted underline; icons on hover (below) | opens the target: in an object tab as the next column of its stack, in a table tab in place (the tab becomes the target's object tab; back returns), elsewhere in the preview tab | provenance, `→` target and source (`foreign key …`, `project …`, `preset …`); ⌥ peeks |
-| Reference, inferred | accent, dashed underline, tertiary "inferred"; icons on hover | as declared; several targets: a menu to choose | `→` target `· inferred · same name · indexed` |
+| Reference, declared `customer_id 4` | accent, dotted underline, the target table's icon before it (below); the click indicator on hover | opens the target: in an object tab as the next column of its stack, in a table tab in place (the tab becomes the target's object tab; back returns), elsewhere in the preview tab | provenance, `→` target and source (`foreign key …`, `project …`, `preset …`); ⌥ peeks |
+| Reference, inferred | accent, dashed underline, tertiary "inferred"; table icon and click indicator as declared | as declared; several targets: a menu to choose | `→` target `· inferred · same name · indexed` |
 | Reference, dangling | tertiary, struck through | none | "no row `#4` in `wp_users`" |
 | No reference (`0` or `NULL` in a reference column) | tertiary, no underline | none | "0 = no reference" |
 | Enum (status slugs, gateways) `wc-failed` | raw string, default color | filters rows by this value | provenance |
@@ -221,14 +221,22 @@ value, else the current address. The Hover column is what the status bar shows.
 | Secret | masked | reveals until it loses focus | provenance; ⌥ held alone reveals it while hovered |
 | Binary | tertiary `<n bytes>` | none | provenance |
 
-- **Reference icons:** while its cell (grids) or line (Document, readout) is hovered, or the cell or field is
-  focused, a reference that acts on click shows icon buttons at the right edge, over a fade of the background
-  (the text is cut before them; nothing shifts): ↗ (external link) **goes to** the target, moving the whole
-  tab there (`Go to (replaces this view)`); › (chevron) **opens it in the side panel**, the next column of the
-  stack. In an object tab both show; › is the click. In a table tab both show (› only for rows with a
-  single-column key): ↗ is the click, › moves the tab to the reference's own row with the target as the next
-  column. Elsewhere (query results, readout) only ↗, which opens the preview tab like the click. Several
-  targets: the menu first, then the icon's mode. Dangling references have no icons.
+- **Click indicator:** everything whose click navigates or opens a column says so with one passive icon
+  (`OpenHint`): a value (another row's primary key, a reference, serialized data in a grid) shows it at the right
+  edge of its cell (grids) or line cell (Document, readout, header summary) while hovered or focused, over a fade
+  of the background (the text is cut before it; nothing shifts); links outside values (a group band's table
+  name, the object header's table, "Also matched", readout links) show it after their text while hovered.
+  › (chevron) means the click **opens a column** (the side panel: the next column of an object tab's stack, a
+  value column); ↗ (external link) means it **moves the whole view or opens a tab** (a table tab moves in place,
+  elsewhere the preview tab). The icon is decorative (`aria-hidden`, no button, no tab stop, no pointer events):
+  the value's own click acts. It comes from the same `clickEffect` the click follows, so they never disagree.
+  No indicator where a click does not navigate: enums (filter), the own row's key (toggles Document/Rows), a
+  Document's serialized value (expands in place), dangling references. The palette is a list chosen with ↵ and
+  shows none.
+- **Table icons:** a table can have an icon (`[[icon]]` rules, [presets.md](presets.md#icon-table-icons)), drawn in
+  `--o2` at the size of the text before the table's name wherever it is named (sidebar, tab strip, group bands,
+  object header, "Also matched", palette, readout, Project page, Structure view) and before every reference
+  into it (a reference whose targets are in different tables shows none). It is decorative; the name stays.
 - **Trees** (`ValueTree`): a hairline guide on the left, keys secondary, container types tertiary
   (`array(2)`), strings in dim quotes so `"2.04"` and `2.04` differ, leaf pairs of a small array (up to 4
   leaves, 60 characters) on one line unless the tree is editable. Tree rows keep the row anatomy.
@@ -249,8 +257,8 @@ value, else the current address. The Hover column is what the status bar shows.
 
 - **Toolbar** (`--chrome`): connection and database as plain mono text (`wc-pp / db`; a click opens the
   connection or database picker), back and forward (‹ ›, for a table or object tab, disabled without history),
-  the path (`wp_wc_orders › order #4711 › user #12 › payment_token #7`, a table tab's table),
-  the search field on the right, then icon buttons. There is no mode switch: WordPress is a preset.
+  the search field on the right, then icon buttons. An object tab shows where it stands in its trail (below),
+  a table tab its table in its title and header. There is no mode switch: WordPress is a preset.
 - **Tab bar** (`--chrome`): tabs are cells separated by `--line`; the active tab takes `--bg` and joins the
   content; preview tabs show italic titles. Tabs: readout (first, one per connection), query, table, object,
   project.
@@ -266,20 +274,33 @@ value, else the current address. The Hover column is what the status bar shows.
   active column is live (a click ends it). Plain text, no chips; the theme lives in Settings and the palette.
 - **Column stack:** an object tab is a stack of columns. Enter or a click on a reference (or on another row's
   key, or the reference's › icon) opens its target as a new column right of the column it is in, closing any
-  columns to the right of it; the ↗ icon moves the whole tab to the target instead. Columns are at least 420px wide; when they don't fit, the oldest collapse to 34px strips with a
-  vertical `table #key` label (accent key), and a click on a strip pops back to it. The active column has a 2px
-  accent line on top; `h`/`l` move it, a click in a column activates it. Every column after the first has a
-  close button (×) in its header, which pops back to the column left of it. Back and forward restore the stack
-  each address had.
+  columns to the right of it; the ↗ icon moves the whole tab to the target instead. Columns show as panes side
+  by side: at most **Panes side by side** (Settings → Appearance → Layout: 1, 2 or 3; default 2), and only as
+  many as fit at 560px each (one always). The panes end at the newest column unless the active one lies further
+  left; the other columns are hidden and live only in the trail. Value columns are panes too. While several
+  panes show, the active one has a 2px accent line on top; `h`/`l` move it (to a hidden column too, which then
+  shows), a click in a pane activates it. Every column after the first has a close button (×) in its header,
+  which pops back to the column left of it. Back and forward restore the stack each address had.
+- **Pane dividers:** a `--line` hairline between two panes; dragging it (or ← / → while it has the focus)
+  resizes the two panes next to it, never below 560px; a double-click makes all panes equal. The widths belong
+  to the tab (not saved, not in history) and start equal again when the number of panes changes.
+- **Maximize:** the ⤢ button in a pane's header (⌘⇧↵, `column.maximize`) shows only that pane, at the full
+  width; the button (now ⤡, "Restore panes") or ⌘⇧↵ restores the panes, and `Esc` restores them before it
+  closes any column. Drilling while maximized keeps the stack maximized on the new column; `h`/`l` and the trail
+  switch the maximized pane. The trail stays. It is offered while a tab has several columns and Panes side by
+  side is more than 1; a stack down to one column is no longer maximized.
 - **Table and object in one tab:** an object belongs to its table. The table name in an object header and the
-  first crumb of the path show the whole table in the same tab (where its structure is too); back returns to
+  table crumb of the trail show the whole table in the same tab (where its structure is too); back returns to
   the object with its columns. A table tab's history and an object tab's history are one: a tab moves between
   table and row in place, keeping its place in the tab bar.
-- **Path** in the toolbar, after back and forward: the root row's table, then the stack as crumbs,
-  `wp_wc_orders › order #4711 › user #12 › payment_token #7`, mono, the name in `--o2` (the entity name the
-  rules give the row, else the table name) and the key of the active column in the accent. The table crumb
-  shows the whole table in the tab; every other crumb but the last is a button that pops back to its column. In a
-  table tab the path is the table name, with `(filtered)` while a filter applies.
+- **Trail:** one line above an object tab's panes, in the UI font at the small size: the root row's table,
+  then a crumb per column, `wp_wc_orders › order #4711 › user #12 › payment_token #7` (the entity name the rules
+  give the row, else the table name, then `#key`; a value column shows its column name). The crumbs of the
+  panes shown share a `--band` pill in `--text`, hidden ones are `--o2`; the active column is the current
+  location (semibold, its key in the accent). The table crumb shows the whole table in the tab; a column crumb
+  makes its column active, showing a hidden one without closing any column. When the line doesn't fit, hidden
+  crumbs fold into a "…" item whose menu lists them: first those between the root row and the panes, then the
+  root row, then those right of the panes, then the table. Crumbs of shown panes never fold, and no crumb is cut.
 - **Value column:** Enter on a serialized value, or Enter in a grid cell with serialized data or long text,
   opens the value as a column: in an object tab the next column of the stack, in table and query tabs a
   column on the right of the tab (at least 420px). Its head names `table.column` and the row key, offers
@@ -432,7 +453,8 @@ rebindable.
 | `j` / `k`, ↓ / ↑ | object | move the focused value in a Document column (focus ring `--sel` and accent outline; the status bar shows its provenance when nothing is hovered); grids keep their arrow keys |
 | `h` / `l`, ← / → | object | move the active column (a focused grid keeps ← / →) |
 | `Enter` | object | drill into the focused reference or another row's key (next column), open serialized data as a value column (`object.drill`); grids handle Enter themselves: open the row as an object, a reference's target, a value column for serialized data or long text |
-| `Esc` | global | close the rightmost column, a stack's or a tab's value column (`columns.close`); overlays, menus and inputs take `Esc` first |
+| `Esc` | global | restore a maximized stack, else close the rightmost column, a stack's or a tab's value column (`columns.close`); overlays, menus and inputs take `Esc` first |
+| ⌘⇧↵ | object | maximize the active pane, or restore the panes (`column.maximize`) |
 | ⌘[ / ⌘] | global | back / forward through the active tab's address history (also the ‹ › toolbar buttons of table and object tabs); without history the keys stay with the editor |
 | `⌥` (held) | object, grid | peek the hovered or focused reference; ↵ opens it (not a command) |
 | `y` / `Y` / `e` / `f` | table, object | copy raw / copy as SQL condition / edit / filter by value (table grids: the `table` scope; documents and Rows grids: the `object` scope) |

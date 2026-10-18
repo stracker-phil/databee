@@ -7,10 +7,13 @@ import { wholeTable } from "../../state/slices/nav";
 import { useStore } from "../../state/store";
 import { useContextMenu, type MenuAnchor } from "../ContextMenu";
 import { KeyCap } from "../Field";
+import { TableIcon } from "../TableIcon";
+import { OpenHint } from "../value/OpenHint";
 import type { ColumnPlace } from "../value/open";
 import { useOpenValue } from "../value/useOpenValue";
 import { SummaryLine } from "../value/SummaryLine";
 import { actionMenu } from "./actions";
+import { PaneMaximize } from "./PaneMaximize";
 
 interface Props {
   document: Document;
@@ -60,10 +63,15 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
             data-stage-label={`Open table ${table}`}
             onClick={() => useStore.getState().navigateTab(place.tabId, wholeTable(document.address))}
           >
+            <TableIcon database={document.address.database} table={table} />
             {table}
+            <OpenHint effect="go" />
           </button>
         ) : (
-          <span className="tn">{table}</span>
+          <span className="tn">
+            <TableIcon database={document.address.database} table={table} />
+            {table}
+          </span>
         )}
         <span className="key">#{key}</span>
         <span className="spacer" />
@@ -81,6 +89,7 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
             Actions
           </button>
         )}
+        {place && <PaneMaximize />}
         {place && place.index > 0 && (
           <button className="icon-btn" aria-label="Close column" title="Close column" data-stage={`column-close:${place.index}`} onClick={() => useStore.getState().popToColumn(place.tabId, place.index - 1)}>
             <X size="1rem" />
@@ -97,7 +106,9 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
           Also matched:{" "}
           {document.alternatives.map((alt) => (
             <button key={formatAddress(alt)} className="also-table" data-stage={`alternative:${formatAddress(alt)}`} data-stage-label={objectTitle(alt)} onClick={() => useStore.getState().openObject(alt)}>
+              <TableIcon database={alt.database} table={"table" in alt.target ? alt.target.table : null} />
               {objectTitle(alt)}
+              <OpenHint effect="go" />
             </button>
           ))}
         </div>

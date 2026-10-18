@@ -79,7 +79,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   `settings` lists its pages as `sections`. `main.view` reports the current view; `main.ui.valueColumn` and
   `main.ui.sidebar` report whether the active tab shows a value column and whether the database sidebar is
   open (the sidebar toggles with the `view.sidebar` command). `state.object` is the active column's address
-  and view, plus `column n of m` when the stack holds several.
+  and view, plus `column n of m` when the stack holds several (and `maximized` while one pane is maximized).
 - **Anchors** are `data-stage` attributes, with optional `-label`, `-role` and `-list`. Ids follow the data
   where rows have stable ids:
   - `table:<db>.<table>` (list `tables`)
@@ -94,11 +94,15 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `change:<index>` (list `changes`, oldest first, label `<table> <column or key>`), `compare` (two rows side
     by side, `?compare=`); the snapshot list (`object.sinceSnapshot`, `query.sinceSnapshot`):
     `snapshot:<id>` (list `snapshots`, newest first, label: the snapshot's label) and `snapshot:delete:<id>`
-  - the column stack: `column:<index>` on each column shown in full (list `columns`, label `table #key`),
-    `strip:<index>` on each strip (list `strips`), `column-close:<index>` (the close button of a drilled
-    column), `object-header:table` (the table name in an object header, opens the whole table in the tab),
-    `toolbar:path` with `path:table` (the root row's table) and the crumbs `path:<index>` (list `path`; the
-    last crumb is no button), `peek` on the peek card while ⌥ is held
+  - the column stack: `column:<index>` on each pane shown (list `columns`, label `table #key`; hidden
+    columns have none), `pane-divider:<index>` (the divider right of pane `<index>`, label `Resize <left> and
+    <right>`), `pane-maximize:<index>` (the maximize/restore toggle in a pane's header, label `Maximize pane` or
+    `Restore panes`), `column-close:<index>` (the close button of a drilled column), `object-header:table` (the
+    table name in an object header, opens the whole table in the tab), `peek` on the peek card while ⌥ is held
+  - the trail above the panes: `trail` with, in list `trail` in visual order, `trail:table` (the root row's
+    table, opens the whole table in the tab), `trail:<index>` (each column's crumb; a click makes it active and
+    shows it) and `trail:more-before` / `trail:more-after` (the "…" items folded crumbs collapse into, label:
+    the folded crumbs)
   - value columns: `value-column` (a table or query tab's), `value-column:tree`, `value-column:raw`,
     `value-column:copy`, `value-column:close`
   - query tabs: `query:save`, `query:pin`, `query:copy-to-project` (a preset query's tab), `query:origin` (where
@@ -128,13 +132,13 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     and `recent:<title>`; holding ⌥ shows the selected hit's `peek`
   - `settings:<page>` and `settings-nav:<page>`
   - `queries:live-interval` on Settings → Queries
-  - `appearance:<control>` on Settings → Appearance (`theme`, `light-scheme`, `dark-scheme`, `row-padding`,
+  - `appearance:<control>` on Settings → Appearance (`theme`, `light-scheme`, `dark-scheme`, `row-padding`, `max-panes`,
     `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are
     `appearance:accent:<id>` (list `appearance:accent`)
 
   - `value:<table>.<column>:<key>` for values that act on click or reveal (primary keys, references, enums,
-    serialized data, secrets) and have a provenance (list `values`; label: the raw value); a reference's
-    hover icons are `value-go:<table>.<column>:<key>` and `value-drill:…` (label: their accessible name)
+    serialized data, secrets) and have a provenance (list `values`; label: the raw value); the hover
+    indicator of what a click does is decorative and no anchor
   - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:back`, `toolbar:forward` (only for a table or
     object tab), `toolbar:search` (opens the palette),
     `statusbar:sidebar` (the ▤ toggle), `statusbar:presets` (opens the Project page),

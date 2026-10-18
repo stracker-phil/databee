@@ -10,6 +10,8 @@ import { ErrorPanel } from "../ErrorPanel";
 import { LONG_LIST, LongList } from "../LongList";
 import { runTableAction } from "../object/actions";
 import { useCollapsedGroups } from "../object/useCollapsedGroups";
+import { TableIcon } from "../TableIcon";
+import { OpenHint } from "../value/OpenHint";
 import { useOpenValue } from "../value/useOpenValue";
 import { SummaryLine } from "../value/SummaryLine";
 import { Value, type OpenValue } from "../value/Value";
@@ -89,9 +91,13 @@ function StatusHeader({ status, onOpen }: { status: Status; onOpen: OpenValue })
               <div key={v.id} className="row" data-row-table={table}>
                 <button className="line-open" data-stage={`readout:value:${v.id}`} data-stage-label={v.title} title={v.sql} onClick={() => open(v.address)}>
                   {v.title}
+                  <OpenHint effect="go" />
                 </button>
                 <span>{v.error ? <LineError error={v.error} /> : v.value ? <Value value={v.value} density="grid" onOpen={onOpen} /> : <span className="o3">no row</span>}</span>
-                <span className="o3">{table}</span>
+                <span className="o3">
+                  <TableIcon database={status.database} table={table} />
+                  {table}
+                </span>
               </div>
             );
           })}
@@ -125,6 +131,7 @@ function AnomalyRow({ line }: { line: AnomalyLine }) {
         {line.address && (
           <button className="btn" data-stage={`readout:anomaly:${line.id}`} data-stage-label={line.text} onClick={() => openAnomaly(line)}>
             Show rows
+            <OpenHint effect="go" />
           </button>
         )}
         {line.fix && (
@@ -251,7 +258,9 @@ function EntityQuery({ entity, database }: { entity: CreatedEntity; database: st
         <span className="o2">{entity.entity}</span>
         <span className="o3"> · </span>
         <button className="line-open" data-table={entity.table} title="Open the table" onClick={() => useStore.getState().openTableTab(database, entity.table, "data")}>
+          <TableIcon database={database} table={entity.table} />
           {entity.table}
+          <OpenHint effect="go" />
         </button>
         <span className="o3"> · preset {entity.preset}</span>
       </div>
@@ -271,11 +280,13 @@ function CreatedLine({ item, withTable, onOpen }: { item: CreatedItem; withTable
         {time.text}
       </span>
       <span className="o2">
+        <TableIcon database={item.address.database} table={item.table} />
         {item.entity}
         {withTable && <span className="o3"> {item.table}</span>}
       </span>
       <button className="line-open key" data-stage={`readout:created:${text}`} data-stage-label={`${item.entity} #${key}`} onClick={() => open(item.address)}>
         #{key}
+        <OpenHint effect="go" />
       </button>
       <SummaryLine summary={item.summary} onOpen={onOpen} />
     </div>
@@ -331,6 +342,7 @@ function PinnedTitle({ line }: { line: PinnedLine }) {
   return (
     <button className="line-open" data-stage={`readout:pinned:${line.id}`} data-stage-label={line.title} onClick={() => open(line.address)}>
       {line.title}
+      <OpenHint effect="go" />
     </button>
   );
 }
@@ -382,9 +394,13 @@ function RecentSection({ part, collapse, onOpen }: { part: Part<RecentLine>; col
           const text = formatAddress(line.address);
           return (
             <div key={text} className="row" data-row-table={target.table}>
-              <span className="o2">{target.table}</span>
+              <span className="o2">
+                <TableIcon database={line.address.database} table={target.table} />
+                {target.table}
+              </span>
               <button className="line-open key" data-stage={`readout:recent:${text}`} data-stage-label={`${target.table} #${target.key}`} onClick={() => open(line.address)}>
                 #{target.key}
+                <OpenHint effect="go" />
               </button>
               <span>{line.error ? <span className="line-error">{line.error}</span> : <SummaryLine summary={line.summary} onOpen={onOpen} />}</span>
               <span className="o3 r" title={`opened ${new Date(line.at * 1000).toISOString()}`}>

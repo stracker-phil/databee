@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, type ColumnProfile, type KindRow, type ReferenceRow, type StyleRow, type TableProfile } from "../../api";
+import { api, type ColumnProfile, type IconRow, type KindRow, type ReferenceRow, type StyleRow, type TableProfile } from "../../api";
 import { useStore } from "../../state/store";
 import { connectedStore, tableTab } from "../../test/fixtures";
 import { StructureView } from "./StructureView";
@@ -56,7 +56,7 @@ const style = (patch: Partial<StyleRow> = {}): StyleRow => ({
 });
 
 function profile(patch: Partial<TableProfile> = {}): TableProfile {
-  return { table: "wp_posts", ruleName: "posts", columns: [], meta: [], referencedBy: [], entities: [], actions: [], ddl: null, ...patch };
+  return { table: "wp_posts", ruleName: "posts", columns: [], meta: [], referencedBy: [], entities: [], actions: [], icon: null, ddl: null, ...patch };
 }
 
 const showProfile = (patch: Partial<TableProfile>) => mocked.tableRules.mockResolvedValue(profile(patch));
@@ -297,6 +297,62 @@ describe("StructureView", () => {
       render(<StructureView tab={tab} />);
       await row("ID");
       for (const name of ["Referenced by", "Entities", "Actions"]) expect(screen.queryByRole("region", { name })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("table icon", () => {
+    const iconRow = (patch: Partial<IconRow> = {}): IconRow => ({ origin: preset, icon: "file-text", pattern: "posts", shipped: null, ...patch });
+    const control = () => screen.findByRole("group", { name: "icon of wp_posts" });
+    const chooseButton = async () => {
+      const button = await screen.findByRole("button", { name: "icon…" });
+      await waitFor(() => expect(button).toBeEnabled());
+      return button;
+    };
+
+    it("shows the icon with its name, origin and pattern", async () => {
+      showProfile({ icon: iconRow() });
+      render(<StructureView tab={tab} />);
+      const group = await control();
+      expect(group.querySelector("[data-icon=file-text]")).not.toBeNull();
+      expect(group).toHaveTextContent("file-text");
+      expect(group).toHaveTextContent("preset wordpress: posts");
+    });
+
+    it("says no icon when no rule gives the table one", async () => {
+      showProfile({ icon: null });
+      render(<StructureView tab={tab} />);
+      expect(await control()).toHaveTextContent("no icon");
+    });
+
+    it("sends the chosen icon for the table's rule name", async () => {
+      showProfile({ icon: null });
+      render(<StructureView tab={tab} />);
+      await userEvent.click(await chooseButton());
+      await userEvent.click(within(await screen.findByRole("dialog", { name: "Icon for wp_posts" })).getByRole("button", { name: "star" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setIcon", rule: { table: "posts", icon: "star" } });
+    });
+
+    it("sends none from the None button", async () => {
+      showProfile({ icon: iconRow() });
+      render(<StructureView tab={tab} />);
+      await userEvent.click(await chooseButton());
+      await userEvent.click(within(await screen.findByRole("dialog", { name: "Icon for wp_posts" })).getByRole("button", { name: "None" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setIcon", rule: { table: "posts", icon: "none" } });
+    });
+
+    it("resets a project icon over a preset's with removeIcon", async () => {
+      showProfile({ icon: iconRow({ origin: { kind: "project" }, icon: "star", shipped: { preset: "wordpress", icon: "file-text", pattern: "posts" } }) });
+      render(<StructureView tab={tab} />);
+      await userEvent.click(await chooseButton());
+      await userEvent.click(within(await screen.findByRole("dialog", { name: "Icon for wp_posts" })).getByRole("button", { name: "Reset to preset" }));
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "removeIcon", table: "posts" });
+    });
+
+    it("offers no icon… for a table outside the prefixes", async () => {
+      showProfile({ ruleName: null, icon: null });
+      render(<StructureView tab={tab} />);
+      expect(await control()).toHaveTextContent("no icon");
+      expect(screen.queryByRole("button", { name: "icon…" })).not.toBeInTheDocument();
     });
   });
 

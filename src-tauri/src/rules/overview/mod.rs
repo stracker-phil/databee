@@ -10,14 +10,15 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 pub use rows::{
-    ActionLine, EntityLine, KindRow, PresetRow, ProjectRules, ReferenceRow, ReferencedBy,
-    RuleOrigin, RuleTable, StyleRow, TableRules,
+    ActionLine, EntityLine, IconRow, KindRow, PresetRow, ProjectRules, ReferenceRow, ReferencedBy,
+    RuleOrigin, RuleTable, ShippedIcon, StyleRow, TableRules,
 };
 
 use crate::error::AppResult;
 use crate::lens::{ColumnsRef, Lens, ResolvedReference, SchemaLens};
 use crate::rules::condition::conditions_text;
 use crate::rules::effective::{self, EffectiveRules, RuleSources, inferred_id, overrides};
+use crate::rules::icons;
 use crate::rules::lens;
 use crate::rules::project::Project;
 use crate::rules::types::{ColumnGlob, ColumnRef, Conditions, Preset, Reference};
@@ -158,6 +159,11 @@ impl Overview<'_> {
                     name: action.rule.name.clone(),
                     scope: action.rule.scope,
                 });
+        }
+        for table in &self.schema.tables {
+            if let Some(icon) = self.icon_row(&table.name) {
+                entry(&mut tables, &table.name).icon = Some(icon);
+            }
         }
         let mut groups: Vec<TableRules> = tables.into_values().collect();
         for group in &mut groups {
@@ -450,6 +456,36 @@ impl Overview<'_> {
         own.chain(presets).collect()
     }
 
+    /// The icon rule of the real `table`: the project's, else the presets' (`icons::table_icons`).
+    fn icon_row(&self, table: &str) -> Option<IconRow> {
+        let names = self.rules.applied.rule_names(table);
+        let shipped =
+            icons::preset_rule_for(&self.rules.applied.presets, &names).map(|(preset, rule)| {
+                ShippedIcon {
+                    preset: preset.name.clone(),
+                    icon: rule.icon,
+                    pattern: rule.table.clone(),
+                }
+            });
+        if let Some(own) = icons::rule_for(&self.project.icons, &names) {
+            return Some(IconRow {
+                origin: RuleOrigin::Project,
+                icon: own.icon,
+                pattern: own.table.clone(),
+                shipped,
+            });
+        }
+        let shipped = shipped?;
+        Some(IconRow {
+            origin: RuleOrigin::Preset {
+                preset: shipped.preset.clone(),
+            },
+            icon: shipped.icon,
+            pattern: shipped.pattern.clone(),
+            shipped: None,
+        })
+    }
+
     fn applied_presets(&self) -> impl Iterator<Item = &Arc<Preset>> {
         self.rules.applied.presets.iter().rev()
     }
@@ -497,6 +533,7 @@ mod tests {
     use crate::db::ForeignKey;
     use crate::query::testing::{Rig, shop};
     use crate::rules::actions::ActionScope;
+    use crate::rules::icons::{IconRule, TableIcon};
     use crate::rules::kinds::{KindRule, StyleColor, StyleMatch, StyleRule, ValueRule};
     use crate::rules::testing::{preset, project, reference, schema, with_foreign_key};
     use crate::rules::types::{ColumnGlob, Match};
@@ -1392,6 +1429,174 @@ delete = { where = "k = 'x'" }
             }]
         );
         assert_eq!(page.project.connection, "local");
+    }
+
+    const SHAPES: &str = r#"
+[preset]
+name = "shapes"
+marker_tables = ["threads", "people"]
+
+[[icon]]
+table = "threads"
+icon = "list"
+
+[[icon]]
+table = "p*"
+icon = "users"
+
+[[icon]]
+table = "lonely"
+icon = "box"
+"#;
+
+    fn icon_page(own: Project) -> ProjectRules {
+        let own = Project {
+            prefix: Some("f_".into()),
+            ..own
+        };
+        let loaded = [preset(SHAPES)];
+        let schema = Arc::new(schema(&[
+            ("f_threads", &["thread_id"], &["thread_id"]),
+            ("f_people", &["person_id"], &["person_id"]),
+            ("f_lonely", &["lonely_id"], &["lonely_id"]),
+            ("f_zebra", &["zebra_id"], &["zebra_id"]),
+        ]));
+        let rules = Arc::new(EffectiveRules::build(&own, &schema, &loaded));
+        project_rules(own, schema, rules, &loaded)
+    }
+
+    fn shapes() -> RuleOrigin {
+        RuleOrigin::Preset {
+            preset: "shapes".into(),
+        }
+    }
+
+    fn icon_rule(table: &str, icon: TableIcon) -> IconRule {
+        IconRule {
+            table: table.into(),
+            icon,
+        }
+    }
+
+    #[test]
+    fn a_preset_icon_names_its_preset_and_the_pattern_that_matched() {
+        let page = icon_page(project());
+
+        assert_eq!(
+            group(&page, "f_threads").icon,
+            Some(IconRow {
+                origin: shapes(),
+                icon: TableIcon::List,
+                pattern: "threads".into(),
+                shipped: None,
+            })
+        );
+        assert_eq!(
+            group(&page, "f_people").icon,
+            Some(IconRow {
+                origin: shapes(),
+                icon: TableIcon::Users,
+                pattern: "p*".into(),
+                shipped: None,
+            })
+        );
+    }
+
+    #[test]
+    fn a_project_icon_over_a_preset_icon_carries_the_shipped_rule() {
+        let page = icon_page(Project {
+            icons: vec![
+                icon_rule("threads", TableIcon::Star),
+                icon_rule("people", TableIcon::None),
+            ],
+            ..project()
+        });
+
+        assert_eq!(
+            group(&page, "f_threads").icon,
+            Some(IconRow {
+                origin: RuleOrigin::Project,
+                icon: TableIcon::Star,
+                pattern: "threads".into(),
+                shipped: Some(ShippedIcon {
+                    preset: "shapes".into(),
+                    icon: TableIcon::List,
+                    pattern: "threads".into(),
+                }),
+            })
+        );
+        assert_eq!(
+            group(&page, "f_people").icon,
+            Some(IconRow {
+                origin: RuleOrigin::Project,
+                icon: TableIcon::None,
+                pattern: "people".into(),
+                shipped: Some(ShippedIcon {
+                    preset: "shapes".into(),
+                    icon: TableIcon::Users,
+                    pattern: "p*".into(),
+                }),
+            })
+        );
+    }
+
+    #[test]
+    fn a_project_icon_where_no_preset_gives_one_has_nothing_shipped() {
+        let page = icon_page(Project {
+            icons: vec![icon_rule("ze*", TableIcon::Tag)],
+            ..project()
+        });
+
+        assert_eq!(
+            group(&page, "f_zebra").icon,
+            Some(IconRow {
+                origin: RuleOrigin::Project,
+                icon: TableIcon::Tag,
+                pattern: "ze*".into(),
+                shipped: None,
+            })
+        );
+    }
+
+    #[test]
+    fn a_table_with_only_an_icon_gets_a_group_and_a_table_with_nothing_does_not() {
+        let page = icon_page(project());
+
+        assert_eq!(
+            group(&page, "f_lonely"),
+            &TableRules {
+                table: Some("f_lonely".into()),
+                icon: Some(IconRow {
+                    origin: shapes(),
+                    icon: TableIcon::Box,
+                    pattern: "lonely".into(),
+                    shipped: None,
+                }),
+                ..TableRules::default()
+            }
+        );
+        assert!(
+            page.groups
+                .iter()
+                .all(|g| g.table.as_deref() != Some("f_zebra"))
+        );
+    }
+
+    #[test]
+    fn icon_rows_serialize_with_camel_case_fields() {
+        let page = icon_page(Project {
+            icons: vec![icon_rule("threads", TableIcon::Star)],
+            ..project()
+        });
+
+        let json = serde_json::to_value(&group(&page, "f_threads").icon).unwrap();
+
+        assert_eq!(json["icon"], "star");
+        assert_eq!(json["pattern"], "threads");
+        assert_eq!(
+            json["shipped"],
+            serde_json::json!({ "preset": "shapes", "icon": "list", "pattern": "threads" })
+        );
     }
 
     #[tokio::test]

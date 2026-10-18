@@ -28,6 +28,7 @@ export {
   selectDocument,
   selectFocusedValue,
   selectMaxCellChars,
+  selectMaxPanes,
   selectNullLabel,
   selectSessionBySlug,
   selectSidebarHidden,

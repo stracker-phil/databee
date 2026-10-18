@@ -6,13 +6,16 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { installCommands } from "../../commands";
-import { formatAddress } from "../../lib/address";
+import { address } from "../../lib/address";
 import { useStore } from "../../state/store";
-import { openOrder, stubDocuments, user } from "../../test/columnFixtures";
-import { connectedStore } from "../../test/fixtures";
+import { connectWithMaxPanes, openOrder, stubDocuments, stubOffsetWidth, user } from "../../test/columnFixtures";
+import { connectedStore, settings } from "../../test/fixtures";
 import { activeObject } from "../../test/objectFixtures";
 
 const mocked = vi.mocked(api, true);
+
+const order4712 = address("shop", "db", { kind: "row", table: "wp_wc_orders", key: "4712" });
+let restoreWidth: (() => void) | undefined;
 
 const drillToUser = () => act(() => useStore.getState().drill(activeObject().id, 0, user));
 const orderColumn = () => screen.getByRole("region", { name: "wp_wc_orders #4711" });
@@ -25,6 +28,12 @@ describe("column stack", () => {
     connectedStore({ tabs: [] });
     installCommands();
     stubDocuments(mocked);
+    mocked.getSettings.mockResolvedValue(settings());
+  });
+
+  afterEach(() => {
+    restoreWidth?.();
+    restoreWidth = undefined;
   });
 
   describe("drilling into a reference", () => {
@@ -34,53 +43,30 @@ describe("column stack", () => {
       await userEvent.keyboard("{Enter}");
 
       expect(await screen.findByRole("region", { name: "wp_users #12" })).toHaveAttribute("data-stage", "column:1");
-      const path = screen.getByRole("navigation", { name: "Path" });
-      expect(within(path).getByRole("button", { name: "order #4711" })).toBeInTheDocument();
-      expect(within(path).getByRole("button", { name: "Open table wp_wc_orders" })).toBeInTheDocument();
-      expect(within(path).getAllByRole("button")).toHaveLength(2);
-      expect(within(path).getByText("user")).toBeInTheDocument();
+      const trail = screen.getByRole("navigation", { name: "Trail" });
+      expect(within(trail).getByRole("button", { name: "Open table wp_wc_orders" })).toBeInTheDocument();
+      expect(within(trail).getByRole("button", { name: "order #4711" })).toBeInTheDocument();
+      expect(await within(trail).findByRole("button", { name: "user #12" })).toBeInTheDocument();
+      expect(within(trail).getAllByRole("button")).toHaveLength(3);
     });
   });
 
-  describe("reference icons", () => {
-    const goTo = () => screen.getByRole("button", { name: `Go to ${formatAddress(user)}` });
-    const sidePanel = () => screen.getByRole("button", { name: `Open ${formatAddress(user)} in side panel` });
-
-    it("drills a new column with the side panel icon", async () => {
+  describe("reference clicks", () => {
+    it("drills a new column when the reference is clicked", async () => {
       await openOrder();
-      await userEvent.click(sidePanel());
+      await userEvent.click(screen.getByRole("link", { name: "12" }));
       expect(await screen.findByRole("region", { name: "wp_users #12" })).toBeInTheDocument();
       expect(orderColumn()).toBeInTheDocument();
       expect(activeObject().columns).toHaveLength(2);
     });
 
-    it("drills a new column when the reference is clicked", async () => {
+    it("announces the drill with a passive indicator that is not a button", async () => {
       await openOrder();
-      await userEvent.click(screen.getByRole("link", { name: "12" }));
-      expect(await screen.findByRole("region", { name: "wp_users #12" })).toBeInTheDocument();
-      expect(activeObject().columns).toHaveLength(2);
-    });
-
-    it("replaces the stack with the target alone using Go to", async () => {
-      await openOrder();
-      await userEvent.click(goTo());
-      expect(await screen.findByRole("region", { name: "wp_users #12" })).toBeInTheDocument();
-      expect(screen.queryByRole("region", { name: "wp_wc_orders #4711" })).not.toBeInTheDocument();
-      expect(activeObject().columns).toHaveLength(1);
-      expect(activeObject().address.target).toMatchObject({ table: "wp_users", key: "12" });
-    });
-
-    it("restores the previous stack on back after Go to", async () => {
-      await openOrder();
-      drillToUser();
-      await screen.findByText("ada");
-      await userEvent.click(goTo());
-      expect(screen.queryByRole("region", { name: "wp_wc_orders #4711" })).not.toBeInTheDocument();
-
-      await userEvent.keyboard("{Meta>}[[{/Meta}");
-      expect(await screen.findByRole("region", { name: "wp_wc_orders #4711" })).toBeInTheDocument();
-      expect(userColumn()).toBeInTheDocument();
-      expect(activeObject().columns).toHaveLength(2);
+      const link = screen.getByRole("link", { name: "12" });
+      const hint = link.closest(".val")!.querySelector("[data-open]")!;
+      expect(hint).toHaveAttribute("data-open", "drill");
+      expect(hint).toHaveAttribute("aria-hidden", "true");
+      expect(hint.closest("button")).toBeNull();
     });
   });
 
@@ -118,12 +104,14 @@ describe("column stack", () => {
       expect(orderColumn()).toBeInTheDocument();
     });
 
-    it("pops back to a column when its crumb is clicked", async () => {
+    it("makes a column active without closing any when its crumb is clicked", async () => {
       await openOrder();
       drillToUser();
-      await userEvent.click(within(screen.getByRole("navigation", { name: "Path" })).getByRole("button", { name: "order #4711" }));
-      expect(screen.queryByRole("region", { name: "wp_users #12" })).not.toBeInTheDocument();
-      expect(activeObject().columns).toHaveLength(1);
+      await screen.findByText("ada");
+      await userEvent.click(within(screen.getByRole("navigation", { name: "Trail" })).getByRole("button", { name: "order #4711" }));
+      expect(orderColumn()).toHaveAttribute("aria-current", "true");
+      expect(userColumn()).toBeInTheDocument();
+      expect(activeObject().columns).toHaveLength(2);
     });
 
     it("restores the closed stack on back", async () => {
@@ -137,27 +125,189 @@ describe("column stack", () => {
     });
   });
 
-  describe("strips", () => {
-    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+  describe("panes shown", () => {
+    const names = ["wp_wc_orders #4711", "wp_users #12", "wp_wc_orders #4712"];
+    const shownNames = () => names.filter((name) => screen.queryByRole("region", { name }));
 
-    beforeEach(() => {
-      Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 700 });
-    });
-
-    afterEach(() => {
-      Object.defineProperty(HTMLElement.prototype, "offsetWidth", original ?? { configurable: true, get: () => 0 });
-    });
-
-    it("collapses a column that does not fit to a strip that pops back to it", async () => {
+    async function openThree(maxPanes: number, width: number) {
+      restoreWidth = stubOffsetWidth(width);
+      connectWithMaxPanes(mocked, maxPanes);
       await openOrder();
       drillToUser();
-      const strip = await screen.findByRole("button", { name: "Back to wp_wc_orders #4711" });
-      expect(strip).toHaveAttribute("data-stage", "strip:0");
+      await screen.findByText("ada");
+      act(() => useStore.getState().drill(activeObject().id, 1, order4712));
+      await screen.findByRole("region", { name: "wp_wc_orders #4712" });
+    }
+
+    it.each([
+      [1, ["wp_wc_orders #4712"]],
+      [2, ["wp_users #12", "wp_wc_orders #4712"]],
+      [3, names],
+    ])("shows the newest %i columns when the setting allows that many and the window fits them", async (maxPanes, expected) => {
+      await openThree(maxPanes, 2000);
+      expect(shownNames()).toEqual(expected);
+    });
+
+    it("shows fewer panes than the setting allows when the window is too narrow for them", async () => {
+      await openThree(3, 1200);
+      expect(shownNames()).toEqual(["wp_users #12", "wp_wc_orders #4712"]);
+    });
+
+    it("shows one pane when the window fits only one", async () => {
+      await openThree(3, 700);
+      expect(shownNames()).toEqual(["wp_wc_orders #4712"]);
+    });
+  });
+
+  describe("hidden columns", () => {
+    beforeEach(() => {
+      restoreWidth = stubOffsetWidth(700);
+    });
+
+    it("shows a hidden column from its crumb without closing the active one", async () => {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
       expect(screen.queryByRole("region", { name: "wp_wc_orders #4711" })).not.toBeInTheDocument();
 
-      await userEvent.click(strip);
+      const crumb = within(screen.getByRole("navigation", { name: "Trail" })).getByRole("button", { name: "order #4711" });
+      expect(crumb).toHaveAttribute("title", "Show order #4711");
+      expect(crumb).toHaveAttribute("data-stage", "trail:0");
+      await userEvent.click(crumb);
+
       expect(await screen.findByRole("region", { name: "wp_wc_orders #4711" })).toBeInTheDocument();
       expect(screen.queryByRole("region", { name: "wp_users #12" })).not.toBeInTheDocument();
+      expect(activeObject().columns).toHaveLength(2);
+    });
+
+    it("moves to the hidden column on the left with h and shows it", async () => {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+      await userEvent.keyboard("h");
+      expect(await screen.findByRole("region", { name: "wp_wc_orders #4711" })).toHaveAttribute("aria-current", "true");
+      expect(screen.queryByRole("region", { name: "wp_users #12" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("pane dividers", () => {
+    const divider = () => screen.getByRole("separator", { name: "Resize wp_wc_orders #4711 and wp_users #12" });
+
+    it("separates two panes with one resizable divider and none for a single pane", async () => {
+      await openOrder();
+      expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+      drillToUser();
+      await screen.findByText("ada");
+      expect(screen.getAllByRole("separator")).toHaveLength(1);
+      expect(divider()).toBeInTheDocument();
+    });
+
+    it("has one divider fewer than panes", async () => {
+      restoreWidth = stubOffsetWidth(2000);
+      connectWithMaxPanes(mocked, 3);
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+      act(() => useStore.getState().drill(activeObject().id, 1, order4712));
+      await screen.findByRole("region", { name: "wp_wc_orders #4712" });
+      expect(screen.getAllByRole("separator").map((s) => s.getAttribute("aria-label"))).toEqual([
+        "Resize wp_wc_orders #4711 and wp_users #12",
+        "Resize wp_users #12 and wp_wc_orders #4712",
+      ]);
+    });
+
+    it("moves the first pane's share with the arrow keys", async () => {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+      expect(activeObject().paneWidths).toBeUndefined();
+      divider().focus();
+      await userEvent.keyboard("{ArrowRight}");
+
+      const [first, second] = activeObject().paneWidths!;
+      expect(first).toBeGreaterThan(0.5);
+      expect(first + second).toBeCloseTo(1);
+    });
+
+    it("equalizes the panes on a double-click", async () => {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+      divider().focus();
+      await userEvent.keyboard("{ArrowRight}");
+      expect(activeObject().paneWidths).toBeDefined();
+
+      fireEvent.doubleClick(divider());
+      expect(activeObject().paneWidths).toBeUndefined();
+    });
+  });
+
+  describe("maximize", () => {
+    const maximizeIn = (column: HTMLElement) => within(column).getByRole("button", { name: "Maximize pane" });
+    const maximizeKeys = "{Meta>}{Shift>}{Enter}{/Shift}{/Meta}";
+
+    async function drilled() {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+    }
+
+    it("shows only the pane whose button is clicked, and restores the panes from its Restore button", async () => {
+      await drilled();
+      await userEvent.click(maximizeIn(userColumn()));
+
+      expect(screen.queryByRole("region", { name: "wp_wc_orders #4711" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+      const restore = within(userColumn()).getByRole("button", { name: "Restore panes" });
+      expect(restore).toHaveAttribute("aria-pressed", "true");
+
+      await userEvent.click(restore);
+      expect(await screen.findByRole("region", { name: "wp_wc_orders #4711" })).toBeInTheDocument();
+      expect(userColumn()).toBeInTheDocument();
+    });
+
+    it("maximizes a pane that was not active", async () => {
+      await drilled();
+      await userEvent.click(maximizeIn(orderColumn()));
+      expect(orderColumn()).toHaveAttribute("aria-current", "true");
+      expect(screen.queryByRole("region", { name: "wp_users #12" })).not.toBeInTheDocument();
+    });
+
+    it("toggles with the shortcut", async () => {
+      await drilled();
+      await userEvent.keyboard(maximizeKeys);
+      expect(screen.queryByRole("region", { name: "wp_wc_orders #4711" })).not.toBeInTheDocument();
+
+      await userEvent.keyboard(maximizeKeys);
+      expect(await screen.findByRole("region", { name: "wp_wc_orders #4711" })).toBeInTheDocument();
+      expect(userColumn()).toBeInTheDocument();
+    });
+
+    it("restores the panes on Escape before it closes a column", async () => {
+      await drilled();
+      await userEvent.keyboard(maximizeKeys);
+      await userEvent.keyboard("{Escape}");
+      expect(await screen.findByRole("region", { name: "wp_wc_orders #4711" })).toBeInTheDocument();
+      expect(userColumn()).toBeInTheDocument();
+
+      await userEvent.keyboard("{Escape}");
+      expect(screen.queryByRole("region", { name: "wp_users #12" })).not.toBeInTheDocument();
+    });
+
+    it("offers no maximize button with a single column", async () => {
+      await openOrder();
+      expect(screen.queryByRole("button", { name: "Maximize pane" })).not.toBeInTheDocument();
+    });
+
+    it("offers no maximize button, and the shortcut does nothing, when only one pane is allowed", async () => {
+      connectWithMaxPanes(mocked, 1);
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+      expect(screen.queryByRole("button", { name: "Maximize pane" })).not.toBeInTheDocument();
+
+      await userEvent.keyboard(maximizeKeys);
+      expect(activeObject().maximized).toBeUndefined();
     });
   });
 

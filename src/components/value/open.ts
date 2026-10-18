@@ -3,13 +3,13 @@
  * rows' keys drill into a new column and serialized data opens a value column; a table tab moves to a
  * reference's target in place; elsewhere they open tabs.
  */
-import { createContext, useContext } from "react";
+import { createContext } from "react";
 import type { Address, Value } from "../../api";
 import { fullCellText } from "../../lib/cells";
 import { formatAddress } from "../../lib/address";
 import { documentText } from "../../lib/document";
 import { cellText } from "../../lib/format";
-import { fail, selectActiveTab, useStore, type TableTab } from "../../state/store";
+import { fail, selectActiveTab, useStore } from "../../state/store";
 import { tabDatabase } from "../../state/tabKinds";
 
 export interface ColumnPlace {
@@ -19,6 +19,9 @@ export interface ColumnPlace {
 
 export const ColumnContext = createContext<ColumnPlace | null>(null);
 
+/** Whether `address` is the row `owner` shows: its key toggles Document and Rows instead of opening anything. */
+const isOwnRow = (address: Address, owner: Address | null) => !!owner && documentText(owner) === documentText(address);
+
 /**
  * Opens the row a primary key addresses: in a column stack as the next column, else as an object tab. The key
  * of the object that `owner` shows switches that object between Document and Rows instead.
@@ -26,7 +29,7 @@ export const ColumnContext = createContext<ColumnPlace | null>(null);
 export function openRowObject(address: Address, owner: Address | null, preview: boolean, place: ColumnPlace | null) {
   const s = useStore.getState();
   const tab = selectActiveTab(s);
-  if (owner && documentText(owner) === documentText(address)) {
+  if (isOwnRow(address, owner)) {
     if (place) return s.toggleObjectView(place.tabId, place.index);
     if (tab?.kind === "object") return s.toggleObjectView(tab.id);
   }
@@ -35,49 +38,41 @@ export function openRowObject(address: Address, owner: Address | null, preview: 
 }
 
 /**
- * How a reference opens its target: `drill` as the next column (the side panel), `go` by moving the whole
- * table or object tab to it. A click drills in a column stack and goes elsewhere.
+ * What a click that navigates does (docs/ux.md, Value grammar): `drill` opens a column (the side panel: the next
+ * column of a stack, a value column), `go` moves the whole view or opens a tab. The click handlers and the
+ * indicator a value shows on hover both follow it.
  */
-export type OpenMode = "drill" | "go";
+export type ClickEffect = "drill" | "go";
 
-export const clickMode = (place: ColumnPlace | null): OpenMode => (place ? "drill" : "go");
-
-/** The row `value` is stored in, when a single-column key names it, as an address in table tab `tab`. */
-function sourceRow(value: Value | null | undefined, tab: TableTab): Address | null {
-  const row = value?.source?.row;
-  if (!value?.source || row?.length !== 1) return null;
-  const connection = useStore.getState().sessions.find((x) => x.id === tab.sessionId)?.slug;
-  if (!connection) return null;
-  return { connection, database: tab.database, target: { kind: "row", table: value.source.table, key: row[0].value }, view: null, compare: null };
-}
+/** A reference target drills into the next column of a stack when it is a row; anything else goes. */
+export const targetEffect = (target: Address, place: ColumnPlace | null): ClickEffect => (place && target.target.kind === "row" ? "drill" : "go");
 
 /**
- * A reference target. In a column stack `drill` opens it as the next column and `go` moves the stack's tab to
- * it; in a table tab `go` moves the tab to it and `drill` moves the tab to `from`'s row with the target as the
- * next column. Without a mode, or with nowhere to move, it opens a column of the stack, else the preview tab.
+ * The effect of a click on `value` shown in `density` inside `place`, for an object showing `owner`; `null` when
+ * the click does not navigate (an enum filters, the own row's key toggles the view, a document's serialized
+ * value expands in place).
  */
-export function openTarget(target: Address, place: ColumnPlace | null, mode?: OpenMode, from?: Value | null) {
-  const s = useStore.getState();
-  const row = target.target.kind === "row";
-  if (place) {
-    if (mode === "go") return s.navigateTab(place.tabId, target);
-    if (row) return s.drill(place.tabId, place.index, target);
+export function clickEffect(value: Value, density: "grid" | "full", owner: Address | null, place: ColumnPlace | null): ClickEffect | null {
+  const kind = value.kind;
+  if (kind.kind === "primaryKey") {
+    if (kind.address.target.kind !== "row" || isOwnRow(kind.address, owner)) return null;
+    return place ? "drill" : "go";
   }
-  const tab = selectActiveTab(s);
-  if (!place && tab?.kind === "table") {
-    const source = mode === "drill" && row ? sourceRow(from, tab) : null;
-    if (source) return s.navigateTab(tab.id, source, target);
-    if (mode === "go") return s.navigateTab(tab.id, target);
+  if (kind.kind === "reference") {
+    if (kind.exists === false || kind.targets.length === 0) return null;
+    return kind.targets.every((t) => targetEffect(t, place) === "drill") ? "drill" : "go";
   }
-  void s.openAddress(formatAddress(target), { preview: true });
+  if (kind.kind === "serialized") return density === "grid" ? "drill" : null;
+  return null;
 }
 
-/** The modes a reference's icons offer here: both in a column stack and for a table tab's addressable rows, else `go`. */
-export function useOpenModes(value: Value): OpenMode[] {
-  const place = useContext(ColumnContext);
-  const inTable = useStore((s) => selectActiveTab(s)?.kind === "table");
-  if (place || (inTable && value.source?.row.length === 1)) return ["go", "drill"];
-  return ["go"];
+/** A reference target: the next column of a stack for a row, a table tab moved in place, else the preview tab. */
+export function openTarget(target: Address, place: ColumnPlace | null) {
+  const s = useStore.getState();
+  if (place && targetEffect(target, place) === "drill") return s.drill(place.tabId, place.index, target);
+  const tab = selectActiveTab(s);
+  if (!place && tab?.kind === "table") return s.navigateTab(tab.id, target);
+  void s.openAddress(formatAddress(target), { preview: true });
 }
 
 /** The full text of `value`: a selected grid cell's `longText` is fetched in full. */

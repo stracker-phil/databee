@@ -44,10 +44,9 @@ export interface NavSlice {
   showRows: (tabId: string, location: TableLocation) => void;
   /**
    * Moves table or object tab `tabId` in place to `address`, recording the current location for back: a row
-   * makes it an object tab of that row alone (with row `then` drilled as the next column), a table a table tab
-   * of it. Other addresses and tabs are ignored.
+   * makes it an object tab of that row alone, a table a table tab of it. Other addresses and tabs are ignored.
    */
-  navigateTab: (tabId: string, address: Address, then?: Address) => void;
+  navigateTab: (tabId: string, address: Address) => void;
   /** Narrows table tab `tabId` to rows where `match.column` equals `match.value`, replacing a match on the same column. */
   filterRows: (tabId: string, match: ColumnEquals) => void;
   /** Applies a typed WHERE filter to table tab `tabId`; not addressable, so no history entry. */
@@ -169,15 +168,18 @@ function movedActive(tab: ObjectTab, target: Address): ColumnStack {
   return { columns: [...tab.columns.slice(0, tab.active), column], active: tab.active };
 }
 
-/** `tab` as an object tab showing `stack`; a table tab becomes one, keeping its id, preview and history. */
+/** `tab` as an object tab showing `stack`; a table tab becomes one, keeping its id, preview and history, an object tab its pane layout. */
 function objectified(tab: DataTab, stack: ColumnStack, nav: TabNav): ObjectTab {
   const root = stack.columns[0];
   const oldRoot = tab.kind === "object" ? tab.columns[0] : undefined;
   const sameRoot = root?.kind === "object" && oldRoot?.kind === "object" && documentText(root.address) === documentText(oldRoot.address);
   const title = sameRoot || root?.kind !== "object" ? tab.title : objectTitle(root.address);
   const address = objectColumnAt(stack.columns, stack.active)?.address ?? tab.address;
-  const stacks = tab.kind === "object" ? keptStacks(tab, nav) : {};
-  return { id: tab.id, kind: "object", sessionId: tab.sessionId, title, ...stack, address, stacks, preview: tab.preview, nav };
+  const kept =
+    tab.kind === "object"
+      ? { stacks: keptStacks(tab, nav), paneWidths: tab.paneWidths, maximized: tab.maximized && stack.columns.length > 1 ? true : undefined }
+      : { stacks: {} };
+  return { id: tab.id, kind: "object", sessionId: tab.sessionId, title, ...stack, address, ...kept, preview: tab.preview, nav };
 }
 
 /** The stack an object entry had: recorded in the tab or the entry, else the active column moved to it (a table tab: the row alone). */
@@ -254,16 +256,15 @@ export const navSlice: Slice<NavSlice> = {
         });
       },
 
-      navigateTab(tabId, address, then) {
+      navigateTab(tabId, address) {
         set((s) => {
           const tab = findTab(s, tabId);
           if (tab?.kind !== "table" && tab?.kind !== "object") return {};
           const { target } = address;
           if (target.kind === "row") {
-            const columns = [address, ...(then?.target.kind === "row" ? [then] : [])].map(objectColumn);
-            const active = columns.length - 1;
-            const nav = pushed(tab.nav, navEntry(tab, "object"), { kind: "object", address: columns[active].address });
-            return inPlace(s, objectified(tab, { columns, active }, nav));
+            const columns = [objectColumn(address)];
+            const nav = pushed(tab.nav, navEntry(tab, "object"), { kind: "object", address: columns[0].address });
+            return inPlace(s, objectified(tab, { columns, active: 0 }, nav));
           }
           if (target.kind !== "table") return {};
           const next = retargeted(s, tab, { database: address.database, table: target.table, where: target.filter }, tab.nav);

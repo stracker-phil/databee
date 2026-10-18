@@ -525,21 +525,21 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .val-secret:hover, .val-ser:hover, .val-secret > .revealed { color: var(--text); }
 .val-secret > .revealed { outline: none; user-select: text; -webkit-user-select: text; }
 .val-tree { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; }
-/* A reference's icons overlay the right edge of its cell or line while it is hovered or focused, over a fade
-   of what is behind them (--acts-bg), so the text cuts before them and nothing shifts. */
+/* What a click does (OpenHint): one passive icon over the right edge of the hovered or focused cell, over a fade
+   of what is behind it (--acts-bg), so the text cuts before it and nothing shifts. Links outside values carry
+   it after their text (.open-hint), shown while they are hovered. */
 .grid-cell, :is(.object, .project, .readout) .row > *, .summary-pair { position: relative; }
 .val-acts {
-  position: absolute; top: 0; right: 0; bottom: 0; display: none; align-items: center; gap: 0.154rem;
-  padding: 0 0.308rem 0 1.231rem; background: linear-gradient(to right, transparent, var(--acts-bg, var(--bg)) 1.077rem);
+  position: absolute; top: 0; right: 0; bottom: 0; display: none; align-items: center; pointer-events: none;
+  padding: 0 0.462rem 0 1.231rem; color: var(--o2); background: linear-gradient(to right, transparent, var(--acts-bg, var(--bg)) 1.077rem);
 }
-.val-act {
-  display: inline-flex; align-items: center; padding: 0.154rem; border: none; border-radius: 3px;
-  background: none; color: var(--o2); cursor: pointer;
-}
-.val-act:hover { color: var(--accent); background: var(--cell); }
 .grid-cell:hover .val-acts, .grid:focus .grid-cell.selected .val-acts, .summary-pair:hover .val-acts,
-:is(.object, .project, .readout) .row:hover .val-acts, .object .row > .focus .val-acts { display: flex; }
-.grid-cell.num:hover:has(.val-acts), .grid:focus .grid-cell.num.selected:has(.val-acts) { padding-right: 3.4rem; }
+:is(.object, .project, .readout) .row > *:hover .val-acts, .object .row > .focus .val-acts { display: flex; }
+.grid-cell.num:hover:has(.val-acts), .grid:focus .grid-cell.num.selected:has(.val-acts) { padding-right: 2.2rem; }
+.open-hint { display: inline-flex; vertical-align: -0.125em; margin-left: 0.308rem; color: var(--o2); pointer-events: none; visibility: hidden; }
+:hover > .open-hint { visibility: visible; }
+/* A table's icon (TableIcon) before its name or a reference into it, sized to the text. */
+.tbl-icon { flex: none; vertical-align: -0.125em; margin-right: 0.308em; color: var(--o2); }
 .grid-cell:hover { --acts-bg: color-mix(in srgb, var(--accent) 24%, var(--row-hover)); }
 .grid:focus .grid-cell.selected { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--bg)); }
 .grid:focus .grid-row:hover .grid-cell.selected { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--row-hover)); }
@@ -548,24 +548,35 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .object .row:hover > .focus { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--row-hover)); }
 
 /* ---------- column stack ---------- */
-/* Columns side by side, the oldest collapsed to strips; the active one has an accent line on top. */
+/* The trail above the panes, then the panes side by side with hairline dividers (Splitter); the active pane has
+   an accent line on top while others show next to it. */
+.object-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .stack { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
-.stack > .column { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--line); outline: none; }
-.stack > :first-child { border-left: none; }
+.stack > .column { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; outline: none; }
+.stack > .splitter { flex: none; }
 .stack > .column.active::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: var(--accent); z-index: 1; pointer-events: none; }
-.strip {
-  flex: 0 0 34px; display: flex; justify-content: center; padding: 18px 0 0; border: none; border-left: 1px solid var(--line);
-  background: var(--bg); color: var(--o2); font-family: var(--font-mono); font-size: var(--data-font-size);
-}
-.strip:hover { background: var(--row-hover); color: var(--text); }
-.strip-label { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
-.strip .key { color: var(--accent); }
 
-/* ---------- path ---------- */
-.path { display: flex; justify-content: flex-end; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; font-size: var(--data-font-size); }
-.path .crumb { border: none; background: none; padding: 0; color: var(--text); font: inherit; }
-.path button.crumb:hover, .path button.crumb:hover .o2 { color: var(--accent); }
-.path .key { color: var(--accent); }
+/* ---------- trail ---------- */
+/* One line in the UI font; the crumbs of the shown panes share a --band pill. Folded crumbs sit in "…" menus,
+   so crumbs never shrink, unless nothing is left to fold (.tight), then names end in an ellipsis. */
+.trail {
+  flex: none; display: flex; align-items: center; gap: 0.154rem; min-width: 0; height: 2rem; padding: 0 0.615rem;
+  overflow: hidden; white-space: nowrap; font-size: var(--fs-small); background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.trail-panes { flex: none; display: inline-flex; align-items: center; gap: 0.154rem; min-width: 0; border-radius: var(--radius-sm); background: var(--band); }
+.trail-crumb {
+  flex: none; display: inline-flex; align-items: baseline; column-gap: 0.3em; min-width: 0; padding: 0.154rem 0.385rem; border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--o2); font: inherit; cursor: default;
+}
+.trail-crumb:hover { color: var(--accent); }
+.trail-panes .trail-crumb { color: var(--text); }
+.trail-panes .trail-crumb:hover { color: var(--accent); }
+.trail-crumb[aria-current="location"] { font-weight: 600; }
+.trail-name { overflow: hidden; text-overflow: ellipsis; }
+.trail-key { color: var(--o3); }
+.trail-key.active { color: var(--accent); }
+.trail-sep { flex: none; color: var(--o3); }
+.trail.tight .trail-panes, .trail.tight .trail-crumb { flex-shrink: 1; }
 
 /* ---------- value counts ---------- */
 /* Value counts of a grid column: a --pop popover at the header, one row per value. */
@@ -625,7 +636,10 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 /* The header block, section bands (.sh) and rows (.row, .kv, .hdr) share the row anatomy. */
 .object { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .object-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 1.231rem; border-bottom: 1px solid var(--line); }
-.object-title { display: flex; align-items: center; gap: 0.923rem; flex-wrap: wrap; }
+.object-title { display: flex; align-items: center; gap: 0.923rem; min-width: 0; }
+.object-title > * { flex: none; }
+.object-title > .tn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.object-title > .spacer { flex: 1 1 0; }
 .object-title .tn { font-family: var(--font-mono); font-size: var(--fs-large); color: var(--o2); }
 .object-title button.tn { border: none; background: none; padding: 0; }
 .object-title button.tn:hover { color: var(--accent); text-decoration: underline; }
@@ -896,3 +910,20 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 }
 .snapshot-pick:hover { background: var(--row-hover); }
 .snapshot-label { font-family: var(--font-mono); font-size: var(--data-font-size); color: var(--text); }
+
+/* ---------- table icons ---------- */
+/* The icon line of a table (IconControl) and its picker sheet: a grid of the curated icons. */
+.icon-rule { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.462rem; }
+.icon-rule .tbl-icon { margin-right: 0; }
+.icon-rule .origin { color: var(--o3); font-size: var(--fs-small); }
+.icon-rule .link { border: none; background: none; padding: 0; font: inherit; color: var(--o2); }
+.icon-rule .link:hover:not(:disabled) { color: var(--accent); text-decoration: underline; }
+.structure-icon { font-size: var(--fs-base); }
+.icon-sheet .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.462rem, 1fr)); gap: 0.308rem; padding: 1.077rem 1.231rem; }
+.icon-sheet .icon-choice {
+  display: inline-flex; align-items: center; justify-content: center; height: 2.462rem; border: 1px solid transparent;
+  border-radius: 6px; background: none; color: var(--o2); font-size: 1.231rem;
+}
+.icon-sheet .icon-choice:hover { color: var(--text); background: var(--row-hover); }
+.icon-sheet .icon-choice[aria-pressed="true"] { border-color: var(--field-line); background: var(--field); color: var(--accent); }
+.icon-sheet .act[aria-pressed="true"] { color: var(--accent); }

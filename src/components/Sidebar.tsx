@@ -9,6 +9,7 @@ import { useApiResult } from "../lib/useApiResult";
 import { fail, selectActiveSession, selectActiveTab, selectVisibleDatabases, useStore, type Tab } from "../state/store";
 import { useContextMenu } from "./ContextMenu";
 import { InsetField } from "./Field";
+import { TableIcon } from "./TableIcon";
 
 const dbKey = (name: string) => `db:${name}`;
 const tableKey = (db: string, name: string) => `table:${db}.${name}`;
@@ -220,6 +221,7 @@ function TablesPanel() {
                       onDoubleClick={() => openTableTab(d.name, t.name, undefined, undefined, { preview: false })}
                       onContextMenu={(e) => tableMenu(d.name, t, e)}
                     >
+                      <TableIcon database={d.name} table={t.name} sessionId={session.id} />
                       <span className="label">{t.name}</span>
                       {meta && <span className="meta">{meta}</span>}
                     </div>
