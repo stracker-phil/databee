@@ -37,6 +37,7 @@ export function CompareView({ tab, column, index, editable }: Props) {
   }, [tab.sessionId, comparison]);
   const onFocus = useCallback((focus: Provenance | null) => useStore.getState().focusObject(tab.id, focus, index), [tab.id, index]);
   const setView = useCallback((view: ObjectView) => useStore.getState().setObjectView(tab.id, view, undefined, index), [tab.id, index]);
+  const place = useMemo(() => ({ tabId: tab.id, index }), [tab.id, index]);
 
   if (error && !comparison) return <ErrorPanel message={error.message} code={error.code} />;
   if (!comparison) return <div className="empty-state">Loading…</div>;
@@ -50,7 +51,7 @@ export function CompareView({ tab, column, index, editable }: Props) {
       </div>
       <div className="compare-sides">
         <div className="object compare-side" role="group" aria-label={objectTitle(comparison.left.address)}>
-          <ObjectHeader document={comparison.left} owner={comparison.left.address} view={view} />
+          <ObjectHeader document={comparison.left} owner={comparison.left.address} view={view} place={place} />
           <DocumentView document={comparison.left} owner={comparison.left.address} focus={column.focus} onFocus={onFocus} onMore={noMore} editable={editable} diff={left} />
         </div>
         <div className="object compare-side" role="group" aria-label={objectTitle(comparison.right.address)}>

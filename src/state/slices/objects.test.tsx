@@ -117,7 +117,7 @@ describe("object tabs", () => {
       store().openTableTab("db", "wp_posts", undefined, undefined, { preview: true });
       store().openObject(orderAddress, { preview: true });
       expect(store().tabs).toHaveLength(1);
-      expect(activeObject().nav.back.map(formatAddress)).toEqual(["databee://shop/db/wp_posts"]);
+      expect(activeObject().nav.back.map((e) => [e.kind, formatAddress(e.address)])).toEqual([["table", "databee://shop/db/wp_posts"]]);
     });
 
     it("lets a table preview replace an object preview and keeps the row in its history", () => {
@@ -126,7 +126,7 @@ describe("object tabs", () => {
       const tab = selectActiveTab(store());
       expect(store().tabs).toHaveLength(1);
       expect(tab).toMatchObject({ kind: "table", table: "wp_posts" });
-      expect(tab?.nav.back.map(formatAddress)).toEqual(["databee://shop/db/wp_wc_orders/4711"]);
+      expect(tab?.nav.back.map((e) => [e.kind, formatAddress(e.address)])).toEqual([["object", "databee://shop/db/wp_wc_orders/4711"]]);
     });
 
     it("lets an object preview replace an object preview in its place", () => {
@@ -180,7 +180,7 @@ describe("object tabs", () => {
       const tab = activeObject();
       expect(tab.view).toBe("rows");
       expect(formatAddress(tab.address)).toBe("databee://shop/db/wp_wc_orders/4711?view=rows");
-      expect(tab.nav.back.map(formatAddress)).toEqual(["databee://shop/db/wp_wc_orders/4711"]);
+      expect(tab.nav.back.map((e) => [e.kind, formatAddress(e.address)])).toEqual([["object", "databee://shop/db/wp_wc_orders/4711"]]);
     });
 
     it("records no history when the view is already shown", () => {

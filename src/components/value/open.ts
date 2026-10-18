@@ -1,14 +1,15 @@
 /**
  * What opening a value does (docs/ux.md, Value grammar): inside an object tab's column, references and other
- * rows' keys drill into a new column and serialized data opens a value column; elsewhere they open tabs.
+ * rows' keys drill into a new column and serialized data opens a value column; a table tab moves to a
+ * reference's target in place; elsewhere they open tabs.
  */
-import { createContext } from "react";
+import { createContext, useContext } from "react";
 import type { Address, Value } from "../../api";
 import { fullCellText } from "../../lib/cells";
 import { formatAddress } from "../../lib/address";
 import { documentText } from "../../lib/document";
 import { cellText } from "../../lib/format";
-import { fail, selectActiveTab, useStore } from "../../state/store";
+import { fail, selectActiveTab, useStore, type TableTab } from "../../state/store";
 import { tabDatabase } from "../../state/tabKinds";
 
 export interface ColumnPlace {
@@ -33,10 +34,50 @@ export function openRowObject(address: Address, owner: Address | null, preview: 
   s.openObject(address, { preview });
 }
 
-/** A reference target: the next column of a stack, else the preview tab. */
-export function openTarget(target: Address, place: ColumnPlace | null) {
-  if (place && target.target.kind === "row") return useStore.getState().drill(place.tabId, place.index, target);
-  void useStore.getState().openAddress(formatAddress(target), { preview: true });
+/**
+ * How a reference opens its target: `drill` as the next column (the side panel), `go` by moving the whole
+ * table or object tab to it. A click drills in a column stack and goes elsewhere.
+ */
+export type OpenMode = "drill" | "go";
+
+export const clickMode = (place: ColumnPlace | null): OpenMode => (place ? "drill" : "go");
+
+/** The row `value` is stored in, when a single-column key names it, as an address in table tab `tab`. */
+function sourceRow(value: Value | null | undefined, tab: TableTab): Address | null {
+  const row = value?.source?.row;
+  if (!value?.source || row?.length !== 1) return null;
+  const connection = useStore.getState().sessions.find((x) => x.id === tab.sessionId)?.slug;
+  if (!connection) return null;
+  return { connection, database: tab.database, target: { kind: "row", table: value.source.table, key: row[0].value }, view: null, compare: null };
+}
+
+/**
+ * A reference target. In a column stack `drill` opens it as the next column and `go` moves the stack's tab to
+ * it; in a table tab `go` moves the tab to it and `drill` moves the tab to `from`'s row with the target as the
+ * next column. Without a mode, or with nowhere to move, it opens a column of the stack, else the preview tab.
+ */
+export function openTarget(target: Address, place: ColumnPlace | null, mode?: OpenMode, from?: Value | null) {
+  const s = useStore.getState();
+  const row = target.target.kind === "row";
+  if (place) {
+    if (mode === "go") return s.navigateTab(place.tabId, target);
+    if (row) return s.drill(place.tabId, place.index, target);
+  }
+  const tab = selectActiveTab(s);
+  if (!place && tab?.kind === "table") {
+    const source = mode === "drill" && row ? sourceRow(from, tab) : null;
+    if (source) return s.navigateTab(tab.id, source, target);
+    if (mode === "go") return s.navigateTab(tab.id, target);
+  }
+  void s.openAddress(formatAddress(target), { preview: true });
+}
+
+/** The modes a reference's icons offer here: both in a column stack and for a table tab's addressable rows, else `go`. */
+export function useOpenModes(value: Value): OpenMode[] {
+  const place = useContext(ColumnContext);
+  const inTable = useStore((s) => selectActiveTab(s)?.kind === "table");
+  if (place || (inTable && value.source?.row.length === 1)) return ["go", "drill"];
+  return ["go"];
 }
 
 /** The full text of `value`: a selected grid cell's `longText` is fetched in full. */

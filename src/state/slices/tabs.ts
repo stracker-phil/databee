@@ -5,7 +5,7 @@ import type { ProjectForm } from "../../lib/ruleForms";
 import { selectActiveSession } from "../selectors";
 import { tabKind } from "../tabKinds";
 import type { Slice, Store } from "../store";
-import { EMPTY_NAV, homeAddress, pushed, tableAddress, tableTitle, type TabNav } from "./nav";
+import { EMPTY_NAV, homeAddress, navEntry, pushed, tableAddress, tableTitle, type TabNav } from "./nav";
 import { nextActiveSessionId } from "./session";
 import { remembered } from "./ui";
 
@@ -103,6 +103,9 @@ export interface ReadoutTab {
 export type ProjectSection = "overview" | "rules";
 
 export type Tab = QueryTab | TableTab | ObjectTab | ProjectTab | ReadoutTab;
+
+/** A tab that shows data in place: a table, or a row as an object; `navigateTab` turns one into the other. */
+export type DataTab = TableTab | ObjectTab;
 
 export type TabOfKind<K extends Tab["kind"]> = Extract<Tab, { kind: K }>;
 
@@ -259,7 +262,7 @@ export const tabsSlice: Slice<TabsSlice> = {
             where,
             preview: opts.preview ?? false,
             address,
-            nav: replaced ? pushed(replaced.nav, replaced.address, address) : EMPTY_NAV,
+            nav: replaced ? pushed(replaced.nav, navEntry(replaced, "table"), { kind: "table", address }) : EMPTY_NAV,
           };
           return { tabs: placed(s.tabs, tab, replaced), ...activate(s, tab.id) };
         });

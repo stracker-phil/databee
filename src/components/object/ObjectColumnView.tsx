@@ -37,6 +37,7 @@ function RowColumn({ tab, column, index, editable }: Props) {
   const diff = useMemo(() => (changes ? documentMarks(changes) : null), [changes]);
   const [scrollTo, setScrollTo] = useState<string | null>(null);
   const scroll = useViewScroll(column.view, !!document);
+  const place = useMemo(() => ({ tabId: tab.id, index }), [tab.id, index]);
   useEntityTitle(tab, column, index === 0, document?.entity);
 
   const onFocus = useCallback((focus: Provenance | null) => useStore.getState().focusObject(tab.id, focus, index), [tab.id, index]);
@@ -57,7 +58,7 @@ function RowColumn({ tab, column, index, editable }: Props) {
   if (!document) return <div className="empty-state">Loading…</div>;
   return (
     <div className="object" ref={scroll.ref} onScroll={scroll.onScroll}>
-      <ObjectHeader document={document} owner={column.address} view={{ current: column.view, onChange: setView }} />
+      <ObjectHeader document={document} owner={column.address} view={{ current: column.view, onChange: setView }} place={place} />
       {column.view === "document" ? (
         <DocumentView document={document} owner={column.address} focus={column.focus} onFocus={onFocus} onMore={onMore} editable={editable} diff={diff} />
       ) : (

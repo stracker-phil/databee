@@ -520,9 +520,32 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .val-num { font-variant-numeric: tabular-nums; }
 .val-sec { color: var(--o2); margin-left: 0.6em; }
 .val-note { color: var(--o3); margin-left: 0.6em; font-family: var(--font-ui); font-size: var(--fs-small); }
-.val-secret, button.val-ser, button.val-ref { border: none; background: none; padding: 0; font: inherit; }
-.val-secret:hover, .val-ser:hover { color: var(--text); }
+.val-secret > button, button.val-ser, button.val-ref { border: none; background: none; padding: 0; font: inherit; }
+.val-secret > button { color: inherit; cursor: pointer; }
+.val-secret:hover, .val-ser:hover, .val-secret > .revealed { color: var(--text); }
+.val-secret > .revealed { outline: none; user-select: text; -webkit-user-select: text; }
 .val-tree { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; }
+/* A reference's icons overlay the right edge of its cell or line while it is hovered or focused, over a fade
+   of what is behind them (--acts-bg), so the text cuts before them and nothing shifts. */
+.grid-cell, :is(.object, .project, .readout) .row > *, .summary-pair { position: relative; }
+.val-acts {
+  position: absolute; top: 0; right: 0; bottom: 0; display: none; align-items: center; gap: 0.154rem;
+  padding: 0 0.308rem 0 1.231rem; background: linear-gradient(to right, transparent, var(--acts-bg, var(--bg)) 1.077rem);
+}
+.val-act {
+  display: inline-flex; align-items: center; padding: 0.154rem; border: none; border-radius: 3px;
+  background: none; color: var(--o2); cursor: pointer;
+}
+.val-act:hover { color: var(--accent); background: var(--cell); }
+.grid-cell:hover .val-acts, .grid:focus .grid-cell.selected .val-acts, .summary-pair:hover .val-acts,
+:is(.object, .project, .readout) .row:hover .val-acts, .object .row > .focus .val-acts { display: flex; }
+.grid-cell.num:hover:has(.val-acts), .grid:focus .grid-cell.num.selected:has(.val-acts) { padding-right: 3.4rem; }
+.grid-cell:hover { --acts-bg: color-mix(in srgb, var(--accent) 24%, var(--row-hover)); }
+.grid:focus .grid-cell.selected { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--bg)); }
+.grid:focus .grid-row:hover .grid-cell.selected { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--row-hover)); }
+:is(.object, .project, .readout) .row:hover { --acts-bg: var(--row-hover); }
+.object .row > .focus { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--bg)); }
+.object .row:hover > .focus { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--row-hover)); }
 
 /* ---------- column stack ---------- */
 /* Columns side by side, the oldest collapsed to strips; the active one has an accent line on top. */
@@ -604,6 +627,8 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .object-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 1.231rem; border-bottom: 1px solid var(--line); }
 .object-title { display: flex; align-items: center; gap: 0.923rem; flex-wrap: wrap; }
 .object-title .tn { font-family: var(--font-mono); font-size: var(--fs-large); color: var(--o2); }
+.object-title button.tn { border: none; background: none; padding: 0; }
+.object-title button.tn:hover { color: var(--accent); text-decoration: underline; }
 .object-title .key { font-family: var(--font-mono); font-size: var(--fs-large); font-weight: 600; color: var(--accent); }
 .object-summary { display: flex; flex-wrap: wrap; gap: 0.462rem 1.846rem; font-family: var(--font-mono); font-size: var(--data-font-size); }
 .object-alternatives { color: var(--o3); font-size: var(--fs-small); }

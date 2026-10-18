@@ -95,8 +95,10 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     by side, `?compare=`); the snapshot list (`object.sinceSnapshot`, `query.sinceSnapshot`):
     `snapshot:<id>` (list `snapshots`, newest first, label: the snapshot's label) and `snapshot:delete:<id>`
   - the column stack: `column:<index>` on each column shown in full (list `columns`, label `table #key`),
-    `strip:<index>` on each strip (list `strips`), `toolbar:path` with the crumbs `path:<index>` (list `path`;
-    the last crumb is no button), `peek` on the peek card while ⌥ is held
+    `strip:<index>` on each strip (list `strips`), `column-close:<index>` (the close button of a drilled
+    column), `object-header:table` (the table name in an object header, opens the whole table in the tab),
+    `toolbar:path` with `path:table` (the root row's table) and the crumbs `path:<index>` (list `path`; the
+    last crumb is no button), `peek` on the peek card while ⌥ is held
   - value columns: `value-column` (a table or query tab's), `value-column:tree`, `value-column:raw`,
     `value-column:copy`, `value-column:close`
   - query tabs: `query:save`, `query:pin`, `query:copy-to-project` (a preset query's tab), `query:origin` (where
@@ -131,8 +133,10 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `appearance:accent:<id>` (list `appearance:accent`)
 
   - `value:<table>.<column>:<key>` for values that act on click or reveal (primary keys, references, enums,
-    serialized data, secrets) and have a provenance (list `values`; label: the raw value)
-  - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:search` (opens the palette),
+    serialized data, secrets) and have a provenance (list `values`; label: the raw value); a reference's
+    hover icons are `value-go:<table>.<column>:<key>` and `value-drill:…` (label: their accessible name)
+  - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:back`, `toolbar:forward` (only for a table or
+    object tab), `toolbar:search` (opens the palette),
     `statusbar:sidebar` (the ▤ toggle), `statusbar:presets` (opens the Project page),
     `statusbar:pending`, `statusbar:live` (`● live 2 s` while the active column is live; a click ends it)
 

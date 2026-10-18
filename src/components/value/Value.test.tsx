@@ -1,13 +1,15 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type Address, type DecodedValue, type Provenance, type ReferenceSource, type Value as StoredValue } from "../../api";
-import { address } from "../../lib/address";
-import { connectedStore, num, text, value } from "../../test/fixtures";
+import { address, formatAddress } from "../../lib/address";
+import { connectedStore, num, tableTab, text, value } from "../../test/fixtures";
 import { NOW } from "../../test/now";
+import { ColumnContext } from "./open";
 import { Value } from "./Value";
 
 const mocked = vi.mocked(api, true);
@@ -66,6 +68,102 @@ describe("Value", () => {
       render(<Value value={reference({ exists: false })} onOpen={vi.fn()} />);
       expect(screen.queryByRole("link")).not.toBeInTheDocument();
       expect(screen.getByText("12")).toHaveClass("val-dang");
+    });
+
+    describe("icons", () => {
+      const target = formatAddress(row("wp_users", "12"));
+      const goTo = () => screen.getByRole("button", { name: `Go to ${target}` });
+      const sidePanel = () => screen.getByRole("button", { name: `Open ${target} in side panel` });
+      const sourced = (key: { column: string; value: string }[] = [{ column: "ID", value: "7" }]): StoredValue => ({
+        ...reference(),
+        source: { table: "wp_posts", column: "post_author", row: key },
+      });
+      const inColumn = (ui: ReactNode) => (
+        <ColumnContext.Provider value={{ tabId: "t1", index: 0 }}>{ui}</ColumnContext.Provider>
+      );
+
+      it("offers only Go to outside a column stack and a table tab", () => {
+        render(<Value value={reference()} onOpen={vi.fn()} />);
+        expect(goTo()).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /in side panel/ })).not.toBeInTheDocument();
+      });
+
+      it("calls onOpen with mode go for Go to", async () => {
+        const onOpen = vi.fn();
+        const ref = reference();
+        render(<Value value={ref} onOpen={onOpen} />);
+        await userEvent.click(goTo());
+        expect(onOpen).toHaveBeenCalledOnce();
+        expect(onOpen).toHaveBeenCalledWith(ref, expect.anything(), "go");
+      });
+
+      it("offers both icons inside a column stack and calls onOpen with mode drill for the side panel", async () => {
+        const onOpen = vi.fn();
+        const ref = reference();
+        render(inColumn(<Value value={ref} onOpen={onOpen} />));
+        expect(goTo()).toBeInTheDocument();
+        await userEvent.click(sidePanel());
+        expect(onOpen).toHaveBeenCalledOnce();
+        expect(onOpen).toHaveBeenCalledWith(ref, expect.anything(), "drill");
+      });
+
+      it("names every target of a reference with several targets", () => {
+        const both = value({ raw: num("12"), kind: { kind: "reference", targets: [row("wp_users", "12"), row("wp_posts", "12")], by: preset, exists: null } });
+        render(<Value value={both} onOpen={vi.fn()} />);
+        expect(screen.getByRole("button", { name: `Go to ${target} or ${formatAddress(row("wp_posts", "12"))}` })).toBeInTheDocument();
+      });
+
+      it("has the icons for an inferred reference", () => {
+        render(inColumn(<Value value={reference({ by: { kind: "sameName", column: "ID", indexed: true } })} onOpen={vi.fn()} />));
+        expect(goTo()).toBeInTheDocument();
+        expect(sidePanel()).toBeInTheDocument();
+      });
+
+      it("has no icons for a dangling reference", () => {
+        render(inColumn(<Value value={reference({ exists: false })} onOpen={vi.fn()} />));
+        expect(screen.queryByRole("button")).not.toBeInTheDocument();
+      });
+
+      it("has no icons without an open handler", () => {
+        render(inColumn(<Value value={reference()} />));
+        expect(screen.queryByRole("button")).not.toBeInTheDocument();
+      });
+
+      it("has no icons for a value that is not a reference", () => {
+        const key = value({ raw: num("7"), kind: { kind: "primaryKey", address: row("wp_posts", "7") } });
+        render(inColumn(<Value value={key} onOpen={vi.fn()} />));
+        expect(screen.queryByRole("button")).not.toBeInTheDocument();
+      });
+
+      describe("in a table tab", () => {
+        beforeEach(() => connectedStore({ tabs: [tableTab()] }));
+
+        it("offers both icons for a value sourced from a single-column key", () => {
+          render(<Value value={sourced()} onOpen={vi.fn()} />);
+          expect(goTo()).toBeInTheDocument();
+          expect(sidePanel()).toBeInTheDocument();
+        });
+
+        it("offers only Go to for a value without a source", () => {
+          render(<Value value={reference()} onOpen={vi.fn()} />);
+          expect(goTo()).toBeInTheDocument();
+          expect(screen.queryByRole("button", { name: /in side panel/ })).not.toBeInTheDocument();
+        });
+
+        it("offers only Go to for a value from a multi-column key", () => {
+          render(
+            <Value
+              value={sourced([
+                { column: "post_id", value: "7" },
+                { column: "meta_key", value: "k" },
+              ])}
+              onOpen={vi.fn()}
+            />,
+          );
+          expect(goTo()).toBeInTheDocument();
+          expect(screen.queryByRole("button", { name: /in side panel/ })).not.toBeInTheDocument();
+        });
+      });
     });
   });
 
@@ -172,11 +270,119 @@ describe("Value", () => {
     });
   });
 
-  it("keeps a secret masked until it is revealed", async () => {
-    render(<Value value={value({ raw: text("sk_live_abc"), kind: { kind: "secret" } })} />);
-    expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Reveal secret" }));
-    expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
+  describe("secret", () => {
+    const secret = (raw: string) => value({ raw: text(raw), kind: { kind: "secret" } });
+    const hoverArea = (button: HTMLElement) => button.parentElement as HTMLElement;
+    const reveal = () => screen.getByRole("button", { name: "Reveal secret" });
+
+    it("is masked by default and explains how to reveal it", () => {
+      render(<Value value={secret("sk_live_abc")} />);
+      expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
+      expect(reveal()).toHaveAttribute("title", "Click to reveal · ⌥ hover to peek");
+    });
+
+    it("shows the text and focuses it after a click", async () => {
+      render(<Value value={secret("sk_live_abc")} />);
+      await userEvent.click(reveal());
+      expect(screen.getByText("sk_live_abc")).toHaveFocus();
+      expect(screen.queryByRole("button", { name: "Reveal secret" })).not.toBeInTheDocument();
+    });
+
+    it("masks the text again when it loses focus", async () => {
+      const user = userEvent.setup();
+      render(<Value value={secret("sk_live_abc")} />);
+      await user.click(reveal());
+      await user.tab();
+      expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
+      expect(reveal()).toBeInTheDocument();
+    });
+
+    it.each([
+      ["Enter", "{Enter}"],
+      ["Space", " "],
+    ])("reveals the text when %s is pressed on the focused button", async (_name, keys) => {
+      const user = userEvent.setup();
+      render(<Value value={secret("sk_live_abc")} />);
+      await user.tab();
+      expect(reveal()).toHaveFocus();
+      await user.keyboard(keys);
+      expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
+    });
+
+    describe("peeking with Alt", () => {
+      it("shows the hovered secret while Alt is pressed and masks it on release", async () => {
+        const user = userEvent.setup();
+        render(<Value value={secret("sk_live_abc")} />);
+        fireEvent.mouseEnter(hoverArea(reveal()));
+        await user.keyboard("{Alt>}");
+        expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
+        await user.keyboard("{/Alt}");
+        expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
+      });
+
+      it("shows the secret when the pointer arrives after Alt, and masks it when the pointer leaves", async () => {
+        const user = userEvent.setup();
+        render(<Value value={secret("sk_live_abc")} />);
+        const area = hoverArea(reveal());
+        await user.keyboard("{Alt>}");
+        expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
+        fireEvent.mouseEnter(area);
+        expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
+        fireEvent.mouseLeave(area);
+        expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
+      });
+
+      it.each([
+        ["Meta", "{Meta>}{Alt>}"],
+        ["Ctrl", "{Control>}{Alt>}"],
+        ["Shift", "{Shift>}{Alt>}"],
+      ])("does not reveal on hover when %s is held with Alt", async (_name, keys) => {
+        const user = userEvent.setup();
+        render(<Value value={secret("sk_live_abc")} />);
+        fireEvent.mouseEnter(hoverArea(reveal()));
+        await user.keyboard(keys);
+        expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
+      });
+
+      it("masks the secret when the window loses focus", async () => {
+        const user = userEvent.setup();
+        render(<Value value={secret("sk_live_abc")} />);
+        fireEvent.mouseEnter(hoverArea(reveal()));
+        await user.keyboard("{Alt>}");
+        expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
+        fireEvent.blur(window);
+        expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
+      });
+
+      it("reveals nothing without hover, and only the hovered secret among several", async () => {
+        const user = userEvent.setup();
+        render(
+          <>
+            <Value value={secret("first_secret")} />
+            <Value value={secret("second_secret")} />
+          </>,
+        );
+        await user.keyboard("{Alt>}");
+        expect(screen.queryByText("first_secret")).not.toBeInTheDocument();
+        expect(screen.queryByText("second_secret")).not.toBeInTheDocument();
+
+        fireEvent.mouseEnter(hoverArea(screen.getAllByRole("button", { name: "Reveal secret" })[1]));
+        expect(screen.getByText("second_secret")).toBeInTheDocument();
+        expect(screen.queryByText("first_secret")).not.toBeInTheDocument();
+      });
+
+      it("keeps a peeked secret shown after Alt is released once it has focus, until it blurs", async () => {
+        const user = userEvent.setup();
+        render(<Value value={secret("sk_live_abc")} />);
+        fireEvent.mouseEnter(hoverArea(reveal()));
+        await user.keyboard("{Alt>}");
+        await user.click(screen.getByText("sk_live_abc"));
+        await user.keyboard("{/Alt}");
+        expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
+        await user.tab();
+        expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
+      });
+    });
   });
 
   it("shows the size of binary data", () => {

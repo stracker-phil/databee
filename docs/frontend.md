@@ -43,7 +43,7 @@ Layout:
 App
 ├─ ConnectScreen                       (no session)
 └─ .app grid
-   ├─ Toolbar                          connection / database text (pickers), Path, search field (palette), icon buttons
+   ├─ Toolbar                          connection / database text (pickers), back/forward, Path, search field (palette), icon buttons
    ├─ Workspace: [Sidebar |] TabBar + TabPanels
    │       TabPanels → Readout (header, needs attention, recently created, pinned, recently opened; [Readout](#readout))
    │                 → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel) [| value column]
@@ -87,8 +87,8 @@ and the state types, so components import everything from `state/store`.
   `icon`, `tooltip`, `stage` (its `data-stage` anchor), `Panel`, and the optional status-bar parts
   `addressHint` (a table's `· filtered`) and `Summary` (a query's results); it is separate because store
   modules must not import components. Behavior only some kinds have stays in a partial per-kind record next
-  to it: back/forward (`travelers`, `nav.ts`), change targets (`CHANGE_TARGETS`, `live.ts`), the Stage
-  state line (`TAB_STATE`, `stage/state.ts`).
+  to it: change targets (`CHANGE_TARGETS`, `live.ts`), the Stage state line (`TAB_STATE`, `stage/state.ts`).
+  Back/forward and `navigateTab` (`nav.ts`) act on the `DataTab` kinds only, turning one into the other.
 - Slices import each other's reset helpers (`resetSelection`) and pure helpers (`activate`, `remembered`,
   `nextActiveSessionId`), never the store object, except where a module-level helper needs it (`fail`).
 
@@ -96,7 +96,7 @@ and the state types, so components import everything from `state/store`.
 |---|---|
 | `settings` | `Settings \| null`; null until loaded |
 | `sessions`, `activeSessionId` | open connections (`SessionInfo`, with the connection `slug`) |
-| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error, `valueColumn?`), `TableTab` (database, table, data/structure view, filter, structured `where`, preview, `valueColumn?`) `ObjectTab` (the column stack `columns`, the `active` index, the recorded `stacks`, preview; [Column stack](#column-stack)) `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)) or `ReadoutTab` (database; one per session, [Readout](#readout)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
+| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error, `valueColumn?`), `TableTab` (database, table, data/structure view, filter, structured `where`, preview, `valueColumn?`) `ObjectTab` (the column stack `columns`, the `active` index, the recorded `stacks`, preview; [Column stack](#column-stack); `DataTab` is a table or object tab, which `navigateTab` turns into each other) `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)) or `ReadoutTab` (database; one per session, [Readout](#readout)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
 | `documents` | `document` replies by `session/<address or shorthand>`, tagged with their `dataVersion` (`loadDocument`, `keepDocument`, `selectDocument`) |
 | `live`, `changeMarks` | live object columns by document key (`{ sessionId, address, id }`, `id` the Rust watch) and change marks by document key or `<session>/q:<tab id>` (a saved query's tab); see [Live mode, snapshots, compare](#live-mode-snapshots-compare) |
 | `schema` | per session: databases and tables per database |
@@ -360,8 +360,11 @@ survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There 
 (`--chrome`) and content (`--bg`) meet at `--line` hairlines. Values open as columns, never in a docked pane.
 
 - **Toolbar:** `ConnectionText` shows `connection / database` as mono text; a transparent native select over
-  each name (`Connection` only with several sessions, `Database` always) opens the picker. `Path` shows the
-  active object tab's stack (see [Column stack](#column-stack)). `SearchField` is a
+  each name (`Connection` only with several sessions, `Database` always) opens the picker. `NavButtons` (back
+  and forward, `toolbar:back`/`toolbar:forward`) show for a table or object tab, run `nav.back`/`nav.forward`
+  through `runCommand`, are disabled while `selectCanNav` finds no history and name the bound key in their
+  title. `Path` shows the active object tab's table and stack (see [Column stack](#column-stack)), or a table
+  tab's table with `(filtered)`. `SearchField` is a
   button styled as a field (label "Go to") that opens the palette; its key cap follows `palette.open`.
 - **Status bar:** `SidebarToggle` (▤, `aria-pressed` while the sidebar shows), `Address` (the provenance of
   the hovered or selected value while there is one, see [Values](#values); otherwise the active tab's address as text, a button that copies it, with `· filtered` when a
@@ -387,7 +390,17 @@ not known to be missing, an enum, serialized data in a grid); the caller decides
 object `owner` shows switches that object between Document and Rows instead), a reference opens its target
 (several: a menu), serialized data opens a value column (`showValue`), an enum runs `value.filter`. Inside an
 object tab's column (`ColumnContext`, `{ tabId, index }`) a target or another row opens as the next column
-(`drill`). A secret reveals on its own. A style
+(`drill`). A reference opens in an `OpenMode` (`openTarget(target, place, mode, from)`): `drill` (the next
+column; in a table tab `navigateTab(tab.id, from's row, target)`, the row with the target drilled) or `go`
+(`navigateTab` of the stack's or table tab to the target; elsewhere the preview tab); a click uses
+`clickMode(place)` (`drill` in a stack, `go` elsewhere), a menu of several targets keeps the mode it was opened
+with, and without a mode (Peek) it is a column of the stack or the preview tab. A reference that acts on click
+also renders `RefActions`: `.val-act` icon buttons (ExternalLink = `go`, ChevronRight = `drill`, in the modes
+`useOpenModes(value)` allows: both in a stack and in a table tab for a value whose row key is one column, else
+`go`) that call `onOpen(value, event, mode)`. They sit in `.val-acts`, absolute at the right edge of the nearest
+cell (`.grid-cell`, a `.row` child, `.summary-pair`), shown on hover or focus over a gradient to `--acts-bg`
+(set per cell state in `styles/app.css`); they stop mousedown, click and double-click from reaching the grid or
+field and take no tab stop. A secret reveals on its own. A style
 sets `color: var(--style-<name>)`. CSS classes are `val` and `val-<kind>` (`styles/app.css`, values).
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
@@ -400,7 +413,8 @@ is on no value: Document rows (`groups.tsx`, the group's table; events rows, the
 (`ResultsGrid`, when every sourced value of the row shares one table), readout rows and palette hits
 (`PaletteList`, which runs its own `useValueHover` since the palette is outside `AppShell`). The status
 bar's address slot shows `hover.src`, else the provenance of `selectedCell.value`, else the address.
-Interactive values with a provenance are Stage anchors `value:<table>.<column>:<key>` (list `values`).
+Interactive values with a provenance are Stage anchors `value:<table>.<column>:<key>` (list `values`), a
+reference's icons `value-go:…` and `value-drill:…`.
 A reference with one target also carries `data-ref` (the target address), `data-via` (its column) and `data-by`
 (the rule, `bySourceText`) for the peek.
 
@@ -449,8 +463,8 @@ re-renders the grid. Cells render `Value` with `density="grid"`, from the `value
 (`TableTab`: `lib/values.ts` `valueAt` on the page; `QueryTab`: `resultValueAt`; without it `cellValue`);
 values are built once per row and rows identity, so `Value`'s memo holds while the grid re-renders. The
 only kind class on a cell is `num` (right alignment for number cells). Clicks go through `useOpenValue(owner)`:
-a primary key opens its row as an object in the preview tab, a reference opens its target with
-`openAddress(…, { preview: true })` (several targets: a menu), an enum runs `value.filter`, serialized data
+a primary key opens its row as an object in the preview tab, a reference opens its target in place in a table
+tab (`navigateTab`) and with `openAddress(…, { preview: true })` in a query tab (several targets: a menu), an enum runs `value.filter`, serialized data
 opens a value column (in an object tab's column: the next column of the stack, through `ColumnContext`). On a
 primary key cell, double-click opens the object pinned and Enter in the preview tab (in a stack: the next
 column); Enter on a reference with one target opens it, on serialized data or long text a value column with the
@@ -625,7 +639,7 @@ is the column `h`/`l` move, the path marks and the value commands act on. The `c
 - `openValueColumn(tabId, from, column)`: the same for a value column; for a table or query tab (`from` null)
   it sets the tab's `valueColumn`, which `WithValueColumn` (`tabViews.tsx`) renders right of the tab.
   `updateValueColumn` keeps an edited text.
-- `popToColumn(tabId, index)` (a strip, a crumb), `closeRightmostColumn()` (`Esc`, `columns.close`; a table or
+- `popToColumn(tabId, index)` (a strip, a crumb, the close button of a drilled column), `closeRightmostColumn()` (`Esc`, `columns.close`; a table or
   query tab's value column first), `setActiveColumn(tabId, index)` (a mousedown in a column, in the capture
   phase so the column is active before a grid selects), `moveActiveColumn(delta)` (`h`/`l`). A new active
   column drops the tab's grid selection.
@@ -637,14 +651,20 @@ vertical `table #key`; one left of the active column pops back to it, one right 
 column (`aria-current`) gets a 2px accent line on top when there are several, and takes the keyboard focus
 (`tabIndex=-1`) when nothing outside the stack holds it.
 
-**Path** (`Path.tsx`, in the toolbar): one crumb per column, the name from the column's document entity, else
-the table's only entity in `rulesInfo.tableEntities`, else the table name; every crumb but the last pops to its
-column.
+**Path** (`Path.tsx`, in the toolbar): `TableCrumb` first, the root row's table, which calls
+`navigateTab(tab.id, wholeTable(root address))`; then one crumb per column, the name from the column's document
+entity, else the table's only entity in `rulesInfo.tableEntities`, else the table name; every crumb but the
+last pops to its column. For a table tab `TablePath` shows the table as the current location.
+
+**Object header** (`ObjectHeader.tsx`): with a `place` (`ColumnPlace`: tab id and column index, passed by
+`ObjectColumnView` and to the left side of `CompareView`) the table name is a button ("Open table <table>",
+`object-header:table`) that shows the whole table in the same tab through `navigateTab`, and a column after the
+first gets a close button ("Close column", `column-close:<index>`) that calls `popToColumn(tabId, index - 1)`.
 
 **History** records the stack as the active column's address: `restacked(tab, stack, record)` (`slices/nav.ts`)
-pushes the address being left onto `nav` and keeps that address's stack in `stacks` (by `formatAddress`, pruned
-to the addresses `nav` still holds). Back and forward restore the stack an address had, else move the active
-column to it. Moving the active column records nothing.
+pushes the entry being left onto `nav` and keeps that address's stack in `stacks` (by `formatAddress`, pruned
+to the object entries `nav` still holds). Back and forward restore the stack an address had (from `stacks`, or
+from the entry's own `stack` when the tab was a table tab in between), else move the active column to it. Moving the active column records nothing.
 
 **Keys** (`commands/columns.ts`, `COLUMN_COMMANDS`, rebindable): `object.down`/`object.downArrow` (`J`, ↓) and
 `object.up`/`object.upArrow` (`K`, ↑) move the focus of a Document column through `focusOrder(document,
@@ -673,13 +693,25 @@ results. It reads the result's `kinds` and `serialized` cells and mirrors Rust's
   value written as a bare `?col`). The typed SQL filter never enters an address. A `QueryTab`'s address is
   the database home (`homeAddress`), null without a current database. The connection part is the session's
   `slug`.
-- **History:** every tab has `nav { back, forward }`, at most `NAV_LIMIT` (50) addresses each. `showRows`
-  (opening a row in place, clearing the column filter) and a replaced preview tab push the address being
-  left and clear `forward`; an unchanged address pushes nothing. `navBack` / `navForward` (commands
-  `nav.back` ⌘[ and `nav.forward` ⌘], global scope) move the active tab and restore its table and `where`;
-  a row address needs the primary key, so they load the structure first. They are enabled only while
-  `selectCanNav` finds history, so ⌘[ still outdents in the editor. An object tab restores the stack its
-  target address had ([Column stack](#column-stack)).
+- **History:** every tab has `nav { back, forward }`, at most `NAV_LIMIT` (50) `NavEntry`s each: `{ kind,
+  address, stack? }`, where `kind` (`table` or `object`) says which tab showed the address (a table tab
+  filtered to its primary key has a row address too), and `stack` is the column stack of an object tab that
+  became a table tab. `navEntry(tab, next)` builds the entry of the tab being left. `showRows` (opening a row in
+  place, clearing the column filter), `navigateTab` and a replaced preview tab push the entry being left and
+  clear `forward`; an unchanged entry pushes nothing. `navBack` / `navForward` (commands `nav.back` ⌘[ and
+  `nav.forward` ⌘], global scope, and the toolbar's `NavButtons`) move a table or object tab to the entry,
+  turning it into a tab of the entry's kind: a table entry restores its table and `where` (a row address
+  needs the primary key, so they load the structure first), an object entry the stack its address had
+  ([Column stack](#column-stack)). They are enabled only while `selectCanNav` finds history, so ⌘[ still
+  outdents in the editor.
+- **`navigateTab(tabId, address, then?)`:** moves a table or object tab in place (same id, tab bar position, preview
+  flag and history), recording the entry being left: a row address makes it an object tab with that row as its
+  only column (with row `then` as a second, active column: a table tab's reference opened in the side panel),
+  a table address a table tab of it (Data view; a table tab keeps its view). The title is
+  recomputed and the tab's grid selection cleared; the panel remounts with the kind, so no table page state
+  survives. `wholeTable(address)` is a row's unfiltered table address. A value click handler moves the active
+  tab with `const tab = selectActiveTab(s); if (tab?.kind === "table" || tab?.kind === "object")
+  s.navigateTab(tab.id, address)`.
 - **`openAddress(text, { preview? })`:** parses, finds the open session by slug, opens a row address as an
   object tab (`openObject`), a table address in a table tab (`openTableTab` with the matching `where`), in
   the preview tab when asked, the home address as the readout (`openReadout`), `?project` as the Project page

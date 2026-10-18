@@ -1,7 +1,7 @@
-import { FilePlus2, PlugZap, Search, Settings as SettingsIcon, Unplug } from "lucide-react";
+import { ChevronLeft, ChevronRight, FilePlus2, PlugZap, Search, Settings as SettingsIcon, Unplug } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
-import { useBindingLabel } from "../commands";
-import { selectActiveSession, selectVisibleDatabases, useStore } from "../state/store";
+import { runCommand, useBindingLabel } from "../commands";
+import { selectActiveSession, selectActiveTab, selectCanNav, selectVisibleDatabases, useStore } from "../state/store";
 import { KeyCap } from "./Field";
 import { Path } from "./Path";
 
@@ -56,6 +56,34 @@ function SearchField() {
   );
 }
 
+function NavButton({ direction }: { direction: "back" | "forward" }) {
+  const id = direction === "back" ? "nav.back" : "nav.forward";
+  const label = direction === "back" ? "Back" : "Forward";
+  const keys = useBindingLabel(id);
+  const enabled = useStore((s) => selectCanNav(s, direction));
+  const Icon = direction === "back" ? ChevronLeft : ChevronRight;
+  return (
+    <button data-stage={`toolbar:${direction}`} className="icon-btn" aria-label={label} title={keys ? `${label} (${keys})` : label} disabled={!enabled} onClick={() => runCommand(id)}>
+      <Icon size={ICON_SIZE} />
+    </button>
+  );
+}
+
+/** Back and forward through the history of a table or object tab, which move in place. */
+function NavButtons() {
+  const shown = useStore((s) => {
+    const kind = selectActiveTab(s)?.kind;
+    return kind === "table" || kind === "object";
+  });
+  if (!shown) return null;
+  return (
+    <>
+      <NavButton direction="back" />
+      <NavButton direction="forward" />
+    </>
+  );
+}
+
 export function Toolbar() {
   const session = useStore(selectActiveSession);
   const { disconnect, openQueryTab, openDialog } = useStore.getState();
@@ -72,6 +100,7 @@ export function Toolbar() {
       ) : (
         <span className="app-title">DataBee</span>
       )}
+      {session && <NavButtons />}
       {session && <Path />}
       <div className="spacer" data-tauri-drag-region />
       {session && <SearchField />}

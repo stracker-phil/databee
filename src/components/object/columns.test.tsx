@@ -6,6 +6,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { installCommands } from "../../commands";
+import { formatAddress } from "../../lib/address";
 import { useStore } from "../../state/store";
 import { openOrder, stubDocuments, user } from "../../test/columnFixtures";
 import { connectedStore } from "../../test/fixtures";
@@ -35,8 +36,75 @@ describe("column stack", () => {
       expect(await screen.findByRole("region", { name: "wp_users #12" })).toHaveAttribute("data-stage", "column:1");
       const path = screen.getByRole("navigation", { name: "Path" });
       expect(within(path).getByRole("button", { name: "order #4711" })).toBeInTheDocument();
-      expect(within(path).getAllByRole("button")).toHaveLength(1);
+      expect(within(path).getByRole("button", { name: "Open table wp_wc_orders" })).toBeInTheDocument();
+      expect(within(path).getAllByRole("button")).toHaveLength(2);
       expect(within(path).getByText("user")).toBeInTheDocument();
+    });
+  });
+
+  describe("reference icons", () => {
+    const goTo = () => screen.getByRole("button", { name: `Go to ${formatAddress(user)}` });
+    const sidePanel = () => screen.getByRole("button", { name: `Open ${formatAddress(user)} in side panel` });
+
+    it("drills a new column with the side panel icon", async () => {
+      await openOrder();
+      await userEvent.click(sidePanel());
+      expect(await screen.findByRole("region", { name: "wp_users #12" })).toBeInTheDocument();
+      expect(orderColumn()).toBeInTheDocument();
+      expect(activeObject().columns).toHaveLength(2);
+    });
+
+    it("drills a new column when the reference is clicked", async () => {
+      await openOrder();
+      await userEvent.click(screen.getByRole("link", { name: "12" }));
+      expect(await screen.findByRole("region", { name: "wp_users #12" })).toBeInTheDocument();
+      expect(activeObject().columns).toHaveLength(2);
+    });
+
+    it("replaces the stack with the target alone using Go to", async () => {
+      await openOrder();
+      await userEvent.click(goTo());
+      expect(await screen.findByRole("region", { name: "wp_users #12" })).toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "wp_wc_orders #4711" })).not.toBeInTheDocument();
+      expect(activeObject().columns).toHaveLength(1);
+      expect(activeObject().address.target).toMatchObject({ table: "wp_users", key: "12" });
+    });
+
+    it("restores the previous stack on back after Go to", async () => {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+      await userEvent.click(goTo());
+      expect(screen.queryByRole("region", { name: "wp_wc_orders #4711" })).not.toBeInTheDocument();
+
+      await userEvent.keyboard("{Meta>}[[{/Meta}");
+      expect(await screen.findByRole("region", { name: "wp_wc_orders #4711" })).toBeInTheDocument();
+      expect(userColumn()).toBeInTheDocument();
+      expect(activeObject().columns).toHaveLength(2);
+    });
+  });
+
+  describe("column headers", () => {
+    it("shows no Close column button on the first column", async () => {
+      await openOrder();
+      expect(screen.queryByRole("button", { name: "Close column" })).not.toBeInTheDocument();
+    });
+
+    it("closes a drilled column with its Close column button", async () => {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+      await userEvent.click(within(userColumn()).getByRole("button", { name: "Close column" }));
+      expect(screen.queryByRole("region", { name: "wp_users #12" })).not.toBeInTheDocument();
+      expect(activeObject().columns).toHaveLength(1);
+    });
+
+    it("opens the whole table in the same tab from the table name of a column header", async () => {
+      await openOrder();
+      const { id } = activeObject();
+      await userEvent.click(within(orderColumn()).getByRole("button", { name: "Open table wp_wc_orders" }));
+      expect(useStore.getState().tabs).toHaveLength(1);
+      expect(useStore.getState().tabs[0]).toMatchObject({ id, kind: "table", table: "wp_wc_orders", where: [] });
     });
   });
 

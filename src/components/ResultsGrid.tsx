@@ -11,7 +11,7 @@ import { cellMenu } from "./grid/cellMenu";
 import { useCellEditing } from "./grid/useCellEditing";
 import { useColumnSizing } from "./grid/useColumnSizing";
 import { useEditValueCommand, useFocusCell, useRowValues, type CellPos } from "./gridHooks";
-import { openTarget, showValue } from "./value/open";
+import { clickMode, openTarget, showValue } from "./value/open";
 import { useOpenValue } from "./value/useOpenValue";
 import { Value } from "./value/Value";
 
@@ -139,13 +139,13 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
 
   /**
    * A primary key cell opens its row as an object (double-click pinned, Enter in the preview tab). Enter on a
-   * reference opens its target, on serialized data or long text a value column; other cells edit.
+   * reference opens its target like a click, on serialized data or long text a value column; other cells edit.
    */
   const openOrEdit = (at: CellPos, preview: boolean) => {
     const value = rows[at.row] ? rowValues(at.row)[at.col] : null;
     const kind = value?.kind;
     if (kind?.kind === "primaryKey" && kind.address.target.kind === "row") return openRow(kind.address, preview);
-    if (preview && kind?.kind === "reference" && kind.exists !== false && kind.targets.length === 1) return openTarget(kind.targets[0], place);
+    if (preview && kind?.kind === "reference" && kind.exists !== false && kind.targets.length === 1) return openTarget(kind.targets[0], place, clickMode(place), value);
     if (preview && value && (kind?.kind === "serialized" || rows[at.row][at.col].t === "longText")) return withFullText(at, (text) => void showValue(value, place, text));
     startEdit(at);
   };

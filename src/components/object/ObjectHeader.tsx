@@ -1,10 +1,13 @@
+import { X } from "lucide-react";
 import type { Address, Document } from "../../api";
 import { useBindingLabel } from "../../commands";
 import { formatAddress } from "../../lib/address";
 import { objectTitle, type ObjectView } from "../../lib/document";
+import { wholeTable } from "../../state/slices/nav";
 import { useStore } from "../../state/store";
 import { useContextMenu, type MenuAnchor } from "../ContextMenu";
 import { KeyCap } from "../Field";
+import type { ColumnPlace } from "../value/open";
 import { useOpenValue } from "../value/useOpenValue";
 import { SummaryLine } from "../value/SummaryLine";
 import { actionMenu } from "./actions";
@@ -13,6 +16,8 @@ interface Props {
   document: Document;
   owner: Address;
   view: { current: ObjectView; onChange: (view: ObjectView) => void };
+  /** The column of an object tab the header is in: its table name opens the whole table in that tab, a drilled column closes. */
+  place?: ColumnPlace;
 }
 
 function ViewToggle({ current, onChange }: Props["view"]) {
@@ -36,7 +41,7 @@ function ViewToggle({ current, onChange }: Props["view"]) {
   );
 }
 
-export function ObjectHeader({ document, owner, view }: Props) {
+export function ObjectHeader({ document, owner, view, place }: Props) {
   const menu = useContextMenu();
   const { openValue, targetMenu } = useOpenValue(owner);
   const target = document.address.target;
@@ -46,7 +51,20 @@ export function ObjectHeader({ document, owner, view }: Props) {
   return (
     <section className="object-head" aria-label="Object header" data-stage="object-header" data-stage-label={`${table} #${key}`} onContextMenu={openActions}>
       <div className="object-title">
-        <span className="tn">{table}</span>
+        {place ? (
+          <button
+            className="tn"
+            aria-label={`Open table ${table}`}
+            title={`Open table ${table}`}
+            data-stage="object-header:table"
+            data-stage-label={`Open table ${table}`}
+            onClick={() => useStore.getState().navigateTab(place.tabId, wholeTable(document.address))}
+          >
+            {table}
+          </button>
+        ) : (
+          <span className="tn">{table}</span>
+        )}
         <span className="key">#{key}</span>
         <span className="spacer" />
         <ViewToggle {...view} />
@@ -61,6 +79,11 @@ export function ObjectHeader({ document, owner, view }: Props) {
             }}
           >
             Actions
+          </button>
+        )}
+        {place && place.index > 0 && (
+          <button className="icon-btn" aria-label="Close column" title="Close column" data-stage={`column-close:${place.index}`} onClick={() => useStore.getState().popToColumn(place.tabId, place.index - 1)}>
+            <X size="1rem" />
           </button>
         )}
       </div>

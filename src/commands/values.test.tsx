@@ -161,12 +161,22 @@ describe("value commands", () => {
     expect(writtenToClipboard()).not.toHaveBeenCalled();
   });
 
-  it("opens the target of a reference on click, in the preview tab", async () => {
+  it("moves the table tab in place to the target of a reference on click", async () => {
     render(<App />);
     await screen.findByText("wp_options");
     act(() => useStore.getState().openTableTab("db", "wp_posts"));
+    const before = selectActiveTab(useStore.getState())!;
+    const tabCount = useStore.getState().tabs.length;
     const links = await screen.findAllByRole("link", { name: "12" });
     await userEvent.click(links[0]);
-    await waitFor(() => expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "object", preview: true, address: { target: { kind: "row", table: "wp_users", key: "12" } } }));
+    await waitFor(() =>
+      expect(selectActiveTab(useStore.getState())).toMatchObject({
+        id: before.id,
+        kind: "object",
+        address: { target: { kind: "row", table: "wp_users", key: "12" } },
+        nav: { back: [{ kind: "table" }] },
+      }),
+    );
+    expect(useStore.getState().tabs).toHaveLength(tabCount);
   });
 });

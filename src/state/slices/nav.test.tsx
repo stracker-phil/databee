@@ -8,8 +8,10 @@ import App from "../../App";
 import { api } from "../../api";
 import { installCommands, runCommand } from "../../commands";
 import { Toasts } from "../../components/Toasts";
-import { formatAddress } from "../../lib/address";
-import { browsePage, connectedStore, queryTab, session, tableTab } from "../../test/fixtures";
+import { address, formatAddress } from "../../lib/address";
+import { browsePage, columnMeta, connectedStore, queryTab, session, tableTab, text, value } from "../../test/fixtures";
+import { objectDocument } from "../../test/objectFixtures";
+import { wholeTable, type NavEntry } from "./nav";
 import { selectActiveTab, useStore } from "../store";
 
 const mocked = vi.mocked(api, true);
@@ -254,8 +256,159 @@ describe("filterRows", () => {
   });
 });
 
+describe("navigateTab", () => {
+  const post7 = address("shop", "db", { kind: "row", table: "wp_posts", key: "7" });
+  const options = address("shop", "db", { kind: "table", table: "wp_options", filter: [] });
+  const entries = (tab: { nav: { back: NavEntry[]; forward: NavEntry[] } }, direction: "back" | "forward") =>
+    tab.nav[direction].map((e) => [e.kind, formatAddress(e.address)]);
+  const tabById = (id: string) => useStore.getState().tabs.find((t) => t.id === id);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore({ tabs: [tableTab({ id: "t0", table: "wp_options" }), tableTab({ id: "t1", preview: true })] });
+    useStore.setState({ activeTabId: "t1" });
+    installCommands();
+    mocked.document.mockResolvedValue(objectDocument());
+  });
+
+  it("turns a table tab into an object tab of the row in place, keeping id, position and preview", () => {
+    act(() => useStore.getState().navigateTab("t1", post7));
+    expect(useStore.getState().tabs.map((t) => t.id)).toEqual(["t0", "t1"]);
+    expect(tabById("t1")).toMatchObject({
+      kind: "object",
+      preview: true,
+      title: "wp_posts #7",
+      address: { target: { kind: "row", table: "wp_posts", key: "7" } },
+      columns: [{ kind: "object", address: { target: { key: "7" } } }],
+      active: 0,
+    });
+    expect(useStore.getState().activeTabId).toBe("t1");
+  });
+
+  describe("with a second row", () => {
+    const user12 = address("shop", "db", { kind: "row", table: "wp_users", key: "12" });
+
+    it("opens both rows as columns with the second one active and addresses the second", () => {
+      act(() => useStore.getState().navigateTab("t1", post7, user12));
+      const tab = tabById("t1")!;
+      expect(tab).toMatchObject({
+        kind: "object",
+        preview: true,
+        columns: [{ kind: "object", address: { target: { table: "wp_posts", key: "7" } } }, { kind: "object", address: { target: { table: "wp_users", key: "12" } } }],
+        active: 1,
+        address: { target: { kind: "row", table: "wp_users", key: "12" } },
+      });
+      expect(entries(tab, "back")).toEqual([["table", "databee://shop/db/wp_posts"]]);
+    });
+
+    it("ignores a second address that is not a row", () => {
+      act(() => useStore.getState().navigateTab("t1", post7, options));
+      expect(tabById("t1")).toMatchObject({ kind: "object", columns: [{ address: { target: { key: "7" } } }], active: 0 });
+    });
+
+    it("goes back to the table the row pair was opened from", async () => {
+      act(() => useStore.getState().navigateTab("t1", post7, user12));
+      await act(() => useStore.getState().navBack());
+      expect(tabById("t1")).toMatchObject({ kind: "table", table: "wp_posts", where: [] });
+    });
+  });
+
+  it("turns an object tab into the whole table in the data view", () => {
+    act(() => useStore.getState().navigateTab("t1", post7));
+    act(() => useStore.getState().navigateTab("t1", wholeTable(post7)));
+    expect(tabById("t1")).toMatchObject({ kind: "table", table: "wp_posts", where: [], view: "data", preview: true, title: "wp_posts" });
+  });
+
+  it("moves a table tab to another table", () => {
+    act(() => useStore.getState().navigateTab("t1", options));
+    expect(tabById("t1")).toMatchObject({ kind: "table", table: "wp_options", where: [] });
+    expect(entries(tabById("t1")!, "back")).toEqual([["table", "databee://shop/db/wp_posts"]]);
+  });
+
+  it("records the location it left for back and clears the forward history", async () => {
+    act(() => useStore.getState().navigateTab("t1", post7));
+    await act(() => useStore.getState().navBack());
+    expect(entries(tabById("t1")!, "forward")).toEqual([["object", "databee://shop/db/wp_posts/7"]]);
+    act(() => useStore.getState().navigateTab("t1", options));
+    expect(entries(tabById("t1")!, "forward")).toEqual([]);
+    expect(entries(tabById("t1")!, "back")).toEqual([["table", "databee://shop/db/wp_posts"]]);
+  });
+
+  it("clears the grid selection of the tab it moves", () => {
+    act(() => {
+      useStore.getState().selectCell({
+        row: 0,
+        col: 0,
+        column: columnMeta("ID", "BIGINT"),
+        cell: text("7"),
+        source: { sessionId: "s1", resultId: 1 },
+        value: value({ raw: text("7") }),
+      });
+    });
+    expect(useStore.getState().selectedCell?.tabId).toBe("t1");
+    act(() => useStore.getState().navigateTab("t1", post7));
+    expect(useStore.getState().selectedCell).toBeNull();
+  });
+
+  it.each([
+    ["a home address", address("shop", "db", { kind: "home" })],
+    ["a project address", address("shop", "db", { kind: "project" })],
+  ])("ignores %s", (_name, target) => {
+    const before = useStore.getState().tabs;
+    act(() => useStore.getState().navigateTab("t1", target));
+    expect(useStore.getState().tabs).toBe(before);
+  });
+
+  it("ignores a query tab and an unknown tab", () => {
+    act(() => useStore.getState().openQueryTab());
+    const query = selectActiveTab(useStore.getState())!;
+    const before = useStore.getState().tabs;
+    act(() => useStore.getState().navigateTab(query.id, post7));
+    act(() => useStore.getState().navigateTab("missing", post7));
+    expect(useStore.getState().tabs).toBe(before);
+  });
+
+  it("goes back from the row to the table and forward to the row again", async () => {
+    act(() => useStore.getState().navigateTab("t1", post7));
+
+    await act(() => useStore.getState().navBack());
+    expect(tabById("t1")).toMatchObject({ kind: "table", table: "wp_posts", where: [], preview: true });
+
+    await act(() => useStore.getState().navForward());
+    expect(tabById("t1")).toMatchObject({ kind: "object", address: { target: { key: "7" } } });
+  });
+
+  it("restores the drilled column stack when going back from the table to the object", async () => {
+    act(() => useStore.getState().navigateTab("t1", post7));
+    act(() => useStore.getState().drill("t1", 0, address("shop", "db", { kind: "row", table: "wp_users", key: "12" })));
+    expect(tabById("t1")).toMatchObject({ columns: [{}, {}], active: 1 });
+
+    act(() => useStore.getState().navigateTab("t1", wholeTable(post7)));
+    expect(tabById("t1")?.kind).toBe("table");
+
+    await act(() => useStore.getState().navBack());
+    expect(tabById("t1")).toMatchObject({
+      kind: "object",
+      columns: [{ address: { target: { table: "wp_posts" } } }, { address: { target: { table: "wp_users" } } }],
+      active: 1,
+    });
+  });
+});
+
+describe("wholeTable", () => {
+  it("turns a row address into the unfiltered table", () => {
+    const row = address("shop", "db", { kind: "row", table: "wp_posts", key: "7" });
+    expect(formatAddress(wholeTable({ ...row, view: "rows" }))).toBe("databee://shop/db/wp_posts");
+  });
+
+  it("leaves a filtered table address as it is", () => {
+    const filtered = address("shop", "db", { kind: "table", table: "wp_posts", filter: pages });
+    expect(wholeTable(filtered)).toBe(filtered);
+  });
+});
+
 describe("renameConnectionSlug", () => {
-  const earlier = tableTab().address;
+  const earlier = { kind: "table" as const, address: tableTab().address };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -274,8 +427,8 @@ describe("renameConnectionSlug", () => {
     const [query, table] = tabs;
     expect(query.address && formatAddress(query.address)).toBe("databee://store/db/");
     expect(table.address && formatAddress(table.address)).toBe("databee://store/db/wp_posts");
-    expect(table.nav.back.map(formatAddress)).toEqual(["databee://store/db/wp_posts"]);
-    expect(table.nav.forward.map(formatAddress)).toEqual(["databee://store/db/wp_posts"]);
+    expect(table.nav.back.map((e) => formatAddress(e.address))).toEqual(["databee://store/db/wp_posts"]);
+    expect(table.nav.forward.map((e) => formatAddress(e.address))).toEqual(["databee://store/db/wp_posts"]);
   });
 
   it("changes nothing when Rust rejects the slug", async () => {

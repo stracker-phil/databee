@@ -5,11 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import { api, type Cell } from "../api";
-import { address } from "../lib/address";
+import { api, type Address, type Cell } from "../api";
+import { address, formatAddress } from "../lib/address";
 import { syncRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
-import { connectedStore, num, resultSet, settings, text, value } from "../test/fixtures";
+import { columnMeta, connectedStore, num, resultSet, settings, tableTab, text, value } from "../test/fixtures";
 import { ResultsGrid } from "./ResultsGrid";
 import { useValueHover } from "./value/useValueHover";
 
@@ -150,6 +150,112 @@ describe("ResultsGrid primary key cells", () => {
     render(<ResultsGrid columns={rs.columns} rows={rows} source={source} valueAt={valueAt} onEditCell={vi.fn()} />);
     await userEvent.dblClick(screen.getByText("Hello world"));
     expect(screen.getByLabelText("Edit cell")).toHaveValue("Hello world");
+  });
+});
+
+describe("ResultsGrid reference cells", () => {
+  const user12 = address("shop", "db", { kind: "row", table: "wp_users", key: "12" });
+  const meta12 = address("shop", "db", { kind: "row", table: "wp_usermeta", key: "12" });
+  const columns = [columnMeta("ID", "BIGINT"), columnMeta("post_author", "BIGINT")];
+  const rows = [[num("1"), num("12")]];
+  const referenceTo = (...targets: Address[]) => (row: number, col: number) =>
+    col === 1
+      ? value({
+          raw: rows[row][col],
+          kind: { kind: "reference", targets, by: { kind: "preset", preset: "wordpress", id: "post-author" }, exists: true },
+          source: { table: "wp_posts", column: "post_author", row: [{ column: "ID", value: "1" }] },
+        })
+      : value({ raw: rows[row][col] });
+  const renderGrid = (...targets: Address[]) =>
+    render(<ResultsGrid columns={columns} rows={rows} source={source} valueAt={referenceTo(...targets)} />);
+  const tabs = () => useStore.getState().tabs;
+  const goTo = (target: Address) => screen.getByRole("button", { name: `Go to ${formatAddress(target)}` });
+  const sidePanel = (target: Address) => screen.getByRole("button", { name: `Open ${formatAddress(target)} in side panel` });
+
+  describe("in a table tab", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      connectedStore({ tabs: [tableTab()] });
+    });
+
+    it("moves the tab in place to an object tab of the target when the reference is clicked", async () => {
+      renderGrid(user12);
+      await userEvent.click(screen.getByRole("link", { name: "12" }));
+      expect(tabs()).toHaveLength(1);
+      expect(tabs()[0]).toMatchObject({
+        id: "t1",
+        kind: "object",
+        columns: [{ address: { target: { table: "wp_users", key: "12" } } }],
+        active: 0,
+        nav: { back: [{ kind: "table" }] },
+      });
+    });
+
+    it("moves the tab to the target on Enter for a single target", async () => {
+      renderGrid(user12);
+      await userEvent.click(screen.getAllByRole("gridcell")[1]);
+      await userEvent.keyboard("{Enter}");
+      expect(tabs()[0]).toMatchObject({ kind: "object", columns: [{ address: { target: { table: "wp_users", key: "12" } } }] });
+    });
+
+    it("moves the tab to the target with Go to", async () => {
+      renderGrid(user12);
+      await userEvent.click(goTo(user12));
+      expect(tabs()[0]).toMatchObject({ kind: "object", columns: [{ address: { target: { table: "wp_users", key: "12" } } }], active: 0 });
+    });
+
+    it("shows the source row and the target side by side with the side panel icon, and back returns to the table", async () => {
+      renderGrid(user12);
+      await userEvent.click(sidePanel(user12));
+      expect(tabs()[0]).toMatchObject({
+        kind: "object",
+        columns: [{ address: { target: { table: "wp_posts", key: "1" } } }, { address: { target: { table: "wp_users", key: "12" } } }],
+        active: 1,
+      });
+      await act(() => useStore.getState().navBack());
+      expect(tabs()[0]).toMatchObject({ kind: "table", table: "wp_posts" });
+    });
+
+    it("does not select the cell when an icon is pressed", () => {
+      renderGrid(user12);
+      fireEvent.mouseDown(goTo(user12));
+      fireEvent.mouseDown(sidePanel(user12));
+      expect(screen.getAllByRole("gridcell")[1]).not.toHaveClass("selected");
+    });
+
+    it.each([
+      {
+        icon: "Go to",
+        name: /^Go to /,
+        columns: [{ address: { target: { table: "wp_usermeta", key: "12" } } }],
+      },
+      {
+        icon: "Open in side panel",
+        name: / in side panel$/,
+        columns: [{ address: { target: { table: "wp_posts", key: "1" } } }, { address: { target: { table: "wp_usermeta", key: "12" } } }],
+      },
+    ])("lets the $icon icon choose among several targets and follows that icon's mode", async ({ name, columns }) => {
+      renderGrid(user12, meta12);
+      await userEvent.click(screen.getByRole("button", { name }));
+      expect(tabs()[0].kind).toBe("table");
+      await userEvent.click(screen.getByRole("menuitem", { name: `Open ${formatAddress(meta12)}` }));
+      expect(tabs()[0]).toMatchObject({ kind: "object", columns });
+    });
+  });
+
+  describe("in a query tab", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      connectedStore();
+    });
+
+    it("opens the target as the preview object tab with Go to and offers no side panel icon", async () => {
+      renderGrid(user12);
+      expect(screen.queryByRole("button", { name: /in side panel/ })).not.toBeInTheDocument();
+      await userEvent.click(goTo(user12));
+      await waitFor(() => expect(tabs().at(-1)).toMatchObject({ kind: "object", preview: true, address: { target: { table: "wp_users", key: "12" } } }));
+      expect(tabs()[0]).toMatchObject({ kind: "query" });
+    });
   });
 });
 

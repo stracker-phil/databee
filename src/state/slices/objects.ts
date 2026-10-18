@@ -5,7 +5,7 @@ import { documentText, objectAddress, objectTitle, type ObjectView } from "../..
 import { fail } from "../requests";
 import { noConnectionNamed, selectActiveSession, selectSessionBySlug } from "../selectors";
 import type { Slice } from "../store";
-import { EMPTY_NAV, pushed, restacked } from "./nav";
+import { EMPTY_NAV, navEntry, pushed, restacked } from "./nav";
 import { withoutSession } from "./session";
 import { activate, findTab, newTabId, placed, previewTab, replaceTab, type ObjectTab } from "./tabs";
 import { remembered } from "./ui";
@@ -100,7 +100,7 @@ export const objectsSlice: Slice<ObjectsSlice> = {
           address: root.address,
           stacks: {},
           preview: opts.preview ?? false,
-          nav: replacedTab ? pushed(replacedTab.nav, replacedTab.address, root.address) : EMPTY_NAV,
+          nav: replacedTab ? pushed(replacedTab.nav, navEntry(replacedTab, "object"), { kind: "object", address: root.address }) : EMPTY_NAV,
         };
         return { tabs: placed(s.tabs, tab, replacedTab), ...activate(s, tab.id) };
       });
