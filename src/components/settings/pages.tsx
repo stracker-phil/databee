@@ -30,8 +30,10 @@ function SchemePreview({ scheme, accent }: { scheme: SchemeId; accent: string })
   );
 }
 
-function SchemeSelect({ label, value, accent, stage, onChange }: {
+/** The schemes of the slot's own kind come first. */
+function SchemeSelect({ label, dark, value, accent, stage, onChange }: {
   label: string;
+  dark: boolean;
   value: SchemeId;
   accent: string;
   stage: string;
@@ -50,8 +52,12 @@ function SchemeSelect({ label, value, accent, stage, onChange }: {
           value={value}
           onChange={(e) => onChange(toSchemeId(e.target.value))}
         >
-          {SCHEMES.map((scheme) => (
-            <option key={scheme.id} value={scheme.id}>{scheme.label}</option>
+          {[dark, !dark].map((groupDark) => (
+            <optgroup key={String(groupDark)} label={groupDark ? "Dark" : "Light"}>
+              {SCHEMES.filter((scheme) => scheme.dark === groupDark).map((scheme) => (
+                <option key={scheme.id} value={scheme.id}>{scheme.label}</option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>
@@ -96,6 +102,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
         />
         <SchemeSelect
           label="Light scheme"
+          dark={false}
           value={toSchemeId(s.lightScheme)}
           accent={s.accent}
           stage="appearance:light-scheme"
@@ -103,6 +110,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
         />
         <SchemeSelect
           label="Dark scheme"
+          dark
           value={toSchemeId(s.darkScheme)}
           accent={s.accent}
           stage="appearance:dark-scheme"

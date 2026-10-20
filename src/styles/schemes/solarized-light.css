@@ -1,0 +1,60 @@
+/* Solarized Light: colors from the Solarized palette. */
+[data-scheme="solarized-light"] {
+  color-scheme: light;
+
+  /* surfaces */
+  --chrome: #eee8d5;
+  --bg: #fdf6e3;
+  --bg-quiet: #f5efdc;
+  --shade: #000000;
+  --pop: #fffbf0;
+  --field: #fffbf0;
+  --field-line: #d6cfb8;
+  --text: #586e75;
+  --line: #e6dfc9;
+  --band: #f6f0dd;
+  --row-hover: #f3ecd7;
+  --shadow: 0 0 28px rgba(30, 40, 60, 0.16);
+  --shadow-small: 0 1px 2px rgba(30, 40, 60, 0.2);
+  --shadow-inset: inset 0 1px 2px rgba(30, 40, 60, 0.08);
+  --scrim: rgba(60, 50, 20, 0.2);
+  /* text and marks drawn on an accent or value-style fill */
+  --on-accent: #fdf6e3;
+  /* the thumb of a switch, on either track */
+  --knob: #fdf6e3;
+
+  /* accent hues */
+  --a-orange: #cb4b16;
+  --a-gold: #b58900;
+  --a-blue: #268bd2;
+  --a-purple: #6c71c4;
+  --a-red: #dc322f;
+  --a-magenta: #d33682;
+  --a-indigo: #5a6fc9;
+  --a-teal: #2aa198;
+  --a-graphite: #93a1a1;
+
+  /* value-style colors */
+  --style-red: #dc322f;
+  --style-green: #859900;
+  --style-yellow: #b58900;
+  --style-blue: #268bd2;
+  --style-purple: #6c71c4;
+
+  /* CodeMirror and value trees */
+  --code-keyword: #859900;
+  --code-string: #2aa198;
+  --code-number: #d33682;
+  --code-comment: #93a1a1;
+  --code-function: #268bd2;
+  --code-type: #b58900;
+  --code-operator: #859900;
+  --code-name: #586e75;
+  --code-property: #268bd2;
+  --code-invalid: #dc322f;
+  --code-cursor: #586e75;
+  --code-selection: rgba(238, 232, 213, 0.95);
+  --code-active-line: #f5efdc;
+  --code-gutter: #93a1a1;
+  --code-match: rgba(181, 137, 0, 0.25);
+}

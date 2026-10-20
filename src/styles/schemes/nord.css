@@ -1,0 +1,60 @@
+/* Nord: colors from the Nord palette. */
+[data-scheme="nord"] {
+  color-scheme: dark;
+
+  /* surfaces */
+  --chrome: #2b303b;
+  --bg: #2e3440;
+  --bg-quiet: #292e39;
+  --shade: #000000;
+  --pop: #3b4252;
+  --field: #292e39;
+  --field-line: #4c566a;
+  --text: #d8dee9;
+  --line: #3b4252;
+  --band: #333a47;
+  --row-hover: #363d4b;
+  --shadow: 0 0 28px rgba(0, 0, 0, 0.38);
+  --shadow-small: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.15);
+  --scrim: rgba(15, 18, 24, 0.55);
+  /* text and marks drawn on an accent or value-style fill */
+  --on-accent: #2e3440;
+  /* the thumb of a switch, on either track */
+  --knob: #d8dee9;
+
+  /* accent hues */
+  --a-orange: #d08770;
+  --a-gold: #ebcb8b;
+  --a-blue: #88c0d0;
+  --a-purple: #b48ead;
+  --a-red: #bf616a;
+  --a-magenta: #c895bf;
+  --a-indigo: #81a1c1;
+  --a-teal: #8fbcbb;
+  --a-graphite: #7b88a1;
+
+  /* value-style colors */
+  --style-red: #bf616a;
+  --style-green: #a3be8c;
+  --style-yellow: #ebcb8b;
+  --style-blue: #88c0d0;
+  --style-purple: #b48ead;
+
+  /* CodeMirror and value trees */
+  --code-keyword: #81a1c1;
+  --code-string: #a3be8c;
+  --code-number: #b48ead;
+  --code-comment: #616e88;
+  --code-function: #88c0d0;
+  --code-type: #8fbcbb;
+  --code-operator: #81a1c1;
+  --code-name: #d8dee9;
+  --code-property: #8fbcbb;
+  --code-invalid: #bf616a;
+  --code-cursor: #d8dee9;
+  --code-selection: rgba(67, 76, 94, 0.8);
+  --code-active-line: #3b4252;
+  --code-gutter: #4c566a;
+  --code-match: rgba(136, 192, 208, 0.25);
+}

@@ -1,0 +1,60 @@
+/* GitHub Light: colors from GitHub's Primer light colors. */
+[data-scheme="github-light"] {
+  color-scheme: light;
+
+  /* surfaces */
+  --chrome: #f6f8fa;
+  --bg: #ffffff;
+  --bg-quiet: #f6f8fa;
+  --shade: #000000;
+  --pop: #ffffff;
+  --field: #ffffff;
+  --field-line: #d0d7de;
+  --text: #1f2328;
+  --line: #d8dee4;
+  --band: #f6f8fa;
+  --row-hover: #f3f5f7;
+  --shadow: 0 0 28px rgba(30, 40, 60, 0.16);
+  --shadow-small: 0 1px 2px rgba(30, 40, 60, 0.2);
+  --shadow-inset: inset 0 1px 2px rgba(30, 40, 60, 0.08);
+  --scrim: rgba(31, 35, 40, 0.2);
+  /* text and marks drawn on an accent or value-style fill */
+  --on-accent: #ffffff;
+  /* the thumb of a switch, on either track */
+  --knob: #ffffff;
+
+  /* accent hues */
+  --a-orange: #bc4c00;
+  --a-gold: #9a6700;
+  --a-blue: #0969da;
+  --a-purple: #8250df;
+  --a-red: #cf222e;
+  --a-magenta: #bf3989;
+  --a-indigo: #4f5ad8;
+  --a-teal: #1b7c83;
+  --a-graphite: #6e7781;
+
+  /* value-style colors */
+  --style-red: #cf222e;
+  --style-green: #1a7f37;
+  --style-yellow: #9a6700;
+  --style-blue: #0969da;
+  --style-purple: #8250df;
+
+  /* CodeMirror and value trees */
+  --code-keyword: #cf222e;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-comment: #6e7781;
+  --code-function: #8250df;
+  --code-type: #953800;
+  --code-operator: #cf222e;
+  --code-name: #1f2328;
+  --code-property: #0550ae;
+  --code-invalid: #82071e;
+  --code-cursor: #0969da;
+  --code-selection: rgba(84, 174, 255, 0.25);
+  --code-active-line: #f6f8fa;
+  --code-gutter: #8c959f;
+  --code-match: rgba(212, 167, 44, 0.3);
+}

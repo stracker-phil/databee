@@ -245,4 +245,7 @@ Add SQLite support, including opening a .sqlite file from the CLI.
 
 - [Geist](https://github.com/vercel/geist-font) by Vercel and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono)
   by JetBrains are bundled under the SIL Open Font License 1.1 (license files in `src/assets/fonts/`).
-- The Ayu Mirage and Ayu Light color schemes follow the [Ayu](https://github.com/ayu-theme/ayu-colors) palette.
+- The Ayu Mirage and Ayu Light color schemes follow the [Ayu](https://github.com/ayu-theme/ayu-colors) palette;
+  the others follow [Monokai](https://monokai.pro), [Nord](https://www.nordtheme.com),
+  [Solarized](https://ethanschoonover.com/solarized/), [Catppuccin](https://catppuccin.com) Latte and GitHub's
+  [Primer](https://primer.style) light colors.

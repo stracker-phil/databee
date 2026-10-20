@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
+import { SCHEMES } from "../api/types";
 
 // Read from disk: Vitest blanks every CSS module (also `?raw` ones) unless CSS processing is on.
 const srcDir = resolve(process.cwd(), "src");
@@ -54,6 +55,11 @@ describe("color literals", () => {
 describe("scheme files", () => {
   it("exist for more than one scheme", () => {
     expect(schemeFiles.length).toBeGreaterThan(1);
+  });
+
+  it("exist for every scheme id", () => {
+    const files = schemeFiles.map(([path]) => path.slice(schemesDir.length)).sort();
+    expect(files).toEqual(SCHEMES.map((s) => `${s.id}.css`).sort());
   });
 
   it("define the same set of custom properties", () => {

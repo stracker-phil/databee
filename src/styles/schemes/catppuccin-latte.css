@@ -1,0 +1,60 @@
+/* Catppuccin Latte: colors from the Catppuccin Latte palette. */
+[data-scheme="catppuccin-latte"] {
+  color-scheme: light;
+
+  /* surfaces */
+  --chrome: #e6e9ef;
+  --bg: #eff1f5;
+  --bg-quiet: #e9ecf1;
+  --shade: #000000;
+  --pop: #f8f9fb;
+  --field: #f8f9fb;
+  --field-line: #bcc0cc;
+  --text: #4c4f69;
+  --line: #dce0e8;
+  --band: #e9ecf2;
+  --row-hover: #e5e8ee;
+  --shadow: 0 0 28px rgba(30, 40, 60, 0.16);
+  --shadow-small: 0 1px 2px rgba(30, 40, 60, 0.2);
+  --shadow-inset: inset 0 1px 2px rgba(30, 40, 60, 0.08);
+  --scrim: rgba(76, 79, 105, 0.2);
+  /* text and marks drawn on an accent or value-style fill */
+  --on-accent: #eff1f5;
+  /* the thumb of a switch, on either track */
+  --knob: #eff1f5;
+
+  /* accent hues */
+  --a-orange: #fe640b;
+  --a-gold: #df8e1d;
+  --a-blue: #1e66f5;
+  --a-purple: #8839ef;
+  --a-red: #d20f39;
+  --a-magenta: #ea76cb;
+  --a-indigo: #7287fd;
+  --a-teal: #179299;
+  --a-graphite: #8c8fa1;
+
+  /* value-style colors */
+  --style-red: #d20f39;
+  --style-green: #40a02b;
+  --style-yellow: #df8e1d;
+  --style-blue: #1e66f5;
+  --style-purple: #8839ef;
+
+  /* CodeMirror and value trees */
+  --code-keyword: #8839ef;
+  --code-string: #40a02b;
+  --code-number: #fe640b;
+  --code-comment: #9ca0b0;
+  --code-function: #1e66f5;
+  --code-type: #df8e1d;
+  --code-operator: #04a5e5;
+  --code-name: #4c4f69;
+  --code-property: #209fb5;
+  --code-invalid: #d20f39;
+  --code-cursor: #dc8a78;
+  --code-selection: rgba(124, 127, 147, 0.25);
+  --code-active-line: #e6e9ef;
+  --code-gutter: #8c8fa1;
+  --code-match: rgba(223, 142, 29, 0.25);
+}

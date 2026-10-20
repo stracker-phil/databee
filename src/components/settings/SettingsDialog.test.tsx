@@ -171,6 +171,41 @@ describe("SettingsDialog", () => {
       });
     });
 
+    it("shows the settings dialog in the global accent while the open database has its own", () => {
+      connectedStore({ settings: { accent: "gold" } });
+      useStore.setState({ dialog: { type: "settings" }, accents: { "shop/db": "purple" } });
+      render(<SettingsDialog />);
+      expect(screen.getByRole("dialog")).toHaveAttribute("data-accent", "gold");
+    });
+
+    describe("scheme groups", () => {
+      const groupLabels = (select: HTMLElement) =>
+        Array.from(select.querySelectorAll("optgroup")).map((g) => g.label);
+      const groupOptions = (select: HTMLElement, label: string) =>
+        within(within(select).getByRole("group", { name: label })).getAllByRole("option").map((o) => o.textContent);
+
+      it.each([
+        ["Light scheme", ["Light", "Dark"]],
+        ["Dark scheme", ["Dark", "Light"]],
+      ])("lists the %s groups with the slot's own kind first", (label, order) => {
+        render(<SettingsDialog />);
+        expect(groupLabels(screen.getByLabelText(label))).toEqual(order);
+      });
+
+      it("lists the dark and light schemes in their groups", () => {
+        render(<SettingsDialog />);
+        const select = screen.getByLabelText("Dark scheme");
+        expect(groupOptions(select, "Dark")).toEqual(["Ayu Mirage", "Monokai", "Nord", "Solarized Dark"]);
+        expect(groupOptions(select, "Light")).toEqual(["Ayu Light", "Catppuccin Latte", "GitHub Light", "Solarized Light"]);
+      });
+
+      it("saves Nord chosen in the Dark scheme select", async () => {
+        render(<SettingsDialog />);
+        await userEvent.selectOptions(screen.getByLabelText("Dark scheme"), "Nord");
+        expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ darkScheme: "nord" }));
+      });
+    });
+
     it.each([
       ["Dark", "dark", "ayu-mirage"],
       ["Light", "light", "ayu-light"],

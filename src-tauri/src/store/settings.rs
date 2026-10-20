@@ -70,7 +70,16 @@ pub fn is_accent(name: &str) -> bool {
 }
 
 /// Built-in color schemes (`src/styles/schemes/<id>.css`).
-pub const SCHEMES: &[&str] = &["ayu-mirage", "ayu-light"];
+pub const SCHEMES: &[&str] = &[
+    "ayu-mirage",
+    "monokai",
+    "nord",
+    "solarized-dark",
+    "ayu-light",
+    "catppuccin-latte",
+    "github-light",
+    "solarized-light",
+];
 
 const DEFAULT_LIGHT_SCHEME: &str = "ayu-light";
 const DEFAULT_DARK_SCHEME: &str = "ayu-mirage";
@@ -627,6 +636,28 @@ mod tests {
         let settings = store.get();
         assert_eq!(settings.light_scheme, "ayu-mirage");
         assert_eq!(settings.dark_scheme, "ayu-light");
+    }
+
+    #[test]
+    fn newly_added_schemes_load_and_survive_sanitizing() {
+        let (_dir, store) =
+            open_with_json(r#"{"lightScheme": "solarized-light", "darkScheme": "nord"}"#);
+        let settings = store.get();
+        assert_eq!(settings.light_scheme, "solarized-light");
+        assert_eq!(settings.dark_scheme, "nord");
+
+        let sanitized = settings.clone().sanitized();
+        assert_eq!(sanitized.light_scheme, "solarized-light");
+        assert_eq!(sanitized.dark_scheme, "nord");
+    }
+
+    #[test]
+    fn unknown_scheme_next_to_a_known_one_falls_back_alone() {
+        let (_dir, store) =
+            open_with_json(r#"{"lightScheme": "solarized-light", "darkScheme": "nord-dark"}"#);
+        let settings = store.get();
+        assert_eq!(settings.light_scheme, "solarized-light");
+        assert_eq!(settings.dark_scheme, "ayu-mirage");
     }
 
     #[test]

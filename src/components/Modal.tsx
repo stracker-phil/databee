@@ -11,6 +11,8 @@ interface Props {
   label?: string;
   /** Exposes the sheet as its own window to Stage (src/stage/anchors.ts). */
   stageWindow?: string;
+  /** An accent for the sheet instead of the one in effect (the open database's). */
+  accent?: string;
   children: ReactNode;
 }
 
@@ -21,7 +23,7 @@ function focusables(root: HTMLElement): HTMLElement[] {
 }
 
 /** Keeps Tab inside the sheet and returns focus to the element that opened it. */
-export function Modal({ onClose, variant = "sheet", className = "", labelledBy, label, stageWindow, children }: Props) {
+export function Modal({ onClose, variant = "sheet", className = "", labelledBy, label, stageWindow, accent, children }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -78,6 +80,7 @@ export function Modal({ onClose, variant = "sheet", className = "", labelledBy, 
         className={["dialog", variant === "bare" ? "" : variant, className].filter(Boolean).join(" ")}
         data-stage={stageWindow ? `${stageWindow}:sheet` : "dialog"}
         data-stage-window={stageWindow}
+        data-accent={accent}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}

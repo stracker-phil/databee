@@ -1121,7 +1121,8 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
 - **Accent per database.** `data-accent` is the accent in effect, `selectEffectiveAccent` (`project` slice):
   the active session's current database's own accent, else `settings.accent` (also on the connect screen).
   `App.tsx` passes it to `applyAppearance(settings, systemDark, accent ?? settings.accent)`, so switching the session, the
-  database or the accent applies at once. The project slice keeps `accents` by `accentKey(slug, database)`
+  database or the accent applies at once. The Settings window always shows `settings.accent`: `Modal`'s `accent`
+  sets `data-accent` on its sheet, and `theme.css` derives the accent tokens on any `[data-accent]` element. The project slice keeps `accents` by `accentKey(slug, database)`
   (`api.projectAccents`, loaded at startup and after `renameConnectionSlug`); every session of a connection
   shares them. `setAccent(sessionId, database, accent)` stores one through `api.projectSetAccent` and patches
   `accents`; nothing reloads. `selectDatabaseAccent(s, slug, database)` reads one. `components/Accent.tsx` has

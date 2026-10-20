@@ -32,7 +32,13 @@ export const ACCENTS = ["orange", "gold", "red", "magenta", "purple", "indigo", 
 /** Built-in color schemes (`src/styles/schemes/<id>.css`). Ids match Rust's `SCHEMES`. */
 export const SCHEMES = [
   { id: "ayu-mirage", label: "Ayu Mirage", dark: true },
+  { id: "monokai", label: "Monokai", dark: true },
+  { id: "nord", label: "Nord", dark: true },
+  { id: "solarized-dark", label: "Solarized Dark", dark: true },
   { id: "ayu-light", label: "Ayu Light", dark: false },
+  { id: "catppuccin-latte", label: "Catppuccin Latte", dark: false },
+  { id: "github-light", label: "GitHub Light", dark: false },
+  { id: "solarized-light", label: "Solarized Light", dark: false },
 ] as const;
 export type SchemeId = (typeof SCHEMES)[number]["id"];
 

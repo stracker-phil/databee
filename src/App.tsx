@@ -18,7 +18,13 @@ import { applyAppearance, syncRowHeight, useSystemDark } from "./lib/theme";
 import { flushUiState, selectEffectiveAccent, selectSidebarHidden, useStore } from "./state/store";
 import "./styles/fonts.css";
 import "./styles/schemes/ayu-mirage.css";
+import "./styles/schemes/monokai.css";
+import "./styles/schemes/nord.css";
+import "./styles/schemes/solarized-dark.css";
 import "./styles/schemes/ayu-light.css";
+import "./styles/schemes/catppuccin-latte.css";
+import "./styles/schemes/github-light.css";
+import "./styles/schemes/solarized-light.css";
 import "./styles/theme.css";
 import "./styles/app.css";
 

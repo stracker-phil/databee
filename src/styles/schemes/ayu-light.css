@@ -1,6 +1,6 @@
-/* Ayu Light: the default light scheme. Defines every scheme token (docs/ux.md); the only place besides
-   ayu-mirage.css where color literals are allowed.
-   The selector is not limited to <html>: Settings previews a scheme inside its own element. */
+/* Ayu Light: the default light scheme. Every scheme file defines every scheme token (docs/ux.md) and is the only
+   place where color literals are allowed. The selector is not limited to <html>: Settings previews a scheme
+   inside its own element. */
 [data-scheme="ayu-light"] {
   color-scheme: light;
 

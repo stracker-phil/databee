@@ -1,0 +1,60 @@
+/* Monokai: colors from the classic Monokai palette. */
+[data-scheme="monokai"] {
+  color-scheme: dark;
+
+  /* surfaces */
+  --chrome: #1e1f1c;
+  --bg: #272822;
+  --bg-quiet: #1e1f1c;
+  --shade: #000000;
+  --pop: #3e3d32;
+  --field: #1e1f1c;
+  --field-line: #49483e;
+  --text: #f8f8f2;
+  --line: #34352d;
+  --band: #2d2e27;
+  --row-hover: #31322b;
+  --shadow: 0 0 28px rgba(0, 0, 0, 0.38);
+  --shadow-small: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.15);
+  --scrim: rgba(10, 10, 8, 0.55);
+  /* text and marks drawn on an accent or value-style fill */
+  --on-accent: #272822;
+  /* the thumb of a switch, on either track */
+  --knob: #f8f8f2;
+
+  /* accent hues */
+  --a-orange: #fd971f;
+  --a-gold: #e6db74;
+  --a-blue: #66d9ef;
+  --a-purple: #ae81ff;
+  --a-red: #f92672;
+  --a-magenta: #fc5fa3;
+  --a-indigo: #9a8cff;
+  --a-teal: #78dcc4;
+  --a-graphite: #8f908a;
+
+  /* value-style colors */
+  --style-red: #f92672;
+  --style-green: #a6e22e;
+  --style-yellow: #e6db74;
+  --style-blue: #66d9ef;
+  --style-purple: #ae81ff;
+
+  /* CodeMirror and value trees */
+  --code-keyword: #f92672;
+  --code-string: #e6db74;
+  --code-number: #ae81ff;
+  --code-comment: #75715e;
+  --code-function: #a6e22e;
+  --code-type: #66d9ef;
+  --code-operator: #f92672;
+  --code-name: #f8f8f2;
+  --code-property: #fd971f;
+  --code-invalid: #f44747;
+  --code-cursor: #f8f8f0;
+  --code-selection: rgba(73, 72, 62, 0.9);
+  --code-active-line: #3e3d32;
+  --code-gutter: #90908a;
+  --code-match: rgba(230, 219, 116, 0.25);
+}

@@ -19,8 +19,6 @@
   --accent: var(--a-orange);
   --o2: color-mix(in srgb, var(--text) 62%, transparent);
   --o3: color-mix(in srgb, var(--text) 40%, transparent);
-  /* A pane beside the active one (.column.quiet): its accent toward graphite. */
-  --accent-quiet: color-mix(in oklab, var(--accent) 45%, var(--a-graphite));
   /* What the linked table highlight leaves of everything else (TableFocus). */
   --dimmed: 0.3;
 
@@ -60,18 +58,23 @@
   --chart-orange: var(--a-orange);
 }
 
-/* Derived from the accent wherever it is set: a quiet pane sets its own. */
-:root, .column.quiet {
+/* Derived from the accent wherever it is set: a quiet pane sets its own, an element with `data-accent` (the
+   Settings window) its own accent. */
+:root, .column.quiet, [data-accent] {
   --cell: color-mix(in srgb, var(--accent) 24%, transparent);
   --sel: color-mix(in srgb, var(--accent) 20%, transparent);
   --lit-solid: color-mix(in srgb, var(--accent) 15%, var(--bg));
 }
+/* A pane beside the active one (.column.quiet): its accent toward graphite. */
+:root, [data-accent] { --accent-quiet: color-mix(in oklab, var(--accent) 45%, var(--a-graphite)); }
 
-:root[data-accent="gold"] { --accent: var(--a-gold); }
-:root[data-accent="blue"] { --accent: var(--a-blue); }
-:root[data-accent="purple"] { --accent: var(--a-purple); }
-:root[data-accent="red"] { --accent: var(--a-red); }
-:root[data-accent="magenta"] { --accent: var(--a-magenta); }
-:root[data-accent="indigo"] { --accent: var(--a-indigo); }
-:root[data-accent="teal"] { --accent: var(--a-teal); }
-:root[data-accent="graphite"] { --accent: var(--a-graphite); }
+[data-accent="orange"] { --accent: var(--a-orange); }
+
+[data-accent="gold"] { --accent: var(--a-gold); }
+[data-accent="blue"] { --accent: var(--a-blue); }
+[data-accent="purple"] { --accent: var(--a-purple); }
+[data-accent="red"] { --accent: var(--a-red); }
+[data-accent="magenta"] { --accent: var(--a-magenta); }
+[data-accent="indigo"] { --accent: var(--a-indigo); }
+[data-accent="teal"] { --accent: var(--a-teal); }
+[data-accent="graphite"] { --accent: var(--a-graphite); }

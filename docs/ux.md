@@ -36,7 +36,9 @@ and are separated by hairlines.
 A scheme is a complete token set in `src/styles/schemes/<id>.css`, applied through
 `[data-scheme="<id>"]` on `<html>` (and on the swatches that preview it in Settings). Settings → Appearance
 picks one scheme for light and one for dark; the theme setting (system, light, dark) decides which applies.
-Built-in: `ayu-mirage` (default dark) and `ayu-light` (default light). No color literal outside a scheme
+Built-in dark: `ayu-mirage` (default), `monokai`, `nord`, `solarized-dark`; light: `ayu-light` (default),
+`catppuccin-latte`, `github-light`, `solarized-light`. Either slot may pick any scheme; its select lists the
+schemes of its own kind first. No color literal outside a scheme
 file; a Vitest scan enforces it.
 
 | Token | Ayu Mirage | Ayu Light | Role |
@@ -79,7 +81,7 @@ Derived design tokens in `src/styles/theme.css`, the same for every scheme:
 
 | Token | Value | Role |
 |---|---|---|
-| `--accent` | `var(--a-<choice>)` via `html[data-accent]`: the open database's own accent, else the setting | interactive things only |
+| `--accent` | `var(--a-<choice>)` via `[data-accent]` on `<html>`: the open database's own accent, else the setting; the Settings window always uses the setting | interactive things only |
 | `--o2`, `--o3` | `--text` at 62% and 40% | secondary and tertiary text (see opacity levels) |
 | `--cell` | `--accent` at 24% | hovered value |
 | `--sel` | `--accent` at 20% | selected row or sidebar entry, focused value |
