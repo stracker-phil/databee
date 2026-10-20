@@ -6,6 +6,7 @@ vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await impo
 
 import App from "../App";
 import { api, type AppliedBatch, type PlannedChange } from "../api";
+import { installCommands, runCommand } from "../commands";
 import { useStore } from "../state/store";
 import { connectedStore, pendingChange } from "../test/fixtures";
 import { PendingTray } from "./PendingTray";
@@ -313,6 +314,62 @@ describe("PendingTray", () => {
 
       expect(undoButton()).toBeEnabled();
       expect(screen.getByRole("alert")).toHaveTextContent("Undo failed: Gone");
+    });
+  });
+
+  describe("dismissing the undo", () => {
+    const dismissButton = () => screen.getByRole("button", { name: "Dismiss undo" });
+
+    beforeEach(() => {
+      installCommands();
+      useStore.setState({ applied: [{ sessionId: "s1", batchId: 7, canUndo: true }] });
+    });
+
+    it("hides the tray when the × is clicked and nothing is pending", async () => {
+      renderTray();
+
+      await userEvent.click(dismissButton());
+
+      expect(screen.queryByRole("region", { name: "Pending changes" })).not.toBeInTheDocument();
+      expect(queryUndoButton()).not.toBeInTheDocument();
+    });
+
+    it("still undoes the dismissed batch through the changes.undo command", async () => {
+      renderTray();
+      await userEvent.click(dismissButton());
+
+      await act(async () => {
+        runCommand("changes.undo");
+      });
+
+      expect(mocked.undoBatch).toHaveBeenCalledWith("s1", 7);
+    });
+
+    it("brings the undo back after the next apply", async () => {
+      renderTray();
+      await userEvent.click(dismissButton());
+      act(() => useStore.setState({ pending: [pendingChange({ id: 2 })] }));
+
+      await userEvent.click(applyButton());
+
+      expect(await screen.findByText("No pending changes")).toBeInTheDocument();
+      expect(undoButton()).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Dismiss undo" })).toBeInTheDocument();
+    });
+
+    it("shows no × while changes are pending", () => {
+      useStore.setState({ pending: [pendingChange()] });
+      renderTray();
+
+      expect(undoButton()).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Dismiss undo" })).not.toBeInTheDocument();
+    });
+
+    it("shows no × when there is nothing to undo", () => {
+      useStore.setState({ applied: [], pending: [pendingChange()] });
+      renderTray();
+
+      expect(screen.queryByRole("button", { name: "Dismiss undo" })).not.toBeInTheDocument();
     });
   });
 });

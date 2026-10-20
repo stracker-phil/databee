@@ -25,6 +25,7 @@ export {
   selectActiveTab,
   selectCanNav,
   selectCanUndo,
+  selectOffersUndo,
   selectCollapsedGroups,
   selectDocument,
   selectFocusedValue,

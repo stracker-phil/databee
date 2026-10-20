@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, RotateCcw, X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
-import { selectActivePending, selectActiveSession, selectCanUndo, useStore } from "../state/store";
+import { selectActivePending, selectActiveSession, selectOffersUndo, useStore } from "../state/store";
 
 /** Edits wait here with their SQL until applied; the last applied batch can be undone. */
 export function PendingTray() {
   const session = useStore(selectActiveSession);
   const pending = useStore(useShallow(selectActivePending));
-  const canUndo = useStore(selectCanUndo);
+  const canUndo = useStore(selectOffersUndo);
   const applying = useStore((s) => s.applying);
-  const { discardChange, discardAll, applyChanges, undoLast } = useStore.getState();
+  const { discardChange, discardAll, applyChanges, undoLast, dismissUndo } = useStore.getState();
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const focusRequest = useStore((s) => s.trayFocusRequest);
   const applyRef = useRef<HTMLButtonElement>(null);
@@ -27,6 +27,11 @@ export function PendingTray() {
         {canUndo && (
           <button data-stage="tray:undo" className="btn" disabled={applying} aria-busy={applying} onClick={() => void undoLast()}>
             <RotateCcw size="0.923rem" /> Undo last apply
+          </button>
+        )}
+        {canUndo && pending.length === 0 && (
+          <button data-stage="tray:dismiss" className="icon-btn" aria-label="Dismiss undo" title="Dismiss; Undo Last Apply stays in the File menu and the palette" onClick={dismissUndo}>
+            <X size="0.923rem" />
           </button>
         )}
         {pending.length > 0 && (

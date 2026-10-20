@@ -75,3 +75,6 @@ export const selectLastBatch = (s: Store) => [...s.applied].reverse().find((a) =
 
 /** The newest applied batch of the active session can be undone. */
 export const selectCanUndo = (s: Store) => selectLastBatch(s)?.canUndo ?? false;
+
+/** The pending tray offers undo until it is dismissed. */
+export const selectOffersUndo = (s: Store) => selectCanUndo(s) && !selectLastBatch(s)?.dismissed;

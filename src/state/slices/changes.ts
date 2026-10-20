@@ -13,20 +13,22 @@ export interface ChangeTarget {
 export interface ChangesSlice {
   /** Planned edits waiting for review, and applied batches that can be undone. */
   pending: (PlannedChange & { sessionId: string; target?: ChangeTarget })[];
-  applied: { sessionId: string; batchId: number; canUndo: boolean }[];
+  /** `dismissed`: the tray hides its undo; the command still undoes the batch. */
+  applied: { sessionId: string; batchId: number; canUndo: boolean; dismissed?: boolean }[];
   /** An apply or undo is in flight; both refuse to start another. */
   applying: boolean;
   /** Bumped to move focus to the pending tray's Apply button. */
   trayFocusRequest: number;
   /** Plans `change` for review; resolves to the plan's id, or null when it was refused. */
   queueChange: (change: ChangeRequest) => Promise<number | null>;
-  /** Plans rule action `action` on a row address (or a table address for table actions) for review. */
   /** Queues the plan of an action preview (`api.previewAction`). */
   queueActionPreview: (sessionId: string, id: number) => Promise<boolean>;
   discardChange: (id: number) => Promise<void>;
   discardAll: () => Promise<void>;
   applyChanges: () => Promise<void>;
   undoLast: () => Promise<void>;
+  /** Hides the tray's undo until the next apply. */
+  dismissUndo: () => void;
   focusPendingTray: () => void;
 }
 
@@ -126,6 +128,11 @@ export const changesSlice: Slice<ChangesSlice> = {
             fail(e, "Undo failed");
           }
         });
+      },
+
+      dismissUndo() {
+        const last = selectLastBatch(get());
+        if (last) set((s) => ({ applied: s.applied.map((a) => (a === last ? { ...a, dismissed: true } : a)) }));
       },
 
       focusPendingTray() {
