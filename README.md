@@ -1,13 +1,13 @@
 # DataBee
 
-A minimalistic SQL client for MySQL and MariaDB, built for WordPress and WooCommerce developers who inspect
-their **local** databases (DDEV, Docker, Local). It shows what is stored, not a friendlier version of it. It
-is not a tool for site admins or shop owners.
+My personal SQL client for MySQL and MariaDB. I build WordPress and WooCommerce plugins and spend my days
+inspecting **local** databases (DDEV, Docker); DataBee shows what is stored there, raw, and makes the rows
+navigable as objects. It is not a tool for site admins or shop owners.
 
-Built with Tauri 2, Rust and React 19. Runs on macOS (Apple Silicon). The code is documented so you can
-point a coding agent at it and adapt it to your platform or needs. See [Adapt it](#adapt-it).
+It is published as source, as-is: no releases, no binaries, no support. It runs on macOS on Apple Silicon.
+If you want it on your machine or your platform, point a coding agent at [AGENTS.md](AGENTS.md).
 
-![wp_options in the table view](docs/images/database-table.png)
+![The readout of a WooCommerce database](docs/images/readout.png)
 
 ## Features
 
@@ -82,20 +82,20 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
 **Presentations:** an optional local API lets the [Stage](docs/stage.md) presenter app drive the UI in a
 demo.
 
-## Install
+## Screenshots
 
-Requirements: macOS on Apple Silicon (developed and tested on macOS 27), [rustup](https://rustup.rs) (stable), [bun](https://bun.sh)
-and Xcode Command Line Tools. Docker is needed only for the integration tests.
+An order as a document: its columns, meta rows and every row that references it, with the customer open in
+a second pane.
 
-```sh
-git clone https://github.com/stracker-phil/databee.git && cd databee
-bun install
-bun run app                 # debug build of DataBee.app, then open it
-scripts/install-cli.sh      # optional: link the `databee` command into ~/.local/bin
-scripts/install-app.sh      # optional: link DataBee.app into ~/Applications (Spotlight, Dock)
-```
+![An order and its customer as two panes](docs/images/document.png)
 
-For a release bundle, run `bun run tauri build`. It writes `src-tauri/target/release/bundle/macos/DataBee.app`.
+The same order in Rows view: each related table as a grid.
+
+![An order in Rows view](docs/images/rows.png)
+
+The Project page: the rules a preset and the project apply to the database.
+
+![The Project page](docs/images/project.png)
 
 ## CLI
 
@@ -220,32 +220,19 @@ table = "ppcp_vault_tokens"
 summary = ["customer_id"]
 ```
 
-## Development
+## Build or adapt it
 
-| Command | What it does |
-|---|---|
-| `bun run test` | Vitest UI tests and Rust unit tests |
-| `bun run test:db` | starts the MariaDB 11.4 and MySQL 8.4 fixtures (`dev/`) and runs the integration tests |
-| `bun run lint` | IPC types drift check, `tsc`, ESLint and `clippy -D warnings` |
-| `bun run build:app` + `scripts/dev/launch.sh` | debug build, started next to the terminal without taking focus |
+There are no install instructions for people on purpose. [AGENTS.md](AGENTS.md) tells a coding agent how
+to clone, build and verify DataBee, and [docs/adapting.md](docs/adapting.md) lists every place that is
+specific to macOS, the name or the WordPress presets, for a port to Linux or Windows or a rename. The
+[technical documentation](docs/README.md) covers the architecture, each layer, testing and tooling.
 
-The [technical documentation](docs/README.md) covers the architecture, each layer, testing and tooling.
-
-## Adapt it
-
-The repo is set up for coding agents:
-- `CLAUDE.md` and [`.claude/rules/`](.claude/rules/) hold the conventions.
-- A `ship-step` skill tests, builds and commits each step. Before every commit, a `clean-up-code` skill
-  keeps the code self-explanatory.
-- [docs/adapting.md](docs/adapting.md) lists every place that is specific to macOS, the name or the
-  WordPress presets.
-
-Open the repo in [Claude Code](https://claude.com/claude-code) and ask for what you need:
+For example, in [Claude Code](https://claude.com/claude-code):
 
 ```text
+Clone github.com/stracker-phil/databee, build it and link the databee command.
 Port DataBee to Linux. Use libsecret instead of the Keychain and keep all tests green.
 Add SQLite support, including opening a .sqlite file from the CLI.
-Rename the app to "ShopLens" and remove the Stage integration.
 ```
 
 ## License
