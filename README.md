@@ -14,8 +14,9 @@ If you want it on your machine or your platform, point a coding agent at [AGENTS
 **SQL client**
 - **CLI-first:** scripts and other apps open DataBee with connection details. A second launch hands its
   request to the running window.
-- **Schema tree** with a filter. Paged table view with sorting, resizable columns and a `WHERE` filter that
-  also takes IDs (`3229`, `3229, 3227`, `3220-3229`). Structure view with columns, indexes and DDL, and per
+- **Schema tree** with a filter. Paged table view with sorting, resizable columns and a filter field: smart
+  (`home_` finds rows where any column contains it, numbers are IDs: `3229`, `3229, 3227`, `3220-3229`,
+  `'5'` is text) or a SQL `WHERE` condition, switched with ⌃⌥X. Structure view with columns, indexes and DDL, and per
   column the rules that apply to it (kinds, references, value styles), plus the table's entities and actions.
 - **SQL editor** (CodeMirror):
   - MySQL autocomplete;
@@ -170,6 +171,7 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | ? | Keyboard shortcuts | everywhere |
 | ⎋ | Restore a maximized pane, else close the rightmost column | everywhere |
 | ⌘F | WHERE filter | Table |
+| ⌃⌥X | Switch the WHERE filter between smart and SQL | Table |
 | ⌘⇧F | Filter tables | Database |
 | ⌘T / ⌘W | New query tab / close tab | Database |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab | Database |

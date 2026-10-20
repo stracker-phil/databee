@@ -8,7 +8,7 @@ use databee_lib::connection::Secret;
 use databee_lib::db::Database;
 use databee_lib::db::cell_cache::CellCache;
 use databee_lib::db::mysql::MySqlSession;
-use databee_lib::db::{BrowseRequest, Cell, CellLimit, FilterKind, ForeignKey};
+use databee_lib::db::{BrowseRequest, Cell, CellLimit, FilterKind, FilterMode, ForeignKey};
 use databee_lib::error::ErrorKind;
 
 mod common;
@@ -564,6 +564,7 @@ async fn browse_pages_with_order_and_filter() {
             .browse(
                 &BrowseRequest {
                     filter: Some("post_type = 'page'".into()),
+                    filter_mode: FilterMode::Sql,
                     ..req
                 },
                 CELLS,
@@ -711,6 +712,7 @@ async fn browse_that_times_out_is_killed_on_the_server() {
             table: "wp_posts".into(),
             limit: 10,
             filter: Some("SLEEP(30) = 0 AND 'kill_probe_browse' <> ''".into()),
+            filter_mode: FilterMode::Sql,
             ..Default::default()
         };
 
@@ -848,23 +850,44 @@ async fn unknown_database_fails_and_leaves_the_session_usable() {
 #[ignore]
 async fn browse_filter_accepts_id_shorthand_and_trailing_hash_comments() {
     let cases = [
-        ("2", FilterKind::Ids, "`ID` = 2", vec!["2"]),
+        (
+            "2",
+            FilterMode::Smart,
+            FilterKind::Ids,
+            "`ID` = 2",
+            vec!["2"],
+        ),
         (
             "1-2",
+            FilterMode::Smart,
             FilterKind::Ids,
             "`ID` BETWEEN 1 AND 2",
             vec!["1", "2"],
         ),
-        ("1, 3", FilterKind::Ids, "`ID` IN (1, 3)", vec!["1", "3"]),
+        (
+            "1, 3",
+            FilterMode::Smart,
+            FilterKind::Ids,
+            "`ID` IN (1, 3)",
+            vec!["1", "3"],
+        ),
         (
             "post_type = 'page' # only pages",
+            FilterMode::Sql,
             FilterKind::Sql,
             "post_type = 'page' # only pages",
             vec!["2"],
         ),
+        (
+            "2",
+            FilterMode::Sql,
+            FilterKind::Sql,
+            "2",
+            vec!["1", "2", "3"],
+        ),
     ];
     for s in sessions(DATABASE).await {
-        for (filter, kind, applied_sql, ids) in &cases {
+        for (filter, mode, kind, applied_sql, ids) in &cases {
             let page = s
                 .browse(
                     &BrowseRequest {
@@ -873,6 +896,7 @@ async fn browse_filter_accepts_id_shorthand_and_trailing_hash_comments() {
                         limit: 10,
                         order_by: Some("ID".into()),
                         filter: Some(filter.to_string()),
+                        filter_mode: *mode,
                         primary_key: Some("ID".into()),
                         ..Default::default()
                     },
@@ -888,6 +912,45 @@ async fn browse_filter_accepts_id_shorthand_and_trailing_hash_comments() {
             let got: Vec<&str> = page.result.rows.iter().map(|row| text(&row[0])).collect();
             assert_eq!(got, ids.as_slice(), "{filter}");
             assert!(!page.has_more, "{filter}");
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn smart_text_filter_matches_digits_in_integer_columns_and_escapes_wildcards() {
+    let cases = [
+        ("'5'", vec!["1"]),
+        ("\"5\"", vec!["1"]),
+        ("2", vec!["2"]),
+        ("bin text", vec!["1"]),
+        ("bin_text", vec![]),
+        ("bin%", vec![]),
+        ("it's", vec![]),
+    ];
+    for (host, port) in servers() {
+        let s = connect_to(&host, port, DATABASE).await;
+        for (filter, ids) in &cases {
+            let page = s
+                .browse(
+                    &BrowseRequest {
+                        database: "databee_test".into(),
+                        table: "types".into(),
+                        limit: 10,
+                        order_by: Some("id".into()),
+                        filter: Some(filter.to_string()),
+                        primary_key: Some("id".into()),
+                        columns: vec!["id".into(), "big".into(), "label".into()],
+                        ..Default::default()
+                    },
+                    CELLS,
+                    TIMEOUT,
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{host}:{port}: {filter}: {e:?}"));
+
+            let got: Vec<&str> = page.result.rows.iter().map(|row| text(&row[0])).collect();
+            assert_eq!(got, ids.as_slice(), "{host}:{port}: {filter}");
         }
     }
 }

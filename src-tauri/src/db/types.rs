@@ -181,16 +181,35 @@ pub struct BrowseRequest {
     #[serde(default)]
     #[ts(as = "Option<bool>", optional)]
     pub descending: bool,
-    /// Raw SQL condition typed by the user, e.g. `post_type = 'page'`, or ID shorthand
-    /// (`3229`, `3220-3229,3200`) when `primary_key` names a single-column key.
+    /// The filter as typed, read as `filter_mode` says.
     #[serde(default)]
     pub filter: Option<String>,
+    #[serde(default)]
+    #[ts(as = "Option<FilterMode>", optional)]
+    pub filter_mode: FilterMode,
     #[serde(default)]
     pub primary_key: Option<String>,
     /// Exact column matches (`openRow`), built into SQL by Rust; combined with `filter` by `AND`.
     #[serde(default)]
     #[ts(as = "Option<Vec<ColumnEquals>>", optional)]
     pub r#where: Vec<ColumnEquals>,
+    /// The table's columns, which a smart text filter searches; `Session::browse` fills them from the schema.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub columns: Vec<String>,
+}
+
+/// How the WHERE field reads its filter.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub enum FilterMode {
+    /// ID shorthand (`3229`, `3220-3229,3200`) against a single-column primary key, else text that any
+    /// column contains; quotes (`'5'`) make a number text.
+    #[default]
+    Smart,
+    /// A raw SQL condition, e.g. `post_type = 'page'`.
+    Sql,
 }
 
 /// `column = value`, or `column IS NULL` for a `None` value.
@@ -209,6 +228,8 @@ pub enum FilterKind {
     Ids,
     /// A raw SQL condition, as typed.
     Sql,
+    /// Text that any column contains.
+    Text,
     /// The structured `where` of the request.
     Columns,
 }

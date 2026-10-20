@@ -109,6 +109,58 @@ describe("tab history", () => {
     expect(activeTable().filter).toBeUndefined();
   });
 
+  describe("filter mode", () => {
+    const down = { state: "down", since: 1_700_000_000_000, error: "Connection refused", retryAt: 1_700_000_030_000 } as const;
+
+    it("opens a table without a filter in smart mode", () => {
+      act(() => useStore.getState().openTableTab("db", "wp_posts"));
+      expect(activeTable().filterMode).toBeUndefined();
+    });
+
+    it("opens a table with a filter in SQL mode", () => {
+      act(() => useStore.getState().openTableTab("db", "wp_posts", "data", "post_type = 'page'"));
+      expect(activeTable()).toMatchObject({ filter: "post_type = 'page'", filterMode: "sql" });
+    });
+
+    it("toggles between smart and SQL", () => {
+      act(() => useStore.getState().openTableTab("db", "wp_posts"));
+      const { id } = activeTable();
+      act(() => useStore.getState().toggleFilterMode(id));
+      expect(activeTable().filterMode).toBe("sql");
+      act(() => useStore.getState().toggleFilterMode(id));
+      expect(activeTable().filterMode).toBe("smart");
+    });
+
+    it("toggles from the command on the active table tab", () => {
+      act(() => useStore.getState().openTableTab("db", "wp_posts"));
+      expect(runCommand("table.filterMode")).toBe(true);
+      expect(activeTable().filterMode).toBe("sql");
+    });
+
+    it("leaves other tabs alone when the command runs on a query tab", () => {
+      act(() => useStore.getState().openTableTab("db", "wp_posts"));
+      const { id } = activeTable();
+      act(() => useStore.setState((s) => ({ tabs: [...s.tabs, queryTab()], activeTabId: "q1" })));
+      runCommand("table.filterMode");
+      expect(useStore.getState().tabs.find((t) => t.id === id)).not.toHaveProperty("filterMode", "sql");
+    });
+
+    it("toggles while the connection is lost when no filter is applied", () => {
+      act(() => useStore.getState().openTableTab("db", "wp_posts"));
+      act(() => useStore.setState({ health: { s1: down } }));
+      act(() => useStore.getState().toggleFilterMode(activeTable().id));
+      expect(activeTable().filterMode).toBe("sql");
+    });
+
+    it("keeps the mode while the connection is lost and a filter is applied", () => {
+      act(() => useStore.getState().openTableTab("db", "wp_posts"));
+      const { id } = activeTable();
+      act(() => useStore.getState().setTableFilter(id, "hello"));
+      act(() => useStore.setState({ health: { s1: down } }));
+      act(() => useStore.getState().toggleFilterMode(id));
+      expect(activeTable().filterMode).toBeUndefined();
+    });
+  });
 });
 
 describe("history with the rendered table view", () => {

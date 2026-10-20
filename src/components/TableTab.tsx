@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Filter, Hash, Loader2, Plus, RefreshCw, X } from "lucide-react";
-import { api, type AppliedFilter, type BrowsePage, type TableStructure } from "../api";
+import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Filter, Hash, Loader2, Plus, RefreshCw, TextSearch, X } from "lucide-react";
+import { api, type AppliedFilter, type BrowsePage, type FilterMode, type TableStructure } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { address } from "../lib/address";
 import { DEFAULT_ROW_LIMIT, singleKey } from "../lib/cells";
@@ -44,7 +44,7 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
   const dataVersion = useStore((s) => s.dataVersion);
   const [browse, setBrowse] = useState<Browse>({ offset: 0, orderBy: null, descending: false });
   // Other rows (a new filter, back, forward) start at their first page and keep the sort.
-  useEffect(() => setBrowse((b) => (b.offset === 0 ? b : { ...b, offset: 0 })), [tab.filter, tab.where]);
+  useEffect(() => setBrowse((b) => (b.offset === 0 ? b : { ...b, offset: 0 })), [tab.filter, tab.filterMode, tab.where]);
   const request = {
     database: tab.database,
     table: tab.table,
@@ -53,6 +53,7 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
     orderBy: browse.orderBy,
     descending: browse.descending,
     filter: tab.filter || null,
+    filterMode: tab.filterMode ?? "smart",
     primaryKey,
     where: tab.where,
   };
@@ -67,13 +68,28 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
   return { browse, setBrowse: changeBrowse, page: result.data, error: result.error, loading: key !== null && result.state === "loading", reload, pageSize };
 }
 
-function FilterBar({ tabId, initial, primaryKey, onApply }: { tabId: string; initial: string; primaryKey: string | null; onApply: (filter: string) => void }) {
+function placeholder(mode: FilterMode, primaryKey: string | null): string {
+  if (mode === "sql") return "WHERE …   e.g. post_type = 'page' AND post_status = 'draft'   ↵ to apply";
+  return primaryKey ? "Text in any column, '5' as text, or IDs: 3229, 3220-3229   ↵ to apply" : "Text in any column   ↵ to apply";
+}
+
+interface FilterBarProps {
+  tabId: string;
+  initial: string;
+  mode: FilterMode;
+  primaryKey: string | null;
+  onApply: (filter: string) => void;
+  onToggleMode: () => void;
+}
+
+function FilterBar({ tabId, initial, mode, primaryKey, onApply, onToggleMode }: FilterBarProps) {
   const [value, setValue] = useState(initial);
   // Back and forward replace the applied filter; the field follows without losing focus.
   useEffect(() => setValue(initial), [initial]);
   const inputRef = useRef<HTMLInputElement>(null);
   const isActive = useStore((s) => s.activeTabId === tabId);
   const keys = useBindingLabel("table.focusFilter");
+  const modeKeys = useBindingLabel("table.filterMode");
 
   useEffect(() => {
     if (!isActive) return;
@@ -96,10 +112,20 @@ function FilterBar({ tabId, initial, primaryKey, onApply }: { tabId: string; ini
           className="mono"
           aria-label="WHERE filter"
           data-stage="table:filter"
-          placeholder={primaryKey ? "WHERE … or IDs: 3229, 3220-3229   ↵ to apply" : "WHERE …   e.g. post_type = 'shop_order'   ↵ to apply"}
+          placeholder={placeholder(mode, primaryKey)}
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
+        <button
+          type="button"
+          className="filter-mode"
+          data-stage="table:filter-mode"
+          aria-label={mode === "sql" ? "SQL filter, switch to smart filter" : "Smart filter, switch to SQL"}
+          title={`${mode === "sql" ? "Switch to smart filter" : "Switch to SQL WHERE"}${modeKeys ? ` (${modeKeys})` : ""}`}
+          onClick={onToggleMode}
+        >
+          {mode === "sql" ? "SQL" : "Smart"}
+        </button>
       </InsetField>
     </form>
   );
@@ -193,6 +219,7 @@ function DataView({ tab }: { tab: TableTabState }) {
   // Browsing waits for the structure so an ID filter is resolved against the primary key from the first request.
   const { browse, setBrowse, page, error, loading, reload, pageSize } = useBrowse(tab, primaryKey, structure !== null || structureError !== null);
   const setTableFilter = useStore((s) => s.setTableFilter);
+  const toggleFilterMode = useStore((s) => s.toggleFilterMode);
   const showRows = useStore((s) => s.showRows);
   const { rowActions, onEditCell } = useRowEditing(tab, page, primaryKey);
   const [showFilterSql, setShowFilterSql] = useState(false);
@@ -221,13 +248,25 @@ function DataView({ tab }: { tab: TableTabState }) {
   return (
     <>
       <div className="table-head">
-        <FilterBar tabId={tab.id} initial={tab.filter ?? ""} primaryKey={primaryKey} onApply={(filter) => setTableFilter(tab.id, filter)} />
+        <FilterBar
+          tabId={tab.id}
+          initial={tab.filter ?? ""}
+          mode={tab.filterMode ?? "smart"}
+          primaryKey={primaryKey}
+          onApply={(filter) => setTableFilter(tab.id, filter)}
+          onToggleMode={() => toggleFilterMode(tab.id)}
+        />
         {page?.columnsFilter && tab.where.length > 0 && (
           <ColumnsFilterChip filter={page.columnsFilter} onClear={() => showRows(tab.id, { database: tab.database, table: tab.table, where: [] })} />
         )}
-        {page?.filter?.kind === "ids" && (
-          <button className="filter-chip" title="Interpreted as a primary-key lookup; click to see the SQL" onClick={() => setShowFilterSql((v) => !v)}>
-            <Hash size="0.846rem" /> {showFilterSql ? <code>{page.filter.sql}</code> : page.filter.label}
+        {(page?.filter?.kind === "ids" || page?.filter?.kind === "text") && (
+          <button
+            className="filter-chip"
+            title={`${page.filter.kind === "ids" ? "Interpreted as a primary-key lookup" : "Searched in every column"}; click to see the SQL`}
+            onClick={() => setShowFilterSql((v) => !v)}
+          >
+            {page.filter.kind === "ids" ? <Hash size="0.846rem" /> : <TextSearch size="0.846rem" />}{" "}
+            {showFilterSql ? <code>{page.filter.sql}</code> : page.filter.label}
           </button>
         )}
         <button

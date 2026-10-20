@@ -12,7 +12,9 @@ use crate::connection::{ConnectionSpec, Secret};
 use crate::db::cell_cache::CellCache;
 use crate::db::classify::changes_schema;
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
-use crate::db::{BrowsePage, BrowseRequest, CellLimit, Connector, Database, ExecuteResponse};
+use crate::db::{
+    BrowsePage, BrowseRequest, CellLimit, Connector, Database, ExecuteResponse, browse,
+};
 use crate::error::{AppError, AppResult};
 use crate::health::{Guarded, HealthEvent, SessionHealth};
 use crate::lock::RwLockExt;
@@ -169,11 +171,24 @@ impl Session {
         timeout: Duration,
         rules: Option<RuleSources<'_>>,
     ) -> AppResult<BrowsePage> {
-        // The schema is cached after the first page, so loading it alongside costs nothing later.
-        let (page, schema) = tokio::join!(
-            self.db.browse(request, cell_limit, timeout),
-            schema::database(self, &request.database)
-        );
+        let (page, schema) = if browse::text_search(request).is_some() {
+            let schema = schema::database(self, &request.database).await;
+            let columns = schema
+                .as_ref()
+                .ok()
+                .and_then(|s| s.columns.get(&request.table));
+            let request = BrowseRequest {
+                columns: columns.cloned().unwrap_or_default(),
+                ..request.clone()
+            };
+            (self.db.browse(&request, cell_limit, timeout).await, schema)
+        } else {
+            // The schema is cached after the first page, so loading it alongside costs nothing later.
+            tokio::join!(
+                self.db.browse(request, cell_limit, timeout),
+                schema::database(self, &request.database)
+            )
+        };
         let mut page = page?;
         let effective = match (&schema, rules) {
             (Ok(schema), Some(sources)) => Some(effective::effective(
@@ -516,6 +531,123 @@ mod tests {
             "local".into(),
             Box::new(db.clone()),
         )
+    }
+
+    fn posts_table() -> crate::db::TableStructure {
+        let column = |name: &str| crate::db::ColumnInfo {
+            name: name.into(),
+            column_type: "text".into(),
+            nullable: true,
+            default: None,
+            key: String::new(),
+            extra: String::new(),
+            comment: String::new(),
+            auto_increment: false,
+            generated: false,
+        };
+        crate::db::TableStructure {
+            columns: vec![column("ID"), column("post_title")],
+            indexes: Vec::new(),
+            primary_key: vec!["ID".into()],
+            foreign_keys: Vec::new(),
+            ddl: None,
+        }
+    }
+
+    fn browse_request(
+        table: &str,
+        filter: &str,
+        filter_mode: crate::db::FilterMode,
+    ) -> BrowseRequest {
+        BrowseRequest {
+            database: "wp".into(),
+            table: table.into(),
+            limit: 100,
+            filter: Some(filter.into()),
+            filter_mode,
+            ..BrowseRequest::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn smart_text_filter_searches_the_schema_columns_of_the_browsed_table() {
+        use crate::db::{FilterKind, FilterMode};
+
+        let db = Arc::new(
+            FakeDatabase::new()
+                .with_database("wp")
+                .with_table("wp", "wp_posts", posts_table())
+                .on("LIKE", ResultSet::default()),
+        );
+        let session = session_over(&db);
+
+        let page = session
+            .browse(
+                &browse_request("wp_posts", "home_", FilterMode::Smart),
+                CellLimit::NONE,
+                TIMEOUT,
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            db.queries(),
+            [
+                "SELECT * FROM `wp`.`wp_posts` WHERE (`ID` LIKE '%home\\\\_%' OR `post_title` LIKE '%home\\\\_%'\n) LIMIT 101 OFFSET 0"
+            ]
+        );
+        assert_eq!(page.filter.unwrap().kind, FilterKind::Text);
+    }
+
+    #[tokio::test]
+    async fn smart_text_filter_on_a_table_without_known_columns_is_invalid_input() {
+        use crate::db::FilterMode;
+
+        let db = Arc::new(FakeDatabase::new().with_database("wp"));
+        let session = session_over(&db);
+
+        let err = session
+            .browse(
+                &browse_request("missing", "home", FilterMode::Smart),
+                CellLimit::NONE,
+                TIMEOUT,
+                None,
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert!(db.queries().is_empty());
+    }
+
+    #[tokio::test]
+    async fn sql_filter_is_sent_as_typed_without_the_schema_columns() {
+        use crate::db::{FilterKind, FilterMode};
+
+        let db = Arc::new(
+            FakeDatabase::new()
+                .with_database("wp")
+                .with_table("wp", "wp_posts", posts_table())
+                .on("post_type", ResultSet::default()),
+        );
+        let session = session_over(&db);
+
+        let page = session
+            .browse(
+                &browse_request("wp_posts", "post_type = 'page'", FilterMode::Sql),
+                CellLimit::NONE,
+                TIMEOUT,
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            db.queries(),
+            ["SELECT * FROM `wp`.`wp_posts` WHERE (post_type = 'page'\n) LIMIT 101 OFFSET 0"]
+        );
+        assert_eq!(page.filter.unwrap().kind, FilterKind::Sql);
     }
 
     #[tokio::test]

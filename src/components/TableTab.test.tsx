@@ -47,6 +47,75 @@ describe("TableTab", () => {
     expect(screen.getByText("`ID` IN (3229, 3227)")).toBeInTheDocument();
   });
 
+  describe("filter mode", () => {
+    const Live = () => <TableTab tab={useStore((s) => s.tabs[0]) as TableTabState} />;
+    const smartToggle = () => screen.getByRole("button", { name: "Smart filter, switch to SQL" });
+    const sqlToggle = () => screen.getByRole("button", { name: "SQL filter, switch to smart filter" });
+
+    it("browses in smart mode by default and shows Smart in the field", async () => {
+      render(<Live />);
+      await screen.findByText("Hello world");
+      expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ filterMode: "smart" }));
+      expect(smartToggle()).toHaveTextContent("Smart");
+    });
+
+    it("browses in the mode the tab was opened with", async () => {
+      useStore.setState({ tabs: [{ ...tab, filter: "post_type = 'page'", filterMode: "sql" }] });
+      render(<Live />);
+      await screen.findByText("Hello world");
+      expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ filter: "post_type = 'page'", filterMode: "sql" }));
+      expect(sqlToggle()).toHaveTextContent("SQL");
+    });
+
+    it("switches to SQL on click, browses again with the new mode and keeps the typed filter", async () => {
+      render(<Live />);
+      await screen.findByText("Hello world");
+      await userEvent.type(screen.getByLabelText("WHERE filter"), "post_type = 'page'{Enter}");
+      await userEvent.click(smartToggle());
+      await waitFor(() => expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ filter: "post_type = 'page'", filterMode: "sql" })));
+      expect(sqlToggle()).toBeInTheDocument();
+      expect(screen.getByLabelText("WHERE filter")).toHaveValue("post_type = 'page'");
+    });
+
+    it("switches back to smart on a second click", async () => {
+      useStore.setState({ tabs: [{ ...tab, filterMode: "sql" }] });
+      render(<Live />);
+      await screen.findByText("Hello world");
+      await userEvent.click(sqlToggle());
+      await waitFor(() => expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ filterMode: "smart" })));
+      expect(smartToggle()).toBeInTheDocument();
+    });
+
+    it.each([
+      ["smart mode with a primary key", "smart", /IDs: 3229, 3220-3229/],
+      ["SQL mode", "sql", /^WHERE ….*post_type = 'page'/],
+    ] as const)("shows the %s placeholder", async (_name, filterMode, expected) => {
+      useStore.setState({ tabs: [{ ...tab, filterMode }] });
+      render(<Live />);
+      await screen.findByText("Hello world");
+      expect(screen.getByLabelText("WHERE filter").getAttribute("placeholder")).toMatch(expected);
+    });
+
+    it("shows the plain text placeholder in smart mode for a table without a primary key", async () => {
+      mocked.describeTable.mockResolvedValue({ ...structure, primaryKey: [], indexes: [] });
+      render(<Live />);
+      await screen.findByText("Hello world");
+      const placeholder = screen.getByLabelText("WHERE filter").getAttribute("placeholder");
+      expect(placeholder).toMatch(/^Text in any column/);
+      expect(placeholder).not.toMatch(/IDs/);
+    });
+
+    it("shows a chip for a text search that reveals the SQL on click", async () => {
+      mocked.browseTable.mockResolvedValue(browsePage({ filter: { kind: "text", sql: "`post_title` LIKE '%hello%'", label: "any column contains hello" } }));
+      render(<Live />);
+      const chip = await screen.findByRole("button", { name: /any column contains hello/ });
+      await userEvent.click(chip);
+      expect(screen.getByText("`post_title` LIKE '%hello%'")).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: /post_title/ }));
+      expect(screen.getByText("any column contains hello")).toBeInTheDocument();
+    });
+  });
+
   it("shows no chip for plain SQL filters", async () => {
     mocked.browseTable.mockResolvedValue(browsePage({ filter: { kind: "sql", sql: "post_type = 'page'", label: "post_type = 'page'" } }));
     render(<TableTab tab={tab} />);

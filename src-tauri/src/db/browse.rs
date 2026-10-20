@@ -1,6 +1,8 @@
 //! The paged SELECT behind the table view and the filter typed above it.
 
-use super::{AppliedFilter, BrowseRequest, ColumnEquals, Dialect, FilterKind, id_filter, lexer};
+use super::{
+    AppliedFilter, BrowseRequest, ColumnEquals, Dialect, FilterKind, FilterMode, id_filter, lexer,
+};
 use crate::error::{AppError, AppResult};
 
 /// Largest page served; the UI asks for its row limit and pages by the `limit` it gets back.
@@ -11,11 +13,74 @@ pub fn page_limit(req: &BrowseRequest) -> u32 {
     req.limit.clamp(1, MAX_PAGE_ROWS)
 }
 
-/// Resolves the typed filter: ID shorthand against the primary key, or raw SQL.
+/// Resolves the typed filter as its `filter_mode` reads it.
 fn applied_filter(req: &BrowseRequest, dialect: Dialect) -> AppResult<Option<AppliedFilter>> {
     let Some(filter) = req.filter.as_deref().map(str::trim) else {
         return Ok(None);
     };
+    match req.filter_mode {
+        FilterMode::Smart => smart_filter(req, filter, dialect),
+        FilterMode::Sql => sql_filter(filter),
+    }
+}
+
+/// The text a smart filter searches for, `None` when it is empty or ID shorthand.
+pub fn text_search(req: &BrowseRequest) -> Option<&str> {
+    let filter = req.filter.as_deref()?.trim();
+    if req.filter_mode != FilterMode::Smart || filter.is_empty() {
+        return None;
+    }
+    if req.primary_key.is_some() && id_filter::parse_ids(filter).is_some() {
+        return None;
+    }
+    Some(unquoted(filter)).filter(|text| !text.is_empty())
+}
+
+/// `'5'` or `"5"` as `5`.
+fn unquoted(text: &str) -> &str {
+    for quote in ['\'', '"'] {
+        if let Some(inner) = text.strip_prefix(quote).and_then(|t| t.strip_suffix(quote)) {
+            return inner;
+        }
+    }
+    text
+}
+
+fn smart_filter(
+    req: &BrowseRequest,
+    filter: &str,
+    dialect: Dialect,
+) -> AppResult<Option<AppliedFilter>> {
+    if let (Some(pk), Some(ids)) = (req.primary_key.as_deref(), id_filter::parse_ids(filter)) {
+        return Ok(Some(AppliedFilter {
+            kind: FilterKind::Ids,
+            sql: ids.to_sql(pk, dialect),
+            label: ids.label(pk),
+        }));
+    }
+    let Some(text) = text_search(req) else {
+        return Ok(None);
+    };
+    if req.columns.is_empty() {
+        return Err(AppError::InvalidInput(
+            "The table's columns did not load, so the text filter has nothing to search".into(),
+        ));
+    }
+    let pattern = dialect.like_contains(text);
+    let sql = req
+        .columns
+        .iter()
+        .map(|column| format!("{} LIKE {pattern}", dialect.quote_ident(column)))
+        .collect::<Vec<_>>()
+        .join(" OR ");
+    Ok(Some(AppliedFilter {
+        kind: FilterKind::Text,
+        sql,
+        label: format!("contains \"{text}\""),
+    }))
+}
+
+fn sql_filter(filter: &str) -> AppResult<Option<AppliedFilter>> {
     if !lexer::is_terminated(filter) {
         return Err(AppError::InvalidInput(
             "unterminated quote or comment in filter".into(),
@@ -23,13 +88,6 @@ fn applied_filter(req: &BrowseRequest, dialect: Dialect) -> AppResult<Option<App
     }
     if lexer::is_blank(filter) {
         return Ok(None);
-    }
-    if let (Some(pk), Some(ids)) = (req.primary_key.as_deref(), id_filter::parse_ids(filter)) {
-        return Ok(Some(AppliedFilter {
-            kind: FilterKind::Ids,
-            sql: ids.to_sql(pk, dialect),
-            label: ids.label(pk),
-        }));
     }
     if lexer::split_statements(filter).len() != 1 {
         return Err(AppError::InvalidInput(
@@ -184,6 +242,7 @@ mod tests {
                 order_by: Some("post_date".into()),
                 descending: true,
                 filter: Some(" post_type = 'page' ".into()),
+                filter_mode: FilterMode::Sql,
                 ..req()
             },
             Dialect::MYSQL,
@@ -200,6 +259,7 @@ mod tests {
         browse_sql(
             &BrowseRequest {
                 filter: Some(filter.into()),
+                filter_mode: FilterMode::Sql,
                 order_by: order_by.map(Into::into),
                 ..req()
             },
@@ -301,6 +361,20 @@ mod tests {
             serde_json::to_value(FilterKind::Sql).unwrap(),
             serde_json::json!("sql")
         );
+        assert_eq!(
+            serde_json::to_value(FilterKind::Text).unwrap(),
+            serde_json::json!("text")
+        );
+    }
+
+    #[test]
+    fn filter_mode_defaults_to_smart_and_serializes_camel_case() {
+        let base = r#""database":"d","table":"t","limit":10"#;
+        let default: BrowseRequest = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+        let sql: BrowseRequest =
+            serde_json::from_str(&format!(r#"{{{base},"filterMode":"sql"}}"#)).unwrap();
+        assert_eq!(default.filter_mode, FilterMode::Smart);
+        assert_eq!(sql.filter_mode, FilterMode::Sql);
     }
 
     #[test]
@@ -308,6 +382,7 @@ mod tests {
         let err = browse_sql(
             &BrowseRequest {
                 filter: Some("1; DROP TABLE wp_users".into()),
+                filter_mode: FilterMode::Sql,
                 ..req()
             },
             Dialect::MYSQL,
@@ -333,35 +408,169 @@ mod tests {
         assert_eq!(applied.label, "ID in (3220–3225, 3229)");
     }
 
-    #[test]
-    fn id_shorthand_without_primary_key_is_sql_as_typed() {
-        let without = BrowseRequest {
-            filter: Some("3229".into()),
-            primary_key: None,
+    fn smart(filter: &str, primary_key: Option<&str>, columns: &[&str]) -> BrowseRequest {
+        BrowseRequest {
+            filter: Some(filter.into()),
+            primary_key: primary_key.map(Into::into),
+            columns: columns.iter().map(ToString::to_string).collect(),
             ..req()
-        };
-        let (sql, applied) = browse_sql(&without, Dialect::MYSQL).unwrap();
+        }
+    }
+
+    #[test]
+    fn number_without_primary_key_is_a_text_search() {
+        let (sql, applied) = browse_sql(&smart("3229", None, &["a", "b"]), Dialect::MYSQL).unwrap();
         assert_eq!(
             sql,
-            "SELECT * FROM `site`.`wp_posts` WHERE (3229\n) LIMIT 101 OFFSET 0"
+            "SELECT * FROM `site`.`wp_posts` WHERE (`a` LIKE '%3229%' OR `b` LIKE '%3229%'\n) LIMIT 101 OFFSET 0"
+        );
+        let applied = applied.unwrap();
+        assert_eq!(applied.kind, FilterKind::Text);
+        assert_eq!(applied.label, "contains \"3229\"");
+    }
+
+    #[test]
+    fn sql_mode_reads_id_shorthand_as_sql() {
+        let request = BrowseRequest {
+            filter_mode: FilterMode::Sql,
+            ..smart("17", Some("ID"), &[])
+        };
+        let (sql, applied) = browse_sql(&request, Dialect::MYSQL).unwrap();
+        assert_eq!(
+            sql,
+            "SELECT * FROM `site`.`wp_posts` WHERE (17\n) LIMIT 101 OFFSET 0"
         );
         assert_eq!(applied.unwrap().kind, FilterKind::Sql);
     }
 
     #[test]
-    fn real_sql_is_never_mistaken_for_ids() {
+    fn smart_mode_reads_a_single_id_and_a_list_as_ids() {
+        for (filter, expected) in [
+            ("17", "`ID` = 17"),
+            ("1, 2", "`ID` IN (1, 2)"),
+            ("3220-3229", "`ID` BETWEEN 3220 AND 3229"),
+        ] {
+            let (_, applied) =
+                browse_sql(&smart(filter, Some("ID"), &["ID"]), Dialect::MYSQL).unwrap();
+            let applied = applied.unwrap();
+            assert_eq!(applied.kind, FilterKind::Ids, "{filter}");
+            assert_eq!(applied.sql, expected, "{filter}");
+        }
+    }
+
+    #[test]
+    fn smart_text_that_is_not_ids_searches_every_column() {
+        for filter in ["ID > 3229", "post_type = 'page'", "hello"] {
+            let (_, applied) =
+                browse_sql(&smart(filter, Some("ID"), &["ID"]), Dialect::MYSQL).unwrap();
+            assert_eq!(applied.unwrap().kind, FilterKind::Text, "{filter}");
+        }
+    }
+
+    #[test]
+    fn quoted_number_is_searched_as_text_even_with_a_primary_key() {
+        for filter in ["'5'", "\"5\""] {
+            let (_, applied) =
+                browse_sql(&smart(filter, Some("ID"), &["ID"]), Dialect::MYSQL).unwrap();
+            let applied = applied.unwrap();
+            assert_eq!(applied.kind, FilterKind::Text, "{filter}");
+            assert_eq!(applied.sql, "`ID` LIKE '%5%'", "{filter}");
+            assert_eq!(applied.label, "contains \"5\"", "{filter}");
+        }
+    }
+
+    #[test]
+    fn text_search_escapes_like_wildcards_and_identifier_quotes() {
+        let (_, applied) =
+            browse_sql(&smart("home_", None, &["op`tion", "value"]), Dialect::MYSQL).unwrap();
+        let applied = applied.unwrap();
+        assert_eq!(
+            applied.sql,
+            r"`op``tion` LIKE '%home\\_%' OR `value` LIKE '%home\\_%'"
+        );
+        assert_eq!(applied.label, "contains \"home_\"");
+    }
+
+    #[test]
+    fn text_search_without_backslash_escapes_names_the_escape_character() {
+        let dialect = Dialect {
+            backslash_escapes: false,
+        };
+        let (_, applied) = browse_sql(&smart("a_b", None, &["c"]), dialect).unwrap();
+        assert_eq!(applied.unwrap().sql, r"`c` LIKE '%a\_b%' ESCAPE '\'");
+    }
+
+    #[test]
+    fn empty_smart_text_applies_no_filter() {
+        let (expected, _) = browse_sql(&req(), Dialect::MYSQL).unwrap();
+        for filter in ["", "   ", "''", "\"\""] {
+            let (sql, applied) =
+                browse_sql(&smart(filter, Some("ID"), &["ID"]), Dialect::MYSQL).unwrap();
+            assert_eq!(sql, expected, "{filter:?}");
+            assert!(applied.is_none(), "{filter:?}");
+        }
+    }
+
+    #[test]
+    fn smart_text_without_columns_is_invalid_input() {
+        let err = browse_sql(&smart("hello", None, &[]), Dialect::MYSQL).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn smart_text_with_an_unterminated_quote_is_a_plain_search() {
+        let (_, applied) = browse_sql(&smart("it's", None, &["c"]), Dialect::MYSQL).unwrap();
+        let applied = applied.unwrap();
+        assert_eq!(applied.kind, FilterKind::Text);
+        assert_eq!(applied.sql, "`c` LIKE '%it''s%'");
+        assert_eq!(applied.label, "contains \"it's\"");
+    }
+
+    #[test]
+    fn smart_text_is_combined_with_the_structured_where() {
         let request = BrowseRequest {
-            filter: Some("ID > 3229".into()),
-            primary_key: Some("ID".into()),
-            ..req()
+            r#where: vec![eq("ID", Some("7"))],
+            ..smart("x", None, &["c"])
         };
         assert_eq!(
-            applied_filter(&request, Dialect::MYSQL)
-                .unwrap()
-                .unwrap()
-                .kind,
-            FilterKind::Sql
+            browse_sql(&request, Dialect::MYSQL).unwrap().0,
+            "SELECT * FROM `site`.`wp_posts` WHERE (`ID` = '7') AND (`c` LIKE '%x%'\n) LIMIT 101 OFFSET 0"
         );
+    }
+
+    #[test]
+    fn text_search_reports_the_unquoted_text_only_for_smart_text() {
+        for (filter, mode, primary_key, expected) in [
+            ("hello", FilterMode::Smart, None, Some("hello")),
+            ("  'hello'  ", FilterMode::Smart, None, Some("hello")),
+            ("\"5\"", FilterMode::Smart, Some("ID"), Some("5")),
+            ("'it\"", FilterMode::Smart, None, Some("'it\"")),
+            ("5", FilterMode::Smart, None, Some("5")),
+            ("5", FilterMode::Smart, Some("ID"), None),
+            ("1, 2", FilterMode::Smart, Some("ID"), None),
+            ("", FilterMode::Smart, None, None),
+            ("''", FilterMode::Smart, None, None),
+            ("hello", FilterMode::Sql, None, None),
+        ] {
+            let request = BrowseRequest {
+                filter_mode: mode,
+                ..smart(filter, primary_key, &[])
+            };
+            assert_eq!(text_search(&request), expected, "{filter:?} {mode:?}");
+        }
+        assert_eq!(text_search(&req()), None);
+    }
+
+    #[test]
+    fn sql_mode_keeps_real_sql_as_typed() {
+        let request = BrowseRequest {
+            filter_mode: FilterMode::Sql,
+            ..smart("ID > 3229", Some("ID"), &["ID"])
+        };
+        let applied = browse_sql(&request, Dialect::MYSQL).unwrap().1.unwrap();
+        assert_eq!(applied.kind, FilterKind::Sql);
+        assert_eq!(applied.sql, "ID > 3229");
+        assert_eq!(applied.label, "ID > 3229");
     }
 
     fn eq(column: &str, value: Option<&str>) -> ColumnEquals {
@@ -473,6 +682,7 @@ mod tests {
             &BrowseRequest {
                 r#where: vec![eq("ID", Some("7"))],
                 filter: Some("post_type = 'page' # note".into()),
+                filter_mode: FilterMode::Sql,
                 ..req()
             },
             Dialect::MYSQL,

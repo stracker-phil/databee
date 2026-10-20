@@ -91,7 +91,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `databases`), `table:<db>.<table>` (list `tables`)
   - tabs: `tabs`, `tabs:new`, `tab:table:<db>.<table>`, `tab:object:<row address>`, `tab:project:<db>`,
     `tab:readout:<db>`, `tab:query:<tab id>` (list `tabs`)
-  - table tabs: `table:data|filter|insert|reload|previous-page|next-page`, `table:view|structure` (the view
+  - table tabs: `table:data|filter|filter-mode|insert|reload|previous-page|next-page`, `table:view|structure` (the view
     switch), `table:structure-view` (the Structure view)
   - the Structure view: `structure:column:<name>` (list `structure-columns`); rule items
     `structure:reference:<key>`, `structure:kind:<index or origin>:<scope>`, `structure:style:<id>`, each

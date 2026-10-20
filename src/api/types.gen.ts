@@ -162,10 +162,9 @@ columnsFilter: AppliedFilter | null, };
 
 export type BrowseRequest = { database: string, table: string, offset: number, limit: number, orderBy?: string | null, descending?: boolean, 
 /**
- * Raw SQL condition typed by the user, e.g. `post_type = 'page'`, or ID shorthand
- * (`3229`, `3220-3229,3200`) when `primary_key` names a single-column key.
+ * The filter as typed, read as `filter_mode` says.
  */
-filter?: string | null, primaryKey?: string | null, 
+filter?: string | null, filterMode?: FilterMode, primaryKey?: string | null, 
 /**
  * Exact column matches (`openRow`), built into SQL by Rust; combined with `filter` by `AND`.
  */
@@ -466,7 +465,12 @@ database: string | null,
  */
 failure: StatementFailure | null, };
 
-export type FilterKind = "ids" | "sql" | "columns";
+export type FilterKind = "ids" | "sql" | "text" | "columns";
+
+/**
+ * How the WHERE field reads its filter.
+ */
+export type FilterMode = "smart" | "sql";
 
 export type FindMatch = "exact" | "contains";
 

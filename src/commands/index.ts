@@ -88,6 +88,16 @@ const APP_COMMANDS: Command[] = [
   { id: "view.refresh", title: "Refresh current view", scope: "global", defaultBinding: "Mod+R", menu: true, run: () => void useStore.getState().refreshView() },
   { id: "help.shortcuts", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", run: toggleShortcuts },
   { id: "table.focusFilter", title: "Value filter (WHERE)", scope: "table", defaultBinding: "Mod+F", run: () => void window.dispatchEvent(new Event(EVENTS.focusWhere)) },
+  {
+    id: "table.filterMode",
+    title: "Switch the WHERE filter between smart and SQL",
+    scope: "table",
+    defaultBinding: "Ctrl+Alt+X",
+    run: () => {
+      const tab = selectActiveTab(useStore.getState());
+      if (tab?.kind === "table") useStore.getState().toggleFilterMode(tab.id);
+    },
+  },
   { id: "sidebar.focusFilter", title: "Filter tables", scope: "db", defaultBinding: "Mod+Shift+F", run: () => void window.dispatchEvent(new Event(EVENTS.focusTableFilter)) },
   {
     id: "tabs.new",

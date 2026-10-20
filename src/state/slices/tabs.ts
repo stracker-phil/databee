@@ -1,4 +1,4 @@
-import type { Home, SavedOrigin, Address, AppError, Cell, ColumnEquals, ColumnMeta, ExecuteResponse, Value } from "../../api";
+import type { Home, SavedOrigin, Address, AppError, Cell, ColumnEquals, ColumnMeta, ExecuteResponse, FilterMode, Value } from "../../api";
 import type { CellSource } from "../../lib/cells";
 import type { ColumnStack, StackColumn, ValueColumn } from "../../lib/columns";
 import type { ProjectForm } from "../../lib/ruleForms";
@@ -44,8 +44,10 @@ export interface TableTab {
   database: string;
   table: string;
   view: "data" | "structure";
-  /** Initial free-text WHERE filter, as typed. */
+  /** The WHERE field's applied filter, as typed. */
   filter?: string;
+  /** How Rust reads `filter`; smart when unset. A filter DataBee opens a tab with is SQL. */
+  filterMode?: FilterMode;
   /** Exact column matches Rust turns into SQL, e.g. when opened from a document's source link. */
   where: ColumnEquals[];
   /** Preview tabs (single click in the sidebar) are replaced by the next preview; pinning keeps them. */
@@ -266,6 +268,7 @@ export const tabsSlice: Slice<TabsSlice> = {
             table,
             view: view ?? "data",
             filter,
+            filterMode: filter ? "sql" : undefined,
             where,
             preview: opts.preview ?? false,
             address,

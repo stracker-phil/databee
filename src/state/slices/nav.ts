@@ -52,6 +52,8 @@ export interface NavSlice {
   filterRows: (tabId: string, match: ColumnEquals) => void;
   /** Applies a typed WHERE filter to table tab `tabId`; not addressable, so no history entry. */
   setTableFilter: (tabId: string, filter: string) => void;
+  /** Switches the WHERE field of table tab `tabId` between smart filter and SQL; an applied filter runs again. */
+  toggleFilterMode: (tabId: string) => void;
   navBack: () => Promise<void>;
   navForward: () => Promise<void>;
   /** Stores a renamed connection slug and rewrites the addresses of that connection's tabs. */
@@ -302,6 +304,16 @@ export const navSlice: Slice<NavSlice> = {
           const tab = findTab(s, tabId, "table");
           if (!tab) return {};
           return replaceTab(s, { ...tab, filter: filter || undefined, title: tableTitle(tab.table, tab.where, filter) });
+        });
+      },
+
+      toggleFilterMode(tabId) {
+        const shown = findTab(get(), tabId, "table");
+        if (shown?.filter && blockedWhileLost(get, shown.sessionId, "filter rows")) return;
+        set((s) => {
+          const tab = findTab(s, tabId, "table");
+          if (!tab) return {};
+          return replaceTab(s, { ...tab, filterMode: tab.filterMode === "sql" ? "smart" : "sql" });
         });
       },
 

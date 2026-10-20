@@ -8,9 +8,9 @@ in `src-tauri/src/db_commands.rs`.
 | File | Responsibility |
 |---|---|
 | `db/mod.rs` | The `Database` trait every caller uses (`&dyn Database`, [ADR 0011](adr/0011-database-trait-object.md)); the `Connector` trait that opens one (`open(spec, password, connect_timeout, query_timeout)`, held as `AppState.connector`) and `MySqlConnector`, the only one today; re-exports |
-| `db/types.rs` | Shared DTOs (`ColumnMeta` with its `origin`, `ResultSet` with its `id`, `kinds`, `serialized` and the IPC-skipped `full_texts`, `ExecuteResponse` with its `failure: StatementFailure`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage` with `table` and `keys`, `AppliedFilter`, `FilterKind`) |
+| `db/types.rs` | Shared DTOs (`ColumnMeta` with its `origin`, `ResultSet` with its `id`, `kinds`, `serialized` and the IPC-skipped `full_texts`, `ExecuteResponse` with its `failure: StatementFailure`, `TableInfo`, `TableStructure`, `BrowseRequest` with its IPC-skipped `columns`, `FilterMode`, `BrowsePage` with `table` and `keys`, `AppliedFilter`, `FilterKind`) |
 | `db/dialect.rs` | `Dialect { backslash_escapes }` (`Dialect::MYSQL`, or `from_sql_mode`): `quote_ident` (backticks), `sql_string`, `like` / `like_contains`, `table_ref`, `system_schemas`; `escape_like` |
-| `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
+| `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `text_search`, `page_limit`, `MAX_PAGE_ROWS` |
 | `db/mysql/mod.rs` | `MySqlSession`, the only driver, implementing `Database`: the metadata pool, the editor connection, `connect_options`. It owns all I/O. |
 | `db/mysql/editor.rs` | `EditorConnection`: the editor connection's lock (`lock`, `try_lock`), thread id, session state (as it opened and as the last probe found it: current database, kept variables), `reconnect` (restores both), `kill_query` and `kill_connection` |
 | `db/mysql/session_state.rs` | `SessionState` (database and the `KEPT` session variables), `read` (one probe query), `restore_sql` (the `SET` of the variables a lost connection had changed) |
@@ -247,19 +247,24 @@ SELECT * FROM `db`.`t` [WHERE (<columns>) AND (<filter>\n)] [ORDER BY `col` ASC|
   never bare literals: MySQL compares them as strings for text columns and coerces them for numeric ones.
   `BrowsePage.columnsFilter` (`kind: columns`) reports the group as it ran: `sql` quoted, `label`
   unquoted for the filter bar.
-- **Filter:**
-  - If the table has a single-column primary key and the text matches the id grammar, the text becomes
-    `pk = n`, `pk IN (…)` or `pk BETWEEN a AND b`. The grammar (`db::id_filter::parse_ids`) is comma-separated tokens, each
-    a number or `a-b` (a reversed range is swapped); a number is ASCII digits only (no sign, `007` is 7) and
-    must fit in `u64`. Anything else, such as `+5`, `1-2-3` or an overflowing number, is not an id filter
-    and goes through as SQL.
-  - Any other text is inserted **verbatim** as a WHERE clause. It must be a single statement; `1; DROP …` is
-    rejected.
-  - The filter is wrapped as `WHERE (<filter>\n)`: the newline ends a trailing `#` or `-- ` comment, so it
+- **Filter:** `BrowseRequest.filter_mode` (`FilterMode`) says how `applied_filter` reads the typed text.
+  - **Smart** (the default): if the table has a single-column primary key and the text matches the id
+    grammar, the text becomes `pk = n`, `pk IN (…)` or `pk BETWEEN a AND b`. The grammar
+    (`db::id_filter::parse_ids`) is comma-separated tokens, each a number or `a-b` (a reversed range is
+    swapped); a number is ASCII digits only (no sign, `007` is 7) and must fit in `u64`.
+  - Any other smart text is a text search (`browse::text_search`, `kind: text`): every column of the table
+    `` `col` LIKE '%text%' ``, joined with `OR` (`Dialect::like_contains` makes `%`, `_` and `\` literal).
+    Numeric and date columns match through their text, so `'5'` finds `15` and `2.5`. Text wrapped in `'…'` or
+    `"…"` is searched without the quotes, which makes a number text instead of an id. `Session::browse`
+    loads the schema before the page and fills `BrowseRequest.columns` (never sent by the UI) from
+    `DatabaseSchema.columns`; without them the filter is rejected. Matching follows each column's collation.
+  - **SQL:** the text is inserted **verbatim** as a WHERE clause. It must be a single statement; `1; DROP …`
+    is rejected.
+  - Either filter is wrapped as `WHERE (<filter>\n)`: the newline ends a trailing `#` or `-- ` comment, so it
     can't comment out `ORDER BY` or `LIMIT`.
-  - A filter that ends inside a quote or a `/* */` comment is rejected as `invalid_input`
+  - A SQL filter that ends inside a quote or a `/* */` comment is rejected as `invalid_input`
     (`lexer::is_terminated`). A filter of only whitespace and comments counts as no filter (`lexer::is_blank`).
-  - `browse_sql` returns the applied filter (`kind` is `FilterKind`: `ids` or `sql`) next to the SQL, and
+  - `browse_sql` returns the applied filter (`kind` is `FilterKind`: `ids`, `text` or `sql`) next to the SQL, and
     `browse` hands it to the UI so it can show how the text was read.
 - **New query:** `table_select_sql` returns `browse::select_all_sql` (`SELECT *`, the quoted
   `Dialect::table_ref`, `LIMIT 100`) for the Sidebar's "New query: SELECT …".
