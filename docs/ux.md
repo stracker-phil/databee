@@ -458,6 +458,17 @@ separate tool.
   `NULL`, `no row`). Lines are in the order they were seen; changes found by one poll have no order of their
   own, so they are listed by table, primary key and column. A line jumps to the value (the Document view, the
   value focused).
+- **Table tabs** check the rows they show without live mode (Settings → Queries "Live check in table tabs",
+  default on): every 4 s while the tab is active and the window has the focus, each shown row is read again by
+  its primary key. Nothing on screen changes by itself. A changed row gets the 3px accent mark on its first
+  cell, each changed value an accent corner (top right, flashing once when first seen), a removed row stays in
+  place in `--o3`, struck through. A bar above the grid counts them, `3 rows changed in the database ·
+  Refresh` (`… and 1 row removed …`), with the accent mark on its left and `⌥ on a marked value shows old →
+  new` at its right in `--o3`; Refresh reloads the page and clears the marks. ⌥ over a marked value opens a
+  small `--pop` overlay: the column name, then the shown value in `--o3` → the stored one (mono, one line). The
+  table head says in `.hint` text when a tab does not check: `no live check · no primary key`, `live check
+  paused · pending changes` (until they are applied or discarded), `live check stopped · Refresh to retry`.
+  Editing a cell pauses it silently.
 - **Snapshots:** `s` stores the active column's row (palette: "Snapshot saved query results…" stores the first
   1,000 rows of a saved query's tab, keyed by primary key). "Changes since snapshot…" (palette) lists the
   snapshots of the row or query, newest first, and draws the same marks and list against the one picked; in a

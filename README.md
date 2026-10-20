@@ -43,6 +43,9 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
   through, new and removed rows are marked, and a change list under the document says what changed when.
   Snapshots (`s`) of a row or a saved query's rows show the same marks later ("Changes since snapshot…"), and
   `?compare=<key>` shows two rows side by side with their differences.
+- **Table tabs check their rows:** every 4 s the active tab reads the shown rows again by primary key (one
+  statement); changed and removed rows are marked, a bar counts them with Refresh, and ⌥ on a marked value
+  shows old → new. Nothing changes on screen by itself.
 - **Pinned queries** from the presets: orders, subscriptions, users, customers, guests, products, sessions,
   scheduled actions, content and the options queries open as query tabs with their SQL (`q:` in the palette).
 - **Raw first:** real column names, meta keys and status slugs, with amounts and times next to them where a

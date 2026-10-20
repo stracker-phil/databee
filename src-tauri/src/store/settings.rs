@@ -133,6 +133,8 @@ pub struct Settings {
     pub query_timeout_secs: u32,
     /// How often a live object column reads its row again.
     pub live_interval_secs: u32,
+    /// A table tab checks the rows it shows against the database every few seconds.
+    pub table_live_check: bool,
     pub confirm_destructive: bool,
     pub null_label: String,
     /// Longer text cells cross IPC as a preview; `fetch_cell` returns the full value.
@@ -160,6 +162,7 @@ impl Default for Settings {
             row_limit: 1000,
             query_timeout_secs: 30,
             live_interval_secs: 2,
+            table_live_check: true,
             confirm_destructive: true,
             null_label: "NULL".into(),
             max_cell_chars: 500,

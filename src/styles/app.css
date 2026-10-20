@@ -979,3 +979,27 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 }
 .icon-sheet .icon-choice:hover { color: var(--text); background: var(--row-hover); }
 .icon-sheet .icon-choice[aria-pressed="true"] { border-color: var(--field-line); background: var(--field); color: var(--accent); }
+
+/* ---------- table live check ---------- */
+/* Live mode's change marks in the grid: a changed row carries the 3px accent mark on its first cell, a changed
+   value an accent corner (flashing once when first seen), a removed row stays struck through in --o3. Above the
+   grid one bar counts them; ⌥ on a marked value opens a small --pop overlay with old → new. */
+.grid-row.db-changed > .grid-cell:first-child:not(.selected) { box-shadow: inset 3px 0 0 var(--accent); }
+.grid-row.db-removed > .grid-cell, .grid-row.db-removed > .grid-cell * { color: var(--o3); text-decoration: line-through; }
+.grid-cell.db-changed { position: relative; }
+.grid-cell.db-changed::before {
+  content: ""; position: absolute; top: 0; right: 0; pointer-events: none;
+  border-style: solid; border-width: 0 6px 6px 0; border-color: transparent var(--accent) transparent transparent;
+}
+.grid-cell.db-flash { animation: change-flash 1.6s ease-out; }
+.db-changes {
+  display: flex; align-items: center; gap: 0.462rem; padding: 0.231rem 0.769rem; border-bottom: 1px solid var(--line);
+  background: var(--bg); box-shadow: inset 3px 0 0 var(--accent); font-size: var(--fs-small);
+}
+.db-changes .db-changes-hint { margin-left: auto; }
+.db-peek {
+  position: fixed; z-index: 60; max-width: 36rem; padding: 0.462rem 0.769rem; border-radius: 10px; pointer-events: none;
+  background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); color: var(--text);
+}
+.db-peek-head { margin-bottom: 0.154rem; font-size: var(--fs-small); color: var(--o2); }
+.db-peek-values { font-size: var(--data-font-size); overflow-wrap: anywhere; }

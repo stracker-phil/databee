@@ -227,6 +227,35 @@ Introspection uses `information_schema`:
 database return `TableKeys { primaryKey, indexes, foreignKeys }` per table (the primary key is the `PRIMARY`
 index, so it needs no query of its own). A table without any index or foreign key is absent.
 
+## Live check of table tabs
+
+`src-tauri/src/table_check.rs` reads the rows a table tab shows again, by primary key, so the page can mark
+what changed in the database without reloading ([frontend.md](frontend.md#table-tabs)). It is stateless: the
+page sends the keys and keeps the checksums.
+
+- **Checksum.** One per row over the page's columns: `MD5(CONCAT(IFNULL(MD5(`c1`),'-'), …))`
+  (`row_hash_sql`). Each column contributes 32 hex characters or `-` for NULL, so NULL and `''` differ and
+  no separator or value can make two rows hash alike; the inner `MD5` takes any type (text in any charset,
+  numbers, temporal values, JSON, binary, BIT, spatial) without a cast or a collation mix. Checksums are
+  only ever compared with checksums from the same server, never computed in Rust.
+- **Keys.** `` `k` IN ('1','2') `` or `` (`k1`,`k2`) IN (('1','a'),('2','b')) `` (`keys_in_sql`), the
+  values quoted like a structured filter's; MySQL 8.4 and MariaDB 11.4 both read them as a range on the
+  primary key. Returned rows match the shown keys by their exact text; a key no row has is `null`, a removed
+  row. Every key must name the same columns; at most 500 rows (the largest page).
+- **`table_check`** is the check: `SELECT <key columns>, <checksum> FROM … WHERE <keys>`, one statement for
+  the whole page, whatever its size.
+- **`table_check_rows`** reads the rows whose checksum moved, only those and only when the page has not read
+  them at their current checksum yet: `SELECT <key columns>, <page columns>, <checksum> FROM … WHERE <keys>`,
+  one statement. It compares each stored cell with the shown one (`same_value`): a `longText` preview
+  against the full text the session's `CellCache` keeps for the page's result (by length and preview once
+  evicted), `bytes` by length and hex preview, everything else by equality. `changed` lists the columns that
+  differ; it is empty when only a part the page does not show changed (binary values beyond their preview).
+  The stored cells are cut to `maxCellChars` (`Cell::limited`) like a page's.
+- **Bounds.** Both run on the metadata pool with the query timeout, at most `CHECK_TIMEOUT` (3 s).
+- **What it does not see:** rows that newly match the tab's filter or were inserted (only shown keys are read),
+  and columns added since the page loaded (the checksum covers the page's columns). A dropped column fails
+  the check, which then stops until the page reloads.
+
 ## Schema cache
 
 `src-tauri/src/schema.rs` keeps what only DDL changes, per session (`SchemaCache` in `Session.ext`) and per
@@ -435,6 +464,10 @@ one source table (`document/incoming.rs`) run as one `UNION ALL` of the per-filt
 with `__databee_part` and ordered by it and the key (`Ctx::rows_per_filter`, `Ctx::capped_each`); a capped
 group still counts on its own. Order 4711's document has no two incoming groups on one table, so its count
 stays; `#4711` saves two (the synced post's `wp_postmeta` and `wp_wc_order_product_lookup` groups).
+
+The live check of a table tab is one statement per check for the whole page (`table_check`), plus one
+statement for all rows whose checksum moved since the page last read them (`table_check_rows`), so rows that
+stay changed are not read again on every check.
 
 What stays one query each, and why:
 - `exists` already runs one query per target table. One statement over several tables would need every key

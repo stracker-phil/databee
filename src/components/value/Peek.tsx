@@ -61,6 +61,9 @@ function focusedTarget(): PeekTarget | null {
   };
 }
 
+/** A value the table live check marked: ⌥ shows its change there (`ChangePeek`) instead of a peek. */
+const onChangedValue = (el: Element | null) => !!el?.closest("[data-db-change]");
+
 const overlayOpen = () => {
   const s = useStore.getState();
   return s.dialog !== null || s.paletteOpen;
@@ -74,15 +77,15 @@ function usePeekKeys(): [PeekTarget | null, () => void] {
     let held = false;
     const onOver = (e: MouseEvent) => {
       hovered = e.target instanceof Element ? e.target : null;
-      if (held) {
-        const next = hoveredTarget(hovered);
-        if (next) setTarget(next);
-      }
+      if (!held) return;
+      if (onChangedValue(hovered)) return setTarget(null);
+      const next = hoveredTarget(hovered);
+      if (next) setTarget(next);
     };
     const onDown = (e: KeyboardEvent) => {
       if (e.key !== "Alt" || e.repeat || e.metaKey || e.ctrlKey || e.shiftKey || overlayOpen()) return;
       held = true;
-      setTarget(hoveredTarget(hovered) ?? focusedTarget());
+      setTarget(onChangedValue(hovered) ? null : (hoveredTarget(hovered) ?? focusedTarget()));
     };
     const release = () => {
       held = false;
