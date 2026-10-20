@@ -98,6 +98,11 @@ The Project page: the rules a preset and the project apply to the database.
 
 ![The Project page](docs/images/project.png)
 
+A table's Structure view in a light scheme: each column's type and keys, with the kinds, references and value
+styles the presets apply to it.
+
+![The Structure view of wp_wc_orders in Ayu Light](docs/images/structure.png)
+
 ## CLI
 
 ```sh
