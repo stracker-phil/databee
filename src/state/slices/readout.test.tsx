@@ -25,9 +25,9 @@ describe("readout tab", () => {
       mocked.connect.mockResolvedValue(session);
     });
 
-    it("opens the readout of the current database as the active tab next to a query tab", async () => {
+    it("opens the readout of the current database as the only and active tab", async () => {
       await act(() => store().connect({ spec: session.spec }));
-      expect(store().tabs.map((t) => t.kind).sort()).toEqual(["query", "readout"]);
+      expect(store().tabs.map((t) => t.kind)).toEqual(["readout"]);
       expect(selectActiveTab(store())).toBe(readoutTabs()[0]);
       expect(readoutTabs()[0]).toMatchObject({ database: "db", title: "readout" });
       expect(formatAddress(readoutTabs()[0].address)).toBe("databee://shop/db/");
@@ -35,7 +35,8 @@ describe("readout tab", () => {
 
     it("shows the one readout of a session again when it connects a second time", async () => {
       await act(() => store().connect({ spec: session.spec }));
-      store().activateTab(store().tabs.find((t) => t.kind === "query")!.id);
+      act(() => store().openQueryTab());
+      expect(selectActiveTab(store())?.kind).toBe("query");
       await act(() => store().connect({ spec: session.spec }));
       expect(readoutTabs()).toHaveLength(1);
       expect(store().tabs.filter((t) => t.kind === "query")).toHaveLength(1);

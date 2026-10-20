@@ -21,9 +21,8 @@ interface Props {
   onToggle: (groupId: string) => void;
 }
 
-/** Its `data-table` links the sidebar entry of the same table; hovering that entry lights the band (`lit`). */
+/** Its `data-table` links the sidebar entry of the same table; hovering that entry lights the band (`TableFocus`). */
 export const GroupHeader = memo(function GroupHeader({ group, database, anchor, collapsed, onToggle }: Props) {
-  const lit = useStore((s) => s.hover.linked && !!group.table && s.hover.table === group.table);
   const events = group.via.kind === "events";
   const name = events ? "events" : group.table;
   const toggleLabel = `${collapsed ? "Expand" : "Collapse"} ${name}`;
@@ -32,7 +31,7 @@ export const GroupHeader = memo(function GroupHeader({ group, database, anchor, 
   };
   return (
     <div
-      className={`sh${lit ? " lit" : ""}`}
+      className="sh"
       data-table={group.table || undefined}
       data-src={groupOriginText(group) ?? undefined}
       onClick={onBandClick}

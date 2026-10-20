@@ -262,12 +262,14 @@ describe("store behavior", () => {
   });
 
   describe("connect", () => {
-    it("opens no second query tab for a session that is already open", async () => {
+    it("opens no further query tab, and keeps one session when it connects to an open session again", async () => {
       mocked.connect.mockResolvedValue(session);
+      const queryTabs = () => useStore.getState().tabs.filter((t) => t.kind === "query");
+      const before = queryTabs().length;
 
       await act(() => useStore.getState().connect({ spec: session.spec }));
 
-      expect(useStore.getState().tabs.filter((t) => t.kind === "query" && t.sessionId === "s1")).toHaveLength(1);
+      expect(queryTabs()).toHaveLength(before);
       expect(useStore.getState().sessions).toHaveLength(1);
     });
   });

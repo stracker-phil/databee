@@ -68,7 +68,7 @@ describe("Document group row hover", () => {
       </Area>,
     );
     await hoverRow("post_title");
-    expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false });
+    expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false, sidebar: false });
   });
 
   it("names the meta table when the key of a meta row is hovered", async () => {
@@ -83,7 +83,7 @@ describe("Document group row hover", () => {
       </Area>,
     );
     await hoverRow("_edit_lock");
-    expect(useStore.getState().hover).toEqual({ src: null, table: "wp_postmeta", linked: false });
+    expect(useStore.getState().hover).toEqual({ src: null, table: "wp_postmeta", linked: false, sidebar: false });
   });
 
   it("names the table of a hovered row value and none for the header row", async () => {
@@ -112,6 +112,6 @@ describe("Document group row hover", () => {
       </Area>,
     );
     await userEvent.hover(screen.getByText("post_date"));
-    await waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false }));
+    await waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false, sidebar: false }));
   });
 });

@@ -80,10 +80,6 @@ export const sessionSlice: Slice<SessionSlice> = {
           dialog: null,
           ...resetSelection(),
         }));
-        // Reconnecting the same identity (e.g. a second launch) keeps its query tab.
-        const queryTab = get().tabs.find((t) => t.kind === "query" && t.sessionId === session.id);
-        if (queryTab) get().activateTab(queryTab.id);
-        else get().openQueryTab();
         get().openReadout({ sessionId: session.id });
         void get().loadDatabases(session.id);
         void get().loadUiState(session.identity);

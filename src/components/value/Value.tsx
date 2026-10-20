@@ -216,8 +216,8 @@ function peekData(value: StoredValue) {
 }
 
 /**
- * One stored value drawn by its kind; `data-src` and `data-table` feed the status bar (`useValueHover`), a
- * reference's `data-ref`, `data-via`, `data-by` and `data-from` (its own row) the peek.
+ * One stored value drawn by its kind; `data-src` and `data-table` feed the status bar (`useValueHover`),
+ * `data-lead-table` (`leadTable`) the linked table highlight (`TableFocus`), a reference's `data-ref`, `data-via`, `data-by` and `data-from` (its own row) the peek.
  */
 export const Value = memo(function Value({ value, onOpen, density = "full" }: Props) {
   const acts = !!onOpen && opensOnClick(value, density);
@@ -230,6 +230,7 @@ export const Value = memo(function Value({ value, onOpen, density = "full" }: Pr
       className={`val val-${value.kind.kind}`}
       data-src={provenanceText(value) ?? undefined}
       data-table={value.source?.table}
+      data-lead-table={leadTable(value)?.table}
       data-stage={stage}
       data-stage-label={stage ? cellText(value.raw) : undefined}
       data-stage-list={stage ? "values" : undefined}

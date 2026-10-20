@@ -13,6 +13,7 @@ use super::{
 };
 use crate::address::{Address, Target};
 use crate::db::ResultSet;
+use crate::db::lexer::read_tables;
 use crate::document::summary::{self, RowRef};
 use crate::document::{Selection, Summary, moment, peek};
 use crate::error::AppResult;
@@ -76,6 +77,7 @@ async fn pinned_line(ctx: &Ctx<'_>, sources: RuleSources<'_>, entry: &SavedEntry
         id: entry.id.clone(),
         title: entry.title.clone(),
         sql: entry.sql.clone(),
+        tables: read_tables(&entry.sql),
         origin: entry.origin.clone(),
         address: query_address(ctx, &entry.id),
         result,
@@ -725,6 +727,7 @@ delete = { where = "name = ''" }
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].result, Some(PinnedResult::Count { count: 7 }));
         assert_eq!(lines[0].error, None);
+        assert_eq!(lines[0].tables, ["f_orders"]);
         assert_eq!(
             lines[0].address,
             ctx.address(Target::Query { id: "c1".into() })

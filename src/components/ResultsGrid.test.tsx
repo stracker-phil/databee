@@ -104,7 +104,7 @@ describe("ResultsGrid row hover", () => {
     const valueAt = (row: number, col: number) => value({ raw: rs.rows[row][col], source: provenance("wp_posts", "1") });
     render(<HoverGrid columns={rs.columns} rows={rs.rows} valueAt={valueAt} />);
     await userEvent.hover(rowOf("Hello world"));
-    await waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false }));
+    await waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false, sidebar: false }));
   });
 
   it("links no table for a row mixing values of several tables", async () => {

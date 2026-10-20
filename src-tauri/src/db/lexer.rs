@@ -277,6 +277,42 @@ pub fn pieces(statement: &str) -> Vec<Piece<'_>> {
     scan(statement).collect()
 }
 
+/// Tables named right after `FROM` or `JOIN`, in order and once each; `db.table` gives `table`.
+pub fn read_tables(statement: &str) -> Vec<String> {
+    let pieces: Vec<Piece> = scan(statement).filter(|p| !p.is_comment()).collect();
+    let mut tables = Vec::new();
+    for (i, piece) in pieces.iter().enumerate() {
+        if !(piece.is_keyword("FROM") || piece.is_keyword("JOIN")) {
+            continue;
+        }
+        let Some(name) = table_name(&pieces[i + 1..]) else {
+            continue;
+        };
+        if !tables.contains(&name) {
+            tables.push(name);
+        }
+    }
+    tables
+}
+
+fn table_name(pieces: &[Piece]) -> Option<String> {
+    let first = identifier(pieces.first()?)?;
+    match pieces.get(1) {
+        Some(dot) if dot.is_symbol(".") => identifier(pieces.get(2)?),
+        _ => Some(first),
+    }
+}
+
+fn identifier(piece: &Piece) -> Option<String> {
+    match piece.kind {
+        Kind::Word => Some(piece.text.to_string()),
+        Kind::Quoted if piece.text.len() >= 2 && piece.text.starts_with('`') => {
+            Some(piece.text[1..piece.text.len() - 1].replace("``", "`"))
+        }
+        _ => None,
+    }
+}
+
 /// False when the text ends inside a quote or a comment.
 pub fn is_terminated(sql: &str) -> bool {
     let mut scanner = scan(sql);
@@ -318,6 +354,32 @@ mod tests {
     fn only_whitespace_and_comments_is_blank() {
         for (sql, blank) in [(" -- x\n /* y */ ", true), ("", true), ("--x", false)] {
             assert_eq!(is_blank(sql), blank, "{sql}");
+        }
+    }
+
+    #[test]
+    fn read_tables_lists_tables_after_from_and_join_once_each_in_order() {
+        for (sql, expected) in [
+            ("SELECT * FROM a", vec!["a"]),
+            ("select * from a join b on a.id = b.id", vec!["a", "b"]),
+            ("SELECT * FROM a JOIN a ON 1 JOIN b ON 1", vec!["a", "b"]),
+            ("SELECT 1", vec![]),
+            ("SELECT * FROM `we``ird`", vec!["we`ird"]),
+            ("SELECT * FROM db.t", vec!["t"]),
+            ("SELECT * FROM `db`.`t`", vec!["t"]),
+            ("SELECT * FROM (SELECT 1) AS s", vec![]),
+            (
+                "SELECT * FROM (SELECT 1 FROM inner_t) AS s",
+                vec!["inner_t"],
+            ),
+            ("SELECT * FROM /* x */ a", vec!["a"]),
+            ("SELECT * FROM -- x\n a", vec!["a"]),
+            ("SELECT 'from x' FROM a", vec!["a"]),
+            ("SELECT 1 /* from x */", vec![]),
+            ("SELECT 1 -- join y\n", vec![]),
+            ("SELECT \"from x\"", vec![]),
+        ] {
+            assert_eq!(read_tables(sql), expected, "{sql}");
         }
     }
 

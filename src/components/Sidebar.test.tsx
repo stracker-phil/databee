@@ -66,14 +66,14 @@ describe("Sidebar", () => {
     const entry = (name: string) => screen.getByText(name).closest("[role=treeitem]");
 
     it.each([false, true])("lights the entry when a row, value or link of that table is hovered (linked: %s)", (linked) => {
-      useStore.setState({ hover: { src: null, table: "wp_posts", linked } });
+      useStore.setState({ hover: { src: null, table: "wp_posts", linked, sidebar: false } });
       render(<Sidebar />);
       expect(entry("wp_posts")).toHaveClass("lit");
       expect(entry("wp_options")).not.toHaveClass("lit");
     });
 
     it.each([false, true])("keeps the selected row selected while another row is lit (linked: %s)", (linked) => {
-      useStore.setState({ tabs: [tableTab()], activeTabId: "t1", hover: { src: null, table: "wp_options", linked } });
+      useStore.setState({ tabs: [tableTab()], activeTabId: "t1", hover: { src: null, table: "wp_options", linked, sidebar: false } });
       render(<Sidebar />);
       expect(entry("wp_posts")).toHaveClass("sel");
       expect(entry("wp_posts")).not.toHaveClass("lit");
@@ -82,7 +82,7 @@ describe("Sidebar", () => {
     });
 
     it.each([false, true])("marks the selected row as selected and lit at once when it is hovered (linked: %s)", (linked) => {
-      useStore.setState({ tabs: [tableTab()], activeTabId: "t1", hover: { src: null, table: "wp_posts", linked } });
+      useStore.setState({ tabs: [tableTab()], activeTabId: "t1", hover: { src: null, table: "wp_posts", linked, sidebar: false } });
       render(<Sidebar />);
       expect(entry("wp_posts")).toHaveClass("sel", "lit");
     });

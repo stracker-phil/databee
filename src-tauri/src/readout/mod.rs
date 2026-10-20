@@ -186,6 +186,8 @@ pub struct PinnedLine {
     pub id: String,
     pub title: String,
     pub sql: String,
+    /// The tables the query names after `FROM` or `JOIN`.
+    pub tables: Vec<String>,
     pub origin: SavedOrigin,
     pub address: Address,
     pub result: Option<PinnedResult>,

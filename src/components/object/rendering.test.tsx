@@ -80,7 +80,7 @@ describe("object view with a long meta group", () => {
 
     const sources = ["wp_wc_orders_meta.meta_value · id 1001", "wp_wc_orders_meta.meta_value · id 1002", "wp_wc_orders_meta.meta_key · id 1003"];
     for (const src of sources) {
-      act(() => useStore.getState().setHover({ src, table: "wp_wc_orders_meta", linked: false }));
+      act(() => useStore.getState().setHover({ src, table: "wp_wc_orders_meta", linked: false, sidebar: false }));
     }
 
     expect(commits).toHaveLength(0);

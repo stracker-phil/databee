@@ -9,7 +9,8 @@ function hoverOf(target: EventTarget | null): ValueHover {
   const found = target instanceof Element ? target.closest<HTMLElement>("[data-src], [data-table], [data-row-table]") : null;
   if (!found) return NO_HOVER;
   const { src, table, rowTable } = found.dataset;
-  return { src: src ?? null, table: table ?? rowTable ?? null, linked: table !== undefined && !found.classList.contains("val") };
+  const linked = table !== undefined && !found.classList.contains("val");
+  return { src: src ?? null, table: table ?? rowTable ?? null, linked, sidebar: linked && !!found.closest(".sidebar") };
 }
 
 /**

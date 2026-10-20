@@ -40,6 +40,29 @@ describe("Value", () => {
     expect(screen.getByText("7")).toHaveClass("val-pk");
   });
 
+  describe("lead table", () => {
+    const toTable = (...targets: Address[]) => value({ raw: num("12"), kind: { kind: "reference", targets, by: preset, exists: null } });
+
+    it.each([
+      ["a reference into one table", toTable(row("wp_users", "12")), "wp_users"],
+      ["a reference to several rows of one table", toTable(row("wp_users", "12"), row("wp_users", "13")), "wp_users"],
+      ["a primary key", value({ raw: num("7"), kind: { kind: "primaryKey", address: row("wp_posts", "7") } }), "wp_posts"],
+    ])("names the table of %s", (_name, stored, table) => {
+      const { container } = render(<Value value={stored} />);
+      expect(root(container)).toHaveAttribute("data-lead-table", table);
+    });
+
+    it("names no table for a reference into several tables", () => {
+      const { container } = render(<Value value={toTable(row("wp_users", "12"), row("wp_posts", "12"))} />);
+      expect(root(container)).not.toHaveAttribute("data-lead-table");
+    });
+
+    it("names no table for a plain number", () => {
+      const { container } = render(<Value value={value({ raw: num("7"), kind: { kind: "number" } })} />);
+      expect(root(container)).not.toHaveAttribute("data-lead-table");
+    });
+  });
+
   describe("reference", () => {
     it("is a link that opens the value on click", async () => {
       const onOpen = vi.fn<OpenValue>();

@@ -594,14 +594,14 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 /* The trail above the panes, then the panes side by side with hairline dividers (Splitter); the active pane has
    an accent line on top while others show next to it. Those others are quiet (docs/ux.md, Layout): their accent
    leans toward graphite (keys, links, focus, selection; theme.css derives --cell, --sel, --lit from it again),
-   their background toward chrome and their content a little lighter, so one pane and one focus ring stand out. */
+   their background darker (--bg-quiet) and their content fainter, so one pane and one focus ring stand out. */
 .object-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .stack { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
 .stack > .column { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; outline: none; }
 .stack > .splitter { flex: none; }
 .stack > .column.active::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: var(--accent); z-index: 1; pointer-events: none; }
 .stack > .column.quiet { --accent: var(--accent-quiet); --bg: var(--bg-quiet); background: var(--bg); }
-.stack > .column.quiet > * { opacity: 0.96; }
+.stack > .column.quiet > * { opacity: 0.85; }
 
 /* ---------- trail ---------- */
 /* One line in the UI font; the crumbs of the shown panes share a --band pill. Folded crumbs sit in "…" menus,
@@ -713,8 +713,8 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 :is(.object, .project, .readout) .sh .via { flex: 1 1 0; color: var(--o2); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 :is(.object, .project, .readout) .sh .via + .spacer { display: none; }
 :is(.object, .project, .readout) .sh .cnt { flex: none; color: var(--o3); font-size: var(--fs-small); white-space: nowrap; }
-.object .sh.lit { background: var(--lit); box-shadow: inset 3px 0 0 var(--accent); }
-.object .sh.lit .tn { color: var(--accent); }
+/* TableFocus dims and lights these by table while a table link is hovered. */
+.main :is([data-row-table], .readout .row, .attention) > *, .main :is(.sh, .entity-chip) { transition: opacity 0.12s; }
 :is(.object, .project, .readout) .sh .sh-toggle {
   flex: none; align-self: center; display: inline-flex; margin-left: -0.462rem; padding: 0.154rem; border: none; border-radius: 3px;
   background: none; color: var(--o3);

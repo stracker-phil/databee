@@ -727,7 +727,11 @@ title?: string | null, sql: string, home?: Home | null, };
 /**
  * A saved query pinned with `show = "count"` or `"rows"`.
  */
-export type PinnedLine = { id: string, title: string, sql: string, origin: SavedOrigin, address: Address, result: PinnedResult | null, error: string | null, };
+export type PinnedLine = { id: string, title: string, sql: string, 
+/**
+ * The tables the query names after `FROM` or `JOIN`.
+ */
+tables: Array<string>, origin: SavedOrigin, address: Address, result: PinnedResult | null, error: string | null, };
 
 export type PinnedResult = { "show": "count", count: number, } | { "show": "rows", columns: Array<string>, rows: Array<ReadoutRow>, };
 

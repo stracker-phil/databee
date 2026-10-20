@@ -241,7 +241,7 @@ function EntityChip({ entity, withTable, shown, open, onToggle, onDetails }: Chi
   const name = withTable ? entityKey(entity) : entity.entity;
   return (
     <span className={`entity-chip${shown ? " on" : ""}${entity.error ? " failed" : ""}`}>
-      <button aria-pressed={shown} data-stage={`readout:entity:${name}`} data-stage-label={name} title={entity.error ?? `${entity.table} · preset ${entity.preset}`} onClick={onToggle}>
+      <button aria-pressed={shown} data-table={entity.table} data-stage={`readout:entity:${name}`} data-stage-label={name} title={entity.error ?? `${entity.table} · preset ${entity.preset}`} onClick={onToggle}>
         <span>{entity.entity}</span>
         {withTable && <span className="tbl">{entity.table}</span>}{" "}
         <span className="cnt">{entity.error ? "failed" : entity.countInWindow}</span>
@@ -444,7 +444,7 @@ function WatchedSection({ part, tab, collapse, onOpen }: { part: Part<WatchedLin
 
 function PinnedTitle({ line }: { line: PinnedLine }) {
   return (
-    <button className="line-open" data-stage={`readout:pinned:${line.id}`} data-stage-label={line.title} onClick={() => open(line.address)}>
+    <button className="line-open" data-table={line.tables[0]} data-stage={`readout:pinned:${line.id}`} data-stage-label={line.title} onClick={() => open(line.address)}>
       {line.title}
       <OpenHint effect="go" />
     </button>

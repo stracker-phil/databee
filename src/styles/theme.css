@@ -18,9 +18,10 @@
   --accent: var(--a-orange);
   --o2: color-mix(in srgb, var(--text) 62%, transparent);
   --o3: color-mix(in srgb, var(--text) 40%, transparent);
-  /* A pane beside the active one (.column.quiet): its accent toward graphite, its background toward chrome. */
+  /* A pane beside the active one (.column.quiet): its accent toward graphite. */
   --accent-quiet: color-mix(in oklab, var(--accent) 45%, var(--a-graphite));
-  --bg-quiet: color-mix(in srgb, var(--bg) 70%, var(--chrome));
+  /* What the linked table highlight leaves of everything else (TableFocus). */
+  --dimmed: 0.3;
 
   /* One scrollbar everywhere (app.css, scrollbars): an 8px track, a 6px thumb. */
   --scrollbar-size: 8px;

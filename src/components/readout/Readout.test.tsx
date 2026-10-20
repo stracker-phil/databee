@@ -39,6 +39,7 @@ const pinned = (count: number): PinnedLine => ({
   id: "drafts",
   title: "Open drafts",
   sql: "SELECT COUNT(*) FROM wp_posts",
+  tables: [],
   origin: { kind: "project" },
   address: address("shop", "db", { kind: "query", id: "drafts" }),
   result: { show: "count", count },
@@ -451,19 +452,32 @@ describe("Readout", () => {
     it("names the table of an anomaly card when its empty space is hovered", async () => {
       await shownHovering(readoutOf({ anomalies: { items: [anomaly()], error: null } }));
       await hover(screen.getByText("12"));
-      expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false });
+      expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false, sidebar: false });
     });
 
     it("names the table of a recently created line", async () => {
       await shownHovering(withCreated([createdItem("post", "7")]));
       await hover(screen.getByRole("button", { name: "#7" }).closest<HTMLElement>(".row")!);
-      expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false });
+      expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false, sidebar: false });
     });
 
     it("names the table of a recent object row", async () => {
       await shownHovering(readoutOf({ recent: { items: [recent("7")], error: null } }));
       await hover(within(screen.getByRole("region", { name: "Recently opened" })).getByText("wp_posts"));
-      expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false });
+      expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false, sidebar: false });
+    });
+
+    it("links the first table of a pinned query when its title is hovered", async () => {
+      const line: PinnedLine = { ...pinned(3), tables: ["wp_wc_orders", "wp_posts"] };
+      await shownHovering(readoutOf({ pinned: { items: [line], error: null } }));
+      await hover(screen.getByRole("button", { name: "Open drafts" }));
+      expect(useStore.getState().hover).toEqual({ src: null, table: "wp_wc_orders", linked: true, sidebar: false });
+    });
+
+    it("links the table of an entity chip when it is hovered", async () => {
+      await shownHovering(withCreated([createdItem("post", "7")]));
+      await hover(screen.getByRole("button", { name: /^post/ }));
+      expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: true, sidebar: false });
     });
 
     it("gives a hovered value its own provenance", async () => {

@@ -4,6 +4,7 @@ import { ConnectScreen } from "./components/ConnectScreen";
 import { Dialogs } from "./components/Dialogs";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
+import { TableFocus } from "./components/TableFocus";
 import { TabBar, TabPanels } from "./components/Tabs";
 import { Toasts } from "./components/Toasts";
 import { Toolbar } from "./components/Toolbar";
@@ -65,6 +66,7 @@ function Workspace() {
       <main className="main">
         <TabBar />
         <TabPanels />
+        <TableFocus />
       </main>
     </div>
   );

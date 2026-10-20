@@ -43,6 +43,7 @@ file; a Vitest scan enforces it.
 |---|---|---|---|
 | `--chrome` | `#1f2430` | `#eef0f2` | chrome surface |
 | `--bg` | `#242936` | `#fcfcfc` | content surface |
+| `--bg-quiet` | `#1b1f29` | `#f1f2f4` | a pane beside the active one, darker than `--bg` |
 | `--pop` | `#323a4c` | `#ffffff` | overlay surface |
 | `--field` | `#1a1f29` | `#ffffff` | input background (inset) |
 | `--field-line` | `#3b4254` | `#cdd1d6` | input and overlay border, key caps |
@@ -83,7 +84,6 @@ Derived tokens in `src/styles/theme.css`, the same for every scheme:
 | `--sel` | `--accent` at 20% | selected row or sidebar entry, focused value |
 | `--lit` | `--accent` at 15% | linked band highlight |
 | `--accent-quiet` | `--accent` at 45%, the rest `--a-graphite` (oklab) | the accent of a pane beside the active one |
-| `--bg-quiet` | `--bg` at 70%, the rest `--chrome` | the background of a pane beside the active one |
 | `--scrollbar-size` | 8px | scrollbar track, both directions |
 | `--scrollbar-thumb`, `-hover`, `-active` | `--o3` at 55%, `--o3`, `--o2` | scrollbar thumb |
 | `--pad` | 1, 3, 5 or 8px | row padding (see row anatomy) |
@@ -185,8 +185,12 @@ Queue change (accent, disabled while the preview loads or failed; a failure show
 **Rows view:** per group the same band, the group's `WHERE` in tertiary mono, then a compact grid (grid header:
 column name, type below) with the table's full columns, 12 rows high before it scrolls.
 
-**Linked table highlight:** hovering a table in the sidebar lights every band of that table
-(`--lit` background, 3px accent bar on the left, accent table name); hovering a band lights its sidebar
+**Linked table highlight:** hovering a table in the sidebar lights everything of that table in the panes:
+its bands (`--lit` background, 3px accent bar on the left, accent table name), its rows (`--lit` background),
+links naming it (accent text) and every reference into it or key of its rows (`--lit` chip); everything else
+(rows and bands of other tables, readout lines and entity chips of none or another) fades to `--dimmed`,
+except the cells holding such a reference or link. Hovering a
+table link in the panes (a band, a readout table name) lights the same without dimming. Hovering a band lights its sidebar
 entry (its name in the accent; the icon keeps its color; no background). Hovering a value lights only its provenance table in the
 sidebar (its name in the accent); hovering anywhere else on a row of a known table (Document, grid, readout,
 palette hit) does the same for its table. The selected table keeps its `--sel` background, so at most one
@@ -321,7 +325,7 @@ value, else the current address. The Hover column is what the status bar shows.
   left; the other columns are hidden and live only in the trail. Value columns are panes too. While several
   panes show, the active one has a 2px accent line on top and the others are quiet: their accent leans toward
   graphite (`--accent-quiet`, so keys, links, the focused value's outline and `--sel` in them are muted), their
-  background toward chrome (`--bg-quiet`) and their content is at 96% opacity, so one pane and one strong focus
+  background is the darker scheme token `--bg-quiet` and their content is at 85% opacity, so one pane and one strong focus
   ring stand out. A single pane is never quiet; `h`/`l` move it (to a hidden column too, which then
   shows), a click in a pane activates it; ⌘⌥← / ⌘⌥→ do the same from anywhere in the tab (the keyboard focus
   moves into the pane, also from the sidebar), but not while text is edited. Every column after the first has a

@@ -105,7 +105,7 @@ and the state types, so components import everything from `state/store`.
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow, pin, shortcuts, snapshots) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
 | `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`, the selected grid cell of a tab (in an object tab: of its active column). `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets a value column and the value commands fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
-| `hover` | `{ src, table, linked }` under the pointer (`setHover`, from `useValueHover`): a value's provenance, or a table link (`linked`: a sidebar row, a section band); the status bar shows `src`, the linked table highlight reads `table` |
+| `hover` | `{ src, table, linked, sidebar }` under the pointer (`setHover`, from `useValueHover`): a value's provenance, or a table link (`linked`: a sidebar row, a section band); the status bar shows `src`, the linked table highlight reads `table` |
 | `queryCounter` | query tabs opened per session, for unique default titles (`Query 3`) |
 | `dataVersion` | bumped by ⌘R (`refreshView`, which first drops the session's schema cache with `refreshSchema`) and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
@@ -166,8 +166,8 @@ Conventions:
   its `pending` and `applied` entries (`changes`), its `documents` (`objects`), its `savedQueries` (`saved`), its `projectRules` and `rulesInfo` (`project`)
   and its `readouts` (`readout`), its `live` columns and `changeMarks` (`live`). A slice that keys data by session implements `sessionClosed`.
 - `switchDatabase` resets the selection and moves the session's readout tab, if it has one, to the new database
-  without activating it. `connect` resets the selection, reuses the session's query tab on reconnect (else
-  opens one) and then opens the readout of the session's database ([Readout](#readout)).
+  without activating it. `connect` resets the selection and opens the readout of the session's database ([Readout](#readout)), no
+  other tab.
 - Tab updates are typed: `updateQueryTab` and `updateTableTab` only patch tabs of their kind.
 - View state (`viewState` slice: `setTableWidths`, `setPaneSize`, `toggleSidebar`, `toggleGroupCollapsed`) is written debounced; `flushUiState` writes it on
   `beforeunload` (registered in `App.tsx`).
@@ -421,7 +421,7 @@ Every value carries `data-src` (`provenanceText`) and `data-table` (its provenan
 (`AppShell` in `App.tsx`) adds one delegated `mouseover`/`mouseleave` listener to the app, reads the nearest
 `[data-src]`, `[data-table]` or `[data-row-table]` at most once per animation frame and writes `hover`
 (`setHover` skips equal values): a `.val` element is a value (`linked: false`), anything else with `data-table`
-a table link (`linked: true`; a sidebar row, a section band, whose `data-src` is the rule's origin). A row of a
+a table link (`linked: true`, and `sidebar` inside `.sidebar`; a sidebar row, a section band, whose `data-src` is the rule's origin). A row of a
 known table carries `data-row-table` and counts as a value of that table (`linked: false`) wherever the pointer
 is on no value: Document rows (`groups.tsx`, the group's table; events rows, the value's), grid rows
 (`ResultsGrid`, when every sourced value of the row shares one table), readout rows and palette hits
@@ -669,7 +669,12 @@ the [readout](#readout) lists.
   for every row of the document's table. `useCollapsedGroups(owner)` reads it for both views. A collapsed group
   keeps its band and drops its body and `+n` button; in Rows its grid does not mount, so nothing is browsed. A
   click or key in the view ends `useViewScroll`'s offset restore, so collapsing does not jump back.
-- **Linked table highlight:** a section band takes `lit` while `hover` is a table link to its table; sidebar
+- **Linked table highlight:** `TableFocus` (in `Workspace`) renders a `<style>` while `hover` is a table link
+  (`linked`): selectors by `data-row-table`, `.sh[data-table]`, other `data-table` links and `.val[data-lead-table]`
+  (a reference's single target table or a key's own table, `leadTable` in `Value.tsx`) light that table in
+  `.main`; with `hover.sidebar` (the link is a sidebar row) the cells of other rows (other tables' rows, readout
+  lines and anomalies), other bands and entity chips drop to `--dimmed`, except cells holding a reference or
+  link into the table. Sidebar
   rows take `lit` for a link or a hovered value of that table: the name in the accent, the icon unchanged, no
   background; only the selected row (`sel`) has one.
 

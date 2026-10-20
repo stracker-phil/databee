@@ -445,12 +445,20 @@ describe("ObjectPanel", () => {
   });
 
   describe("linked table highlight", () => {
-    it("lights both bands of a table when its sidebar row is hovered", async () => {
+    it("focuses the table of the bands, dimming the rest, when its sidebar row is hovered", async () => {
       await openOrder();
       expect(bandsOf("wp_wc_orders")).toHaveLength(2);
       await userEvent.hover(within(screen.getByRole("tree")).getByText("wp_wc_orders"));
-      await waitFor(() => bandsOf("wp_wc_orders").forEach((band) => expect(band).toHaveClass("lit")));
-      expect(bandsOf("wp_wc_orders_meta")[0]).not.toHaveClass("lit");
+      const focus = await screen.findByTestId("table-focus");
+      expect(focus.textContent).toContain('.sh[data-table="wp_wc_orders"]');
+      expect(focus.textContent).toContain("var(--dimmed)");
+    });
+
+    it("does not give a band a lit class of its own", async () => {
+      await openOrder();
+      await userEvent.hover(within(screen.getByRole("tree")).getByText("wp_wc_orders"));
+      await screen.findByTestId("table-focus");
+      for (const band of bandsOf("wp_wc_orders")) expect(band).not.toHaveClass("lit");
     });
 
     it("lights the sidebar row when a band is hovered", async () => {
@@ -464,7 +472,7 @@ describe("ObjectPanel", () => {
       await openOrder();
       await userEvent.hover(screen.getByText("119.00"));
       await waitFor(() => expect(sidebarRow("wp_wc_orders")).toHaveClass("lit"));
-      for (const band of bandsOf("wp_wc_orders")) expect(band).not.toHaveClass("lit");
+      expect(screen.queryByTestId("table-focus")).not.toBeInTheDocument();
     });
   });
 

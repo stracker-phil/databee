@@ -817,7 +817,7 @@ primary key has a document.
 | `anomalies` | each applied preset's `[[anomaly]]` whose value is a non-zero number (or whose query failed), with `count`, `text`, the `address` `open` names (a saved query, or a table address with the `where` as `filter`) and `fix` (the `scope = "table"` action of the same preset and the table address to plan it on) |
 | `recentlyCreated` | one timeline of the 20 newest rows over every entity with a `created` column, newest first, each row once: each entity's newest 20 by `created` (its `filter` applies; one query each, kept as `entities[].sql` with `countInWindow` and `error`), merged by moment (zero dates last); each item is the row's address, the entity its document shows, its `created` value and its [summary](#entity) |
 | `watched` | the project's [watched values](#watched-values) as they are now, in the order they were added: each a `WatchedLine { id, label, labelled, source, path, address, value, tree, missing, error }` |
-| `pinned` | saved queries pinned with `show = "count"` (`COUNT(*)` of the query) or `"rows"` (the query with `LIMIT <limit>`, 5 by default, unless it has a `LIMIT`) |
+| `pinned` | saved queries pinned with `show = "count"` (`COUNT(*)` of the query) or `"rows"` (the query with `LIMIT <limit>`, 5 by default, unless it has a `LIMIT`); each line carries `tables`, the tables its SQL names after `FROM` or `JOIN` (`db::lexer::read_tables`), and its title lights the first one in the sidebar |
 | `recent` | the project's recent objects (`store::recent_objects`), newest first: each row address with when it was opened and its summary |
 
 Each part is a `Part { items, error }`: it runs with its own timeout (10 s for the part, each query at most

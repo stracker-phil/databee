@@ -32,15 +32,17 @@ export type RecentNav =
 
 /**
  * What is under the pointer: a value (its provenance text and table), or a table link such as a sidebar
- * row or a section band (`linked`), which lights every element of that table (docs/ux.md).
+ * row or a section band (`linked`), which lights every element of that table (docs/ux.md); a sidebar row
+ * (`sidebar`) also dims everything else in the panes.
  */
 export interface ValueHover {
   src: string | null;
   table: string | null;
   linked: boolean;
+  sidebar: boolean;
 }
 
-export const NO_HOVER: ValueHover = { src: null, table: null, linked: false };
+export const NO_HOVER: ValueHover = { src: null, table: null, linked: false, sidebar: false };
 
 export interface UiSlice {
   toasts: Toast[];
@@ -114,7 +116,7 @@ export const uiSlice: Slice<UiSlice> = {
 
     setHover(hover) {
       const current = get().hover;
-      if (current.src !== hover.src || current.table !== hover.table || current.linked !== hover.linked) set({ hover });
+      if (current.src !== hover.src || current.table !== hover.table || current.linked !== hover.linked || current.sidebar !== hover.sidebar) set({ hover });
     },
   }),
 };

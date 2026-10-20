@@ -194,7 +194,7 @@ describe("CommandPalette", () => {
       mocked.paletteSearch.mockResolvedValue([hit("4711", "wp_posts")]);
       await userEvent.type(openPalette(), "#4711");
       await userEvent.hover(await screen.findByRole("option", { name: "wp_posts #4711" }));
-      await vi.waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false }));
+      await vi.waitFor(() => expect(useStore.getState().hover).toEqual({ src: null, table: "wp_posts", linked: false, sidebar: false }));
     });
 
     it("searches free text from 6 characters and not below", async () => {
