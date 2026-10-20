@@ -1,11 +1,11 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, EMPTY_UI_STATE, type AnomalyLine, type CreatedEntity, type CreatedItem, type PinnedLine, type RecentLine, type Summary } from "../../api";
+import { api, EMPTY_UI_STATE, type AnomalyLine, type CreatedEntity, type CreatedItem, type DecodedValue, type PinnedLine, type RecentLine, type Summary, type WatchedLine } from "../../api";
 import { address, formatAddress } from "../../lib/address";
 import { NO_HOVER, selectActiveTab, useStore } from "../../state/store";
 import { connectedStore, readoutOf, readoutTab, text, value } from "../../test/fixtures";
@@ -534,6 +534,164 @@ describe("Readout", () => {
       await shown(readoutOf({ anomalies: { items: [anomaly()], error: null }, pinned: { items: [pinned(3)], error: null } }));
       expect(hint(screen.getByRole("button", { name: "Show rows" }))).toBe("go");
       expect(hint(screen.getByRole("button", { name: "Open drafts" }))).toBe("go");
+    });
+  });
+
+  describe("watched values", () => {
+    const section = () => within(screen.getByRole("region", { name: "Watched values" }));
+    const cfgSource = { table: "wp_options", column: "option_value", row: [{ column: "option_name", value: "cfg" }] };
+    const sourceLabel = "wp_options.option_value · option_name cfg";
+    const optionRow = address("shop", "db", { kind: "row", table: "wp_options", key: "cfg" });
+
+    const watchedLine = (patch: Partial<WatchedLine> = {}): WatchedLine => ({
+      id: "w1",
+      label: "wp_options.option_value",
+      labelled: false,
+      source: cfgSource,
+      path: [],
+      address: optionRow,
+      value: value({ raw: text("live"), source: cfgSource }),
+      tree: null,
+      missing: null,
+      error: null,
+      ...patch,
+    });
+    const withWatched = (...items: WatchedLine[]) => readoutOf({ watched: { items, error: null } });
+    const rename = () => userEvent.click(screen.getByRole("button", { name: "Rename wp_options.option_value" }));
+    const labelField = () => screen.getByRole("textbox", { name: `Label of ${sourceLabel}` });
+
+    it("shows the band with its hint and no lines when nothing is watched", async () => {
+      await shown();
+      expect(section().getByText("no watched values")).toBeInTheDocument();
+      expect(section().getByText("0 values")).toBeInTheDocument();
+      expect(section().getByText(/right-click a value or a key of a decoded value: Watch on readout/)).toBeInTheDocument();
+    });
+
+    it("shows the label, the current value and the source of a watched cell", async () => {
+      await shown(withWatched(watchedLine()));
+      expect(section().getByText("1 value")).toBeInTheDocument();
+      expect(section().getByRole("button", { name: "wp_options.option_value" })).toBeInTheDocument();
+      expect(section().getByText("live")).toBeInTheDocument();
+      expect(section().getByText(sourceLabel)).toBeInTheDocument();
+    });
+
+    it("appends the path of a watched node to its source", async () => {
+      await shown(withWatched(watchedLine({ path: ["opts", "mode"] })));
+      expect(section().getByText(`${sourceLabel} › opts › mode`)).toBeInTheDocument();
+    });
+
+    it("opens the watched row from its label", async () => {
+      await shown(withWatched(watchedLine()));
+      await userEvent.click(section().getByRole("button", { name: "wp_options.option_value" }));
+      expect(formatAddress(activeObject().address)).toBe("databee://shop/db/wp_options/cfg");
+    });
+
+    it("shows the label as plain text when the row has no address", async () => {
+      await shown(withWatched(watchedLine({ address: null })));
+      expect(section().getByText("wp_options.option_value")).toBeInTheDocument();
+      expect(section().queryByRole("button", { name: "wp_options.option_value" })).not.toBeInTheDocument();
+    });
+
+    it("shows a custom label instead of the default one", async () => {
+      await shown(withWatched(watchedLine({ label: "Gateway mode", labelled: true })));
+      expect(section().getByRole("button", { name: "Gateway mode" })).toBeInTheDocument();
+    });
+
+    it("shows why the value is missing", async () => {
+      await shown(withWatched(watchedLine({ value: null, missing: "no row with option_name = cfg" })));
+      expect(section().getByText("missing")).toBeInTheDocument();
+      expect(section().getByText(/no row with option_name = cfg/)).toBeInTheDocument();
+    });
+
+    it("shows the error of a line", async () => {
+      await shown(withWatched(watchedLine({ value: null, error: "Unknown column 'option_value'" })));
+      expect(section().getByText("Unknown column 'option_value'")).toBeInTheDocument();
+    });
+
+    it("shows the error of the part", async () => {
+      await shown(readoutOf({ watched: { items: [], error: "watched values: file is corrupt" } }));
+      expect(section().getByText("watched values: file is corrupt")).toBeInTheDocument();
+    });
+
+    describe("tree", () => {
+      const tree: DecodedValue = {
+        format: "php",
+        root: { kind: "array", children: [{ key: "mode", keyKind: "string", node: { kind: "string", text: "sandbox" } }] },
+        warning: null,
+        error: null,
+      };
+
+      it("renders a watched array or object as a tree", async () => {
+        await shown(withWatched(watchedLine({ value: null, tree, path: ["opts"] })));
+        expect(section().getByRole("tree", { name: "PHP value" })).toBeInTheDocument();
+        expect(section().getByText("sandbox")).toBeInTheDocument();
+      });
+
+      it("watches a node of the tree with the path of the line followed by the node's key", async () => {
+        await shown(withWatched(watchedLine({ value: null, tree, path: ["opts"] })));
+        fireEvent.contextMenu(section().getByText("mode"));
+        await userEvent.click(screen.getByRole("menuitem", { name: "Watch on readout" }));
+        expect(mocked.readoutWatch).toHaveBeenCalledWith("s1", "db", cfgSource, ["opts", "mode"]);
+      });
+    });
+
+    describe("renaming", () => {
+      it("sends the new label on Enter and reloads the readout", async () => {
+        await shown(withWatched(watchedLine()));
+        await rename();
+        await userEvent.type(labelField(), "Gateway mode{Enter}");
+        expect(mocked.readoutWatchLabel).toHaveBeenCalledWith("s1", "db", "w1", "Gateway mode");
+        await vi.waitFor(() => expect(mocked.readout.mock.calls.length).toBeGreaterThan(1));
+        expect(screen.queryByRole("textbox", { name: `Label of ${sourceLabel}` })).not.toBeInTheDocument();
+      });
+
+      it("sends the new label when the field loses focus", async () => {
+        await shown(withWatched(watchedLine()));
+        await rename();
+        await userEvent.type(labelField(), "Mode");
+        await userEvent.click(document.body);
+        expect(mocked.readoutWatchLabel).toHaveBeenCalledWith("s1", "db", "w1", "Mode");
+      });
+
+      it("sends nothing on Escape and closes the field", async () => {
+        await shown(withWatched(watchedLine()));
+        await rename();
+        await userEvent.type(labelField(), "Mode{Escape}");
+        expect(screen.queryByRole("textbox", { name: `Label of ${sourceLabel}` })).not.toBeInTheDocument();
+        expect(mocked.readoutWatchLabel).not.toHaveBeenCalled();
+      });
+
+      it("sends null when a custom label is cleared", async () => {
+        await shown(withWatched(watchedLine({ label: "Gateway mode", labelled: true })));
+        await userEvent.click(section().getByRole("button", { name: "Rename Gateway mode" }));
+        await userEvent.clear(labelField());
+        await userEvent.keyboard("{Enter}");
+        expect(mocked.readoutWatchLabel).toHaveBeenCalledWith("s1", "db", "w1", null);
+      });
+
+      it("sends nothing when the label is unchanged", async () => {
+        await shown(withWatched(watchedLine()));
+        await rename();
+        await userEvent.keyboard("{Enter}");
+        expect(mocked.readoutWatchLabel).not.toHaveBeenCalled();
+      });
+
+      it("starts the field with the stored custom label", async () => {
+        await shown(withWatched(watchedLine({ label: "Gateway mode", labelled: true })));
+        await userEvent.click(section().getByRole("button", { name: "Rename Gateway mode" }));
+        expect(labelField()).toHaveValue("Gateway mode");
+      });
+    });
+
+    describe("removing", () => {
+      it("stops watching and shows the readout without the line", async () => {
+        await shown(withWatched(watchedLine()));
+        mocked.readout.mockResolvedValue(readoutOf());
+        await userEvent.click(section().getByRole("button", { name: "Stop watching wp_options.option_value" }));
+        expect(mocked.readoutUnwatch).toHaveBeenCalledWith("s1", "db", "w1");
+        expect(await screen.findByText("no watched values")).toBeInTheDocument();
+        expect(screen.queryByText("live")).not.toBeInTheDocument();
+      });
     });
   });
 

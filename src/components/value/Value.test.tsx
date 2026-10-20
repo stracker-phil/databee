@@ -349,6 +349,37 @@ describe("Value", () => {
       expect(mocked.decodeValue).toHaveBeenCalledWith("a:3:{i:0;i:1;i:1;i:2;i:2;i:3;}");
       expect(screen.getByRole("button", { name: "Collapse a:3:{…}" })).toHaveAttribute("aria-expanded", "true");
     });
+
+    describe("watching a node of the expanded tree", () => {
+      const stored: Provenance = { table: "wp_options", column: "option_value", row: [{ column: "option_name", value: "cfg" }] };
+      const decoded: DecodedValue = {
+        format: "php",
+        root: { kind: "array", children: [{ key: "mode", keyKind: "string", node: { kind: "string", text: "live" } }] },
+        warning: null,
+        error: null,
+      };
+
+      async function expand(source?: Provenance) {
+        connectedStore({ tabs: [tableTab()] });
+        mocked.decodeValue.mockResolvedValue(decoded);
+        render(<Value value={value({ raw, kind: { kind: "serialized", format: "php", preview: "a:3:{…}" }, source })} />);
+        await userEvent.click(screen.getByRole("button", { name: "Expand a:3:{…}" }));
+        await screen.findByRole("tree", { name: "PHP value" });
+      }
+
+      it("sends the value's source and the node's path to the readout", async () => {
+        await expand(stored);
+        fireEvent.contextMenu(screen.getByText("mode"));
+        await userEvent.click(screen.getByRole("menuitem", { name: "Watch on readout" }));
+        expect(mocked.readoutWatch).toHaveBeenCalledWith("s1", "db", stored, ["mode"]);
+      });
+
+      it("offers no Watch on readout for a value without a source", async () => {
+        await expand();
+        fireEvent.contextMenu(screen.getByText("mode"));
+        expect(screen.queryByRole("menuitem", { name: "Watch on readout" })).not.toBeInTheDocument();
+      });
+    });
   });
 
   describe("secret", () => {

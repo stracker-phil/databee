@@ -345,3 +345,629 @@ fn unique_key<'c>(ctx: &'c Ctx<'_>, table: &str) -> Option<&'c [String]> {
         .min_by_key(|i| i.columns.len())
         .map(|i| i.columns.as_slice())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::address::Target;
+    use crate::db::{ColumnInfo, FakeDatabase, IndexInfo, ResultSet, TableStructure};
+    use crate::decode::value::Format;
+    use crate::query::testing::{num, result, shop, text};
+    use crate::readout::testing::Rig;
+
+    const JSON: &str =
+        r#"{"qty":3,"ratio":2.5,"name":"hi","note":"","gone":null,"items":[5],"nested":{"a":1}}"#;
+
+    fn key(column: &str, value: &str) -> RowKey {
+        RowKey(vec![KeyPart {
+            column: column.into(),
+            value: value.into(),
+        }])
+    }
+
+    fn watch(id: &str, table: &str, column: &str, row: RowKey, path: &[&str]) -> WatchedValue {
+        WatchedValue {
+            id: id.into(),
+            label: None,
+            table: table.into(),
+            column: column.into(),
+            row,
+            path: path.iter().map(|step| step.to_string()).collect(),
+        }
+    }
+
+    fn order(id: &str, column: &str, order_id: &str) -> WatchedValue {
+        watch(id, "f_orders", column, key("id", order_id), &[])
+    }
+
+    fn meta(id: &str, path: &[&str]) -> WatchedValue {
+        watch(id, "f_ordermeta", "v", key("meta_id", "1"), path)
+    }
+
+    fn orders_result(rows: &[(&str, &str)]) -> ResultSet {
+        let rows = rows
+            .iter()
+            .map(|(id, status)| vec![num(id), text(status), num("1")])
+            .collect();
+        result(&["id", "status", "total"], rows)
+    }
+
+    fn meta_result(cell: Cell) -> ResultSet {
+        result(&["meta_id", "v"], vec![vec![num("1"), cell]])
+    }
+
+    fn row_address(table: &str, key: &str) -> Address {
+        Address::new(
+            "local",
+            "wp",
+            Target::Row {
+                table: table.into(),
+                key: key.into(),
+            },
+        )
+    }
+
+    fn meta_cell_source() -> Provenance {
+        Provenance {
+            table: "f_ordermeta".into(),
+            column: "v".into(),
+            row: key("meta_id", "1"),
+        }
+    }
+
+    async fn read(db: FakeDatabase, watches: &[WatchedValue]) -> Vec<WatchedLine> {
+        let rig = Rig::new(db, "", &[]);
+        let ctx = rig.ctx().await;
+        lines(&ctx, watches).await
+    }
+
+    fn node_at(json: &str, key: &str) -> ValueNode {
+        let child = decode(json)
+            .unwrap()
+            .root
+            .unwrap()
+            .children
+            .into_iter()
+            .find(|c| c.key == key)
+            .unwrap();
+        child.node
+    }
+
+    #[tokio::test]
+    async fn watches_on_two_tables_run_one_query_each() {
+        let db = shop()
+            .on("`f_orders`", orders_result(&[("7", "paid")]))
+            .on("`f_ordermeta`", meta_result(text("x")));
+        let rig = Rig::new(db, "", &[]);
+        let ctx = rig.ctx().await;
+
+        lines(&ctx, &[order("a", "status", "7"), meta("b", &[])]).await;
+
+        let mut queries = rig.db.queries();
+        queries.sort();
+        assert_eq!(
+            queries,
+            [
+                "SELECT * FROM `wp`.`f_ordermeta` AS t WHERE (t.`meta_id` = '1') LIMIT 100",
+                "SELECT * FROM `wp`.`f_orders` AS t WHERE (t.`id` = '7') LIMIT 100",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn several_rows_of_one_table_run_one_query_with_their_conditions_ored() {
+        let db = shop().on("`f_orders`", orders_result(&[("7", "paid"), ("8", "open")]));
+        let rig = Rig::new(db, "", &[]);
+        let ctx = rig.ctx().await;
+        let watches = [
+            order("a", "status", "7"),
+            order("b", "status", "8"),
+            order("c", "total", "7"),
+        ];
+
+        let lines = lines(&ctx, &watches).await;
+
+        assert_eq!(
+            rig.db.queries(),
+            ["SELECT * FROM `wp`.`f_orders` AS t WHERE (t.`id` = '7') OR (t.`id` = '8') LIMIT 100"]
+        );
+        let values: Vec<_> = lines
+            .iter()
+            .map(|l| l.value.as_ref().map(|v| v.raw.clone()))
+            .collect();
+        assert_eq!(
+            values,
+            [Some(text("paid")), Some(text("open")), Some(num("1"))]
+        );
+    }
+
+    #[tokio::test]
+    async fn lines_come_in_the_order_the_watches_are_stored() {
+        let db = shop()
+            .on("`f_orders`", orders_result(&[("7", "paid"), ("8", "open")]))
+            .on("`f_ordermeta`", meta_result(text("x")));
+        let watches = [
+            order("a", "status", "7"),
+            meta("b", &[]),
+            order("c", "status", "8"),
+        ];
+
+        let lines = read(db, &watches).await;
+
+        let ids: Vec<&str> = lines.iter().map(|l| l.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b", "c"]);
+    }
+
+    #[tokio::test]
+    async fn a_whole_cell_carries_its_kind_and_the_provenance_of_the_row() {
+        let db = shop().on("`f_orders`", orders_result(&[("7", "paid")]));
+        let source = Provenance {
+            table: "f_orders".into(),
+            column: "status".into(),
+            row: key("id", "7"),
+        };
+
+        let lines = read(db, &[order("w", "status", "7")]).await;
+
+        assert_eq!(
+            lines,
+            [WatchedLine {
+                id: "w".into(),
+                label: "f_orders.status".into(),
+                labelled: false,
+                source: source.clone(),
+                path: Vec::new(),
+                address: Some(row_address("f_orders", "7")),
+                value: Some(Value {
+                    raw: text("paid"),
+                    kind: ValueKind::Text,
+                    source: Some(source),
+                    style: None,
+                    secondary: None,
+                }),
+                tree: None,
+                missing: None,
+                error: None,
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_null_cell_without_a_path_is_a_null_value() {
+        let db = shop().on("`f_ordermeta`", meta_result(Cell::Null));
+
+        let lines = read(db, &[meta("w", &[])]).await;
+
+        let value = lines[0].value.as_ref().unwrap();
+        assert_eq!((&value.raw, &value.kind), (&Cell::Null, &ValueKind::Null));
+        assert_eq!(lines[0].missing, None);
+    }
+
+    #[tokio::test]
+    async fn a_path_to_a_leaf_gives_a_value_of_its_own_kind_with_the_cells_provenance() {
+        let cases: [(&[&str], Cell, ValueKind); 6] = [
+            (&["qty"], num("3"), ValueKind::Number),
+            (&["ratio"], num("2.5"), ValueKind::Number),
+            (&["name"], text("hi"), ValueKind::Text),
+            (&["note"], text(""), ValueKind::Empty),
+            (&["gone"], Cell::Null, ValueKind::Null),
+            (&["nested", "a"], num("1"), ValueKind::Number),
+        ];
+        let watches: Vec<WatchedValue> = cases
+            .iter()
+            .enumerate()
+            .map(|(i, (path, _, _))| meta(&i.to_string(), path))
+            .collect();
+        let db = shop().on("`f_ordermeta`", meta_result(text(JSON)));
+
+        let lines = read(db, &watches).await;
+
+        for (line, (path, raw, kind)) in lines.iter().zip(cases) {
+            let expected = Value {
+                raw,
+                kind,
+                source: Some(meta_cell_source()),
+                style: None,
+                secondary: None,
+            };
+            assert_eq!(line.value.as_ref(), Some(&expected), "{path:?}");
+            assert_eq!(
+                (&line.tree, &line.missing, &line.error),
+                (&None, &None, &None)
+            );
+            assert_eq!(line.address, Some(row_address("f_ordermeta", "1")));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_path_through_a_php_value_reaches_its_leaf() {
+        let php = r#"a:1:{s:3:"tax";a:1:{s:4:"rate";d:0.19;}}"#;
+        let db = shop().on("`f_ordermeta`", meta_result(text(php)));
+
+        let lines = read(db, &[meta("w", &["tax", "rate"])]).await;
+
+        let value = lines[0].value.as_ref().unwrap();
+        assert_eq!(
+            (&value.raw, &value.kind),
+            (&num("0.19"), &ValueKind::Number)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_path_to_an_array_or_object_gives_a_tree_of_that_node() {
+        let db = shop().on("`f_ordermeta`", meta_result(text(JSON)));
+
+        let lines = read(db, &[meta("a", &["items"]), meta("b", &["nested"])]).await;
+
+        for (line, key) in lines.iter().zip(["items", "nested"]) {
+            assert_eq!(
+                line.tree,
+                Some(DecodedValue {
+                    format: Format::Json,
+                    root: Some(node_at(JSON, key)),
+                    warning: None,
+                    error: None,
+                }),
+                "{key}"
+            );
+            assert_eq!(
+                (&line.value, &line.missing, &line.error),
+                (&None, &None, &None)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_watch_says_why_it_has_no_value() {
+        let cases: Vec<(FakeDatabase, WatchedValue, &str)> = vec![
+            (
+                shop(),
+                watch("w", "f_nope", "x", key("id", "1"), &[]),
+                "no table `f_nope`",
+            ),
+            (
+                shop(),
+                watch("w", "f_orders", "status", key("nope", "7"), &[]),
+                "`f_orders` has no column `nope`",
+            ),
+            (
+                shop().on("`f_orders`", orders_result(&[("7", "paid")])),
+                order("w", "nope", "7"),
+                "`f_orders` has no column `nope`",
+            ),
+            (
+                shop().on("`f_orders`", orders_result(&[])),
+                order("w", "status", "7"),
+                "no row id = '7' in `f_orders`",
+            ),
+            (
+                shop().on("`f_orders`", orders_result(&[("8", "paid")])),
+                order("w", "status", "7"),
+                "no row id = '7' in `f_orders`",
+            ),
+            (
+                shop().on("`f_ordermeta`", meta_result(text(r#"{"a":1}"#))),
+                meta("w", &["b"]),
+                "no key `b` in `v`",
+            ),
+            (
+                shop().on("`f_ordermeta`", meta_result(text(r#"{"a":{"x":1}}"#))),
+                meta("w", &["a", "y"]),
+                "no key `y` in `v › a`",
+            ),
+            (
+                shop().on("`f_ordermeta`", meta_result(Cell::Null)),
+                meta("w", &["a"]),
+                "`v` is NULL, nothing to decode",
+            ),
+            (
+                shop().on("`f_ordermeta`", meta_result(text("hello"))),
+                meta("w", &["a"]),
+                "`v` holds no PHP-serialized or JSON value",
+            ),
+        ];
+
+        for (db, watch, why) in cases {
+            let lines = read(db, std::slice::from_ref(&watch)).await;
+
+            assert_eq!(lines[0].missing.as_deref(), Some(why), "{watch:?}");
+            assert_eq!(
+                (&lines[0].value, &lines[0].tree, &lines[0].error),
+                (&None, &None, &None),
+                "{watch:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_read_gives_every_watch_of_that_table_an_error_and_spares_the_others() {
+        let db = shop()
+            .failing("`f_orders`", AppError::InvalidInput("boom".into()))
+            .on("`f_ordermeta`", meta_result(text("x")));
+        let watches = [
+            order("a", "status", "7"),
+            order("b", "status", "8"),
+            meta("c", &[]),
+        ];
+
+        let lines = read(db, &watches).await;
+
+        let outcome: Vec<_> = lines
+            .iter()
+            .map(|l| (l.error.as_deref(), l.value.is_some(), l.missing.is_some()))
+            .collect();
+        assert_eq!(
+            outcome,
+            [
+                (Some("boom"), false, false),
+                (Some("boom"), false, false),
+                (None, true, false),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_value_that_does_not_decode_carries_an_error_naming_the_column() {
+        let db = shop().on("`f_ordermeta`", meta_result(text("a:1:{x}")));
+
+        let lines = read(db, &[meta("w", &["a"])]).await;
+
+        let error = lines[0].error.as_deref().unwrap();
+        assert!(error.starts_with("`v` does not decode: "), "{error}");
+        assert_eq!(
+            (&lines[0].value, &lines[0].tree, &lines[0].missing),
+            (&None, &None, &None)
+        );
+    }
+
+    fn people_watch(id: &str, name: &str) -> WatchedValue {
+        watch(id, "f_people", "name", key("name", name), &[])
+    }
+
+    #[tokio::test]
+    async fn a_row_whose_key_differs_only_in_case_is_found() {
+        let rows = result(&["person_id", "name"], vec![vec![num("3"), text("Ada")]]);
+        let db = shop().on("`f_people`", rows);
+
+        let lines = read(db, &[people_watch("w", "ADA")]).await;
+
+        assert_eq!(lines[0].value.as_ref().unwrap().raw, text("Ada"));
+        assert_eq!(lines[0].address, Some(row_address("f_people", "3")));
+        assert_eq!(lines[0].missing, None);
+    }
+
+    #[tokio::test]
+    async fn an_exact_key_match_wins_over_a_case_variant() {
+        let rows = result(
+            &["person_id", "name"],
+            vec![vec![num("1"), text("Ada")], vec![num("2"), text("ADA")]],
+        );
+        let db = shop().on("`f_people`", rows);
+
+        let lines = read(db, &[people_watch("a", "ADA"), people_watch("b", "ada")]).await;
+
+        let found: Vec<_> = lines
+            .iter()
+            .map(|l| (l.address.clone(), l.value.as_ref().unwrap().raw.clone()))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                (Some(row_address("f_people", "2")), text("ADA")),
+                (Some(row_address("f_people", "1")), text("Ada")),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_label_is_the_users_or_table_column_and_path() {
+        let db = shop()
+            .on("`f_orders`", orders_result(&[("7", "paid")]))
+            .on("`f_ordermeta`", meta_result(text("x")));
+        let mut named = meta("c", &["a", "b"]);
+        named.label = Some("Site".into());
+        let watches = [order("a", "status", "7"), meta("b", &["a", "b"]), named];
+
+        let lines = read(db, &watches).await;
+
+        let labels: Vec<_> = lines
+            .iter()
+            .map(|l| (l.label.as_str(), l.labelled))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                ("f_orders.status", false),
+                ("f_ordermeta.v › a › b", false),
+                ("Site", true),
+            ]
+        );
+    }
+
+    fn column(name: &str) -> ColumnInfo {
+        ColumnInfo {
+            name: name.into(),
+            column_type: "text".into(),
+            nullable: true,
+            default: None,
+            key: String::new(),
+            extra: String::new(),
+            comment: String::new(),
+            auto_increment: false,
+            generated: false,
+        }
+    }
+
+    fn index(name: &str, unique: bool, columns: &[&str]) -> IndexInfo {
+        IndexInfo {
+            name: name.into(),
+            unique,
+            columns: columns.iter().map(|c| c.to_string()).collect(),
+        }
+    }
+
+    fn options_db(indexes: Vec<IndexInfo>, result: Option<ResultSet>) -> FakeDatabase {
+        let structure = TableStructure {
+            columns: ["option_id", "option_name", "option_value", "blog_id"]
+                .into_iter()
+                .map(column)
+                .collect(),
+            indexes,
+            primary_key: vec!["option_id".into()],
+            foreign_keys: Vec::new(),
+            ddl: None,
+        };
+        let db = shop().with_table("wp", "f_options", structure);
+        match result {
+            Some(result) => db.on("AS t WHERE t.`option_id`", result),
+            None => db,
+        }
+    }
+
+    fn option_source() -> Provenance {
+        Provenance {
+            table: "f_options".into(),
+            column: "option_value".into(),
+            row: key("option_id", "5"),
+        }
+    }
+
+    async fn identify(db: FakeDatabase, source: &Provenance) -> (AppResult<RowKey>, Vec<String>) {
+        let rig = Rig::new(db, "", &[]);
+        let ctx = rig.ctx().await;
+        let identity = identity(&ctx, source).await;
+        (identity, rig.db.queries())
+    }
+
+    fn primary() -> IndexInfo {
+        index("PRIMARY", true, &["option_id"])
+    }
+
+    #[tokio::test]
+    async fn identity_prefers_the_unique_key_with_the_fewest_columns() {
+        let db = options_db(
+            vec![
+                primary(),
+                index("blog_option", true, &["blog_id", "option_name"]),
+                index("option_name", true, &["option_name"]),
+                index("autoload", false, &["blog_id"]),
+            ],
+            Some(result(&["option_name"], vec![vec![text("siteurl")]])),
+        );
+
+        let (identity, queries) = identify(db, &option_source()).await;
+
+        assert_eq!(identity.unwrap(), key("option_name", "siteurl"));
+        assert_eq!(
+            queries,
+            ["SELECT t.`option_name` FROM `wp`.`f_options` AS t WHERE t.`option_id` = '5' LIMIT 2"]
+        );
+    }
+
+    #[tokio::test]
+    async fn identity_by_a_composite_unique_key_names_every_column() {
+        let db = options_db(
+            vec![
+                primary(),
+                index("blog_option", true, &["blog_id", "option_name"]),
+            ],
+            Some(result(
+                &["blog_id", "option_name"],
+                vec![vec![num("1"), text("siteurl")]],
+            )),
+        );
+
+        let (identity, queries) = identify(db, &option_source()).await;
+
+        assert_eq!(
+            identity.unwrap(),
+            RowKey(vec![
+                KeyPart {
+                    column: "blog_id".into(),
+                    value: "1".into()
+                },
+                KeyPart {
+                    column: "option_name".into(),
+                    value: "siteurl".into()
+                },
+            ])
+        );
+        assert_eq!(
+            queries,
+            [
+                "SELECT t.`blog_id`, t.`option_name` FROM `wp`.`f_options` AS t WHERE t.`option_id` = '5' LIMIT 2"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn identity_is_the_primary_key_without_another_unique_key_and_asks_nothing() {
+        let db = options_db(
+            vec![primary(), index("autoload", false, &["blog_id"])],
+            None,
+        );
+
+        let (identity, queries) = identify(db, &option_source()).await;
+
+        assert_eq!(identity.unwrap(), key("option_id", "5"));
+        assert!(queries.is_empty(), "{queries:?}");
+    }
+
+    #[tokio::test]
+    async fn identity_falls_back_to_the_primary_key_when_the_unique_key_has_no_usable_value() {
+        let by_name = || vec![primary(), index("option_name", true, &["option_name"])];
+        let cases = [
+            ("no row", result(&["option_name"], Vec::new())),
+            ("NULL", result(&["option_name"], vec![vec![Cell::Null]])),
+            (
+                "two rows",
+                result(&["option_name"], vec![vec![text("a")], vec![text("b")]]),
+            ),
+        ];
+
+        for (what, rows) in cases {
+            let db = options_db(by_name(), Some(rows));
+
+            let (identity, _) = identify(db, &option_source()).await;
+
+            assert_eq!(identity.unwrap(), key("option_id", "5"), "{what}");
+        }
+    }
+
+    #[tokio::test]
+    async fn identity_refuses_what_the_schema_does_not_have() {
+        let named = |table: &str, column: &str, row: RowKey| Provenance {
+            table: table.into(),
+            column: column.into(),
+            row,
+        };
+        let cases = [
+            (named("f_nope", "x", key("id", "1")), "No table `f_nope`"),
+            (
+                named("f_options", "nope", key("option_id", "5")),
+                "`f_options` has no column `nope`",
+            ),
+            (
+                named("f_options", "option_value", key("nope", "5")),
+                "`f_options` has no column `nope`",
+            ),
+            (
+                named("f_options", "option_value", RowKey(Vec::new())),
+                "A row of `f_options` without a primary key cannot be watched",
+            ),
+        ];
+
+        for (source, expected) in cases {
+            let db = options_db(vec![primary()], None);
+
+            let (identity, queries) = identify(db, &source).await;
+
+            let err = identity.unwrap_err();
+            let AppError::InvalidInput(message) = &err else {
+                panic!("{err:?}");
+            };
+            assert_eq!(message, expected);
+            assert!(queries.is_empty(), "{queries:?}");
+        }
+    }
+}

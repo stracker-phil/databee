@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -233,6 +233,24 @@ describe("value column of an object tab", () => {
 
     expect(await screen.findByText("qux")).toBeInTheDocument();
     expect(mocked.browseTable).toHaveBeenCalledWith("s1", expect.objectContaining({ table: "wp_postmeta", limit: 1, where: [{ column: "ID", value: "1" }] }));
+  });
+
+  it("watches a node of the tree on the readout with the value's source and the node's key", async () => {
+    await openStoredValue();
+    fireEvent.contextMenu(screen.getByText("foo"));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Watch on readout" }));
+    expect(mocked.readoutWatch).toHaveBeenCalledWith("s1", "db", metaValue.source, ["foo"]);
+  });
+
+  it("watches the whole value with object.watch, and cannot once its row is gone", async () => {
+    await openStoredValue();
+    expect(runCommand("object.watch")).toBe(true);
+    await waitFor(() => expect(mocked.readoutWatch).toHaveBeenCalledWith("s1", "db", metaValue.source, []));
+
+    stored = rowGone;
+    await refresh();
+    await screen.findByText(/no longer exists/);
+    expect(runCommand("object.watch")).toBe(false);
   });
 
   it("copies the value with y, and does nothing once its row is gone", async () => {

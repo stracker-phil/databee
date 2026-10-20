@@ -18,6 +18,7 @@ function emptyReadout(database: string): Readout {
     status: { host: session.spec.host, slug: session.slug, database, prefix: "", presets: [], serverVersion: session.serverVersion, values: none },
     anomalies: none,
     recentlyCreated: { items: [], entities: [], error: null },
+    watched: none,
     pinned: none,
     recent: none,
   };
@@ -108,6 +109,9 @@ export function createApiMock(): typeof realApi {
     listHistory: vi.fn().mockResolvedValue([]),
     clearHistory: vi.fn().mockResolvedValue(undefined),
     readout: vi.fn(async (_s, database) => emptyReadout(database)),
+    readoutWatch: vi.fn(async (_s, _d, source, path) => ({ id: "watch-1", table: source.table, column: source.column, row: source.row, path })),
+    readoutUnwatch: vi.fn().mockResolvedValue(undefined),
+    readoutWatchLabel: vi.fn().mockResolvedValue(undefined),
     rememberObject: vi.fn().mockResolvedValue(undefined),
     decodeValue: vi.fn().mockResolvedValue(null),
     paletteSearch: vi.fn().mockResolvedValue([]),

@@ -358,7 +358,9 @@ mod tests {
     use crate::error::ErrorKind;
     use crate::query::testing::{TIMEOUT, num, result, shop};
     use crate::rules::project::SavedQuery;
+    use crate::rules::project::WatchedValue;
     use crate::rules::queries::Home;
+    use crate::value::{KeyPart, RowKey};
 
     const RULES: &str = r#"
 [[pinned]]
@@ -446,6 +448,59 @@ text = "bad"
             ]
         );
         assert_eq!(readout.recent, Part::default());
+    }
+
+    #[tokio::test]
+    async fn the_readout_lists_the_projects_watched_values_in_their_order() {
+        let orders = result(
+            &["id", "status"],
+            vec![vec![num("7"), Cell::Text("paid".into())]],
+        );
+        let rig = Rig::new(shop().on("`f_orders`", orders), "", &[]);
+        let watch = |id: &str, column: &str| WatchedValue {
+            id: id.into(),
+            label: None,
+            table: "f_orders".into(),
+            column: column.into(),
+            row: RowKey(vec![KeyPart {
+                column: "id".into(),
+                value: "7".into(),
+            }]),
+            path: Vec::new(),
+        };
+        rig.projects
+            .update("local", "wp", move |p| {
+                p.watched = vec![watch("second", "status"), watch("first", "id")];
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        let readout = readout(&rig.session, "wp", rig.sources(), &[], TIMEOUT).await;
+
+        assert_eq!(readout.watched.error, None);
+        let lines: Vec<_> = readout
+            .watched
+            .items
+            .iter()
+            .map(|l| (l.id.as_str(), l.value.as_ref().map(|v| v.raw.clone())))
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                ("second", Some(Cell::Text("paid".into()))),
+                ("first", Some(num("7"))),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_project_without_watches_has_an_empty_watched_part() {
+        let rig = Rig::new(db(), RULES, &[]);
+
+        let readout = readout(&rig.session, "wp", rig.sources(), &[], TIMEOUT).await;
+
+        assert_eq!(readout.watched, Part::default());
     }
 
     #[tokio::test]

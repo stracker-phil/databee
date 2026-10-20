@@ -22,6 +22,19 @@ function renderDocument(groups: Group[], focus: Provenance | null = null) {
 const wideTables = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>(".wide-table")];
 const boxOf = (label: string) => screen.getByText(label).closest<HTMLElement>(".wide-table");
 
+describe("DocumentView value menu", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore();
+  });
+
+  it("offers Watch on readout before the rule entries on a sourced value", () => {
+    renderDocument([meta]);
+    fireEvent.contextMenu(screen.getByText("bacs"));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Watch on readout", "Add reference…", "Kind…", "Style…"]);
+  });
+});
+
 describe("DocumentView wide sections", () => {
   beforeEach(() => {
     vi.clearAllMocks();

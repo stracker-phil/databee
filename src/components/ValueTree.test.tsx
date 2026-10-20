@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { DecodedValue, ValueChild, ValueNode } from "../api";
@@ -94,6 +94,41 @@ describe("ValueTree small collections", () => {
     const nested: ValueNode = { kind: "array", children: [{ key: "inner", keyKind: "string", node: small }] };
     render(<ValueTree value={decoded(nested)} />);
     expect(screen.getAllByRole("treeitem")).toHaveLength(2);
+  });
+});
+
+describe("ValueTree watching", () => {
+  const leaf = (key: string, text: string): ValueChild => ({ key, keyKind: "string", node: str(text) });
+
+  it("offers Watch on readout on an inline pair with the pair's key as the path", async () => {
+    const onWatch = vi.fn();
+    render(<ValueTree value={decoded({ kind: "array", children: [leaf("a", "1"), leaf("b", "2")] })} onWatch={onWatch} />);
+    fireEvent.contextMenu(screen.getByText("b"));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Watch on readout" }));
+    expect(onWatch).toHaveBeenCalledWith(["b"]);
+  });
+
+  it("offers Watch on readout on a nested node with the keys from the root", async () => {
+    const onWatch = vi.fn();
+    const many: ValueNode = { kind: "array", children: ["a", "b", "c", "d", "e"].map((k) => leaf(k, "x")) };
+    render(<ValueTree value={decoded({ kind: "array", children: [{ key: "outer", keyKind: "string", node: many }] })} onWatch={onWatch} />);
+    fireEvent.contextMenu(screen.getByText("c"));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Watch on readout" }));
+    expect(onWatch).toHaveBeenCalledWith(["outer", "c"]);
+  });
+
+  it("watches the whole tree from its root with an empty path", async () => {
+    const onWatch = vi.fn();
+    render(<ValueTree value={decoded({ kind: "array", children: [leaf("a", "1"), leaf("b", "2")] })} onWatch={onWatch} />);
+    fireEvent.contextMenu(screen.getByText("array(2)"));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Watch on readout" }));
+    expect(onWatch).toHaveBeenCalledWith([]);
+  });
+
+  it("offers no menu without a watch handler", () => {
+    render(<ValueTree value={decoded({ kind: "array", children: [leaf("a", "1"), leaf("b", "2")] })} />);
+    fireEvent.contextMenu(screen.getByText("a"));
+    expect(screen.queryByRole("menuitem", { name: "Watch on readout" })).not.toBeInTheDocument();
   });
 });
 

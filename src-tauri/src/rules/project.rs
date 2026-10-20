@@ -1359,4 +1359,201 @@ color = "green"
         assert_eq!(stored.as_deref(), Some("wp"));
         assert!(missing);
     }
+
+    fn watched_value(id: &str) -> WatchedValue {
+        WatchedValue {
+            id: id.into(),
+            label: None,
+            table: "wp_options".into(),
+            column: "option_value".into(),
+            row: RowKey(vec![crate::value::KeyPart {
+                column: "option_name".into(),
+                value: "siteurl".into(),
+            }]),
+            path: vec!["a".into()],
+        }
+    }
+
+    fn watched_ids(store: &ProjectsStore) -> Vec<String> {
+        store
+            .get("shop", "wp")
+            .watched
+            .into_iter()
+            .map(|w| w.id)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn watching_the_same_value_again_keeps_the_first_watch() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+
+        let first = store.watch("shop", "wp", watched_value("a")).await.unwrap();
+        let again = store.watch("shop", "wp", watched_value("b")).await.unwrap();
+
+        assert_eq!((first.id.as_str(), again.id.as_str()), ("a", "a"));
+        assert_eq!(watched_ids(&store), ["a"]);
+    }
+
+    #[tokio::test]
+    async fn a_watch_differing_in_table_column_row_or_path_is_another_value() {
+        let variants: [(&str, fn(&mut WatchedValue)); 4] = [
+            ("table", |w| w.table = "wp_usermeta".into()),
+            ("column", |w| w.column = "option_name".into()),
+            ("row", |w| w.row.0[0].value = "home".into()),
+            ("path", |w| w.path = Vec::new()),
+        ];
+
+        for (what, change) in variants {
+            let dir = tempfile::tempdir().unwrap();
+            let store = ProjectsStore::open(dir.path());
+            store.watch("shop", "wp", watched_value("a")).await.unwrap();
+            let mut other = watched_value("b");
+            change(&mut other);
+
+            let added = store.watch("shop", "wp", other).await.unwrap();
+
+            assert_eq!(added.id, "b", "{what}");
+            assert_eq!(watched_ids(&store), ["a", "b"], "{what}");
+        }
+    }
+
+    #[tokio::test]
+    async fn watches_keep_the_order_they_were_added_and_survive_a_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+        for (id, column) in [("c", "x"), ("a", "y"), ("b", "z")] {
+            let mut watch = watched_value(id);
+            watch.column = column.into();
+            store.watch("shop", "wp", watch).await.unwrap();
+        }
+
+        assert_eq!(watched_ids(&store), ["c", "a", "b"]);
+        assert_eq!(
+            watched_ids(&ProjectsStore::open(dir.path())),
+            ["c", "a", "b"]
+        );
+    }
+
+    #[tokio::test]
+    async fn unwatch_removes_one_watch_and_refuses_an_unknown_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+        for (id, column) in [("a", "x"), ("b", "y")] {
+            let mut watch = watched_value(id);
+            watch.column = column.into();
+            store.watch("shop", "wp", watch).await.unwrap();
+        }
+
+        store.unwatch("shop", "wp", "a").await.unwrap();
+        let err = store.unwatch("shop", "wp", "a").await.unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(err.to_string(), "No watched value `a` in this project");
+        assert_eq!(watched_ids(&store), ["b"]);
+    }
+
+    #[tokio::test]
+    async fn label_watched_stores_a_trimmed_label_and_a_blank_one_resets_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+        store.watch("shop", "wp", watched_value("a")).await.unwrap();
+
+        let named = store
+            .label_watched("shop", "wp", "a", Some("  Site URL ".into()))
+            .await
+            .unwrap();
+        assert_eq!(named.label.as_deref(), Some("Site URL"));
+        assert_eq!(
+            store.get("shop", "wp").watched[0].label.as_deref(),
+            Some("Site URL")
+        );
+
+        for blank in [Some("   ".to_string()), Some(String::new()), None] {
+            store
+                .label_watched("shop", "wp", "a", Some("Site URL".into()))
+                .await
+                .unwrap();
+
+            let reset = store
+                .label_watched("shop", "wp", "a", blank.clone())
+                .await
+                .unwrap();
+
+            assert_eq!(reset.label, None, "{blank:?}");
+            assert_eq!(store.get("shop", "wp").watched[0].label, None, "{blank:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn label_watched_refuses_an_unknown_id_and_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+        store.watch("shop", "wp", watched_value("a")).await.unwrap();
+
+        let err = store
+            .label_watched("shop", "wp", "zzz", Some("x".into()))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert_eq!(err.to_string(), "No watched value `zzz` in this project");
+        assert_eq!(store.get("shop", "wp").watched, [watched_value("a")]);
+    }
+
+    #[test]
+    fn a_label_defaults_to_table_column_and_path() {
+        let mut watch = watched_value("a");
+        assert_eq!(watch.label(), "wp_options.option_value › a");
+
+        watch.path = Vec::new();
+        assert_eq!(watch.label(), "wp_options.option_value");
+
+        watch.path = vec!["a".into(), "b".into()];
+        watch.label = Some("Site".into());
+        assert_eq!(watch.label(), "Site");
+    }
+
+    #[test]
+    fn watched_values_are_left_out_of_the_export() {
+        let mut watching = full_project();
+        watching.watched = vec![watched_value("a")];
+
+        assert_eq!(watching.export().unwrap(), full_project().export().unwrap());
+    }
+
+    #[test]
+    fn json_omits_an_empty_watched_list_and_names_the_fields_of_a_watch() {
+        let empty = serde_json::to_value(Project::new("shop", "wp")).unwrap();
+        let mut watching = Project::new("shop", "wp");
+        watching.watched = vec![watched_value("a")];
+
+        let json = serde_json::to_value(&watching).unwrap();
+
+        assert!(empty.get("watched").is_none(), "{empty}");
+        assert_eq!(
+            json["watched"],
+            serde_json::json!([{
+                "id": "a",
+                "table": "wp_options",
+                "column": "option_value",
+                "row": [{ "column": "option_name", "value": "siteurl" }],
+                "path": ["a"],
+            }])
+        );
+        let loaded: Project = serde_json::from_value(empty).unwrap();
+        assert!(loaded.watched.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_slug_rename_carries_the_watches() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProjectsStore::open(dir.path());
+        store.watch("old", "wp", watched_value("a")).await.unwrap();
+
+        store.rename_connection("old", "new").await.unwrap();
+
+        assert_eq!(store.get("new", "wp").watched, [watched_value("a")]);
+        assert!(store.get("old", "wp").watched.is_empty());
+    }
 }

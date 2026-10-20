@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,7 @@ import { api, type TableStructure } from "../api";
 import { address } from "../lib/address";
 import { selectActiveTab, useStore } from "../state/store";
 import { browsePage, columnMeta, connectedStore, num, resultSet, text } from "../test/fixtures";
-import { installCommands } from "./index";
+import { installCommands, runCommand } from "./index";
 
 const mocked = vi.mocked(api, true);
 
@@ -138,6 +138,30 @@ describe("value commands", () => {
           value: "Hi",
         }),
       );
+    });
+  });
+
+  describe("value.watch", () => {
+    it("watches the selected cell on the readout of its database", async () => {
+      await openPostsAndSelect("Hello world");
+      expect(runCommand("value.watch")).toBe(true);
+      await waitFor(() => expect(mocked.readoutWatch).toHaveBeenCalledWith("s1", "db", row7, []));
+    });
+
+    it("is available from the cell's context menu", async () => {
+      await openPostsAndSelect("Hello world");
+      fireEvent.contextMenu(screen.getByText("Hello world"));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Watch on readout" }));
+      await waitFor(() => expect(mocked.readoutWatch).toHaveBeenCalledWith("s1", "db", row7, []));
+    });
+
+    it("cannot run without a selected value", async () => {
+      render(<App />);
+      await screen.findByText("wp_options");
+      act(() => useStore.getState().openTableTab("db", "wp_posts"));
+      await screen.findByText("Hello world");
+      expect(runCommand("value.watch")).toBe(false);
+      expect(mocked.readoutWatch).not.toHaveBeenCalled();
     });
   });
 

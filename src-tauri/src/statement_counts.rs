@@ -12,10 +12,11 @@ use crate::rules::catalog::PresetCatalog;
 use crate::rules::coverage::reference_coverage;
 use crate::rules::effective::RuleSources;
 use crate::rules::overview;
-use crate::rules::project::ProjectsStore;
+use crate::rules::project::{ProjectsStore, WatchedValue};
 use crate::schema;
 use crate::session::Session;
 use crate::test_support::{Counting, StatementLog, connect_to, servers, spec};
+use crate::value::{KeyPart, RowKey};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 const DATABASE: &str = "wp_test";
@@ -146,6 +147,35 @@ async fn the_readout_runs_20_statements() {
     for counted in counted_sessions().await {
         crate::readout::readout(&counted.session, DATABASE, rig.sources(), &[], TIMEOUT).await;
         counted.assert_count("readout", 20);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn two_watched_options_add_one_statement_to_the_readout() {
+    let rig = Rig::new();
+    for counted in counted_sessions().await {
+        for name in ["siteurl", "blogname"] {
+            let watch = WatchedValue {
+                id: name.into(),
+                label: None,
+                table: "wp_options".into(),
+                column: "option_value".into(),
+                row: RowKey(vec![KeyPart {
+                    column: "option_name".into(),
+                    value: name.into(),
+                }]),
+                path: Vec::new(),
+            };
+            rig.projects
+                .watch(&counted.slug, DATABASE, watch)
+                .await
+                .unwrap();
+        }
+
+        crate::readout::readout(&counted.session, DATABASE, rig.sources(), &[], TIMEOUT).await;
+
+        counted.assert_count("readout with two watched options", 21);
     }
 }
 

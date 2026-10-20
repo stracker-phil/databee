@@ -77,9 +77,9 @@ describe("cellMenu", () => {
   describe("rule entries", () => {
     const ruleLabels = ["Add reference…", "Kind…", "Style…"];
 
-    it("appear wrapped in separators when the value has a source", () => {
+    it("appear after Watch on readout, wrapped in separators, when the value has a source", () => {
       const l = labels(menu({ value: value({ source }) }));
-      expect(l.slice(1, 6)).toEqual(["separator", ...ruleLabels, "separator"]);
+      expect(l.slice(1, 7)).toEqual(["separator", "Watch on readout", ...ruleLabels, "separator"]);
     });
 
     it.each([
@@ -89,6 +89,18 @@ describe("cellMenu", () => {
     ])("are absent when the value %s", (_, patch) => {
       const l = labels(menu(patch));
       for (const label of ruleLabels) expect(l).not.toContain(label);
+    });
+
+    it("leave a sourced bytes cell with Watch on readout only", () => {
+      const l = labels(menu({ row: 1, col: 1, value: value({ source }) }));
+      expect(l.slice(1, 4)).toEqual(["separator", "Watch on readout", "separator"]);
+    });
+
+    it.each([
+      ["has no source", value()],
+      ["is undefined", undefined],
+    ])("omit Watch on readout when the value %s", (_, v) => {
+      expect(labels(menu({ value: v }))).not.toContain("Watch on readout");
     });
   });
 

@@ -104,6 +104,62 @@ describe("readout tab", () => {
     });
   });
 
+  describe("watched values", () => {
+    const watched = { table: "wp_options", column: "option_value", row: [{ column: "option_name", value: "cfg" }] };
+    const rejection = { kind: "io", message: "gone", code: null };
+
+    beforeEach(() => connectedStore({ tabs: [readoutTab()] }));
+
+    it("watches the node of a value, toasts, and reloads a loaded readout", async () => {
+      await store().loadReadout("s1", "db");
+      mocked.readout.mockClear();
+      await store().watchValue("s1", "db", watched, ["mode"]);
+      expect(mocked.readoutWatch).toHaveBeenCalledWith("s1", "db", watched, ["mode"]);
+      expect(store().toasts.at(-1)?.message).toBe("Watching wp_options.option_value on the readout");
+      expect(mocked.readout).toHaveBeenCalledWith("s1", "db");
+    });
+
+    it("does not load a readout that was never loaded", async () => {
+      await store().watchValue("s1", "db", watched, []);
+      expect(mocked.readoutWatch).toHaveBeenCalled();
+      expect(mocked.readout).not.toHaveBeenCalled();
+    });
+
+    it("toasts the failure of watching and shows no success", async () => {
+      mocked.readoutWatch.mockRejectedValueOnce(rejection);
+      await store().watchValue("s1", "db", watched, []);
+      expect(store().toasts.map((t) => t.message)).toEqual(["Could not watch the value: gone"]);
+    });
+
+    it("removes a watched value and reloads a loaded readout", async () => {
+      await store().loadReadout("s1", "db");
+      mocked.readout.mockClear();
+      await store().unwatchValue("s1", "db", "w1");
+      expect(mocked.readoutUnwatch).toHaveBeenCalledWith("s1", "db", "w1");
+      expect(mocked.readout).toHaveBeenCalledWith("s1", "db");
+    });
+
+    it("toasts the failure of removing", async () => {
+      mocked.readoutUnwatch.mockRejectedValueOnce(rejection);
+      await store().unwatchValue("s1", "db", "w1");
+      expect(store().toasts.at(-1)?.message).toBe("Could not remove the watched value: gone");
+    });
+
+    it("renames a watched value, with null for the default label, and reloads a loaded readout", async () => {
+      await store().loadReadout("s1", "db");
+      mocked.readout.mockClear();
+      await store().labelWatched("s1", "db", "w1", null);
+      expect(mocked.readoutWatchLabel).toHaveBeenCalledWith("s1", "db", "w1", null);
+      expect(mocked.readout).toHaveBeenCalledWith("s1", "db");
+    });
+
+    it("toasts the failure of renaming", async () => {
+      mocked.readoutWatchLabel.mockRejectedValueOnce(rejection);
+      await store().labelWatched("s1", "db", "w1", "Mode");
+      expect(store().toasts.at(-1)?.message).toBe("Could not rename the watched value: gone");
+    });
+  });
+
   describe("loadReadout", () => {
     beforeEach(() => connectedStore({ tabs: [readoutTab()] }));
 
