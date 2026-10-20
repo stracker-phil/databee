@@ -180,7 +180,7 @@ of space above it, 6px 12px inside.
   `items · order_id → this row`, `pattern · <rule as SQL>`;
 - count right-aligned in tertiary small text (`13 columns`, `9 keys · id order`, `2 rows`);
 - capped groups end with `+n keys` / `+n rows` in the accent, which open the Rows view at that group; groups
-  with 0 rows collapse into one tertiary "Also linked:" line of table names (each opens its rows);
+  with 0 rows are left out;
 - hovering a band shows the rule's origin (`preset …`, `foreign key …`, `inferred · same name`) in the status
   bar; clicking the table name opens the group's rows in a table tab.
 
@@ -273,11 +273,11 @@ value, else the current address. The Hover column is what the status bar shows.
 | Enum (status slugs, gateways) `wc-failed` | raw string, default color | filters rows by this value | provenance |
 | Number | tabular figures, right-aligned in grids | none | provenance |
 | Money | amount primary, currency secondary (`95.40 EUR`) | none | both sources |
-| Timestamp | raw value primary, relative time secondary 3px smaller (`1792167625  2 h ago`); ⌥ hover shows the UTC date (`2026-10-20 14:03:09 UTC`) in an overlay below | none | UTC and local time |
+| Timestamp | raw value primary, relative time secondary 3px smaller (`1792167625  2 h ago`); its ⌥ peek shows the UTC date (`2026-10-20 14:03:09 UTC`) in an overlay below | none | UTC and local time |
 | Null | italic tertiary `NULL` | none | provenance |
 | Empty | tertiary `""` (never rendered like `NULL`) | none | provenance |
 | Serialized | tertiary preview `▸ a:17{…}` / `{…17}`; in grids followed by the raw text, tertiary | expands inline as a tree (grids: opens a value column) | provenance |
-| Secret | masked | reveals until it loses focus | provenance; ⌥ held alone reveals it while hovered |
+| Secret | masked | reveals until it loses focus | provenance; its ⌥ peek reveals it |
 | Binary | tertiary `<n bytes>` | none | provenance |
 
 - **Click indicator:** everything whose click navigates or opens a column says so with one passive icon. A link
@@ -421,6 +421,10 @@ is left to fold do names end in an ellipsis (`.trail.tight`, `.trail-name`). A n
   after such a change, and on a table tab's Reload button. A row that is gone shows "Row `wp_options option_id =
   42` no longer exists" instead of the old text (no copy, no tree). While an edit queued from the column is
   pending, it keeps the edited text. There is no docked inspector.
+- **⌥ peeks, one rule for all:** pressing ⌥ alone peeks the peekable value under the pointer (a reference, a
+  timestamp, a secret, a changed cell). While ⌥ is held, moving onto another peekable value peeks that one;
+  moving anywhere else keeps the peek open. Releasing ⌥ (or the window losing focus) closes it. One peek shows at
+  a time.
 - **Peek:** holding ⌥ over a reference, or with a reference focused, shows a `--pop` overlay below it: head
   `table #key` with "⌥ peek · ↵ open", the target's [summary](#summary-line) as a two-column table (name in `--o2`, value with its secondary text;
   one line per value, the card 320–560px wide by its content, a longer value ends in an ellipsis), footer

@@ -105,7 +105,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     show; the others have a plain view label without an anchor), `group-<table>` on each section band's
     table name (list `groups`; a second band of the same table is `group-<table>:<group id>`), `collapse:<group id>` (the band's
     collapse chevron), `more:<group id>`
-    (`+n rows`), `also:<group id>` (the "Also linked" tables), `alternative:<row address>`; live mode and
+    (`+n rows`), `alternative:<row address>`; live mode and
     snapshots: `changes` (the change list at the bottom of a column or a saved query's tab) with its lines
     `change:<index>` (list `changes`, oldest first, label `<table> <column or key>`), `compare` (two rows side
     by side, `?compare=`); a table tab's live check: `table:changes` (the bar above the grid, only while rows

@@ -18,7 +18,6 @@ import { valueAt } from "../../lib/values";
 import { selectSessionBySlug, useStore } from "../../state/store";
 import { ErrorPanel } from "../ErrorPanel";
 import { ResultsGrid, type CellPos } from "../ResultsGrid";
-import { AlsoLinked } from "./AlsoLinked";
 import { GroupHeader } from "./GroupHeader";
 import { useCollapsedGroups } from "./useCollapsedGroups";
 
@@ -152,7 +151,6 @@ export function RowsView({ document, owner, focus, scrollTo }: Props) {
           </section>
         );
       })}
-      <AlsoLinked groups={document.groups} database={owner.database} />
     </div>
   );
 }

@@ -88,22 +88,13 @@ describe("ObjectPanel", () => {
       await openOrder();
       expect(await screen.findByRole("alert")).toHaveTextContent("Query timed out");
       expect(screen.getByText("Refunds · parent_order_id → this row")).toBeInTheDocument();
-      expect(screen.queryByText(/Also linked:/)).not.toBeInTheDocument();
     });
 
-    it("lists a linked table with no rows in the Also linked line instead of a band", async () => {
+    it("shows neither a band nor an Also linked line for a linked table with no rows", async () => {
       await openOrder();
-      expect(screen.getByText(/Also linked:/)).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "wp_wc_order_coupon_lookup" })).toHaveAttribute("title", "Coupons · order_id → this row · 0 rows");
       expect(screen.queryByText("Coupons · order_id → this row")).not.toBeInTheDocument();
-    });
-
-    it("opens the rows of an empty linked table in a preview table tab", async () => {
-      await openOrder();
-      await userEvent.click(screen.getByRole("button", { name: "wp_wc_order_coupon_lookup" }));
-      await waitFor(() =>
-        expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "table", table: "wp_wc_order_coupon_lookup", where: [{ column: "order_id", value: "4711" }], preview: true }),
-      );
+      expect(screen.queryByRole("button", { name: "wp_wc_order_coupon_lookup" })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Also linked/)).not.toBeInTheDocument();
     });
 
     it("opens a group's rows in a table tab from its band", async () => {

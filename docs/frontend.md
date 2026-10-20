@@ -309,8 +309,8 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Shell | `Toolbar` (with `ConnectionHealth`, see [Connection health](#connection-health)), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers; also `usePaneSize`, the SQL editor's persisted height), `useWindowSize.ts` (`useWindowSize`, the window size for the SQL editor's maximum height), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit`; a cut-off name shows whole on hover through `OverflowReveal.tsx` `useOverflowReveal(rowSelector, labelSelector)`, a portaled overlay in the row's font, color and opaque background), `Tabs`, `tabViews.tsx` (`TAB_VIEWS`; a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, smart or SQL filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
-| Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), `value/useAltHeld.ts` (`useAltHeld`: ⌥ held alone, one shared set of window listeners), see [Values](#values) |
-| Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `WideTable` (a row table that scrolls sideways in its own box; `pinned` keeps a primary-key first column in view; used by `groups` and `ChangeList`), `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
+| Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), `value/altPeek.ts` (`useAltPeek`: whether ⌥ is held alone and the element it peeks, by the ⌥ peek rule in [ux.md](ux.md): `[data-db-change]` first, else `[data-peek]` or `[data-ref]`; one shared set of window listeners, so one peek at a time), see [Values](#values) |
+| Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `WideTable` (a row table that scrolls sideways in its own box; `pinned` keeps a primary-key first column in view; used by `groups` and `ChangeList`), `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
 | Readout | `readout/Readout.tsx`, see [Readout](#readout) |
@@ -442,7 +442,7 @@ has no leading icon and shows `OpenHint` (an inline `.open-hint`, same `data-ope
 the same hover; links outside values without a table icon use it too (a readout value's title, a pinned title,
 "Show rows"). `LEAD_ICON_CH` (2.5ch) is the width a leading icon adds, `hasLeadIcon(value)` says whether a value
 has one; `ResultsGrid` passes them as `leads` to `useColumnSizing` (`fitWidth(…, lead)`), `groups.tsx` to
-`charWidth(…, LEAD_ICON_CH)`. A secret (`SecretText`) reveals on click, and while ⌥ is held over it (`useAltHeld`). A style sets `color: var(--style-<name>)`. CSS classes are `val`
+`charWidth(…, LEAD_ICON_CH)`. A secret (`SecretText`) reveals on click, and while its ⌥ peek is on it (`useAltPeek`, `data-peek`; a timestamp's `TimeValue` likewise). A style sets `color: var(--style-<name>)`. CSS classes are `val`
 and `val-<kind>` (`styles/app.css`, values).
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
@@ -551,9 +551,9 @@ PageUp/PageDown, Enter, ⌘C); the cell and header menus in `grid/useGridMenus.t
 reveals a cell (the focus carried over from the Document view). `bytes`
 cells are never editable: they show a `0x…` preview, which an edit would write back. `changes` (a table tab's
 live check, `RowChange` by row index) marks rows (`db-changed`, `db-removed`) and the cells whose stored
-value differs (`db-changed`, `db-flash` within `FLASH_MS` of being seen, `data-db-change`); ⌥ held over such a
-cell shows `ChangePeek` (`grid/ChangePeek.tsx`, portaled to `body`): the shown value → the stored one.
-`value/Peek.tsx` peeks no reference while ⌥ is over a `data-db-change` cell. `onEditingChange` reports the
+value differs (`db-changed`, `db-flash` within `FLASH_MS` of being seen, `data-db-change`); the ⌥ peek of such a
+cell (`useAltPeek`; `GridRow` keeps the last hovered one) shows `ChangePeek` (`grid/ChangePeek.tsx`, portaled to
+`body`): the shown value → the stored one. It wins over a reference inside the cell. `onEditingChange` reports the
 inline editor opening and closing.
 
 **Pinned key column:** when the first column holds primary keys, the grid is `grid pinned`: that column stays in
@@ -692,7 +692,7 @@ the [readout](#readout) lists.
   template sized in characters, `EventsGroup` as time, table and column or key. Values render through the
   memoized `Field` (no effects per value); a mousedown focuses its provenance (`focusObject`), the focused
   value gets an accent outline on `--sel`, and stays in view as `j`/`k` move it. `+n keys` / `+n rows` under a
-  capped group switches to Rows and scrolls to that group. Zero-row groups collapse into `AlsoLinked` ("Also linked: …").
+  capped group switches to Rows and scrolls to that group. Zero-row groups are left out.
 - **`RowsView`:** per group with a table its band, the `WHERE` of its rows address, and a compact `ResultsGrid`
   (at most its header, 12 rows and a sideways scrollbar tall (`.rows-grid` `max-height` from `--row-h`,
   `--grid-head-h`, the tallest header, and `--scrollbar-size`), then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and

@@ -559,7 +559,9 @@ describe("TableTab", () => {
       it("marks the changed cell and shows old → new while Alt is held over it", async () => {
         await changedInDatabase();
         expect(marked()).toHaveLength(1);
-        fireEvent.mouseEnter(marked()[0], { altKey: true });
+        fireEvent.mouseOver(marked()[0]);
+        fireEvent.mouseEnter(marked()[0]);
+        fireEvent.keyDown(window, { key: "Alt", altKey: true });
         expect(screen.getByRole("tooltip")).toHaveTextContent("post_title changed in the database");
         expect(screen.getByRole("tooltip")).toHaveTextContent("NULL → Stored title");
       });

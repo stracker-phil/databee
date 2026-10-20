@@ -1,10 +1,11 @@
 /** Holding ⌥ peeks the hovered, else the focused, reference (docs/ux.md, Peek); ↵ opens it. */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api, type Address, type Peek, type PeekMatch, type Summary } from "../../api";
 import { formatAddress, parseAddress } from "../../lib/address";
 import { bySourceText, rowIdentity } from "../../lib/provenance";
 import { useApiResult } from "../../lib/useApiResult";
 import { selectActiveTab, selectFocusedValue, selectSessionBySlug, useStore } from "../../state/store";
+import { useAltPeek } from "./altPeek";
 import { openTarget, type ColumnPlace } from "./open";
 import { SummaryLine } from "./SummaryLine";
 import { Value } from "./Value";
@@ -61,50 +62,25 @@ function focusedTarget(): PeekTarget | null {
   };
 }
 
-/** A value the table live check marked: ⌥ shows its change there (`ChangePeek`) instead of a peek. */
-const onChangedValue = (el: Element | null) => !!el?.closest("[data-db-change]");
-
 const overlayOpen = () => {
   const s = useStore.getState();
   return s.dialog !== null || s.paletteOpen;
 };
 
-/** Shows a peek while ⌥ is held alone; the pointer moving onto another reference peeks that one. */
+/** The reference the ⌥ peek is on (`altPeek`), else the focused one; ↵ closes it until ⌥ is pressed again. */
 function usePeekKeys(): [PeekTarget | null, () => void] {
-  const [target, setTarget] = useState<PeekTarget | null>(null);
+  const { held, target } = useAltPeek();
+  const [closedOn, setClosedOn] = useState<{ target: Element | null } | null>(null);
   useEffect(() => {
-    let hovered: Element | null = null;
-    let held = false;
-    const onOver = (e: MouseEvent) => {
-      hovered = e.target instanceof Element ? e.target : null;
-      if (!held) return;
-      if (onChangedValue(hovered)) return setTarget(null);
-      const next = hoveredTarget(hovered);
-      if (next) setTarget(next);
-    };
-    const onDown = (e: KeyboardEvent) => {
-      if (e.key !== "Alt" || e.repeat || e.metaKey || e.ctrlKey || e.shiftKey || overlayOpen()) return;
-      held = true;
-      setTarget(onChangedValue(hovered) ? null : (hoveredTarget(hovered) ?? focusedTarget()));
-    };
-    const release = () => {
-      held = false;
-      setTarget(null);
-    };
-    const onUp = (e: KeyboardEvent) => e.key === "Alt" && release();
-    window.addEventListener("mouseover", onOver, true);
-    window.addEventListener("keydown", onDown, true);
-    window.addEventListener("keyup", onUp, true);
-    window.addEventListener("blur", release);
-    return () => {
-      window.removeEventListener("mouseover", onOver, true);
-      window.removeEventListener("keydown", onDown, true);
-      window.removeEventListener("keyup", onUp, true);
-      window.removeEventListener("blur", release);
-    };
-  }, []);
-  const close = useCallback(() => setTarget(null), []);
-  return [target, close];
+    if (!held) setClosedOn(null);
+  }, [held]);
+  const peek = useMemo(() => {
+    if (!held || overlayOpen()) return null;
+    if (target) return target.matches("[data-ref]") ? hoveredTarget(target) : null;
+    return focusedTarget();
+  }, [held, target]);
+  const close = useCallback(() => setClosedOn({ target }), [target]);
+  return [closedOn && closedOn.target === target ? null : peek, close];
 }
 
 function useOpenKey(target: PeekTarget | null, close: () => void) {

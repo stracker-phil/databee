@@ -766,9 +766,6 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 :is(.object, .project, .readout) .row.hdr { color: var(--o3); font-family: var(--font-ui); font-size: var(--fs-small); }
 .object .row.group-error { color: var(--style-red); white-space: normal; }
 .object .more { align-self: flex-start; border: none; background: none; padding: var(--pad) 12px; color: var(--accent); font-size: var(--fs-small); }
-.object .also { padding: 14px 12px 0; color: var(--o3); font-size: var(--fs-small); }
-.also-table { border: none; background: none; padding: 0; color: inherit; font-family: var(--font-mono); font-size: var(--data-font-size); }
-.also-table:hover { color: var(--text); text-decoration: underline; }
 /* The pane only scrolls down: a table of rows (related rows, events, changes) scrolls sideways in its own box
    (WideTable), its header with it, below a band that keeps the pane's width. Rows take the column template
    from --cols and are at least as wide as their columns, gaps and insets; the header row

@@ -1,50 +1,26 @@
-import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Cell } from "../../api";
 import { cellDisplay } from "../../lib/format";
 import { selectNullLabel, useStore } from "../../state/store";
+import { useAltPeek } from "../value/altPeek";
 
 const MAX_CHARS = 300;
 const GAP = 4;
 
-/** Whether ⌥ is held alone, as for a peek (`value/Peek.tsx`); a window that loses focus counts as released. */
-function useAltKey(initiallyHeld: boolean): boolean {
-  const [held, setHeld] = useState(initiallyHeld);
-  useEffect(() => {
-    const onDown = (e: KeyboardEvent) => {
-      if (e.key === "Alt" && !e.metaKey && !e.ctrlKey && !e.shiftKey) setHeld(true);
-    };
-    const onUp = (e: KeyboardEvent) => {
-      if (e.key === "Alt") setHeld(false);
-    };
-    const release = () => setHeld(false);
-    window.addEventListener("keydown", onDown, true);
-    window.addEventListener("keyup", onUp, true);
-    window.addEventListener("blur", release);
-    return () => {
-      window.removeEventListener("keydown", onDown, true);
-      window.removeEventListener("keyup", onUp, true);
-      window.removeEventListener("blur", release);
-    };
-  }, []);
-  return held;
-}
-
 interface Props {
-  /** ⌥ was held when the pointer entered the cell. */
-  altHeld: boolean;
   column: string;
   shown: Cell;
   stored: Cell;
-  /** The hovered cell's box; the overlay opens below it, or above it near the window's bottom. */
-  anchor: DOMRect;
+  /** The changed cell; the overlay opens below it, or above it near the window's bottom. */
+  cell: Element;
 }
 
-/** While ⌥ is held over a changed cell: its value as the page shows it → as the database holds it now. */
-export function ChangePeek({ altHeld, column, shown, stored, anchor }: Props) {
-  const held = useAltKey(altHeld);
+/** The ⌥ peek of a changed cell: its value as the page shows it → as the database holds it now. */
+export function ChangePeek({ column, shown, stored, cell }: Props) {
+  const peeked = useAltPeek().target === cell;
   const nullLabel = useStore(selectNullLabel);
-  if (!held) return null;
+  if (!peeked) return null;
+  const anchor = cell.getBoundingClientRect();
   const below = anchor.bottom + GAP;
   const style = below > window.innerHeight * 0.7 ? { left: anchor.left, bottom: window.innerHeight - anchor.top + GAP } : { left: anchor.left, top: below };
   return createPortal(

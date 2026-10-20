@@ -505,27 +505,50 @@ describe("ResultsGrid changes prop", () => {
     expect(marked()).toHaveLength(0);
   });
 
+  const hover = (el: Element) => {
+    fireEvent.mouseOver(el);
+    fireEvent.mouseEnter(el);
+  };
+  const pressAlt = () => fireEvent.keyDown(window, { key: "Alt", altKey: true });
+
   it("shows old → new for a marked cell while Alt is held over it", () => {
     render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: read }} />);
-    fireEvent.mouseEnter(marked()[0], { altKey: true });
+    hover(marked()[0]);
+    pressAlt();
     expect(screen.getByRole("tooltip")).toHaveTextContent("post_title changed in the database");
     expect(screen.getByRole("tooltip")).toHaveTextContent("NULL → Stored title");
     fireEvent.keyUp(window, { key: "Alt" });
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
-  it("shows the overlay when Alt is pressed after the pointer entered", () => {
+  it("shows the overlay when the pointer arrives after Alt was pressed", () => {
     render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: read }} />);
-    fireEvent.mouseEnter(marked()[0]);
+    pressAlt();
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "Alt", altKey: true });
+    hover(marked()[0]);
     expect(screen.getByRole("tooltip")).toHaveTextContent("NULL → Stored title");
   });
 
-  it("closes the overlay when the pointer leaves the cell", () => {
+  it("shows no overlay on hover without Alt", () => {
     render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: read }} />);
-    fireEvent.mouseEnter(marked()[0], { altKey: true });
+    hover(marked()[0]);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("keeps the overlay open while Alt is held after the pointer leaves the cell", () => {
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: read }} />);
+    hover(marked()[0]);
+    pressAlt();
     fireEvent.mouseLeave(marked()[0]);
+    fireEvent.mouseOver(screen.getByText("Hello world"));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("NULL → Stored title");
+  });
+
+  it("closes the overlay when the window loses focus", () => {
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: read }} />);
+    hover(marked()[0]);
+    pressAlt();
+    fireEvent.blur(window);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 });

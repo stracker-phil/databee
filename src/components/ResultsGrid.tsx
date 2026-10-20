@@ -243,7 +243,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
       </div>
       {menuElement}
       {targetMenu}
-      {peek && peekStored && <ChangePeek altHeld={peek.altHeld} column={columns[peek.col].name} shown={rows[peek.row][peek.col]} stored={peekStored} anchor={peek.anchor} />}
+      {peek && peekStored && <ChangePeek column={columns[peek.col].name} shown={rows[peek.row][peek.col]} stored={peekStored} cell={peek.cell} />}
     </div>
   );
 }

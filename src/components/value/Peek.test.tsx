@@ -95,6 +95,46 @@ describe("Peek", () => {
     });
   });
 
+  describe("moving the pointer while Alt is held", () => {
+    const renderMixed = () =>
+      render(
+        <>
+          <PeekOverlay />
+          <p>plain</p>
+          <span data-peek="">stamp</span>
+          <span data-ref="databee://shop/db/wp_users/12">ref 12</span>
+        </>,
+      );
+    const card = () => screen.queryByRole("complementary", { name: "Peek wp_users 12" });
+
+    it("keeps the reference peek when the pointer moves onto something that cannot be peeked", async () => {
+      renderMixed();
+      fireEvent.mouseOver(screen.getByText("ref 12"));
+      fireEvent.keyDown(window, { key: "Alt", altKey: true });
+      await peekCard();
+      fireEvent.mouseOver(screen.getByText("plain"));
+      expect(card()).toBeInTheDocument();
+    });
+
+    it("hides the reference peek when the pointer moves onto another peekable value", async () => {
+      renderMixed();
+      fireEvent.mouseOver(screen.getByText("ref 12"));
+      fireEvent.keyDown(window, { key: "Alt", altKey: true });
+      await peekCard();
+      fireEvent.mouseOver(screen.getByText("stamp"));
+      expect(card()).not.toBeInTheDocument();
+    });
+
+    it("shows the reference peek when the pointer moves onto a reference from another peekable value", async () => {
+      renderMixed();
+      fireEvent.mouseOver(screen.getByText("stamp"));
+      fireEvent.keyDown(window, { key: "Alt", altKey: true });
+      expect(card()).not.toBeInTheDocument();
+      fireEvent.mouseOver(screen.getByText("ref 12"));
+      expect(await peekCard()).toBeInTheDocument();
+    });
+  });
+
   it("shows the error when the target cannot be read", async () => {
     mocked.peek.mockRejectedValue({ kind: "invalid_input", message: "No such row", code: null });
     useStore.setState({ dataVersion: 1000 });

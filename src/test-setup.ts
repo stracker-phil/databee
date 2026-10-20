@@ -2,7 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
-afterEach(() => cleanup());
+// The ⌥ peek (components/value/altPeek.ts) keeps module state across tests: release ⌥ and forget the hovered element.
+afterEach(() => {
+  cleanup();
+  window.dispatchEvent(new Event("blur"));
+  document.body.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+});
 
 // The core install (scopes and settings pages). Stage is not installed here; its tests call `installStage()`.
 // Imported lazily so a test file's `vi.mock("../api")` is already in place when the store loads.

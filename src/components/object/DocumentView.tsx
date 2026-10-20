@@ -8,7 +8,6 @@ import { useContextMenu } from "../ContextMenu";
 import { useOpenValue } from "../value/useOpenValue";
 import { DocumentContext, type DocumentActions } from "./fields";
 import { GroupHeader } from "./GroupHeader";
-import { AlsoLinked } from "./AlsoLinked";
 import { EventsGroup, FieldsGroup, MetaGroup, MoreRows, RowsGroup, type Marks } from "./groups";
 import { useCollapsedGroups } from "./useCollapsedGroups";
 
@@ -107,7 +106,6 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
             </Fragment>
           );
         })}
-        <AlsoLinked groups={groups} database={owner.database} />
       </div>
       {targetMenu}
       {menu}

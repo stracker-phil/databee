@@ -105,7 +105,7 @@ export function moreText(group: Group): string | null {
   return `+${group.shape === "meta" ? plural(more, "key", "keys") : plural(more, "row", "rows")}`;
 }
 
-/** A group with no rows, which collapses into the "Also linked" line; a failed group keeps its band. */
+/** A group with no rows, which is left out; a failed group keeps its band. */
 export const isEmpty = (group: Group) => group.total === 0 && group.rows.length === 0 && !group.error && group.via.kind !== "own";
 
 /** The `UiState.collapsedGroups` key of a group: per table of the document, so it holds for every row of it. */

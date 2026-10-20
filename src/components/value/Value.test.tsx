@@ -330,27 +330,67 @@ describe("Value", () => {
       it("shows the UTC date in a tooltip while Alt is held over the timestamp, and hides it on release", async () => {
         const user = userEvent.setup();
         render(<Value value={stamp()} />);
-        fireEvent.mouseEnter(hoverArea());
+        fireEvent.mouseOver(hoverArea());
         await user.keyboard("{Alt>}");
         expect(screen.getByRole("tooltip")).toHaveTextContent("2100-01-01 00:00:00 UTC");
         await user.keyboard("{/Alt}");
         expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
       });
 
-      it("shows the tooltip when the pointer arrives after Alt, and hides it when the pointer leaves", async () => {
+      it("shows the tooltip when the pointer arrives after Alt", async () => {
         const user = userEvent.setup();
         render(<Value value={stamp()} />);
         await user.keyboard("{Alt>}");
         expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-        fireEvent.mouseEnter(hoverArea());
+        fireEvent.mouseOver(hoverArea());
         expect(screen.getByRole("tooltip")).toBeInTheDocument();
+      });
+
+      it("keeps the tooltip when the pointer moves onto something that cannot be peeked", async () => {
+        const user = userEvent.setup();
+        render(
+          <>
+            <Value value={stamp()} />
+            <p>elsewhere</p>
+          </>,
+        );
+        fireEvent.mouseOver(hoverArea());
+        await user.keyboard("{Alt>}");
         fireEvent.mouseLeave(hoverArea());
+        fireEvent.mouseOver(screen.getByText("elsewhere"));
+        expect(screen.getByRole("tooltip")).toHaveTextContent("2100-01-01 00:00:00 UTC");
+        await user.keyboard("{/Alt}");
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      });
+
+      it("moves the tooltip to another timestamp the pointer moves onto", async () => {
+        const user = userEvent.setup();
+        const other = value({ raw: { t: "temporal", v: "2101-01-01 00:00:00" }, kind: { kind: "timestamp", utc: 4133980800, zone: "utc" } });
+        render(
+          <>
+            <Value value={stamp()} />
+            <Value value={other} />
+          </>,
+        );
+        fireEvent.mouseOver(hoverArea());
+        await user.keyboard("{Alt>}");
+        fireEvent.mouseOver(screen.getByText("2101-01-01 00:00:00"));
+        expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+        expect(screen.getByRole("tooltip")).toHaveTextContent("2101-01-01 00:00:00 UTC");
+      });
+
+      it("hides the tooltip when the window loses focus", async () => {
+        const user = userEvent.setup();
+        render(<Value value={stamp()} />);
+        fireEvent.mouseOver(hoverArea());
+        await user.keyboard("{Alt>}");
+        fireEvent.blur(window);
         expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
       });
 
       it("shows no tooltip on hover without Alt", () => {
         render(<Value value={stamp()} />);
-        fireEvent.mouseEnter(hoverArea());
+        fireEvent.mouseOver(hoverArea());
         expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
       });
     });
@@ -481,23 +521,45 @@ describe("Value", () => {
       it("shows the hovered secret while Alt is pressed and masks it on release", async () => {
         const user = userEvent.setup();
         render(<Value value={secret("sk_live_abc")} />);
-        fireEvent.mouseEnter(hoverArea(reveal()));
+        fireEvent.mouseOver(hoverArea(reveal()));
         await user.keyboard("{Alt>}");
         expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
         await user.keyboard("{/Alt}");
         expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
       });
 
-      it("shows the secret when the pointer arrives after Alt, and masks it when the pointer leaves", async () => {
+      it("shows the secret when the pointer arrives after Alt, and keeps it when the pointer moves onto something else", async () => {
         const user = userEvent.setup();
-        render(<Value value={secret("sk_live_abc")} />);
+        render(
+          <>
+            <Value value={secret("sk_live_abc")} />
+            <p>elsewhere</p>
+          </>,
+        );
         const area = hoverArea(reveal());
         await user.keyboard("{Alt>}");
         expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
-        fireEvent.mouseEnter(area);
+        fireEvent.mouseOver(area);
         expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
         fireEvent.mouseLeave(area);
-        expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
+        fireEvent.mouseOver(screen.getByText("elsewhere"));
+        expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
+      });
+
+      it("masks the secret when the pointer moves onto another secret", async () => {
+        const user = userEvent.setup();
+        render(
+          <>
+            <Value value={secret("first_secret")} />
+            <Value value={secret("second_secret")} />
+          </>,
+        );
+        fireEvent.mouseOver(hoverArea(screen.getAllByRole("button", { name: "Reveal secret" })[0]));
+        await user.keyboard("{Alt>}");
+        expect(screen.getByText("first_secret")).toBeInTheDocument();
+        fireEvent.mouseOver(hoverArea(screen.getByRole("button", { name: "Reveal secret" })));
+        expect(screen.getByText("second_secret")).toBeInTheDocument();
+        expect(screen.queryByText("first_secret")).not.toBeInTheDocument();
       });
 
       it.each([
@@ -507,7 +569,7 @@ describe("Value", () => {
       ])("does not reveal on hover when %s is held with Alt", async (_name, keys) => {
         const user = userEvent.setup();
         render(<Value value={secret("sk_live_abc")} />);
-        fireEvent.mouseEnter(hoverArea(reveal()));
+        fireEvent.mouseOver(hoverArea(reveal()));
         await user.keyboard(keys);
         expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
       });
@@ -515,7 +577,7 @@ describe("Value", () => {
       it("masks the secret when the window loses focus", async () => {
         const user = userEvent.setup();
         render(<Value value={secret("sk_live_abc")} />);
-        fireEvent.mouseEnter(hoverArea(reveal()));
+        fireEvent.mouseOver(hoverArea(reveal()));
         await user.keyboard("{Alt>}");
         expect(screen.getByText("sk_live_abc")).toBeInTheDocument();
         fireEvent.blur(window);
@@ -534,7 +596,7 @@ describe("Value", () => {
         expect(screen.queryByText("first_secret")).not.toBeInTheDocument();
         expect(screen.queryByText("second_secret")).not.toBeInTheDocument();
 
-        fireEvent.mouseEnter(hoverArea(screen.getAllByRole("button", { name: "Reveal secret" })[1]));
+        fireEvent.mouseOver(hoverArea(screen.getAllByRole("button", { name: "Reveal secret" })[1]));
         expect(screen.getByText("second_secret")).toBeInTheDocument();
         expect(screen.queryByText("first_secret")).not.toBeInTheDocument();
       });
@@ -542,7 +604,7 @@ describe("Value", () => {
       it("keeps a peeked secret shown after Alt is released once it has focus, until it blurs", async () => {
         const user = userEvent.setup();
         render(<Value value={secret("sk_live_abc")} />);
-        fireEvent.mouseEnter(hoverArea(reveal()));
+        fireEvent.mouseOver(hoverArea(reveal()));
         await user.keyboard("{Alt>}");
         await user.click(screen.getByText("sk_live_abc"));
         await user.keyboard("{/Alt}");

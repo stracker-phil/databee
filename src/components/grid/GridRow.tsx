@@ -5,7 +5,8 @@ import type { RowChange } from "../../lib/tableCheck";
 import type { CellPos } from "../gridHooks";
 import { Value, type OpenValue } from "../value/Value";
 
-export type Peek = CellPos & { anchor: DOMRect; altHeld: boolean };
+/** The changed cell last hovered; its overlay shows while ⌥ peeks it. */
+export type Peek = CellPos & { cell: Element };
 
 /** The stored value of a cell the database changed, once the check read it. */
 export function storedCell(change: RowChange | undefined, col: number): Cell | undefined {
@@ -100,8 +101,7 @@ function GridCell({ row, col, cell, value, change, selected, editor, handlers, o
       className={cellClass(cell, selected, editor !== null, stored ? change?.at : undefined)}
       style={{ width: `var(--col-${col})` }}
       data-db-change={stored ? "" : undefined}
-      onMouseEnter={stored ? (e) => handlers.setPeek({ row, col, anchor: e.currentTarget.getBoundingClientRect(), altHeld: e.altKey }) : undefined}
-      onMouseLeave={stored ? () => handlers.setPeek(null) : undefined}
+      onMouseEnter={stored ? (e) => handlers.setPeek({ row, col, cell: e.currentTarget }) : undefined}
       onMouseDown={() => handlers.select(row, col)}
       onDoubleClick={() => handlers.openOrEdit({ row, col }, false)}
       onContextMenu={(e) => handlers.openMenu(e, row, col)}

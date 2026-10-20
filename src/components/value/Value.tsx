@@ -10,7 +10,7 @@ import { watchValue } from "../../commands/values";
 import { ValueTree } from "../ValueTree";
 import { OpenHint, OpenSwap } from "./OpenHint";
 import type { ClickEffect } from "./open";
-import { useAltHeld } from "./useAltHeld";
+import { useAltPeek } from "./altPeek";
 import { useDecoded } from "./useDecoded";
 
 /** `grid`: one line, cut to the cell; `full`: the whole value, serialized data expands in place. */
@@ -59,15 +59,15 @@ function PlainText({ value, density }: { value: StoredValue; density: Density })
 
 function SecretText({ text }: { text: string }) {
   const [shown, setShown] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const altHeld = useAltHeld();
+  const [el, setEl] = useState<HTMLSpanElement | null>(null);
+  const peeked = useAltPeek().target === el && el !== null;
   const revealedRef = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (shown) revealedRef.current?.focus();
   }, [shown]);
   return (
-    <span className="val-secret" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
-      {shown || (altHeld && hovered) ? (
+    <span ref={setEl} className="val-secret" data-peek="">
+      {shown || peeked ? (
         <span ref={revealedRef} className="revealed" tabIndex={-1} onFocus={() => setShown(true)} onBlur={() => setShown(false)}>
           {text}
         </span>
@@ -130,16 +130,16 @@ const withSecondary = (main: ReactNode, secondary: string | null, className = "v
   </>
 );
 
-/** The stored value with its relative time; ⌥ hover shows the UTC date in an overlay below it. */
+/** The stored value with its relative time; its ⌥ peek shows the UTC date in an overlay below it. */
 function TimeValue({ value, density, utc }: { value: StoredValue; density: Density; utc: number }) {
-  const [rect, setRect] = useState<DOMRect | null>(null);
-  const altHeld = useAltHeld();
+  const [el, setEl] = useState<HTMLSpanElement | null>(null);
+  const peeked = useAltPeek().target;
+  const rect = el && peeked === el ? el.getBoundingClientRect() : null;
   return (
-    <span className="val-time" onMouseEnter={(e) => setRect(e.currentTarget.getBoundingClientRect())} onMouseLeave={() => setRect(null)}>
+    <span ref={setEl} className="val-time" data-peek="">
       <PlainText value={value} density={density} />
       <span className="val-sec">{relativeTime(utc)}</span>
-      {altHeld &&
-        rect &&
+      {rect &&
         createPortal(
           <div className="time-peek" role="tooltip" style={{ left: rect.left, top: rect.bottom + 4 }}>
             {isoUtc(utc)}

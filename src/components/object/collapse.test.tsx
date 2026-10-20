@@ -86,12 +86,12 @@ describe("collapsible object sections", () => {
       await waitFor(() => expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "table", table: META }));
     });
 
-    it("hides the +n more button of a collapsed group and leaves Also linked alone", async () => {
+    it("hides the +n more button of a collapsed group", async () => {
       await openObject();
       expect(screen.getByRole("button", { name: "+28 rows" })).toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "Collapse wp_wc_order_items" }));
       expect(screen.queryByRole("button", { name: "+28 rows" })).not.toBeInTheDocument();
-      expect(screen.getByText(/Also linked:/)).toBeInTheDocument();
+      expect(screen.queryByText("Coupons · order_id → this row")).not.toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "Expand wp_wc_order_items" }));
       expect(screen.getByRole("button", { name: "+28 rows" })).toBeInTheDocument();
     });
