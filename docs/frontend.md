@@ -1064,7 +1064,7 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
 - **No color literals** (`#hex`, `rgb(`, `hsl(`) outside `styles/schemes/`. Everything else uses a token or
   a `color-mix()` of tokens.
 - **Derived tokens.** `theme.css` derives the opacity levels (`--o2`, `--o3`), the accent mixes (`--cell`,
-  `--sel`, `--lit`), `--accent` from `html[data-accent]` (default orange), the type sizes (`--fs-*`) and the
+  `--sel`, `--lit-solid`), `--accent` from `html[data-accent]` (default orange), the type sizes (`--fs-*`) and the
   row height `--row-h` from `--pad`.
 - **Accent per database.** `data-accent` is the accent in effect, `selectEffectiveAccent` (`project` slice):
   the active session's current database's own accent, else `settings.accent` (also on the connect screen).

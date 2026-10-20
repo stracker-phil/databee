@@ -82,7 +82,6 @@ Derived tokens in `src/styles/theme.css`, the same for every scheme:
 | `--o2`, `--o3` | `--text` at 62% and 40% | secondary and tertiary text (see opacity levels) |
 | `--cell` | `--accent` at 24% | hovered value |
 | `--sel` | `--accent` at 20% | selected row or sidebar entry, focused value |
-| `--lit` | `--accent` at 15% | a reference chip of the linked table highlight |
 | `--lit-solid` | `--accent` at 15% over `--bg` | the linked table highlight's rows and bands, opaque so a pinned key column matches its row |
 | `--accent-quiet` | `--accent` at 45%, the rest `--a-graphite` (oklab) | the accent of a pane beside the active one |
 | `--scrollbar-size` | 8px | scrollbar track, both directions |
@@ -188,7 +187,8 @@ column name, type below) with the table's full columns, 12 rows high before it s
 
 **Linked table highlight:** hovering a table in the sidebar lights everything of that table in the panes:
 its bands (`--lit-solid` background, 3px accent bar on the left, accent table name), its rows (`--lit-solid`),
-links naming it (accent text) and every reference into it from other rows (`--lit` chip); a pinned key column
+links naming it (accent text) and every reference into it from other rows (as if hovered: the
+grid cell, or the value chip, in `--cell`); a pinned key column
 takes the same color, so the row stays one band; everything else
 (rows and bands of other tables, readout lines and entity chips of none or another) fades to `--dimmed`,
 except the cells holding such a reference or link. Hovering a

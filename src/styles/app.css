@@ -593,7 +593,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 /* ---------- column stack ---------- */
 /* The trail above the panes, then the panes side by side with hairline dividers (Splitter); the active pane has
    an accent line on top while others show next to it. Those others are quiet (docs/ux.md, Layout): their accent
-   leans toward graphite (keys, links, focus, selection; theme.css derives --cell, --sel, --lit from it again),
+   leans toward graphite (keys, links, focus, selection; theme.css derives --cell, --sel, --lit-solid from it again),
    their background darker (--bg-quiet) and their content fainter, so one pane and one focus ring stand out. */
 .object-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .stack { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
