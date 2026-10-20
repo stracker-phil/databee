@@ -34,7 +34,7 @@ export const selectDocument = (s: Store, sessionId: string, text: string): Docum
 
 /**
  * The value the value commands and the status bar act on: the selected grid cell of the active tab, else
- * the active column of an object tab: its focused document value, or the value a value column shows.
+ * the active column of an object tab: its focused document value, or the value a value column shows (none once its row is gone).
  */
 export const selectFocusedValue = (s: Store): Value | null => {
   const tab = selectActiveTab(s);
@@ -42,7 +42,7 @@ export const selectFocusedValue = (s: Store): Value | null => {
   if (s.selectedCell?.tabId === tab.id && s.selectedCell.value) return s.selectedCell.value;
   if (tab.kind !== "object") return null;
   const column = tab.columns[tab.active];
-  if (column?.kind === "value") return column.value;
+  if (column?.kind === "value") return column.missing ? null : column.value;
   if (column?.kind !== "object" || column.view !== "document" || !column.focus) return null;
   const document = s.documents[documentKey(tab.sessionId, documentText(column.address))]?.document;
   return document ? findValue(document, column.focus) : null;

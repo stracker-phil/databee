@@ -86,7 +86,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   - `tab:table:<db>.<table>`, `tab:object:<row address>`, `tab:project:<db>`, `tab:readout:<db>`,
     `tab:query:<tab id>`
   - object tabs: `object` (the panel), `object-header`, `object-actions` (the Actions button, only when the row has actions),
-    `view-toggle` with `view-toggle:document` and `view-toggle:rows`, `group-<table>` on each section band's
+    `view-toggle` with `view-toggle:document` and `view-toggle:rows` (only in the active pane while several
+    show; the others have a plain view label without an anchor), `group-<table>` on each section band's
     table name (list `groups`; a second band of the same table is `group-<table>:<group id>`), `collapse:<group id>` (the band's
     collapse chevron), `more:<group id>`
     (`+n rows`), `also:<group id>` (the "Also linked" tables), `alternative:<row address>`; live mode and

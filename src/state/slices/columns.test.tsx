@@ -5,7 +5,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api } from "../../api";
 import { installCommands } from "../../commands";
 import { address } from "../../lib/address";
-import { connectedStore, session } from "../../test/fixtures";
+import { connectedStore, session, value } from "../../test/fixtures";
 import { activeObject, objectDocument, orderAddress } from "../../test/objectFixtures";
 import { useStore } from "../store";
 
@@ -90,6 +90,47 @@ describe("maximized panes", () => {
       expect(activeObject().columns).toHaveLength(3);
       expect(activeObject().maximized).toBe(true);
     });
+  });
+});
+
+describe("closeActiveColumn", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore({ tabs: [] });
+    installCommands();
+    mocked.document.mockResolvedValue(objectDocument());
+  });
+
+  it("closes the active column and the columns opened from it, and activates the one before", () => {
+    const id = openStack(3);
+    store().setActiveColumn(id, 1);
+    store().closeActiveColumn();
+    expect(activeObject().columns).toHaveLength(1);
+    expect(activeObject().id).toBe(id);
+    expect(store().tabs[0]).toMatchObject({ active: 0 });
+  });
+
+  it("keeps the first column", () => {
+    const id = openStack(2);
+    store().setActiveColumn(id, 0);
+    store().closeActiveColumn();
+    expect(activeObject().columns).toHaveLength(2);
+  });
+});
+
+describe("openValueColumn", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore({ tabs: [] });
+    installCommands();
+    mocked.document.mockResolvedValue(objectDocument());
+  });
+
+  it("stamps the column with the data version its text was read at", () => {
+    const id = openStack(1);
+    store().bumpData();
+    store().openValueColumn(id, 0, { kind: "value", value: value(), text: "x", database: "db" });
+    expect(store().tabs[0]).toMatchObject({ columns: [{ kind: "object" }, { kind: "value", text: "x", version: store().dataVersion }] });
   });
 });
 

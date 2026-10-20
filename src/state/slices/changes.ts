@@ -11,7 +11,8 @@ export interface ChangesSlice {
   applying: boolean;
   /** Bumped to move focus to the pending tray's Apply button. */
   trayFocusRequest: number;
-  queueChange: (change: ChangeRequest) => Promise<boolean>;
+  /** Plans `change` for review; resolves to the plan's id, or null when it was refused. */
+  queueChange: (change: ChangeRequest) => Promise<number | null>;
   /** Plans rule action `action` on a row address (or a table address for table actions) for review. */
   /** Queues the plan of an action preview (`api.previewAction`). */
   queueActionPreview: (sessionId: string, id: number) => Promise<boolean>;
@@ -39,10 +40,10 @@ export const changesSlice: Slice<ChangesSlice> = {
       try {
         const planned = await plan();
         set((s) => ({ pending: [...s.pending, { ...planned, sessionId }] }));
-        return true;
+        return planned.id;
       } catch (e) {
         fail(e, "Cannot prepare change");
-        return false;
+        return null;
       }
     };
 
@@ -54,12 +55,12 @@ export const changesSlice: Slice<ChangesSlice> = {
 
       async queueChange(change) {
         const session = selectActiveSession(get());
-        if (!session) return false;
+        if (!session) return null;
         return queue(session.id, () => api.planChange(session.id, change));
       },
 
-      queueActionPreview(sessionId, id) {
-        return queue(sessionId, () => api.queueActionPreview(sessionId, id));
+      async queueActionPreview(sessionId, id) {
+        return (await queue(sessionId, () => api.queueActionPreview(sessionId, id))) !== null;
       },
 
       async discardChange(id) {

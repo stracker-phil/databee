@@ -1,4 +1,4 @@
-import { api, type Cell, type ColumnMeta, type RowKey } from "../api";
+import { api, type Cell, type ColumnMeta, type Provenance, type RowKey } from "../api";
 import { cellText } from "./format";
 
 /** Rust's default `rowLimit`, for the moment before settings load; Rust clamps the page size anyway. */
@@ -25,4 +25,15 @@ export interface CellSource {
 export async function fullCellText(cell: Cell, source: CellSource, row: number, col: number): Promise<string> {
   if (cell.t !== "longText") return cellText(cell);
   return api.fetchCell(source.sessionId, source.resultId, row, col);
+}
+
+/** The value at `source` as stored now, read by its row key (so row order does not matter); null when no row has that key any more. */
+export async function fetchStoredValue(sessionId: string, database: string, source: Provenance): Promise<{ cell: Cell; text: string } | null> {
+  const where = source.row.map((part) => ({ column: part.column, value: part.value }));
+  const page = await api.browseTable(sessionId, { database, table: source.table, offset: 0, limit: 1, where });
+  if (page.result.rows.length === 0) return null;
+  const col = columnIndex(page.result.columns, source.column);
+  if (col < 0) throw new Error(`${source.table} has no column ${source.column}`);
+  const cell = page.result.rows[0][col];
+  return { cell, text: await fullCellText(cell, { sessionId, resultId: page.result.id }, 0, col) };
 }

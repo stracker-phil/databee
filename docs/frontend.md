@@ -150,7 +150,8 @@ Conventions:
   suppressed) or a point. The menu portals into `document.body`, so it never inherits the font of the grid or
   document it opened from, and `.menu` in `app.css` sets the UI font itself. It focuses its first item, moves
   with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
-- Writes: `queueChange` asks Rust to plan a row edit (`planChange`) and keeps the returned plan; `queueActionPreview(sessionId, id)` queues the plan of a rule action's preview (`queueActionPreview`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
+- Writes: `queueChange` asks Rust to plan a row edit (`planChange`), keeps the returned plan and resolves to its id
+  (null when refused); `queueActionPreview(sessionId, id)` queues the plan of a rule action's preview (`queueActionPreview`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
   (`undoBatch`); `discardChange` / `discardAll` drop plans in Rust too. The page never sends SQL to write.
 - In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
@@ -447,7 +448,7 @@ unnamed `detail` values.
 
 **Value commands** (`commands/values.ts`: `VALUE_COMMANDS`, ids `value.*`, scope `table`, and
 `OBJECT_VALUE_COMMANDS`, ids `object.*`, scope `object`) act on the focused value, `selectFocusedValue`: the
-selected grid cell of the active tab, else the active column of an object tab: the focused value of its Document view, or a value column's value. They are rebindable
+selected grid cell of the active tab, else the active column of an object tab: the focused value of its Document view, or a value column's value (none while its row is `missing`). They are rebindable
 like every command.
 Bare keys never fire in inputs or the editor (`resolveKeydown`).
 
@@ -534,7 +535,9 @@ tab, not in `useBrowse` (which keeps only offset and sort), so back and forward 
 rows start at the first page. Applying the filter calls `setTableFilter` (no history entry: a free SQL
 filter is not addressable). The tab's `where` goes into every browse request next to the typed filter;
 `ColumnsFilterChip` shows `BrowsePage.columnsFilter.label` read-only (the SQL as its tooltip), and its clear
-button calls `showRows` with no matches, which records the filtered address for back.
+button calls `showRows` with no matches, which records the filtered address for back. The Reload button
+(`table:reload`) fetches the page again and calls `reloadValueColumn(tab, null)`, so a value column opened from the
+grid reads its value again too ([Column stack](#column-stack)).
 
 ### Structure view
 
@@ -597,10 +600,13 @@ the [readout](#readout) lists.
   document stays while reloading. The key is the address without its view (`documentText`), so toggling never
   refetches. A failed load renders `ErrorPanel`. The tab title becomes `<entity> #<key>` of the first column once
   its document names its entity.
-- **`ObjectHeader`:** table name, `#key`, the Document/Rows segmented control with the `object.viewDocument` /
-  `object.viewRows` key caps, the actions button, the summary (`Document.header`) as a `SummaryLine`, other rows an entity
+- **`ObjectHeader`:** table name, `#key`, the Document/Rows segmented control (`ViewToggle`) with the `object.viewDocument` /
+  `object.viewRows` key caps (in a pane beside the active one, `QuietPaneContext` true, a `.view-label` text naming
+  the view instead), the actions button, the summary (`Document.header`) as a `SummaryLine`, other rows an entity
   shorthand matched (`alternatives`). The `Actions` button (only when the row has actions) and a right-click
-  open the actions menu (`actionMenu`), each item with what it writes as its `detail` line (`writesSummary`).
+  open the actions menu (`actionMenu`), each item with what it writes as its `detail` line (`writesSummary`). The
+  right-click of a header with a `place` appends `paneMenu()` (`commands/columns.ts`: "Open in new tab", "Close
+  pane", those whose command applies to the active pane) after a separator.
   An action opens the `ActionSheet` dialog (`object/ActionSheet.tsx`, dialog type `action`): a field per param
   (choices as a datalist, free text allowed), and the `previewAction` result, fetched again 250 ms after a param
   changes: per row `table #key` and per column `old → new` as `Value`s, deleted rows, or the statements of free
@@ -669,7 +675,9 @@ Rust diffs; the page keeps the marks and draws them ([backend](backend.md#watche
 ### Column stack
 
 `ObjectTab.columns` (`StackColumn[]`, `lib/columns.ts`) holds `ObjectColumn`s and `ValueColumn`s
-(`{ value, text, database }`: a stored value and its full text, after a queued edit the edited text); `active`
+(`{ value, text, database, version?, queued?, missing? }`: a stored value and its full text, after a queued edit
+the edited text; the `dataVersion` the text was read at, the plan ids its edits queued, and whether its row was
+gone when it was read again); `active`
 is the column `h`/`l` move, the trail marks and the value commands act on; `paneWidths` and `maximized` are the
 tab's pane layout (never stored). The `columns` slice
 (`slices/columns.ts`) changes it:
@@ -677,13 +685,23 @@ tab's pane layout (never stored). The `columns` slice
 - `drill(tabId, from, target)`: `target` as an object column after column `from`, closing any to its right,
   active. Clicks and Enter reach it through `ColumnContext` (`value/open.ts`), which each column provides.
 - `openValueColumn(tabId, from, column)`: the same for a value column; for a table or query tab (`from` null)
-  it sets the tab's `valueColumn`, which `WithValueColumn` (`tabViews.tsx`) renders right of the tab.
-  `updateValueColumn` keeps an edited text.
+  it sets the tab's `valueColumn`, which `WithValueColumn` (`tabViews.tsx`) renders right of the tab. Both
+  stamp the column with the current `dataVersion`. `updateValueColumn(tabId, index, text, planId)` keeps an
+  edited text and the plan that queued it.
+- `reloadValueColumn(tabId, index)` (index null: a table or query tab's value column) reads the value again with
+  `fetchStoredValue(sessionId, database, provenance)` (`lib/cells.ts`: a one-row `browseTable` whose `where` is the
+  provenance's row key, then `fetchCell` for a `longText` cell), so it finds the row whatever the grid's order.
+  It writes `text` and `value.raw`, or `missing` when no row has the key, and the `dataVersion` it started at;
+  while a plan in `queued` is still pending it only stamps the version, so the edited text stays. A value without
+  provenance (query results) is left alone. The write is dropped when the tab no longer holds that column. Its
+  callers: `ValueColumnView` (`useCurrentValue`) whenever the column's `version` is older than `dataVersion`
+  (⌘R, applied writes, undo, a pane that mounts again after one), and the table tab's Reload button.
 - `popToColumn(tabId, index)` (the close button of a drilled column), `closeRightmostColumn()` (`Esc`,
   `columns.close`; a table or query tab's value column first, then a maximized stack is restored before any
   column closes), `setActiveColumn(tabId, index)` (a mousedown in a column, in the capture phase so the column
-  is active before a grid selects; a trail crumb), `moveActiveColumn(delta)` (`h`/`l`). A new active column
-  drops the tab's grid selection.
+  is active before a grid selects; a trail crumb), `moveActiveColumn(delta)` (`h`/`l`), `closeActiveColumn()`
+  (`column.close`: `popToColumn(tab, active - 1)`, so the columns drilled from the active one close with it; the
+  first column never closes). A new active column drops the tab's grid selection.
 - `setPaneWidths(tabId, widths)`: the shares of the shown panes (summing to 1; null: equal).
   `toggleMaximized(tabId)`: only the active column shows. A stack down to one column drops `maximized`
   (`withTab`); drilling, popping and back/forward keep it (`objectified` carries the layout of an object tab),
@@ -740,6 +758,16 @@ view, serialized data as a value column); `columns.close` (Escape, scope `global
 maximize of the active pane while `maximizable` holds. They act only while the keyboard focus is in `.stack`,
 the `.trail` or on nothing, never in inputs; the arrows and Enter leave a focused grid or pane divider alone,
 Enter a focused button, Escape an open menu.
+
+The pane keys are ⌘ combinations (scope `object`), which the registry fires in inputs too, so their `when`
+refuses while text is edited (`isTextInput`: inputs, textareas, CodeMirror) or a menu is open; otherwise they act
+wherever the focus is in the tab: `column.focusLeft` / `column.focusRight` (⌘⌥← / ⌘⌥→, while the stack has
+several columns) make the neighbouring column active (`setActiveColumn`; from outside the stack they blur the
+focused element first, so `useFocusActive` moves the focus into the new pane); `column.close` (⌘⇧W, while the
+active column is not the first) runs `closeActiveColumn`; `column.openInTab` (⌘⌥↵) opens the active column's row
+(`objectColumnAt`, so a value column's owner) with `openObject(address, { preview: false })`, offered while that
+row is not the tab's first row (which `openObject` would reuse). None of them repeats while held. The peek's ↵
+ignores ⌘ and ⌃, so ⌘⌥↵ with ⌥ pressed first does not also open the peeked target.
 
 ### Addresses and history
 

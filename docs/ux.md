@@ -158,10 +158,15 @@ of space above it, 6px 12px inside.
 
 The object header is its own block above the groups: table name (`--o2`, large mono), `#key` (accent,
 semibold), the Document/Rows segmented control with a `⌘1` / `⌘2` key cap on each segment, the [summary line](#summary-line),
-closed by a hairline. An `Actions` button (only when the row has actions) and a right-click on the block open
+closed by a hairline. While several panes show, only the active pane (the one `⌘1` / `⌘2` act on) has the
+segmented control; the others name their view in `--o3` text (`Document`, `Rows`) in its place. The buttons right
+of it are right-aligned and set the line's height (the pane's maximize button is taller than the control), so
+activating a pane moves nothing. An `Actions` button (only when the row has actions) and a right-click on the block open
 the row's actions (`Run <action>`, `(no undo)` when it cannot be undone), each with a tertiary second line of
 what it writes (`ObjectAction.writes`, e.g. `wp_wc_orders: date_updated_gmt, status · wp_posts: post_status`;
 `deletes rows` or `free SQL` for those). Menu items take that line through `MenuEntry.detail` (`ContextMenu.tsx`).
+In a drilled pane the right-click menu adds, after a separator, "Open in new tab" and "Close pane" (the
+`column.openInTab` and `column.close` commands, for the pane the right-click made active).
 Running an action opens the action sheet (a modal like the palette, `ActionSheet.tsx`): the action name
 (mono), `table #key · preset`, the writes line, a field per param, then every row it writes as
 `table #key` with one `column  old → new` line per set column (raw values, mono column names, the arrow
@@ -289,8 +294,13 @@ value, else the current address. The Hover column is what the status bar shows.
   many as fit at 560px each (one always). The panes end at the newest column unless the active one lies further
   left; the other columns are hidden and live only in the trail. Value columns are panes too. While several
   panes show, the active one has a 2px accent line on top; `h`/`l` move it (to a hidden column too, which then
-  shows), a click in a pane activates it. Every column after the first has a close button (×) in its header,
-  which pops back to the column left of it. Back and forward restore the stack each address had.
+  shows), a click in a pane activates it; ⌘⌥← / ⌘⌥→ do the same from anywhere in the tab (the keyboard focus
+  moves into the pane, also from the sidebar), but not while text is edited. Every column after the first has a
+  close button (×) in its header, which pops back to the column left of it; ⌘⇧W does that for the active pane.
+  The columns right of a closed one were drilled from it, so they close with it; the first column never closes
+  as a pane (⌘W closes the tab). ⌘⌥↵ opens the active pane's row (a value column's: the row it came from) as a
+  tab of its own, not a preview, and leaves the current tab as it is; a tab rooted at that row is reused. It is
+  offered for every pane whose row is not the tab's first row. Back and forward restore the stack each address had.
 - **Pane dividers:** a `--line` hairline between two panes; dragging it (or ← / → while it has the focus)
   resizes the two panes next to it, never below 560px; a double-click makes all panes equal. The widths belong
   to the tab (not saved, not in history) and start equal again when the number of panes changes.
@@ -315,7 +325,11 @@ value, else the current address. The Hover column is what the status bar shows.
   opens the value as a column: in an object tab the next column of the stack, in table and query tabs a
   column on the right of the tab (at least 420px). Its head names `table.column` and the row key, offers
   PHP/JSON or Raw, copy and close; the tree edits leaves (`edit_serialized`, queued as a cell edit through the
-  pending tray) when the value's row has a single-column key. There is no docked inspector.
+  pending tray) when the value's row has a single-column key. It reads its value again by the row's key (not
+  its position, so a changed row order does not matter) on ⌘R, after an applied write, when its pane shows again
+  after such a change, and on a table tab's Reload button. A row that is gone shows "Row `wp_options option_id =
+  42` no longer exists" instead of the old text (no copy, no tree). While an edit queued from the column is
+  pending, it keeps the edited text. There is no docked inspector.
 - **Peek:** holding ⌥ over a reference, or with a reference focused, shows a `--pop` overlay below it: head
   `table #key` with "⌥ peek · ↵ open", the target's [summary](#summary-line) as a two-column table (name in `--o2`, value with its secondary text;
   one line per value, the card 320–560px wide by its content, a longer value ends in an ellipsis), footer
@@ -458,7 +472,7 @@ separate tool.
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys fire only in
 the object and grid scopes, never in inputs, the editor or dialogs. `Tab` is never bound: it moves the keyboard focus everywhere. The
 column keys act only while the keyboard focus is in the stack (or nowhere), so the sidebar and the tab bar
-keep their arrow keys. A key and its arrow are two commands (`object.down`, `object.downArrow`), each
+keep their arrow keys; the ⌘⌥ and ⌘⇧ pane keys act from anywhere in an object tab, except while text is edited. A key and its arrow are two commands (`object.down`, `object.downArrow`), each
 rebindable.
 
 | Key | Scope | Action |
@@ -469,6 +483,9 @@ rebindable.
 | `Enter` | object | drill into the focused reference or another row's key (next column), open serialized data as a value column (`object.drill`); grids handle Enter themselves: open the row as an object, a reference's target, a value column for serialized data or long text |
 | `Esc` | global | restore a maximized stack, else close the rightmost column, a stack's or a tab's value column (`columns.close`); overlays, menus and inputs take `Esc` first |
 | ⌘⇧↵ | object | maximize the active pane, or restore the panes (`column.maximize`) |
+| ⌘⌥← / ⌘⌥→ | object | make the pane on the left / right active and focus it, from anywhere in the tab but not while text is edited (`column.focusLeft`, `column.focusRight`) |
+| ⌘⇧W | object | close the active pane and the panes drilled from it (those to its right); the first column stays, ⌘W closes the tab (`column.close`) |
+| ⌘⌥↵ | object | open the active pane's row (a value column's: the row it came from) as a new tab, not a preview; the current tab stays as it is (`column.openInTab`) |
 | ⌘[ / ⌘] | global | back / forward through the active tab's address history (also the ‹ › toolbar buttons of table and object tabs); without history the keys stay with the editor |
 | `⌥` (held) | object, grid | peek the hovered or focused reference; ↵ opens it (not a command) |
 | `y` / `Y` / `e` / `f` | table, object | copy raw / copy as SQL condition / edit / filter by value (table grids: the `table` scope; documents and Rows grids: the `object` scope) |

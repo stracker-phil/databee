@@ -108,7 +108,8 @@ function useOpenKey(target: PeekTarget | null, close: () => void) {
   useEffect(() => {
     if (!target) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Enter") return;
+      // ⌘↵ and ⌃↵ belong to commands (⌘⌥↵ opens the active pane in a tab while ⌥ is still held).
+      if (e.key !== "Enter" || e.metaKey || e.ctrlKey) return;
       e.preventDefault();
       e.stopPropagation();
       close();

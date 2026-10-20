@@ -71,6 +71,14 @@ describe("Peek", () => {
     expect(screen.queryByRole("complementary", { name: "Peek wp_users 12" })).not.toBeInTheDocument();
   });
 
+  it("leaves ⌘⌥↵ to its command and opens nothing while the peek shows", async () => {
+    await holdAltOverReference();
+    await peekCard();
+    await userEvent.keyboard("{Meta>}{Alt>}{Enter}{/Alt}{/Meta}");
+    expect(activeObject().columns).toHaveLength(1);
+    expect(screen.queryByRole("region", { name: "wp_users #12" })).not.toBeInTheDocument();
+  });
+
   describe("a peeked row", () => {
     let version = 9000;
     const peekRow = async (values: Peek["summary"]["values"]) => {

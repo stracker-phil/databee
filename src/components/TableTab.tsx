@@ -174,6 +174,12 @@ function useColumnWidths(identity: string | null, tab: TableTabState) {
   return [savedWidths, saveWidths] as const;
 }
 
+/** The rows, and the value column opened from them, which reads its value again by its row key. */
+function reloadWithValue(tabId: string, reload: () => void) {
+  reload();
+  void useStore.getState().reloadValueColumn(tabId, null);
+}
+
 function DataView({ tab }: { tab: TableTabState }) {
   const { structure, error: structureError } = useTableStructure(tab.sessionId, tab.database, tab.table);
   const primaryKey = singleColumnPrimaryKey(structure);
@@ -225,7 +231,7 @@ function DataView({ tab }: { tab: TableTabState }) {
         >
           <Plus size="1rem" />
         </button>
-        <button data-stage="table:reload" className="icon-btn" aria-label="Reload" title="Reload" onClick={reload}>
+        <button data-stage="table:reload" className="icon-btn" aria-label="Reload" title="Reload" onClick={() => reloadWithValue(tab.id, reload)}>
           {loading ? <Loader2 size="1rem" className="spin" /> : <RefreshCw size="1rem" />}
         </button>
         {structureError && (

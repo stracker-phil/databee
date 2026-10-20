@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,11 +6,11 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 
 import { api } from "../../api";
 import { installCommands } from "../../commands";
-import { address } from "../../lib/address";
+import { address, formatAddress } from "../../lib/address";
 import { useStore } from "../../state/store";
-import { connectWithMaxPanes, openOrder, stubDocuments, stubOffsetWidth, user } from "../../test/columnFixtures";
-import { connectedStore, settings } from "../../test/fixtures";
-import { activeObject } from "../../test/objectFixtures";
+import { connectWithMaxPanes, openOrder, orderDocument, stubDocuments, stubOffsetWidth, user, userDocument } from "../../test/columnFixtures";
+import { connectedStore, settings, text, value } from "../../test/fixtures";
+import { activeObject, markCompleted } from "../../test/objectFixtures";
 
 const mocked = vi.mocked(api, true);
 
@@ -343,6 +343,205 @@ describe("column stack", () => {
       await userEvent.click(await screen.findByText("wc-processing"));
       await userEvent.keyboard("{ArrowRight}");
       expect(orderColumn()).toHaveAttribute("aria-current", "true");
+    });
+  });
+
+  describe("view toggle", () => {
+    const toggleIn = (column: HTMLElement) => within(column).queryByRole("group", { name: "View" });
+
+    async function drilled() {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+    }
+
+    it("is offered by the active pane only", async () => {
+      await drilled();
+      expect(toggleIn(userColumn())).toBeInTheDocument();
+      expect(toggleIn(orderColumn())).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ["document", "Document"],
+      ["rows", "Rows"],
+    ] as const)("names the %s view as text in a pane that is not active", async (view, label) => {
+      await drilled();
+      const { id } = activeObject();
+      act(() => {
+        useStore.getState().setObjectView(id, view, undefined, 0);
+        useStore.getState().setActiveColumn(id, 1);
+      });
+      expect(within(orderColumn()).getByText(label)).toBeInTheDocument();
+      expect(within(orderColumn()).queryByRole("group", { name: "View" })).not.toBeInTheDocument();
+    });
+
+    it("moves to a pane when the mouse goes down in it", async () => {
+      await drilled();
+      fireEvent.mouseDown(within(orderColumn()).getByText("wc-processing"));
+      expect(toggleIn(orderColumn())).toBeInTheDocument();
+      expect(toggleIn(userColumn())).not.toBeInTheDocument();
+    });
+
+    it("is offered by a single pane", async () => {
+      await openOrder();
+      expect(toggleIn(orderColumn())).toBeInTheDocument();
+    });
+
+    it("is offered by a maximized pane", async () => {
+      await drilled();
+      act(() => useStore.getState().toggleMaximized(activeObject().id));
+      expect(toggleIn(userColumn())).toBeInTheDocument();
+    });
+  });
+
+  describe("pane focus keys (⌘⌥←, ⌘⌥→)", () => {
+    const left = "{Meta>}{Alt>}{ArrowLeft}{/Alt}{/Meta}";
+    const right = "{Meta>}{Alt>}{ArrowRight}{/Alt}{/Meta}";
+    const sidebarButton = () => screen.getByRole("button", { name: "Refresh" });
+
+    async function drilled() {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+    }
+
+    it("make the pane on the left or right active and focus it, with the focus in the sidebar", async () => {
+      await drilled();
+      sidebarButton().focus();
+      await userEvent.keyboard(left);
+      expect(orderColumn()).toHaveAttribute("aria-current", "true");
+      expect(orderColumn()).toHaveFocus();
+
+      sidebarButton().focus();
+      await userEvent.keyboard(right);
+      expect(userColumn()).toHaveAttribute("aria-current", "true");
+      expect(userColumn()).toHaveFocus();
+    });
+
+    it("do nothing while text is edited", async () => {
+      await drilled();
+      await userEvent.click(screen.getByLabelText("Filter tables"));
+      await userEvent.keyboard(left);
+      expect(userColumn()).toHaveAttribute("aria-current", "true");
+    });
+  });
+
+  describe("closing the active pane (⌘⇧W)", () => {
+    const closeKeys = "{Meta>}{Shift>}w{/Shift}{/Meta}";
+
+    async function three() {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+      act(() => useStore.getState().drill(activeObject().id, 1, order4712));
+      await screen.findByRole("region", { name: "wp_wc_orders #4712" });
+    }
+
+    it("closes the active pane and the panes opened from it, and makes the pane before it active", async () => {
+      await three();
+      act(() => useStore.getState().setActiveColumn(activeObject().id, 1));
+      await userEvent.keyboard(closeKeys);
+
+      expect(activeObject().columns).toHaveLength(1);
+      expect(activeObject().active).toBe(0);
+      expect(orderColumn()).toHaveAttribute("aria-current", "true");
+      expect(screen.queryByRole("region", { name: "wp_users #12" })).not.toBeInTheDocument();
+    });
+
+    it("does nothing on the first pane", async () => {
+      await three();
+      act(() => useStore.getState().setActiveColumn(activeObject().id, 0));
+      await userEvent.keyboard(closeKeys);
+      expect(activeObject().columns).toHaveLength(3);
+    });
+
+    it("is undone by back", async () => {
+      await three();
+      act(() => useStore.getState().setActiveColumn(activeObject().id, 1));
+      await userEvent.keyboard(closeKeys);
+      await userEvent.keyboard("{Meta>}[[{/Meta}");
+      await waitFor(() => expect(activeObject().columns).toHaveLength(3));
+    });
+  });
+
+  describe("opening the active pane's row in a new tab (⌘⌥↵)", () => {
+    const openKeys = "{Meta>}{Alt>}{Enter}{/Alt}{/Meta}";
+    const USER_URL = "databee://shop/db/wp_users/12";
+    const activeTabId = () => useStore.getState().activeTabId!;
+
+    async function drilled() {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+    }
+
+    it("opens the row of a drilled pane in a new tab that is not a preview, and leaves the original tab as it was", async () => {
+      await drilled();
+      const original = activeTabId();
+      await userEvent.keyboard(openKeys);
+
+      expect(useStore.getState().tabs).toHaveLength(2);
+      expect(formatAddress(activeObject().address)).toBe(USER_URL);
+      expect(activeObject().id).not.toBe(original);
+      expect(activeObject().preview).toBeFalsy();
+      expect(useStore.getState().tabs.find((t) => t.id === original)).toMatchObject({ active: 1, columns: [{ kind: "object" }, { kind: "object" }] });
+    });
+
+    it("opens the row of the pane that a value column came from", async () => {
+      await drilled();
+      act(() => useStore.getState().openValueColumn(activeTabId(), 1, { kind: "value", value: value({ raw: text("x") }), text: "x", database: "db" }));
+      await screen.findByRole("region", { name: "x" });
+      await userEvent.keyboard(openKeys);
+
+      expect(useStore.getState().tabs).toHaveLength(2);
+      expect(formatAddress(activeObject().address)).toBe(USER_URL);
+    });
+
+    it("does nothing on the first pane", async () => {
+      await drilled();
+      act(() => useStore.getState().setActiveColumn(activeTabId(), 0));
+      await userEvent.keyboard(openKeys);
+      expect(useStore.getState().tabs).toHaveLength(1);
+    });
+  });
+
+  describe("pane header menu", () => {
+    const headerOf = (column: HTMLElement) => within(column).getByRole("region", { name: "Object header" });
+    const labels = () => screen.getAllByRole("menuitem").map((item) => item.textContent);
+
+    async function drilled() {
+      mocked.document.mockImplementation(async (_s, addressText) => ({ ...(addressText.includes("/wp_users/") ? userDocument : orderDocument), actions: [markCompleted] }));
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+    }
+
+    it("lists Open in new tab and Close pane after the actions on a drilled pane", async () => {
+      await drilled();
+      fireEvent.contextMenu(headerOf(userColumn()));
+      expect(labels()).toEqual([expect.stringMatching(/^Run mark-completed/), "Open in new tab", "Close pane"]);
+    });
+
+    it("opens the pane's row in a new tab from Open in new tab", async () => {
+      await drilled();
+      fireEvent.contextMenu(headerOf(userColumn()));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Open in new tab" }));
+      expect(useStore.getState().tabs).toHaveLength(2);
+      expect(formatAddress(activeObject().address)).toBe("databee://shop/db/wp_users/12");
+    });
+
+    it("closes the pane from Close pane", async () => {
+      await drilled();
+      fireEvent.contextMenu(headerOf(userColumn()));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Close pane" }));
+      expect(activeObject().columns).toHaveLength(1);
+    });
+
+    it("lists only the actions on the root pane", async () => {
+      await drilled();
+      fireEvent.mouseDown(orderColumn());
+      fireEvent.contextMenu(headerOf(orderColumn()));
+      expect(labels()).toEqual([expect.stringMatching(/^Run mark-completed/)]);
     });
   });
 });

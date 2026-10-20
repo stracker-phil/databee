@@ -9,6 +9,7 @@ import { OBJECT_VALUE_COMMANDS, VALUE_COMMANDS } from "./values";
 export * from "./registry";
 export * from "./scopes";
 export { EDIT_VALUE_EVENT, RULE_MENU } from "./values";
+export { paneMenu } from "./columns";
 
 /** Window events for commands whose target lives inside a component. */
 export const EVENTS = {

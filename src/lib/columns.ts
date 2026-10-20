@@ -17,6 +17,12 @@ export interface ValueColumn {
   /** The full stored text; after an edit is queued, the edited text. */
   text: string;
   database: string | null;
+  /** The `dataVersion` the text was read at; once the data changes, the column reads its value again. */
+  version?: number;
+  /** The plans this column's edits queued; while one is pending, a reload keeps the edited text. */
+  queued?: number[];
+  /** The value's row was gone when the column read it again. */
+  missing?: boolean;
 }
 
 export type StackColumn = ObjectColumn | ValueColumn;

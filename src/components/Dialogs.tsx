@@ -207,7 +207,7 @@ function InsertRowDialog({ database, table, columns }: { database: string; table
             .filter(([, f]) => f.mode !== "default")
             .map(([name, f]) => [name, f.mode === "null" ? null : f.value]);
           void queueChange({ type: "insertRow", database, table, values }).then((queued) => {
-            if (queued) close();
+            if (queued !== null) close();
           });
         }}
       >

@@ -1,4 +1,7 @@
-/** Keys of the column stack (docs/ux.md, Keys); they act only while the keyboard focus is in the stack or nowhere. */
+/**
+ * Keys of the column stack (docs/ux.md, Keys). The bare keys act only while the keyboard focus is in the stack or
+ * nowhere; the ⌘ pane keys anywhere in the object tab, those that move, close or open panes not while text is edited.
+ */
 import { collapseKey, documentText, focusOrder, provenanceKey } from "../lib/document";
 import { maximizable, objectColumnAt } from "../lib/columns";
 import { drillable, openValueAt } from "../components/value/open";
@@ -90,6 +93,50 @@ function toggleMaximized() {
   if (tab) useStore.getState().toggleMaximized(tab.id);
 }
 
+/** Pane keys are ⌘ combinations, which fire in inputs too; they wait while text is edited or a menu is open. */
+const canUsePanes = () => !typing() && !menuOpen();
+
+const canFocusPane = () => canUsePanes() && (activeObjectTab()?.columns.length ?? 0) > 1;
+
+/** Makes the pane left (-1) or right (+1) of the active one active; the keyboard focus moves into it from anywhere. */
+function focusPane(delta: number) {
+  const tab = activeObjectTab();
+  if (!tab) return;
+  const index = Math.max(0, Math.min(tab.columns.length - 1, tab.active + delta));
+  if (index === tab.active) return;
+  // The panel moves the focus to the new active column only from the stack or from nothing.
+  if (!inStack()) (focused() as HTMLElement | null)?.blur();
+  useStore.getState().setActiveColumn(tab.id, index);
+}
+
+/** The first column is the tab itself, so it never closes as a pane (⌘W closes the tab). */
+const canCloseActive = () => canUsePanes() && (activeObjectTab()?.active ?? 0) > 0;
+
+/** The row of the active pane (a value column's: the row it was opened from), when it is not the row the tab is rooted at. */
+function activePaneRow() {
+  const tab = activeObjectTab();
+  const row = tab && objectColumnAt(tab.columns, tab.active);
+  const root = tab && objectColumnAt(tab.columns, 0);
+  if (!row || !root || documentText(row.address) === documentText(root.address)) return null;
+  return row.address;
+}
+
+const canOpenInTab = () => canUsePanes() && !!activePaneRow();
+
+function openInTab() {
+  const address = activePaneRow();
+  if (address) useStore.getState().openObject(address, { preview: false });
+}
+
+/** The pane commands that apply to the active pane now, for the context menu of its header. */
+export function paneMenu(): { label: string; action: () => void }[] {
+  const entries = [
+    { label: "Open in new tab", applies: canOpenInTab(), action: openInTab },
+    { label: "Close pane", applies: canCloseActive(), action: () => useStore.getState().closeActiveColumn() },
+  ];
+  return entries.filter((e) => e.applies).map(({ label, action }) => ({ label, action }));
+}
+
 const vertical = (id: string, title: string, key: string, delta: number): Command => ({ id, title, scope: "object", defaultBinding: key, when: canMoveFocus, run: () => moveFocus(delta) });
 
 const sideways = (id: string, title: string, key: string, delta: number): Command => ({
@@ -112,5 +159,9 @@ export const COLUMN_COMMANDS: Command[] = [
   sideways("object.rightArrow", "Move to the column on the right (arrow)", "ArrowRight", 1),
   { id: "object.drill", title: "Open the focused reference in a new column", scope: "object", defaultBinding: "Enter", when: canDrill, run: drill },
   { id: "column.maximize", title: "Maximize or restore the active pane", scope: "object", defaultBinding: "Mod+Shift+Enter", when: canMaximize, run: toggleMaximized },
+  { id: "column.focusLeft", title: "Focus the pane on the left", scope: "object", defaultBinding: "Mod+Alt+ArrowLeft", when: canFocusPane, run: () => focusPane(-1) },
+  { id: "column.focusRight", title: "Focus the pane on the right", scope: "object", defaultBinding: "Mod+Alt+ArrowRight", when: canFocusPane, run: () => focusPane(1) },
+  { id: "column.close", title: "Close the active pane and the panes opened from it", scope: "object", defaultBinding: "Mod+Shift+W", when: canCloseActive, run: () => useStore.getState().closeActiveColumn() },
+  { id: "column.openInTab", title: "Open the active pane's row in a new tab", scope: "object", defaultBinding: "Mod+Alt+Enter", when: canOpenInTab, run: openInTab },
   { id: "columns.close", title: "Close the rightmost column (restores a maximized pane first)", scope: "global", defaultBinding: "Escape", when: canClose, run: () => useStore.getState().closeRightmostColumn() },
 ];

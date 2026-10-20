@@ -39,7 +39,7 @@ function WithValueColumn({ tab, children }: { tab: QueryTabState | TableTabState
       <div className="tab-main">{children}</div>
       {column && (
         <section className="column value-column" aria-label={columnLabel(column)} data-stage="value-column" data-stage-label={columnLabel(column)}>
-          <ValueColumnView column={column} onClose={() => useStore.getState().closeRightmostColumn()} onEdited={(text) => useStore.getState().updateValueColumn(tab.id, null, text)} />
+          <ValueColumnView column={column} place={{ tabId: tab.id, index: null }} onClose={() => useStore.getState().closeRightmostColumn()} />
         </section>
       )}
     </div>

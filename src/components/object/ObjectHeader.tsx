@@ -1,6 +1,7 @@
+import { createContext, useContext } from "react";
 import { X } from "lucide-react";
 import type { Address, Document } from "../../api";
-import { useBindingLabel } from "../../commands";
+import { paneMenu, useBindingLabel } from "../../commands";
 import { formatAddress } from "../../lib/address";
 import { objectTitle, type ObjectView } from "../../lib/document";
 import { wholeTable } from "../../state/slices/nav";
@@ -22,19 +23,27 @@ interface Props {
   place?: ColumnPlace;
 }
 
+/**
+ * True in a pane shown beside others that is not the active one: ⌘1 / ⌘2 act on the active pane, so only that
+ * one offers the toggle; the others name their view as text.
+ */
+export const QuietPaneContext = createContext(false);
+
+const VIEW_LABELS: Record<ObjectView, string> = { document: "Document", rows: "Rows" };
+
 function ViewToggle({ current, onChange }: Props["view"]) {
   const documentKeys = useBindingLabel("object.viewDocument");
   const rowsKeys = useBindingLabel("object.viewRows");
   return (
     <div className="segmented" role="group" aria-label="View" data-stage="view-toggle" data-stage-label="Document / Rows">
       <button data-stage="view-toggle:document" aria-pressed={current === "document"} onClick={() => onChange("document")}>
-        Document
+        {VIEW_LABELS.document}
         <span aria-hidden="true">
           <KeyCap keys={documentKeys} />
         </span>
       </button>
       <button data-stage="view-toggle:rows" aria-pressed={current === "rows"} onClick={() => onChange("rows")}>
-        Rows
+        {VIEW_LABELS.rows}
         <span aria-hidden="true">
           <KeyCap keys={rowsKeys} />
         </span>
@@ -49,9 +58,15 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
   const target = document.address.target;
   const table = target.kind === "row" ? target.table : "";
   const key = target.kind === "row" ? target.key : "";
+  const quiet = useContext(QuietPaneContext);
   const openActions = (at: MenuAnchor) => menu.open(at, actionMenu(owner, document.actions));
+  // The mousedown of the right click made this pane active, so the pane commands act on it.
+  const openMenu = (at: MenuAnchor) => {
+    const pane = place ? paneMenu() : [];
+    menu.open(at, pane.length > 0 ? [...actionMenu(owner, document.actions), "separator", ...pane] : actionMenu(owner, document.actions));
+  };
   return (
-    <section className="object-head" aria-label="Object header" data-stage="object-header" data-stage-label={`${table} #${key}`} onContextMenu={openActions}>
+    <section className="object-head" aria-label="Object header" data-stage="object-header" data-stage-label={`${table} #${key}`} onContextMenu={openMenu}>
       <div className="object-title">
         {place ? (
           <button
@@ -73,7 +88,7 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
         )}
         <span className="key">#{key}</span>
         <span className="spacer" />
-        <ViewToggle {...view} />
+        {quiet ? <span className="view-label">{VIEW_LABELS[view.current]}</span> : <ViewToggle {...view} />}
         {document.actions.length > 0 && (
           <button
             className="btn"

@@ -6,6 +6,7 @@ import { Splitter } from "../Splitter";
 import { ColumnContext } from "../value/open";
 import { ValueColumnView } from "../value/ValueColumnView";
 import { ObjectColumnView } from "./ObjectColumnView";
+import { QuietPaneContext } from "./ObjectHeader";
 import { PaneContext } from "./PaneMaximize";
 import { Trail } from "./Trail";
 import { useWidth } from "./useWidth";
@@ -49,24 +50,26 @@ function Column({ tab, column, index, shown, share, beside, canMaximize }: Colum
   return (
     <ColumnContext.Provider value={place}>
       <PaneContext.Provider value={pane}>
-        <section
-          className={classes}
-          style={{ flexGrow: share, minWidth: beside ? MIN_PANE_WIDTH : undefined }}
-          aria-label={label}
-          aria-current={active ? "true" : undefined}
-          tabIndex={-1}
-          data-column={index}
-          data-stage={`column:${index}`}
-          data-stage-label={label}
-          data-stage-list="columns"
-          onMouseDownCapture={() => useStore.getState().setActiveColumn(tab.id, index)}
-        >
-          {column.kind === "object" ? (
-            <ObjectColumnView tab={tab} column={column} index={index} editable={shown && active} />
-          ) : (
-            <ValueColumnView column={column} onClose={() => useStore.getState().popToColumn(tab.id, index - 1)} onEdited={(text) => useStore.getState().updateValueColumn(tab.id, index, text)} />
-          )}
-        </section>
+        <QuietPaneContext.Provider value={beside && !active}>
+          <section
+            className={classes}
+            style={{ flexGrow: share, minWidth: beside ? MIN_PANE_WIDTH : undefined }}
+            aria-label={label}
+            aria-current={active ? "true" : undefined}
+            tabIndex={-1}
+            data-column={index}
+            data-stage={`column:${index}`}
+            data-stage-label={label}
+            data-stage-list="columns"
+            onMouseDownCapture={() => useStore.getState().setActiveColumn(tab.id, index)}
+          >
+            {column.kind === "object" ? (
+              <ObjectColumnView tab={tab} column={column} index={index} editable={shown && active} />
+            ) : (
+              <ValueColumnView column={column} place={place} onClose={() => useStore.getState().popToColumn(tab.id, index - 1)} />
+            )}
+          </section>
+        </QuietPaneContext.Provider>
       </PaneContext.Provider>
     </ColumnContext.Provider>
   );

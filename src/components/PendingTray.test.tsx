@@ -67,6 +67,18 @@ describe("PendingTray", () => {
       expect(statements.map((li) => li.textContent)).toEqual(["UPDATE `wp_posts` SET `post_title` = 'x' WHERE `ID` = 1", "-- second"]);
     });
 
+    it("resolves to the id of the plan Rust returned", async () => {
+      mocked.planChange.mockResolvedValueOnce(planned({ id: 5 }));
+      const id = await useStore.getState().queueChange({ type: "deleteRow", database: "db", table: "wp_posts", keyColumn: "ID", key: "1" });
+      expect(id).toBe(5);
+    });
+
+    it("resolves to null when planning is rejected", async () => {
+      mocked.planChange.mockRejectedValueOnce({ kind: "invalid_input", message: "Column cannot be NULL", code: null });
+      const id = await useStore.getState().queueChange({ type: "deleteRow", database: "db", table: "wp_posts", keyColumn: "ID", key: "1" });
+      expect(id).toBeNull();
+    });
+
     it("marks changes without automatic undo", () => {
       useStore.setState({ pending: [pendingChange({ id: 1, description: "Delete row", canUndo: false }), pendingChange({ id: 2, description: "Set x" })] });
       renderTray();
