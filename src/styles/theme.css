@@ -52,6 +52,7 @@
   --cell: color-mix(in srgb, var(--accent) 24%, transparent);
   --sel: color-mix(in srgb, var(--accent) 20%, transparent);
   --lit: color-mix(in srgb, var(--accent) 15%, transparent);
+  --lit-solid: color-mix(in srgb, var(--accent) 15%, var(--bg));
 }
 
 :root[data-accent="gold"] { --accent: var(--a-gold); }
