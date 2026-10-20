@@ -6,6 +6,7 @@ dist-ssr/
 *.local
 *.log
 src-tauri/gen/schemas/
+.project-launcher.json
 
 # Track project Claude tooling (overrides global ignore), but not local settings
 !.claude/

@@ -7,7 +7,7 @@ import { useStore } from "../../state/store";
 import { TableIcon } from "../TableIcon";
 
 /** Opens the group's rows in a table tab: its exact rows when an address names them, else the whole table. */
-export function openGroupRows(group: Group, database: string) {
+function openGroupRows(group: Group, database: string) {
   const s = useStore.getState();
   if (group.rowsAddress) return void s.openAddress(formatAddress(group.rowsAddress), { preview: true });
   s.openTableTab(database, group.table, "data", undefined, { preview: true });

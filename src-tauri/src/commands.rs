@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn only_web_links_can_be_opened() {
-        assert!(is_web_url("https://wc-pp.ddev.site/checkout"));
+        assert!(is_web_url("https://my-shop.ddev.site/checkout"));
         assert!(is_web_url("http://localhost:8080"));
         assert!(!is_web_url("file:///etc/passwd"));
         assert!(!is_web_url("javascript:alert(1)"));

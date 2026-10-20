@@ -326,7 +326,7 @@ value, else the current address. The Hover column is what the status bar shows.
 
 ## Layout
 
-- **Toolbar** (`--chrome`): connection and database as plain mono text (`wc-pp / db`; a click opens the
+- **Toolbar** (`--chrome`): connection and database as plain mono text (`my-shop / db`; a click opens the
   connection or database picker; a database with its own accent has a dot in that hue before its name), back and forward (‹ ›, for a table or object tab, disabled without history),
   a Disconnect icon button after the connection text (and its health warning), the search field on the right,
   then the icon buttons New connection, New query and Settings (`Toolbar.tsx`). An object tab shows where it stands in its trail (below),
@@ -352,7 +352,7 @@ value, else the current address. The Hover column is what the status bar shows.
   database tree. `view.sidebar` (⌘⌃S, the palette, or the ▤ button) hides it entirely (no rail); the state
   is persisted per connection (`sidebarHidden` in `ui_state.json`).
 - **Status bar** (`--chrome`), left to right: ▤ sidebar toggle, the active tab's address in mono
-  (`databee://wc-pp/db/wp_posts?post_type=page`; a click copies it; `· filtered` follows when a typed SQL
+  (`databee://my-shop/db/wp_posts?post_type=page`; a click copies it; `· filtered` follows when a typed SQL
   filter applies, which no address holds; replaced by the provenance of the hovered or selected value), for a
   query tab its result summary after it,
   spacer, `presets wordpress · woocommerce` (the presets that apply to the current database; a click opens its

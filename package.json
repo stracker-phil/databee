@@ -2,7 +2,9 @@
   "name": "databee",
   "private": true,
   "version": "0.1.0",
+  "description": "Minimalistic MySQL and MariaDB client for inspecting local WordPress databases",
   "license": "MIT",
+  "repository": "github:stracker-phil/databee",
   "type": "module",
   "scripts": {
     "dev": "vite",

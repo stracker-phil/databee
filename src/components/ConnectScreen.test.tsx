@@ -34,13 +34,13 @@ describe("ConnectScreen", () => {
     render(<ConnectScreen />);
     const port = screen.getByLabelText("Port");
     await userEvent.clear(port);
-    await userEvent.type(port, "52958");
+    await userEvent.type(port, "32768");
     await userEvent.type(screen.getByLabelText("Password"), "root");
     await userEvent.type(screen.getByLabelText("Database (optional)"), "db");
     await userEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     expect(mocked.connect).toHaveBeenCalledWith({
-      spec: { name: null, host: "127.0.0.1", port: 52958, socket: null, user: "root", database: "db" },
+      spec: { name: null, host: "127.0.0.1", port: 32768, socket: null, user: "root", database: "db" },
       password: "root",
       savePassword: true,
     });
@@ -80,7 +80,7 @@ describe("ConnectScreen", () => {
     render(<ConnectScreen />);
     const recent = await screen.findByRole("button", { name: "Connect to Shop" });
     await userEvent.click(recent);
-    expect(screen.getByLabelText("Port")).toHaveValue("52958");
+    expect(screen.getByLabelText("Port")).toHaveValue("32768");
     await userEvent.dblClick(recent);
     expect(mocked.connect).toHaveBeenCalledWith(expect.objectContaining({ spec: session.spec }));
   });

@@ -8,7 +8,7 @@ export type { CoverageState };
 
 const SAMPLE_SHOWN = 3;
 /** References counted at once; each count is one or two read-only queries on the metadata pool. */
-export const COVERAGE_CONCURRENCY = 3;
+const COVERAGE_CONCURRENCY = 3;
 
 /** Nothing that holds a value finds a target: the rule is probably wrong. */
 export const nothingResolves = (c: Coverage) => !c.timedOut && c.resolved === 0 && unresolvedCount(c) > 0;
@@ -21,7 +21,7 @@ function fromCoverageKey(key: string): ResolvedReference {
 }
 
 /** `1 is 0 or NULL · unresolved 5, 7`: what the counts leave out. */
-export function coverageDetail(coverage: Coverage): string {
+function coverageDetail(coverage: Coverage): string {
   const zeros = coverage.zeroOrNull;
   const sample = coverage.sampleUnresolved.slice(0, SAMPLE_SHOWN);
   const parts: string[] = [];

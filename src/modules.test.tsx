@@ -1,7 +1,8 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await import("./test/apiMock")).createApiMock() }));vi.mock("./stage/api", async () => ({ stageApi: (await import("./stage/apiMock")).createStageApiMock() }));
+vi.mock("./api", async (orig) => ({ ...(await orig<object>()), api: (await import("./test/apiMock")).createApiMock() }));
+vi.mock("./stage/api", async () => ({ stageApi: (await import("./stage/apiMock")).createStageApiMock() }));
 
 import App from "./App";
 import { runCommand } from "./commands";

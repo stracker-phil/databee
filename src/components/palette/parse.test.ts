@@ -39,7 +39,7 @@ describe("fuzzyScore", () => {
   it.each([
     ["the best field's score", ["Shop", "shop"], "shop", 4],
     ["characters in order within one field", ["Staging", "127.0.0.1:3306"], "stgng", 1],
-    ["characters spread over two fields", ["Shop", "127.0.0.1:52958"], "shop2", 0],
+    ["characters spread over two fields", ["Shop", "127.0.0.1:32768"], "shop2", 0],
     ["an empty needle", ["Shop"], "", 1],
   ])("scores %s", (_name, fields, needle, expected) => {
     expect(fuzzyScore(fields, needle)).toBe(expected);

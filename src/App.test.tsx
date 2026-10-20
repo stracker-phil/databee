@@ -26,7 +26,7 @@ describe("App", () => {
     expect(screen.getByText("Shop")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Query 1/ })).toBeInTheDocument();
     expect(await screen.findByText("wp_options")).toBeInTheDocument();
-    expect(screen.getByTitle(/root@127\.0\.0\.1:52958\/db · .*10\.3\.39-MariaDB/)).toHaveTextContent("Shop");
+    expect(screen.getByTitle(/root@127\.0\.0\.1:32768\/db · .*10\.3\.39-MariaDB/)).toHaveTextContent("Shop");
   });
 
   it("runs menu commands by id", async () => {
@@ -260,7 +260,7 @@ describe("App", () => {
 
   describe("database accent", () => {
     const root = document.documentElement;
-    const blog: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:52958/blog", displayName: "Blog", database: "blog", slug: "blog" };
+    const blog: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:32768/blog", displayName: "Blog", database: "blog", slug: "blog" };
     const accentIs = (accent: string) => waitFor(() => expect(root.dataset.accent).toBe(accent));
 
     beforeEach(() => {
@@ -323,7 +323,7 @@ describe("App", () => {
 
   describe("palette commands across sessions", () => {
     const planned = { id: 1, description: "Set post_title", statements: ["UPDATE wp_posts SET post_title = 'x'"], canUndo: true };
-    const other: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:52958/blog", displayName: "Blog", database: "db", slug: "blog" };
+    const other: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:32768/blog", displayName: "Blog", database: "db", slug: "blog" };
 
     const search = async (text: string) => {
       act(() => useStore.getState().setPaletteOpen(true));

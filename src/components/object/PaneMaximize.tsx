@@ -4,7 +4,7 @@ import { useBindingLabel } from "../../commands";
 import { useStore } from "../../state/store";
 
 /** The pane of an object tab a header is in, while the stack can maximize it. */
-export interface PaneControl {
+interface PaneControl {
   tabId: string;
   index: number;
   maximized: boolean;

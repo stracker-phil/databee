@@ -292,7 +292,7 @@ describe("ProjectPanel", () => {
 
     it("says so when nothing differs from the presets and nothing is wrong", async () => {
       await openOverview();
-      expect(screen.getByText("No changes — this database uses the presets as shipped.")).toBeInTheDocument();
+      expect(screen.getByText("No changes: this database uses the presets as shipped.")).toBeInTheDocument();
       expect(await screen.findByText("No problems found.")).toBeInTheDocument();
     });
 
@@ -303,7 +303,7 @@ describe("ProjectPanel", () => {
         const row = await screen.findByRole("row", { name: `edited reference ${ORDER_ITEMS_ROW}` });
         expect(row).toHaveTextContent("edited reference · preset woocommerce · x");
         expect(row).toHaveTextContent("· was wp_wc_order_items.order_id → wp_wc_orders.order_id");
-        expect(screen.queryByText("No changes — this database uses the presets as shipped.")).not.toBeInTheDocument();
+        expect(screen.queryByText("No changes: this database uses the presets as shipped.")).not.toBeInTheDocument();
       });
 
       it("marks an added rule that is stored off", async () => {

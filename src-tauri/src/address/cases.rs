@@ -6,7 +6,7 @@ use super::{Address, Target, View};
 use crate::db::ColumnEquals;
 
 fn at(target: Target) -> Address {
-    Address::new("wc-pp", "db", target)
+    Address::new("my-shop", "db", target)
 }
 
 fn table(table: &str, filter: &[(&str, Option<&str>)]) -> Target {
@@ -32,53 +32,53 @@ fn row(table: &str, key: &str) -> Target {
 /// `(canonical text, address)`; formatting the address gives the text and parsing the text gives the address.
 pub fn canonical() -> Vec<(&'static str, Address)> {
     vec![
-        ("databee://wc-pp/db/", at(Target::Home)),
+        ("databee://my-shop/db/", at(Target::Home)),
         (
-            "databee://wc-pp/db/wp_wc_orders",
+            "databee://my-shop/db/wp_wc_orders",
             at(table("wp_wc_orders", &[])),
         ),
         (
-            "databee://wc-pp/db/wp_postmeta?post_id=12&meta_key=_price",
+            "databee://my-shop/db/wp_postmeta?post_id=12&meta_key=_price",
             at(table(
                 "wp_postmeta",
                 &[("post_id", Some("12")), ("meta_key", Some("_price"))],
             )),
         ),
         (
-            "databee://wc-pp/db/wp_posts?post_parent",
+            "databee://my-shop/db/wp_posts?post_parent",
             at(table("wp_posts", &[("post_parent", None)])),
         ),
         (
-            "databee://wc-pp/db/wp_options?option_value=",
+            "databee://my-shop/db/wp_options?option_value=",
             at(table("wp_options", &[("option_value", Some(""))])),
         ),
         (
-            "databee://wc-pp/db/wp_wc_orders/3229",
+            "databee://my-shop/db/wp_wc_orders/3229",
             at(row("wp_wc_orders", "3229")),
         ),
         (
-            "databee://wc-pp/db/wp_wc_orders/3229?view=rows",
+            "databee://my-shop/db/wp_wc_orders/3229?view=rows",
             Address {
                 view: Some(View::Rows),
                 ..at(row("wp_wc_orders", "3229"))
             },
         ),
         (
-            "databee://wc-pp/db/wp_wc_orders/3229?view=document",
+            "databee://my-shop/db/wp_wc_orders/3229?view=document",
             Address {
                 view: Some(View::Document),
                 ..at(row("wp_wc_orders", "3229"))
             },
         ),
         (
-            "databee://wc-pp/db/wp_wc_orders/3229?compare=3227",
+            "databee://my-shop/db/wp_wc_orders/3229?compare=3227",
             Address {
                 compare: Some("3227".into()),
                 ..at(row("wp_wc_orders", "3229"))
             },
         ),
         (
-            "databee://wc-pp/db/wp_wc_orders/3229?view=rows&compare=3227",
+            "databee://my-shop/db/wp_wc_orders/3229?view=rows&compare=3227",
             Address {
                 view: Some(View::Rows),
                 compare: Some("3227".into()),
@@ -86,33 +86,33 @@ pub fn canonical() -> Vec<(&'static str, Address)> {
             },
         ),
         (
-            "databee://wc-pp/db/q/failed-orders",
+            "databee://my-shop/db/q/failed-orders",
             at(Target::Query {
                 id: "failed-orders".into(),
             }),
         ),
         (
-            "databee://wc-pp/db/?find=PAYID-123",
+            "databee://my-shop/db/?find=PAYID-123",
             at(Target::Find {
                 value: "PAYID-123".into(),
             }),
         ),
-        ("databee://wc-pp/db/?project", at(Target::Project)),
-        ("databee://wc-pp/db/%71", at(table("q", &[]))),
-        ("databee://wc-pp/db/%71/7", at(row("q", "7"))),
+        ("databee://my-shop/db/?project", at(Target::Project)),
+        ("databee://my-shop/db/%71", at(table("q", &[]))),
+        ("databee://my-shop/db/%71/7", at(row("q", "7"))),
         (
-            "databee://wc-pp/db/wp_options/a%2Fb%3Fc%26d%3De%25f%23g",
+            "databee://my-shop/db/wp_options/a%2Fb%3Fc%26d%3De%25f%23g",
             at(row("wp_options", "a/b?c&d=e%f#g")),
         ),
         (
-            "databee://wc-pp/db/wp_options?option_name=caf%C3%A9%20au%20lait",
+            "databee://my-shop/db/wp_options?option_name=caf%C3%A9%20au%20lait",
             at(table(
                 "wp_options",
                 &[("option_name", Some("café au lait"))],
             )),
         ),
         (
-            "databee://wc-pp/db/?find=a%2Bb%20c",
+            "databee://my-shop/db/?find=a%2Bb%20c",
             at(Target::Find {
                 value: "a+b c".into(),
             }),

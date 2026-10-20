@@ -101,7 +101,7 @@ mod tests {
     fn slugify_lowercases_replaces_symbols_collapses_runs_and_trims() {
         for (text, slug) in [
             ("My Site", "my-site"),
-            ("WC_PP!!", "wc-pp"),
+            ("MY_SHOP!!", "my-shop"),
             ("a---b", "a-b"),
             ("a. /_b", "a-b"),
             ("  -x- ", "x"),
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn validate_accepts_slugs() {
         let longest = "a".repeat(64);
-        for slug in ["a", "wc-pp", "127-0-0-1", longest.as_str()] {
+        for slug in ["a", "my-shop", "127-0-0-1", longest.as_str()] {
             assert!(validate(slug).is_ok(), "{slug}");
         }
     }

@@ -17,7 +17,7 @@ import { useAltPeek } from "./altPeek";
 import { useDecoded } from "./useDecoded";
 
 /** `grid`: one line, cut to the cell; `full`: the whole value, serialized data expands in place. */
-export type Density = "grid" | "full";
+type Density = "grid" | "full";
 
 /**
  * Called when a value that acts on click is clicked: a primary key, a reference, an enum, serialized data in a

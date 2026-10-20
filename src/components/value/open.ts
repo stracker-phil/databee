@@ -45,7 +45,7 @@ export function openRowObject(address: Address, owner: Address | null, preview: 
 export type ClickEffect = "drill" | "go";
 
 /** A reference target drills into the next column of a stack when it is a row; anything else goes. */
-export const targetEffect = (target: Address, place: ColumnPlace | null): ClickEffect => (place && target.target.kind === "row" ? "drill" : "go");
+const targetEffect = (target: Address, place: ColumnPlace | null): ClickEffect => (place && target.target.kind === "row" ? "drill" : "go");
 
 /**
  * The effect of a click on `value` shown in `density` inside `place`, for an object showing `owner`; `null` when

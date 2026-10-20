@@ -89,12 +89,12 @@ mod tests {
         state.detail_pane_width = Some(520);
         state.sql_editor_height = Some(90);
         store
-            .set("root@127.0.0.1:52958/db", state.clone())
+            .set("root@127.0.0.1:32768/db", state.clone())
             .await
             .unwrap();
 
         let reopened = UiStateStore::open(dir.path());
-        assert_eq!(reopened.get("root@127.0.0.1:52958/db"), state);
+        assert_eq!(reopened.get("root@127.0.0.1:32768/db"), state);
         assert_eq!(reopened.get("other@host:3306/db"), UiState::default());
     }
 

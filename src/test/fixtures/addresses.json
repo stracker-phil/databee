@@ -1,8 +1,8 @@
 [
   {
-    "text": "databee://wc-pp/db/",
+    "text": "databee://my-shop/db/",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "home"
@@ -12,9 +12,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_wc_orders",
+    "text": "databee://my-shop/db/wp_wc_orders",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "table",
@@ -26,9 +26,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_postmeta?post_id=12&meta_key=_price",
+    "text": "databee://my-shop/db/wp_postmeta?post_id=12&meta_key=_price",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "table",
@@ -49,9 +49,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_posts?post_parent",
+    "text": "databee://my-shop/db/wp_posts?post_parent",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "table",
@@ -68,9 +68,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_options?option_value=",
+    "text": "databee://my-shop/db/wp_options?option_value=",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "table",
@@ -87,9 +87,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_wc_orders/3229",
+    "text": "databee://my-shop/db/wp_wc_orders/3229",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "row",
@@ -101,9 +101,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_wc_orders/3229?view=rows",
+    "text": "databee://my-shop/db/wp_wc_orders/3229?view=rows",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "row",
@@ -115,9 +115,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_wc_orders/3229?view=document",
+    "text": "databee://my-shop/db/wp_wc_orders/3229?view=document",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "row",
@@ -129,9 +129,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_wc_orders/3229?compare=3227",
+    "text": "databee://my-shop/db/wp_wc_orders/3229?compare=3227",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "row",
@@ -143,9 +143,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_wc_orders/3229?view=rows&compare=3227",
+    "text": "databee://my-shop/db/wp_wc_orders/3229?view=rows&compare=3227",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "row",
@@ -157,9 +157,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/q/failed-orders",
+    "text": "databee://my-shop/db/q/failed-orders",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "query",
@@ -170,9 +170,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/?find=PAYID-123",
+    "text": "databee://my-shop/db/?find=PAYID-123",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "find",
@@ -183,9 +183,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/?project",
+    "text": "databee://my-shop/db/?project",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "project"
@@ -195,9 +195,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/%71",
+    "text": "databee://my-shop/db/%71",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "table",
@@ -209,9 +209,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/%71/7",
+    "text": "databee://my-shop/db/%71/7",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "row",
@@ -223,9 +223,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_options/a%2Fb%3Fc%26d%3De%25f%23g",
+    "text": "databee://my-shop/db/wp_options/a%2Fb%3Fc%26d%3De%25f%23g",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "row",
@@ -237,9 +237,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/wp_options?option_name=caf%C3%A9%20au%20lait",
+    "text": "databee://my-shop/db/wp_options?option_name=caf%C3%A9%20au%20lait",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "table",
@@ -256,9 +256,9 @@
     }
   },
   {
-    "text": "databee://wc-pp/db/?find=a%2Bb%20c",
+    "text": "databee://my-shop/db/?find=a%2Bb%20c",
     "address": {
-      "connection": "wc-pp",
+      "connection": "my-shop",
       "database": "db",
       "target": {
         "kind": "find",

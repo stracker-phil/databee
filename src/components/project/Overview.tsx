@@ -107,7 +107,7 @@ function ChangesSection({ ctx }: { ctx: ProjectContext }) {
     <section aria-label="Your changes" className="project-part">
       <Band name="Your changes" count={changes.length ? `${changes.length}` : ""} />
       {changes.length === 0 ? (
-        <div className="row empty o3">No changes — this database uses the presets as shipped.</div>
+        <div className="row empty o3">No changes: this database uses the presets as shipped.</div>
       ) : (
         changes.map((line, i) => <ChangeLine key={`${line.action}:${line.rule}:${line.id ?? line.text}:${i}`} line={line} ctx={ctx} />)
       )}

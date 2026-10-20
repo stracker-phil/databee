@@ -44,7 +44,7 @@ The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules
   by name against a site you own:
 
   ```sh
-  DATABEE_WP_TEST=mysql://root:root@127.0.0.1:52958/db cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored --nocapture real_data
+  DATABEE_WP_TEST=mysql://root:root@127.0.0.1:32768/db cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored --nocapture real_data
   ```
 
 ## Docker fixtures

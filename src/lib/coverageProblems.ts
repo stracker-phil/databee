@@ -2,7 +2,7 @@ import type { Coverage } from "../api";
 
 const SAMPLE_SHOWN = 3;
 
-export interface CoverageProblem {
+interface CoverageProblem {
   /** `5 of 40 point nowhere (98, 99)`. */
   text: string;
   /** The unresolved rows as a table filter; `null` without one. */

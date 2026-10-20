@@ -33,7 +33,7 @@ function documentOf(owner: typeof order, entity: string, keyColumn: string, fiel
 }
 
 /** The reference `wp_wc_orders.customer_id = 12` that points at `wp_users #12`. */
-export const customerRef: Value = value({
+const customerRef: Value = value({
   raw: num("12"),
   kind: { kind: "reference", targets: [user], by: { kind: "preset", preset: "woocommerce", id: "customer" }, exists: true },
   source: source("wp_wc_orders", "customer_id", "4711", "id"),

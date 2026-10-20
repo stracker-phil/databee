@@ -16,7 +16,7 @@ interface ProjectRulesEntry {
 export type CoverageState = { status: "running" } | { status: "done"; coverage: Coverage } | { status: "error"; message: string };
 
 /** Reference coverage of one database for the session, by `coverageKey`; `generation` counts refreshes. */
-export interface CoverageCache {
+interface CoverageCache {
   generation: number;
   results: Record<string, CoverageState>;
 }

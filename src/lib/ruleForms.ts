@@ -128,7 +128,7 @@ function simpleWhen(when: Reference["when"]): WhenDraft | null {
 }
 
 /** A row the project stores (`project`, or `edited`); any other row is saved as a new project rule that replaces it. */
-export const storedInProject = (row: ReferenceRow) => row.origin.kind === "project" || row.edited;
+const storedInProject = (row: ReferenceRow) => row.origin.kind === "project" || row.edited;
 
 /**
  * Edits a listed reference: a project or edited row by its id; a preset row becomes a project rule under the

@@ -143,7 +143,7 @@ export const markCompleted: ObjectAction = {
     { write: "set", table: "wp_posts", columns: ["post_modified", "post_status"] },
   ],
 };
-export const purgeNotes: ObjectAction = { name: "purge-notes", preset: "woocommerce", kind: "sql", undo: false, params: [], writes: [{ write: "freeSql", table: "wp_comments" }] };
+const purgeNotes: ObjectAction = { name: "purge-notes", preset: "woocommerce", kind: "sql", undo: false, params: [], writes: [{ write: "freeSql", table: "wp_comments" }] };
 export const setStatus: ObjectAction = {
   name: "set-status",
   preset: "woocommerce",

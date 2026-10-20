@@ -30,7 +30,7 @@ function cellClass(cell: Cell, selected: boolean, editing: boolean, changedAt: n
   return name;
 }
 
-export interface CellEditor {
+interface CellEditor {
   text: string;
   setText: (text: string) => void;
   cancel: () => void;

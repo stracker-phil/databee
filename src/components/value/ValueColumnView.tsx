@@ -42,7 +42,7 @@ async function queueEdit(target: EditTarget, text: string, path: number[], next:
 }
 
 /** Where a value column is: column `index` of an object tab's stack, or the right column of a table or query tab (`index` null). */
-export interface ValuePlace {
+interface ValuePlace {
   tabId: string;
   index: number | null;
 }

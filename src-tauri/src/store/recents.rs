@@ -308,12 +308,12 @@ mod tests {
         store.touch(&spec("a")).await.unwrap();
 
         store
-            .rename_slug(&spec("a").identity(), "wc-pp")
+            .rename_slug(&spec("a").identity(), "my-shop")
             .await
             .unwrap();
 
-        assert_eq!(slugs(&store), ["wc-pp"]);
-        assert_eq!(slugs(&RecentsStore::open(dir.path())), ["wc-pp"]);
+        assert_eq!(slugs(&store), ["my-shop"]);
+        assert_eq!(slugs(&RecentsStore::open(dir.path())), ["my-shop"]);
     }
 
     #[tokio::test]

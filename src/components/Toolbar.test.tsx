@@ -44,7 +44,7 @@ describe("Toolbar", () => {
   });
 
   describe("database accent", () => {
-    const connection = () => screen.getByTitle(/root@127\.0\.0\.1:52958\/db/);
+    const connection = () => screen.getByTitle(/root@127\.0\.0\.1:32768\/db/);
 
     it("shows a dot before the database and names the accent in the title when the database has its own", () => {
       useStore.setState({ accents: { "shop/db": "purple" } });

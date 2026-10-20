@@ -691,7 +691,7 @@ async fn a_project_reference_adds_an_incoming_group_with_its_label_and_columns()
 /// `DATABEE_WP_TEST=mysql://user:pass@host:port/db` is set, so `bun run test:db` skips them
 /// (`--skip real_data`). Run them by name:
 ///
-///   DATABEE_WP_TEST=mysql://root:root@127.0.0.1:52958/db cargo test --lib -- --ignored --nocapture real_data
+///   DATABEE_WP_TEST=mysql://root:root@127.0.0.1:32768/db cargo test --lib -- --ignored --nocapture real_data
 mod real_data {
     use std::time::Duration;
 

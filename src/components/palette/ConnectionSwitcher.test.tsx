@@ -50,7 +50,7 @@ describe("Switch connection (⌘⇧P)", () => {
       sessions: [...s.sessions, staging],
       schema: { ...s.schema, [session.id]: { ...s.schema[session.id], databases: [{ name: "db", isSystem: false }, { name: "shop2", isSystem: false }, { name: "mysql", isSystem: true }] } },
     }));
-    mocked.listRecents.mockResolvedValue([recent("Shop", 52958, "db", "shop"), blog]);
+    mocked.listRecents.mockResolvedValue([recent("Shop", 32768, "db", "shop"), blog]);
     installCommands();
     window.addEventListener("keydown", handleKeydown, true);
   });

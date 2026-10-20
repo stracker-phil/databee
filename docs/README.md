@@ -17,7 +17,6 @@ use it, see the [project README](../README.md).
 | [adapting.md](adapting.md) | Renaming, porting to Linux or Windows, removing layers, conventions to keep |
 | [adr/](adr/README.md) | Architecture decision records: why the design is the way it is |
 | [roadmap.md](roadmap.md) | Ideas not built yet, version 2 first |
-| [refactoring-plan.md](refactoring-plan.md) | Historical: the code review of 2026-10-16, before the UX redesign |
 
 Suggested reading order: architecture, then the layer you are changing, then adapting.
 

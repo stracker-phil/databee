@@ -1,10 +1,11 @@
 [package]
 name = "databee"
 version = "0.1.0"
-description = "Minimalistic SQL client"
+description = "Minimalistic MySQL and MariaDB client for inspecting local WordPress databases"
 authors = ["Philipp Stracker <info@philippstracker.com>"]
 edition = "2024"
 license = "MIT"
+repository = "https://github.com/stracker-phil/databee"
 
 
 [lib]

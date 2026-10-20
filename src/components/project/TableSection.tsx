@@ -10,7 +10,7 @@ import { IconControl } from "./IconControl";
 import { ReferencedByLine, ReferenceLines } from "./ReferenceLines";
 import { EntityActionLines, KindLines, StyleLines } from "./RuleSections";
 
-export const NO_TABLE = "no table";
+const NO_TABLE = "no table";
 
 export const groupName = (group: TableRules) => group.table ?? NO_TABLE;
 

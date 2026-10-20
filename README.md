@@ -102,7 +102,7 @@ The Project page: the rules a preset and the project apply to the database.
 
 ```sh
 databee mysql://user:pass@127.0.0.1:3306/wordpress
-databee -H 127.0.0.1 -P 52958 -u db -d db --name "Shop (DDEV)" --password-env DB_PASS
+databee -H 127.0.0.1 -P 32768 -u db -d db --name "Shop (DDEV)" --password-env DB_PASS
 echo "$PASS" | databee -u root -d local --socket /path/to/mysqld.sock --password-stdin --save-password
 databee --help
 ```

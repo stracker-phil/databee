@@ -102,7 +102,7 @@ import { OpenSwap } from "./value/OpenHint";
 import type { ClickEffect } from "./value/open";
 
 /** Every icon a rule may name; typed by the Rust enum, so both sides list the same names. */
-export const TABLE_ICONS: Record<IconName, LucideIcon> = {
+const TABLE_ICONS: Record<IconName, LucideIcon> = {
   table: Table2,
   database: Database,
   server: Server,
@@ -206,7 +206,7 @@ export const DEFAULT_ICON: IconName = "table";
  * The icon of real table `table` in `database` of session `sessionId` (default: the active session), from the
  * database's `rulesInfo`, which it loads when missing; `DEFAULT_ICON` until then; `null` without a table.
  */
-export function useTableIcon(database: string | null | undefined, table: string | null | undefined, sessionId?: string): IconName | null {
+function useTableIcon(database: string | null | undefined, table: string | null | undefined, sessionId?: string): IconName | null {
   const session = useStore((s) => sessionId ?? s.activeSessionId);
   const key = session && database ? projectKey(session, database) : null;
   const loaded = useStore((s) => !key || key in s.rulesInfo);

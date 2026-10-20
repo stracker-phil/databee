@@ -27,7 +27,7 @@ const KEY_ACTIONS: Record<string, (c: KeyContext) => void> = {
 
 const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value));
 
-export interface GridKeyTarget {
+interface GridKeyTarget {
   selected: CellPos | null;
   rowCount: number;
   colCount: number;
