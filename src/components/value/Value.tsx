@@ -4,7 +4,10 @@ import type { Value as StoredValue } from "../../api";
 import { cellDisplay, cellText, isoUtc, relativeTime } from "../../lib/format";
 import { formatAddress } from "../../lib/address";
 import { bySourceText, provenanceText, rowIdentity } from "../../lib/provenance";
-import { selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
+import { fetchStoredValue } from "../../lib/cells";
+import { useApiResult } from "../../lib/useApiResult";
+import { selectActiveTab, selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
+import { tabDatabase } from "../../state/tabKinds";
 import { TableIcon } from "../TableIcon";
 import { watchValue } from "../../commands/values";
 import { ValueTree } from "../ValueTree";
@@ -99,10 +102,41 @@ function SerializedTree({ value, preview }: { value: StoredValue; preview: strin
   );
 }
 
+/** The whole stored text; a grid's `longText` cell holds only a preview, so its row is read again by key. */
+function usePeekText(value: StoredValue): string | null {
+  const long = value.raw.t === "longText";
+  const source = value.source;
+  const key = long && source ? JSON.stringify(source) : null;
+  const fetched = useApiResult(key, async () => {
+    const s = useStore.getState();
+    const tab = selectActiveTab(s);
+    const database = tab && tabDatabase(s, tab);
+    if (!tab || !database || !source) return null;
+    return (await fetchStoredValue(tab.sessionId, database, source))?.text ?? null;
+  });
+  return long ? (fetched.data ?? null) : cellText(value.raw);
+}
+
+/** The ⌥ peek of a serialized value: its decoded tree, the first levels open, in an overlay below it. */
+function SerializedPeek({ value, anchor }: { value: StoredValue; anchor: Element }) {
+  const text = usePeekText(value);
+  const decoded = useDecoded(text ?? "", text !== null);
+  const rect = anchor.getBoundingClientRect();
+  return createPortal(
+    <div className="value-peek" role="tooltip" style={{ left: rect.left, top: rect.bottom + 4 }}>
+      {decoded ? <ValueTree value={decoded} /> : <span className="o3">Decoding…</span>}
+    </div>,
+    document.body,
+  );
+}
+
 function Serialized({ value, preview, density, onActivate, effect }: { value: StoredValue; preview: string; density: Density; onActivate?: Activate; effect: ClickEffect | null }) {
+  const [el, setEl] = useState<HTMLSpanElement | null>(null);
+  const peeked = useAltPeek().target;
   if (density === "full" && value.raw.t !== "longText") return <SerializedTree value={value} preview={preview} />;
   return (
-    <>
+    <span ref={setEl} data-peek="">
+      {el && peeked === el && <SerializedPeek value={value} anchor={el} />}
       <span className="val-ser" role={onActivate ? "button" : undefined} onClick={onActivate}>
         {effect ? (
           <OpenSwap effect={effect}>
@@ -119,7 +153,7 @@ function Serialized({ value, preview, density, onActivate, effect }: { value: St
           <PlainText value={value} density={density} />
         </span>
       )}
-    </>
+    </span>
   );
 }
 

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +8,7 @@ vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await i
 import { api, type Address, type DecodedValue, type Provenance, type ReferenceSource, type Value as StoredValue } from "../../api";
 import { address } from "../../lib/address";
 import { useStore } from "../../state/store";
-import { connectedStore, num, tableTab, text, value } from "../../test/fixtures";
+import { browsePage, columnMeta, connectedStore, num, resultSet, tableTab, text, value } from "../../test/fixtures";
 import { NOW } from "../../test/now";
 import { rulesInfoOf, showTableIcons } from "../../test/iconFixtures";
 import { ColumnContext } from "./open";
@@ -444,6 +444,72 @@ describe("Value", () => {
       expect(await screen.findByRole("tree", { name: "PHP value" })).toBeInTheDocument();
       expect(mocked.decodeValue).toHaveBeenCalledWith("a:3:{i:0;i:1;i:1;i:2;i:2;i:3;}");
       expect(screen.getByRole("button", { name: "Collapse a:3:{…}" })).toHaveAttribute("aria-expanded", "true");
+    });
+
+    describe("peeking with Alt", () => {
+      const full = 'a:1:{s:4:"mode";s:4:"live";}';
+      const decoded: DecodedValue = {
+        format: "php",
+        root: { kind: "array", children: [{ key: "mode", keyKind: "string", node: { kind: "string", text: "live" } }] },
+        warning: null,
+        error: null,
+      };
+      const peekable = (raw = text(full), source: Provenance | null = null) =>
+        value({ raw, kind: { kind: "serialized", format: "php", preview: "a:1:{…}" }, source });
+
+      beforeEach(() => mocked.decodeValue.mockResolvedValue(decoded));
+
+      it("shows the decoded tree in a tooltip while Alt is held over the value, and closes it on release", async () => {
+        const user = userEvent.setup();
+        render(<Value value={peekable()} density="grid" />);
+        fireEvent.mouseOver(screen.getByText("▸ a:1:{…}"));
+        await user.keyboard("{Alt>}");
+        expect(await within(screen.getByRole("tooltip")).findByText("mode")).toBeInTheDocument();
+        expect(mocked.decodeValue).toHaveBeenCalledWith(full);
+        await user.keyboard("{/Alt}");
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      });
+
+      it("shows the tooltip when the pointer arrives after Alt", async () => {
+        const user = userEvent.setup();
+        render(<Value value={peekable()} density="grid" />);
+        await user.keyboard("{Alt>}");
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+        fireEvent.mouseOver(screen.getByText("▸ a:1:{…}"));
+        expect(await within(screen.getByRole("tooltip")).findByText("mode")).toBeInTheDocument();
+      });
+
+      it("shows no tooltip on hover without Alt", () => {
+        render(<Value value={peekable()} density="grid" />);
+        fireEvent.mouseOver(screen.getByText("▸ a:1:{…}"));
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+        expect(mocked.decodeValue).not.toHaveBeenCalled();
+      });
+
+      it("reads a long text value in full before decoding it", async () => {
+        const user = userEvent.setup();
+        const source: Provenance = { table: "wp_options", column: "option_value", row: [{ column: "ID", value: "1" }] };
+        connectedStore({ tabs: [tableTab()] });
+        mocked.browseTable.mockResolvedValue(
+          browsePage({
+            table: "wp_options",
+            result: resultSet({ id: 42, columns: [columnMeta("ID", "BIGINT"), columnMeta("option_value", "LONGTEXT")], rows: [[num("1"), { t: "longText", v: { len: 100000, preview: "a:1:{" } }]], totalRows: 1 }),
+          }),
+        );
+        mocked.fetchCell.mockResolvedValue(full);
+        render(<Value value={peekable({ t: "longText", v: { len: 100000, preview: "a:1:{" } }, source)} density="grid" />);
+        fireEvent.mouseOver(screen.getByText("▸ a:1:{…}"));
+        await user.keyboard("{Alt>}");
+        expect(await within(screen.getByRole("tooltip")).findByText("mode")).toBeInTheDocument();
+        expect(mocked.browseTable).toHaveBeenCalledWith("s1", { database: "db", table: "wp_options", offset: 0, limit: 1, where: [{ column: "ID", value: "1" }] });
+        expect(mocked.fetchCell).toHaveBeenCalledWith("s1", 42, 0, 1);
+        expect(mocked.decodeValue).toHaveBeenCalledWith(full);
+      });
+
+      it("is not a peek target in its expandable full form", () => {
+        const { container } = render(<Value value={peekable()} />);
+        expect(container.querySelector("[data-peek]")).toBeNull();
+      });
     });
 
     describe("watching a node of the expanded tree", () => {

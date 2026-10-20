@@ -442,7 +442,7 @@ has no leading icon and shows `OpenHint` (an inline `.open-hint`, same `data-ope
 the same hover; links outside values without a table icon use it too (a readout value's title, a pinned title,
 "Show rows"). `LEAD_ICON_CH` (2.5ch) is the width a leading icon adds, `hasLeadIcon(value)` says whether a value
 has one; `ResultsGrid` passes them as `leads` to `useColumnSizing` (`fitWidth(…, lead)`), `groups.tsx` to
-`charWidth(…, LEAD_ICON_CH)`. A secret (`SecretText`) reveals on click, and while its ⌥ peek is on it (`useAltPeek`, `data-peek`; a timestamp's `TimeValue` likewise). A style sets `color: var(--style-<name>)`. CSS classes are `val`
+`charWidth(…, LEAD_ICON_CH)`. A secret (`SecretText`) reveals on click, and while its ⌥ peek is on it (`useAltPeek`, `data-peek`; a timestamp's `TimeValue` and a collapsed serialized value's `SerializedPeek`, which decodes the whole text and reads a `longText` cell again with `fetchStoredValue`, likewise). A style sets `color: var(--style-<name>)`. CSS classes are `val`
 and `val-<kind>` (`styles/app.css`, values).
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`

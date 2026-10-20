@@ -277,7 +277,7 @@ value, else the current address. The Hover column is what the status bar shows.
 | Timestamp | raw value primary, relative time secondary 3px smaller (`1792167625  2 h ago`); its ⌥ peek shows the UTC date (`2026-10-20 14:03:09 UTC`) in an overlay below | none | UTC and local time |
 | Null | italic tertiary `NULL` | none | provenance |
 | Empty | tertiary `""` (never rendered like `NULL`) | none | provenance |
-| Serialized | tertiary preview `▸ a:17{…}` / `{…17}`; in grids followed by the raw text, tertiary | expands inline as a tree (grids: opens a value column) | provenance |
+| Serialized | tertiary preview `▸ a:17{…}` / `{…17}`; in grids followed by the raw text, tertiary | expands inline as a tree (grids: opens a value column) | provenance; where it is collapsed (grids, Rows), its ⌥ peek shows the decoded tree (first two levels open) in an overlay below; a cut-off grid cell is read again by its row key |
 | Secret | masked | reveals until it loses focus | provenance; its ⌥ peek reveals it |
 | Binary | tertiary `<n bytes>` | none | provenance |
 
@@ -423,7 +423,7 @@ is left to fold do names end in an ellipsis (`.trail.tight`, `.trail-name`). A n
   42` no longer exists" instead of the old text (no copy, no tree). While an edit queued from the column is
   pending, it keeps the edited text. There is no docked inspector.
 - **⌥ peeks, one rule for all:** pressing ⌥ alone peeks the peekable value under the pointer (a reference, a
-  timestamp, a secret, a changed cell). While ⌥ is held, moving onto another peekable value peeks that one;
+  timestamp, a serialized value, a secret, a changed cell). While ⌥ is held, moving onto another peekable value peeks that one;
   moving anywhere else keeps the peek open. Releasing ⌥ (or the window losing focus) closes it. One peek shows at
   a time.
 - **Peek:** holding ⌥ over a reference, or with a reference focused, shows a `--pop` overlay below it: head

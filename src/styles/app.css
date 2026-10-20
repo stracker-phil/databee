@@ -1058,6 +1058,13 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .db-peek-head { margin-bottom: 0.154rem; font-size: var(--fs-small); color: var(--o2); }
 .db-peek-values { font-size: var(--data-font-size); overflow-wrap: anywhere; }
 
+/* The ⌥ peek of a serialized value (`Value`'s `SerializedPeek`). */
+.value-peek {
+  position: fixed; z-index: 60; min-width: 16rem; max-width: 36rem; max-height: 60vh; overflow: hidden;
+  padding: 0.462rem 0.769rem; border-radius: 10px; pointer-events: none;
+  background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); color: var(--text);
+}
+
 /* ---------- connection health ---------- */
 .conn-health { display: inline-flex; align-items: center; gap: 0.462rem; flex: none; }
 .conn-health-icon { flex: none; color: var(--style-red); }
