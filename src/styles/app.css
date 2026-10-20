@@ -109,15 +109,20 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .spacer { flex: 1; }
 
 /* A field-styled track; the selected segment is a rounded tile in the border color, 1px inside the track, its
-   label tinted toward the accent. */
-.segmented { display: inline-flex; padding: 1px; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); }
+   label in the strongest text color. A key cap sits `--seg-inset` from the segment's top, bottom and right edge: a
+   block, so no line box offsets it. On the tile its border matches the tile, so only its glyphs show. */
+.segmented {
+  --seg-h: 1.538rem; --seg-inset: 3px;
+  display: inline-flex; padding: 1px; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field);
+}
 .segmented button {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.308rem; white-space: nowrap;
-  height: 1.538rem; padding: 0 0.923rem; border: none; border-radius: calc(var(--radius-sm) - 1px); background: transparent; color: var(--o2);
+  height: var(--seg-h); padding: 0 0.923rem; border: none; border-radius: calc(var(--radius-sm) - 1px); background: transparent; color: var(--o2);
 }
-.segmented button:has(.keycap) { padding-right: calc((1.538rem - var(--keycap-h)) / 2); }
+.segmented button .keycap { --keycap-h: calc(var(--seg-h) - 2 * var(--seg-inset)); display: block; }
+.segmented button:has(.keycap) { padding-right: var(--seg-inset); }
 .segmented button:hover { color: var(--text); }
-.segmented button[aria-pressed="true"] { background: var(--field-line); color: color-mix(in srgb, var(--accent) 30%, var(--text)); }
+.segmented button[aria-pressed="true"] { background: var(--field-line); color: var(--text-strong); }
 
 .badge {
   display: inline-flex; align-items: center; height: 1.308rem; padding: 0 0.462rem;

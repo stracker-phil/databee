@@ -51,11 +51,12 @@ file; a Vitest scan enforces it.
 | `--field` | `#1a1f29` | `#ffffff` | input background (inset) |
 | `--field-line` | `#3b4254` | `#cdd1d6` | input and overlay border, key caps |
 | `--text` | `#cccac2` | `#5c6166` | primary text; `--o2`/`--o3` derive from it |
+| `--text-strong` | `#ffffff` | `#000000` | the strongest text: the selected segment's label (white in every dark scheme, black in every light one) |
 | `--line` | `#2f3545` | `#e6e8eb` | hairlines: rows, separators |
 | `--band` | `#2a3040` | `#f2f3f5` | section header band |
 | `--row-hover` | `#2b3142` | `#f0f2f5` | hovered row |
 | `--shadow` | `0 0 28px rgba(0,0,0,.38)` | `0 0 28px rgba(30,40,60,.16)` | overlay glow, zero offset |
-| `--shadow-small` | `0 1px 2px rgba(0,0,0,.25)` | `0 1px 2px rgba(30,40,60,.2)` | selected segment, switch thumb |
+| `--shadow-small` | `0 1px 2px rgba(0,0,0,.25)` | `0 1px 2px rgba(30,40,60,.2)` | switch thumb, the timestamp's ⌥ peek |
 | `--shadow-inset` | `inset 0 1px 2px rgba(0,0,0,.15)` | `inset 0 1px 2px rgba(30,40,60,.08)` | field inset |
 | `--scrim` | `rgba(10,12,18,.55)` | `rgba(40,50,70,.2)` | behind modal dialogs |
 | `--on-accent` | `#1f2430` | `#ffffff` | text on an accent or value-style fill |
@@ -235,11 +236,12 @@ Inputs look like inputs, never like rows.
   without the icon. Key caps follow the user's bindings.
 - **Segmented control** (`.segmented`): a field-styled track (rounded, 1px inner padding); segments in `--o2`,
   hover primary text; the selected segment is a rounded tile in `--field-line` (the track's border color), its
-  label primary text tinted 30% toward the accent; no underline. Used for Settings choices, the
-  Tables/History switch, Data/Structure in table tabs, the query results picker, PHP/JSON/Raw in value
+  label in `--text-strong`, its key cap's `--field-line` border blending into the tile (the box keeps its size);
+  no underline. Used for Settings choices, the Tables/History switch, Data/Structure in table tabs, the query results picker, PHP/JSON/Raw in value
   columns and Document/Rows.
-- **Key cap:** mono 11px, `--o3`, 1px `--field-line` border, 4px radius, `--keycap-h` tall. A field or segment
-  that ends in one keeps the same gap to its right edge as above and below it.
+- **Key cap:** mono 11px, `--o3`, 1px `--field-line` border, 4px radius, `--keycap-h` tall. A field that ends
+  in one keeps the same gap to its right edge as above and below it; in a segment the key cap is shorter
+  and sits the same 3px (`--seg-inset`) from the segment's top, bottom and right edge.
 
 ## Overlays
 
