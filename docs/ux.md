@@ -72,7 +72,7 @@ file; a Vitest scan enforces it.
 | `--style-yellow` | `#ffcc66` | `#eba400` | value-style color |
 | `--style-blue` | `#73d0ff` | `#399ee6` | value-style color |
 | `--style-purple` | `#dfbfff` | `#a37acc` | value-style color |
-| `--code-keyword`, `-string`, `-number`, `-comment`, `-function`, `-type`, `-operator`, `-name`, `-invalid` | Ayu Mirage syntax | Ayu Light syntax | SQL editor syntax colors |
+| `--code-keyword`, `-string`, `-number`, `-comment`, `-function`, `-type`, `-operator`, `-name`, `-property`, `-invalid` | Ayu Mirage syntax | Ayu Light syntax | SQL editor and value tree syntax colors |
 | `--code-cursor`, `-selection`, `-active-line`, `-gutter`, `-match` | per scheme | per scheme | SQL editor chrome |
 
 Derived design tokens in `src/styles/theme.css`, the same for every scheme:
@@ -298,7 +298,7 @@ value, else the current address. The Hover column is what the status bar shows.
   palette, readout, Project page, Structure view), before every reference into it (a reference whose targets
   are in different tables shows none) and before every primary key of its rows (the own row's key too, which
   keeps its icon on hover since its click only toggles the view). It is decorative; the name stays.
-- **Trees** (`ValueTree`): a hairline guide on the left, keys secondary, container types tertiary
+- **Trees** (`ValueTree`): a hairline guide on the left, Ayu syntax colors like the SQL editor (keys `--code-property`, integer keys secondary, strings `--code-string`, numbers, booleans and null `--code-number`, enums `--code-type`), container types tertiary
   (`array(2)`), strings in dim quotes so `"2.04"` and `2.04` differ, leaf pairs of a small array (up to 4
   leaves, 60 characters) on one line unless the tree is editable. Tree rows keep the row anatomy. A
   right-click on a node of a sourced value's tree (or on one pair of an inline line) offers "Watch on readout"

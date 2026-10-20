@@ -547,14 +547,17 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .vt-line:hover { background: var(--row-hover); }
 .vt-toggle { width: 0.846rem; flex: none; color: var(--o3); display: inline-flex; align-self: center; }
 .vt-children { padding-left: 1.077rem; border-left: 1px solid var(--line); margin-left: 0.385rem; }
-.vt-key { color: var(--o2); }
+.vt-key { color: var(--code-property); }
+.vt-key.int { color: var(--o2); }
 .vt-key::after { content: ":"; color: var(--o3); }
 .vt-vis { font-size: 0.808rem; color: var(--o3); }
-.vt-string { word-break: break-word; white-space: pre-wrap; }
+.vt-string { color: var(--code-string); word-break: break-word; white-space: pre-wrap; }
 .vt-quote { color: var(--o3); }
 .vt-pair { display: inline-flex; gap: 0.385rem; margin-left: 0.615rem; }
-.vt-int, .vt-float { font-variant-numeric: tabular-nums; }
-.vt-null { color: var(--o3); font-style: italic; }
+.vt-int, .vt-float { color: var(--code-number); font-variant-numeric: tabular-nums; }
+.vt-bool { color: var(--code-number); }
+.vt-enum { color: var(--code-type); }
+.vt-null { color: var(--code-number); font-style: italic; }
 .vt-ref, .vt-muted { color: var(--o3); }
 .vt-warning, .vt-error { display: flex; gap: 0.462rem; align-items: flex-start; padding: 0.462rem 0.615rem; border-radius: var(--radius-sm); margin-bottom: 0.615rem; font-family: var(--font-ui); font-size: var(--fs-small); }
 .vt-warning { background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); }

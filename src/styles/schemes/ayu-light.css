@@ -43,7 +43,7 @@
   --style-blue: #399ee6;
   --style-purple: #a37acc;
 
-  /* CodeMirror */
+  /* CodeMirror and value trees */
   --code-keyword: #fa8d3e;
   --code-string: #86b300;
   --code-number: #a37acc;
@@ -52,6 +52,7 @@
   --code-type: #399ee6;
   --code-operator: #ed9366;
   --code-name: #5c6166;
+  --code-property: #55b4d4;
   --code-invalid: #e65050;
   --code-cursor: #ffaa33;
   --code-selection: rgba(3, 91, 214, 0.15);
