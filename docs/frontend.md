@@ -916,7 +916,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 
 | File | Contents |
 |---|---|
-| `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text (`cellDisplay` only for `Value`), TSV/JSON export, `relativeTime` |
+| `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text (`cellDisplay` only for `Value`), TSV/JSON export, `relativeTime`, `isoUtc` (`Value`'s `TimeValue` overlay, `.time-peek`) |
 | `values.ts` | `valueAt`, `resultValueAt`, `cellValue` (see [Addresses and history](#addresses-and-history)) |
 | `coverageProblems.ts` | `coverageProblem(coverage)`: the problem text and row filter of a reference's coverage (values that point nowhere; 0 or NULL never count), `unresolvedCount` |
 | `ruleForms.ts` | the Project page's form state (`ReferenceForm`, `KindForm`, `StyleForm`), prefills from a `RuleDraft` or a listed rule, `referenceRule` / `kindRule` / `styleRule`, `fieldError`, display texts (see [Project tabs](#project-tabs)) |

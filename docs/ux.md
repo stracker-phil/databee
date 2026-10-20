@@ -273,7 +273,7 @@ value, else the current address. The Hover column is what the status bar shows.
 | Enum (status slugs, gateways) `wc-failed` | raw string, default color | filters rows by this value | provenance |
 | Number | tabular figures, right-aligned in grids | none | provenance |
 | Money | amount primary, currency secondary (`95.40 EUR`) | none | both sources |
-| Timestamp | raw value primary, relative time secondary (`1792167625  2 h ago`) | none | UTC and local time |
+| Timestamp | raw value primary, relative time secondary 3px smaller (`1792167625  2 h ago`); ⌥ hover shows the UTC date (`2026-10-20 14:03:09 UTC`) in an overlay below | none | UTC and local time |
 | Null | italic tertiary `NULL` | none | provenance |
 | Empty | tertiary `""` (never rendered like `NULL`) | none | provenance |
 | Serialized | tertiary preview `▸ a:17{…}` / `{…17}`; in grids followed by the raw text, tertiary | expands inline as a tree (grids: opens a value column) | provenance |

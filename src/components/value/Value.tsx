@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { Value as StoredValue } from "../../api";
-import { cellDisplay, cellText, relativeTime } from "../../lib/format";
+import { cellDisplay, cellText, isoUtc, relativeTime } from "../../lib/format";
 import { formatAddress } from "../../lib/address";
 import { bySourceText, provenanceText, rowIdentity } from "../../lib/provenance";
 import { selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
@@ -129,6 +130,26 @@ const withSecondary = (main: ReactNode, secondary: string | null, className = "v
   </>
 );
 
+/** The stored value with its relative time; ⌥ hover shows the UTC date in an overlay below it. */
+function TimeValue({ value, density, utc }: { value: StoredValue; density: Density; utc: number }) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const altHeld = useAltHeld();
+  return (
+    <span className="val-time" onMouseEnter={(e) => setRect(e.currentTarget.getBoundingClientRect())} onMouseLeave={() => setRect(null)}>
+      <PlainText value={value} density={density} />
+      <span className="val-sec">{relativeTime(utc)}</span>
+      {altHeld &&
+        rect &&
+        createPortal(
+          <div className="time-peek" role="tooltip" style={{ left: rect.left, top: rect.bottom + 4 }}>
+            {isoUtc(utc)}
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
+}
+
 function Body({ value, density, onActivate, effect }: { value: StoredValue; density: Density; onActivate?: Activate; effect: ClickEffect | null }) {
   const kind = value.kind;
   const text = cellText(value.raw);
@@ -166,7 +187,8 @@ function Body({ value, density, onActivate, effect }: { value: StoredValue; dens
     case "money":
       return withSecondary(<span className="val-num">{text}</span>, kind.currency ? cellText(kind.currency.raw) : null);
     case "timestamp":
-      return withSecondary(<PlainText value={value} density={density} />, kind.utc === null ? null : relativeTime(kind.utc));
+      if (kind.utc === null) return <PlainText value={value} density={density} />;
+      return <TimeValue value={value} density={density} utc={kind.utc} />;
     case "empty":
       return <span className="val-o3">""</span>;
     case "serialized":

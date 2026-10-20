@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellDisplay, cellText, charWidth, formatBytes, relativeTime, rowsToJson, rowsToTsv } from "./format";
+import { cellDisplay, cellText, charWidth, formatBytes, isoUtc, relativeTime, rowsToJson, rowsToTsv } from "./format";
 import type { Cell } from "../api";
 
 describe("charWidth", () => {
@@ -62,6 +62,15 @@ describe("copy formats", () => {
 
   it("copies NULL as empty text", () => {
     expect(cellText({ t: "null" })).toBe("");
+  });
+});
+
+describe("isoUtc", () => {
+  it.each([
+    [4102444800, "2100-01-01 00:00:00 UTC"],
+    [1000, "1970-01-01 00:16:40 UTC"],
+  ])("formats %d seconds as a UTC date and time", (seconds, expected) => {
+    expect(isoUtc(seconds)).toBe(expected);
   });
 });
 

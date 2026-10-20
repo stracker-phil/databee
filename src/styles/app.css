@@ -579,6 +579,12 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .val-null { color: var(--o3); font-style: italic; }
 .val-num { font-variant-numeric: tabular-nums; }
 .val-sec { color: var(--o2); margin-left: 0.6em; }
+.val-time .val-sec { font-size: calc(1em - 3px); }
+.time-peek {
+  position: fixed; z-index: 60; padding: 0.231rem 0.462rem; border-radius: var(--radius-sm); background: var(--pop);
+  box-shadow: var(--shadow-small); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: nowrap;
+  pointer-events: none;
+}
 .val-note { color: var(--o3); margin-left: 0.6em; font-family: var(--font-ui); font-size: var(--fs-small); }
 .val-secret > button { color: inherit; cursor: pointer; }
 .val-secret:hover, .val-ser:hover, .val-secret > .revealed { color: var(--text); }

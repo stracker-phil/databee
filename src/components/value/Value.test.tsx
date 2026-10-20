@@ -321,6 +321,39 @@ describe("Value", () => {
       const { container } = render(<Value value={value({ raw: { t: "temporal", v: "2026-01-15 10:00:00" }, kind: { kind: "timestamp", utc: null, zone: "local" } })} />);
       expect(container).toHaveTextContent(/^2026-01-15 10:00:00$/);
     });
+
+    describe("UTC peek with Alt", () => {
+      const utc = 4102444800;
+      const stamp = () => value({ raw: { t: "temporal", v: "2100-01-01 00:00:00" }, kind: { kind: "timestamp", utc, zone: "utc" } });
+      const hoverArea = () => screen.getByText("2100-01-01 00:00:00");
+
+      it("shows the UTC date in a tooltip while Alt is held over the timestamp, and hides it on release", async () => {
+        const user = userEvent.setup();
+        render(<Value value={stamp()} />);
+        fireEvent.mouseEnter(hoverArea());
+        await user.keyboard("{Alt>}");
+        expect(screen.getByRole("tooltip")).toHaveTextContent("2100-01-01 00:00:00 UTC");
+        await user.keyboard("{/Alt}");
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      });
+
+      it("shows the tooltip when the pointer arrives after Alt, and hides it when the pointer leaves", async () => {
+        const user = userEvent.setup();
+        render(<Value value={stamp()} />);
+        await user.keyboard("{Alt>}");
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+        fireEvent.mouseEnter(hoverArea());
+        expect(screen.getByRole("tooltip")).toBeInTheDocument();
+        fireEvent.mouseLeave(hoverArea());
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      });
+
+      it("shows no tooltip on hover without Alt", () => {
+        render(<Value value={stamp()} />);
+        fireEvent.mouseEnter(hoverArea());
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      });
+    });
   });
 
   describe("null and empty", () => {

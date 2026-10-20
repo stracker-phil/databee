@@ -76,6 +76,11 @@ const HOUR = 3600;
 const DAY = 86400;
 
 /** "2 h ago" or "in 3 d" for an ISO date or a unix timestamp in seconds. */
+/** Unix seconds as `2026-10-20 14:03:09 UTC`. */
+export function isoUtc(seconds: number): string {
+  return `${new Date(seconds * 1000).toISOString().slice(0, 19).replace("T", " ")} UTC`;
+}
+
 export function relativeTime(when: string | number, now = Date.now()): string {
   const ms = typeof when === "number" ? when * 1000 : new Date(when).getTime();
   const diff = Math.round((ms - now) / 1000);
