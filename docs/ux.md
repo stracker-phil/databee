@@ -266,7 +266,9 @@ value, else the current address. The Hover column is what the status bar shows.
   keeps its icon on hover since its click only toggles the view). It is decorative; the name stays.
 - **Trees** (`ValueTree`): a hairline guide on the left, keys secondary, container types tertiary
   (`array(2)`), strings in dim quotes so `"2.04"` and `2.04` differ, leaf pairs of a small array (up to 4
-  leaves, 60 characters) on one line unless the tree is editable. Tree rows keep the row anatomy.
+  leaves, 60 characters) on one line unless the tree is editable. Tree rows keep the row anatomy. A
+  right-click on a node of a sourced value's tree (or on one pair of an inline line) offers "Watch on readout"
+  for that node.
 - **Value styles:** a project (or preset, off by default) rule `{ columns or meta keys, match:
   = | LIKE | REGEXP, value, color }` colors matching values with `--style-<color>` (`red`, `green`, `yellow`,
   `blue`, `purple`). A style is always scoped to columns or meta keys, never global. There is no status kind
@@ -447,6 +449,13 @@ title | value | source table in `--o3`). Then a collapsible section band per par
   (`--chrome`, rounded, 1px `--line`): the count large in mono and uncolored | the rule text as stored, with
   `preset · id` in `--o3` below | buttons "Show rows" and, when the preset offers one, the fix action's name
   (mono, accent), which opens the action sheet;
+- **watched**, always (`no watched values` and a hint on how to watch while empty): one line per watched
+  value, in the order they were added: its label (mono; opens the row once it is found) | the value as stored now, by its
+  kind (an array or object as a tree, serialized data expandable) | where it is read, in `--o3`
+  (`wp_options.option_value · option_name woocommerce-ppcp-data-common › merchant_country`) | a rename and a
+  remove icon on hover. A value whose row, column or key is gone says `missing` in italic `--o3` and why;
+  it never disappears. "Watch on readout" is in the context menu of every sourced grid cell, Document value
+  and value tree node, and the `value.watch` / `object.watch` commands (no default key);
 - **recently created**: one timeline of the newest rows across every entity with a `created` column, newest
   first. Above it a chip per entity (entity name and its count in the window; a failed entity says `failed` in
   `--style-red`, its error in the tooltip). A chip toggles its entity in the timeline (all on by default); its

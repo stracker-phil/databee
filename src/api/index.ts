@@ -36,6 +36,7 @@ import type {
   SnapshotDiff,
   SnapshotInfo,
   WatchPoll,
+  WatchedValue,
   ObjectAction,
   ActionPreview,
   ResolvedReference,
@@ -206,6 +207,12 @@ export const api = {
   readout: (sessionId: string, database: string) => invoke<Readout>("readout", { sessionId, database }),
   /** Records a row address as the newest recent object of its project. */
   rememberObject: (sessionId: string, address: string) => invoke<void>("remember_object", { sessionId, address }),
+  /** Watches a cell (`path` empty) or the node at `path` in its decoded value on the readout; a watched value keeps its watch. */
+  readoutWatch: (sessionId: string, database: string, source: Provenance, path: string[]) => invoke<WatchedValue>("readout_watch", { sessionId, database, source, path }),
+  readoutUnwatch: (sessionId: string, database: string, id: string) => invoke<void>("readout_unwatch", { sessionId, database, id }),
+  /** `null` or a blank label goes back to the default one. */
+  readoutWatchLabel: (sessionId: string, database: string, id: string, label: string | null) =>
+    invoke<WatchedValue>("readout_watch_label", { sessionId, database, id, label }),
   decodeValue: (text: string) => invoke<DecodedValue | null>("decode_value", { text }),
 
   planChange: (sessionId: string, change: ChangeRequest) => invoke<PlannedChange>("plan_change", { sessionId, change }),

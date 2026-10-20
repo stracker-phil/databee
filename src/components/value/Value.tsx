@@ -5,6 +5,7 @@ import { formatAddress } from "../../lib/address";
 import { bySourceText, provenanceText, rowIdentity } from "../../lib/provenance";
 import { selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
 import { TableIcon } from "../TableIcon";
+import { watchValue } from "../../commands/values";
 import { ValueTree } from "../ValueTree";
 import { OpenHint, OpenSwap } from "./OpenHint";
 import type { ClickEffect } from "./open";
@@ -79,6 +80,7 @@ function SecretText({ text }: { text: string }) {
 }
 
 function SerializedTree({ value, preview }: { value: StoredValue; preview: string }) {
+  const source = value.source;
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
   const decoded = useDecoded(cellText(value.raw), opened);
@@ -91,7 +93,7 @@ function SerializedTree({ value, preview }: { value: StoredValue; preview: strin
       <button className="val-ser" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} ${preview}`} onClick={toggle}>
         {open ? "▾" : "▸"} {preview}
       </button>
-      {open && decoded && <ValueTree value={decoded} />}
+      {open && decoded && <ValueTree value={decoded} onWatch={source ? (path) => watchValue(source, path) : undefined} />}
     </span>
   );
 }

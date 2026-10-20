@@ -503,6 +503,7 @@ connection's slug moves its keys. A database without a stored project gets an em
 | `enabled` | ids of preset styles that ship off (`enabled = false`) and are switched on |
 | `saved` | saved queries `{ id, title, sql, pin }`; `pin` has the shape of `[[pinned]] home`. Saved queries for every project are `global` in `projects.json`, beside `projects` |
 | `accent` | the accent while this database is open, one of the settings' accents (`ACCENTS`); left out when unset, so the app's accent applies. An unknown or retired accent loads as unset (`known_accent`). Personalization, not a rule ([Accent](#accent)) |
+| `watched` | values the readout shows (`WatchedValue { id, label, table, column, row, path }`), in the order they were added; left out when empty. Personal, not a rule ([Watched values](#watched-values)) |
 
 **Editing.** `project_update(session_id, database, change)` applies one `ProjectChange` (`op`):
 `addReference`, `updateReference` and `removeReference` by id; `addKind`, `updateKind`, `removeKind` by
@@ -534,7 +535,8 @@ style's id overrides it and switches it on. Projects without such styles are not
 
 **Export.** `project_export` returns the project as a preset file named `<slug>-<database>`: its references,
 kinds, styles and icons, saved queries as `[[pinned]]` (`pin` as `home`) and explicit presets as `requires`. The
-prefixes, `disabled`, the automatic preset choice and the accent have no preset form and are left out.
+prefixes, `disabled`, the automatic preset choice, the accent and the watched values have no preset form and are
+left out.
 `project_export_to(session_id, database, path)` writes that text to a path the user chose in the native
 save panel (`choose_save_path(file_name, extension)` in `commands.rs`, from `tauri-plugin-dialog`'s Rust API;
 the page has no dialog permission).
@@ -814,6 +816,7 @@ primary key has a document.
 | `status` | host (or socket), slug, database, prefix, applied presets, server version; `values`: saved queries pinned with `show = "value"`, the first column of their first row as a `Value` |
 | `anomalies` | each applied preset's `[[anomaly]]` whose value is a non-zero number (or whose query failed), with `count`, `text`, the `address` `open` names (a saved query, or a table address with the `where` as `filter`) and `fix` (the `scope = "table"` action of the same preset and the table address to plan it on) |
 | `recentlyCreated` | one timeline of the 20 newest rows over every entity with a `created` column, newest first, each row once: each entity's newest 20 by `created` (its `filter` applies; one query each, kept as `entities[].sql` with `countInWindow` and `error`), merged by moment (zero dates last); each item is the row's address, the entity its document shows, its `created` value and its [summary](#entity) |
+| `watched` | the project's [watched values](#watched-values) as they are now, in the order they were added: each a `WatchedLine { id, label, labelled, source, path, address, value, tree, missing, error }` |
 | `pinned` | saved queries pinned with `show = "count"` (`COUNT(*)` of the query) or `"rows"` (the query with `LIMIT <limit>`, 5 by default, unless it has a `LIMIT`) |
 | `recent` | the project's recent objects (`store::recent_objects`), newest first: each row address with when it was opened and its summary |
 
@@ -827,6 +830,33 @@ results do. Rule SQL (anomalies, entity filters) is qualified with the database.
 (`readout::remember` into `RecentObjectsStore`, `recent_objects.json` keyed by `<slug>/<database>`: at most 20,
 each once, with the time in Unix seconds; a slug rename moves them). The page calls it whenever it opens an
 object. Recent objects are no rules: projects and their exports do not hold them.
+
+### Watched values
+
+A watched value is one column of one row, or the node at a path in its decoded PHP or JSON value, that the
+readout shows as it is stored now (`readout/watched.rs`). Watches are personal: they live in the project's
+`watched` (`rules/project.rs`, `WatchedValue`), move with a slug rename and are left out of exports.
+
+- **Adding.** `readout_watch(session_id, database, source, path)` takes the value's provenance (table, column,
+  primary key) and the child keys from the decoded value's root as the value tree shows them (`decoded` steps
+  into a serialized string; empty: the whole cell). The row is stored by the table's unique key with the
+  fewest columns other than the primary key when the row holds a value in each of its columns (`identity`;
+  `wp_options` rows by `option_name`, so a deleted and re-added option is still found), else by its primary key.
+  Watching a value that is watched already keeps that watch (`ProjectsStore::watch`). An unknown table or
+  column is refused.
+- **Naming.** The label defaults to `<table>.<column>` and ` › <key>` per path step (`WatchedValue::label`);
+  `readout_watch_label(session_id, database, id, label)` stores the user's, a blank or `null` label goes back to
+  the default. `readout_unwatch(session_id, database, id)` removes a watch; an unknown id is refused.
+- **Reading.** `lines` reads each table the watches name with one query: `SELECT *` with the condition of every
+  watched row ORed together (at most 100 rows). A row matches by the stored key values, exactly, else ignoring
+  ASCII case as a case-insensitive collation matched it. The cell comes with its kind and style as the table's
+  values do (sourced from the row's primary key); a path is looked up in its decoded value by key, the first
+  child with that key per step. A leaf becomes a value of its own (int and float numbers, an empty string
+  `Empty`, null `NULL`, anything else text) with the cell's provenance; an array or object at the path comes back
+  as `tree`, a `DecodedValue` of that node. `address` opens the row.
+- **Missing.** Nothing is hidden: a watch whose table, column, row or key is gone, or whose cell is NULL,
+  binary or not serialized, says why in `missing`, naming the stored key or column it looked for (`no row
+  option_name = 'x' in …`, `no key … in …`); a failed read or a value that does not decode carries `error`.
 
 ## `rules_info`
 

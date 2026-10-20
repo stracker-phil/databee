@@ -900,6 +900,17 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .readout-sql { padding: 3px 12px 8px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); white-space: normal; word-break: break-word; border-bottom: 1px solid var(--line); }
 .readout .row.readout-empty { color: var(--o3); font-family: var(--font-ui); }
 
+/* ---------- readout: watched values ---------- */
+
+.readout-watched { grid-template-columns: minmax(0, max-content) minmax(0, 1fr) minmax(0, max-content) max-content; }
+.readout-watched > .row { align-items: start; }
+.readout-watched .watched-value { white-space: normal; }
+.readout-watched .watched-missing { color: var(--o3); font-style: italic; }
+.readout-watched .input.tiny { width: 24ch; }
+.readout-watched .watched-actions { display: flex; gap: 2px; opacity: 0; }
+.readout-watched .row:hover .watched-actions, .readout-watched .watched-actions:focus-within { opacity: 1; }
+.readout-watched .icon-btn { height: 20px; width: 20px; }
+
 /* ---------- shared bits ---------- */
 .crumb { display: inline-flex; align-items: center; gap: 2px; color: var(--text-tertiary); white-space: nowrap; }
 .crumb > span { padding: 0.154rem 0.308rem; color: var(--text); font-weight: 600; }

@@ -5,6 +5,7 @@ import type { ValueColumn } from "../../lib/columns";
 import { copyText } from "../../lib/clipboard";
 import { formatCount } from "../../lib/format";
 import { sourceText } from "../../lib/provenance";
+import { watchValue } from "../../commands/values";
 import { fail, useStore } from "../../state/store";
 import { ValueTree } from "../ValueTree";
 import { PaneMaximize } from "../object/PaneMaximize";
@@ -102,7 +103,7 @@ export function ValueColumnView({ column, place, onClose }: Props) {
             </span>
           </div>
         ) : decoded?.root && !showRaw ? (
-          <ValueTree value={decoded} onEdit={target ? onEdit : undefined} />
+          <ValueTree value={decoded} onEdit={target ? onEdit : undefined} onWatch={source ? (path) => watchValue(source, path) : undefined} />
         ) : (
           <>
             <pre>{column.text}</pre>

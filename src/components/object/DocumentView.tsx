@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { Address, Document, Group, Provenance, Value as StoredValue } from "../../api";
-import { EDIT_VALUE_EVENT, RULE_MENU } from "../../commands";
+import { EDIT_VALUE_EVENT, RULE_MENU, WATCH_MENU } from "../../commands";
 import { withRemovedRows, type DocumentMarks } from "../../lib/diff";
 import { groupAnchors, isEmpty, provenanceKey } from "../../lib/document";
 import { useStore } from "../../state/store";
@@ -84,7 +84,7 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
         saveValue(owner, value, text);
       },
       cancelEdit: () => setEditing(null),
-      menu: (e) => openMenu(e, RULE_MENU),
+      menu: (e) => openMenu(e, [WATCH_MENU, "separator", ...RULE_MENU]),
     }),
     [openValue, onFocus, owner, openMenu],
   );

@@ -350,6 +350,9 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             table_check::table_check_rows,
             readout::commands::readout,
             readout::commands::remember_object,
+            readout::commands::readout_watch,
+            readout::commands::readout_unwatch,
+            readout::commands::readout_watch_label,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
