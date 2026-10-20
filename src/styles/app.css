@@ -320,14 +320,14 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .table-head .filter { flex: 1; max-width: 40rem; }
 .filter-mode { flex: none; height: 1.385rem; padding: 0 0.385rem; border: none; border-radius: 5px; background: none; color: var(--o2); font-size: var(--fs-small); }
 .filter-mode:hover { background: var(--row-hover); color: var(--text); }
-.structure { overflow: auto; padding: 1.077rem 1.385rem 1.846rem; display: flex; flex-direction: column; gap: 1.385rem; user-select: text; }
+.structure { container: structure / inline-size; overflow: auto; padding: 1.077rem 1.385rem 1.846rem; display: flex; flex-direction: column; gap: 1.385rem; user-select: text; }
 .structure h3 { margin: 0 0 0.462rem; font-size: var(--fs-small); text-transform: uppercase; letter-spacing: 0.04em; color: var(--o2); }
 .structure table { border-collapse: collapse; width: 100%; }
 .structure th, .structure td { text-align: left; padding: 0.308rem 0.769rem 0.308rem 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .structure th { font-weight: 600; color: var(--o2); font-size: var(--fs-small); }
 /* One row per column: name, type, keys, then the rules on it (kind, references, value styles), each rule a
    line with its origin and the Project page's controls; table-level blocks below. */
-.structure-grid { display: grid; grid-template-columns: minmax(7rem, max-content) minmax(7rem, 15rem) max-content minmax(12rem, 0.9fr) minmax(0, 1.6fr) minmax(15rem, 1.1fr) max-content; }
+.structure-grid { display: grid; grid-template-columns: max-content minmax(min-content, 15rem) max-content minmax(min-content, 0.9fr) minmax(min-content, 1.6fr) minmax(min-content, 1.1fr) max-content; }
 .structure-row { display: contents; }
 .structure-row > * { padding: 0.462rem 0.769rem 0.462rem 0; border-bottom: 1px solid var(--line); min-width: 0; }
 .structure-row:not(.head):hover > * { background: var(--row-hover); }
@@ -337,11 +337,26 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .structure .col-facts { display: block; font-size: var(--fs-small); }
 .structure .key-marks { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-family: var(--font-mono); font-size: var(--fs-small); white-space: nowrap; }
 .structure .rule-cell { display: flex; flex-direction: column; gap: 0.462rem; }
+/* Too narrow for the rule columns: each row keeps name, type and keys, and lists its rules below them, labelled. */
+@container structure (width < 76rem) {
+  .structure-grid { grid-template-columns: max-content minmax(min-content, 15rem) minmax(min-content, 1fr) max-content; }
+  .structure-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; border-bottom: 1px solid var(--line); }
+  .structure-row > * { border-bottom: none; }
+  .structure-row:not(.head):hover { background: var(--row-hover); }
+  .structure-row:not(.head):hover > * { background: none; }
+  .structure-row .rule-head { display: none; }
+  .structure-row .col-menu { grid-row: 1; grid-column: -2; }
+  .structure .rule-cell { grid-column: 2 / -2; display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.462rem 0; padding-top: 0; }
+  .structure .rule-cell:empty { display: none; }
+  .structure .rule-cell::before { content: attr(data-label); grid-column: 1; grid-row: 1; font-size: var(--fs-small); color: var(--o3); line-height: 1.7; }
+  .structure .rule-cell > * { grid-column: 2; }
+}
 .structure .rule-item { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .structure .rule-item.off .rule-main { color: var(--o3); text-decoration: line-through; }
-.structure .rule-main { font-family: var(--font-mono); font-size: var(--data-font-size); overflow-wrap: anywhere; }
+.structure .rule-main { font-family: var(--font-mono); font-size: var(--data-font-size); overflow-wrap: break-word; }
+.structure .rule-main .unbroken { white-space: nowrap; }
 .structure .rule-main.dashed .link { text-decoration: underline dashed; text-underline-offset: 3px; }
-.structure .rule-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0.769rem; font-size: var(--fs-small); color: var(--o2); }
+.structure .rule-meta { display: flex; align-items: center; gap: 0.769rem; white-space: nowrap; font-size: var(--fs-small); color: var(--o2); }
 .structure .origin { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o3); white-space: nowrap; }
 .structure .origin .mono { font-size: var(--fs-small); }
 .structure .link { color: inherit; }
@@ -515,7 +530,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
   border-radius: 50%; background: var(--knob); box-shadow: var(--shadow-small); transition: transform .15s;
 }
 .switch:checked { background: var(--accent); box-shadow: none; }
-.switch:checked::after { transform: translateX(calc(2.462rem - 1.385rem)); }
+.switch:checked::after { background: var(--on-accent); transform: translateX(calc(2.462rem - 1.385rem)); }
 .switch:focus-visible { outline: none; box-shadow: 0 0 0 0.231rem var(--sel); }
 
 /* ---------- menus & toasts ---------- */

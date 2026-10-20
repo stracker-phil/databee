@@ -56,7 +56,7 @@ function ReferenceText({ row, shows, onOpenTable }: Pick<ReferenceItemProps, "ro
   if (shows === "source")
     return (
       <>
-        ← {link(row.from, columnsText(row.from))}
+        <span className="unbroken">← {link(row.from, columnsText(row.from))}</span>
         {rowsWith(row.when)}
         {thisRowHas(row.toWhen)}
       </>
@@ -64,14 +64,14 @@ function ReferenceText({ row, shows, onOpenTable }: Pick<ReferenceItemProps, "ro
   if (columnsText(row.from) === columnsText(row.to))
     return (
       <>
-        → other {link(row.to, row.to.table)} rows with the same {row.to.columns.join(", ")}
+        <span className="unbroken">→ other</span> {link(row.to, row.to.table)} rows with the same {row.to.columns.join(", ")}
         {row.toWhen && ` and ${row.toWhen}`}
         {thisRowHas(row.when)}
       </>
     );
   return (
     <>
-      → {link(row.to, columnsText(row.to))}
+      <span className="unbroken">→ {link(row.to, columnsText(row.to))}</span>
       {rowsWith(row.toWhen)}
       {thisRowHas(row.when)}
     </>
@@ -156,7 +156,10 @@ export function StyleItem({ row, pattern, ctx }: { row: StyleRow; pattern?: stri
   return (
     <div className={`rule-item${row.disabled ? " off" : ""}`} role="group" aria-label={label} data-stage={anchor}>
       <span className="rule-main">
-        {match} <span className="o3">→</span> <span style={{ color: `var(--style-${rule.color})` }}>{rule.color}</span>
+        <span className="unbroken">{match}</span>{" "}
+        <span className="unbroken">
+          <span className="o3">→</span> <span style={{ color: `var(--style-${rule.color})` }}>{rule.color}</span>
+        </span>
       </span>
       <span className="rule-meta">
         <Origin origin={row.origin} edited={row.edited} pattern={pattern} />

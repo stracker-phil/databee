@@ -80,6 +80,8 @@ function columnFacts(info: ColumnProfile["column"]): string[] {
   return facts;
 }
 
+const RULE_LABELS = { kind: "kind", references: "references", styles: "value styles" };
+
 interface RowProps {
   column: ColumnProfile;
   coverage: Record<string, CoverageState>;
@@ -102,18 +104,18 @@ function ColumnRow({ column, coverage, ctx, onMenu, onOpenTable }: RowProps) {
       <span role="cell">
         <KeyMarks column={column} />
       </span>
-      <span className="rule-cell" role="cell">
+      <span className="rule-cell" role="cell" data-label={RULE_LABELS.kind}>
         {column.kinds.map((k) => columnKindItem(k, ctx))}
       </span>
-      <span className="rule-cell" role="cell">
+      <span className="rule-cell" role="cell" data-label={RULE_LABELS.references}>
         {column.references.map((r) => (
           <ReferenceItem key={referenceKey(r)} row={r} coverage={coverage} ctx={ctx} shows="target" onOpenTable={onOpenTable} />
         ))}
       </span>
-      <span className="rule-cell" role="cell">
+      <span className="rule-cell" role="cell" data-label={RULE_LABELS.styles}>
         {column.styles.map((s) => columnStyleItem(s, ctx))}
       </span>
-      <span role="cell">
+      <span className="col-menu" role="cell">
         <button className="icon-btn tiny" aria-label={`Column menu ${info.name}`} onClick={(e) => onMenu({ x: e.clientX, y: e.clientY }, info.name)}>
           <MoreHorizontal size="0.923rem" />
         </button>
@@ -210,11 +212,17 @@ function Profile({ tab, profile }: { tab: TableTabState; profile: TableProfile }
         <h3>Columns</h3>
         <div className="structure-grid" role="table" aria-label={`Columns of ${profile.table}`}>
           <div className="structure-row head" role="row">
-            {["name", "type", "keys", "kind", "references", "value styles", ""].map((h) => (
+            {["name", "type", "keys"].map((h) => (
               <span key={h} role="columnheader">
                 {h}
               </span>
             ))}
+            {Object.values(RULE_LABELS).map((h) => (
+              <span key={h} className="rule-head" role="columnheader">
+                {h}
+              </span>
+            ))}
+            <span className="col-menu" role="columnheader" />
           </div>
           {profile.columns.map((c) => (
             <ColumnRow key={c.column.name} column={c} coverage={coverage} ctx={ctx} onMenu={columnMenu} onOpenTable={openTable} />
