@@ -1,4 +1,5 @@
-import { api, toAppError, type AppError, type Readout } from "../../api";
+import { api, toAppError, type AppError, type Provenance, type Readout } from "../../api";
+import { fail } from "../requests";
 import { selectActiveSession } from "../selectors";
 import type { Slice, Store } from "../store";
 import { EMPTY_NAV, homeAddress } from "./nav";
@@ -21,12 +22,29 @@ export interface ReadoutSlice {
    * which is created first when there is none. `activate: false` only moves an existing tab to the database.
    */
   openReadout: (opts?: { sessionId?: string; database?: string; activate?: boolean }) => void;
+  /** Watches the cell `source` (`path` empty) or the node at `path` in its decoded value on the readout of `database`. */
+  watchValue: (sessionId: string, database: string, source: Provenance, path: string[]) => Promise<void>;
+  unwatchValue: (sessionId: string, database: string, id: string) => Promise<void>;
+  /** `null` or a blank label goes back to the default one. */
+  labelWatched: (sessionId: string, database: string, id: string, label: string | null) => Promise<void>;
 }
 
 export const readoutKey = (sessionId: string, database: string) => `${sessionId}/${database}`;
 
 function readoutTab(s: Store, sessionId: string): ReadoutTab | undefined {
   return s.tabs.find((t): t is ReadoutTab => t.kind === "readout" && t.sessionId === sessionId);
+}
+
+/** Reads a loaded readout again after the change; a failure toasts and resolves to false. */
+async function changeWatched(get: () => Store, sessionId: string, database: string, change: () => Promise<unknown>, failure: string): Promise<boolean> {
+  try {
+    await change();
+    if (get().readouts[readoutKey(sessionId, database)]) await get().loadReadout(sessionId, database, true);
+    return true;
+  } catch (e) {
+    fail(e, failure);
+    return false;
+  }
 }
 
 export const readoutSlice: Slice<ReadoutSlice> = {
@@ -65,6 +83,19 @@ export const readoutSlice: Slice<ReadoutSlice> = {
           : { id: newTabId("readout"), kind: "readout", sessionId: session.id, title: "readout", database, address, nav: EMPTY_NAV };
         return { ...(existing ? replaceTab(st, tab) : { tabs: [tab, ...st.tabs] }), ...(activating ? activate(st, tab.id) : {}) };
       });
+    },
+
+    async watchValue(sessionId, database, source, path) {
+      const watched = await changeWatched(get, sessionId, database, () => api.readoutWatch(sessionId, database, source, path), "Could not watch the value");
+      if (watched) get().toast("success", `Watching ${source.table}.${source.column} on the readout`);
+    },
+
+    async unwatchValue(sessionId, database, id) {
+      await changeWatched(get, sessionId, database, () => api.readoutUnwatch(sessionId, database, id), "Could not remove the watched value");
+    },
+
+    async labelWatched(sessionId, database, id, label) {
+      await changeWatched(get, sessionId, database, () => api.readoutWatchLabel(sessionId, database, id, label), "Could not rename the watched value");
     },
   }),
 

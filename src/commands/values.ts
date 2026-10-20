@@ -1,5 +1,5 @@
 /**
- * Value commands (`y`, `Y`, `e`, `f`, `r`, "Kind…", "Style…") on the focused value: the selected grid cell of the active tab, or the
+ * Value commands (`y`, `Y`, `e`, `f`, `r`, "Kind…", "Style…", "Watch on readout") on the focused value: the selected grid cell of the active tab, or the
  * focused value of an object's document (docs/ux.md, Keys). The table and object scopes each have a set.
  */
 import { api, type Provenance, type Value } from "../api";
@@ -105,6 +105,28 @@ async function openRuleForm(kind: RuleFormKind) {
   });
 }
 
+/** Watches `source` (a cell, or the node at `path` in its decoded value) on the readout of the active tab's database. */
+export function watchValue(source: Provenance, path: string[] = []) {
+  const s = useStore.getState();
+  const tab = selectActiveTab(s);
+  const database = tab && tabDatabase(s, tab);
+  if (tab && database) void s.watchValue(tab.sessionId, database, source, path);
+}
+
+/** A focused value with a provenance can be watched, a binary one too: the readout reads the cell itself. */
+function watchable(): (Focused & { source: Provenance }) | null {
+  const found = focused();
+  const source = found?.value.source;
+  return found && source && found.database ? { ...found, source } : null;
+}
+
+function watchFocused() {
+  const found = watchable();
+  if (found) watchValue(found.source);
+}
+
+export const WATCH_MENU = { label: "Watch on readout", action: watchFocused };
+
 /** Rule entries for a value's context menu; `sourced` values only. */
 export const RULE_MENU = [
   { label: "Add reference…", action: () => void openRuleForm("reference") },
@@ -123,6 +145,7 @@ function valueCommands(scope: Scope, idPrefix: string): Command[] {
     { id: `${idPrefix}addReference`, title: "Add reference from this value…", scope, defaultBinding: "R", when: canAddRule, run: () => openRuleForm("reference") },
     { id: `${idPrefix}setKind`, title: "Set the kind of this column or meta key…", scope, when: canAddRule, run: () => openRuleForm("kind") },
     { id: `${idPrefix}setStyle`, title: "Add a value style for this value…", scope, when: canAddRule, run: () => openRuleForm("style") },
+    { id: `${idPrefix}watch`, title: "Watch value on the readout", scope, when: () => !!watchable(), run: watchFocused },
   ];
 }
 

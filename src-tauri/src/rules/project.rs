@@ -16,6 +16,7 @@ use super::types::{Preset, Reference};
 use crate::error::{AppError, AppResult};
 use crate::store::json_store::JsonStore;
 use crate::store::settings::is_accent;
+use crate::value::RowKey;
 
 /// One database of one connection. Fields use the snake_case of the rule types, so the stored
 /// rules and the project around them read alike.
@@ -64,6 +65,49 @@ pub struct Project {
     )]
     #[ts(optional)]
     pub accent: Option<String>,
+    /// Values shown on the readout, in the order they were added. Personal, not a rule: exports
+    /// leave them out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(optional = nullable)]
+    pub watched: Vec<WatchedValue>,
+}
+
+/// A value the readout shows: `column` of one row of `table`, or the node at `path` in its
+/// decoded (PHP or JSON) value.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+pub struct WatchedValue {
+    pub id: String,
+    /// The user's name for it; `None`: `<table>.<column> › path`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub label: Option<String>,
+    pub table: String,
+    pub column: String,
+    /// The row by its primary key, or by a unique key, which survives the row being re-created.
+    pub row: RowKey,
+    /// Child keys from the decoded value's root, as the value tree shows them (`decoded` steps
+    /// into a serialized string); empty: the whole cell.
+    #[serde(default)]
+    pub path: Vec<String>,
+}
+
+impl WatchedValue {
+    fn same_value(&self, other: &WatchedValue) -> bool {
+        self.table == other.table
+            && self.column == other.column
+            && self.row == other.row
+            && self.path == other.path
+    }
+
+    /// The stored label, else `<table>.<column>` and the path.
+    pub fn label(&self) -> String {
+        if let Some(label) = &self.label {
+            return label.clone();
+        }
+        let path: String = self.path.iter().map(|step| format!(" › {step}")).collect();
+        format!("{}.{}{path}", self.table, self.column)
+    }
 }
 
 /// A stored accent that is no longer (or never was) an accent loads as `None`, the app's accent.
@@ -229,6 +273,10 @@ impl SavedQuery {
     }
 }
 
+fn unknown_watch(id: &str) -> AppError {
+    AppError::InvalidInput(format!("No watched value `{id}` in this project"))
+}
+
 /// `slug/database`. Slugs never hold a `/`, so the first one splits the key.
 pub fn project_key(connection: &str, database: &str) -> String {
     format!("{connection}/{database}")
@@ -335,6 +383,74 @@ impl ProjectsStore {
             })
             .await?;
         Ok(project.accent)
+    }
+
+    /// Adds `watched` unless the project already watches the same value; returns the stored watch.
+    pub async fn watch(
+        &self,
+        connection: &str,
+        database: &str,
+        watched: WatchedValue,
+    ) -> AppResult<WatchedValue> {
+        let probe = watched.clone();
+        let project = self
+            .update(connection, database, move |project| {
+                if !project.watched.iter().any(|w| w.same_value(&watched)) {
+                    project.watched.push(watched);
+                }
+                Ok(())
+            })
+            .await?;
+        Ok(project
+            .watched
+            .into_iter()
+            .find(|w| w.same_value(&probe))
+            .unwrap_or(probe))
+    }
+
+    pub async fn unwatch(&self, connection: &str, database: &str, id: &str) -> AppResult<()> {
+        let id = id.to_string();
+        self.update(connection, database, move |project| {
+            let before = project.watched.len();
+            project.watched.retain(|w| w.id != id);
+            if project.watched.len() == before {
+                return Err(unknown_watch(&id));
+            }
+            Ok(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// A blank label goes back to the default one.
+    pub async fn label_watched(
+        &self,
+        connection: &str,
+        database: &str,
+        id: &str,
+        label: Option<String>,
+    ) -> AppResult<WatchedValue> {
+        let id = id.to_string();
+        let label = label
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty());
+        let wanted = id.clone();
+        let project = self
+            .update(connection, database, move |project| {
+                let watched = project
+                    .watched
+                    .iter_mut()
+                    .find(|w| w.id == id)
+                    .ok_or_else(|| unknown_watch(&id))?;
+                watched.label = label;
+                Ok(())
+            })
+            .await?;
+        project
+            .watched
+            .into_iter()
+            .find(|w| w.id == wanted)
+            .ok_or_else(|| unknown_watch(&wanted))
     }
 
     pub fn global(&self) -> Vec<SavedQuery> {
@@ -543,6 +659,7 @@ mod tests {
                 },
             ],
             accent: None,
+            watched: Vec::new(),
         }
     }
 

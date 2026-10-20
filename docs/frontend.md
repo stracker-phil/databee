@@ -101,7 +101,7 @@ and the state types, so components import everything from `state/store`.
 | `live`, `changeMarks` | live object columns by document key (`{ sessionId, address, id }`, `id` the Rust watch) and change marks by document key or `<session>/q:<tab id>` (a saved query's tab); see [Live mode, snapshots, compare](#live-mode-snapshots-compare) |
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
-| `readouts` | `readout` replies by `session/database`, tagged with their `dataVersion` (`loadReadout`, `openReadout`) |
+| `readouts` | `readout` replies by `session/database`, tagged with their `dataVersion` (`loadReadout`, `openReadout`; `watchValue`, `unwatchValue` and `labelWatched` change the [watched values](#readout) and read a loaded readout again) |
 | `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow, pin, shortcuts, snapshots) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
 | `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`, the selected grid cell of a tab (in an object tab: of its active column). `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets a value column and the value commands fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
@@ -460,10 +460,17 @@ Bare keys never fire in inputs or the editor (`resolveKeydown`).
 | `value.filter` | `f` | in a table tab, `filterRows(tabId, { column, value })` (nav slice): adds the match to the table tab's structured filter, replacing one on the same column, through `showRows` (so ⌘[ returns); elsewhere it opens the value's table filtered by it in the preview tab |
 | `value.addReference` | `r` | `openRuleForm("reference")`: `api.ruleDraft(sessionId, database, provenance)` (the column as rules name it, the meta key on a meta value), then `openProject` with a prefilled `ReferenceForm` |
 | `value.setKind`, `value.setStyle` | | the same with a `KindForm` or a `StyleForm` (the style takes the value's text) |
+| `value.watch` | | watches the value's cell on the readout of the tab's database (`watchValue(source)`, the `readout` slice's `watchValue`); binary cells too, since the readout reads the cell itself |
 
 Binary cells offer none of `Y`, `e`, `f` and the rule commands, since their cell holds only a preview. The grid's
-cell menu and the Document view's value menu (right-click) list `RULE_MENU`: "Add reference…", "Kind…",
-"Style…".
+cell menu and the Document view's value menu (right-click) list `WATCH_MENU` ("Watch on readout", for any
+sourced value) and `RULE_MENU`: "Add reference…", "Kind…", "Style…".
+
+`ValueTree` takes `onWatch(path)`: a right-click on a node (a line, or one pair of an inline line) opens a menu
+with "Watch on readout" for that node's keys from the root (the tree's `labels`; the root line is the whole
+cell) and stops there, so the value's own menu does not open too. `Value` passes it for a sourced value's
+inline tree and `ValueColumnView` for its tree, both through `watchValue(source, path)` (`commands/values.ts`:
+the active tab's session and `tabDatabase`).
 
 ### Table icons
 
@@ -902,12 +909,20 @@ The tab uses its full width; tables align their columns with CSS subgrid (`.read
   prefix · applied presets · server version), then each value-pinned query as a key/value row: the query's
   title (opens the saved query) | its `Value` | the value's source table.
 - Then one `Section` per part: a band as in the object view (chevron, name, hint, count), collapsed and
-  remembered through `useCollapsedGroups(tab.address)` under the keys `::anomalies`, `::created`, `::pinned`,
-  `::recent`; a click on the band outside its buttons toggles it too.
+  remembered through `useCollapsedGroups(tab.address)` under the keys `::anomalies`, `::created`, `::watched`,
+  `::pinned`, `::recent`; a click on the band outside its buttons toggles it too.
 - **needs attention** (region "Needs attention"), only when there are lines: one `.attention` card per
   anomaly: the count, the rule text with `preset · id`, a "Show rows" button (opens the saved query or the
   table with the anomaly's `where` as the typed filter) and the `fix` action's name as a button
   (`runTableAction`: the action sheet on the table address).
+- **watched** (region "Watched values"), always (an empty line when nothing is watched; the band's hint says how
+  to watch), between needs attention and recently created: one `WatchedRow` per
+  `readout.watched` line: the label (`WatchedLabel`: opens the row when it was found; while renaming a
+  `LabelField`, where ↵ or leaving saves once, a blank label resets it, ⎋ cancels) | the value (`CurrentValue`:
+  `Value` in grid density, serialized data in full density so it expands in place; a `tree` as `ValueTree`, whose
+  nodes watch `line.path` plus their keys; `missing` in italic `--o3` with its reason; an error in red) | the
+  source (`sourceText` of `line.source` and the path, `--o3`) | rename and remove buttons, shown on row hover or
+  focus (`labelWatched`, `unwatchValue`).
 - **recently created** (region "Recently created"), when there are entities: `EntityChip`s (group
   "Entities"), each a toggle (`aria-pressed`, all on by default, kept in component state) with
   `countInWindow` or `failed`, and a chevron ("Query of <entity>") that discloses `EntityQuery` (table button,
@@ -924,7 +939,7 @@ Rows of a known table carry `data-row-table` ([Values](#values)), so hovering an
 table in the sidebar.
 
 Anchors: `readout`, `readout:value:<id>`, `readout:anomaly:<id>`, `readout:fix:<id>`, `readout:entity:<entity>`,
-`readout:created:<row address>`, `readout:pinned:<id>`, `readout:recent:<address>`, `readout:collapse:<section>` (a band's chevron), and the tab
+`readout:created:<row address>`, `readout:watched:<id>`, `readout:watched-rename:<id>`, `readout:watched-remove:<id>`, `readout:pinned:<id>`, `readout:recent:<address>`, `readout:collapse:<section>` (a band's chevron), and the tab
 `tab:readout:<db>`.
 
 ### Rendering

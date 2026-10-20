@@ -790,7 +790,12 @@ icons: Array<IconRule>, saved: Array<SavedQuery>,
  * The accent while this database is open, one of the settings' accents; `None`: the app's.
  * Personalization, not a rule: exports leave it out.
  */
-accent?: string, };
+accent?: string, 
+/**
+ * Values shown on the readout, in the order they were added. Personal, not a rule: exports
+ * leave them out.
+ */
+watched?: Array<WatchedValue>, };
 
 /**
  * Kind rules have no id, so they are addressed by their index in the project.
@@ -834,7 +839,11 @@ groups: Array<TableRules>, };
  */
 export type Provenance = { table: string, column: string, row: RowKey, };
 
-export type Readout = { address: Address, status: Status, anomalies: Part<AnomalyLine>, recentlyCreated: RecentlyCreated, pinned: Part<PinnedLine>, recent: Part<RecentLine>, };
+export type Readout = { address: Address, status: Status, anomalies: Part<AnomalyLine>, recentlyCreated: RecentlyCreated, 
+/**
+ * The project's watched values, in the order they were added.
+ */
+watched: Part<WatchedLine>, pinned: Part<PinnedLine>, recent: Part<RecentLine>, };
 
 export type ReadoutRow = { 
 /**
@@ -1364,6 +1373,58 @@ export type View = "document" | "rows";
  * What one poll found: the delta, and the new document when anything changed.
  */
 export type WatchPoll = { delta: DocDelta, document: Document | null, };
+
+/**
+ * A watched value as it is now. Exactly one of `value`, `tree`, `missing` and `error` is set.
+ */
+export type WatchedLine = { id: string, 
+/**
+ * The user's label, else `<table>.<column> › path`.
+ */
+label: string, 
+/**
+ * Whether `label` is the user's.
+ */
+labelled: boolean, 
+/**
+ * Where the watch reads: the table, the column and the row as the watch names it.
+ */
+source: Provenance, path: Array<string>, 
+/**
+ * The row, once it was found.
+ */
+address: Address | null, 
+/**
+ * The cell, or the leaf at `path`; sourced from the row's primary key.
+ */
+value: Value | null, 
+/**
+ * The array or object at `path`.
+ */
+tree: DecodedValue | null, 
+/**
+ * Why there is no value: no such table, column, row or key.
+ */
+missing: string | null, error: string | null, };
+
+/**
+ * A value the readout shows: `column` of one row of `table`, or the node at `path` in its
+ * decoded (PHP or JSON) value.
+ */
+export type WatchedValue = { id: string, 
+/**
+ * The user's name for it; `None`: `<table>.<column> › path`.
+ */
+label?: string, table: string, column: string, 
+/**
+ * The row by its primary key, or by a unique key, which survives the row being re-created.
+ */
+row: RowKey, 
+/**
+ * Child keys from the decoded value's root, as the value tree shows them (`decoded` steps
+ * into a serialized string); empty: the whole cell.
+ */
+path: Array<string>, };
 
 /**
  * Which zone a timestamp is stored in. `local` is the site's zone, which is not stored, so such

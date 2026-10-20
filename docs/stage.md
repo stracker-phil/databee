@@ -126,9 +126,10 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   - the readout: `readout` (the panel), `readout:value:<id>` (a value-pinned query's title in the status
     line), `readout:anomaly:<id>` (the anomaly's "Show rows"), `readout:fix:<id>` (the anomaly's fix action),
     `readout:entity:<entity>` (an entity's filter chip in recently created), `readout:created:<row address>`
-    (a timeline line's `#key`), `readout:pinned:<id>` (a pinned query's title), `readout:recent:<row address>`
-    (a recently opened row's `#key`), `readout:collapse:<section>` (a band's chevron: `anomalies`, `created`,
-    `pinned`, `recent`)
+    (a timeline line's `#key`), `readout:watched:<id>` (a watched value's label, once its row is found),
+    `readout:watched-rename:<id>` and `readout:watched-remove:<id>` (its buttons), `readout:pinned:<id>` (a
+    pinned query's title), `readout:recent:<row address>` (a recently opened row's `#key`),
+    `readout:collapse:<section>` (a band's chevron: `anomalies`, `created`, `watched`, `pinned`, `recent`)
   - `palette:search` and the palette results (list `palette:results`): `palette:item:<key>` with the keys
     `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `saved:<origin>:<id>` (a saved query), `cmd:<id>`
     and `recent:<title>`; holding ⌥ shows the selected hit's `peek`

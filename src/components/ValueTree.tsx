@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import type { DecodedValue, NewValue, ValueChild, ValueNode } from "../api";
+import { useContextMenu } from "./ContextMenu";
 
 /** Called with the child-index path of an edited leaf and its new typed value. */
 type TreeEdit = (path: number[], value: NewValue) => void;
+
+/** Opens a node's context menu; `labels` are its keys from the root. */
+type TreeMenu = (labels: string[], event: MouseEvent) => void;
 
 function LeafEditor({ node, onSave, onCancel }: { node: ValueNode; onSave: (v: NewValue) => void; onCancel: () => void }) {
   const [text, setText] = useState(node.kind === "null" ? "" : (node.text ?? ""));
@@ -99,6 +103,7 @@ function Row({
   path,
   labels,
   onEdit,
+  onMenu,
 }: {
   child?: ValueChild;
   node?: ValueNode;
@@ -106,17 +111,18 @@ function Row({
   path: number[];
   labels: string[];
   onEdit?: TreeEdit;
+  onMenu?: TreeMenu;
 }) {
   const node = child?.node ?? root!;
   const hasChildren = (node.children?.length ?? 0) > 0;
   const [open, setOpen] = useState(depth < 2);
   const [editing, setEditing] = useState(false);
   // Inline pairs have no edit buttons, so an editable tree keeps one row per leaf.
-  if (hasChildren && !onEdit && inlinePairs(node)) return <InlineRow child={child} node={node} />;
+  if (hasChildren && !onEdit && inlinePairs(node)) return <InlineRow child={child} node={node} labels={labels} onMenu={onMenu} />;
   const editable = onEdit && !hasChildren && !["ref", "custom", "enum", "array", "object"].includes(node.kind);
   return (
     <div className="vt-row" role="treeitem" aria-expanded={hasChildren ? open : undefined}>
-      <div className="vt-line" onClick={() => hasChildren && setOpen(!open)}>
+      <div className="vt-line" onClick={() => hasChildren && setOpen(!open)} onContextMenu={onMenu && ((e) => onMenu(labels, e))}>
         <span className="vt-toggle">{hasChildren ? open ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" /> : null}</span>
         {child && <Key child={child} />}
         {editing ? (
@@ -150,6 +156,7 @@ function Row({
               path={[...path, i]}
               labels={[...labels, c.key]}
               onEdit={onEdit}
+              onMenu={onMenu}
             />
           ))}
         </div>
@@ -169,15 +176,15 @@ function Key({ child }: { child: ValueChild }) {
   );
 }
 
-function InlineRow({ child, node }: { child?: ValueChild; node: ValueNode }) {
+function InlineRow({ child, node, labels, onMenu }: { child?: ValueChild; node: ValueNode; labels: string[]; onMenu?: TreeMenu }) {
   return (
     <div className="vt-row" role="treeitem">
-      <div className="vt-line">
+      <div className="vt-line" onContextMenu={onMenu && ((e) => onMenu(labels, e))}>
         <span className="vt-toggle" />
         {child && <Key child={child} />}
         <span className="vt-muted">{summary(node)}</span>
         {node.children!.map((c, i) => (
-          <span key={`${c.key}-${i}`} className="vt-pair">
+          <span key={`${c.key}-${i}`} className="vt-pair" onContextMenu={onMenu && ((e) => onMenu([...labels, c.key], e))}>
             <Key child={c} />
             <Leaf node={c.node} />
           </span>
@@ -187,7 +194,16 @@ function InlineRow({ child, node }: { child?: ValueChild; node: ValueNode }) {
   );
 }
 
-export function ValueTree({ value, onEdit }: { value: DecodedValue; onEdit?: TreeEdit }) {
+/** `onWatch` (with a node's keys from the root) adds "Watch on readout" to every node's context menu. */
+export function ValueTree({ value, onEdit, onWatch }: { value: DecodedValue; onEdit?: TreeEdit; onWatch?: (path: string[]) => void }) {
+  const { open, element: menu } = useContextMenu();
+  // The node's menu, not the menu of the value or row around the tree.
+  const onMenu: TreeMenu | undefined =
+    onWatch &&
+    ((labels, e) => {
+      e.stopPropagation();
+      open(e, [{ label: "Watch on readout", action: () => onWatch(labels) }]);
+    });
   return (
     <div className="vt" role="tree" aria-label={`${value.format.toUpperCase()} value`}>
       {value.warning && (
@@ -200,7 +216,8 @@ export function ValueTree({ value, onEdit }: { value: DecodedValue; onEdit?: Tre
           <AlertTriangle size="0.923rem" /> Could not decode: {value.error}
         </div>
       )}
-      {value.root && <Row node={value.root} depth={0} path={[]} labels={[]} onEdit={onEdit} />}
+      {value.root && <Row node={value.root} depth={0} path={[]} labels={[]} onEdit={onEdit} onMenu={onMenu} />}
+      {menu}
     </div>
   );
 }

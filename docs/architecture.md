@@ -95,7 +95,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/db_commands.rs       connect, schema, execute, browse
   src/db/                  MySQL driver, SQL lexer, classify, safety, cell decoding
   src/decode/              PHP serialize and JSON value trees, leaf edits
-  src/readout/             the readout: the home page of a database (status, anomalies, recently created, pinned, recent)
+  src/readout/             the readout: the home page of a database (status, anomalies, recently created, watched, pinned, recent)
   src/store/               JSON stores in the config dir
   src/stage/               Stage plugin: HTTP API, request hub, commands
   src/test_support.rs      fixture-server helpers for tests (`test-util`)
@@ -355,13 +355,14 @@ the pending tray applies and undoes it. `plan_action` plans and queues in one st
 ## Readout
 
 `src-tauri/src/readout/` builds the home page of a database (`databee://<slug>/<db>/`):
-`readout(session_id, database) -> Readout { address, status, anomalies, recentlyCreated, pinned, recent }`.
+`readout(session_id, database) -> Readout { address, status, anomalies, recentlyCreated, watched, pinned, recent }`.
 Every part has its own timeout (`Part { items, error }`, `RecentlyCreated { items, entities, error }`), so a
 slow anomaly or a broken pinned query shows as an error line and the rest stands. The status line comes from
 the session and the effective rules plus the saved queries pinned as values; anomalies are the applied
 presets' `[[anomaly]]` rules with a non-zero value; `recentlyCreated` is one timeline of the newest rows over
 every entity with a `created` column (`CreatedItem { entity, table, address, created, summary }`, with each
-entity's query as `CreatedEntity { entity, preset, table, sql, countInWindow, error }`); pinned are the saved
+entity's query as `CreatedEntity { entity, preset, table, sql, countInWindow, error }`); watched are the
+project's watched values as they are now (`readout/watched.rs`, one query per table they name); pinned are the saved
 queries pinned as count or rows; recent are the row addresses `remember_object` kept per project in
 `recent_objects.json` (`store::recent_objects`, at most 20), each with its peek's summary. Details: [presets.md](presets.md#the-readout). The page shows it in the readout tab
 (`src/components/readout/Readout.tsx`, [frontend.md](frontend.md#readout)), opened on connect.

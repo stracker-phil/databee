@@ -1,5 +1,5 @@
 import type { Cell, Value as StoredValue } from "../../api";
-import { RULE_MENU } from "../../commands";
+import { RULE_MENU, WATCH_MENU } from "../../commands";
 import { rowsToJson, rowsToTsv } from "../../lib/format";
 import type { MenuEntry } from "../ContextMenu";
 
@@ -16,7 +16,7 @@ export interface CellMenuContext {
   rowActions?: MenuEntry[];
 }
 
-/** The context menu of a grid cell. Bytes cells hold only a preview, so they can't be edited or ruled. */
+/** The context menu of a grid cell. Bytes cells hold only a preview, so they can't be edited or ruled; a sourced one can still be watched. */
 export function cellMenu({ row, col, rows, names, value, copy, copyValue, edit, rowActions }: CellMenuContext): MenuEntry[] {
   const bytes = rows[row][col].t === "bytes";
   return [
@@ -27,7 +27,7 @@ export function cellMenu({ row, col, rows, names, value, copy, copyValue, edit, 
           { label: "Set to NULL", action: edit.setNull },
         ] as MenuEntry[])
       : []),
-    ...(value?.source && !bytes ? (["separator", ...RULE_MENU, "separator"] as MenuEntry[]) : []),
+    ...(value?.source ? (["separator", WATCH_MENU, ...(bytes ? [] : RULE_MENU), "separator"] as MenuEntry[]) : []),
     { label: "Copy row as TSV", action: () => copy(rowsToTsv(names, [rows[row]]), "row") },
     { label: "Copy row as JSON", action: () => copy(rowsToJson(names, [rows[row]]), "row as JSON") },
     "separator",

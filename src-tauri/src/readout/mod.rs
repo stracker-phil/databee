@@ -1,6 +1,6 @@
 //! The readout: the home page of one database (`databee://<slug>/<db>/`). A status line, the
 //! anomalies of the applied presets, the rows created last across the entities with a `created`
-//! column, the pinned saved queries and the objects opened last. Every part runs with its own timeout;
+//! column, the watched values, the pinned saved queries and the objects opened last. Every part runs with its own timeout;
 //! a part or a line that fails carries its error, and the rest of the readout stands.
 
 pub mod commands;
@@ -10,6 +10,7 @@ mod server_tests;
 pub(crate) mod sql;
 #[cfg(test)]
 mod testing;
+pub mod watched;
 
 use std::future::Future;
 use std::time::Duration;
@@ -26,6 +27,7 @@ use crate::saved::SavedOrigin;
 use crate::session::Session;
 use crate::store::recent_objects::{RecentObject, RecentObjectsStore};
 use crate::value::Value;
+use watched::WatchedLine;
 
 /// How long one query of the readout may run (the query timeout when lower).
 const QUERY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -44,6 +46,8 @@ pub struct Readout {
     pub status: Status,
     pub anomalies: Part<AnomalyLine>,
     pub recently_created: RecentlyCreated,
+    /// The project's watched values, in the order they were added.
+    pub watched: Part<WatchedLine>,
     pub pinned: Part<PinnedLine>,
     pub recent: Part<RecentLine>,
 }
@@ -229,10 +233,11 @@ pub async fn readout(
     };
     let project = sources.projects.get(&session.slug(), database);
     let entries = crate::saved::list(&project, &sources.projects.global(), &ctx.rules);
-    let (values, anomalies, recently_created, pinned, recent) = tokio::join!(
+    let (values, anomalies, recently_created, watched, pinned, recent) = tokio::join!(
         part(parts::status_values(&ctx, sources, &entries)),
         part(parts::anomalies(&ctx)),
         created(&ctx),
+        part(async { Ok(watched::lines(&ctx, &project.watched).await) }),
         part(parts::pinned(&ctx, sources, &entries)),
         part(parts::recent(&ctx, recent)),
     );
@@ -248,6 +253,7 @@ pub async fn readout(
         ),
         anomalies,
         recently_created,
+        watched,
         pinned,
         recent,
     }
@@ -289,6 +295,7 @@ fn unreadable(session: &Session, database: &str, error: String) -> Readout {
         ),
         anomalies: Part::failed(error.clone()),
         recently_created: RecentlyCreated::failed(error.clone()),
+        watched: Part::failed(error.clone()),
         pinned: Part::failed(error.clone()),
         recent: Part::failed(error),
     }

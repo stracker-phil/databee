@@ -421,6 +421,11 @@ along with its `SELECT`. Unit tests count with `FakeDatabase::queries()`.
 | `palette_search` | `#4711` | 35 | 43 |
 | `palette_search` | `=sandbox` | 28 | 16 |
 | `readout` | `wp_test` | 19 | 20 |
+
+The readout's count is without watched values (the measured project has none). Watched values add one
+statement per table they name, however many watches it has (`readout/watched.rs`, `lines`): a `SELECT *`
+whose `WHERE` ORs the condition of each watched row. Watching a value runs one more statement once, when it
+is added and the table has a unique key besides the primary key (`identity`).
 | `reference_coverage` | each of the 40 references of the Project page | 43 | 43 |
 
 The last change gave every row one summary (architecture.md, "Summaries"). `#4711` reads the rows of its
