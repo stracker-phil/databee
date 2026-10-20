@@ -34,7 +34,9 @@ The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules
   | `tests/mysql.rs` | the Docker fixtures; checks the driver on MariaDB and MySQL | `cargo test --test mysql -- --ignored` |
   | `tests/changes.rs` | the Docker fixtures; row edits planned by the core (`db::changes`) on `wp_write` and `databee_test`: serialized edits, NULL and `''` restored by undo, delete, duplicate and insert, a key column change, no undo for binary cells; every test owns its rows (ids from 9100 up) | `cargo test --test changes -- --ignored` |
   | `tests/sql_mode.rs` | the Docker fixtures; plans, applies and undoes a `SetCell` on a meta row of `wp_write` (`wp_postmeta` 9303) while the server's global `sql_mode` includes `NO_BACKSLASH_ESCAPES` (restored afterwards; its own binary so nothing else connects meanwhile) | `cargo test --test sql_mode -- --ignored` |
+  | `tests/health.rs` | the Docker fixtures (`databee_test` read-only, `wp_write` as the session's database); a killed editor connection is replaced with its session state restored, and a server that stops answering (reached through a local TCP relay the test closes) fails `ping` and `reconnect` with a connection error | `cargo test --test health -- --ignored` |
   | `src/document/server_tests.rs` (and the other `server_tests.rs` of `rules/`, `document/actions/`, `search/`, `readout/`) | the Docker fixtures (`wp_test`, `wp_legacy`, `wp_custom`, `wp_multi` and `databee_test` read-only, `wp_write` for actions); the test in `mod real_data` reads `DATABEE_WP_TEST=mysql://user:pass@host:port/db`, a real database of your own, read-only, and round-trips every serialized value of its `[[meta]]` tables | `cargo test --lib -- --ignored document::` |
+  | inline `#[ignore]` tests in `table_check.rs`, `session.rs`, `schema.rs`, `value_counts.rs`, `address/resolve.rs`, `rules/annotate.rs`, `rules/coverage.rs`, `rules/lens.rs`, `rules/effective.rs` (their `mod tests`) and `mcp/data.rs` (`mod server_tests`) | the Docker fixtures | `cargo test --lib -- --ignored <path filter>`, e.g. `table_check::` |
   | `src/statement_counts.rs` | the Docker fixtures (`wp_test`, read-only); asserts the statements per `document`, `peek`, `palette_search`, `readout` and `reference_coverage` ([database.md](database.md#statement-counts)) | `cargo test --lib -- --ignored statement_counts` |
 
   The `real_data` test panics when `DATABEE_WP_TEST` is unset. `test:db` never runs them: its `cargo test` call
@@ -82,7 +84,7 @@ The setup, mocking and fixtures are described in [frontend.md](frontend.md#tests
 ## Driving the app
 
 The dev scripts work without stealing focus, so the app can run on a second screen while you or an agent
-keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`).
+keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, and `python3` in `js.sh`).
 
 | Script | Does |
 |---|---|
@@ -93,8 +95,8 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`).
 | `bun run app` | builds and `open`s the app; this takes focus |
 
 The store is available as `window.databee` in the debug bundle: `bun run build:app` (and `bun run app`) set
-`VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build (`bun run build`)
-has no `window.databee`.
+`VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build
+(`bun run tauri build`) has no `window.databee`; `bun run build` builds the frontend only.
 
 ```sh
 scripts/dev/js.sh 'databee.getState().openDialog({type:"settings", page:"shortcuts"})'

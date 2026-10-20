@@ -131,7 +131,8 @@ itself in the data.
 ### `[[kind]]`
 
 Exactly one of `money`, `timestamp`, `enum = true`, `secret = true`, `number = true`, scoped to `columns`
-(globs on both sides: `*.*_gmt`) and/or `meta_keys` (globs). `in` narrows `meta_keys` to some `[[meta]]`
+(globs on both sides: `*.*_gmt`; the table part compares case-sensitively, the column part
+case-insensitively) and/or `meta_keys` (globs). `in` narrows `meta_keys` to some `[[meta]]`
 tables; without it they match in every applied meta table.
 
 ```toml
@@ -238,7 +239,7 @@ home = { show = "rows", limit = 5 }  # or { show = "count" }, { show = "value" }
 
 A pinned query is a read-only saved query of its preset. `saved_queries(session_id, database)`
 (`saved/mod.rs`, `list`) returns the project's saved queries, then the global ones, then the pinned queries of
-every applied preset in preset order, each as `SavedEntry { id, title, sql, pin, origin, read_only }`:
+every applied preset in preset order, each as `SavedEntry { id, title, sql, pin, origin, readOnly }`:
 `origin` is a `SavedOrigin` (`project`, `global` or `preset { preset }`, shown as `preset:<name>`), `title` defaults to the `id`, and `{p}`/`{np}` in the
 title and SQL are replaced with the project's prefixes (`Applied::expand`), so the SQL runs as
 shown. The palette's `q:` lists them; a pinned query opens as an unsaved query tab titled `copy of <title>`.
@@ -332,6 +333,9 @@ table = "log"
 columns = ["message"]
 match = "contains"                  # default "exact"
 ```
+
+`columns` is required and names at least one column (`FindSource`'s `Check`): an empty list is a load error
+on field `columns`.
 
 ## Placeholders
 
@@ -502,17 +506,17 @@ connection's slug moves its keys. A database without a stored project gets an em
 | `disabled` | ids of preset or inferred rules switched off, preset styles that ship on included |
 | `enabled` | ids of preset styles that ship off (`enabled = false`) and are switched on |
 | `saved` | saved queries `{ id, title, sql, pin }`; `pin` has the shape of `[[pinned]] home`. Saved queries for every project are `global` in `projects.json`, beside `projects` |
-| `accent` | the accent while this database is open, one of the settings' accents (`ACCENTS`); left out when unset, so the app's accent applies. An unknown or retired accent loads as unset (`known_accent`). Personalization, not a rule ([Accent](#accent)) |
+| `accent` | the accent while this database is open, one of the settings' accents (`ACCENTS`); left out when unset, so the app's accent applies. An unknown or retired accent loads as unset (`known_accent`). Personalization, not a rule ([Accent](#projects)) |
 | `watched` | values the readout shows (`WatchedValue { id, label, table, column, row, path }`), in the order they were added; left out when empty. Personal, not a rule ([Watched values](#watched-values)) |
 
 **Editing.** `project_update(session_id, database, change)` applies one `ProjectChange` (`op`):
 `addReference`, `updateReference` and `removeReference` by id; `addKind`, `updateKind`, `removeKind` by
 index (kinds have no id); `addStyle`, `updateStyle`, `removeStyle` by id; `enableStyle` and `disableStyle` a
-preset style's id (idempotent: they add or remove the id in `enabled` or `disabled`, depending on how the style
-ships); `disable` and `enable` a reference or inferred id; `setIcon` stores the project's icon rule for its `table`
+preset or project style's id (idempotent: a preset style's id is added to or removed from `enabled` or
+`disabled`, depending on how the style ships; a project style's `enabled` is set; `switch_style`); `disable` and `enable` a reference or inferred id; `setIcon` stores the project's icon rule for its `table`
 (replacing one with the same `table`; a name must resolve like any rule table, a glob is not checked) and
 `removeIcon` removes it by `table`, which brings back the presets' icon; `setPrefix`, `setNetworkPrefix`,
-`setPresets`. The accent is not a `ProjectChange` ([Accent](#accent)). Before storing, every table a rule names must exist under the
+`setPresets`. The accent is not a `ProjectChange` ([Accent](#projects)). Before storing, every table a rule names must exist under the
 prefix or the network prefix (the stored ones, else the suggestions), resolved as the effective rules resolve
 it (`Applied::existing_table`, see below), and every literal column (glob parts are
 not checked), `when` and `to_when` column must exist in its table. A prefix must start some table name,
@@ -600,7 +604,7 @@ Layout:
 1. **Header**, one row: a switch per preset (marker tables in its tooltip; `presets: null` is auto; a switch
    stores the applied presets as an explicit list, "back to auto" clears it), the prefix field (empty: the
    suggestion applies, shown as `suggested: wp_`), the accent (a swatch per accent and "default (app accent:
-   orange)", [Accent](#accent)), "Export as preset…", and a segmented control
+   orange)", [Accent](#projects)), "Export as preset…", and a segmented control
    **Overview | All rules** (`ProjectTab.section`, default the overview).
 2. **Overview:** "Your changes", "Problems", then "All rules…".
 3. **All rules:** a filter that narrows the tables by name, "Refresh coverage", then **a band per table** (collapsible, remembered per database like a document group): references (source
@@ -650,8 +654,8 @@ Every change bumps `dataVersion`, so documents, grids and the page reload with t
 ### Your changes
 
 `ProjectRules.changes` (`rules/overview/changes.rs`) lists only what the project changes, one
-`ProjectChangeLine` each, in this order: settings, references, value styles, kinds, then switched-off ids
-that name nothing here.
+`ProjectChangeLine` each, in this order (`Overview::changes`): settings, references, value styles, kinds,
+icons, then switched-off ids that name nothing here.
 
 | Field | Means |
 |---|---|
@@ -755,7 +759,8 @@ inference on its column off, so switching off an edited inferred reference switc
 **Kinds.** Kind rules apply where no key or reference does (to columns the SQL type made text, number or
 timestamp). The first matching rule wins, project rules before preset rules (`EffectiveRules::column_kind_rule`,
 `meta_kind_rule`). `columns` globs match the
-table's name without prefix and the column name (case-insensitively); `meta_keys` globs match the key of a
+table's name without prefix (case-sensitively) and the column name (case-insensitively,
+`condition::column_glob_match`); `meta_keys` globs match the key of a
 row of an applied `[[meta]]` table (owned or not), in every meta table unless `in` names some.
 
 | Rule | Column kind | Cell |
@@ -820,7 +825,8 @@ primary key has a document.
 | `pinned` | saved queries pinned with `show = "count"` (`COUNT(*)` of the query) or `"rows"` (the query with `LIMIT <limit>`, 5 by default, unless it has a `LIMIT`); each line carries `tables`, the tables its SQL names after `FROM` or `JOIN` (`db::lexer::read_tables`), and its title lights the first one in the sidebar |
 | `recent` | the project's recent objects (`store::recent_objects`), newest first: each row address with when it was opened and its summary |
 
-Each part is a `Part { items, error }`: it runs with its own timeout (10 s for the part, each query at most
+Every part except `status` and `recentlyCreated` is a `Part { items, error }`; `status.values` is a `Part`,
+and `recentlyCreated` is a `RecentlyCreated { items, entities, error }`. Each part runs with its own timeout (10 s for the part, each query at most
 5 s or the query timeout when lower), and a part or a line whose query fails carries the error while the rest
 of the readout stands. Saved-query SQL runs as one statement on the metadata pool after `USE <database>`, so
 its unqualified table names resolve in the readout's database; its columns get kinds by origin as query
@@ -943,9 +949,10 @@ shortest one under which a preset's marker tables exist, so multisite sub-sites 
   `network_plugins`, `content`, `users`, `options_by_prefix`, `options_largest_autoload`, `transients`.
 - Anomalies `autoload_heavy` and `transients_expired` (fix: `delete_expired_transients`); actions
   `set_autoload` and `delete_expired_transients`; find source `options`.
+- Value style for `posts.post_status = "trash"`, shipped off (`enabled = false`).
 - Icons: `*meta` `menu` (every meta table, plugins' included), `users` `user`, `posts` `file-text`, `comments`
   `message-square`, `terms` `tag`, `term_taxonomy` and `term_relationships` `tags`, `options` `settings`,
-  `links` `link`, `blogs` and `site` `globe`, `signups` `mail`, `registration_log` `list`.
+  `links` `link`, `blogs` and `site` `globe`, `signups` `mail`, `registration_log` `file-clock`.
 
 **`woocommerce.toml`**
 - Both order shapes: HPOS (`wc_orders`, its meta, addresses, operational data) and posts (`shop_order*` posts
@@ -967,12 +974,12 @@ shortest one under which a preset's marker tables exist, so multisite sub-sites 
 - Pinned queries: `woocommerce_version`, `hpos_options`, `orders`, `orders_posts`, `subscriptions`,
   `customers`, `guests`, `guests_posts`, `products`, `sessions`, `hpos_drift`.
 - Anomalies `hpos_drift` (only while data sync is on, checked in its SQL) and `log_errors`; actions
-  `set_status` (on both shapes, each also updating the other table) and `delete_logs_before`; find sources for
-  log messages and order ids.
+  `set_status` (on both shapes, each also updating the other table) and `delete_logs_before`; find sources
+  `woocommerce_log` `message`/`context` (contains) and `wc_orders` `transaction_id`/`billing_email` (exact).
 - Icons: `wc_orders` `shopping-cart`, `wc_order_addresses` `map-pin`, `wc_order_operational_data` `layers`,
   `woocommerce_order_items` `package`, `woocommerce_payment_tokens` `credit-card`, `woocommerce_sessions`
-  `clock`, `wc_customer_lookup` `users`, `wc_order_product_lookup` and `wc_product_meta_lookup` `box`,
-  `wc_order_stats` `chart-bar`, `woocommerce_downloadable_product_permissions` `key`, `woocommerce_log` `list`;
+  `clock`, `wc_customer_lookup` `user-round`, `wc_order_product_lookup` and `wc_product_meta_lookup` `box`,
+  `wc_order_stats` `chart-bar`, `woocommerce_downloadable_product_permissions` `key`, `woocommerce_log` `file-clock`;
   the meta tables get `menu` from `wordpress`.
 
 **`action-scheduler.toml`**
@@ -981,7 +988,7 @@ shortest one under which a preset's marker tables exist, so multisite sub-sites 
   for `failed` and `complete`, shipped off.
 - Pinned queries `actions`, `actions_failed_by_hook`, `actions_overdue`; anomalies `actions_failed`,
   `actions_overdue`; actions `retry` and `cancel`; find source `args`/`extended_args`.
-- Icons: `actionscheduler_actions` `clock`, `actionscheduler_logs` `list`, `actionscheduler_groups` `folder`,
+- Icons: `actionscheduler_actions` `clock`, `actionscheduler_logs` `file-clock`, `actionscheduler_groups` `folder`,
   `actionscheduler_claims` `lock`.
 
 To change a preset for one machine, copy it to `<config dir>/presets/` and edit it: a user preset with the same

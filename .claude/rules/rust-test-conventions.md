@@ -2,6 +2,8 @@
 description: Rust tests and fixtures are written by the write-rust-unit-test agent
 paths:
   - "src-tauri/tests/**"
+  - "src-tauri/src/**/server_tests.rs"
+  - "src-tauri/src/test_support.rs"
   - "dev/fixture.sql"
 ---
 

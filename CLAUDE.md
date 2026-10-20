@@ -23,9 +23,13 @@ commands, files or extension points change. Document by file and symbol, never b
   `mysql/` session: dedicated editor connection + metadata pool), `store/` (JSON files), `rules/` (presets and
   projects: TOML rule types, the preset catalog, effective rules, the rules lens, coverage), `document/` (a
   row's document and rule actions), `readout/` (the home page of a database), `search/` (palette),
-  `saved/` (saved and pinned queries), `decode/` (lossless PHP serialize and JSON value trees), `mcp/`
+  `saved/` (saved and pinned queries), `decode/` (lossless PHP serialize and JSON value trees), `health/`
+  (connection health, `session_health` events), `table_check.rs` (table tab live check), `mcp/`
   (read-only MCP server), `stage/` (Stage presentation hook: local HTTP API, registered with
   `stage register`; the page side is `src/stage/`, anchors are `data-stage` attributes; see docs/stage.md).
+  Also: `address/` (`databee://` addresses), `query/` (reads through schema, rules and lens), `lens/` (what
+  a column holds, a table's references), `value/` (values with provenance), `secrets/`, `value_counts.rs`,
+  `deep_link.rs`.
 - Frontend state: zustand store in `src/state/store.ts`; components in `src/components/`.
 - Errors cross the boundary as `{ kind, message, code }` (`error.rs`); passwords use the redacting `Secret` type.
 
@@ -33,7 +37,7 @@ commands, files or extension points change. Document by file and symbol, never b
 Test, lint and format-check commands run through the `ci` agent, never in the main context.
 - `bun run test`: Vitest and Rust unit tests
 - `bun run test:db`: Docker fixtures (`dev/`) and integration tests (MariaDB 11.4 and MySQL 8.4)
-- `bun run lint`: tsc, ESLint (correctness rules, `eslint.config.js`) and clippy on production code (warnings are errors; Rust tests are not linted)
+- `bun run lint`: IPC types drift check (`src/api/types.gen.ts`, `src/stage/types.gen.ts`), tsc, ESLint (correctness rules, `eslint.config.js`) and clippy on production code (warnings are errors; Rust tests are not linted)
 - `scripts/install-cli.sh` / `scripts/install-app.sh`: symlink the `databee` command and the app launcher (README)
 - `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus
 - `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive and capture the running window in the background

@@ -10,6 +10,9 @@ replace those contributions. WordPress becomes a preset
 ([0022](0022-presets-and-projects.md)), and its store slice, commands and workspace leave the core with
 `src/components/wp/` instead of moving into a module.
 
+Done in U12: the WordPress workspace and lens parts are deleted. `App.tsx` mounts no WordPress workspace,
+and `src/modules.ts` installs only the core and Stage. The last consequence below no longer applies.
+
 ## Context
 
 Stage and the WordPress lens were wired into `App`, the store, Settings and the command list directly, so

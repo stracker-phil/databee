@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted
+Accepted, amended by [0026](0026-connection-health.md) (2026-10-20).
+
+"Reconnecting loses pending plans" no longer holds: a reconnect (`reconnect` in
+`src-tauri/src/health/commands.rs`, `Database::reconnect`) keeps the same `Session` and its `plans`. Only a
+disconnect, which drops the session, loses them.
 
 ## Context
 

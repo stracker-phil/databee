@@ -122,7 +122,7 @@ use the same names in camelCase.
 | `readout/commands.rs` | `readout(sessionId, database)`: the home page of a database (status line, anomalies, recently created rows, watched values, pinned queries, recent objects; each part with its own timeout and error, see [presets.md](presets.md#the-readout)); `remember_object(sessionId, address)`: a row address becomes the newest of the project's recent objects (at most 20); `readout_watch(sessionId, database, source, path)` (watches a cell or a node of its decoded value; returns the `WatchedValue`), `readout_unwatch(sessionId, database, id)`, `readout_watch_label(sessionId, database, id, label)` ([presets.md](presets.md#watched-values)) |
 | `search/commands.rs` | `palette_search(sessionId, database, query)`: the palette's row hits for `#id`, `@name`, `=value` or free text (see [Palette search](architecture.md#palette-search)) |
 | `document/commands.rs` | `document`, `peek`, `table_actions`, `plan_action`, `preview_action`, `queue_action_preview` ([Documents](architecture.md#documents)); `watch_start(sessionId, address)` (a watch id), `watch_poll(sessionId, id)` (`WatchPoll { delta, document }`, the document only when something changed), `watch_stop(sessionId, id)`, `compare(sessionId, address)` (`Comparison { left, right, delta }` of a row address with `?compare=`), `snapshot_take(sessionId, address, label)`, `snapshot_list(sessionId, database, address?)`, `snapshot_diff(sessionId, id)` (`SnapshotDiff { snapshot, delta, document }`), `snapshot_delete(id)`; see [Watches and snapshots](#watches-and-snapshots) |
-| `rules/commands.rs` | `presets_list` (every known preset with its source and, for a file that does not load, the error; see [presets.md](presets.md)), `project_get` (the project of the session's slug and a database; an empty one when none is stored), `project_update` (applies one `ProjectChange` after checking it against the schema cache, returns the project), `project_accents` (every stored database accent by `<slug>/<database>`, from the projects file only), `project_set_accent(sessionId, database, accent)` (stores or, with `null`, clears the database's accent; returns the stored one; see [presets.md](presets.md#accent)), `project_export` (the project as preset TOML), `project_export_to(sessionId, database, path)` (writes it to a chosen path); see [presets.md](presets.md#projects); `project_rules`, `rule_draft(sessionId, database, provenance)` and `coverage_preview(sessionId, database, reference, replacing)` for the Project page ([presets.md](presets.md#the-project-page)); `rules_info` (prefixes, applied presets, entities); `reference_coverage(sessionId, database, reference)` (counts for a `ResolvedReference` as `table_references` returned it: total, resolved, NULL or `0`, a sample of unresolved values, `timedOut`; read-only, bounded by the query timeout; see [presets.md](presets.md#coverage)) |
+| `rules/commands.rs` | `presets_list` (every known preset with its source and, for a file that does not load, the error; see [presets.md](presets.md)), `project_get` (the project of the session's slug and a database; an empty one when none is stored), `project_update` (applies one `ProjectChange` after checking it against the schema cache, returns the project), `project_accents` (every stored database accent by `<slug>/<database>`, from the projects file only), `project_set_accent(sessionId, database, accent)` (stores or, with `null`, clears the database's accent; returns the stored one; see [presets.md](presets.md#projects)), `project_export` (the project as preset TOML), `project_export_to(sessionId, database, path)` (writes it to a chosen path); see [presets.md](presets.md#projects); `project_rules`, `rule_draft(sessionId, database, provenance)` and `coverage_preview(sessionId, database, reference, replacing)` for the Project page ([presets.md](presets.md#the-project-page)); `table_rules(sessionId, database, table)` (a `TableProfile`, `rules/profile.rs`: per column its kinds, references and value styles, then the table's meta-key rules, incoming references, entities and actions; for the [Structure view](presets.md#the-structure-view)); `rules_info` (prefixes, applied presets, entities); `reference_coverage(sessionId, database, reference)` (counts for a `ResolvedReference` as `table_references` returned it: total, resolved, NULL or `0`, a sample of unresolved values, `timedOut`; read-only, bounded by the query timeout; see [presets.md](presets.md#coverage)) |
 
 `session::open` is the connect service: it peeks the launch password, resolves the password
 (`resolve_password`, in `spawn_blocking` because the Keychain may block on a dialog), opens the connection through
@@ -371,7 +371,7 @@ itself is `JsonFile` (`store/json_file.rs`), which:
 
 | File | Contents |
 |---|---|
-| `settings.json` | `Settings` (camelCase, `#[serde(default)]`). `sanitized()` clamps values on load and on update: font sizes, row limit, timeouts, the live interval (1 to 60 s), ports. `tableLiveCheck` (the live check of table tabs) defaults to on, also for a file written before it existed. Renamed fields use serde aliases. Enum and free-text fields (`theme`, `lightScheme`, `darkScheme`, `fontUi`, `fontMono`, `logLevel`) use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` also resets unknown accents (including the retired `pink`) to `orange` and unknown scheme ids to the defaults (`ayu-light`, `ayu-mirage`), clamps `rowPadding` to 1..4 and turns blank font names into `null`. `rowPadding` reads the retired `density` key: `compact` becomes 1, anything else 2. Retired keys without a successor (`inspectorDock`) are ignored on load and dropped on the next save. `SettingsStore::update` returns `(previous, saved)` from one lock. |
+| `settings.json` | `Settings` (camelCase, `#[serde(default)]`). `sanitized()` clamps values on load and on update: font sizes, row limit, timeouts, the live interval (1 to 60 s), ports. `tableLiveCheck` (the live check of table tabs) defaults to on, also for a file written before it existed. Renamed fields use serde aliases. Enum and free-text fields (`theme`, `lightScheme`, `darkScheme`, `fontUi`, `fontMono`, `logLevel`) use `deserialize_with = "lenient"`: an unknown value falls back to that field's default instead of quarantining the file. `sanitized()` also resets unknown accents (including the retired `pink`) to `orange` and unknown scheme ids to the defaults (`ayu-light`, `ayu-mirage`), clamps `rowPadding` to 1..4 and `maxPanes` to 1..3 (default 2), and turns blank font names into `null`. `rowPadding` reads the retired `density` key: `compact` becomes 1, anything else 2. Retired keys without a successor (`inspectorDock`) are ignored on load and dropped on the next save. `SettingsStore::update` returns `(previous, saved)` from one lock. |
 | `keybindings.json` | `{ "commandId": "Mod+Shift+X" \| null }` overrides; `null` unbinds. `keybindings::sanitize` runs on load and in `KeybindingsStore::update`: it drops (and logs) entries whose id is not `[A-Za-z0-9.]+` or whose binding is malformed (unknown modifier, missing or multi-part key). A trailing `++` is the `+` key (`Mod+Shift++`) |
 | `connections.json` | recent connections by identity (`user@host:port/db`), each with its `slug` ([Addresses](#addresses)). `RecentsStore::open` fills a missing slug on load (`open_with`), saved with the next change; `touch` keeps a known connection's slug and gives a new one its default, unique within the file; `rename_slug` validates and refuses a slug another connection has |
 | `favorites.json` | retired. On startup `AppState::open` runs `saved::migrate::migrate_favorites(config_dir)` once: a query favorite scoped to a server account goes to the project of the most recent saved connection of that account that names a database; a table favorite to the project of its database (a connection to that database first, else any of the account) as `SELECT * FROM <table>`; global favorites and those without a matching saved connection to the global saved queries of `projects.json` (table favorites qualified with their database). The file is then renamed to `favorites.migrated.json`, so the move happens once |
@@ -470,8 +470,16 @@ gives up its value only through `expose()`.
 
 ## Errors
 
-`error.rs`: `AppError` serializes as `{ kind, message, code, account }`, where `message` is the `Display` text and
-`account` names the Keychain account of a login error (`null` otherwise), so the password prompt never derives it.
+`error.rs`: `AppError` serializes through `ErrorJson` as `{ kind, message, code, account, reason?, sessionReset?, field? }`:
+
+- `message`: the `Display` text.
+- `code`: the server's error code of an `AppError::Database` (`null` otherwise).
+- `account`: the Keychain account of a login error (`null` otherwise), so the password prompt never derives it.
+- `reason`: why a statement needs confirmation (`confirmation_required` only).
+- `sessionReset`: `true` when the editor connection was replaced after a timeout (`timeout` only).
+- `field`: `{ path, message }`, the rule form field an `AppError::InvalidField` is about (kind `invalid_input`).
+
+The optional fields are left out when unset.
 
 | kind | Raised for |
 |---|---|
@@ -484,11 +492,12 @@ gives up its value only through `expose()`.
 | `cancelled` | MySQL error 1317, or the user cancelled |
 | `confirmation_required` | a destructive statement without `confirmed` |
 | `session_not_found` | a stale session id |
-| `invalid_input` | bad arguments, a bad filter, an address that names no row where one is needed |
+| `invalid_input` | bad arguments, a bad filter, an address that names no row where one is needed; a rule form field (`AppError::InvalidField`, with `field`) |
 | `keychain` | Keychain failures |
 | `io` | file errors |
 
-The frontend mirrors this type as `AppError` in `src/api/types.ts`.
+ts-rs generates `AppError` and `AppErrorField` from `ErrorJson` and `FieldJson` into `src/api/types.gen.ts`;
+`src/api/types.ts` only re-exports them.
 
 Logging of failures: a failed query logs `kind` and `code` at Info and the message (which may quote SQL) at
 Debug; the SQL itself only at Trace. Text from `log_frontend_error` is cut to 4 KiB and its `\n`/`\r` are

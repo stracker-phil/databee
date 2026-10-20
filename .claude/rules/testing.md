@@ -5,7 +5,8 @@
   rendered UI (Testing Library queries by role/text).
 - Never test internals, private helpers, or irrelevant side effects (log output, call counts).
 - Rust: `#[cfg(test)] mod tests` next to the code; tests that need a database server are `#[ignore]`
-  integration tests in `src-tauri/tests/` against the Docker fixtures (`dev/`).
+  integration tests against the Docker fixtures (`dev/`), in `src-tauri/tests/` or in the module
+  (its `server_tests.rs` or inline tests).
 - UI: `*.test.tsx` next to the component; mock the `src/api` module with `createApiMock()` (`src/test/apiMock.ts`),
   never components or the store.
 

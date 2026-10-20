@@ -41,7 +41,8 @@ Read `.claude/rules/testing.md` and the "Tests" section of `docs/frontend.md` fi
 
 ## The API boundary is the only mock
 
-`src/api/index.ts` is the only module that talks to Rust. Mock exactly that module, with the shared mock:
+`src/api/index.ts` is the core's only module that talks to Rust (a module's `src/<module>/api.ts` is its own).
+Mock exactly that module, with the shared mock:
 
 ```ts
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
@@ -58,6 +59,8 @@ mocked.connect.mockRejectedValue({ kind: "password_required", message: "A passwo
 - Never mock components, the store, `@tauri-apps/api`, or `src/commands`.
 - A new `api` function needs a default in `src/test/apiMock.ts`; the mock is typed as `typeof api`, so it
   won't compile otherwise.
+- A module's own `api.ts` is mocked the same way with its own mock: `src/stage/api.ts` with
+  `createStageApiMock()` from `src/stage/apiMock.ts` (`vi.mock("./stage/api", async () => ({ stageApi: (await import("./stage/apiMock")).createStageApiMock() }))`).
 - Calls with no useful default (`connect`, `execute`, `browseTable`, …) are bare `vi.fn()`: stub them per
   test.
 
@@ -65,7 +68,9 @@ mocked.connect.mockRejectedValue({ kind: "password_required", message: "A passwo
 
 - `beforeEach`: `vi.clearAllMocks()` plus `resetStore(patch)` or `connectedStore({ tabs, tables, settings })`.
 - Fixtures: `src/test/fixtures.ts` (`session`, `table()`, `text()`, `num()`, `resultSet()`, `queryTab()`,
-  `connectedStore()`), `src/test/settings.ts` (`settings(patch)`) and `src/test/wpFixtures.ts`. Extend them
+  `tableTab()`, `readoutTab()`, `connectedStore()`), `src/test/settings.ts` (`settings(patch)`), and per area
+  `objectFixtures.ts` (documents, actions), `columnFixtures.tsx` (column stacks), `projectFixtures.ts` (rules),
+  `paletteFixtures.ts` (palette hits) and `iconFixtures.ts` (table icons) in `src/test/`. Extend them
   rather than inlining large objects. Use input factories with overrides for config-heavy subjects.
 - Commands: `installCommands(); runCommand("tabs.new")`, or keystrokes on a rendered `<App/>`.
 - Read results through the UI first; read `useStore.getState()` only when the effect has no visible output

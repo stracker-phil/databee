@@ -74,7 +74,7 @@ file; a Vitest scan enforces it.
 | `--code-keyword`, `-string`, `-number`, `-comment`, `-function`, `-type`, `-operator`, `-name`, `-invalid` | Ayu Mirage syntax | Ayu Light syntax | SQL editor syntax colors |
 | `--code-cursor`, `-selection`, `-active-line`, `-gutter`, `-match` | per scheme | per scheme | SQL editor chrome |
 
-Derived tokens in `src/styles/theme.css`, the same for every scheme:
+Derived design tokens in `src/styles/theme.css`, the same for every scheme:
 
 | Token | Value | Role |
 |---|---|---|
@@ -84,19 +84,30 @@ Derived tokens in `src/styles/theme.css`, the same for every scheme:
 | `--sel` | `--accent` at 20% | selected row or sidebar entry, focused value |
 | `--lit-solid` | `--accent` at 15% over `--bg` | the linked table highlight's rows and bands, opaque so a pinned key column matches its row |
 | `--accent-quiet` | `--accent` at 45%, the rest `--a-graphite` (oklab) | the accent of a pane beside the active one |
+| `--dimmed` | 0.3 | opacity of what the linked table highlight fades (`TableFocus.tsx`) |
 | `--scrollbar-size` | 8px | scrollbar track, both directions |
 | `--scrollbar-thumb`, `-hover`, `-active` | `--o3` at 55%, `--o3`, `--o2` | scrollbar thumb |
 | `--pad` | 1, 3, 5 or 8px | row padding (see row anatomy) |
 | `--row-h` | `20px + 2 × --pad` (the line grows with data sizes above 12.5px) | row height for CSS and the virtualizer |
 | `--grid-head-h` | `2 × --pad` + 1.3 × (data size + type size) + 1px | a grid header with its type line |
+| `--ui-font-size`, `--data-font-size` | 13px, 12px | UI and data size; `applyAppearance` (`lib/theme.ts`) sets them from Settings |
 | `--fs-small`, `--fs-base`, `--fs-large` | 11.5, 13 and 17px in rem | see type |
 | `--font-ui`, `--font-mono` | Geist, JetBrains Mono | bundled defaults; Settings accepts any installed family |
 
+`--cell`, `--sel` and `--lit-solid` are derived again inside `.column.quiet` (`:root, .column.quiet`), so
+a quiet pane's come from its `--accent-quiet` and `--bg-quiet`. Layout tokens in the same `:root`, in rem
+(px at the default UI size): `--radius-sm` 6px, `--radius` 9px, `--radius-lg` 12px, `--sidebar-width` 250px,
+`--toolbar-height` 44px; `--font-ui-bundled` / `--font-mono-bundled` hold the bundled stacks.
+
+**Accent:** Settings → Appearance → Look "Accent" picks the app accent from nine swatches (`AccentRow` in
+`settings/pages.tsx`); a database overrides it on its Project page, and the row names the open database's own
+accent when it has one.
+
 Status colors (`--success`, `--warning`, `--danger`, `--info` and their `-soft` variants), `--type-*`,
 `--chart-*`, `--category-*` and `--tile-*` are removed. Core components use only the tokens above (an error
-or warning background is a `color-mix()` of a `--style-*` color). Older rules in `app.css` still read a few old
-names (`--text-tertiary`, `--chart-green`, `--chart-orange`); they survive as aliases onto scheme tokens in
-`theme.css`. New CSS uses only the tokens above.
+or warning background is a `color-mix()` of a `--style-*` color). `--chart-green` and `--chart-orange` survive
+as aliases in `theme.css` for the Stage settings page's `.pill.tone-*` (`src/stage/PresentationsPage.tsx`).
+New CSS uses only the tokens above.
 
 **Fonts:** Geist (400, 500, 600) and JetBrains Mono (400, 500, 600, italic 400) are bundled (SIL OFL).
 Settings → Appearance "UI font" and "Mono font" take any installed family name; empty means the bundled one.
@@ -106,10 +117,11 @@ Settings → Appearance "UI font" and "Mono font" take any installed family name
 | Token | Size | Used for |
 |---|---|---|
 | `--fs-small` | 11.5px | column header labels, relation text and counts in section bands, captions |
-| `--fs-base` | 13px (sans), 12.5px (mono) | everything else |
-| `--fs-large` | 17px | the object header (table name and `#key`) only |
+| `--fs-base` | 13px (sans, the UI size); mono values use `--data-font-size`, 12px | everything else |
+| `--fs-large` | 17px | the object header (table name and `#key`), the readout title, anomaly counts (`.readout-title`, `.attention-count`) |
 
-Sizes are in rem, so ⌘= and ⌘- scale the whole UI. Line height is 20px at the base size. Weights: 400, 500,
+Both sizes are settings: Appearance → Text "UI size" (13px, 10–24) and "Data size" (12px, 9–28,
+`store/settings.rs`); ⌘= and ⌘- zoom both. Chrome sizes are in rem of the UI size. Line height is 20px at the base size. Weights: 400, 500,
 and 600 for the table name in section bands and the object's `#key`. Numbers use tabular figures and are
 right-aligned in grids.
 
@@ -143,8 +155,9 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
   every value is labelled.
 - **Sidebar items** (`.si`): 8px inset, 5px radius, mono, secondary text; hover `--row-hover`; the active
   table `--sel` with its name in the accent. It is the only entry with a background besides the hovered one;
-  a linked table only changes its text (see [linked table highlight](#section-header-band)). History entries
-  use the same row.
+  a linked table only changes its text (see [linked table highlight](#section-header-band)). Each table
+  shows its row estimate (or `view`) in `--o3`, each database its table count; a refresh button sits beside
+  the filter (`Sidebar.tsx`). History entries use the same row.
 
 ## Section header band
 
@@ -190,8 +203,10 @@ its bands (`--lit-solid` background, 3px accent bar on the left, accent table na
 links naming it (accent text) and every reference into it from other rows (as if hovered: the
 grid cell, or the value chip, in `--cell`); a pinned key column
 takes the same color, so the row stays one band; everything else
-(rows and bands of other tables, readout lines and entity chips of none or another) fades to `--dimmed`,
-except the cells holding such a reference or link. Hovering a
+(rows and bands of other tables, readout lines, needs-attention cards and entity chips of none or another)
+fades to `--dimmed`, except the cells holding such a reference or link. Only tables of the current database
+take part (`Sidebar.tsx` sets `data-table` only there); a pinned query's title stands for the first table
+its SQL names (`PinnedLine.tables`). Selectors: `TableFocus.tsx`. Hovering a
 table link in the panes (a band, a readout table name) lights the same without dimming. Hovering a band lights its sidebar
 entry (its name in the accent; the icon keeps its color; no background). Hovering a value lights only its provenance table in the
 sidebar (its name in the accent); hovering anywhere else on a row of a known table (Document, grid, readout,
@@ -223,7 +238,13 @@ Palette, peek, popovers, context menus, toasts and dialogs: `--pop` background, 
 `--scrim`. Overlays take `Esc` first. Palette results use the row anatomy; the active one is `--sel` with a
 2px accent bar on the left, and command shortcuts show as key caps. Context menus use the UI font wherever they
 open (grid, document, sidebar); the hovered or keyboard-focused item is `--accent` with `--on-accent` text,
-disabled items `--o3`, separators a 1px `--line`.
+disabled items `--o3`, separators a 1px `--line`. Contents:
+
+- grid cell (`cellMenu` in `grid/cellMenu.ts`): Copy value; Edit value and Set to NULL when editable; for a
+  sourced cell Watch on readout, Add reference…, Kind…, Style… (no rule items for binary); Copy row as TSV /
+  JSON; Copy all n rows as TSV / JSON; the row's actions;
+- Document value (`DocumentView.tsx`): Watch on readout, a separator, Add reference…, Kind…, Style…;
+- sidebar table (`tableMenu` in `Sidebar.tsx`): Open data, Show structure, New query: SELECT …, Copy name.
 
 ## Value grammar
 
@@ -292,11 +313,14 @@ value, else the current address. The Hover column is what the status bar shows.
 
 - **Toolbar** (`--chrome`): connection and database as plain mono text (`wc-pp / db`; a click opens the
   connection or database picker; a database with its own accent has a dot in that hue before its name), back and forward (‹ ›, for a table or object tab, disabled without history),
-  the search field on the right, then icon buttons. An object tab shows where it stands in its trail (below),
+  a Disconnect icon button after the connection text (and its health warning), the search field on the right,
+  then the icon buttons New connection, New query and Settings (`Toolbar.tsx`). An object tab shows where it stands in its trail (below),
   a table tab its table in its title and header. There is no mode switch: WordPress is a preset.
 - **Connection lost** (the server stopped answering, e.g. a stopped DDEV or Docker container): a warning
   triangle (`--style-red`) and a small Retry button follow the connection text; the tooltip says `Connection
-  lost since 10:42 · <error> · retries by itself at 10:43:10`, and Retry reads `Reconnecting…` while one runs.
+  lost since 10:42 · <error> · retries by itself at 10:43:10` (`… · reconnecting…` while a retry runs,
+  `healthTitle` in `ConnectionHealth.tsx`), and Retry reads `Reconnecting…` meanwhile. The palette offers
+  "Retry connection" (`connection.retry`) only while the connection is down.
   One `info` toast says so when it happens, a `success` toast when it is back. While lost, everything
   loaded stays visible and readable: open tabs, their pages and results, loaded documents, the sidebar's
   table list, the readout. What needs the server stops with a short `info` toast (`Connection lost: can't run
@@ -347,7 +371,13 @@ value, else the current address. The Hover column is what the status bar shows.
   starts to scroll; in the sidebar the gutter is the items' right inset. Boxes with rounded corners (dialogs,
   the palette, popovers, toasts, autocompletion) keep the thumb clear of them. The tab bar scrolls without a
   bar.
-- **Pane dividers:** a `--line` hairline between two panes; dragging it (or ← / → while it has the focus)
+- **Wide tables:** document tables of related rows, events and changes scroll sideways in their own box with
+  their header (`WideTable.tsx`, `.wide-table`); only that box scrolls, never the pane. A primary-key first
+  column stays pinned on the opaque row background and carries the change mark (`.wide-table.pinned`,
+  `keyFirst` in `groups.tsx`); grids pin it the same way (`pinned` in `ResultsGrid.tsx`, `.grid.pinned`).
+  While scrolled a `--line` hairline marks its edge (`[data-scrolled]`); keyboard moves keep the selection
+  right of it (scroll-padding, `revealColumn`).
+- **Pane dividers:** a `--line` hairline between two panes, accent on hover and keyboard focus; dragging it (or ← / → while it has the focus)
   resizes the two panes next to it, never below 560px; a double-click makes all panes equal. The widths belong
   to the tab (not saved, not in history) and start equal again when the number of panes changes.
 - **Maximize:** the ⤢ button in a pane's header (⌘⇧↵, `column.maximize`) shows only that pane, at the full
@@ -366,7 +396,9 @@ value, else the current address. The Hover column is what the status bar shows.
   location (semibold, its key in the accent). The table crumb shows the whole table in the tab; a column crumb
   makes its column active, showing a hidden one without closing any column. When the line doesn't fit, hidden
   crumbs fold into a "…" item whose menu lists them: first those between the root row and the panes, then the
-  root row, then those right of the panes, then the table. Crumbs of shown panes never fold, and no crumb is cut.
+  root row, then those right of the panes, then the table. Crumbs of shown panes never fold; only when nothing
+is left to fold do names end in an ellipsis (`.trail.tight`, `.trail-name`). A non-active crumb's `#key` is
+`--o3` (`.trail-key`).
 - **Value column:** Enter on a serialized value, or Enter in a grid cell with serialized data or long text,
   opens the value as a column: in an object tab the next column of the stack, in table and query tabs a
   column on the right of the tab (at least 420px). Its head names `table.column` and the row key, offers
@@ -457,7 +489,8 @@ Project page's language. Details: [presets.md](presets.md#the-structure-view).
 
 ## Readout
 
-The readout tab (`databee://<slug>/<db>/`) is the home of a database, opened on connect. It uses the full
+The readout tab (`databee://<slug>/<db>/`) is the home of a database; connecting opens it and no other tab
+(`connect` in `state/slices/session.ts`). It uses the full
 width of the tab on `--bg` and reads top to bottom, calm and scannable; SQL is provenance, never inline by
 default. A header block like the object view's: the database as the title in mono, one meta line in `--o2`
 (host · prefix · presets · server version), then the value-pinned queries as a compact key/value list (query
@@ -467,11 +500,11 @@ title | value | source table in `--o3`). Then a collapsible section band per par
   (`--chrome`, rounded, 1px `--line`): the count large in mono and uncolored | the rule text as stored, with
   `preset · id` in `--o3` below | buttons "Show rows" and, when the preset offers one, the fix action's name
   (mono, accent), which opens the action sheet;
-- **watched**, always (`no watched values` and a hint on how to watch while empty): one line per watched
+- **watched**, always (`no watched values` while empty; the band's hint says how to watch): one line per watched
   value, in the order they were added: its label (mono; opens the row once it is found) | the value as stored now, by its
   kind (an array or object as a tree, serialized data expandable) | where it is read, in `--o3`
   (`wp_options.option_value · option_name woocommerce-ppcp-data-common › merchant_country`) | a rename and a
-  remove icon on hover. A value whose row, column or key is gone says `missing` in italic `--o3` and why;
+  remove icon on hover. Renaming (`LabelField`): ↵ or blur saves, an empty label restores the default, ⎋ cancels. A value whose row, column or key is gone says `missing` in italic `--o3` and why;
   it never disappears. "Watch on readout" is in the context menu of every sourced grid cell, Document value
   and value tree node, and the `value.watch` / `object.watch` commands (no default key);
 - **recently created**: one timeline of the newest rows across every entity with a `created` column, newest
@@ -516,10 +549,13 @@ separate tool.
   its primary key. Nothing on screen changes by itself. A changed row gets the 3px accent mark on its first
   cell, each changed value an accent corner (top right, flashing once when first seen), a removed row stays in
   place in `--o3`, struck through. A bar above the grid counts them, `3 rows changed in the database ·
-  Refresh` (`… and 1 row removed …`), with the accent mark on its left and `⌥ on a marked value shows old →
+  Refresh` (`… and 1 row removed …`, or `1 row removed from the database` alone; `changesText` in
+  `lib/tableCheck.ts`), with the accent mark on its left and `⌥ on a marked value shows old →
   new` at its right in `--o3`; Refresh reloads the page and clears the marks. ⌥ over a marked value opens a
-  small `--pop` overlay: the column name, then the shown value in `--o3` → the stored one (mono, one line). The
-  table head says in `.hint` text when a tab does not check: `no live check · no primary key`, `live check
+  small `--pop` overlay (`grid/ChangePeek.tsx`): the head "`<column>` changed in the database" (column mono,
+  `--o2`), then the shown value in `--o3` → the stored one, mono and wrapping (`.db-peek-values`, at most
+  36rem, cut at `MAX_CHARS`). The table head says in `.hint` text when a tab does not check (`TableCheckHint`):
+  `no live check · no primary key` (or `· the primary key is not readable as text`), `live check
   paused · pending changes` (until they are applied or discarded), `live check paused · connection lost` (until it is
   back), `live check stopped · Refresh to retry`.
   Editing a cell pauses it silently.
@@ -535,7 +571,7 @@ separate tool.
 ## Keys
 
 Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys fire only in
-the object and grid scopes, never in inputs, the editor or dialogs. `Tab` is never bound: it moves the keyboard focus everywhere. The
+the `table` and `object` scopes (`commands/values.ts` for the value keys), never in inputs, the editor or dialogs. `Tab` is never bound: it moves the keyboard focus everywhere. The
 column keys act only while the keyboard focus is in the stack (or nowhere), so the sidebar and the tab bar
 keep their arrow keys; the ⌘⌥ and ⌘⇧ pane keys act from anywhere in an object tab, except while text is edited. A key and its arrow are two commands (`object.down`, `object.downArrow`), each
 rebindable.
@@ -573,8 +609,8 @@ rebindable.
 | ⌘\ | global | toggle the sidebar |
 | `?` | global | shortcut overview |
 
-Scopes are the registry's (`src/commands/index.ts`, `registerCoreScopes`): `global`, `db`, `table` (a table
-tab), `editor` (a query tab) and `object` (an object tab).
+Scopes are the registry's (`src/commands/index.ts`, `registerCoreScopes`): `global`, `db` under it, `table`
+(a table tab) and `editor` (a query tab) under `db`, and `object` (an object tab) under `global`.
 
 ## Palette prefixes
 

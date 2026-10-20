@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted (retroactive, introduced in ed08cd1, 2026-10-15)
+Accepted (retroactive, introduced in ed08cd1, 2026-10-15), amended 2026-10-20.
+
+The clause on a module without its own folder (the WordPress lens) has lapsed: the lens was deleted in U12
+([0020](0020-everything-is-rows.md), [0022](0022-presets-and-projects.md)), so every Tauri import is in
+`src/api/index.ts` or a module's own `api.ts`.
 
 ## Context
 

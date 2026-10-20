@@ -1,6 +1,6 @@
 ---
 name: write-rust-unit-test
-description: Rust test writer for DataBee's Tauri backend (db, wp, store, stage, cli, ipc, commands), unit tests and Docker-backed integration tests. MUST BE USED whenever Rust tests need to be written or updated.
+description: Rust test writer for DataBee's Tauri backend (db, rules, document, readout, search, health, store, stage, cli, ipc, commands), unit tests and Docker-backed integration tests. MUST BE USED whenever Rust tests need to be written or updated.
 color: orange
 model: sonnet
 effort: medium
@@ -36,7 +36,8 @@ Read `.claude/rules/testing.md`, `docs/testing.md` and the docs page of the laye
   Reuse `sessions(database)` from `test_support` (`tests/common` in `tests/`; one session per server in
   `DATABEE_TEST_SERVERS`) so every test runs against both MariaDB and MySQL.
   - Name the server in assertion messages where the loop knows it (`"{host}:{port}: {err:?}"`).
-  - Read from `databee_test` or `wp_test`. Write only into `wp_write`, so read tests never race.
+  - Read from `databee_test` or `wp_test`. Write only into `wp_write` or `databee_test` (the write fixtures in
+    `CLAUDE.md`), on rows the test owns, so read tests never race.
   - New fixture data goes into `dev/fixture.sql`; relative dates use `UTC_TIMESTAMP()`.
   - Never point tests at the user's own databases (DDEV sites). The `real_data` tests in
     `src/document/server_tests.rs` are the only exception: it reads a database named by `DATABEE_WP_TEST` and never writes.
@@ -62,8 +63,8 @@ Read `.claude/rules/testing.md`, `docs/testing.md` and the docs page of the laye
   beyond `127.0.0.1` with an OS-assigned port.
 - **Helpers** for repeated setup live inside `mod tests` (e.g. a `spec()` or `ctx()` builder with overrides).
   Reuse existing helpers before adding new ones.
-- **Rust edition 2024**: let-chains are fine; clippy runs with `-D warnings` on `--all-targets`, so tests must
-  be warning-free too (no unused variables or imports).
+- **Rust edition 2024**: let-chains are fine. Lint runs clippy on production code only (`--lib --bins`), but
+  `cargo test` still compiles the tests: keep them free of compiler warnings (no unused variables or imports).
 
 ## Coverage priority
 
@@ -81,15 +82,16 @@ Skip sqlx, Tauri and serde internals, and trivial getters.
 - Loose assertions (`assert!(sql.contains("WHERE"))`) where the exact value is known.
 - One `#[test]` per case that belongs in a table.
 - Comment noise and comments about current code state.
-- Integration tests without `#[ignore]`, or ones that write outside `wp_write`.
+- Integration tests without `#[ignore]`, or ones that write outside `wp_write` and `databee_test`.
 
 ## Quality gates (verify before delivering)
 
-- [ ] Unit tests sit in the file's `mod tests`; server tests are `#[ignore]` in `src-tauri/tests/`.
+- [ ] Unit tests sit in the file's `mod tests`; server tests are `#[ignore]`, in `src-tauri/tests/` or the
+  module's `server_tests.rs`.
 - [ ] Names read as behavior sentences.
 - [ ] Exact assertions; table-driven where cases share a shape.
 - [ ] No real config dir, Keychain or user database is touched.
-- [ ] Code compiles warning-free under clippy (imports used, no dead helpers).
+- [ ] Code compiles without warnings (imports used, no dead helpers).
 
 ## Deliverable
 

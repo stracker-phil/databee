@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted (2026-10-17). Being implemented in U2a; the lint check lands with it.
+Accepted (2026-10-17), implemented (the scan is `src/styles/colors.test.ts`). Amended 2026-10-20.
+
+One exception to "color comes only from the accent and value styles": error chrome uses the value-style
+token `--style-red` (for example `.btn-danger`, `.form-error`, `.toast.error`, `.vt-error`, `.action-error`
+in `src/styles/app.css`). The per-database accent (the project's `accent` field; `project_accents` and
+`project_set_accent` in `src-tauri/src/rules/commands.rs`) is consistent with this record: it picks one of
+the settings' accents, so the color still comes from the scheme.
 
 ## Context
 

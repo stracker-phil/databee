@@ -7,7 +7,7 @@ in `src-tauri/src/db_commands.rs`.
 
 | File | Responsibility |
 |---|---|
-| `db/mod.rs` | The `Database` trait every caller uses (`&dyn Database`, [ADR 0011](adr/0011-database-trait-object.md)), the `open` factory (MySQL only today) and re-exports |
+| `db/mod.rs` | The `Database` trait every caller uses (`&dyn Database`, [ADR 0011](adr/0011-database-trait-object.md)); the `Connector` trait that opens one (`open(spec, password, connect_timeout, query_timeout)`, held as `AppState.connector`) and `MySqlConnector`, the only one today; re-exports |
 | `db/types.rs` | Shared DTOs (`ColumnMeta` with its `origin`, `ResultSet` with its `id`, `kinds`, `serialized` and the IPC-skipped `full_texts`, `ExecuteResponse` with its `failure: StatementFailure`, `TableInfo`, `TableStructure`, `BrowseRequest`, `BrowsePage` with `table` and `keys`, `AppliedFilter`, `FilterKind`) |
 | `db/dialect.rs` | `Dialect { backslash_escapes }` (`Dialect::MYSQL`, or `from_sql_mode`): `quote_ident` (backticks), `sql_string`, `like` / `like_contains`, `table_ref`, `system_schemas`; `escape_like` |
 | `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
@@ -21,10 +21,13 @@ in `src-tauri/src/db_commands.rs`.
 | `db/mysql/script.rs` | `run_script` (text protocol, one `ResultSet` per statement, column recovery; returns a `ScriptOutcome` of the finished results and the failing statement, `into_results` for callers that need all of it), `scalar`, `thread_id`, `raw_text` |
 | `db/mysql/timeouts.rs` | `connect_within`, `query_within`, and `pooled_within`, which reads the pool connection's thread id, kills its query on timeout and closes the connection |
 | `db/fake.rs` | `FakeDatabase`, an in-memory `Database` for unit tests (canned results matched by SQL fragment, recorded `apply` batches, `set_unreachable` for a stopped server: `ping` and `reconnect` fail); behind `cfg(any(test, feature = "test-util"))` |
-| `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements`, `words`, `pieces` (comments included; `Piece::span`, `is_comment`, `is_open`, `is_symbol`), `is_terminated`, `is_blank` |
+| `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements` and `statement_ranges` (its byte ranges; `narrow.rs`, `readout/sql.rs`), `words`, `pieces` (comments included; `Piece::span`, `is_comment`, `is_open`, `is_symbol`, and `is_keyword`, case-insensitive, used by `classify.rs`, `safety.rs`, `narrow.rs` and `readout/sql.rs`), `read_tables` (the tables after `FROM` or `JOIN`, once each; the readout's pinned lines), `is_terminated`, `is_blank` |
 | `db/narrow.rs` | `refusal` and `narrowed`: one more condition on a plain single-table `SELECT` ([Narrowing a query](#narrowing-a-query)) |
 | `db/classify.rs` | What a statement is: `verb_index` (the deciding word, also after a `WITH` clause), `returns_rows`, `changes_schema` (a script with `CREATE`, `ALTER`, `DROP`, `RENAME` or `TRUNCATE`), and `is_read_only` (every statement is `SELECT`, `SHOW`, `DESCRIBE`/`DESC`, `EXPLAIN` or `WITH … SELECT`; refuses `SELECT … INTO`, `FOR UPDATE`/`FOR SHARE`/`LOCK IN SHARE MODE`, `EXPLAIN ANALYZE` of a non-read, `CALL`, `SET`, `HANDLER` and every other verb, naming the statement and why; functions called by a `SELECT` are not inspected) |
 | `db/safety.rs` | `destructive_reason` (which statements need confirmation) |
+| `db/changes.rs` | `ChangeRequest` (`setCell`, `deleteRow`, `duplicateRow`, `insertRow`, `addRow`) and `plan`, which reads the current values and builds a `Plan { description, statements, undo }`; the reinsert helpers the undo of a delete uses |
+| `db/where_changes.rs` | `plan_update` and `plan_delete` for the rows a condition selects (`RowsUpdate`, `RowsDelete`; actions): the rows are read first, the statements name their keys, the undo restores each row; more than `MAX_ROWS` (10,000) is refused |
+| `db/plans.rs` | `Plans` (`Session.plans`): planned changes kept by id until applied or discarded (`PlannedChange`), and the last `MAX_BATCHES` (20) applied batches with their undo statements (`AppliedBatch`) |
 | `db/cell.rs` | `Cell`: decodes text-protocol bytes by column `Family`, computed once per result set from the type name; `CellLimit` cuts long text to a preview |
 | `db/cell_cache.rs` | `CellCache`: numbers result sets per session and keeps the full text of their `LongText` cells for `fetch_cell` |
 | `db/id_filter.rs` | Primary-key shorthand in the WHERE field: `3229`, `3229, 3227`, `3220-3229` |
@@ -32,7 +35,7 @@ in `src-tauri/src/db_commands.rs`.
 Outside `db/`:
 - `connection.rs` has `ConnectionSpec` and `Secret`.
 - `session.rs` has `Session { id, spec, db: Box<dyn Database>, health, ext, plans, cells }` and the `Sessions`
-  map (`ddl_writes()` counts user scripts with DDL). `db` is the engine behind `health::Guarded` and `health`
+  map. `Session::ddl_writes()` counts user scripts with DDL. `db` is the engine behind `health::Guarded` and `health`
   its `SessionHealth` ([Connection health](#connection-health)). `ext` is a
   type-keyed `Extensions` map where a module keeps per-session data that dies with the session
   ([ADR 0013](adr/0013-session-extensions.md)); the rules keep their effective-rules cache there, the core its
@@ -100,6 +103,13 @@ Other details:
     A failed restore is logged and costs only the variables. A `SET` in the script that timed out is not
     recorded.
   - Temporary tables, user variables (`@x`) and open transactions cannot be carried over.
+- **TLS:** none. sqlx is compiled without a TLS backend. `mysql-rsa` handles `caching_sha2_password` over
+  plaintext connections by fetching the server's RSA key unencrypted, so a man in the middle could swap the key
+  and read the password. That is fine on loopback and sockets, the intended use; sqlx has no option to refuse
+  it for remote hosts. To add TLS:
+  1. Enable `tls-rustls` in `Cargo.toml`.
+  2. Add `ssl_mode`/CA fields to `ConnectionSpec`.
+  3. Set them in `connect_options`.
 
 ### Connection health
 
@@ -134,13 +144,6 @@ command, the event and the tasks):
   focus (the page), and automatically after `RETRY_BACKOFF` (10 s, 30 s, then every 60 s) counted from the
   last failure. A retry already running is not started twice; one that is dropped unfinished counts as
   failed, so the session is retried again.
-- **TLS:** none. sqlx is compiled without a TLS backend. `mysql-rsa` handles `caching_sha2_password` over
-  plaintext connections by fetching the server's RSA key unencrypted, so a man in the middle could swap the key
-  and read the password. That is fine on loopback and sockets, the intended use; sqlx has no option to refuse
-  it for remote hosts. To add TLS:
-  1. Enable `tls-rustls` in `Cargo.toml`.
-  2. Add `ssl_mode`/CA fields to `ConnectionSpec`.
-  3. Set them in `connect_options`.
 
 ## Running a query
 
@@ -191,7 +194,8 @@ command, the event and the tasks):
    so a partial result keeps the columns the server sent.
 7. **History.** A history entry is written for every run, including failed ones. It stores the whole script;
    its `error` is the run's error or, for a partial result, the failing statement's error.
-8. **Current database.** `SELECT DATABASE()` refreshes the session's current database after every run,
+8. **Current database.** `session_state::read` (`SELECT DATABASE(), @@SESSION.…` in one statement) refreshes
+   the session's current database and kept variables after every run,
    also after a failed statement (a `USE` before it still counts), inside the same timeout. The UI follows a `USE` this way. If this probe fails, the results are still
    returned and the current database stays as it was.
 
@@ -502,13 +506,15 @@ along with its `SELECT`. Unit tests count with `FakeDatabase::queries()`.
 | `palette_search` | `=sandbox` | 28 | 16 |
 | `readout` | `wp_test` | 19 | 20 |
 
-The readout's count is without watched values (the measured project has none). Watched values add one
-statement per table they name, however many watches it has (`readout/watched.rs`, `lines`): a `SELECT *`
-whose `WHERE` ORs the condition of each watched row. Watching a value runs one more statement once, when it
-is added and the table has a unique key besides the primary key (`identity`).
+| `readout` | `wp_test` with two watched `wp_options` | – | 21 |
 | `reference_coverage` | each of the 40 references of the Project page | 43 | 43 |
 
-The last change gave every row one summary (architecture.md, "Summaries"). `#4711` reads the rows of its
+The first readout count is without watched values. Watched values add one statement per table they name,
+however many watches it has (`readout/watched.rs`, `lines`): a `SELECT *` whose `WHERE` ORs the condition
+of each watched row, so two watched `wp_options` values cost one. Watching a value runs one more statement
+once, when it is added and the table has a unique key besides the primary key (`identity`).
+
+The last change gave every row one summary ([architecture.md](architecture.md#summaries)). `#4711` reads the rows of its
 `rows that reference` section again by key, one query per table (8): group rows hold only the group's
 columns, and the hit must show the summary the row's own document shows. The readout reads the meta keys of
 the summaries in its created timeline in one query per meta table (`wp_postmeta` for the products and the
@@ -538,7 +544,8 @@ What stays one query each, and why:
 
 ## Integration tests
 
-The integration tests are `src-tauri/tests/mysql.rs`, `changes.rs`, `sql_mode.rs`, the `server_tests.rs` of the modules and `src/statement_counts.rs` (see [testing.md](testing.md)).
+The integration tests are `src-tauri/tests/mysql.rs`, `changes.rs`, `sql_mode.rs`, `health.rs` (a killed editor
+connection is replaced with its session state restored; `ping` and `reconnect` fail through a closed relay), the `server_tests.rs` of the modules and `src/statement_counts.rs` (see [testing.md](testing.md)).
 Each test runs against every server in `DATABEE_TEST_SERVERS`. The default is the two Docker fixtures,
 MariaDB 11.4 on `127.0.0.1:33306` and MySQL 8.4 on `127.0.0.1:33307` (user `root`, password `root`), so
 driver behavior is checked on both engines.

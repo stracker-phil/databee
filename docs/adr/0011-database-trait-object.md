@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted
+Accepted, amended 2026-10-20.
+
+There is no `db::open`. Engines plug in through `trait Connector` (`src-tauri/src/db/mod.rs`): the app
+holds a `MySqlConnector`, tests swap in one that hands out fakes, so a new engine is one folder plus one
+`Connector`. The `Database` trait gained `ping` and `reconnect` for connection health
+([0026](0026-connection-health.md)).
 
 ## Context
 

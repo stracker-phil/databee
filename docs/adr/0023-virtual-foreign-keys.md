@@ -2,8 +2,11 @@
 
 ## Status
 
-Accepted (2026-10-17). Being implemented in U4b (schema and inference), U4c (rules, coverage) and U8
-(Project page).
+Accepted (2026-10-17), implemented. Amended 2026-10-20.
+
+Coverage queries run from the Project page and the Structure view (`useAutoCoverage` in
+`src/components/project/coverage.tsx`, used by `src/components/structure/StructureView.tsx`), still never
+per document.
 
 ## Context
 

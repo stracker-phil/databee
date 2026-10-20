@@ -29,15 +29,15 @@ The app's name and ids live in a few places. Change them together.
 
 | What | Where | Note |
 |---|---|---|
-| Product name (window title, bundle `DataBee.app`, app menu) | `src-tauri/tauri.conf.json` `productName` and window `title`; `menu.rs`; `index.html`; `Toolbar.tsx`; `stage/mod.rs` `NAME` | |
+| Product name (window title, bundle `DataBee.app`, app menu) | `src-tauri/tauri.conf.json` `productName` and window `title`; `menu.rs`; `index.html`; `Toolbar.tsx`; `stage/mod.rs` `NAME` and `stage/windows.rs` (`Window::Main` title); `mcp/mod.rs` `INSTRUCTIONS`; the `DataBee.app` path in `scripts/install-app.sh`, `scripts/install-cli.sh`, `scripts/dev/launch.sh` and the `app` script of `package.json`; the window owner `"DataBee"` in `scripts/dev/screenshot.sh` | Also in user-facing strings: `mcp/ui.rs` `NOT_RUNNING`, the errors in `lib.rs`, `ipc.rs` and `remote.rs`, `src/lib/address.ts` ("Not a DataBee address"), the intros in `settings/pages.tsx` and `src/stage/install.ts`, `src/stage/PresentationsPage.tsx` |
 | Bundle identifier `com.philippstracker.databee` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER`; `scripts/dev/js.sh` (socket path) | Also names the config dir and the log dir. Changing it starts with empty settings. |
-| Binary and CLI command `databee` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli.rs` `name`; `scripts/install-cli.sh`; `scripts/dev/launch.sh` | The Rust lib is `databee_lib`, also used by `main.rs` and `tests/` |
+| Binary and CLI command `databee` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli.rs` `name` and `after_help`; `scripts/install-cli.sh`; `scripts/dev/launch.sh`; the MCP server name in `mcp/mod.rs` (`get_info`) | The Rust lib is `databee_lib`, also used by `main.rs` and `tests/` |
 | Keychain service `"databee"` | `secrets/keychain.rs` `SERVICE` | Changing it loses saved passwords |
-| Socket file `databee.sock` | `lib.rs`, `scripts/dev/js.sh` | |
-| Address scheme `databee://` | `src-tauri/src/address/mod.rs` `SCHEME`; `src/lib/address.ts` `SCHEME`; `src/test/fixtures/addresses.json` | Copied and saved addresses stop parsing when it changes |
+| Socket file `databee.sock`, lock file `databee.lock` | `lib.rs` (both), `scripts/dev/js.sh` (the socket) | |
+| Address scheme `databee://` | `src-tauri/src/address/mod.rs` `SCHEME`; `src/lib/address.ts` `SCHEME`; `src/test/fixtures/addresses.json`; spelled out in `palette/parse.ts` (`Prefix`, `PREFIXES`), `palette/usePaletteItems.ts`, `palette/PaletteList.tsx` `PREFIX_HINTS`, `CommandPalette.tsx`, `settings/ConnectionSlugs.tsx`, `mcp/mod.rs` `INSTRUCTIONS` and tool descriptions, `cli.rs` `after_help` | Copied and saved addresses stop parsing when it changes |
 | Deep-link URL scheme `databee` | `tauri.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`) | Keep it equal to the address scheme, or links stop opening. Debug and release builds share it, like the identifier |
 | Env vars `DATABEE_*` | `dev.rs`, `scripts/dev/launch.sh`, tests | |
-| Window events `databee:*`, `window.databee` | `src/commands/index.ts`, `src/main.tsx`, the dev scripts | Internal only |
+| Window events `databee:*`, `window.databee` | `src/commands/index.ts` (`EVENTS`), `src/commands/values.ts` (`EDIT_VALUE_EVENT`), `src/main.tsx`, the dev scripts | Internal only |
 | Icons | `src-tauri/icons/` | Regenerate with `bun tauri icon <1024px png>` |
 | Author, license | `Cargo.toml`, `package.json`, `LICENSE` | |
 
@@ -55,11 +55,11 @@ Objective-C or NSWindow calls. The macOS behavior comes from dependencies, paths
 | **Window chrome**: `titleBarStyle: Overlay`, `hiddenTitle`, `trafficLightPosition`, `transparent`, `windowEffects: ["sidebar"]`, `macOSPrivateApi` | `tauri.conf.json`; the Cargo feature `macos-private-api` | Ignored by Tauri. The CSS expects transparent chrome, so give `html`/`.app` an opaque `--chrome` | `windowEffects: ["mica"]` works; otherwise use an opaque background |
 | **Traffic-light space** and drag regions | the left padding of `.toolbar` in `app.css`; `data-tauri-drag-region` in `Toolbar.tsx` and `ConnectScreen.tsx` | Remove the padding. With native decorations, drag regions are optional | Same; or set `decorations: false` and draw your own window controls |
 | **Menu**: the app menu with Services, Hide and Show All | `menu.rs` | The menu bar renders inside the window. Drop the app menu and move Settings and Quit into File | Same |
-| **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs, `bindingFromEvent` assumes a Mac | `src/commands/registry.ts`; `metaKey` checks in `ResultsGrid`, `Sidebar`, `CommandPalette`, `palette/PaletteList.tsx`, `palette/usePeekHeld.ts` and `value/Peek.tsx` | Map `Mod` to Ctrl, and render labels as `Ctrl+Shift+K` | Same |
+| **Shortcuts**: `Mod` is ⌘, labels use ⌘⌥⇧ glyphs, `bindingFromEvent` assumes a Mac | `src/commands/registry.ts`; `metaKey` checks in `ResultsGrid`, `Sidebar`, `CommandPalette`, `palette/PaletteList.tsx`, `palette/usePeekHeld.ts`, `value/Peek.tsx`, `value/useAltHeld.ts`, `grid/ChangePeek.tsx` and `project/formParts.tsx` | Map `Mod` to Ctrl, and render labels as `Ctrl+Shift+K` | Same |
 | **Fonts**: bundled Geist and JetBrains Mono, with `-apple-system` and `Menlo` fallbacks | `fonts.css`, `theme.css` (`--font-*-bundled`) | Works; drop the macOS fallbacks or add `Cantarell` and `DejaVu Sans Mono` | Works; `Segoe UI`, `Cascadia Mono` as fallbacks |
 | **Bundle targets**: only `app` | `tauri.conf.json` `bundle.targets`; `package.json` scripts open `bundle/macos/DataBee.app` | `deb`, `appimage`, `rpm` | `nsis`, `msi`; `icons/icon.ico` exists but `bundle.icon` doesn't list it; `main.rs` needs the `windows_subsystem` attribute so release builds open no console |
-| **Install and dev scripts** (zsh, Swift, CoreGraphics, `screencapture`, `pkill`) | `scripts/` | Rewrite with `xdotool`/`wmctrl` plus `grim`/`import`, or drop `launch.sh` and use `bun tauri dev` | PowerShell |
-| **Wording**: "Keychain", "Finder", the `~/Library/...` socket example | `error.rs`, `session.rs` (password prompt), `cli.rs` help, `ConnectScreen.tsx`, `Dialogs.tsx` | "keyring", "file manager" | "Credential Manager", "Explorer" |
+| **Install and dev scripts** (zsh, Swift, CoreGraphics, `screencapture`, `pkill`, `python3` in `js.sh`) | `scripts/` | Rewrite with `xdotool`/`wmctrl` plus `grim`/`import`, or drop `launch.sh` and use `bun tauri dev` | PowerShell |
+| **Wording**: "Keychain", the `~/Library/...` socket example | `error.rs`, `session.rs` (password prompt), `cli.rs` help, `ConnectScreen.tsx`, `Dialogs.tsx` | "keyring" | "Credential Manager" |
 | **Stage hook**: the presenter app is macOS-only | `stage/`, `src/stage/` | Remove ([Removing Stage](#removing-stage)) or leave off | Same |
 | **Tests**: `navigator.platform = "MacIntel"` | `src/test-setup.ts`; tests that type `{Meta>}` | Make the platform a parameter, or drop it | Same |
 
@@ -86,23 +86,25 @@ can do all of this:
 ### Add a driver
 
 `src-tauri/src/db/<engine>/mod.rs` implementing `Database`; an engine field on `Dialect`; a `kind` on
-`ConnectionSpec`; one arm in `db::MySqlConnector` (or a connector that picks the engine by `kind`). Nothing in `rules/` changes. Details:
+`ConnectionSpec`; one arm in `db::MySqlConnector` (or a connector that picks the engine by `kind`), which is
+constructed in `state.rs` (`AppState`) and `mcp/data.rs` (`Core`). Nothing in `rules/` changes. Details:
 [database.md](database.md#adding-another-database-engine).
 
 ### Swap the secret store
 
 Add `src-tauri/src/secrets/<impl>.rs` implementing `SecretStore` (`get`, `set`); `mod` it in
-`secrets/mod.rs`; change the one `Arc::new(secrets::Keychain)` line in `lib.rs`; optionally delete
+`secrets/mod.rs`; change the two `Arc::new(...Keychain)` lines, in `lib.rs` and in `mcp/mod.rs` `run`; optionally delete
 `keychain.rs` and `security-framework`.
 
 ### Removing Stage
 
-Stage is a module on both sides ([stage.md](stage.md)). **Remove Stage**: `git rm -r src-tauri/src/stage src/stage src-tauri/capabilities/stage.json docs/stage.md`; delete `mod stage;` and `.plugin(stage::init(&config_dir))` in `lib.rs`; delete the `.plugin("stage", …)` line and `STAGE_COMMANDS` in `build.rs`; delete the `installStage` import and call in `src/modules.ts`; optionally strip `data-stage*` attributes; run `bun run lint && bun run test`.
+Stage is a module on both sides ([stage.md](stage.md)). **Remove Stage**: `git rm -r src-tauri/src/stage src/stage src-tauri/capabilities/stage.json docs/stage.md`; delete `mod stage;` and `.plugin(stage::init(&config_dir))` in `lib.rs`; delete the `.plugin("stage", …)` line and `STAGE_COMMANDS` in `build.rs`; delete the `installStage` import and call in `src/modules.ts` and the `./stage/api` mock in `src/modules.test.tsx`; drop `src/stage/types.gen.ts` from the `lint` script in `package.json`; optionally strip `data-stage*` attributes; run `bun run lint && bun run test`.
 
 ### Removing the WordPress presets
 
 WordPress, WooCommerce and Action Scheduler are presets, nothing else: delete `src-tauri/presets/wordpress.toml`,
-`woocommerce.toml` and `action-scheduler.toml` and their lines in `rules::catalog::BUILT_IN`. The rules engine,
+`woocommerce.toml` and `action-scheduler.toml` and their lines in `rules::catalog::BUILT_IN`; replace the
+`wp_*` examples in `QueryEditor.tsx` `EXAMPLE_QUERY` and `cli.rs` `after_help`. The rules engine,
 the readout, documents and the palette have no WordPress code, so nothing else changes. Optionally delete the
 `wp_*` databases of `dev/fixture.sql` and the tests that read them (the preset tests listed in
 [presets.md](presets.md#built-in-presets)), then run `bun run lint && bun run test`.

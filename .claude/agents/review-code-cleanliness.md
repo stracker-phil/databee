@@ -46,18 +46,18 @@ If the caller names a file without a mode, default to `CHANGES in`.
 - Never ask for a doc comment on a self-explanatory function.
 
 ### 3. Boundaries (DataBee's architecture, `docs/architecture.md`)
-- Frontend code calling `invoke` or `listen` anywhere but `src/api/index.ts`.
+- Frontend code calling `invoke` or `listen` anywhere but `src/api/index.ts` and a module's `src/<module>/api.ts`.
 - Frontend code building SQL, deciding what is safe to write, or parsing stored values (PHP serialize, cell
   decoding). That logic belongs in Rust; the page asks for a plan and renders it.
-- A Tauri command (`*_commands.rs`) that contains logic beyond argument plumbing; it belongs in its module
+- A Tauri command (`commands.rs`, `*_commands.rs`, `<module>/commands.rs`) that contains logic beyond argument plumbing; it belongs in its module
   (`db/`, `rules/`, `document/`, `search/`, `saved/`, `readout/`, `store/`, `stage/`, …).
-- Rust types crossing to the page without `#[serde(rename_all = "camelCase")]`, or a changed shape with no
-  matching change in `src/api/types.ts`.
+- Rust types crossing to the page without `#[serde(rename_all = "camelCase")]`, or a changed shape whose
+  generated types were not regenerated (`bun run types`, `src/api/types.gen.ts`).
 - Passwords or tokens in `Debug`, logs, or serialized structs (use `Secret`).
 - Components subscribing to the whole store (`useStore()` with no selector) or deriving arrays without
   `useShallow`.
-- WordPress code that labels values instead of showing the stored name next to them, or attributes data to
-  a plugin by naming heuristics (`.claude/rules/presets.md`).
+- A preset or a rule view that labels values instead of showing the stored name next to them, or attributes
+  data to a plugin by naming heuristics (`.claude/rules/presets.md`).
 
 ### 4. Over-engineering (bias toward the simpler shape)
 Flag speculative structure without a present payoff:

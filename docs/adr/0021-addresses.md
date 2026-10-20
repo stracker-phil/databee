@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted (2026-10-17). Being implemented in U3; used outside the app from U14.
+Accepted (2026-10-17), implemented. Amended 2026-10-20.
+
+The Rust side is `src-tauri/src/address/` (`mod.rs`, `percent.rs`, `resolve.rs`, `cases.rs`), not
+`address.rs`. An object address also takes `?view=document` and `?compare=<key2>` (`Address.compare`, the
+key of a second row to compare with).
 
 ## Context
 

@@ -4,6 +4,7 @@ paths:
   - "src/**/*.test.ts"
   - "src/**/*.test.tsx"
   - "src/test/**"
+  - "src/**/apiMock.ts"
   - "src/test-setup.ts"
 ---
 

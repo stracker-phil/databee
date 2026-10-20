@@ -15,7 +15,8 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
 - **CLI-first:** scripts and other apps open DataBee with connection details. A second launch hands its
   request to the running window.
 - **Schema tree** with a filter. Paged table view with sorting, resizable columns and a `WHERE` filter that
-  also takes IDs (`3229`, `3229, 3227`, `3220-3229`). Structure view with columns, indexes and DDL.
+  also takes IDs (`3229`, `3229, 3227`, `3220-3229`). Structure view with columns, indexes and DDL, and per
+  column the rules that apply to it (kinds, references, value styles), plus the table's entities and actions.
 - **SQL editor** (CodeMirror):
   - MySQL autocomplete;
   - run the statement at the cursor or the whole script;
@@ -23,7 +24,9 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
   - asks before `DROP`, `TRUNCATE` and unscoped `DELETE`/`UPDATE`.
 - **Results grid:** virtualized and typed, with inline editing. Copy cells or rows as TSV or JSON.
 - **Value column:** Enter on serialized data or long text opens it as a column with a tree of PHP-serialized
-  or JSON values, including serialized data nested in strings, whose leaves you can edit. Values with broken string lengths are decoded leniently, with a warning.
+  or JSON values, including serialized data nested in strings, whose leaves you can edit. Values with broken
+  string lengths are decoded leniently, with a warning. An open value column reads its value again when the data
+  changes (⌘R, an applied edit).
 - **Saved queries** (⌘S in a query tab, `q:` in the palette; pinned with Count or Rows), per-server **query
   history**, and a **⌘K command palette** for commands, tables, records, saved queries and recent items.
 - **Value counts** on every grid column (right-click its header): each stored value with its count; a click
@@ -31,24 +34,38 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
 - **Passwords** live in the macOS Keychain and never in files or logs.
 - **Connection watch:** when DDEV or Docker stops, a warning next to the connection says since when and why;
   what is loaded stays readable, and Retry (or coming back to the window) reconnects without a password prompt,
-  with the current database and session variables such as `sql_mode` restored.
+  with the current database and session variables such as `sql_mode` restored. It also retries by itself
+  (after 10 s, 30 s, then every 60 s); live mode and the table tab check pause while the connection is lost.
 
 **Rows as objects** (WordPress, WooCommerce and Action Scheduler come as presets)
 - **Readout:** the home page of every database, opened on connect. A status line (host, database, prefix,
   presets, server version, and values the presets pin, such as the site URL or the autoloaded bytes), the
   anomalies the presets report (failed or overdue scheduled actions, expired transients, HPOS drift, log
   errors) with their fix, which you review first, the newest rows of each entity (orders, posts, users), your
-  pinned queries with their counts or rows, and the rows you opened last. Counts refresh after every apply.
+  pinned queries with their counts or rows, the values you watch, and the rows you opened last. Counts refresh
+  after every apply.
+- **Watched values:** right-click a grid cell, a document value or a node of a decoded value and choose Watch
+  on readout; the readout shows it as stored now, with where it is read from.
 - **Documents:** any row with a primary key opens as a document: its columns, its meta rows, every row that
   references it, rows matched by preset patterns (logs, scheduled actions) and its timestamps as events.
   References open as a stack of columns; ⌥ peeks.
+- **Pane stack:** the columns of an object tab show as resizable panes side by side (1 to 3, Settings →
+  Appearance, "Panes side by side"); a trail above them lists every column, hidden ones too. ⌘⇧↵ maximizes
+  the active pane.
+- **Click indicators:** a passive icon next to a link shows what a click does: a chevron opens a column beside
+  it, an arrow moves the whole view or opens a tab.
+- **Linked table highlight:** hover a table in the sidebar and its rows and the references into it light up
+  in the open panes; everything else dims.
+- **Table icons:** `[[icon]]` rules give a table one of a curated set of icons, shown before its name, its
+  references and its row keys. Set one per project on the Project page or in the Structure view.
 - **Live mode** (`w`): the row is read again every 2 s; a changed value flashes and keeps its old value struck
   through, new and removed rows are marked, and a change list under the document says what changed when.
   Snapshots (`s`) of a row or a saved query's rows show the same marks later ("Changes since snapshot…"), and
   `?compare=<key>` shows two rows side by side with their differences.
 - **Table tabs check their rows:** every 4 s the active tab reads the shown rows again by primary key (one
   statement); changed and removed rows are marked, a bar counts them with Refresh, and ⌥ on a marked value
-  shows old → new. Nothing changes on screen by itself.
+  shows old → new. Nothing changes on screen by itself. Turn it off in Settings → Queries, "Live check in
+  table tabs".
 - **Pinned queries** from the presets: orders, subscriptions, users, customers, guests, products, sessions,
   scheduled actions, content and the options queries open as query tabs with their SQL (`q:` in the palette).
 - **Raw first:** real column names, meta keys and status slugs, with amounts and times next to them where a
@@ -59,7 +76,8 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
   (order status, autoload, retry or cancel a scheduled action). The tray applies everything in one
   transaction (⌘S), and you can undo it.
 - **Presets:** describe your plugin's tables in a preset of your own; the Project page adds references,
-  kinds and value styles per database, and an accent of its own so you see which database is open.
+  kinds, value styles and table icons per database, and an accent of its own so you see which database is
+  open. The project also keeps your saved queries and watched values.
 
 **Presentations:** an optional local API lets the [Stage](docs/stage.md) presenter app drive the UI in a
 demo.
@@ -150,8 +168,9 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | ⌘S | Apply pending changes; in a query tab with nothing pending, save the query | everywhere / editor |
 | ⌘N / ⌘, / ⌘\ | New connection / Settings / toggle sidebar | everywhere |
 | ? | Keyboard shortcuts | everywhere |
-| ⎋ | Close the rightmost column | everywhere |
-| ⌘F / ⌘⇧F | WHERE filter / filter tables | Database |
+| ⎋ | Restore a maximized pane, else close the rightmost column | everywhere |
+| ⌘F | WHERE filter | Table |
+| ⌘⇧F | Filter tables | Database |
 | ⌘T / ⌘W | New query tab / close tab | Database |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab | Database |
 | ⌘↵ / ⇧⌘↵ | Run statement / run all | editor |
@@ -159,6 +178,10 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | J / K, ↓ / ↑ | Next / previous value | object |
 | H / L, ← / → | Column to the left / right | object |
 | ↵ | Open the focused reference in a new column | object |
+| ⌘⇧↵ | Maximize or restore the active pane | object |
+| ⌘⌥← / ⌘⌥→ | Focus the pane on the left / right | object |
+| ⌘⇧W | Close the active pane and the panes opened from it | object |
+| ⌘⌥↵ | Open the active pane's row in a new tab | object |
 | ⌘1 / ⌘2 | Document / Rows view | object |
 | W / S / X | Live mode / snapshot / dismiss change marks | object |
 | ⌥ (hold) | Peek the hovered or focused reference | object, grid |
@@ -170,14 +193,15 @@ Every shortcut can be rebound or unbound in Settings → Shortcuts. Overrides ar
 ## Files
 
 Config and data live in `~/Library/Application Support/com.philippstracker.databee/`: settings, keybindings,
-recent connections, history, UI state, projects (with saved queries and recent objects) and user presets. Logs are in
+recent connections, history, UI state, projects (rules, saved queries, watched values), recent objects
+(`recent_objects.json`), snapshots (`snapshots/`), Stage's settings (`stage.json`) and user presets. Logs are in
 `~/Library/Logs/com.philippstracker.databee/`. Details are in [docs/backend.md](docs/backend.md#persistence).
 
 ### Presets
 
-What tables mean (references, kinds, entities, queries) comes from presets. WordPress, WooCommerce and Action
-Scheduler are built in; a TOML file in `presets/` in the config directory adds a preset or replaces a built-in
-of the same name. See [docs/presets.md](docs/presets.md) for the format and
+What tables mean comes from the rules in presets: references, kinds, value styles, icons, entities, queries,
+anomalies and actions. WordPress, WooCommerce and Action Scheduler are built in; a TOML file in `presets/` in
+the config directory adds a preset or replaces a built-in of the same name. See [docs/presets.md](docs/presets.md) for the format and
 [Built-in presets](docs/presets.md#built-in-presets) for the built-ins.
 
 ```toml
@@ -202,7 +226,7 @@ summary = ["customer_id"]
 |---|---|
 | `bun run test` | Vitest UI tests and Rust unit tests |
 | `bun run test:db` | starts the MariaDB 11.4 and MySQL 8.4 fixtures (`dev/`) and runs the integration tests |
-| `bun run lint` | `tsc` and `clippy -D warnings` |
+| `bun run lint` | IPC types drift check, `tsc`, ESLint and `clippy -D warnings` |
 | `bun run build:app` + `scripts/dev/launch.sh` | debug build, started next to the terminal without taking focus |
 
 The [technical documentation](docs/README.md) covers the architecture, each layer, testing and tooling.

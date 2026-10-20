@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-17). Being implemented in U14.
+Accepted (2026-10-17), implemented.
 
 ## Context
 

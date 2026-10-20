@@ -81,10 +81,25 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   open (the sidebar toggles with the `view.sidebar` command). `state.object` is the active column's address
   and view, plus `column n of m` when the stack holds several (and `maximized` while one pane is maximized).
 - **Anchors** are `data-stage` attributes, with optional `-label`, `-role` and `-list`. Ids follow the data
-  where rows have stable ids:
-  - `table:<db>.<table>` (list `tables`)
-  - `tab:table:<db>.<table>`, `tab:object:<row address>`, `tab:project:<db>`, `tab:readout:<db>`,
-    `tab:query:<tab id>`
+  where rows have stable ids. The list below names anchor families, not every id; `describe`
+  (`stage_describe`) returns the live set with labels. `:a|b` stands for the ids `:a` and `:b`.
+  - connect screen: `connect:form`, `connect:name|host|port|user|password|database|socket-path`,
+    `connect:tcp|socket` (the transport), `connect:connect`, `connect:recents` with `recent:<identity>` (list
+    `recents`)
+  - toolbar: `toolbar`, `toolbar:settings|new-query|new-connection|disconnect`
+  - sidebar: `sidebar`, `sidebar:filter|refresh|tables|history|history-list`, `database:<name>` (list
+    `databases`), `table:<db>.<table>` (list `tables`)
+  - tabs: `tabs`, `tabs:new`, `tab:table:<db>.<table>`, `tab:object:<row address>`, `tab:project:<db>`,
+    `tab:readout:<db>`, `tab:query:<tab id>` (list `tabs`)
+  - table tabs: `table:data|filter|insert|reload|previous-page|next-page`, `table:view|structure` (the view
+    switch), `table:structure-view` (the Structure view)
+  - the Structure view: `structure:column:<name>` (list `structure-columns`); rule items
+    `structure:reference:<key>`, `structure:kind:<index or origin>:<scope>`, `structure:style:<id>`, each
+    with `:switch` (where it can be switched) and `:<action>` buttons
+  - query tabs: `editor`, `results`, `query:run|run-all|cancel|error|results-picker`
+  - dialogs: `dialog` (a plain modal), `<window>:sheet` (`settings:sheet`, `palette:sheet`, `rule-form:sheet`),
+    `dialog:confirm|cancel`
+  - the pending changes tray: `tray`, `tray:apply|discard|undo`
   - object tabs: `object` (the panel), `object-header`, `object-actions` (the Actions button, only when the row has actions),
     `view-toggle` with `view-toggle:document` and `view-toggle:rows` (only in the active pane while several
     show; the others have a plain view label without an anchor), `group-<table>` on each section band's
@@ -113,11 +128,15 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   - value counts: `grid:value-counts` (the popover, label `Value counts of <table>.<column>`) with its rows
     `grid:value-count:<index>` (list `grid:value-counts`, most frequent first)
   - `shortcuts:close` in the shortcut overview (`?`)
-  - the Project page: `project` (the panel), `project:prefix`, `project:preset:<name>` (list `presets`, the
+  - the Project page: `project` (the panel), `project:section` with `project:overview|rules` (the section
+    switch); the Overview's changes `change:<action>:<rule>:<id or text>` (list `changes`, the
+    [Your changes](presets.md#your-changes) lines) and problems `problem:<key>` (list `problems`), each with
+    `:<action>` buttons named by their text (`:edit`, `:remove`, `:reset`, `:switch off`; `:Open rows`, `:Open
+    table`), and `project:all-rules`; `project:prefix`, `project:preset:<name>` (list `presets`, the
     switches), `project:presets-auto`, `project:accent` (the accent field) with swatches `project:accent:<id>`
     (list `project:accent`) and `project:accent:default`, `project:refresh-coverage`, `project:export`, `project:filter`; table
     bands `project:table:<table>` (list `project-tables`) with `project:collapse:<table>`; the rule sheet
-    (Stage window `rule-form`) `project:form` with `project:form:source-table`, `:source-column`,
+    (`rule-form:sheet`, a sheet in `main`, not a Stage window) `project:form` with `project:form:source-table`, `:source-column`,
     `:when-column`, `:when-value`, `:target-table`, `:target-column`, `:label`, `:columns`, `:metaKeys`,
     `:inMeta`, `:kind`, `:zone`, `:currency`, `:match`, `:value`, `:color:<color>` (list
     `project:form:color`), `:save` and `:cancel`; reference rows `reference:<from>-><to>[#<id>]` (list
@@ -132,9 +151,11 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     pinned query's title), `readout:recent:<row address>` (a recently opened row's `#key`),
     `readout:collapse:<section>` (a band's chevron: `anomalies`, `created`, `watched`, `pinned`, `recent`)
   - `palette:search` and the palette results (list `palette:results`): `palette:item:<key>` with the keys
-    `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `saved:<origin>:<id>` (a saved query), `cmd:<id>`
-    and `recent:<title>`; holding ⌥ shows the selected hit's `peek`
-  - `settings:<page>` and `settings-nav:<page>`
+    `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `saved:<origin>:<id>` (a saved query), `cmd:<id>`,
+    `recent:<title>`, and the switch items of ⌘⇧P (`components/palette/useSwitchItems.ts`)
+    `connection:<identity>` and `database:<name>`; holding ⌥ shows the selected hit's `peek`
+  - `settings:<page>`, `settings-nav` with `settings-nav:<page>` (list `settings-nav`), `settings:close`,
+    `settings:slug:<identity>` (a connection's slug field)
   - `queries:live-interval` on Settings → Queries
   - `appearance:<control>` on Settings → Appearance (`theme`, `light-scheme`, `dark-scheme`, `row-padding`, `max-panes`,
     `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are
@@ -143,13 +164,14 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   - `value:<table>.<column>:<key>` for values that act on click or reveal (primary keys, references, enums,
     serialized data, secrets) and have a provenance (list `values`; label: the raw value); the hover
     indicator of what a click does is decorative and no anchor
-  - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:back`, `toolbar:forward` (only for a table or
+  - chrome: `statusbar`, `statusbar:address`, `toolbar:connection`, `toolbar:database`, `toolbar:back`, `toolbar:forward` (only for a table or
     object tab), `toolbar:search` (opens the palette), `toolbar:connection-health` and `toolbar:retry` (only
     while the active session's connection is lost),
     `statusbar:sidebar` (the ▤ toggle), `statusbar:presets` (opens the Project page),
     `statusbar:pending`, `statusbar:live` (`● live 2 s` while the active column is live; a click ends it)
 
-  Sheets are marked with `data-stage-window`.
+  Sheets are marked with `data-stage-window`. Only `settings` and `palette` become Stage windows
+  (`anchors.ts` `windowOf`); anchors in any other sheet report `main`.
 
   **Removed anchors.** These anchors, views and commands are gone; a presenter script that uses them needs
   the replacement:

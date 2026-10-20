@@ -2,8 +2,7 @@
 
 ## Status
 
-Accepted (2026-10-17). Supersedes [0008](0008-wp-layer-shows-stored-data.md). Being implemented in U4a to
-U4d and U8; `wp/` is removed in U12.
+Accepted (2026-10-17), implemented. Supersedes [0008](0008-wp-layer-shows-stored-data.md).
 
 ## Context
 

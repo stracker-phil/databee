@@ -4,6 +4,13 @@
 > ([docs/plan/ux/](plan/ux/README.md)) deleted the WordPress lens, the lists, favorites and the dashboard
 > it names; its remaining steps were redone against the new code. The other pages in `docs/` describe the
 > current app.
+>
+> Remaining (checked 2026-10-20):
+> - 4.3: `noUncheckedIndexedAccess` is not set in `tsconfig.json`; `vite.config.ts` sets no
+>   `restoreMocks` or `unstubGlobals`.
+> - 3.4: no `memo(QueryTab)` or `memo(TableTab)`; `useWindowSize` in `Splitter.tsx` adds a resize
+>   listener per consumer; `ResultsGrid` virtualizes rows only.
+> - 4.2: inline px styles remain in `ConnectScreen.tsx`.
 
 ## Context
 
@@ -959,6 +966,8 @@ Decisions explicitly not recorded as ADRs (they are implementation choices, go i
 
 ## Target layout after Phase 2
 
+> Superseded by the current tree: "Repository map" in `docs/architecture.md`.
+
 ```
 src-tauri/
   build.rs                    one .plugin(..) line per module
@@ -995,7 +1004,8 @@ src/
 
 **Swap the secret store**: add `src-tauri/src/secrets/<impl>.rs` implementing `SecretStore` (`get`, `set`, `delete`); `pub mod` it in `secrets/mod.rs`; change the one `Box::new(secrets::Keychain)` line in `lib.rs`; optionally delete `keychain.rs` and `security-framework`.
 
-**Add a driver**: `src-tauri/src/db/<engine>/mod.rs` implementing `Database`; an `Engine` variant with its `Dialect`; a `kind` on `ConnectionSpec`; one arm in `db::open`. Nothing in `wp/` changes.
+**Add a driver** (superseded: engines plug in through `trait Connector` in `db/mod.rs`, there is no
+`db::open`): `src-tauri/src/db/<engine>/mod.rs` implementing `Database`; an `Engine` variant with its `Dialect`; a `kind` on `ConnectionSpec`; one arm in `db::open`. Nothing in `wp/` changes.
 
 ## Dependency summary
 

@@ -19,7 +19,8 @@ Ideas not built yet. Not ordered by priority. Shipped features are in the [READM
 
 ## Project page
 - Inferred references collapsed into one group per table with "enable all" / "disable all".
-- Actions listed per table with what they write (the tables and columns of `update`, `delete`, free SQL).
+- Actions listed with what they write (the tables and columns of `update`, `delete`, free SQL), as the
+  Structure view does; the Project page names only the action, its scope and preset (`EntityActionLines`).
 - Kinds folded into a details disclosure per table.
 - Filter by origin (project, preset, inferred, foreign key, edited).
 - Problems: switched-off or edited rules whose coverage got worse than the shipped rule's.
@@ -28,7 +29,8 @@ Ideas not built yet. Not ordered by priority. Shipped features are in the [READM
 - Your changes: open project references on missing tables in their form (the tables may come back).
 
 ## Core client
-- SQLite driver: a second `Driver` variant; the SQL lexer and value model already apply.
+- SQLite driver: an implementation of `Database` and a `Connector` (`db/mod.rs`); the SQL lexer and value
+  model already apply.
 - Export results (CSV/JSON/SQL), and import.
 - SSH tunnels (staging databases), e.g. via `russh`.
 - Stream large results over `tauri::ipc::Channel` instead of one JSON payload.

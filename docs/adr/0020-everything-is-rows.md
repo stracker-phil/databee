@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted (2026-10-17). Being implemented in the UX redesign steps U2b to U12.
+Accepted (2026-10-17), implemented. Amended 2026-10-20.
+
+The views switch with Mod+1 (`object.viewDocument`) and Mod+2 (`object.viewRows`) in
+`src/commands/index.ts`, not with `Tab`.
 
 ## Context
 

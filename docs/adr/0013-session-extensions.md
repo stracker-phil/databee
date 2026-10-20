@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted
+Accepted, amended 2026-10-20.
+
+The WordPress lens named in the context is gone. Today's users of `Session.ext`: `SchemaCache`
+(`src-tauri/src/schema.rs`), `Previews` and `Watches` (`src-tauri/src/document/commands.rs`) and the rules
+cache `RulesCache` (`src-tauri/src/rules/effective.rs`).
 
 ## Context
 

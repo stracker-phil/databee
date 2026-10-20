@@ -19,7 +19,8 @@ These rules hold everywhere in the code. Keep them when you change things.
    what UI tests mock. Stage's is `src/stage/api.ts` (`stageApi`).
    IPC types are camelCase, with one deliberate exception: rule types (`src-tauri/src/rules/`) keep the
    snake_case keys of the preset TOML format, so projects, exports and the page store a rule verbatim.
-3. **Errors are data.** Every command returns `Result<T, AppError>`, which serializes as `{ kind, message, code, account }`.
+3. **Errors are data.** Every command returns `Result<T, AppError>`, which serializes as
+   `{ kind, message, code, account, reason?, sessionReset?, field? }` (`ErrorJson` in `error.rs`).
    The UI branches on `kind` (e.g. `password_required`, `confirmation_required`). Rule form errors
    (`AppError::InvalidField`) add `field: { path, message }`.
 4. **Passwords never touch files, logs or the webview.** They live in the `Secret` type. It redacts in
@@ -44,9 +45,11 @@ These rules hold everywhere in the code. Keep them when you change things.
 │  │ commands/ (registry) │ ◀────────── │  readout/     stage/cmds  │  │
 │  │ api/index.ts, api.ts │   events    ├───────────────────────────┤  │
 │  └──────────────────────┘ launch,     │ AppState: stores, sessions│  │
-│                           command,    │ db/ (dyn Database)       │  │
-│                           stage:*     │ rules/      store/ (JSON) │  │
-│                                       │ secrets (Keychain)        │  │
+│                           command,    │ db/ (dyn Database)        │  │
+│                           remote,     │ rules/      store/ (JSON) │  │
+│                           session_    │ secrets (Keychain)        │  │
+│                           health,     │                           │  │
+│                           stage:*     │                           │  │
 │                                       └──────┬───────┬────────┬───┘  │
 └──────────────────────────────────────────────┼───────┼────────┼──────┘
                          Unix socket (ipc.rs)  │       │ sqlx   │ HTTP 127.0.0.1
@@ -73,6 +76,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/cli.rs ipc.rs        argv parsing, single-instance socket
   src/launch.rs            queue of launch requests + one-shot passwords
   src/remote.rs            requests the page answers (open, command, current), by id with a timeout
+  src/pending.rs           PendingReplies: requests waiting for the reply with their id (remote::Bridge, Stage hub)
   src/deep_link.rs         databee:// links from other apps
   src/mcp/                 `databee mcp`: the read-only MCP server (rmcp, stdio), headless
   src/state.rs session.rs  AppState, open sessions
@@ -109,7 +113,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/lock.rs              poison-tolerant std lock access
   presets/                 built-in presets: wordpress, woocommerce, action-scheduler (docs/presets.md)
   tests/                   integration tests of the database layer (Docker, #[ignore]): mysql.rs, changes.rs,
-                           sql_mode.rs; the others sit next to their module
+                           sql_mode.rs, health.rs; the others sit next to their module
   tauri.conf.json          window, bundle and identifier config
 src/                       React app
   main.tsx modules.ts       boot; the install list (core, then one line per module)
@@ -244,6 +248,8 @@ WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](prese
   stores it and returns its id).
 - `overview/`: `project_rules` (`for_database` loads its inputs), everything the Project page lists (references of every origin, switched-off
   ones included, kinds, styles, presets, the tables rules can name).
+- `profile.rs`: `TableProfile` and `for_table`, a table's rules per column (kinds, references, value styles)
+  and its meta-key rules, incoming references, entities and actions; backs `table_rules` for the Structure view.
 - `draft.rs`: `rule_draft`, a value's column as rules name it and, on a meta value, its meta key.
 
 ## Documents
@@ -301,20 +307,6 @@ source table of the incoming groups (several references from one table share a `
 and one per referenced table. The measured counts are in [database.md](database.md#statement-counts). Each uses the session's query
 timeout on the metadata pool.
 
-**Summaries** (`summary.rs`): one rule gives the summary of a row wherever it shows: the document header,
-peeks, palette hits and the readout's timeline and recent objects. With an entity `summary` (the row's entity,
-picked as `own` picks it): every name in order, a column of the row (any case, named as the table spells it),
-else a meta key of the row's `[[meta]]` tables (the first stored row of the key, the meta tables in rule
-order), else NULL, so a configured field that is empty shows instead of dropping out. Without one: the first
-4 columns outside the primary key that are neither NULL nor `''`, in schema order. Money takes its currency
-from the row's own columns, then its meta keys (also for a meta value in the summary). `summary::rule` is the
-pure rule; `of_document` feeds it the document's own row and meta rows; `of_rows` summarizes rows of one table
-together and reads the meta keys they need (summary names that are no column, and money currencies when a
-summary shows money without one) with one `fk IN (…) AND key IN (…)` query per meta table, only for rows that
-need them; `entities` tests the entity filters of found rows by key (one query, only when the table has
-filtered entities); `of_keys` reads rows again by key with their entities (for document group rows, which may
-hold only some columns). The document header additionally gets `exists` on its reference values.
-
 **Peek** (`peek.rs`): `peek(session_id, address)` returns `Peek { address, key_column, summary, matches }`
 without building a document. For a row address: the row in one query (with its entity, as for `own`) and its
 summary (meta rows only when it needs them); `address` is the row's canonical address. A table address that
@@ -355,6 +347,22 @@ row address, or on a table address without a filter for a table action, without 
 the pending tray applies and undoes it. `plan_action` plans and queues in one step (`actions/plan.rs`,
 `actions/preview.rs`, see [presets.md](presets.md#action)).
 
+### Summaries
+
+`summary.rs`: one rule gives the summary of a row wherever it shows: the document header,
+peeks, palette hits and the readout's timeline and recent objects. With an entity `summary` (the row's entity,
+picked as `own` picks it): every name in order, a column of the row (any case, named as the table spells it),
+else a meta key of the row's `[[meta]]` tables (the first stored row of the key, the meta tables in rule
+order), else NULL, so a configured field that is empty shows instead of dropping out. Without one: the first
+4 columns outside the primary key that are neither NULL nor `''`, in schema order. Money takes its currency
+from the row's own columns, then its meta keys (also for a meta value in the summary). `summary::rule` is the
+pure rule; `of_document` feeds it the document's own row and meta rows; `of_rows` summarizes rows of one table
+together and reads the meta keys they need (summary names that are no column, and money currencies when a
+summary shows money without one) with one `fk IN (…) AND key IN (…)` query per meta table, only for rows that
+need them; `entities` tests the entity filters of found rows by key (one query, only when the table has
+filtered entities); `of_keys` reads rows again by key with their entities (for document group rows, which may
+hold only some columns). The document header additionally gets `exists` on its reference values.
+
 ## Readout
 
 `src-tauri/src/readout/` builds the home page of a database (`databee://<slug>/<db>/`):
@@ -366,7 +374,8 @@ presets' `[[anomaly]]` rules with a non-zero value; `recentlyCreated` is one tim
 every entity with a `created` column (`CreatedItem { entity, table, address, created, summary }`, with each
 entity's query as `CreatedEntity { entity, preset, table, sql, countInWindow, error }`); watched are the
 project's watched values as they are now (`readout/watched.rs`, one query per table they name); pinned are the saved
-queries pinned as count or rows; recent are the row addresses `remember_object` kept per project in
+queries pinned as count or rows, each line with `tables`, the tables its SQL names after `FROM` or `JOIN`
+(`db::lexer::read_tables`); recent are the row addresses `remember_object` kept per project in
 `recent_objects.json` (`store::recent_objects`, at most 20), each with its peek's summary. Details: [presets.md](presets.md#the-readout). The page shows it in the readout tab
 (`src/components/readout/Readout.tsx`, [frontend.md](frontend.md#readout)), opened on connect.
 
@@ -398,12 +407,14 @@ Running `SELECT * FROM wp_options` in a query tab:
 
 1. `QueryTab` calls `store.runQuery(tabId, sql)`.
 2. The store calls `api.execute(sessionId, sql, false)`, which wraps `invoke("execute", …)`.
-3. `db_commands::execute` looks up the `Session`. If `confirm_destructive` is on, it checks the SQL with
-   `db::safety::destructive_reason` and returns `ConfirmationRequired` for statements like `DROP` or an
-   unscoped `DELETE`.
-4. `Database::execute` (`MySqlSession`) runs the whole script on the session's dedicated editor connection with the
-   configured timeout and row limit. It decodes each cell into a typed `Cell` and returns one `ResultSet`
-   per statement.
+3. `db_commands::execute` calls `run_query`. If `confirm_destructive` is on and the run is not confirmed, it
+   checks the SQL with `db::safety::destructive_reason` and returns `ConfirmationRequired` for statements
+   like `DROP` or an unscoped `DELETE`. Only then does it look up the `Session` (`sessions.get`), so the gate
+   holds even for a stale session id.
+4. `Session::execute` runs the script through `health::Guarded` (fails at once while the connection is
+   lost) on `MySqlSession`, the session's dedicated editor connection, with the configured timeout and row
+   limit. Each cell decodes into a typed `Cell`, one `ResultSet` per statement; `annotate_execute` adds the
+   kinds and `CellCache::keep` keeps long cells for `fetch_cell`.
 5. Rust records a history entry and returns `ExecuteResponse` to the store. If an error has kind
    `confirmation_required`, the store opens a confirm dialog and re-runs with `confirmed = true`.
 6. `ResultsGrid` renders the last result set, virtualized.

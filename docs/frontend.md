@@ -24,14 +24,19 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 6. `App.tsx` imports the stylesheets (fonts, the scheme files, `theme.css`, `app.css`) and calls
    `useBackendEvents()` once:
    1. `loadSettings()` loads settings and keybindings. `installCommands()` runs again to apply the user's
-      bindings, then `drainLaunches()` pulls the queued launch requests (`take_launch_events`).
+      bindings, then `drainLaunches()` pulls the queued launch requests (`take_launch_events`) into
+      `handleLaunchEvents` (`session` slice). `loadAccents()` loads the databases' accents.
    2. It subscribes to `launch` (drain again), `command` (menu clicks → `runMenuCommand`), `remote`
       (requests from `databee open` / `databee command` → `answerRemote` in `src/commands/remote.ts`, which
       always replies with `remoteReply`) and `session_health` (`setHealth`, see [Connection health](#connection-health)).
    3. It adds a capture-phase `keydown` → `handleKeydown`, `error` / `unhandledrejection` → error toast,
       `beforeunload` → `flushUiState`, and window `focus` → `retryLostSessions`.
-7. `applyAppearance(settings, systemDark)` and `syncRowHeight()` run whenever settings or the OS appearance
-   change.
+7. `applyAppearance(settings, systemDark, accent ?? settings.accent)` and `syncRowHeight()` run whenever
+   settings, the OS appearance or `selectEffectiveAccent` change.
+
+Launch and remote "open" requests (`handleLaunchEvents`, `handle` in `commands/remote.ts`) go through
+`openFromOutside` (`state/outside.ts`): an address, or an entity shorthand resolved with `api.document`, kept
+with `keepDocument` and opened with `openObject`.
 
 Layout:
 - Without a session, the window shows `ConnectScreen`.
@@ -43,9 +48,9 @@ Layout:
 App
 ├─ ConnectScreen                       (no session)
 └─ .app grid
-   ├─ Toolbar                          connection / database text (pickers), back/forward, search field (palette), icon buttons
-   ├─ Workspace: [Sidebar |] TabBar + TabPanels
-   │       TabPanels → Readout (header, needs attention, recently created, pinned, recently opened; [Readout](#readout))
+   ├─ Toolbar                          connection / database text (pickers), ConnectionHealth, back/forward, search field (palette), icon buttons
+   ├─ Workspace: [Sidebar |] main: TabBar + TabPanels + TableFocus
+   │       TabPanels → Readout (header, needs attention, watched, recently created, pinned, recently opened; [Readout](#readout))
    │                 → QueryTab (QueryEditor, ResultsPane: ResultsGrid | ErrorPanel) [| value column]
    │                 → TableTab (filter bar + ResultsGrid | StructureView) [| value column]
    │                 → ObjectPanel: Trail, then the shown panes with Splitters between them (ObjectColumnView:
@@ -87,7 +92,8 @@ and the state types, so components import everything from `state/store`.
   `icon`, `tooltip`, `stage` (its `data-stage` anchor), `Panel`, and the optional status-bar parts
   `addressHint` (a table's `· filtered`) and `Summary` (a query's results); it is separate because store
   modules must not import components. Behavior only some kinds have stays in a partial per-kind record next
-  to it: change targets (`CHANGE_TARGETS`, `live.ts`), the Stage state line (`TAB_STATE`, `stage/state.ts`).
+  to it: change targets (`CHANGE_TARGETS`, `live.ts`). The Stage state line (`TAB_STATE`, `stage/state.ts`) is
+  a full record too.
   Back/forward and `navigateTab` (`nav.ts`) act on the `DataTab` kinds only, turning one into the other.
 - Slices import each other's reset helpers (`resetSelection`) and pure helpers (`activate`, `remembered`,
   `nextActiveSessionId`), never the store object, except where a module-level helper needs it (`fail`).
@@ -96,13 +102,13 @@ and the state types, so components import everything from `state/store`.
 |---|---|
 | `settings` | `Settings \| null`; null until loaded |
 | `sessions`, `activeSessionId` | open connections (`SessionInfo`, with the connection `slug`) |
-| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error, `valueColumn?`), `TableTab` (database, table, data/structure view, filter, structured `where`, preview, `valueColumn?`) `ObjectTab` (the column stack `columns`, the `active` index, the recorded `stacks`, preview; [Column stack](#column-stack); `DataTab` is a table or object tab, which `navigateTab` turns into each other) `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)) or `ReadoutTab` (database; one per session, [Readout](#readout)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
+| `tabs`, `activeTabId` | `QueryTab` (sql, running, response, error, `valueColumn?`), `TableTab` (database, table, data/structure view, filter, structured `where`, preview, `valueColumn?`) `ObjectTab` (the column stack `columns`, the `active` index, the recorded `stacks`, `paneWidths`, `maximized`, preview; [Column stack](#column-stack); `DataTab` is a table or object tab, which `navigateTab` turns into each other) `ProjectTab` (database, the open rule `form`; [Project tabs](#project-tabs)) or `ReadoutTab` (database; one per session, [Readout](#readout)). Every tab carries `address` and `nav` ([Addresses and history](#addresses-and-history)) |
 | `documents` | `document` replies by `session/<address or shorthand>`, tagged with their `dataVersion` (`loadDocument`, `keepDocument`, `selectDocument`) |
 | `live`, `changeMarks` | live object columns by document key (`{ sessionId, address, id }`, `id` the Rust watch) and change marks by document key or `<session>/q:<tab id>` (a saved query's tab); see [Live mode, snapshots, compare](#live-mode-snapshots-compare) |
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
 | `readouts` | `readout` replies by `session/database`, tagged with their `dataVersion` (`loadReadout`, `openReadout`; `watchValue`, `unwatchValue` and `labelWatched` change the [watched values](#readout) and read a loaded readout again) |
-| `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow, pin, shortcuts, snapshots) |
+| `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow, pin, shortcuts, snapshots, `action`: `{ address, action }` for the `ActionSheet`) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`); the last 20 applied batch ids, for undo; an apply or undo is in flight |
 | `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`, the selected grid cell of a tab (in an object tab: of its active column). `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets a value column and the value commands fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
 | `hover` | `{ src, table, linked, sidebar }` under the pointer (`setHover`, from `useValueHover`): a value's provenance, or a table link (`linked`: a sidebar row, a section band); the status bar shows `src`, the linked table highlight reads `table` |
@@ -113,14 +119,23 @@ and the state types, so components import everything from `state/store`.
 | `uiState` | per connection identity: column widths, pane sizes (the SQL editor), `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group (`selectCollapsedGroups` reads them) |
 | `savedQueries` | by `session/database`: the `SavedEntry` list of `saved_queries` (`loadSavedQueries`, read on every palette opening) |
 | `health` | sessions whose connection is lost (`LostHealth`: Rust's `down` or `reconnecting` `Health`) by session id; a session that is not here is ok (`health` slice, [Connection health](#connection-health)) |
+| `sidebarPanel` | `tables` or `history`, the sidebar's switch (`setSidebarPanel`) |
+| `paletteSeed` | the text the palette opens with (`t:`); `CommandPalette` keys its sheet by it |
+| `projectRules` | `api.projectRules` replies by `session/database`, per `dataVersion` (`loadProjectRules`; [Project tabs](#project-tabs)) |
+| `rulesInfo` | `RulesInfo` by `session/database`: prefix, applied presets, entities, `tableEntities`, table icons ([Table icons](#table-icons)) |
+| `coverage` | reference coverage counts by `session/database` (`CoverageCache`: `generation`, `results`; [Project tabs](#project-tabs)) |
+| `accents` | each database's own accent by `accentKey(slug, database)` ([Styling](#styling)) |
 | `paletteOpen`, `keybindings`, `toasts`, `recentNav` | as named |
 
 Conventions:
 - Components subscribe with narrow selectors (`useStore((s) => s.x)`), and `useShallow` for derived arrays.
 - Event handlers call actions through `useStore.getState()`.
-- Selectors live in `selectors.ts`: `selectActiveSession`, `selectActiveTab`, `selectCanNav`, `selectStructure`,
-  `selectActivePending`, `selectCanUndo`, `selectSidebarHidden`, `selectVisibleDatabases` (the active session's databases without
-  system schemas unless shown or current; use with `useShallow`).
+- Selectors live in `selectors.ts`, among them `selectActiveSession`, `selectActiveTab`, `selectCanNav`, `selectStructure`,
+  `selectDocument`, `selectFocusedValue`, `selectCollapsedGroups`, `selectActivePending`, `selectLastBatch`,
+  `selectCanUndo`, `selectSidebarHidden`, `selectMaxPanes`, `selectMaxCellChars`, `selectNullLabel` and
+  `selectVisibleDatabases` (the active session's databases without system schemas unless shown or current; use
+  with `useShallow`). `state/store` also re-exports slice selectors: `selectEffectiveAccent`,
+  `selectDatabaseAccent` (`project`), `selectChangeTarget`, `selectActiveLive`, `selectCanDismissMarks` (`live`).
 - Store actions wrap API errors in `fail(e, context)`, which shows an error toast and writes the message to
   the Rust log; a `connection_lost` error becomes a short `info` toast (`<context>: connection lost`)
   instead. Components that call `api` directly use the exported `fail` too, and update the UI only
@@ -147,7 +162,8 @@ Conventions:
   and returns focus to the opener on close unless the closing action focused something else. It handles
   Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]`
   pass through). The palette renders inside `Modal` too. Every context menu is `ContextMenu.tsx`: callers build
-  `MenuEntry[]` (items `{ label, action, disabled?, title? }` and `"separator"`) and call `open(anchor, entries)`
+  `MenuEntry[]` (items `MenuItem` `{ label, action, disabled?, title?, detail? }`, `detail` a second line in
+  `.menu-detail`, used by `actionMenu`; and `"separator"`) and call `open(anchor, entries)`
   from `useContextMenu()`, rendering its `element`; the anchor is a pointer event (its default menu is
   suppressed) or a point. The menu portals into `document.body`, so it never inherits the font of the grid or
   document it opened from, and `.menu` in `app.css` sets the UI font itself. It focuses its first item, moves
@@ -163,8 +179,8 @@ Conventions:
 - `disconnect(sessionId)` closes the session in Rust, then applies one `set` that merges every registered
   slice's `sessionClosed` result: the session and the next active session (`session`), its schema and
   `structures` keys (`session`), its tabs, `queryCounter` and the selection if its tab was closed (`tabs`),
-  its `pending` and `applied` entries (`changes`), its `documents` (`objects`), its `savedQueries` (`saved`), its `projectRules` and `rulesInfo` (`project`)
-  and its `readouts` (`readout`), its `live` columns and `changeMarks` (`live`). A slice that keys data by session implements `sessionClosed`.
+  its `pending` and `applied` entries (`changes`), its `documents` (`objects`), its `savedQueries` (`saved`), its `projectRules`, `rulesInfo` and `coverage` (`project`),
+  its `readouts` (`readout`), its `live` columns and `changeMarks` (`live`) and its `health` entry (`health`). A slice that keys data by session implements `sessionClosed`.
 - `switchDatabase` resets the selection and moves the session's readout tab, if it has one, to the new database
   without activating it. `connect` resets the selection and opens the readout of the session's database ([Readout](#readout)), no
   other tab.
@@ -177,8 +193,9 @@ Conventions:
 ## API boundary
 
 Only `api.ts` files import `@tauri-apps/api` or `@tauri-apps/plugin-*`: the core's is `src/api/index.ts`, a
-module's is `src/<module>/api.ts` (Stage: `src/stage/api.ts`) ([ADR 0002](adr/0002-ipc-in-api-files.md)). `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic, plus the event
-subscriptions `onLaunch`, `onCommand`, `onRemote` and `onSessionHealth`. The IPC types are generated from Rust with `ts-rs`
+module's is `src/<module>/api.ts` (Stage: `src/stage/api.ts`) ([ADR 0002](adr/0002-ipc-in-api-files.md)). `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic whose members include
+the event subscriptions (`api.onLaunch`, `api.onCommand`, `api.onRemote`, `api.onSessionHealth`), plus
+`toAppError` and the types. The IPC types are generated from Rust with `ts-rs`
 ([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts` (a module's types into its own folder, e.g. `src/stage/types.gen.ts`); never edit them. `bun run types`
 regenerates them (it runs the `export_bindings_*` tests), and `bun run lint` fails when a committed file is
 stale. `src/api/types.ts` re-exports the generated types plus the few frontend-only ones (`Keybindings`, `PaneSize`, `EMPTY_UI_STATE`, `TEXT_SIZES`, `SETTINGS_LIMITS`, `LOG_LEVELS`,
@@ -195,6 +212,9 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 ```ts
 { id, title, scope, defaultBinding?, when?, run, menu?, fallbackFor? }
 ```
+
+The core commands are `APP_COMMANDS` (`src/commands/index.ts`); their default bindings are listed in
+[ux.md](ux.md#keys).
 
 - **Bindings** are strings like `Mod+Shift+K`, where `Mod` means ⌘. They are normalized to the order
   `Mod, Ctrl, Alt, Shift` and shown as `⌘⇧K`. A trailing `++` is the `+` key (`Mod+Shift++`).
@@ -240,7 +260,7 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   - Enter on a hit (`openHit`) drills into the active object tab's stack (`drill` after its active column),
     else opens an object tab; ⌘↵ (`goAlt`) always opens a tab. A hit whose address is not a row opens with
     `openAddress`. Tables open in the preview tab, pinned with ⌘↵. Holding ⌥ peeks the selected hit
-    (`PeekCard` under its row). `openAddress` of a `?find=<value>` address opens the palette with `=<value>`,
+    (`usePeekHeld`, `palette/usePeekHeld.ts`; `PeekCard` under its row). `openAddress` of a `?find=<value>` address opens the palette with `=<value>`,
     and so does "Find everywhere" on a value.
   - `c:` (`connection.switch`, ⌘⇧P) is the connection switcher, `useSwitchItems` (`palette/useSwitchItems.ts`):
     Connections (open sessions, the active one first, then `api.listRecents` minus the open identities) and
@@ -280,11 +300,11 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 
 | Area | Components |
 |---|---|
-| Shell | `Toolbar` (with `ConnectionHealth`, see [Connection health](#connection-health)), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
+| Shell | `Toolbar` (with `ConnectionHealth`, see [Connection health](#connection-health)), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers; also `usePaneSize` and `useWindowSize`, the SQL editor's persisted height), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
-| Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
-| Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit`), `Tabs`, `tabViews.tsx` (`TAB_VIEWS`; a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
+| Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), `value/useAltHeld.ts` (`useAltHeld`: ⌥ held alone, one shared set of window listeners), see [Values](#values) |
+| Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `WideTable` (a row table that scrolls sideways in its own box; `pinned` keeps a primary-key first column in view; used by `groups` and `ChangeList`), `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
 | Readout | `readout/Readout.tsx`, see [Readout](#readout) |
@@ -359,8 +379,8 @@ registerSettingsPage({ id: "presentations", group: "System", label: "Presentatio
 ### Workspace layout
 
 `App.tsx`: `Main` returns the connect screen or the workspace (`AppShell` wraps the toolbar, pending tray,
-status bar and `PeekOverlay`). In `Workspace`, `main` (`TabBar` +
-`TabPanels`) keeps the same tree position whatever the sidebar does: a hidden sidebar (`view.sidebar`,
+status bar and `PeekOverlay`). In `Workspace`, `main` (`TabBar`,
+`TabPanels`, `TableFocus`) keeps the same tree position whatever the sidebar does: a hidden sidebar (`view.sidebar`,
 `selectSidebarHidden`) leaves an empty slot and adds `no-sidebar`, so CodeMirror history and table pages
 survive. The sidebar width is the `--sidebar-width` token in `theme.css`. There are no inset panels: chrome
 (`--chrome`) and content (`--bg`) meet at `--line` hairlines. Values open as columns, never in a docked pane.
@@ -414,7 +434,9 @@ are rendered, so a hover re-renders nothing; the box keeps its width, so nothing
 effect (the own row's key, no open handler) the icon stands alone. A reference with targets in several tables
 has no leading icon and shows `OpenHint` (an inline `.open-hint`, same `data-open`) after its text, visible on
 the same hover; links outside values without a table icon use it too (a readout value's title, a pinned title,
-"Show rows"). A secret reveals on its own. A style sets `color: var(--style-<name>)`. CSS classes are `val`
+"Show rows"). `LEAD_ICON_CH` (2.5ch) is the width a leading icon adds, `hasLeadIcon(value)` says whether a value
+has one; `ResultsGrid` passes them as `leads` to `useColumnSizing` (`fitWidth(…, lead)`), `groups.tsx` to
+`charWidth(…, LEAD_ICON_CH)`. A secret (`SecretText`) reveals on click, and while ⌥ is held over it (`useAltHeld`). A style sets `color: var(--style-<name>)`. CSS classes are `val`
 and `val-<kind>` (`styles/app.css`, values).
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
@@ -461,7 +483,7 @@ Bare keys never fire in inputs or the editor (`resolveKeydown`).
 | `value.copyRaw` | `y` | copies the stored text (a `longText` cell fetched in full; NULL as empty) |
 | `value.copyCondition` | `Y` | `api.valueCondition(sessionId, database, provenance, raw)`: Rust renders the condition from `ColumnEquals` with the session's `Dialect`; on the value column of a `[[meta]]` table it reads the row's key and returns `` `meta_key` = '…' AND `meta_value` = '…' `` |
 | `value.edit` | `e` | dispatches `EDIT_VALUE_EVENT`; the grid of the active tab that holds the selection, or the active Document view, opens its inline editor there, which queues a core `setCell` on the provenance row through the pending tray (documents: rows with a single-column key, meta rows by their own id) |
-| `value.filter` | `f` | in a table tab, `filterRows(tabId, { column, value })` (nav slice): adds the match to the table tab's structured filter, replacing one on the same column, through `showRows` (so ⌘[ returns); elsewhere it opens the value's table filtered by it in the preview tab |
+| `value.filter` | `f` | `filterByValue`: in a table tab of the value's own table, `filterRows(tabId, { column, value })` (nav slice): adds the match to the table tab's structured filter, replacing one on the same column, through `showRows` (so ⌘[ returns); otherwise it opens the value's table filtered by it in the preview tab |
 | `value.addReference` | `r` | `openRuleForm("reference")`: `api.ruleDraft(sessionId, database, provenance)` (the column as rules name it, the meta key on a meta value), then `openProject` with a prefilled `ReferenceForm` |
 | `value.setKind`, `value.setStyle` | | the same with a `KindForm` or a `StyleForm` (the style takes the value's text) |
 | `value.watch` | | watches the value's cell on the readout of the tab's database (`watchValue(source)`, the `readout` slice's `watchValue`); binary cells too, since the readout reads the cell itself |
@@ -528,6 +550,12 @@ cell shows `ChangePeek` (`grid/ChangePeek.tsx`, portaled to `body`): the shown v
 `value/Peek.tsx` peeks no reference while ⌥ is over a `data-db-change` cell. `onEditingChange` reports the
 inline editor opening and closing.
 
+**Pinned key column:** when the first column holds primary keys, the grid is `grid pinned`: that column stays in
+view while the grid scrolls sideways, and `revealColumn` keeps the selected cell right of it. `markScrolled`
+(`gridHooks.ts`) sets `data-scrolled` on the scrolled box, which draws the pinned column's edge. Document row
+groups do the same with `WideTable pinned` (`keyFirst` in `groups.tsx`). The pinned cells paint `--pin-bg`, which
+`TableFocus` sets for lit rows.
+
 Rust cuts text longer than the `maxCellChars` setting to a `longText { len, preview }` cell
 ([database.md](database.md#cell-decoding)); the grid shows the preview with its length in characters. The
 grid's `source` prop (`{ sessionId, resultId }`) names the result set: editing or copying a `longText` cell
@@ -569,7 +597,9 @@ that page. Settings → Queries "Live check in table tabs" (`tableLiveCheck`, de
 learns changes the page: `TableChangesBar` counts the marked rows above the grid (`changesText`) with a
 Refresh button (the Reload button's action), `TableCheckHint` says in the table head why a tab does not check
 (`no primary key`, a key that is not text, pending changes, a failed check with its message as tooltip), and
-the grid draws the marks (`changes`, [Results grid](#results-grid)).
+the grid draws the marks (`changes`, [Results grid](#results-grid)); the bar adds "⌥ on a marked value shows
+old → new" while rows changed. The check also pauses while the connection is lost (`pausedBy = "connection
+lost"`, hint "live check paused · connection lost").
 
 ### Structure view
 
@@ -665,16 +695,19 @@ the [readout](#readout) lists.
   focused value. A column that is hidden and shown again starts at the top.
 - **Collapse:** every `GroupHeader` has a chevron button (`aria-expanded`, "Collapse/Expand <table>"); it and a
   click on the band outside its buttons call `toggleGroupCollapsed(identity, database, "<document table>::<group id>")`
-  (`ui` slice), stored in `UiState.collapsedGroups` by database (`ui_state.json`, debounced), so the choice holds
+  (`viewState` slice, `slices/viewState.ts`), stored in `UiState.collapsedGroups` by database (`ui_state.json`, debounced), so the choice holds
   for every row of the document's table. `useCollapsedGroups(owner)` reads it for both views. A collapsed group
   keeps its band and drops its body and `+n` button; in Rows its grid does not mount, so nothing is browsed. A
   click or key in the view ends `useViewScroll`'s offset restore, so collapsing does not jump back.
-- **Linked table highlight:** `TableFocus` (in `Workspace`) renders a `<style>` while `hover` is a table link
-  (`linked`): selectors by `data-row-table`, `.sh[data-table]`, other `data-table` links and `.val[data-lead-table]`
-  (a reference's single target table or a key's own table, `leadTable` in `Value.tsx`) light that table in
-  `.main`; with `hover.sidebar` (the link is a sidebar row) the cells of other rows (other tables' rows, readout
-  lines and anomalies), other bands and entity chips drop to `--dimmed`, except cells holding a reference or
-  link into the table. Sidebar
+- **Linked table highlight:** `TableFocus` (`TableFocus.tsx`, inside `main` in `Workspace`) renders a `<style>`
+  while `hover` is a table link (`linked`), so no component subscribes to the hover. In `.main` it lights that
+  table: its rows (`[data-row-table]`) as one `--lit-solid` band, pinned key cells included (`--pin-bg`); its
+  bands (`.sh[data-table]`) `--lit-solid` with an inset accent bar and the name in the accent; other links to it
+  in the accent. References into it from other rows (`.grid-cell:has(> .val[data-lead-table])`, else the
+  `.val[data-lead-table]` itself; `leadTable` in `Value.tsx`) get `--cell`, so they look hovered. With
+  `hover.sidebar` (the link is a sidebar row) the cells of other rows (other tables' rows, readout lines and
+  anomalies), other bands and entity chips drop to `--dimmed`, except cells holding a reference or link into
+  the table. Sidebar
   rows take `lit` for a link or a hovered value of that table: the name in the accent, the icon unchanged, no
   background; only the selected row (`sel`) has one.
 
@@ -732,7 +765,8 @@ tab's pane layout (never stored). The `columns` slice
   provenance's row key, then `fetchCell` for a `longText` cell), so it finds the row whatever the grid's order.
   It writes `text` and `value.raw`, or `missing` when no row has the key, and the `dataVersion` it started at;
   while a plan in `queued` is still pending it only stamps the version, so the edited text stays. A value without
-  provenance (query results) is left alone. The write is dropped when the tab no longer holds that column. Its
+  provenance (query results) is left alone. A failed read stamps the version, keeps the text and toasts "Could
+not reload the value". The write is dropped when the tab no longer holds that column. Its
   callers: `ValueColumnView` (`useCurrentValue`) whenever the column's `version` is older than `dataVersion`
   (⌘R, applied writes, undo, a pane that mounts again after one), and the table tab's Reload button.
 - `popToColumn(tabId, index)` (the close button of a drilled column), `closeRightmostColumn()` (`Esc`,
@@ -774,8 +808,10 @@ document entity, else the table's only entity in `rulesInfo.tableEntities`, else
 value column's column name; `aria-current="location"` on the active one. The crumbs of the shown panes are
 wrapped in `.trail-panes`. Every column crumb calls `setActiveColumn`, so a hidden column shows without closing
 any. `trailUnits(count, start, end, table, steps)` (`lib/trail.ts`) folds hidden crumbs into "…" buttons
-(`TrailMore`, before and after the panes) whose `ContextMenu` lists them; `useFolds` adds one fold per layout
-pass while the `nav` overflows (`scrollWidth > clientWidth`) and starts over when the width, the panes or a
+(`MoreCrumb` for a `TrailMore` unit, before and after the panes) whose `ContextMenu` lists them. They fold in
+`foldOrder`: the columns between the root row and the panes (oldest first), then the root row, then the
+columns right of the panes (newest first), the table last (`foldSteps` counts the steps); shown columns never
+fold. `useFolds` adds one fold per layout pass while the `nav` overflows (`scrollWidth > clientWidth`) and starts over when the width, the panes or a
 crumb change. With nothing left to fold (`.tight`) names end in an ellipsis instead.
 
 **Object header** (`ObjectHeader.tsx`): with a `place` (`ColumnPlace`: tab id and column index, passed by
@@ -795,9 +831,10 @@ collapsed)` (`lib/document.ts`: the values in view order, collapsed groups and t
 value (`openValueAt`: one reference target or another row's key as the next column, the own key toggles the
 view, serialized data as a value column); `columns.close` (Escape, scope `global`) restores a maximized stack, else closes the rightmost column;
 `column.maximize` (⌘⇧↵, scope `object`, no conflict with `editor.runAll` in the `editor` scope) toggles
-maximize of the active pane while `maximizable` holds. They act only while the keyboard focus is in `.stack`,
-the `.trail` or on nothing, never in inputs; the arrows and Enter leave a focused grid or pane divider alone,
-Enter a focused button, Escape an open menu.
+maximize of the active pane while `maximizable` holds. The focus, column and drill keys act only while the
+keyboard focus is in `.stack`, the `.trail` or on nothing, never in inputs; the arrows and Enter leave a
+focused grid or pane divider alone, Enter a focused button. `columns.close` and `column.maximize` work wherever
+the focus is: `canClose` refuses while text is edited or a menu is open, `canMaximize` while a menu is open.
 
 The pane keys are ⌘ combinations (scope `object`), which the registry fires in inputs too, so their `when`
 refuses while text is edited (`isTextInput`: inputs, textareas, CodeMirror) or a menu is open; otherwise they act
@@ -813,7 +850,7 @@ ignores ⌘ and ⌃, so ⌘⌥↵ with ⌥ pressed first does not also open the 
 
 Every view has an address (`databee://<slug>/<database>/<table>/<key>?…`, [architecture](architecture.md#addresses)).
 `lib/address.ts` ports Rust's parser and formatter (`parseAddress`, which throws an `AddressError`,
-`formatAddress`, `sameAddress`, `encodePart`), because addresses are built on every navigation; a Vitest
+`formatAddress`, `sameAddress`), because addresses are built on every navigation; a Vitest
 test checks it against `src/test/fixtures/addresses.json`, which a Rust test writes.
 
 `lib/values.ts` turns a cell into a `Value` (kind and provenance): `valueAt(page, row, col)` for a browse
@@ -868,22 +905,24 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | File | Contents |
 |---|---|
 | `format.ts` | bytes, counts (`formatCount`, `compactCount`), cell text (`cellDisplay` only for `Value`), TSV/JSON export, `relativeTime` |
-| `values.ts` | `valueAt`, `resultValueAt`, `cellValue`, `utcSeconds` (see [Addresses and history](#addresses-and-history)) |
+| `values.ts` | `valueAt`, `resultValueAt`, `cellValue` (see [Addresses and history](#addresses-and-history)) |
 | `coverageProblems.ts` | `coverageProblem(coverage)`: the problem text and row filter of a reference's coverage (values that point nowhere; 0 or NULL never count), `unresolvedCount` |
 | `ruleForms.ts` | the Project page's form state (`ReferenceForm`, `KindForm`, `StyleForm`), prefills from a `RuleDraft` or a listed rule, `referenceRule` / `kindRule` / `styleRule`, `fieldError`, display texts (see [Project tabs](#project-tabs)) |
 | `provenance.ts` | `provenanceText(value)` and `sourceText(provenance)`: the status bar text of a value |
-| `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText`; `columnIndex` (case-insensitive, as MySQL column names are); `singleKey` (a `RowKey` as the `keyColumn` and `key` of a row change; table tabs and Rows view edit by `BrowsePage.keys` from Rust); `DEFAULT_ROW_LIMIT` (the page size before settings load) |
+| `cells.ts` | `CellSource` and `fullCellText`: a cell's full text, fetched for `longText`; `fetchStoredValue` (a value read again by its provenance row, [Column stack](#column-stack)); `columnIndex` (case-insensitive, as MySQL column names are); `singleKey` (a `RowKey` as the `keyColumn` and `key` of a row change; table tabs and Rows view edit by `BrowsePage.keys` from Rust); `DEFAULT_ROW_LIMIT` (the page size before settings load) |
 | `useApiResult.ts` | `useApiResult`, the data loading hook (see [Store](#store), Data loading) |
 | `clipboard.ts` | `copyText` with a success or error toast |
-| `address.ts` | `parseAddress` / `formatAddress`, the port of Rust's `address` module |
+| `address.ts` | `parseAddress` / `formatAddress`, `sameAddress`, `address`, `SCHEME`, `AddressError`: the port of Rust's `address` module |
 | `sql.ts` | statement ranges and the statement at the cursor |
-| `theme.ts` | `applyAppearance` (scheme, the accent in effect, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `applyInitialScheme` (first paint) |
+| `theme.ts` | `applyAppearance` (scheme, the accent in effect, `--pad`, sizes, font families), `resolveScheme` / `useResolvedScheme`, `useSystemDark` (one shared `prefers-color-scheme` query), `useRowHeight` (`--row-h` measured once per appearance change), `syncRowHeight` (re-reads `--row-h` after `applyAppearance`), `applyInitialScheme` (first paint) |
 | `codeTheme.ts` | CodeMirror theme and syntax colors from the scheme's `--code-*` tokens |
 | `document.ts` | object addresses (`objectAddress`, `documentText`, `objectTitle`), `findValue` / `provenanceKey`, group texts (`relationText`, `groupOriginText`, `countText`, `moreText`), `groupAnchors`, `collapseKey`, `focusOrder` |
 | `diff.ts` | change marks of live mode, snapshots and compare (`ChangeMarks`, `withDelta`, `documentMarks`, `compareMarks`, `withRemovedRows`, `FLASH_MS`; see [Live mode, snapshots, compare](#live-mode-snapshots-compare)) |
 | `pins.ts` | a saved query's pin and the pin dialog's choices (`pinChoice`, `pinOf`, `pinLabel`) |
 | `nativeMenu.ts` | `installNativeMenuGuard` (see [Boot](#boot)) |
-| `columns.ts` | the column stack's types (`ObjectColumn`, `ValueColumn`, `StackColumn`, `ColumnStack`), `objectColumn`, `objectColumnAt`, `columnName` / `columnLabel`, `shownColumns` (see [Column stack](#column-stack)) |
+| `columns.ts` | the column stack's types (`ObjectColumn`, `ValueColumn`, `StackColumn`, `ColumnStack`), `objectColumn`, `objectColumnAt`, `columnName` / `columnLabel`, `shownColumns`, `maximizable`, `paneShares`, `MIN_PANE_WIDTH`, `DIVIDER_WIDTH`, `DEFAULT_MAX_PANES` (see [Column stack](#column-stack)) |
+| `tableCheck.ts` | the table tab's live check (`TABLE_CHECK_MS`, `RowChange`, `TableCheckState`, `freshCheck`, `withHashes`, `rowsToRead`, `withRows`, `changeCounts`, `changesText`; see [Table tabs](#table-tabs)) |
+| `trail.ts` | the trail's folding (`TrailUnit`, `TrailMore`, `trailUnits`, `foldSteps`; see [Column stack](#column-stack)) |
 
 ### Project tabs
 
@@ -1028,11 +1067,12 @@ list above 200:
 
 Store subscriptions return primitives or stable references (`useShallow` for filtered arrays), so hovering
 re-renders only what shows the hover: the status bar's address slot (`hover.src`, else the focused value
-from `selectFocusedValue`, whose text it builds in render) and a `GroupHeader` whose band lights for the
-hovered table. The object view itself does not subscribe to `hover`.
+from `selectFocusedValue`, whose text it builds in render). The linked table highlight is `TableFocus`'s
+`<style>`, so neither the object view nor `GroupHeader` subscribes to `hover`.
 
-Measured with React Profiler in jsdom (`components/object/rendering.test.tsx`; actual render durations, so
-the ratios matter, not the milliseconds):
+Measured with React Profiler in jsdom (actual render durations, so the ratios matter, not the milliseconds);
+`components/object/rendering.test.tsx` keeps the bounded window of meta keys and the zero commits on value
+hovers as assertions:
 
 | | order 4711 | 5,000-key meta group, before | after |
 |---|---|---|---|
@@ -1040,7 +1080,6 @@ the ratios matter, not the milliseconds):
 | first render (sum of commits) | 24 ms | 352 ms | 35 ms |
 | focus change (`focusObject`) | 0.8 ms | 54 ms | 1.6 ms |
 | 50 value hovers: object view commits | 0 | 0 | 0 |
-| 50 linked-table hovers: object view commits | 49 (`GroupHeader` only, 0.08 ms each) | 49 | 49 |
 
 The `wp_write` fixture's post 9701 has 5,000 meta keys ([testing.md](testing.md#docker-fixtures)) for trying
 the long group and the Rows grid in the app.
@@ -1063,12 +1102,13 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
   `src/api/types.ts`.
 - **No color literals** (`#hex`, `rgb(`, `hsl(`) outside `styles/schemes/`. Everything else uses a token or
   a `color-mix()` of tokens.
-- **Derived tokens.** `theme.css` derives the opacity levels (`--o2`, `--o3`), the accent mixes (`--cell`,
-  `--sel`, `--lit-solid`), `--accent` from `html[data-accent]` (default orange), the type sizes (`--fs-*`) and the
-  row height `--row-h` from `--pad`.
+- **Derived tokens.** `theme.css` derives the opacity levels (`--o2`, `--o3`, `--dimmed` at 0.3), the accent
+  mixes (`--cell`, `--sel`, `--lit-solid`), `--accent` from `html[data-accent]` (default orange), the type sizes
+  (`--fs-*`) and the row height `--row-h` from `--pad`. `--bg-quiet` is a scheme token (`schemes/*.css`), not
+  derived.
 - **Accent per database.** `data-accent` is the accent in effect, `selectEffectiveAccent` (`project` slice):
   the active session's current database's own accent, else `settings.accent` (also on the connect screen).
-  `App.tsx` passes it to `applyAppearance(settings, systemDark, accent)`, so switching the session, the
+  `App.tsx` passes it to `applyAppearance(settings, systemDark, accent ?? settings.accent)`, so switching the session, the
   database or the accent applies at once. The project slice keeps `accents` by `accentKey(slug, database)`
   (`api.projectAccents`, loaded at startup and after `renameConnectionSlug`); every session of a connection
   shares them. `setAccent(sessionId, database, accent)` stores one through `api.projectSetAccent` and patches
@@ -1106,7 +1146,8 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
 
   `createApiMock()` returns every `api` function as a `vi.fn()` with harmless defaults.
 - **Fixtures.** `src/test/fixtures.ts` provides `connectedStore()`, `resultSet()`, `queryTab()` and cell helpers.
-  `src/test/settings.ts` provides default settings; `objectFixtures.ts`, `projectFixtures.ts`,
+  `src/test/settings.ts` provides default settings, `session.ts` a `session`, `now.ts` the fixed time `NOW`,
+  `iconFixtures.ts` table icons (`rulesInfoOf`, `showTableIcons`); `objectFixtures.ts`, `projectFixtures.ts`,
   `paletteFixtures.ts` and `columnFixtures.tsx` the data of their views.
 - **Style.** Query by role or text, drive the UI with `userEvent`, and assert what is visible or which API
   call was made. Reset with `resetStore()` or `connectedStore()` in `beforeEach`.
