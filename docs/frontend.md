@@ -150,8 +150,8 @@ Conventions:
   suppressed) or a point. The menu portals into `document.body`, so it never inherits the font of the grid or
   document it opened from, and `.menu` in `app.css` sets the UI font itself. It focuses its first item, moves
   with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
-- Writes: `queueChange` asks Rust to plan a row edit (`planChange`), keeps the returned plan and resolves to its id
-  (null when refused); `queueActionPreview(sessionId, id)` queues the plan of a rule action's preview (`queueActionPreview`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
+- Writes: `queueChange` asks Rust to plan a row edit (`planChange`), keeps the returned plan with the table it
+  writes (`target`) and resolves to its id (null when refused); `queueActionPreview(sessionId, id)` queues the plan of a rule action's preview (`queueActionPreview`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
   (`undoBatch`); `discardChange` / `discardAll` drop plans in Rust too. The page never sends SQL to write.
 - In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
@@ -510,7 +510,12 @@ column); Enter on a reference with one target opens it, on serialized data or lo
 full text; otherwise double-click and Enter edit. Keys live in `KEY_ACTIONS` (arrows, Home/End,
 PageUp/PageDown, Enter, ⌘C). `owner` names the object whose rows a grid shows (Rows view), `focus` selects and
 reveals a cell (the focus carried over from the Document view). `bytes`
-cells are never editable: they show a `0x…` preview, which an edit would write back.
+cells are never editable: they show a `0x…` preview, which an edit would write back. `changes` (a table tab's
+live check, `RowChange` by row index) marks rows (`db-changed`, `db-removed`) and the cells whose stored
+value differs (`db-changed`, `db-flash` within `FLASH_MS` of being seen, `data-db-change`); ⌥ held over such a
+cell shows `ChangePeek` (`grid/ChangePeek.tsx`, portaled to `body`): the shown value → the stored one.
+`value/Peek.tsx` peeks no reference while ⌥ is over a `data-db-change` cell. `onEditingChange` reports the
+inline editor opening and closing.
 
 Rust cuts text longer than the `maxCellChars` setting to a `longText { len, preview }` cell
 ([database.md](database.md#cell-decoding)); the grid shows the preview with its length in characters. The
@@ -538,6 +543,22 @@ filter is not addressable). The tab's `where` goes into every browse request nex
 button calls `showRows` with no matches, which records the filtered address for back. The Reload button
 (`table:reload`) fetches the page again and calls `reloadValueColumn(tab, null)`, so a value column opened from the
 grid reads its value again too ([Column stack](#column-stack)).
+
+**Live check** (`TableCheck.tsx`, pure state in `lib/tableCheck.ts`): `useTableCheck(tab, page, { hasPrimaryKey,
+editing, loading })` reads the checksums of the page's rows (`api.tableCheck`) right after each page loads (its
+result id: Refresh, paging, a filter, ⌘R or an applied write start over), as the baseline, then every
+`TABLE_CHECK_MS` (4 s) while the tab is the active tab, the window has the focus and is visible, no page is
+loading, the grid's inline editor is closed (`onEditingChange`) and no pending plan writes the table (a pending
+item's `target`; a rule action's plan has none and counts as writing any table). A tab in the background, a
+filter or a sort never pause it: rows are read by key. `withHashes` marks a row `changed` (another checksum) or
+`removed` (none) and unmarks one back at its baseline; `rowsToRead` picks the changed rows not read at their
+current checksum yet, which one `api.tableCheckRows` reads; `withRows` keeps their stored cells and changed
+columns. One check runs at a time; a reply for an earlier page is dropped. A failed check stops checking for
+that page. Settings → Queries "Live check in table tabs" (`tableLiveCheck`, default on) turns it off. Nothing it
+learns changes the page: `TableChangesBar` counts the marked rows above the grid (`changesText`) with a
+Refresh button (the Reload button's action), `TableCheckHint` says in the table head why a tab does not check
+(`no primary key`, a key that is not text, pending changes, a failed check with its message as tooltip), and
+the grid draws the marks (`changes`, [Results grid](#results-grid)).
 
 ### Structure view
 

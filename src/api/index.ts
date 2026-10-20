@@ -50,6 +50,10 @@ import type {
   Home,
   ValueCount,
   TableStructure,
+  TableCheck,
+  TableCheckRequest,
+  TableCheckRowsRequest,
+  CheckedRow,
   UiState,
 } from "./types";
 
@@ -98,6 +102,10 @@ export const api = {
     invoke<string>("fetch_cell", { sessionId, resultId, row, col }),
   browseTable: (sessionId: string, request: BrowseRequest) =>
     invoke<BrowsePage>("browse_table", { sessionId, request }),
+  /** The live check of a table tab: one checksum per shown row by key, null for a row that is gone. */
+  tableCheck: (sessionId: string, request: TableCheckRequest) => invoke<TableCheck>("table_check", { sessionId, request }),
+  /** Shown rows as stored now, with the columns whose value differs from the shown cells. */
+  tableCheckRows: (sessionId: string, request: TableCheckRowsRequest) => invoke<CheckedRow[]>("table_check_rows", { sessionId, request }),
   /** Checks an address against the session (slug, database, table, key) and returns its canonical form. */
   resolveAddress: (sessionId: string, address: string) => invoke<Resolved>("resolve_address", { sessionId, address }),
   /** Declared foreign keys, project and preset references, and same-name references from and to a table. */

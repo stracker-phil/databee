@@ -93,7 +93,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     (`+n rows`), `also:<group id>` (the "Also linked" tables), `alternative:<row address>`; live mode and
     snapshots: `changes` (the change list at the bottom of a column or a saved query's tab) with its lines
     `change:<index>` (list `changes`, oldest first, label `<table> <column or key>`), `compare` (two rows side
-    by side, `?compare=`); the snapshot list (`object.sinceSnapshot`, `query.sinceSnapshot`):
+    by side, `?compare=`); a table tab's live check: `table:changes` (the bar above the grid, only while rows
+    are marked) and `table:live-check` (the hint why the tab does not check); the snapshot list (`object.sinceSnapshot`, `query.sinceSnapshot`):
     `snapshot:<id>` (list `snapshots`, newest first, label: the snapshot's label) and `snapshot:delete:<id>`
   - the column stack: `column:<index>` on each pane shown (list `columns`, label `table #key`; hidden
     columns have none), `pane-divider:<index>` (the divider right of pane `<index>`, label `Resize <left> and

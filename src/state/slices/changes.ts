@@ -3,9 +3,15 @@ import { fail } from "../requests";
 import { selectActivePending, selectActiveSession, selectLastBatch } from "../selectors";
 import type { Slice } from "../store";
 
+/** The table a planned row edit writes; a rule action's plan has none, as it may write any table. */
+export interface ChangeTarget {
+  database: string;
+  table: string;
+}
+
 export interface ChangesSlice {
   /** Planned edits waiting for review, and applied batches that can be undone. */
-  pending: (PlannedChange & { sessionId: string })[];
+  pending: (PlannedChange & { sessionId: string; target?: ChangeTarget })[];
   applied: { sessionId: string; batchId: number; canUndo: boolean }[];
   /** An apply or undo is in flight; both refuse to start another. */
   applying: boolean;
@@ -36,10 +42,10 @@ export const changesSlice: Slice<ChangesSlice> = {
     };
 
     /** Keeps the plan Rust returns; a refused plan becomes an error toast. */
-    const queue = async (sessionId: string, plan: () => Promise<PlannedChange>) => {
+    const queue = async (sessionId: string, plan: () => Promise<PlannedChange>, target?: ChangeTarget) => {
       try {
         const planned = await plan();
-        set((s) => ({ pending: [...s.pending, { ...planned, sessionId }] }));
+        set((s) => ({ pending: [...s.pending, { ...planned, sessionId, target }] }));
         return planned.id;
       } catch (e) {
         fail(e, "Cannot prepare change");
@@ -56,7 +62,7 @@ export const changesSlice: Slice<ChangesSlice> = {
       async queueChange(change) {
         const session = selectActiveSession(get());
         if (!session) return null;
-        return queue(session.id, () => api.planChange(session.id, change));
+        return queue(session.id, () => api.planChange(session.id, change), { database: change.database, table: change.table });
       },
 
       async queueActionPreview(sessionId, id) {

@@ -4,10 +4,13 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import type { Address, Cell, ColumnMeta, Value as StoredValue } from "../api";
 import type { CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
+import { FLASH_MS } from "../lib/diff";
+import type { RowChange } from "../lib/tableCheck";
 import { useRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
 import { useContextMenu, type MenuEntry } from "./ContextMenu";
 import { cellMenu } from "./grid/cellMenu";
+import { ChangePeek } from "./grid/ChangePeek";
 import { useCellEditing } from "./grid/useCellEditing";
 import { useColumnSizing } from "./grid/useColumnSizing";
 import { markScrolled, useEditValueCommand, useFocusCell, useRowValues, type CellPos } from "./gridHooks";
@@ -40,6 +43,10 @@ interface Props {
   focus?: CellPos | null;
   /** The menu of a column header (right-click), opened where the pointer is. */
   columnMenu?: (col: number, at: { x: number; y: number }) => MenuEntry[] | Promise<MenuEntry[]>;
+  /** Rows the database changed or removed since they were read, by row index (a table tab's live check). */
+  changes?: Readonly<Record<number, RowChange>>;
+  /** Called when the inline editor opens (true) or closes (false). */
+  onEditingChange?: (editing: boolean) => void;
 }
 
 /** Viewport the virtualizer assumes until the first layout measurement, so the first frame already has rows. */
@@ -48,11 +55,27 @@ const INITIAL_VIEWPORT = { width: 1000, height: 800 };
 const samePos = <T extends CellPos>(a: T | null, row: number, col: number): a is T => a?.row === row && a.col === col;
 
 /** Numbers align right; everything else about a kind is drawn by `Value` (docs/ux.md, Value grammar). */
-function cellClass(cell: Cell, row: number, col: number, marks: { selected: CellPos | null; editing: CellPos | null }): string {
+function cellClass(cell: Cell, row: number, col: number, marks: { selected: CellPos | null; editing: CellPos | null; change: RowChange | undefined }): string {
   let name = cell.t === "number" ? "grid-cell num" : "grid-cell";
   if (samePos(marks.selected, row, col)) name += " selected";
   if (samePos(marks.editing, row, col)) name += " editing";
+  if (marks.change && storedCell(marks.change, col)) name += Date.now() - marks.change.at < FLASH_MS ? " db-changed db-flash" : " db-changed";
   return name;
+}
+
+/** The stored value of a cell the database changed, once the check read it. */
+function storedCell(change: RowChange | undefined, col: number): Cell | undefined {
+  return change?.kind === "changed" && change.columns.includes(col) ? change.cells?.[col] : undefined;
+}
+
+const rowChangeClass = (change: RowChange | undefined) => (change ? (change.kind === "removed" ? " db-removed" : " db-changed") : "");
+
+function useEditingChange(editing: boolean, onEditingChange: ((editing: boolean) => void) | undefined) {
+  const notify = useRef(onEditingChange);
+  useEffect(() => {
+    notify.current = onEditingChange;
+  });
+  useEffect(() => notify.current?.(editing), [editing]);
 }
 
 /** The table every sourced value of a row is stored in, when they share one, for the linked table highlight. */
@@ -97,7 +120,7 @@ function revealColumn(grid: HTMLElement | null, widths: number[], col: number, p
   else if (right > grid.scrollLeft + grid.clientWidth) grid.scrollLeft = Math.min(left, right - grid.clientWidth);
 }
 
-export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus, columnMenu }: Props) {
+export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus, columnMenu, changes, onEditingChange }: Props) {
   const selectCell = useStore((s) => s.selectCell);
   const rowHeight = useRowHeight();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -110,6 +133,9 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
     setSelected(null);
   }
   const { editing, startEdit, withFullText, setText, cancel, commit } = useCellEditing(rows, source, onEditCell);
+  useEditingChange(editing !== null, onEditingChange);
+  const [peek, setPeek] = useState<(CellPos & { anchor: DOMRect; altHeld: boolean }) | null>(null);
+  const peekStored = peek && rows[peek.row] ? storedCell(changes?.[peek.row], peek.col) : undefined;
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -225,7 +251,10 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
       ref={scrollRef}
       tabIndex={0}
       onKeyDown={onKeyDown}
-      onScroll={pinned ? markScrolled : undefined}
+      onScroll={(e) => {
+        if (pinned) markScrolled(e);
+        if (peek) setPeek(null);
+      }}
       role="grid"
       aria-rowcount={rows.length}
       style={colVars}
@@ -267,14 +296,18 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
         {virtualizer.getVirtualItems().map((v) => {
           const row = rows[v.index];
           const values = rowValues(v.index);
+          const change = changes?.[v.index];
           return (
-            <div key={v.key} className="grid-row" role="row" data-row-table={rowTable(values)} style={{ top: v.start, height: rowHeight, width: totalWidth }}>
+            <div key={v.key} className={`grid-row${rowChangeClass(change)}`} role="row" data-row-table={rowTable(values)} style={{ top: v.start, height: rowHeight, width: totalWidth }}>
               {row.map((cell, ci) => (
                 <div
                   key={ci}
                   role="gridcell"
-                  className={cellClass(cell, v.index, ci, { selected, editing })}
+                  className={cellClass(cell, v.index, ci, { selected, editing, change })}
                   style={{ width: `var(--col-${ci})` }}
+                  data-db-change={storedCell(change, ci) ? "" : undefined}
+                  onMouseEnter={storedCell(change, ci) ? (e) => setPeek({ row: v.index, col: ci, anchor: e.currentTarget.getBoundingClientRect(), altHeld: e.altKey }) : undefined}
+                  onMouseLeave={storedCell(change, ci) ? () => setPeek(null) : undefined}
                   onMouseDown={() => select(v.index, ci)}
                   onDoubleClick={() => openOrEdit({ row: v.index, col: ci }, false)}
                   onContextMenu={(e) => openMenu(e, v.index, ci)}
@@ -304,6 +337,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
       </div>
       {menu.element}
       {targetMenu}
+      {peek && peekStored && <ChangePeek altHeld={peek.altHeld} column={columns[peek.col].name} shown={rows[peek.row][peek.col]} stored={peekStored} anchor={peek.anchor} />}
     </div>
   );
 }

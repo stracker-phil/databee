@@ -12,6 +12,7 @@ import { ErrorPanel } from "./ErrorPanel";
 import { InsetField } from "./Field";
 import { ResultsGrid } from "./ResultsGrid";
 import { StructureView } from "./structure/StructureView";
+import { TableChangesBar, TableCheckHint, useTableCheck } from "./TableCheck";
 import { ValueCounts, type ValueCountsTarget } from "./ValueCounts";
 
 /** Paging and sort; the filters live on the tab, which back and forward change. */
@@ -193,6 +194,8 @@ function DataView({ tab }: { tab: TableTabState }) {
   const [savedWidths, saveWidths] = useColumnWidths(identity, tab);
   const [counts, setCounts] = useState<ValueCountsTarget | null>(null);
   const filterRows = useStore((s) => s.filterRows);
+  const [editing, setEditing] = useState(false);
+  const live = useTableCheck(tab, page, { hasPrimaryKey: (structure?.primaryKey.length ?? 0) > 0, editing, loading });
 
   const columnMenu = (col: number, at: { x: number; y: number }): MenuEntry[] => {
     const column = page?.result.columns[col]?.name;
@@ -234,6 +237,7 @@ function DataView({ tab }: { tab: TableTabState }) {
         <button data-stage="table:reload" className="icon-btn" aria-label="Reload" title="Reload" onClick={() => reloadWithValue(tab.id, reload)}>
           {loading ? <Loader2 size="1rem" className="spin" /> : <RefreshCw size="1rem" />}
         </button>
+        <TableCheckHint status={live.status} />
         {structureError && (
           <span className="hint" role="alert" title={structureError.message}>
             <AlertTriangle size="0.846rem" style={{ verticalAlign: -1 }} /> Editing unavailable: the table structure did not load ({structureError.message})
@@ -248,6 +252,7 @@ function DataView({ tab }: { tab: TableTabState }) {
           onOffset={(offset) => setBrowse((b) => ({ ...b, offset }))}
         />
       </div>
+      {!error && <TableChangesBar rows={live.rows} onRefresh={() => reloadWithValue(tab.id, reload)} />}
       {error ? (
         <ErrorPanel message={error.message} code={error.code} />
       ) : page ? (
@@ -263,6 +268,8 @@ function DataView({ tab }: { tab: TableTabState }) {
           rowActions={rowActions}
           onEditCell={onEditCell}
           columnMenu={columnMenu}
+          changes={live.rows}
+          onEditingChange={setEditing}
         />
       ) : (
         <div className="empty-state">Loading…</div>

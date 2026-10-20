@@ -33,6 +33,14 @@ impl Cell {
             Cell::Null | Cell::Bytes { .. } | Cell::LongText { .. } => None,
         }
     }
+
+    /// The cell as it crosses IPC: text beyond `limit` characters becomes a `LongText` preview.
+    pub fn limited(self, limit: CellLimit) -> Cell {
+        match self {
+            Cell::Text(text) => shorten(text, limit),
+            cell => cell,
+        }
+    }
 }
 
 /// The most characters a text cell carries across IPC; longer text becomes a `LongText` preview.
@@ -49,10 +57,7 @@ const HEX_PREVIEW_BYTES: usize = 16;
 /// Converts a raw text-protocol value into a `Cell` of its column's family; text beyond
 /// `limit` characters becomes a `LongText` preview.
 pub(crate) fn decode(family: Family, raw: Option<&[u8]>, limit: CellLimit) -> Cell {
-    match decode_full(family, raw) {
-        Cell::Text(text) => shorten(text, limit),
-        cell => cell,
-    }
+    decode_full(family, raw).limited(limit)
 }
 
 fn decode_full(family: Family, raw: Option<&[u8]>) -> Cell {

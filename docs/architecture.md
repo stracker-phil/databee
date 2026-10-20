@@ -89,6 +89,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/search/              the palette's search: ids, people, external ids, find everywhere
   src/saved/               saved queries: project, global and preset pinned ones; the favorites migration
   src/value_counts.rs      value counts of one column
+  src/table_check.rs       the live check of table tabs: checksums of the shown rows by key, changed rows read again
   src/statement_counts.rs  test-only: statements per object view, palette, readout and coverage (database.md)
   src/dev.rs               debug builds only: window frame, background launch, eval for scripts/dev
   src/commands.rs          settings, keybindings, history, misc

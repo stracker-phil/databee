@@ -206,6 +206,24 @@ export type ChangeRequest = { "type": "setCell", database: string, table: string
 export type ChangedRule = "reference" | "valueStyle" | "kind" | "icon" | "prefix" | "networkPrefix" | "presets" | "unknown";
 
 /**
+ * A shown row as it is stored now; a row that is gone is left out.
+ */
+export type CheckedRow = { row: number, 
+/**
+ * The checksum these cells have.
+ */
+hash: string, 
+/**
+ * In `columns` order, cut like a page's cells.
+ */
+cells: Array<Cell>, 
+/**
+ * The columns whose stored value differs from the shown one. Empty when only a part the
+ * page does not show changed (binary values beyond their preview).
+ */
+changed: Array<number>, };
+
+/**
  * `column = value`, or `column IS NULL` for a `None` value.
  */
 export type ColumnEquals = { column: string, value: string | null, };
@@ -1120,13 +1138,27 @@ maxPanes: number, rowLimit: number, queryTimeoutSecs: number,
 /**
  * How often a live object column reads its row again.
  */
-liveIntervalSecs: number, confirmDestructive: boolean, nullLabel: string, 
+liveIntervalSecs: number, 
+/**
+ * A table tab checks the rows it shows against the database every few seconds.
+ */
+tableLiveCheck: boolean, confirmDestructive: boolean, nullLabel: string, 
 /**
  * Longer text cells cross IPC as a preview; `fetch_cell` returns the full value.
  */
 maxCellChars: number, connectTimeoutSecs: number, defaultPort: number, showSystemSchemas: boolean, logLevel: LogLevel, };
 
 export type ShippedIcon = { preset: string, icon: TableIcon, pattern: string, };
+
+export type ShownRow = { 
+/**
+ * The row's index in the page.
+ */
+row: number, key: RowKey, 
+/**
+ * In `columns` order.
+ */
+cells: Array<Cell>, };
 
 /**
  * What changed since snapshot `id`: its address read now against the stored cells.
@@ -1230,6 +1262,26 @@ export type SummaryValue = {
  * The column as the table spells it, or the meta key.
  */
 name: string, value: Value, };
+
+export type TableCheck = { 
+/**
+ * One per key, in request order: the stored row's checksum, `None` when no row has the key.
+ */
+hashes: Array<string | null>, };
+
+/**
+ * The rows of a page by primary key, and the page's columns the checksum covers.
+ */
+export type TableCheckRequest = { database: string, table: string, columns: Array<string>, keys: Array<RowKey>, };
+
+/**
+ * Rows whose checksum moved, with the cells the page shows for them.
+ */
+export type TableCheckRowsRequest = { database: string, table: string, columns: Array<string>, 
+/**
+ * The page's result set, whose long text cells the session keeps in full.
+ */
+resultId: number, rows: Array<ShownRow>, };
 
 /**
  * The icons a rule may name (lucide names; the page maps each to its component). Every table

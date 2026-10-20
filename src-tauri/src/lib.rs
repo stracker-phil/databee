@@ -31,6 +31,7 @@ mod state;
 #[cfg(test)]
 mod statement_counts;
 mod store;
+mod table_check;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_support;
 mod value;
@@ -345,6 +346,8 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             saved::commands::remove_saved_query,
             saved::commands::copy_preset_query_to_project,
             value_counts::value_counts,
+            table_check::table_check,
+            table_check::table_check_rows,
             readout::commands::readout,
             readout::commands::remember_object,
         ])
