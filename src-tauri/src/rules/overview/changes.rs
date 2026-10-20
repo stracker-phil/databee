@@ -1102,9 +1102,9 @@ icon = "list"
     }
 
     #[test]
-    fn a_project_icon_none_over_a_preset_icon_is_an_edit() {
+    fn a_project_table_icon_over_a_preset_icon_is_an_edit() {
         let lines = changes(Project {
-            icons: vec![icon_rule("threads", TableIcon::None)],
+            icons: vec![icon_rule("threads", TableIcon::Table)],
             ..project()
         });
 
@@ -1118,7 +1118,7 @@ icon = "list"
                 ..line(
                     ChangeAction::Edited,
                     ChangedRule::Icon,
-                    "f_threads · none",
+                    "f_threads · table",
                     remove_icon("threads"),
                 )
             }]

@@ -98,10 +98,10 @@ describe("Value", () => {
         expect(icon(container)).toBeNull();
       });
 
-      it("shows no icon for a table without one", () => {
+      it("shows the default table icon for a table without a rule icon", () => {
         showTableIcons({ wp_posts: "file-text" });
         const { container } = render(<Value value={reference()} />);
-        expect(icon(container)).toBeNull();
+        expect(icon(container)).toHaveAttribute("data-icon", "table");
       });
 
       it("loads the database's icons when they are not known yet", async () => {
@@ -164,6 +164,80 @@ describe("Value", () => {
     it("is absent without an open handler", () => {
       const { container } = render(<Value value={reference()} />);
       expect(container.querySelector("[data-open]")).toBeNull();
+    });
+
+    it("has no hover overlay beside the value", () => {
+      const { container } = render(opener(reference(), "grid", null));
+      expect(container.querySelector(".val-acts")).toBeNull();
+    });
+
+    describe("leading table icon", () => {
+      const twoTables = value({ raw: num("12"), kind: { kind: "reference", targets: [row("wp_users", "12"), row("wp_posts", "12")], by: preset, exists: true } });
+      const swapOf = (container: HTMLElement) => container.querySelector(".open-swap");
+
+      beforeEach(() => showTableIcons({ wp_posts: "file-text", wp_users: "user" }));
+
+      it.each<["grid" | "full", boolean]>([
+        ["grid", true],
+        ["grid", false],
+        ["full", true],
+        ["full", false],
+      ])("shows the table icon of a key with a row address in %s density (open handler: %s)", (density, handler) => {
+        const { container } = render(<Value value={key(row("wp_posts", "7"))} density={density} onOpen={handler ? vi.fn<OpenValue>() : undefined} />);
+        expect(container.querySelector("[data-icon=file-text]")).not.toBeNull();
+      });
+
+      it("swaps the icon of another row's key for the drill indicator in a column stack", () => {
+        const { container } = render(inColumn(opener(key(row("wp_posts", "7")), "full", row("wp_posts", "8"))));
+        expect(container.querySelector(".open-swap[data-open=drill] [data-icon=file-text]")).not.toBeNull();
+      });
+
+      it("swaps the icon of another row's key for the go indicator outside a column stack", () => {
+        const { container } = render(opener(key(row("wp_posts", "7")), "grid", null));
+        expect(container.querySelector(".open-swap[data-open=go] [data-icon=file-text]")).not.toBeNull();
+      });
+
+      it("shows the icon of the shown row's own key without an indicator", () => {
+        const { container } = render(inColumn(opener(key(row("wp_posts", "7")), "full", row("wp_posts", "7"))));
+        expect(container.querySelector("[data-icon=file-text]")).not.toBeNull();
+        expect(container.querySelector("[data-open]")).toBeNull();
+      });
+
+      it("shows no icon for a key with a table address", () => {
+        const { container } = render(opener(key(wholePosts), "full", null));
+        expect(container.querySelector("[data-icon]")).toBeNull();
+      });
+
+      it("swaps the icon of a reference into one table for the indicator", () => {
+        const { container } = render(opener(reference(), "grid", null));
+        expect(container.querySelector(".open-swap[data-open=go] [data-icon=user]")).not.toBeNull();
+        expect(container.querySelector(".open-hint")).toBeNull();
+      });
+
+      it("shows an inline indicator after a reference into several tables, without an icon", () => {
+        const { container } = render(opener(twoTables, "grid", null));
+        expect(container.querySelector("[data-icon]")).toBeNull();
+        expect(swapOf(container)).toBeNull();
+        expect(container.querySelector(".open-hint[data-open]")).not.toBeNull();
+      });
+
+      it("shows no inline indicator after a reference into several tables without an open handler", () => {
+        const { container } = render(<Value value={twoTables} />);
+        expect(container.querySelector("[data-open]")).toBeNull();
+      });
+    });
+
+    describe("serialized marker", () => {
+      it("swaps the ▸ of serialized data in a grid for the drill indicator", () => {
+        const { container } = render(opener(serialized, "grid", null));
+        expect(container.querySelector(".open-swap[data-open=drill] .ser-mark")).toHaveTextContent("▸");
+      });
+
+      it("keeps a plain ▸ without an open handler", () => {
+        const { container } = render(<Value value={serialized} density="grid" />);
+        expect(container.querySelector("[data-open]")).toBeNull();
+        expect(screen.getByText("▸ a:0:{}")).toBeInTheDocument();
+      });
     });
 
     it("leaves the click to the value, which still acts", async () => {

@@ -1,6 +1,6 @@
 /** How each tab kind looks: its icon, tooltip, Stage id and panel. What it does in the store is in `state/tabKinds.ts`. */
 import type { ReactNode } from "react";
-import { FileCode2, FileText, Home, Loader2, SlidersHorizontal, Table2 } from "lucide-react";
+import { FileCode2, FileText, Home, Loader2, SlidersHorizontal } from "lucide-react";
 import { useStore, type QueryTab as QueryTabState, type Tab, type TableTab as TableTabState } from "../state/store";
 import type { TabOfKind } from "../state/slices/tabs";
 import { formatAddress } from "../lib/address";
@@ -84,7 +84,7 @@ const TAB_VIEWS: { [K in Tab["kind"]]: TabView<TabOfKind<K>> } = {
     Summary: QuerySummary,
   },
   table: {
-    icon: (tab) => <TableIcon database={tab.database} table={tab.table} sessionId={tab.sessionId} fallback={<Table2 size={ICON_SIZE} />} />,
+    icon: (tab) => <TableIcon database={tab.database} table={tab.table} sessionId={tab.sessionId} />,
     tooltip: tableTooltip,
     stage: (tab) => `tab:table:${tab.database}.${tab.table}`,
     Panel: ({ tab }) => (

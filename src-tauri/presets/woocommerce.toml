@@ -680,7 +680,7 @@ icon = "clock"
 
 [[icon]]
 table = "wc_customer_lookup"
-icon = "users"
+icon = "user-round"
 
 [[icon]]
 table = "wc_order_product_lookup"
@@ -700,4 +700,4 @@ icon = "key"
 
 [[icon]]
 table = "woocommerce_log"
-icon = "list"
+icon = "file-clock"

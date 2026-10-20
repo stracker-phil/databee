@@ -211,7 +211,7 @@ value, else the current address. The Hover column is what the status bar shows.
 
 | Kind | Look | Click | Hover |
 |---|---|---|---|
-| PrimaryKey `#3297` | accent, mono | opens the object (Rows view when already in its Document, and back; in an object tab another row's key opens as the next column); in grids double-click and Enter open it too | provenance |
+| PrimaryKey `#3297` | accent, mono, its table's icon before it (below); the click indicator on hover | opens the object (Rows view when already in its Document, and back; in an object tab another row's key opens as the next column); in grids double-click and Enter open it too | provenance |
 | Reference, declared `customer_id 4` | accent, dotted underline, the target table's icon before it (below); the click indicator on hover | opens the target: in an object tab as the next column of its stack, in a table tab in place (the tab becomes the target's object tab; back returns), elsewhere in the preview tab | provenance, `→` target and source (`foreign key …`, `project …`, `preset …`); ⌥ peeks |
 | Reference, inferred | accent, dashed underline, tertiary "inferred"; table icon and click indicator as declared | as declared; several targets: a menu to choose | `→` target `· inferred · same name · indexed` |
 | Reference, dangling | tertiary, struck through | none | "no row `#4` in `wp_users`" |
@@ -226,11 +226,14 @@ value, else the current address. The Hover column is what the status bar shows.
 | Secret | masked | reveals until it loses focus | provenance; ⌥ held alone reveals it while hovered |
 | Binary | tertiary `<n bytes>` | none | provenance |
 
-- **Click indicator:** everything whose click navigates or opens a column says so with one passive icon
-  (`OpenHint`): a value (another row's primary key, a reference, serialized data in a grid) shows it at the right
-  edge of its cell (grids) or line cell (Document, readout, header summary) while hovered or focused, over a fade
-  of the background (the text is cut before it; nothing shifts); links outside values (a group band's table
-  name, the object header's table, "Also matched", readout links) show it after their text while hovered.
+- **Click indicator:** everything whose click navigates or opens a column says so with one passive icon. A link
+  with a leading icon swaps it for the indicator in place while its cell (grids), line cell (Document, readout;
+  per pair in a summary) or the link itself is hovered, and while the selected grid cell has focus: the table
+  icon of a reference or another row's primary key, the `▸` of serialized data in a grid, the table icon of a
+  group band's table name, the object header's table, "Also matched", an entity query's table and the key of a
+  readout's recently created or opened row (`OpenSwap`). Both share one box of 1em, so nothing shifts or is
+  cut. A link without a leading icon (a reference whose targets are in different tables, a readout value's
+  title, a pinned title, "Show rows") shows the indicator after its text while hovered (`OpenHint`).
   › (chevron) means the click **opens a column** (the side panel: the next column of an object tab's stack, a
   value column); ↗ (external link) means it **moves the whole view or opens a tab** (a table tab moves in place,
   elsewhere the preview tab). The icon is decorative (`aria-hidden`, no button, no tab stop, no pointer events):
@@ -238,10 +241,12 @@ value, else the current address. The Hover column is what the status bar shows.
   No indicator where a click does not navigate: enums (filter), the own row's key (toggles Document/Rows), a
   Document's serialized value (expands in place), dangling references. The palette is a list chosen with ↵ and
   shows none.
-- **Table icons:** a table can have an icon (`[[icon]]` rules, [presets.md](presets.md#icon-table-icons)), drawn in
-  `--o2` at the size of the text before the table's name wherever it is named (sidebar, tab strip, group bands,
-  object header, "Also matched", palette, readout, Project page, Structure view) and before every reference
-  into it (a reference whose targets are in different tables shows none). It is decorative; the name stays.
+- **Table icons:** every table has an icon (`[[icon]]` rules, [presets.md](presets.md#icon-table-icons); `table`
+  where no rule gives one, and until the database's rules are loaded), drawn in `--o2` at the size of the text
+  before the table's name wherever it is named (sidebar, tab strip, group bands, object header, "Also matched",
+  palette, readout, Project page, Structure view), before every reference into it (a reference whose targets
+  are in different tables shows none) and before every primary key of its rows (the own row's key too, which
+  keeps its icon on hover since its click only toggles the view). It is decorative; the name stays.
 - **Trees** (`ValueTree`): a hairline guide on the left, keys secondary, container types tertiary
   (`array(2)`), strings in dim quotes so `"2.04"` and `2.04` differ, leaf pairs of a small array (up to 4
   leaves, 60 characters) on one line unless the tree is editable. Tree rows keep the row anatomy.
@@ -312,7 +317,8 @@ value, else the current address. The Hover column is what the status bar shows.
   PHP/JSON or Raw, copy and close; the tree edits leaves (`edit_serialized`, queued as a cell edit through the
   pending tray) when the value's row has a single-column key. There is no docked inspector.
 - **Peek:** holding ⌥ over a reference, or with a reference focused, shows a `--pop` overlay below it: head
-  `table #key` with "⌥ peek · ↵ open", the target's [summary](#summary-line) (wrapping), footer
+  `table #key` with "⌥ peek · ↵ open", the target's [summary](#summary-line) as a two-column table (name in `--o2`, value with its secondary text;
+  one line per value, the card 320–560px wide by its content, a longer value ends in an ellipsis), footer
   `via customer_id → wp_users.ID · preset woocommerce`. A reference to a set (a table address, e.g. a guest
   order's `billing_email`) heads the card `wp_wc_orders · billing_email = x` and lists "N rows match" with up to
   5 rows (`#key` and summary, each opens its row on click), "N more · ↵ opens all" beyond them, and "no row
@@ -405,19 +411,20 @@ title | value | source table in `--o3`). Then a collapsible section band per par
   first. Above it a chip per entity (entity name and its count in the window; a failed entity says `failed` in
   `--style-red`, its error in the tooltip). A chip toggles its entity in the timeline (all on by default); its
   chevron discloses the entity's table (opens it), preset and SQL. Each line: relative time in `--o3` (the
-  stored value and its source column on hover) | entity in `--o2` | `#key` in the accent | the
+  stored value and its source column on hover) | entity in `--o2` | the table's icon and `#key` in the accent | the
   [summary](#summary-line);
 - **pinned**: count lines (count | title | SQL in `--o3`) and full-width row blocks; the band's hint says how
   to pin;
-- **recently opened**: table in `--o2` | `#key` in the accent | the summary | the relative time in `--o3`.
+- **recently opened**: table in `--o2` | the table's icon and `#key` in the accent | the summary | the relative
+  time in `--o3`.
 
 Every line opens its address and lights its table in the sidebar on hover; counts refresh after every apply.
 A failed part or line shows its error in `--style-red` in its place; the rest stands.
 
 ### Summary line
 
-A row's summary (Rust's one summary rule) renders the same everywhere it shows: the object header, the peek,
-the readout's timeline and recently opened rows. Each value is `name value`: the column or meta key in `--o3`,
+A row's summary (Rust's one summary rule) renders the same everywhere it shows: the object header, the peek's set matches,
+the readout's timeline and recently opened rows (a single peeked row shows it as a name/value table). Each value is `name value`: the column or meta key in `--o3`,
 then the value with its kind (`Value`, grid density); NULL shows as NULL, never dropped.
 
 ## Live mode, snapshots, compare

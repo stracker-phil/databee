@@ -318,10 +318,12 @@ describe("StructureView", () => {
       expect(group).toHaveTextContent("preset wordpress: posts");
     });
 
-    it("says no icon when no rule gives the table one", async () => {
+    it("shows the default table icon when no rule gives the table one", async () => {
       showProfile({ icon: null });
       render(<StructureView tab={tab} />);
-      expect(await control()).toHaveTextContent("no icon");
+      const group = await control();
+      expect(group).toHaveTextContent("table (default)");
+      expect(group.querySelector("[data-icon=table]")).not.toBeNull();
     });
 
     it("sends the chosen icon for the table's rule name", async () => {
@@ -332,12 +334,11 @@ describe("StructureView", () => {
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setIcon", rule: { table: "posts", icon: "star" } });
     });
 
-    it("sends none from the None button", async () => {
+    it("offers no None button in the picker", async () => {
       showProfile({ icon: iconRow() });
       render(<StructureView tab={tab} />);
       await userEvent.click(await chooseButton());
-      await userEvent.click(within(await screen.findByRole("dialog", { name: "Icon for wp_posts" })).getByRole("button", { name: "None" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setIcon", rule: { table: "posts", icon: "none" } });
+      expect(within(await screen.findByRole("dialog", { name: "Icon for wp_posts" })).queryByRole("button", { name: "None" })).not.toBeInTheDocument();
     });
 
     it("resets a project icon over a preset's with removeIcon", async () => {
@@ -351,7 +352,7 @@ describe("StructureView", () => {
     it("offers no icon… for a table outside the prefixes", async () => {
       showProfile({ ruleName: null, icon: null });
       render(<StructureView tab={tab} />);
-      expect(await control()).toHaveTextContent("no icon");
+      expect(await control()).toHaveTextContent("table (default)");
       expect(screen.queryByRole("button", { name: "icon…" })).not.toBeInTheDocument();
     });
   });

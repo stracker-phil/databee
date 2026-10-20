@@ -41,9 +41,9 @@ export function cellText(cell: Cell): string {
 }
 
 /** A grid column's width in characters: its name or its longest text, capped at `max`, plus room for padding. */
-export function charWidth(name: string, texts: Iterable<string>, max = 40): string {
+export function charWidth(name: string, texts: Iterable<string>, max = 40, lead = 0): string {
   let longest = name.length;
-  for (const text of texts) longest = Math.max(longest, text.length);
+  for (const text of texts) longest = Math.max(longest, text.length + lead);
   return `${Math.min(max, longest) + 2}ch`;
 }
 

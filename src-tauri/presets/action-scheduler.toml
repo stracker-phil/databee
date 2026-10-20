@@ -152,7 +152,7 @@ icon = "clock"
 
 [[icon]]
 table = "actionscheduler_logs"
-icon = "list"
+icon = "file-clock"
 
 [[icon]]
 table = "actionscheduler_groups"

@@ -3,8 +3,9 @@ import { useBindingLabel } from "../../commands";
 import { clockTime, sinceText, type ChangeLine, type ChangeMarks } from "../../lib/diff";
 import { formatCount } from "../../lib/format";
 import { oldText } from "./groups";
+import { WideTable } from "./WideTable";
 
-const LINE_STYLE = { gridTemplateColumns: "10ch 32ch 32ch minmax(0, 1fr)" };
+const LINE_WIDTHS = ["10ch", "32ch", "32ch", "20ch"];
 
 function before(line: ChangeLine): string {
   if (line.kind === "added") return "no row";
@@ -37,32 +38,33 @@ export function ChangeList({ marks, dismissCommand, onJump }: Props) {
         <span className="spacer" />
         <span className="cnt">{formatCount(marks.lines.length)}</span>
       </div>
-      <div className="row hdr" style={LINE_STYLE}>
-        <span>time</span>
-        <span>table</span>
-        <span>column or key</span>
-        <span>old → new</span>
-      </div>
-      {marks.lines.map((line, i) => (
-        <button
-          key={i}
-          className="row change-line"
-          style={LINE_STYLE}
-          disabled={!line.source}
-          title={line.kind === "changed" ? `${text(line.old)} → ${text(line.new)}` : undefined}
-          data-stage={`change:${i}`}
-          data-stage-label={`${line.table} ${line.label}`}
-          data-stage-list="changes"
-          onClick={() => line.source && onJump(line.source)}
-        >
-          <span className="num">{clockTime(line.at)}</span>
-          <span className="o2">{line.table}</span>
-          <span>{line.label}</span>
-          <span>
-            <span className="o3">{before(line)}</span> → {after(line)}
-          </span>
-        </button>
-      ))}
+      <WideTable widths={LINE_WIDTHS}>
+        <div className="row hdr">
+          <span>time</span>
+          <span>table</span>
+          <span>column or key</span>
+          <span>old → new</span>
+        </div>
+        {marks.lines.map((line, i) => (
+          <button
+            key={i}
+            className="row change-line"
+            disabled={!line.source}
+            title={line.kind === "changed" ? `${text(line.old)} → ${text(line.new)}` : undefined}
+            data-stage={`change:${i}`}
+            data-stage-label={`${line.table} ${line.label}`}
+            data-stage-list="changes"
+            onClick={() => line.source && onJump(line.source)}
+          >
+            <span className="num">{clockTime(line.at)}</span>
+            <span className="o2">{line.table}</span>
+            <span>{line.label}</span>
+            <span>
+              <span className="o3">{before(line)}</span> → {after(line)}
+            </span>
+          </button>
+        ))}
+      </WideTable>
     </section>
   );
 }

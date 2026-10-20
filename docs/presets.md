@@ -182,17 +182,28 @@ icon = "menu"
 ```
 
 `icon` is one of a curated set of lucide names (`rules::icons::TableIcon`; the page maps each to its component,
-`src/components/TableIcon.tsx`): `user users menu file-text files message-square tag tags folder settings
-shopping-cart receipt package credit-card wallet truck clock calendar list list-checks database key lock link
-image mail globe map-pin star bell box archive layers hash activity chart-bar coins store ticket bookmark shield
-code`, plus `none`, which switches off an icon another rule gives. Another name is a load error naming the
-field (`[[icon]] #2 (line 30)`, field `icon`: unknown variant …); a `table` is unique per preset.
+`src/components/TableIcon.tsx`; `table` draws lucide's `table-2`):
+
+```
+table database server list list-checks layers box archive hash key key-round lock log-in shield shield-check
+user user-round users user-cog id-card file-text files file file-code file-braces file-clock newspaper
+book-open graduation-cap image film music paperclip folder folder-tree menu tag tags bookmark star heart
+flag message-square message-circle mail inbox send bell megaphone phone shopping-cart shopping-bag store
+receipt package barcode truck warehouse credit-card wallet banknote coins landmark badge-percent gift ticket
+building briefcase globe map-pin map route languages clock calendar calendar-clock timer settings
+sliders-horizontal wrench activity chart-bar code terminal bug webhook plug puzzle blocks git-branch
+workflow link
+```
+
+Another name (`none` included: every table has an icon) is a load error naming the field (`[[icon]] #2 (line
+30)`, field `icon`: unknown variant …); a `table` is unique per preset.
 
 **Which icon a table gets** (`icons::table_icons`, `EffectiveRules.icons`): for each real table, its names
 without prefix (`Applied::rule_names`) are matched first against the project's icon rules, then against each
 applied preset's, the last applied first; within one source a rule naming the table exactly beats a glob, and
-among globs the first in file order wins. The first source with a match decides; `none` gives no icon. Globs
-compare case-sensitively. The icon is shown before the table's name and before every reference into the table
+among globs the first in file order wins. The first source with a match decides; without one the table gets
+`table` (`TableIcon::default`), as does every table outside the prefixes. Globs compare case-sensitively. The
+icon is shown before the table's name, before every reference into the table and before every key of its rows
 ([ux.md](ux.md#value-grammar)); it is chrome, the table name stays.
 
 ### `[[pattern]]` groups matched by SQL
@@ -446,8 +457,8 @@ place).
 ### Give a table an icon
 
 For one database: on the Project page (All rules) or in the table's Structure view, "icon…" opens the picker;
-a choice stores a project rule for the table (`setIcon`), "None" stores `none`, "Reset to preset" removes the
-project rule. In a preset, name the table or a glob:
+a choice stores a project rule for the table (`setIcon`), "Reset to preset" removes the project rule. A table
+no rule names shows `table (default)`. In a preset, name the table or a glob:
 
 ```toml
 [[icon]]
@@ -487,7 +498,7 @@ connection's slug moves its keys. A database without a stored project gets an em
 | `network_prefix` | where `network_tables` live (multisite: one project per prefix, `wp_2_` with network prefix `wp_`); `null`: the shortest prefix that holds them, else the prefix |
 | `presets` | enabled presets by name; `null`: every preset whose marker tables exist |
 | `references`, `kinds`, `styles` | rules in the preset shape above |
-| `icons` | `[[icon]]` rules, one per `table`; they beat every preset icon for the tables they name (`none` switches one off) |
+| `icons` | `[[icon]]` rules, one per `table`; they beat every preset icon for the tables they name. A stored rule that no longer parses (an icon the set dropped, such as the former `none`) is left out with a logged warning (`known_icons`), so the presets' icon or `table` applies again |
 | `disabled` | ids of preset or inferred rules switched off, preset styles that ship on included |
 | `enabled` | ids of preset styles that ship off (`enabled = false`) and are switched on |
 | `saved` | saved queries `{ id, title, sql, pin }`; `pin` has the shape of `[[pinned]] home`. Saved queries for every project are `global` in `projects.json`, beside `projects` |
@@ -560,7 +571,8 @@ A `TableRules` holds `references` (the `ReferenceRow`s from the table, by source
 every table one of whose columns its column globs cover, or every `[[meta]]` table its meta keys and `in`
 cover), `entities` (`{ preset, name, filter }`) and `actions` (`{ preset, name, scope }`) on the table, and
 `icon`: the `IconRow` of the rule that applies (`origin` project or preset, `icon`, `pattern` as the rule writes
-the table, and `shipped`, the presets' rule a project rule overrides), `none` included.
+the table, and `shipped`, the presets' rule a project rule overrides); `null` when no rule names the table,
+which then shows `table`.
 
 A `ReferenceRow` has its `origin` (`project`, `preset`, `foreignKey`, `inferred` with `indexed`), the `id`
 that `disable` and `enable` take, real `from` and `to`, `when` and `toWhen` as SQL-like text
@@ -598,7 +610,8 @@ Layout:
    project style, remove. Preset kinds are read-only (a project kind rule comes first and so wins); project
    kinds have edit and remove. Each table band starts with its icon line: the icon, its origin and pattern
    (`preset wordpress: *meta`, `project: users · edited in project, was user`) and "icon…", the picker
-   (every icon, "None" storing `none`, "Reset to preset" or "Remove <pattern>" for a project rule). The
+   (a filter field over every icon, "Reset to preset" or "Remove <pattern>" for a project rule); without a rule
+   the line reads `table (default)`. The
    Structure view shows the same control.
 
 **Coverage** runs on its own: when the page opens, every reference that applies is counted with
@@ -819,8 +832,8 @@ object. Recent objects are no rules: projects and their exports do not hold them
 
 `rules_info(session_id, database)` returns `RulesInfo { prefix, networkPrefix, suggestedPrefix,
 appliedPresets, availablePresets, entities, tableEntities, tableIcons }`. `entities` are `{ preset, entity }` with the
-real table name; `tableEntities` maps a real table to its entity names; `tableIcons` maps each real table that
-has an icon to it ([`[[icon]]`](#icon-table-icons); tables whose rule is `none` are left out). Entities with a `filter` come first
+real table name; `tableEntities` maps a real table to its entity names; `tableIcons` maps every real table to
+its icon ([`[[icon]]`](#icon-table-icons); `table` where no rule gives one). Entities with a `filter` come first
 on their table: a row takes the first entity whose filter holds.
 
 

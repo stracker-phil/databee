@@ -10,10 +10,10 @@ import { useContextMenu, type MenuEntry } from "./ContextMenu";
 import { cellMenu } from "./grid/cellMenu";
 import { useCellEditing } from "./grid/useCellEditing";
 import { useColumnSizing } from "./grid/useColumnSizing";
-import { useEditValueCommand, useFocusCell, useRowValues, type CellPos } from "./gridHooks";
+import { markScrolled, useEditValueCommand, useFocusCell, useRowValues, type CellPos } from "./gridHooks";
 import { openTarget, showValue } from "./value/open";
 import { useOpenValue } from "./value/useOpenValue";
-import { Value } from "./value/Value";
+import { hasLeadIcon, LEAD_ICON_CH, Value } from "./value/Value";
 
 export type { CellPos } from "./gridHooks";
 
@@ -87,6 +87,16 @@ const KEY_ACTIONS: Record<string, (c: KeyContext) => void> = {
 
 const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value));
 
+/** Scrolls `grid` sideways until column `col` shows, right of the pinned key column; its start wins when it is wider. */
+function revealColumn(grid: HTMLElement | null, widths: number[], col: number, pinned: boolean) {
+  if (!grid || col < 0 || col >= widths.length || (pinned && col === 0)) return;
+  const start = widths.slice(0, col).reduce((sum, w) => sum + w, 0);
+  const left = start - (pinned ? widths[0] : 0);
+  const right = start + widths[col];
+  if (left < grid.scrollLeft) grid.scrollLeft = left;
+  else if (right > grid.scrollLeft + grid.clientWidth) grid.scrollLeft = Math.min(left, right - grid.clientWidth);
+}
+
 export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus, columnMenu }: Props) {
   const selectCell = useStore((s) => s.selectCell);
   const rowHeight = useRowHeight();
@@ -111,16 +121,20 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   // Row height follows the data size setting; re-measure so rows neither overlap nor gap.
   useEffect(() => virtualizer.measure(), [rowHeight, virtualizer]);
 
-  const { totalWidth, colVars, startResize, autoFit } = useColumnSizing({
+  const rowValues = useRowValues(rows, valueAt);
+  const leads = rows.length > 0 ? rowValues(0).map((value) => (value && hasLeadIcon(value) ? LEAD_ICON_CH : 0)) : undefined;
+  const { widths, totalWidth, colVars, startResize, autoFit } = useColumnSizing({
     columns,
     rows,
     saved: columnWidths,
     onChange: onColumnWidthsChange,
     visibleRows: () => virtualizer.getVirtualItems().map((v) => rows[v.index]),
+    leads,
   });
   const names = columns.map((c) => c.name);
 
-  const rowValues = useRowValues(rows, valueAt);
+  // The first column stays in view while the grid scrolls sideways when it holds the rows' primary key.
+  const pinned = rows.length > 0 && rowValues(0)[0]?.kind.kind === "primaryKey";
 
   const select = (row: number, col: number) => {
     setSelected({ row, col });
@@ -132,8 +146,9 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   const copyCell = (at: CellPos) => withFullText(at, (text) => void copyText(text, "value"));
 
   useEditValueCommand(source, startEdit);
-  useFocusCell(focus, rows, select, (row) => {
+  useFocusCell(focus, rows, select, (row, col) => {
     virtualizer.scrollToIndex(row);
+    revealColumn(scrollRef.current, widths, col, pinned);
     scrollRef.current?.scrollIntoView?.({ block: "nearest" });
   });
 
@@ -188,8 +203,10 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
       pageRows: Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 0) / rowHeight) - 1),
       moveTo: (row, col) => {
         const target = clamp(row, lastRow);
-        select(target, clamp(col, lastCol));
+        const column = clamp(col, lastCol);
+        select(target, column);
         virtualizer.scrollToIndex(target);
+        revealColumn(scrollRef.current, widths, column, pinned);
       },
       open: (at) => openOrEdit(at, true),
       copyValue: copyCell,
@@ -202,12 +219,13 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
 
   return (
     <div
-      className="grid"
+      className={pinned ? "grid pinned" : "grid"}
       data-stage="results"
       data-stage-label="Results"
       ref={scrollRef}
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onScroll={pinned ? markScrolled : undefined}
       role="grid"
       aria-rowcount={rows.length}
       style={colVars}

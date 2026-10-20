@@ -507,14 +507,17 @@ async fn the_built_in_presets_give_the_wordpress_fixture_its_table_icons() {
 
 #[tokio::test]
 #[ignore]
-async fn a_database_no_preset_fits_has_no_table_icons() {
+async fn a_database_no_preset_fits_gives_every_table_the_default_icon() {
     let rig = Rig::new();
     for (host, port) in servers() {
         let session = session_on(&host, port, "databee_test").await;
 
         let info = rig.info(&session, "databee_test").await;
 
-        assert!(info.table_icons.is_empty(), "{host}:{port}");
+        assert!(!info.table_icons.is_empty(), "{host}:{port}");
+        for (table, icon) in &info.table_icons {
+            assert_eq!(icon.name(), "table", "{host}:{port}: {table}");
+        }
     }
 }
 

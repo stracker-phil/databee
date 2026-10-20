@@ -492,28 +492,27 @@ describe("Readout", () => {
       await shown(withCreated([createdItem("post", "7")]));
       const key = within(screen.getByRole("region", { name: "Recently created" })).getByRole("button", { name: "#7" });
       expect(hint(key)).toBe("go");
-      expect(icon(key.closest(".row")!)).toBe("file-text");
+      expect(icon(key)).toBe("file-text");
     });
 
     it("draws the icon of the table in a recently opened line and hints that its key goes to the row", async () => {
       await shown(readoutOf({ recent: { items: [recent("7")], error: null } }));
       const key = within(screen.getByRole("region", { name: "Recently opened" })).getByRole("button", { name: "#7" });
       expect(hint(key)).toBe("go");
-      expect(icon(key.closest(".row")!)).toBe("file-text");
+      expect(icon(key)).toBe("file-text");
     });
 
-    it("draws no icon for a table without one", async () => {
+    it("draws the default table icon for a table without one", async () => {
       showTableIcons({});
       await shown(readoutOf({ recent: { items: [recent("7")], error: null } }));
-      expect(icon(screen.getByRole("button", { name: "#7" }).closest(".row")!)).toBeNull();
+      expect(icon(screen.getByRole("button", { name: "#7" }))).toBe("table");
     });
 
     it("draws the icon and a hint on the table button of an entity's query", async () => {
       await shown(withCreated([createdItem("post", "7")], [entityOf("post")]));
       await userEvent.click(screen.getByRole("button", { name: "Query of post" }));
       const table = screen.getByRole("button", { name: "wp_posts" });
-      expect(icon(table)).toBe("file-text");
-      expect(hint(table)).toBe("go");
+      expect(table.querySelector(".open-swap[data-open=go] [data-icon=file-text]")).not.toBeNull();
     });
 
     it("draws the icon of the table a status value is stored in and hints that its title goes to the query", async () => {

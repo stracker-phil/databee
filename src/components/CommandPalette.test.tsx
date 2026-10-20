@@ -370,10 +370,10 @@ describe("CommandPalette", () => {
   describe("table icons", () => {
     beforeEach(() => showTableIcons({ wp_posts: "file-text" }));
 
-    it("draws the icon of the table in a table item and none for one without", async () => {
+    it("draws the icon of the table in a table item and the default table icon for one without", async () => {
       await userEvent.type(openPalette(), "t:wp_");
       expect(screen.getByRole("option", { name: /wp_posts/ }).querySelector("[data-icon=file-text]")).not.toBeNull();
-      expect(screen.getByRole("option", { name: /wp_options/ }).querySelector("[data-icon]")).toBeNull();
+      expect(screen.getByRole("option", { name: /wp_options/ }).querySelector("[data-icon=table]")).not.toBeNull();
     });
 
     it("draws the icon of the table in a recent table item", () => {
@@ -387,7 +387,7 @@ describe("CommandPalette", () => {
       await userEvent.type(openPalette(), "#1");
       const posts = await screen.findByRole("option", { name: "wp_posts #1" });
       expect(posts.querySelector("[data-icon=file-text]")).not.toBeNull();
-      expect(screen.getByRole("option", { name: "wp_options #1" }).querySelector("[data-icon]")).toBeNull();
+      expect(screen.getByRole("option", { name: "wp_options #1" }).querySelector("[data-icon=table]")).not.toBeNull();
     });
   });
 

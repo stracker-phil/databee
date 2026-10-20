@@ -100,7 +100,7 @@ pub struct TableRules {
     pub icon: Option<IconRow>,
 }
 
-/// The icon rule that applies to a table, `none` included.
+/// The icon rule that applies to a table; a table without one shows `table`.
 #[derive(Serialize, Debug, Clone, PartialEq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "camelCase")]

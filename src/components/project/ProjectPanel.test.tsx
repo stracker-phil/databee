@@ -1044,16 +1044,10 @@ describe("ProjectPanel", () => {
       expect(screen.getByRole("group", { name: "icon of wp_wc_order_items" }).querySelector("[data-icon=menu]")).not.toBeNull();
     });
 
-    it("says no icon for a table without an icon rule", async () => {
+    it("shows the default table icon for a table without an icon rule", async () => {
       const control = await showIcon(null);
-      expect(control.getByText("no icon")).toBeInTheDocument();
-      expect(screen.getByRole("group", { name: "icon of wp_wc_order_items" }).querySelector("[data-icon]")).toBeNull();
-    });
-
-    it("shows no glyph for a rule that stores none", async () => {
-      const control = await showIcon(iconRow({ icon: "none", origin: { kind: "project" }, pattern: "wc_order_items" }));
-      expect(control.getByText("none")).toBeInTheDocument();
-      expect(screen.getByRole("group", { name: "icon of wp_wc_order_items" }).querySelector("[data-icon]")).toBeNull();
+      expect(control.getByText("table (default)")).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "icon of wp_wc_order_items" }).querySelector("[data-icon=table]")).not.toBeNull();
     });
 
     it("says what the preset shipped for a project icon that overrides it", async () => {
@@ -1071,10 +1065,43 @@ describe("ProjectPanel", () => {
       await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     });
 
-    it("sends none to switch off an icon a preset gives", async () => {
+    it("offers no None choice", async () => {
       const sheet = await openPicker(iconRow());
-      await userEvent.click(sheet.getByRole("button", { name: "None" }));
-      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setIcon", rule: { table: "wc_order_items", icon: "none" } });
+      expect(sheet.queryByRole("button", { name: "None" })).not.toBeInTheDocument();
+    });
+
+    it("focuses the filter and narrows the icons to the typed substring", async () => {
+      const sheet = await openPicker(iconRow());
+      const filter = sheet.getByRole("textbox", { name: "Filter icons" });
+      expect(filter).toHaveFocus();
+      await userEvent.type(filter, "user");
+      expect(sheet.getByRole("button", { name: "users" })).toBeInTheDocument();
+      expect(sheet.getByRole("button", { name: "user-cog" })).toBeInTheDocument();
+      expect(sheet.queryByRole("button", { name: "menu" })).not.toBeInTheDocument();
+    });
+
+    it("says so when no icon matches the filter", async () => {
+      const sheet = await openPicker(iconRow());
+      await userEvent.type(sheet.getByRole("textbox", { name: "Filter icons" }), "zzzz");
+      expect(sheet.getByText("No icon matches")).toBeInTheDocument();
+      expect(sheet.queryByRole("button", { name: "users" })).not.toBeInTheDocument();
+    });
+
+    it("stores the first match when Enter is pressed in the filter", async () => {
+      const sheet = await openPicker(iconRow());
+      await userEvent.type(sheet.getByRole("textbox", { name: "Filter icons" }), "user{Enter}");
+      expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "setIcon", rule: { table: "wc_order_items", icon: "user" } });
+    });
+
+    it("stores nothing on Enter when no icon matches", async () => {
+      const sheet = await openPicker(iconRow());
+      await userEvent.type(sheet.getByRole("textbox", { name: "Filter icons" }), "zzzz{Enter}");
+      expect(mocked.projectUpdate).not.toHaveBeenCalled();
+    });
+
+    it("marks the default table icon as chosen for a table without a rule", async () => {
+      const sheet = await openPicker(null);
+      expect(sheet.getByRole("button", { name: "table" })).toHaveAttribute("aria-pressed", "true");
     });
 
     it("closes the picker on Cancel without storing anything", async () => {
@@ -1115,7 +1142,7 @@ describe("ProjectPanel", () => {
       mocked.projectRules.mockResolvedValue(projectRules({ groups: [tableRules("legacy_orders", { icon: null })] }));
       await openProjectPage();
       const control = within(await screen.findByRole("group", { name: "icon of legacy_orders" }));
-      expect(control.getByText("no icon")).toBeInTheDocument();
+      expect(control.getByText("table (default)")).toBeInTheDocument();
       expect(control.queryByRole("button", { name: "icon…" })).not.toBeInTheDocument();
     });
 

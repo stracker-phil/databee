@@ -1339,7 +1339,7 @@ columns = ["email"]
     #[test]
     fn icons_parse_by_table_or_glob() {
         let preset = parsed(
-            "[[icon]]\ntable = \"users\"\nicon = \"user\"\n\n[[icon]]\ntable = \"*meta\"\nicon = \"menu\"\n\n[[icon]]\ntable = \"log\"\nicon = \"none\"\n",
+            "[[icon]]\ntable = \"users\"\nicon = \"user\"\n\n[[icon]]\ntable = \"*meta\"\nicon = \"menu\"\n\n[[icon]]\ntable = \"log\"\nicon = \"file-clock\"\n",
         );
         assert_eq!(
             preset.icons,
@@ -1354,7 +1354,7 @@ columns = ["email"]
                 },
                 IconRule {
                     table: "log".into(),
-                    icon: TableIcon::None
+                    icon: TableIcon::FileClock
                 },
             ]
         );
@@ -1640,6 +1640,6 @@ icon = "menu"
 
 [[icon]]
 table = "log"
-icon = "none"
+icon = "file-clock"
 "#;
 }

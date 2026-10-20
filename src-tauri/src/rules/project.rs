@@ -51,7 +51,7 @@ pub struct Project {
     #[serde(default)]
     pub styles: Vec<StyleRule>,
     /// Table icons; one per `table`, which beats a preset's icon for the tables it names.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "known_icons")]
     pub icons: Vec<IconRule>,
     #[serde(default)]
     pub saved: Vec<SavedQuery>,
@@ -80,6 +80,25 @@ where
             None
         }
     })
+}
+
+/// A stored icon rule that no longer parses (an icon the set dropped, such as `none`) is left out,
+/// so the presets' icon or `table` applies again.
+fn known_icons<'de, D>(deserializer: D) -> Result<Vec<IconRule>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|rule| match IconRule::deserialize(&rule) {
+            Ok(rule) => Some(rule),
+            Err(e) => {
+                log::warn!("Ignoring the project icon rule {rule}: {e}");
+                None
+            }
+        })
+        .collect())
 }
 
 /// A query the user saved, optionally pinned to the readout home. `pin` shares the shape of a
@@ -500,7 +519,7 @@ mod tests {
                 },
                 IconRule {
                     table: "*meta".into(),
-                    icon: TableIcon::None,
+                    icon: TableIcon::Table,
                 },
             ],
             saved: vec![
@@ -845,6 +864,43 @@ mod tests {
         let project = full_project();
 
         assert_eq!(project.to_preset().icons, project.icons);
+    }
+
+    #[test]
+    fn a_stored_icon_rule_the_set_dropped_is_left_out_and_the_rest_loads() {
+        let project: Project = serde_json::from_str(
+            r#"{
+                "connection": "shop",
+                "database": "wp",
+                "prefix": "wp_",
+                "icons": [
+                    { "table": "users", "icon": "none" },
+                    { "table": "posts", "icon": "files" }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            project.icons,
+            [IconRule {
+                table: "posts".into(),
+                icon: TableIcon::Files,
+            }]
+        );
+        assert_eq!(
+            (project.connection.as_str(), project.prefix.as_deref()),
+            ("shop", Some("wp_"))
+        );
+    }
+
+    #[test]
+    fn icons_that_are_not_a_list_stay_an_error() {
+        let result = serde_json::from_str::<Project>(
+            r#"{ "connection": "shop", "database": "wp", "icons": { "table": "users" } }"#,
+        );
+
+        assert!(result.is_err());
     }
 
     #[test]

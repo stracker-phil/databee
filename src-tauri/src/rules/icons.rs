@@ -1,5 +1,5 @@
 //! Table icons (`[[icon]]`): a table name or glob and one icon of a curated set, shown before the
-//! table's name and before every reference into it.
+//! table's name and before every reference into it and every key of its rows.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -12,55 +12,107 @@ use super::condition::glob_match;
 use super::types::{Check, FieldError, Preset};
 use crate::schema::DatabaseSchema;
 
-/// The icons a rule may name (lucide names; the page maps each to its component). `none` switches
-/// off an icon another rule gives.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, TS)]
+/// The icons a rule may name (lucide names; the page maps each to its component). Every table
+/// has one: `table` unless a rule gives another.
+#[derive(
+    Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, TS,
+)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
 #[serde(rename_all = "kebab-case")]
 pub enum TableIcon {
-    None,
-    User,
-    Users,
-    Menu,
-    FileText,
-    Files,
-    MessageSquare,
-    Tag,
-    Tags,
-    Folder,
-    Settings,
-    ShoppingCart,
-    Receipt,
-    Package,
-    CreditCard,
-    Wallet,
-    Truck,
-    Clock,
-    Calendar,
+    #[default]
+    Table,
+    Database,
+    Server,
     List,
     ListChecks,
-    Database,
-    Key,
-    Lock,
-    Link,
-    Image,
-    Mail,
-    Globe,
-    MapPin,
-    Star,
-    Bell,
+    Layers,
     Box,
     Archive,
-    Layers,
     Hash,
+    Key,
+    KeyRound,
+    Lock,
+    LogIn,
+    Shield,
+    ShieldCheck,
+    User,
+    UserRound,
+    Users,
+    UserCog,
+    IdCard,
+    FileText,
+    Files,
+    File,
+    FileCode,
+    FileBraces,
+    FileClock,
+    Newspaper,
+    BookOpen,
+    GraduationCap,
+    Image,
+    Film,
+    Music,
+    Paperclip,
+    Folder,
+    FolderTree,
+    Menu,
+    Tag,
+    Tags,
+    Bookmark,
+    Star,
+    Heart,
+    Flag,
+    MessageSquare,
+    MessageCircle,
+    Mail,
+    Inbox,
+    Send,
+    Bell,
+    Megaphone,
+    Phone,
+    ShoppingCart,
+    ShoppingBag,
+    Store,
+    Receipt,
+    Package,
+    Barcode,
+    Truck,
+    Warehouse,
+    CreditCard,
+    Wallet,
+    Banknote,
+    Coins,
+    Landmark,
+    BadgePercent,
+    Gift,
+    Ticket,
+    Building,
+    Briefcase,
+    Globe,
+    MapPin,
+    Map,
+    Route,
+    Languages,
+    Clock,
+    Calendar,
+    CalendarClock,
+    Timer,
+    Settings,
+    SlidersHorizontal,
+    Wrench,
     Activity,
     ChartBar,
-    Coins,
-    Store,
-    Ticket,
-    Bookmark,
-    Shield,
     Code,
+    Terminal,
+    Bug,
+    Webhook,
+    Plug,
+    Puzzle,
+    Blocks,
+    GitBranch,
+    Workflow,
+    Link,
 }
 
 impl TableIcon {
@@ -121,8 +173,8 @@ pub fn preset_rule_for<'p>(
         .find_map(|preset| Some((preset, rule_for(&preset.icons, names)?)))
 }
 
-/// The icon of every real table that has one: the project's rule, else the applied presets' (the
-/// last applied first); exact names before globs within each. `none` leaves the table out.
+/// The icon of every real table: the project's rule, else the applied presets' (the last applied
+/// first); exact names before globs within each; else `table`, as for tables outside the prefixes.
 pub fn table_icons(
     applied: &Applied,
     project: &[IconRule],
@@ -131,12 +183,12 @@ pub fn table_icons(
     schema
         .tables
         .iter()
-        .filter_map(|t| {
+        .map(|t| {
             let names = applied.rule_names(&t.name);
             let icon = rule_for(project, &names)
-                .or_else(|| preset_rule_for(&applied.presets, &names).map(|(_, r)| r))?
-                .icon;
-            (icon != TableIcon::None).then(|| (t.name.clone(), icon))
+                .or_else(|| preset_rule_for(&applied.presets, &names).map(|(_, r)| r))
+                .map_or_else(TableIcon::default, |r| r.icon);
+            (t.name.clone(), icon)
         })
         .collect()
 }
@@ -186,8 +238,40 @@ mod tests {
     #[test]
     fn icon_names_are_kebab_case() {
         assert_eq!(TableIcon::ShoppingCart.name(), "shopping-cart");
-        assert_eq!(TableIcon::None.name(), "none");
+        assert_eq!(TableIcon::Table.name(), "table");
         assert_eq!(TableIcon::Menu.name(), "menu");
+    }
+
+    #[test]
+    fn new_icons_serialize_with_kebab_case_names() {
+        for (icon, name) in [
+            (TableIcon::FileBraces, "file-braces"),
+            (TableIcon::KeyRound, "key-round"),
+            (TableIcon::LogIn, "log-in"),
+        ] {
+            assert_eq!(icon.name(), name);
+            assert_eq!(
+                serde_json::from_value::<TableIcon>(serde_json::json!(name)).unwrap(),
+                icon,
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_table_gets_an_icon_with_table_as_the_default() {
+        let preset = icon_preset("p", "a", &[("a", "user")]);
+
+        let icons = icons_of(&project(), &["x_a", "x_b", "other"], &[preset]);
+
+        assert_eq!(
+            icons,
+            map([
+                ("x_a", TableIcon::User),
+                ("x_b", TableIcon::Table),
+                ("other", TableIcon::Table),
+            ])
+        );
     }
 
     #[test]
@@ -242,25 +326,28 @@ mod tests {
     }
 
     #[test]
-    fn a_project_none_removes_the_icon_a_preset_gives() {
+    fn a_project_table_rule_beats_a_preset_icon() {
         let preset = icon_preset("p", "a", &[("a", "user"), ("b", "tag")]);
         let own = Project {
-            icons: vec![rule("a", TableIcon::None)],
+            icons: vec![rule("a", TableIcon::Table)],
             ..project()
         };
 
         let icons = icons_of(&own, &["x_a", "x_b"], &[preset]);
 
-        assert_eq!(icons, map([("x_b", TableIcon::Tag)]));
+        assert_eq!(
+            icons,
+            map([("x_a", TableIcon::Table), ("x_b", TableIcon::Tag)])
+        );
     }
 
     #[test]
-    fn a_preset_none_leaves_the_table_without_an_icon() {
-        let preset = icon_preset("p", "a", &[("*", "box"), ("b", "none")]);
+    fn a_preset_icon_none_is_a_field_error_on_icon() {
+        let src = "[preset]\nname = \"p\"\nmarker_tables = [\"a\"]\n\n[[icon]]\ntable = \"b\"\nicon = \"none\"\n";
 
-        let icons = icons_of(&project(), &["x_a", "x_b"], &[preset]);
+        let error = preset::parse("p.toml", src).unwrap_err();
 
-        assert_eq!(icons, map([("x_a", TableIcon::Box)]));
+        assert_eq!(error.field.as_deref(), Some("icon"));
     }
 
     #[test]
@@ -283,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn tables_outside_the_prefixes_get_no_icon() {
+    fn tables_outside_the_prefixes_get_the_default_icon() {
         let preset = icon_preset("p", "a", &[("*", "box")]);
         let own = Project {
             icons: vec![rule("*", TableIcon::Star)],
@@ -292,7 +379,10 @@ mod tests {
 
         let icons = icons_of(&own, &["x_a", "other"], &[preset]);
 
-        assert_eq!(icons, map([("x_a", TableIcon::Star)]));
+        assert_eq!(
+            icons,
+            map([("x_a", TableIcon::Star), ("other", TableIcon::Table)])
+        );
     }
 
     #[test]
@@ -319,6 +409,9 @@ mod tests {
                 "wp_wc_orders_meta",
                 "wp_wc_orders",
                 "wp_actionscheduler_actions",
+                "wp_actionscheduler_logs",
+                "wp_wc_customer_lookup",
+                "wp_woocommerce_log",
                 "wp_unknown",
             ],
             &loaded,
@@ -332,6 +425,10 @@ mod tests {
                 ("wp_wc_orders_meta", TableIcon::Menu),
                 ("wp_wc_orders", TableIcon::ShoppingCart),
                 ("wp_actionscheduler_actions", TableIcon::Clock),
+                ("wp_actionscheduler_logs", TableIcon::FileClock),
+                ("wp_wc_customer_lookup", TableIcon::UserRound),
+                ("wp_woocommerce_log", TableIcon::FileClock),
+                ("wp_unknown", TableIcon::Table),
             ])
         );
     }

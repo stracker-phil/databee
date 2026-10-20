@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type UIEvent } from "react";
 import type { Cell, ColumnMeta, Value as StoredValue } from "../api";
 import { EDIT_VALUE_EVENT } from "../commands";
 import type { CellSource } from "../lib/cells";
@@ -9,12 +9,12 @@ import { useStore } from "../state/store";
 export type CellPos = { row: number; col: number };
 
 /** Width that fits the header and the given rows; one character is ~0.6 of the data font size. */
-export function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLabel: string, fontSize: number, cap: number): number {
+export function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLabel: string, fontSize: number, cap: number, lead = 0): number {
   const charWidth = fontSize * 0.6;
   // The type sits under the name in smaller text, so the wider of the two sets the header's width.
   const header = Math.max(col.name.length, col.typeName.length * 0.85) + 2;
   const shown = (cell: Cell) => (cell.t === "null" ? nullLabel.length : cellText(cell).length);
-  const longest = rows.reduce((max, r) => Math.max(max, Math.min(shown(r[index]), 60)), 0);
+  const longest = rows.reduce((max, r) => Math.max(max, Math.min(shown(r[index]), 60) + lead), 0);
   return Math.round(Math.min(cap, Math.max(64, Math.max(header, longest) * charWidth + 20)));
 }
 
@@ -53,7 +53,7 @@ export function useEditValueCommand(source: CellSource, startEdit: (at: CellPos)
 }
 
 /** Selects `focus` when it changes or new rows arrive, and scrolls the grid to it. */
-export function useFocusCell(focus: CellPos | null | undefined, rows: Cell[][], select: (row: number, col: number) => void, reveal: (row: number) => void) {
+export function useFocusCell(focus: CellPos | null | undefined, rows: Cell[][], select: (row: number, col: number) => void, reveal: (row: number, col: number) => void) {
   const apply = useRef({ select, reveal });
   useEffect(() => {
     apply.current = { select, reveal };
@@ -63,6 +63,11 @@ export function useFocusCell(focus: CellPos | null | undefined, rows: Cell[][], 
   useEffect(() => {
     if (row < 0 || row >= rows.length) return;
     apply.current.select(row, col);
-    apply.current.reveal(row);
+    apply.current.reveal(row, col);
   }, [row, col, rows]);
+}
+
+/** `data-scrolled` on a box scrolled sideways, which draws the edge of its pinned key column. */
+export function markScrolled(e: UIEvent<HTMLElement>) {
+  e.currentTarget.toggleAttribute("data-scrolled", e.currentTarget.scrollLeft > 0);
 }

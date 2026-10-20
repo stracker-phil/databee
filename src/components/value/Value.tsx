@@ -6,7 +6,7 @@ import { bySourceText, provenanceText, rowIdentity } from "../../lib/provenance"
 import { selectMaxCellChars, selectNullLabel, useStore } from "../../state/store";
 import { TableIcon } from "../TableIcon";
 import { ValueTree } from "../ValueTree";
-import { OpenHint } from "./OpenHint";
+import { OpenHint, OpenSwap } from "./OpenHint";
 import type { ClickEffect } from "./open";
 import { useAltHeld } from "./useAltHeld";
 import { useDecoded } from "./useDecoded";
@@ -96,12 +96,19 @@ function SerializedTree({ value, preview }: { value: StoredValue; preview: strin
   );
 }
 
-function Serialized({ value, preview, density, onActivate }: { value: StoredValue; preview: string; density: Density; onActivate?: Activate }) {
+function Serialized({ value, preview, density, onActivate, effect }: { value: StoredValue; preview: string; density: Density; onActivate?: Activate; effect: ClickEffect | null }) {
   if (density === "full" && value.raw.t !== "longText") return <SerializedTree value={value} preview={preview} />;
   return (
     <>
       <span className="val-ser" role={onActivate ? "button" : undefined} onClick={onActivate}>
-        ▸ {preview}
+        {effect ? (
+          <OpenSwap effect={effect}>
+            <span className="ser-mark">▸</span>
+          </OpenSwap>
+        ) : (
+          "▸ "
+        )}
+        {preview}
       </span>
       {density === "grid" && (
         <span className="val-o3">
@@ -120,7 +127,7 @@ const withSecondary = (main: ReactNode, secondary: string | null, className = "v
   </>
 );
 
-function Body({ value, density, onActivate }: { value: StoredValue; density: Density; onActivate?: Activate }) {
+function Body({ value, density, onActivate, effect }: { value: StoredValue; density: Density; onActivate?: Activate; effect: ClickEffect | null }) {
   const kind = value.kind;
   const text = cellText(value.raw);
   if (value.raw.t === "null" && (kind.kind === "null" || kind.kind === "noReference")) return <NullText />;
@@ -128,6 +135,7 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
     case "primaryKey":
       return (
         <span className="val-pk" role={onActivate ? "link" : undefined} onClick={onActivate}>
+          <LeadIcon value={value} effect={effect} />
           {text}
         </span>
       );
@@ -136,8 +144,9 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
       const inferred = kind.by.kind === "sameName";
       const link = (
         <span className={inferred ? "val-ref inferred" : "val-ref"} role={onActivate ? "link" : undefined} onClick={onActivate}>
-          <TargetIcon value={value} />
+          <LeadIcon value={value} effect={effect} />
           {text}
+          {effect && !leadTable(value) && <OpenHint effect={effect} />}
         </span>
       );
       return withSecondary(link, inferred ? "inferred" : null, "val-note");
@@ -159,7 +168,7 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
     case "empty":
       return <span className="val-o3">""</span>;
     case "serialized":
-      return <Serialized value={value} preview={kind.preview} density={density} onActivate={onActivate} />;
+      return <Serialized value={value} preview={kind.preview} density={density} onActivate={onActivate} effect={effect} />;
     case "secret":
       return <SecretText text={text} />;
     case "binary":
@@ -170,14 +179,26 @@ function Body({ value, density, onActivate }: { value: StoredValue; density: Den
   }
 }
 
-/** The icon of the table a reference points into; none when its targets are in different tables. */
-function TargetIcon({ value }: { value: StoredValue }) {
+/** The table a key's row is in or a reference points into; none when a reference's targets are in different tables. */
+function leadTable(value: StoredValue): { database: string; table: string } | null {
   const kind = value.kind;
+  if (kind.kind === "primaryKey") return kind.address.target.kind === "row" ? { database: kind.address.database, table: kind.address.target.table } : null;
   if (kind.kind !== "reference" || kind.targets.length === 0) return null;
   const tables = new Set(kind.targets.map((t) => ("table" in t.target ? t.target.table : null)));
-  if (tables.size !== 1) return null;
   const first = kind.targets[0];
-  return <TableIcon database={first.database} table={"table" in first.target ? first.target.table : null} />;
+  if (tables.size !== 1 || !("table" in first.target)) return null;
+  return { database: first.database, table: first.target.table };
+}
+
+/** Characters a leading table icon takes before the value: 1em plus its gap, in the mono font's `ch`. */
+export const LEAD_ICON_CH = 2.5;
+
+export const hasLeadIcon = (value: StoredValue) => leadTable(value) !== null;
+
+/** The icon of `leadTable`, which turns into the indicator of `effect` while hovered. */
+function LeadIcon({ value, effect }: { value: StoredValue; effect: ClickEffect | null }) {
+  const lead = leadTable(value);
+  return lead && <TableIcon database={lead.database} table={lead.table} effect={effect} />;
 }
 
 function peekData(value: StoredValue) {
@@ -213,9 +234,8 @@ export const Value = memo(function Value({ value, onOpen, density = "full" }: Pr
       {...peekData(value)}
       style={style}
     >
-      <Body value={value} density={density} onActivate={onActivate} />
+      <Body value={value} density={density} onActivate={onActivate} effect={effect} />
       {value.secondary && <span className="val-sec">{value.secondary.text}</span>}
-      {effect && <OpenHint effect={effect} edge />}
     </span>
   );
 });

@@ -23,16 +23,18 @@ describe("TableIcon", () => {
     expect(container.querySelector("[data-icon=users]")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("draws the fallback for a table without an icon", () => {
+  it("draws the default table icon for a table without a rule icon", () => {
     showTableIcons({ wp_users: "users" });
-    render(<TableIcon database="db" table="wp_posts" fallback={<span>plain</span>} />);
-    expect(screen.getByText("plain")).toBeInTheDocument();
+    const { container } = render(<TableIcon database="db" table="wp_posts" fallback={<span>plain</span>} />);
+    expect(iconOf(container)).toBe("table");
+    expect(screen.queryByText("plain")).not.toBeInTheDocument();
   });
 
-  it("draws the icon instead of the fallback", () => {
+  it("draws the fallback without a table", () => {
     showTableIcons({ wp_users: "users" });
-    render(<TableIcon database="db" table="wp_users" fallback={<span>plain</span>} />);
-    expect(screen.queryByText("plain")).not.toBeInTheDocument();
+    const { container } = render(<TableIcon database="db" table={null} fallback={<span>plain</span>} />);
+    expect(screen.getByText("plain")).toBeInTheDocument();
+    expect(iconOf(container)).toBeNull();
   });
 
   it("draws nothing without a table", () => {
@@ -41,10 +43,32 @@ describe("TableIcon", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("draws nothing and loads nothing without a database", () => {
+  it("draws the default table icon and loads nothing without a database", () => {
     const { container } = render(<TableIcon database={undefined} table="wp_users" />);
-    expect(container).toBeEmptyDOMElement();
+    expect(iconOf(container)).toBe("table");
     expect(mocked.rulesInfo).not.toHaveBeenCalled();
+  });
+
+  it("draws the default table icon before the rules load, then the rule's icon", async () => {
+    mocked.rulesInfo.mockResolvedValue(rulesInfoOf({ wp_users: "users" }));
+    const { container } = render(<TableIcon database="db" table="wp_users" />);
+    expect(iconOf(container)).toBe("table");
+    await waitFor(() => expect(iconOf(container)).toBe("users"));
+  });
+
+  it("shows the click indicator in the icon's place when given an effect", () => {
+    showTableIcons({ wp_users: "users" });
+    const { container } = render(<TableIcon database="db" table="wp_users" effect="drill" />);
+    const swap = container.querySelector("[data-open=drill]")!;
+    expect(swap).toHaveAttribute("aria-hidden", "true");
+    expect(swap.querySelector("[data-icon=users]")).not.toBeNull();
+    expect(swap.querySelector(".open-glyph")).not.toBeNull();
+  });
+
+  it("draws the bare icon without an effect", () => {
+    showTableIcons({ wp_users: "users" });
+    const { container } = render(<TableIcon database="db" table="wp_users" />);
+    expect(container.querySelector("[data-open]")).toBeNull();
   });
 
   it("loads the database's icons once for many icons and fills them in", async () => {
@@ -56,7 +80,9 @@ describe("TableIcon", () => {
         <TableIcon database="db" table="wp_users" />
       </>,
     );
-    await waitFor(() => expect(container.querySelectorAll("[data-icon]")).toHaveLength(3));
+    await waitFor(() =>
+      expect([...container.querySelectorAll("[data-icon]")].map((el) => el.getAttribute("data-icon"))).toEqual(["user", "file-text", "user"]),
+    );
     expect(mocked.rulesInfo).toHaveBeenCalledOnce();
     expect(mocked.rulesInfo).toHaveBeenCalledWith("s1", "db");
   });
@@ -75,8 +101,8 @@ describe("TableIcon", () => {
 });
 
 describe("IconGlyph", () => {
-  it.each([["none"], [null]] as const)("draws nothing for %s", (name) => {
-    const { container } = render(<IconGlyph name={name} />);
+  it("draws nothing without a name", () => {
+    const { container } = render(<IconGlyph name={null} />);
     expect(iconOf(container)).toBeNull();
   });
 });

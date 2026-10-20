@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,7 @@ import { installCommands } from "../../commands";
 import { address, formatAddress } from "../../lib/address";
 import { useStore } from "../../state/store";
 import { emailRef, emailSet, openOrder, stubDocuments, user } from "../../test/columnFixtures";
-import { connectedStore, text, value } from "../../test/fixtures";
+import { connectedStore, num, text, value } from "../../test/fixtures";
 import { activeObject } from "../../test/objectFixtures";
 import { PeekOverlay } from "./Peek";
 import { Value } from "./Value";
@@ -71,6 +71,56 @@ describe("Peek", () => {
     expect(screen.queryByRole("complementary", { name: "Peek wp_users 12" })).not.toBeInTheDocument();
   });
 
+  describe("a peeked row", () => {
+    let version = 9000;
+    const peekRow = async (values: Peek["summary"]["values"]) => {
+      mocked.peek.mockResolvedValue({ address: user, keyColumn: "ID", summary: { values }, matches: null });
+      useStore.setState({ dataVersion: ++version });
+      await holdAltOverReference();
+      return peekCard();
+    };
+
+    it("lists each value as a table row with its name as the row header", async () => {
+      const card = await peekRow([{ name: "user_login", value: value({ raw: text("ada") }) }]);
+      const table = within(card).getByRole("table");
+      const rows = within(table).getAllByRole("row");
+      expect(rows).toHaveLength(1);
+      expect(within(rows[0]).getByRole("rowheader")).toHaveTextContent("user_login");
+      expect(within(rows[0]).getByRole("cell")).toHaveTextContent("ada");
+    });
+
+    it("keeps the order and pairs each name with its value", async () => {
+      const card = await peekRow([
+        { name: "user_login", value: value({ raw: text("ada") }) },
+        { name: "user_email", value: value({ raw: text("ada@example.com") }) },
+        { name: "user_status", value: value({ raw: num("0"), kind: { kind: "number" } }) },
+      ]);
+      const rows = within(within(card).getByRole("table")).getAllByRole("row");
+      expect(rows.map((r) => [within(r).getByRole("rowheader").textContent, within(r).getByRole("cell").textContent])).toEqual([
+        ["user_login", "ada"],
+        ["user_email", "ada@example.com"],
+        ["user_status", "0"],
+      ]);
+    });
+
+    it("shows a value's secondary text in its cell", async () => {
+      const card = await peekRow([{ name: "ID", value: value({ raw: num("12"), secondary: { text: "Jane Doe", source: null } }) }]);
+      expect(within(within(card).getByRole("cell")).getByText("Jane Doe")).toBeInTheDocument();
+    });
+
+    it("says there are no values instead of rendering a table", async () => {
+      const card = await peekRow([]);
+      expect(await within(card).findByText("no values")).toBeInTheDocument();
+      expect(within(card).queryByRole("table")).not.toBeInTheDocument();
+    });
+
+    it("keeps the stage anchor and the footer", async () => {
+      const card = await peekRow([{ name: "user_login", value: value({ raw: text("ada") }) }]);
+      expect(card).toHaveAttribute("data-stage", "peek");
+      expect(card).toHaveTextContent("via customer_id → wp_users.ID · preset woocommerce");
+    });
+  });
+
   describe("a reference to a set of rows", () => {
     let version = 5000;
     const orderMatch = (key: string, email = "ada@example.com"): PeekMatch => ({
@@ -101,6 +151,14 @@ describe("Peek", () => {
       expect(await screen.findByText("3 rows match")).toBeInTheDocument();
       for (const key of ["#4712", "#4713", "#4714"]) expect(card).toHaveTextContent(key);
       expect(card).toHaveTextContent("billing_email");
+    });
+
+    it("lists the matches as buttons without a summary table", async () => {
+      const card = await peekSet(setPeek([orderMatch("4712"), orderMatch("4713")]));
+      expect(await screen.findByRole("button", { name: /#4712/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /#4713/ })).toBeInTheDocument();
+      expect(within(card).queryByRole("table")).not.toBeInTheDocument();
+      expect(card).toHaveAttribute("data-stage", "peek");
     });
 
     it("leaves out the row the reference is stored in", async () => {

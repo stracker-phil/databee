@@ -1503,11 +1503,11 @@ icon = "box"
     }
 
     #[test]
-    fn a_project_icon_over_a_preset_icon_carries_the_shipped_rule() {
+    fn a_project_icon_over_a_preset_icon_carries_the_shipped_rule_even_when_it_is_table() {
         let page = icon_page(Project {
             icons: vec![
                 icon_rule("threads", TableIcon::Star),
-                icon_rule("people", TableIcon::None),
+                icon_rule("people", TableIcon::Table),
             ],
             ..project()
         });
@@ -1529,7 +1529,7 @@ icon = "box"
             group(&page, "f_people").icon,
             Some(IconRow {
                 origin: RuleOrigin::Project,
-                icon: TableIcon::None,
+                icon: TableIcon::Table,
                 pattern: "people".into(),
                 shipped: Some(ShippedIcon {
                     preset: "shapes".into(),

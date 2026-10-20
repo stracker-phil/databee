@@ -34,11 +34,11 @@ describe("Sidebar", () => {
   describe("table icons", () => {
     const entry = (name: string) => screen.getByText(name).closest<HTMLElement>("[role=treeitem]")!;
 
-    it("draws the icon of a table before its name and none for a table without one", () => {
+    it("draws the icon of a table before its name and the default table icon for a table without one", () => {
       showTableIcons({ wp_posts: "file-text" });
       render(<Sidebar />);
       expect(entry("wp_posts").querySelector("[data-icon=file-text]")).not.toBeNull();
-      expect(entry("wp_options").querySelector("[data-icon]")).toBeNull();
+      expect(entry("wp_options").querySelector("[data-icon=table]")).not.toBeNull();
     });
 
     it("loads the database's icons when they are not known yet", async () => {

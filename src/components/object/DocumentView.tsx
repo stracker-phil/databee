@@ -50,11 +50,19 @@ function useEditCommand(editable: boolean, focus: Provenance | null, setEditing:
   }, [editable, focus, setEditing]);
 }
 
+/**
+ * Scrolls the focused value into view, down the pane and sideways in its group; again a frame later, when a long
+ * group has rendered the row it scrolled to.
+ */
 function useRevealFocus(focus: Provenance | null) {
   const ref = useRef<HTMLDivElement>(null);
   const key = focus ? provenanceKey(focus) : null;
   useEffect(() => {
-    if (key) ref.current?.querySelector(".row .focus")?.scrollIntoView?.({ block: "nearest" });
+    if (!key) return;
+    const reveal = () => ref.current?.querySelector(".row .focus")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    reveal();
+    const frame = requestAnimationFrame(reveal);
+    return () => cancelAnimationFrame(frame);
   }, [key]);
   return ref;
 }

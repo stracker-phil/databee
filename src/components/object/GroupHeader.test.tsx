@@ -36,14 +36,16 @@ describe("GroupHeader", () => {
     showTableIcons({ wp_postmeta: "tags" });
     header(group());
     const button = screen.getByRole("button", { name: "wp_postmeta" });
-    expect(button.querySelector("[data-icon=tags]")).not.toBeNull();
-    expect(button.querySelector("[data-open]")).toHaveAttribute("data-open", "go");
+    const swap = button.querySelector(".open-swap");
+    expect(swap).toHaveAttribute("data-open", "go");
+    expect(swap?.querySelector("[data-icon=tags]")).not.toBeNull();
   });
 
-  it("draws no icon for a table without one", () => {
+  it("draws the default table icon for a table without one", () => {
     showTableIcons({});
     header(group());
-    expect(screen.getByRole("button", { name: "wp_postmeta" }).querySelector("[data-icon]")).toBeNull();
+    const swap = screen.getByRole("button", { name: "wp_postmeta" }).querySelector(".open-swap");
+    expect(swap?.querySelector("[data-icon=table]")).not.toBeNull();
   });
 
   it("opens the rows in a table tab when the table name is clicked", async () => {

@@ -397,15 +397,20 @@ column of the stack for a row target or another row's key, a value column for se
 (the whole view moves or a tab opens: `openTarget` moves a table tab in place with `navigateTab`, elsewhere the
 preview tab) or `null` (an enum filters, the own row's key toggles the view). The handlers use the same
 predicates (`targetEffect` for reference targets, the own-row test of `openRowObject`). The `openValue` that
-`useOpenValue` returns carries `effect(value, density)` (`OpenValue` in `Value.tsx`), and `Value` renders
-`OpenHint` (`value/OpenHint.tsx`) with it: ChevronRight for `drill`, ExternalLink for `go`, `aria-hidden`, no
-button and no handlers. With `edge` it is a `.val-acts` span, absolute at the right edge of the nearest cell
-(`.grid-cell`, a `.row` child, `.summary-pair`), shown while that cell is hovered or focused over a gradient to
-`--acts-bg` (set per cell state in `styles/app.css`); a number cell reserves its width on hover. Without `edge`
-it is an inline `.open-hint` after a link's text (group bands, object header, "Also matched", readout links),
-visible while its parent is hovered. A reference also shows its target table's icon before its text
-(`TargetIcon`, when every target is in one table; [Table icons](#table-icons)). A secret reveals on its own. A style
-sets `color: var(--style-<name>)`. CSS classes are `val` and `val-<kind>` (`styles/app.css`, values).
+`useOpenValue` returns carries `effect(value, density)` (`OpenValue` in `Value.tsx`), and `Value` passes it to
+the value's leading icon. A primary key with a row address and a reference whose targets are in one table
+start with that table's icon (`leadTable`, `LeadIcon`: `<TableIcon effect>`; [Table icons](#table-icons)),
+serialized data in a grid with `▸` (`.ser-mark`). With an effect, `OpenSwap` (`value/OpenHint.tsx`) holds the
+icon and the effect's glyph (ChevronRight for `drill`, ExternalLink for `go`, `.open-glyph`) in one
+`.open-swap` box of 1em (`aria-hidden`, `data-open=<effect>`, no pointer events, no handlers); CSS hides the
+glyph and, while the nearest `.grid-cell`, `.row` child (one without a `.summary-pair`), `.summary-pair` or the
+parent link is hovered, or the selected cell of a focused grid, hides the icon and shows the glyph instead. Both
+are rendered, so a hover re-renders nothing; the box keeps its width, so nothing shifts or is cut. Without an
+effect (the own row's key, no open handler) the icon stands alone. A reference with targets in several tables
+has no leading icon and shows `OpenHint` (an inline `.open-hint`, same `data-open`) after its text, visible on
+the same hover; links outside values without a table icon use it too (a readout value's title, a pinned title,
+"Show rows"). A secret reveals on its own. A style sets `color: var(--style-<name>)`. CSS classes are `val`
+and `val-<kind>` (`styles/app.css`, values).
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
 (`AppShell` in `App.tsx`) adds one delegated `mouseover`/`mouseleave` listener to the app, reads the nearest
@@ -426,7 +431,9 @@ alone (no dialog or palette open) peeks the hovered `[data-ref]` element, else t
 (`selectFocusedValue`) when it is a reference with one target; moving the pointer onto another reference while
 ⌥ is held peeks that one; keyup or a window blur hides it. The card sits below the element (fixed, kept in the
 window), reads `api.peek(sessionId, address)` (`Peek { address, keyColumn, summary, matches }`), cached by
-session, `dataVersion` and address, and draws `summary` with `SummaryLine`. For a set (`matches`) it heads the
+session, `dataVersion` and address, and draws `summary` as a two-column table (`SummaryTable`: one row per
+value, name and `Value`; the card grows to its content between 320px and 560px, longer values end in an
+ellipsis). For a set (`matches`) it heads the
 card with the table and its filter and lists the match rows (`#key` + `SummaryLine`, buttons that open the row;
 the card is `pointer-events: none` except for them). `PeekTarget.from` is the row the reference is stored in
 (`data-from` on the value, `rowIdentity` in `lib/provenance.ts`): a match with that identity is dropped and the
@@ -460,21 +467,28 @@ cell menu and the Document view's value menu (right-click) list `RULE_MENU`: "Ad
 ### Table icons
 
 `components/TableIcon.tsx` maps the curated icon names (the `TableIcon` type, generated from the Rust enum
-`rules::icons::TableIcon`) to lucide components in `TABLE_ICONS` (static imports; `Record<Exclude<TableIcon,
-"none">, LucideIcon>`, so tsc fails when the two lists differ) and `ICON_NAMES` lists them for the picker.
-`useTableIcon(database, table, sessionId?)` reads `rulesInfo[projectKey(session, database)].tableIcons[table]`
-(session: the given one, else the active one), a string, so one selector per component is cheap; when the
-database's `rulesInfo` is missing it calls `ensureRulesInfo` (`project` slice), which loads it once however many
-components ask. `<TableIcon database table sessionId? fallback? />` renders `IconGlyph` (`.tbl-icon`, `1em`,
-`--o2`, `aria-hidden`, `data-icon=<name>`) or `fallback`. It is placed before table names: `Sidebar` rows,
-table and object tabs (`tabViews.tsx`, the generic icon as fallback), `GroupHeader`, `ObjectHeader` (and its
-"Also matched"), palette table items and hits (`PaletteList`), the readout (status values, entity queries,
-recently created, recently opened), `TableSection`; and in `Value` before a reference (`TargetIcon`).
+`rules::icons::TableIcon`) to lucide components in `TABLE_ICONS` (static imports; `Record<TableIcon,
+LucideIcon>`, so tsc fails when the two lists differ; `table` is lucide's `Table2`) and `ICON_NAMES` lists them
+for the picker. `useTableIcon(database, table, sessionId?)` reads `rulesInfo[projectKey(session,
+database)].tableIcons[table]` (session: the given one, else the active one), a string, so one selector per
+component is cheap; until the database's `rulesInfo` is loaded, or for a table it lacks, it returns
+`DEFAULT_ICON` (`table`), so the glyph is there from the first render and only changes shape; `null` only
+without a table. When `rulesInfo` is missing it calls `ensureRulesInfo` (`project` slice), which loads it once
+however many components ask. `<TableIcon database table sessionId? effect? fallback? />` renders `IconGlyph`
+(`.tbl-icon`, `1em`, `--o2`, `aria-hidden`, `data-icon=<name>`), inside `OpenSwap` with an `effect`
+([Values](#values)), or `fallback` without a table. It is placed before table names: `Sidebar` rows, table and
+object tabs (`tabViews.tsx`; an object tab whose root has no table falls back to the generic icon),
+`GroupHeader` and `ObjectHeader` (table buttons, `effect="go"`; the plain table name outside a stack has none),
+its "Also matched" (`go`), palette table items and hits (`PaletteList`, no effect: the palette is chosen with
+↵), the readout (status values' tables; entity queries' table buttons and the `#key` links of recently created
+and opened rows, `go`), `TableSection`; and in `Value` before a reference or a row's key (`LeadIcon`).
 
 `project/IconControl.tsx` shows a table's `IconRow` (`[icon] menu · preset wordpress: *meta`, `· edited in
-project, was …`) and "icon…", which opens `IconPicker` in a `Modal` (`rule-sheet icon-sheet`): a grid of
-`ICON_NAMES` (the current one pressed), "None" (`setIcon` with `none`), "Reset to preset" or "Remove <pattern>"
-for a project rule (`removeIcon` of its pattern), Cancel. A choice stores `setIcon { rule: { table: <rule
+project, was …`; without a rule `[icon] table (default)`) and "icon…", which opens `IconPicker` in a `Modal`
+(`rule-sheet icon-sheet`): a filter field ("Filter icons", focused; it keeps the names that contain the typed
+text, ↵ picks the first), a grid of the matching `ICON_NAMES` (the shown one pressed, `table` without a rule;
+"No icon matches" when none does), "Reset to preset" or "Remove <pattern>" for a project rule (`removeIcon` of
+its pattern), Cancel. A choice stores `setIcon { rule: { table: <rule
 name>, icon } }` through `ProjectContext.change` (`changeProject`), so it bumps `dataVersion` and reloads
 `rulesInfo` like any rule edit. Without a rule name (a table outside the prefixes) there is no picker.
 
@@ -871,10 +885,11 @@ The tab uses its full width; tables align their columns with CSS subgrid (`.read
   `countInWindow` or `failed`, and a chevron ("Query of <entity>") that discloses `EntityQuery` (table button,
   preset, SQL, error). Below, `readout.recentlyCreated.items` filtered to the shown entities, one `CreatedLine`
   each: relative time of `created` (when its kind is a timestamp with UTC; else the stored text; the tooltip
-  names the stored value and its source column) | entity | `#key` (opens the row) | `SummaryLine`.
+  names the stored value and its source column) | entity | table icon and `#key` (opens the row) | `SummaryLine`.
 - **pinned**, always (an empty line when nothing is pinned; the band's hint says how to pin): count lines
   (count | title | SQL) and full-width row blocks (title, row count, SQL, rows); a title opens the saved query.
-- **recently opened** (region "Recently opened"), only when there are objects: table | `#key` (opens the row) |
+- **recently opened** (region "Recently opened"), only when there are objects: table | table icon and `#key`
+  (opens the row) |
   `SummaryLine` | relative time.
 
 Rows of a known table carry `data-row-table` ([Values](#values)), so hovering anywhere on them lights the

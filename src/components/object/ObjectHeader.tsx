@@ -8,7 +8,6 @@ import { useStore } from "../../state/store";
 import { useContextMenu, type MenuAnchor } from "../ContextMenu";
 import { KeyCap } from "../Field";
 import { TableIcon } from "../TableIcon";
-import { OpenHint } from "../value/OpenHint";
 import type { ColumnPlace } from "../value/open";
 import { useOpenValue } from "../value/useOpenValue";
 import { SummaryLine } from "../value/SummaryLine";
@@ -63,9 +62,8 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
             data-stage-label={`Open table ${table}`}
             onClick={() => useStore.getState().navigateTab(place.tabId, wholeTable(document.address))}
           >
-            <TableIcon database={document.address.database} table={table} />
+            <TableIcon database={document.address.database} table={table} effect="go" />
             {table}
-            <OpenHint effect="go" />
           </button>
         ) : (
           <span className="tn">
@@ -106,9 +104,8 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
           Also matched:{" "}
           {document.alternatives.map((alt) => (
             <button key={formatAddress(alt)} className="also-table" data-stage={`alternative:${formatAddress(alt)}`} data-stage-label={objectTitle(alt)} onClick={() => useStore.getState().openObject(alt)}>
-              <TableIcon database={alt.database} table={"table" in alt.target ? alt.target.table : null} />
+              <TableIcon database={alt.database} table={"table" in alt.target ? alt.target.table : null} effect="go" />
               {objectTitle(alt)}
-              <OpenHint effect="go" />
             </button>
           ))}
         </div>

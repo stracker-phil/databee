@@ -513,7 +513,7 @@ truncated: boolean, executedAt: string, elapsedMs: number, error: string | null,
 export type Home = { "show": "rows", limit?: number | null, } | { "show": "count" } | { "show": "value" };
 
 /**
- * The icon rule that applies to a table, `none` included.
+ * The icon rule that applies to a table; a table without one shows `table`.
  */
 export type IconRow = { 
 /**
@@ -1045,7 +1045,7 @@ appliedPresets: Array<string>, availablePresets: Array<string>, entities: Array<
  */
 tableEntities: { [key in string]: Array<string> }, 
 /**
- * The icon by real table, for tables that have one.
+ * The icon by real table, every table included.
  */
 tableIcons: { [key in string]: TableIcon }, };
 
@@ -1232,10 +1232,10 @@ export type SummaryValue = {
 name: string, value: Value, };
 
 /**
- * The icons a rule may name (lucide names; the page maps each to its component). `none` switches
- * off an icon another rule gives.
+ * The icons a rule may name (lucide names; the page maps each to its component). Every table
+ * has one: `table` unless a rule gives another.
  */
-export type TableIcon = "none" | "user" | "users" | "menu" | "file-text" | "files" | "message-square" | "tag" | "tags" | "folder" | "settings" | "shopping-cart" | "receipt" | "package" | "credit-card" | "wallet" | "truck" | "clock" | "calendar" | "list" | "list-checks" | "database" | "key" | "lock" | "link" | "image" | "mail" | "globe" | "map-pin" | "star" | "bell" | "box" | "archive" | "layers" | "hash" | "activity" | "chart-bar" | "coins" | "store" | "ticket" | "bookmark" | "shield" | "code";
+export type TableIcon = "table" | "database" | "server" | "list" | "list-checks" | "layers" | "box" | "archive" | "hash" | "key" | "key-round" | "lock" | "log-in" | "shield" | "shield-check" | "user" | "user-round" | "users" | "user-cog" | "id-card" | "file-text" | "files" | "file" | "file-code" | "file-braces" | "file-clock" | "newspaper" | "book-open" | "graduation-cap" | "image" | "film" | "music" | "paperclip" | "folder" | "folder-tree" | "menu" | "tag" | "tags" | "bookmark" | "star" | "heart" | "flag" | "message-square" | "message-circle" | "mail" | "inbox" | "send" | "bell" | "megaphone" | "phone" | "shopping-cart" | "shopping-bag" | "store" | "receipt" | "package" | "barcode" | "truck" | "warehouse" | "credit-card" | "wallet" | "banknote" | "coins" | "landmark" | "badge-percent" | "gift" | "ticket" | "building" | "briefcase" | "globe" | "map-pin" | "map" | "route" | "languages" | "clock" | "calendar" | "calendar-clock" | "timer" | "settings" | "sliders-horizontal" | "wrench" | "activity" | "chart-bar" | "code" | "terminal" | "bug" | "webhook" | "plug" | "puzzle" | "blocks" | "git-branch" | "workflow" | "link";
 
 export type TableInfo = { name: string, isView: boolean, rowsEstimate: number | null, sizeBytes: number | null, comment: string, };
 

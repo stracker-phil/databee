@@ -4,7 +4,9 @@ import type { DocumentMarks } from "../../lib/diff";
 import { fieldOf, moreText, provenanceKey } from "../../lib/document";
 import { cellText, charWidth } from "../../lib/format";
 import { LongList } from "../LongList";
+import { hasLeadIcon, LEAD_ICON_CH } from "../value/Value";
 import { Field, isNumeric, type FieldChange } from "./fields";
+import { WideTable } from "./WideTable";
 
 /** The focused and edited values, as provenance keys, and the change marks of live mode, a snapshot or compare. */
 export interface Marks {
@@ -82,24 +84,32 @@ function* columnTexts(rows: GroupRow[], column: string, index: number) {
   }
 }
 
-/** Column widths from the header and the shown values; the last column takes the rest. */
-function template(columns: string[], rows: GroupRow[]): string {
-  const widths = columns.map((column, i) => charWidth(column, columnTexts(rows, column, i)));
-  if (widths.length > 0) widths[widths.length - 1] = "minmax(0, 1fr)";
-  return widths.join(" ");
-}
+const leads = (rows: GroupRow[], column: string, index: number) =>
+  rows.some((row) => {
+    const value = fieldOf(row, column, index);
+    return !!value && hasLeadIcon(value);
+  });
+
+/** Column widths from the header and the shown values, with room for a leading table icon. */
+const columnWidths = (columns: string[], rows: GroupRow[]) =>
+  columns.map((column, i) => charWidth(column, columnTexts(rows, column, i), 40, leads(rows, column, i) ? LEAD_ICON_CH : 0));
+
+/** The rows' first column is their primary key, which stays in view while the group scrolls sideways. */
+const keyFirst = (group: Group) => {
+  const first = group.rows[0];
+  return !!first && fieldOf(first, group.columns[0], 0)?.kind.kind === "primaryKey";
+};
 
 interface TableRowProps {
   row: GroupRow;
   columns: string[];
   table: string;
-  style: React.CSSProperties;
   marks: Marks;
 }
 
-const TableRow = memo(function TableRow({ row, columns, table, style, marks }: TableRowProps) {
+const TableRow = memo(function TableRow({ row, columns, table, marks }: TableRowProps) {
   return (
-    <div className={`row${rowClass(row.fields.map(([, value]) => value), marks.diff)}`} style={style} data-row-table={table || undefined}>
+    <div className={`row${rowClass(row.fields.map(([, value]) => value), marks.diff)}`} data-row-table={table || undefined}>
       {columns.map((column, i) => {
         const value = fieldOf(row, column, i);
         return <Field key={column} value={value} {...marksFor(value, marks)} numeric={isNumeric(value)} />;
@@ -109,11 +119,11 @@ const TableRow = memo(function TableRow({ row, columns, table, style, marks }: T
 });
 
 export function RowsGroup({ group, marks }: { group: Group; marks: Marks }) {
-  const style = useMemo(() => ({ gridTemplateColumns: template(group.columns, group.rows) }), [group]);
+  const widths = useMemo(() => columnWidths(group.columns, group.rows), [group]);
   const first = group.rows[0];
   return (
-    <>
-      <div className="row hdr" style={style}>
+    <WideTable widths={widths} pinned={keyFirst(group)}>
+      <div className="row hdr">
         {group.columns.map((column, i) => (
           <span key={column} className={first && isNumeric(fieldOf(first, column, i)) ? "r" : undefined}>
             {column}
@@ -123,19 +133,19 @@ export function RowsGroup({ group, marks }: { group: Group; marks: Marks }) {
       <LongList items={group.rows} revealWhere={(row) => holdsFocus(row, marks)}>
         {(row, i) => {
           const key = row.key ? row.key.map((p) => p.value).join(",") : i;
-          return <TableRow key={key} row={row} columns={group.columns} table={group.table} style={style} marks={marks} />;
+          return <TableRow key={key} row={row} columns={group.columns} table={group.table} marks={marks} />;
         }}
       </LongList>
-    </>
+    </WideTable>
   );
 }
 
-const EVENT_STYLE = { gridTemplateColumns: "22ch 32ch minmax(0, 1fr)" };
+const EVENT_WIDTHS = ["22ch", "32ch", "20ch"];
 
 export function EventsGroup({ group, marks }: { group: Group; marks: Marks }) {
   return (
-    <>
-      <div className="row hdr" style={EVENT_STYLE}>
+    <WideTable widths={EVENT_WIDTHS}>
+      <div className="row hdr">
         <span>time</span>
         <span>table</span>
         <span>column or key</span>
@@ -144,7 +154,7 @@ export function EventsGroup({ group, marks }: { group: Group; marks: Marks }) {
         {(row, i) => {
           const [name, value] = row.fields[0] ?? ["", null];
           return (
-            <div key={i} className="row" style={EVENT_STYLE} data-row-table={value?.source?.table}>
+            <div key={i} className="row" data-row-table={value?.source?.table}>
               <Field value={value} focused={marksFor(value, marks).focused} />
               <span className="o2">{value?.source?.table}</span>
               <span>{name}</span>
@@ -152,7 +162,7 @@ export function EventsGroup({ group, marks }: { group: Group; marks: Marks }) {
           );
         }}
       </LongList>
-    </>
+    </WideTable>
   );
 }
 

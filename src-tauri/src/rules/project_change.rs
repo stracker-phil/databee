@@ -74,8 +74,7 @@ pub enum ProjectChange {
     Enable {
         id: String,
     },
-    /// Stores the project's icon for `rule.table`, replacing one it has; `none` switches off the
-    /// presets' icon there.
+    /// Stores the project's icon for `rule.table`, replacing one it has.
     SetIcon {
         rule: IconRule,
     },
@@ -1145,12 +1144,12 @@ color = "blue"
 
         apply(&mut project, set_icon("users", TableIcon::User), &ctx()).unwrap();
         apply(&mut project, set_icon("posts", TableIcon::Files), &ctx()).unwrap();
-        apply(&mut project, set_icon("users", TableIcon::None), &ctx()).unwrap();
+        apply(&mut project, set_icon("users", TableIcon::Table), &ctx()).unwrap();
 
         assert_eq!(
             project.icons,
             [
-                icon("users", TableIcon::None),
+                icon("users", TableIcon::Table),
                 icon("posts", TableIcon::Files)
             ]
         );

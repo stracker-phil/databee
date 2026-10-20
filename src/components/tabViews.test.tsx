@@ -113,8 +113,12 @@ describe("tab icons", () => {
   it.each([
     ["a table tab", () => tableTab({ table: "wp_options" })],
     ["an object tab", () => objectTab({ columns: [objectColumn({ ...rowAddress, target: { kind: "row", table: "wp_options", key: "1" } })] })],
-  ])("keeps the default glyph of %s for a table without an icon", (_name, make) => {
-    const container = draw(make());
+  ])("gives %s the default table icon for a table without an icon", (_name, make) => {
+    expect(icon(draw(make()))).toBe("table");
+  });
+
+  it("falls back to the file glyph for an object tab without a table", () => {
+    const container = draw(objectTab({ columns: [objectColumn({ ...rowAddress, target: { kind: "query", id: "q" } })] }));
     expect(icon(container)).toBeNull();
     expect(container.querySelector("svg")).not.toBeNull();
   });

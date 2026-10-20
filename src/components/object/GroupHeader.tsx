@@ -5,7 +5,6 @@ import { formatAddress } from "../../lib/address";
 import { countText, groupOriginText, relationText } from "../../lib/document";
 import { useStore } from "../../state/store";
 import { TableIcon } from "../TableIcon";
-import { OpenHint } from "../value/OpenHint";
 
 /** Opens the group's rows in a table tab: its exact rows when an address names them, else the whole table. */
 export function openGroupRows(group: Group, database: string) {
@@ -52,9 +51,8 @@ export const GroupHeader = memo(function GroupHeader({ group, database, anchor, 
         <span className="tn sans">{name}</span>
       ) : (
         <button className="tn" data-stage={anchor} data-stage-label={name} data-stage-list="groups" title="Open these rows in a table tab" onClick={() => openGroupRows(group, database)}>
-          <TableIcon database={database} table={group.table} />
+          <TableIcon database={database} table={group.table} effect="go" />
           {name}
-          <OpenHint effect="go" />
         </button>
       )}
       <span className="via">{relationText(group)}</span>

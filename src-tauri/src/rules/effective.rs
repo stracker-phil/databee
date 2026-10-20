@@ -135,7 +135,7 @@ pub struct EffectiveRules {
     /// `[[find]]` sources with real table names, in apply order.
     pub finds: Vec<FindSource>,
     pub disabled: HashSet<String>,
-    /// The icon of each real table that has one (`icons::table_icons`).
+    /// The icon of each real table (`icons::table_icons`).
     pub icons: BTreeMap<String, TableIcon>,
 }
 
@@ -534,7 +534,7 @@ pub struct RulesInfo {
     pub entities: Vec<AppliedEntity>,
     /// Entity names by real table, filtered entities first.
     pub table_entities: BTreeMap<String, Vec<String>>,
-    /// The icon by real table, for tables that have one.
+    /// The icon by real table, every table included.
     pub table_icons: BTreeMap<String, TableIcon>,
 }
 
@@ -1554,20 +1554,29 @@ to_when = { k = { not = "x" } }
                     "entity": { "name": "thread", "table": "f_threads" },
                 }],
                 "tableEntities": { "f_threads": ["thread"] },
-                "tableIcons": {},
+                "tableIcons": {
+                    "f_threads": "table",
+                    "f_people": "table",
+                    "f_notes": "table",
+                    "f_settings": "table",
+                    "f_replies": "table",
+                    "f_bots": "table",
+                    "f_invoices": "table",
+                    "f_sessions": "table",
+                },
             })
         );
     }
 
     #[test]
-    fn rules_info_keys_icons_by_real_table_and_leaves_none_out() {
+    fn rules_info_keys_icons_by_real_table_and_defaults_the_rest_to_table() {
         let icons = preset(
             "[preset]\nname = \"icons\"\nmarker_tables = [\"threads\"]\n\n[[icon]]\ntable = \"threads\"\nicon = \"list\"\n\n[[icon]]\ntable = \"people\"\nicon = \"users\"\n",
         );
         let project = Project {
             icons: vec![IconRule {
                 table: "people".into(),
-                icon: TableIcon::None,
+                icon: TableIcon::Table,
             }],
             ..project()
         };
@@ -1577,7 +1586,16 @@ to_when = { k = { not = "x" } }
 
         assert_eq!(
             serde_json::to_value(&info.table_icons).unwrap(),
-            serde_json::json!({ "f_threads": "list" })
+            serde_json::json!({
+                "f_threads": "list",
+                "f_people": "table",
+                "f_notes": "table",
+                "f_settings": "table",
+                "f_replies": "table",
+                "f_bots": "table",
+                "f_invoices": "table",
+                "f_sessions": "table",
+            })
         );
     }
 
@@ -1601,7 +1619,7 @@ to_when = { k = { not = "x" } }
                 "availablePresets": ["mini"],
                 "entities": [],
                 "tableEntities": {},
-                "tableIcons": {},
+                "tableIcons": { "authors": "table", "books": "table" },
             })
         );
     }

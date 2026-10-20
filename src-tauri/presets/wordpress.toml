@@ -415,4 +415,4 @@ icon = "mail"
 
 [[icon]]
 table = "registration_log"
-icon = "list"
+icon = "file-clock"

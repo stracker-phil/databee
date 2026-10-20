@@ -11,6 +11,12 @@ describe("charWidth", () => {
   ])("sizes to %s", (_name, name, texts, max, expected) => {
     expect(charWidth(name, texts, max)).toBe(expected);
   });
+
+  it("adds the lead to the width of the longest text but not to the name", () => {
+    expect(charWidth("ID", ["123"])).toBe("5ch");
+    expect(charWidth("ID", ["123"], 40, 2.5)).toBe("7.5ch");
+    expect(charWidth("a_long_name", ["1"], 40, 2.5)).toBe("13ch");
+  });
 });
 
 describe("formatBytes", () => {

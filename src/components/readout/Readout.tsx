@@ -258,9 +258,8 @@ function EntityQuery({ entity, database }: { entity: CreatedEntity; database: st
         <span className="o2">{entity.entity}</span>
         <span className="o3"> · </span>
         <button className="line-open" data-table={entity.table} title="Open the table" onClick={() => useStore.getState().openTableTab(database, entity.table, "data")}>
-          <TableIcon database={database} table={entity.table} />
+          <TableIcon database={database} table={entity.table} effect="go" />
           {entity.table}
-          <OpenHint effect="go" />
         </button>
         <span className="o3"> · preset {entity.preset}</span>
       </div>
@@ -280,13 +279,12 @@ function CreatedLine({ item, withTable, onOpen }: { item: CreatedItem; withTable
         {time.text}
       </span>
       <span className="o2">
-        <TableIcon database={item.address.database} table={item.table} />
         {item.entity}
         {withTable && <span className="o3"> {item.table}</span>}
       </span>
       <button className="line-open key" data-stage={`readout:created:${text}`} data-stage-label={`${item.entity} #${key}`} onClick={() => open(item.address)}>
+        <TableIcon database={item.address.database} table={item.table} effect="go" />
         #{key}
-        <OpenHint effect="go" />
       </button>
       <SummaryLine summary={item.summary} onOpen={onOpen} />
     </div>
@@ -394,13 +392,10 @@ function RecentSection({ part, collapse, onOpen }: { part: Part<RecentLine>; col
           const text = formatAddress(line.address);
           return (
             <div key={text} className="row" data-row-table={target.table}>
-              <span className="o2">
-                <TableIcon database={line.address.database} table={target.table} />
-                {target.table}
-              </span>
+              <span className="o2">{target.table}</span>
               <button className="line-open key" data-stage={`readout:recent:${text}`} data-stage-label={`${target.table} #${target.key}`} onClick={() => open(line.address)}>
+                <TableIcon database={line.address.database} table={target.table} effect="go" />
                 #{target.key}
-                <OpenHint effect="go" />
               </button>
               <span>{line.error ? <span className="line-error">{line.error}</span> : <SummaryLine summary={line.summary} onOpen={onOpen} />}</span>
               <span className="o3 r" title={`opened ${new Date(line.at * 1000).toISOString()}`}>

@@ -16,17 +16,24 @@ interface Options {
   onChange?: (widths: Record<string, number>) => void;
   /** The rows on screen, which auto-fit measures. */
   visibleRows: () => Cell[][];
+  /** Per column: characters its values' leading icon takes. */
+  leads?: number[];
 }
 
 /** Column widths: changed in this grid (drag / auto-fit), else saved, else measured from the first rows. */
-export function useColumnSizing({ columns, rows, saved, onChange, visibleRows }: Options) {
+export function useColumnSizing({ columns, rows, saved, onChange, visibleRows, leads }: Options) {
   const nullLabel = useStore(selectNullLabel);
   const dataFontSize = useStore((s) => s.settings?.dataFontSize ?? 12);
   const [manual, setManual] = useState<Record<string, number>>({});
   const stopDrag = useRef<(() => void) | null>(null);
   useEffect(() => () => stopDrag.current?.(), []);
 
-  const measured = useMemo(() => columns.map((c, i) => fitWidth(c, i, rows.slice(0, 50), nullLabel, dataFontSize, 380)), [columns, rows, nullLabel, dataFontSize]);
+  const leadKey = leads?.join(",") ?? "";
+  const measured = useMemo(
+    () => columns.map((c, i) => fitWidth(c, i, rows.slice(0, 50), nullLabel, dataFontSize, 380, leads?.[i])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `leadKey` stands for `leads`, a new array every render
+    [columns, rows, nullLabel, dataFontSize, leadKey],
+  );
   const widths = columns.map((c, i) => manual[c.name] ?? saved?.[c.name] ?? measured[i]);
   const totalWidth = widths.reduce((a, b) => a + b, 0);
   // Per-column CSS variables on the grid root; cells only reference them.
@@ -66,9 +73,9 @@ export function useColumnSizing({ columns, rows, saved, onChange, visibleRows }:
   const autoFit = (index: number) => {
     const visible = visibleRows();
     const sample = visible.length ? visible : rows.slice(0, 50);
-    const width = fitWidth(columns[index], index, sample, nullLabel, dataFontSize, MAX_FIT_REM * remPx());
+    const width = fitWidth(columns[index], index, sample, nullLabel, dataFontSize, MAX_FIT_REM * remPx(), leads?.[index]);
     commit({ ...manual, [columns[index].name]: Math.max(MIN_WIDTH_REM * remPx(), width) });
   };
 
-  return { totalWidth, colVars, startResize, autoFit };
+  return { widths, totalWidth, colVars, startResize, autoFit };
 }

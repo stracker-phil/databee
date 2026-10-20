@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useRef, type ComponentProps } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
@@ -368,5 +368,117 @@ describe("ResultsGrid sizing", () => {
       spy.mockRestore();
       act(() => syncRowHeight());
     }
+  });
+});
+
+describe("ResultsGrid pinned key column", () => {
+  const columns = ["key", "b", "c", "d"].map((name) => columnMeta(name, "TEXT"));
+  const rows = [[text("k1"), text("b1"), text("c1"), text("d1")]];
+  const widths = { key: 100, b: 200, c: 200, d: 200 };
+  const keyAddress = address("shop", "db", { kind: "row", table: "wp_posts", key: "1" });
+  const keyFirst = (row: number, col: number) =>
+    value({ raw: rows[row][col], kind: col === 0 ? { kind: "primaryKey", address: keyAddress } : { kind: "text" } });
+  const plain = (row: number, col: number) => value({ raw: rows[row][col] });
+  const grid = () => screen.getByRole("grid");
+
+  let viewWidth: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    connectedStore();
+    viewWidth = vi.spyOn(Element.prototype, "clientWidth", "get").mockReturnValue(300);
+  });
+
+  afterEach(() => viewWidth.mockRestore());
+
+  describe("pinning", () => {
+    it("pins the grid when column 0 holds the primary key", () => {
+      render(<ResultsGrid columns={columns} rows={rows} source={source} valueAt={keyFirst} />);
+      expect(grid()).toHaveClass("pinned");
+    });
+
+    it.each([
+      ["no valueAt", undefined],
+      ["a first column that is no key", plain],
+    ])("does not pin the grid with %s", (_name, valueAt) => {
+      render(<ResultsGrid columns={columns} rows={rows} source={source} valueAt={valueAt} />);
+      expect(grid()).not.toHaveClass("pinned");
+    });
+
+    it("marks a pinned grid scrolled sideways and clears the mark at 0", () => {
+      render(<ResultsGrid columns={columns} rows={rows} source={source} valueAt={keyFirst} />);
+      fireEvent.scroll(grid(), { target: { scrollLeft: 40 } });
+      expect(grid()).toHaveAttribute("data-scrolled");
+      fireEvent.scroll(grid(), { target: { scrollLeft: 0 } });
+      expect(grid()).not.toHaveAttribute("data-scrolled");
+    });
+
+    it("sets no scrolled mark on a grid that is not pinned", () => {
+      render(<ResultsGrid columns={columns} rows={rows} source={source} valueAt={plain} />);
+      fireEvent.scroll(grid(), { target: { scrollLeft: 40 } });
+      expect(grid()).not.toHaveAttribute("data-scrolled");
+    });
+  });
+
+  describe("room for the leading icon", () => {
+    const longKeys = [[text("k".repeat(20)), text("b1"), text("c1"), text("d1")]];
+    const keyed = (row: number, col: number) =>
+      value({ raw: longKeys[row][col], kind: col === 0 ? { kind: "primaryKey", address: keyAddress } : { kind: "text" } });
+    const firstWidth = () => parseFloat(grid().style.getPropertyValue("--col-0"));
+
+    it("makes a primary key column wider than the same column without kinds", () => {
+      const { unmount } = render(<ResultsGrid columns={columns} rows={longKeys} source={source} />);
+      const bare = firstWidth();
+      unmount();
+      render(<ResultsGrid columns={columns} rows={longKeys} source={source} valueAt={keyed} />);
+      expect(firstWidth()).toBeGreaterThan(bare);
+    });
+  });
+
+  describe("keyboard reveal", () => {
+    const setup = async (from: string, scrollLeft: number) => {
+      render(<ResultsGrid columns={columns} rows={rows} source={source} valueAt={keyFirst} columnWidths={widths} />);
+      await userEvent.click(screen.getByText(from));
+      grid().scrollLeft = scrollLeft;
+    };
+
+    it("scrolls so the right edge of a column beyond the view shows", async () => {
+      await setup("b1", 0);
+      await userEvent.keyboard("{ArrowRight}");
+      expect(grid().scrollLeft).toBe(200);
+    });
+
+    it("scrolls to a column's start minus the pinned width when it is hidden under the pinned column", async () => {
+      await setup("d1", 400);
+      await userEvent.keyboard("{ArrowLeft}");
+      expect(grid().scrollLeft).toBe(200);
+    });
+
+    it("does not scroll when moving onto the pinned column", async () => {
+      await setup("b1", 150);
+      await userEvent.keyboard("{ArrowLeft}");
+      expect(cellOf("k1")).toHaveClass("selected");
+      expect(grid().scrollLeft).toBe(150);
+    });
+
+    it("does not scroll when the column is already in view", async () => {
+      await setup("k1", 0);
+      await userEvent.keyboard("{ArrowRight}");
+      expect(cellOf("b1")).toHaveClass("selected");
+      expect(grid().scrollLeft).toBe(0);
+    });
+  });
+
+  describe("focus prop", () => {
+    it("scrolls sideways to a focused cell beyond the view", () => {
+      render(<ResultsGrid columns={columns} rows={rows} source={source} valueAt={keyFirst} columnWidths={widths} focus={{ row: 0, col: 3 }} />);
+      expect(cellOf("d1")).toHaveClass("selected");
+      expect(grid().scrollLeft).toBe(400);
+    });
+
+    it("does not scroll to a focused pinned cell", () => {
+      render(<ResultsGrid columns={columns} rows={rows} source={source} valueAt={keyFirst} columnWidths={widths} focus={{ row: 0, col: 0 }} />);
+      expect(cellOf("k1")).toHaveClass("selected");
+      expect(grid().scrollLeft).toBe(0);
+    });
   });
 });

@@ -62,8 +62,9 @@ describe("ObjectHeader in a column stack", () => {
     showTableIcons({ wp_wc_orders: "receipt" });
     inTab(0);
     const button = screen.getByRole("button", { name: "Open table wp_wc_orders" });
-    expect(button.querySelector("[data-open]")).toHaveAttribute("data-open", "go");
-    expect(button.querySelector("[data-icon=receipt]")).not.toBeNull();
+    const swap = button.querySelector(".open-swap");
+    expect(swap).toHaveAttribute("data-open", "go");
+    expect(swap?.querySelector("[data-icon=receipt]")).not.toBeNull();
   });
 
   it("draws the table's icon but no hint for the plain table name outside a tab", () => {
@@ -104,10 +105,8 @@ describe("ObjectHeader alternatives", () => {
     header();
     const users = screen.getByRole("button", { name: "wp_users #4711" });
     const posts = screen.getByRole("button", { name: "wp_posts #4711" });
-    expect(users.querySelector("[data-icon=user]")).not.toBeNull();
-    expect(posts.querySelector("[data-icon]")).toBeNull();
-    expect(users.querySelector("[data-open]")).toHaveAttribute("data-open", "go");
-    expect(posts.querySelector("[data-open]")).toHaveAttribute("data-open", "go");
+    expect(users.querySelector(".open-swap[data-open=go] [data-icon=user]")).not.toBeNull();
+    expect(posts.querySelector(".open-swap[data-open=go] [data-icon=table]")).not.toBeNull();
   });
 
   it("opens the row of an alternative as an object", async () => {

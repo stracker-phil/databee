@@ -1,12 +1,13 @@
 /** Holding ⌥ peeks the hovered, else the focused, reference (docs/ux.md, Peek); ↵ opens it. */
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { api, type Address, type Peek, type PeekMatch } from "../../api";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { api, type Address, type Peek, type PeekMatch, type Summary } from "../../api";
 import { formatAddress, parseAddress } from "../../lib/address";
 import { bySourceText, rowIdentity } from "../../lib/provenance";
 import { useApiResult } from "../../lib/useApiResult";
 import { selectActiveTab, selectFocusedValue, selectSessionBySlug, useStore } from "../../state/store";
 import { openTarget, type ColumnPlace } from "./open";
 import { SummaryLine } from "./SummaryLine";
+import { Value } from "./Value";
 
 export interface PeekTarget {
   address: string;
@@ -20,7 +21,7 @@ export interface PeekTarget {
 }
 
 const OFFSET = 6;
-const WIDTH = 380;
+const MIN_WIDTH = 320;
 
 function placeOf(el: Element | null): ColumnPlace | null {
   const tab = selectActiveTab(useStore.getState());
@@ -145,9 +146,19 @@ function usePeekData(address: string) {
   return useApiResult(key, () => cachedPeek(sessionId!, address, dataVersion));
 }
 
-function position(rect: DOMRect | null): CSSProperties {
+function position(rect: DOMRect | null, width: number): CSSProperties {
   if (!rect) return { right: 60, top: 80 };
-  return { left: Math.max(8, Math.min(rect.left, window.innerWidth - WIDTH - 8)), top: rect.bottom + OFFSET };
+  return { left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)), top: rect.bottom + OFFSET };
+}
+
+/** The card's rendered width, so it stays in the window however wide its values make it. */
+function useCardWidth(content: unknown) {
+  const ref = useRef<HTMLElement>(null);
+  const [width, setWidth] = useState(MIN_WIDTH);
+  useLayoutEffect(() => {
+    setWidth(Math.max(MIN_WIDTH, ref.current?.offsetWidth ?? 0));
+  }, [content]);
+  return [ref, width] as const;
 }
 
 const MATCH_ROWS = 5;
@@ -218,10 +229,25 @@ function PeekBody({ data, target, onOpen }: { data: Peek; target: PeekTarget; on
   if (data.matches) return <Matches data={data} from={target.from} onOpen={onOpen} />;
   if (onlySelf(data, target)) return <div className="peek-row peek-count o2">{matchesText(0, true)}</div>;
   if (data.summary.values.length === 0) return <div className="peek-row o3">no values</div>;
+  return <SummaryTable summary={data.summary} />;
+}
+
+function SummaryTable({ summary }: { summary: Summary }) {
   return (
-    <div className="peek-row peek-summary">
-      <SummaryLine summary={data.summary} />
-    </div>
+    <table className="peek-table">
+      <tbody>
+        {summary.values.map(({ name, value }) => (
+          <tr key={name}>
+            <th scope="row" title={name}>
+              {name}
+            </th>
+            <td>
+              <Value value={value} density="grid" />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -229,6 +255,7 @@ export function PeekCard({ target, onClose }: { target: PeekTarget; onClose?: ()
   const loaded = usePeekData(target.address);
   const requested = parseAddress(target.address);
   const data = loaded.data;
+  const [ref, width] = useCardWidth(data ?? loaded.state);
   const address = data && !data.matches && !onlySelf(data, target) ? data.address : requested;
   const row = address.target.kind === "row" ? address.target : null;
   const keyColumn = data?.keyColumn ?? null;
@@ -241,7 +268,7 @@ export function PeekCard({ target, onClose }: { target: PeekTarget; onClose?: ()
     openTarget(to, target.place);
   };
   return (
-    <aside className="peek" aria-label={label} data-stage="peek" style={{ ...position(target.rect), width: WIDTH }}>
+    <aside ref={ref} className="peek" aria-label={label} data-stage="peek" style={position(target.rect, width)}>
       <div className="peek-head">
         <PeekTitle address={address} />
         <span className="o3">⌥ peek · ↵ open</span>

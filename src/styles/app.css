@@ -239,6 +239,18 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .grid:focus-visible { outline: none; }
 .grid:focus .grid-cell.selected { background: var(--sel); }
 .grid:focus-visible:not(:has(.grid-cell.selected)) .grid-head { box-shadow: inset 0 -2px 0 0 var(--accent), 0 -2px 0 0 var(--bg); }
+/* A first column holding the rows' primary key (.pinned) stays at the left while the grid scrolls sideways, header
+   cell included, on the opaque row background (a hovered or selected cell mixes its tint into it), with a hairline
+   at its edge while scrolled (data-scrolled). Keyboard moves keep the selected cell right of it (scroll-padding). */
+.grid.pinned { --pin-bg: var(--bg); scroll-padding-left: var(--col-0); }
+.grid.pinned .grid-row:hover { --pin-bg: var(--row-hover); }
+.grid.pinned :is(.grid-hcell, .grid-cell):first-child { position: sticky; left: 0; z-index: 1; background: var(--pin-bg); border-radius: 0; }
+.grid.pinned .grid-hcell.sortable:first-child:hover { background: var(--row-hover); }
+.grid.pinned .grid-cell:first-child:hover { background: color-mix(in srgb, var(--accent) 24%, var(--pin-bg)); }
+.grid.pinned:focus .grid-cell.selected:first-child { background: color-mix(in srgb, var(--accent) 20%, var(--pin-bg)); }
+.grid.pinned[data-scrolled] :is(.grid-hcell, .grid-cell):first-child::after {
+  content: ""; position: absolute; inset: 0 0 0 auto; width: 1px; background: var(--line); pointer-events: none;
+}
 /* Header: the column name, then its type on a second line. */
 .grid-hcell {
   flex: none; position: relative; display: flex; flex-direction: column; justify-content: flex-end;
@@ -529,27 +541,32 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .val-secret:hover, .val-ser:hover, .val-secret > .revealed { color: var(--text); }
 .val-secret > .revealed { outline: none; user-select: text; -webkit-user-select: text; }
 .val-tree { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; }
-/* What a click does (OpenHint): one passive icon over the right edge of the hovered or focused cell, over a fade
-   of what is behind it (--acts-bg), so the text cuts before it and nothing shifts. Links outside values carry
-   it after their text (.open-hint), shown while they are hovered. */
-.grid-cell, :is(.object, .project, .readout) .row > *, .summary-pair { position: relative; }
-.val-acts {
-  position: absolute; top: 0; right: 0; bottom: 0; display: none; align-items: center; pointer-events: none;
-  padding: 0 0.462rem 0 1.231rem; color: var(--o2); background: linear-gradient(to right, transparent, var(--acts-bg, var(--bg)) 1.077rem);
-}
-.grid-cell:hover .val-acts, .grid:focus .grid-cell.selected .val-acts, .summary-pair:hover .val-acts,
-:is(.object, .project, .readout) .row > *:hover .val-acts, .object .row > .focus .val-acts { display: flex; }
-.grid-cell.num:hover:has(.val-acts), .grid:focus .grid-cell.num.selected:has(.val-acts) { padding-right: 2.2rem; }
+/* What a click does (OpenHint, OpenSwap). A link with a leading icon (a table icon, the serialized marker) holds it
+   in a 1em box with the indicator beside it, hidden; while its cell, line or link is hovered (or the selected grid
+   cell has focus) the two trade places, so nothing shifts or cuts. Links without one show the indicator after
+   their text (.open-hint). A cell or line that holds a summary swaps per pair. */
+.open-swap { display: inline-block; flex: none; width: 1em; margin-right: 0.308em; white-space: nowrap; color: var(--o2); pointer-events: none; }
+.open-swap > .tbl-icon { margin-right: 0; }
+.open-swap > .open-glyph { display: none; vertical-align: -0.125em; }
+.open-swap > .ser-mark { display: inline-block; width: 1em; text-align: center; color: var(--o3); }
+:is(
+  .grid-cell:hover, .grid:focus .grid-cell.selected, .summary-pair:hover,
+  :is(.object, .project, .readout) .row > :hover:not(:has(.summary-pair)), .object .row > .focus:not(:has(.summary-pair))
+) .open-swap > :not(.open-glyph),
+:hover > .open-swap > :not(.open-glyph) { display: none; }
+:is(
+  .grid-cell:hover, .grid:focus .grid-cell.selected, .summary-pair:hover,
+  :is(.object, .project, .readout) .row > :hover:not(:has(.summary-pair)), .object .row > .focus:not(:has(.summary-pair))
+) .open-swap > .open-glyph,
+:hover > .open-swap > .open-glyph { display: inline; }
 .open-hint { display: inline-flex; vertical-align: -0.125em; margin-left: 0.308rem; color: var(--o2); pointer-events: none; visibility: hidden; }
+:is(
+  .grid-cell:hover, .grid:focus .grid-cell.selected, .summary-pair:hover,
+  :is(.object, .project, .readout) .row > :hover:not(:has(.summary-pair)), .object .row > .focus:not(:has(.summary-pair))
+) .val .open-hint,
 :hover > .open-hint { visibility: visible; }
-/* A table's icon (TableIcon) before its name or a reference into it, sized to the text. */
+/* A table's icon (TableIcon) before its name, a reference into it or a key of its rows, sized to the text. */
 .tbl-icon { flex: none; vertical-align: -0.125em; margin-right: 0.308em; color: var(--o2); }
-.grid-cell:hover { --acts-bg: color-mix(in srgb, var(--accent) 24%, var(--row-hover)); }
-.grid:focus .grid-cell.selected { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--bg)); }
-.grid:focus .grid-row:hover .grid-cell.selected { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--row-hover)); }
-:is(.object, .project, .readout) .row:hover { --acts-bg: var(--row-hover); }
-.object .row > .focus { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--bg)); }
-.object .row:hover > .focus { --acts-bg: color-mix(in srgb, var(--accent) 20%, var(--row-hover)); }
 
 /* ---------- column stack ---------- */
 /* The trail above the panes, then the panes side by side with hairline dividers (Splitter); the active pane has
@@ -601,7 +618,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .pin-rows .input { width: 6rem; }
 
 /* ---------- peek ---------- */
-.peek { position: fixed; z-index: 50; overflow: hidden; border-radius: 10px; background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); animation: pop .12s ease-out; pointer-events: none; }
+.peek { position: fixed; z-index: 50; width: max-content; min-width: 320px; max-width: min(560px, calc(100vw - 16px)); overflow: hidden; border-radius: 10px; background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); animation: pop .12s ease-out; pointer-events: none; }
 .peek-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 14px; }
 .peek-head .tn { font-weight: 600; }
 .peek-head .key { color: var(--accent); }
@@ -618,9 +635,11 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .peek-match:hover { background: var(--row-hover); }
 .peek-match .key { flex: none; color: var(--accent); }
 .peek-match .summary-line { overflow: hidden; }
-.peek-summary { display: block; white-space: normal; }
-.peek-summary .summary-line { flex-wrap: wrap; }
-.peek-summary .summary-pair { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.peek-table { width: 100%; border-collapse: collapse; border-top: 1px solid var(--field-line); font-family: var(--font-mono); font-size: var(--data-font-size); line-height: 20px; }
+.peek-table tbody { display: grid; grid-template-columns: fit-content(200px) minmax(0, 1fr); column-gap: 20px; padding: var(--pad) 14px; }
+.peek-table tr { display: contents; }
+.peek-table :is(th, td) { min-width: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.peek-table th { color: var(--o2); font-weight: normal; }
 
 /* ---------- summary line ---------- */
 .summary-line { display: inline-flex; gap: 0.308rem 1.538rem; min-width: 0; max-width: 100%; overflow: hidden; font-family: var(--font-mono); }
@@ -638,7 +657,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 
 /* ---------- object view ---------- */
 /* The header block, section bands (.sh) and rows (.row, .kv, .hdr) share the row anatomy. */
-.object { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.object { flex: 1; min-height: 0; overflow: hidden auto; overflow-anchor: none; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .object-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 1.231rem; border-bottom: 1px solid var(--line); }
 .object-title { display: flex; align-items: center; gap: 0.923rem; min-width: 0; }
 .object-title > * { flex: none; }
@@ -681,7 +700,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
   background: var(--sel); box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 3px;
 }
 .object .row .r { text-align: right; }
-.object .row.kv { grid-template-columns: 300px minmax(0, 1fr); }
+.object .row.kv { grid-template-columns: min(300px, 60%) minmax(0, 1fr); }
 .object .row.kv > :first-child { color: var(--o2); }
 :is(.object, .project, .readout) .row.hdr { color: var(--o3); font-family: var(--font-ui); font-size: var(--fs-small); }
 :is(.object, .project, .readout) .row.hdr:hover { background: transparent; }
@@ -690,9 +709,35 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .object .also { padding: 14px 12px 0; color: var(--o3); font-size: var(--fs-small); }
 .also-table { border: none; background: none; padding: 0; color: inherit; font-family: var(--font-mono); font-size: var(--data-font-size); }
 .also-table:hover { color: var(--text); text-decoration: underline; }
+/* The pane only scrolls down: a table of rows (related rows, events, changes) scrolls sideways in its own box
+   (WideTable), its header with it, below a band that keeps the pane's width. Rows take the column template
+   from --cols and are at least as wide as their columns, gaps (20px) and padding (2 × 12px); the header row
+   resolves `ch` in the data font too, so its columns line up. */
+.wide-table { overflow: auto hidden; font-family: var(--font-mono); font-size: var(--data-font-size); }
+.object .wide-table > .row { grid-template-columns: var(--cols); min-width: calc(var(--cols-sum) + (var(--col-count) - 1) * 20px + 24px); }
+.object .wide-table > .row.hdr { font-family: var(--font-mono); font-size: var(--data-font-size); }
+.object .wide-table > .row.hdr > * { font-family: var(--font-ui); font-size: var(--fs-small); }
+/* A primary key first column (.pinned) stays at the left while the table scrolls: the cell covers the row's
+   padding and half the gap on the opaque row background, carries the row's change mark, draws a focus as the
+   other cells do (::before), and has a hairline at its edge while scrolled (data-scrolled). scroll-padding keeps
+   a revealed value right of it. */
+.wide-table.pinned { --pin-bg: var(--bg); scroll-padding-left: calc(var(--first-col) + 22px); }
+.wide-table.pinned > .row:not(.hdr):hover { --pin-bg: var(--row-hover); }
+.wide-table.pinned > .row.chg { --pin-mark: inset 3px 0 0 var(--accent); }
+.object .wide-table.pinned > .row > :first-child:not(input) {
+  position: sticky; left: 0; z-index: 1; margin: calc(-1 * var(--pad)) -10px calc(-1 * var(--pad)) -12px;
+  padding: var(--pad) 10px var(--pad) 12px; background: var(--pin-bg); box-shadow: var(--pin-mark, none); border-radius: 0;
+}
+.object .wide-table.pinned > .row > .focus:first-child::before {
+  content: ""; position: absolute; inset: 0 2px 0 4px; z-index: -1; pointer-events: none;
+  background: var(--sel); box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 3px;
+}
+.wide-table.pinned[data-scrolled] > .row > :first-child::after {
+  content: ""; position: absolute; inset: 0 0 0 auto; width: 1px; background: var(--line); pointer-events: none;
+}
 .rows-view section { display: flex; flex-direction: column; }
 .rows-grid { display: flex; flex-direction: column; min-height: 0; }
-.rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); }
+.rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); overflow-wrap: anywhere; }
 
 /* ---------- project page ---------- */
 /* One header row, then the overview (bands "Your changes" and "Problems", one sentence-like row each) or every
@@ -916,13 +961,15 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .snapshot-label { font-family: var(--font-mono); font-size: var(--data-font-size); color: var(--text); }
 
 /* ---------- table icons ---------- */
-/* The icon line of a table (IconControl) and its picker sheet: a grid of the curated icons. */
+/* The icon line of a table (IconControl) and its picker sheet: a filter field over a grid of the curated icons. */
 .icon-rule { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.462rem; }
 .icon-rule .tbl-icon { margin-right: 0; }
 .icon-rule .origin { color: var(--o3); font-size: var(--fs-small); }
 .icon-rule .link { border: none; background: none; padding: 0; font: inherit; color: var(--o2); }
 .icon-rule .link:hover:not(:disabled) { color: var(--accent); text-decoration: underline; }
 .structure-icon { font-size: var(--fs-base); }
+.icon-sheet .icon-filter { padding: 0.923rem 1.231rem 0; }
+.icon-sheet .icon-none { grid-column: 1 / -1; padding: 0.615rem 0; font-size: var(--fs-small); }
 .icon-sheet .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.462rem, 1fr)); gap: 0.308rem; padding: 1.077rem 1.231rem; }
 .icon-sheet .icon-choice {
   display: inline-flex; align-items: center; justify-content: center; height: 2.462rem; border: 1px solid transparent;
@@ -930,4 +977,3 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 }
 .icon-sheet .icon-choice:hover { color: var(--text); background: var(--row-hover); }
 .icon-sheet .icon-choice[aria-pressed="true"] { border-color: var(--field-line); background: var(--field); color: var(--accent); }
-.icon-sheet .act[aria-pressed="true"] { color: var(--accent); }
