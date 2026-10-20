@@ -84,6 +84,16 @@ describe("Switch connection (⌘⇧P)", () => {
     expect(option("Blog")).not.toHaveTextContent("current");
   });
 
+  it("adds connection lost to the badge of every lost open connection", async () => {
+    const down = { state: "down", since: 1_700_000_000_000, error: "Connection refused", retryAt: 1_700_000_030_000 } as const;
+    useStore.setState({ health: { s1: down, s2: { state: "reconnecting", since: down.since, error: down.error } } });
+    await openSwitcher();
+    await waitFor(() => expect(option("Blog")).toBeDefined());
+    expect(option("Shop")).toHaveTextContent("current · connection lost");
+    expect(option("Staging")).toHaveTextContent("open · connection lost");
+    expect(option("Blog")).not.toHaveTextContent("connection lost");
+  });
+
   it("filters connections fuzzily by name, host:port, database and slug", async () => {
     const input = await openSwitcher();
     await waitFor(() => expect(option("Blog")).toBeDefined());

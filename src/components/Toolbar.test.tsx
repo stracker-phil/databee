@@ -4,12 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
+import { api } from "../api";
 import { installCommands } from "../commands";
 import { address } from "../lib/address";
 import { useStore } from "../state/store";
 import { connectedStore, tableTab } from "../test/fixtures";
 import { CommandPalette } from "./CommandPalette";
 import { Toolbar } from "./Toolbar";
+
+const mocked = vi.mocked(api, true);
 
 describe("Toolbar", () => {
   beforeEach(() => {
@@ -87,6 +90,52 @@ describe("Toolbar", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "Forward" }));
       await waitFor(() => expect(useStore.getState().tabs[0].kind).toBe("object"));
+    });
+  });
+
+  describe("connection health", () => {
+    const since = new Date(2025, 0, 2, 14, 2, 10).getTime();
+    const down = { state: "down", since, error: "Connection refused (os error 61)", retryAt: since + 30000 } as const;
+
+    it("shows no warning and no Retry while the connection is fine", () => {
+      render(<Toolbar />);
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    });
+
+    it("warns with the cause and the time in its tooltip when the connection is lost", () => {
+      useStore.setState({ health: { s1: down } });
+      render(<Toolbar />);
+      expect(screen.getByLabelText("Connection lost")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveAttribute("title", expect.stringContaining("Connection lost since"));
+      expect(screen.getByRole("status")).toHaveAttribute("title", expect.stringContaining("Connection refused (os error 61)"));
+    });
+
+    it("asks Rust to reconnect the session when Retry is clicked", async () => {
+      useStore.setState({ health: { s1: down } });
+      render(<Toolbar />);
+      await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(mocked.reconnectSession).toHaveBeenCalledWith("s1");
+    });
+
+    it("disables the button and says Reconnecting… while a retry is running", () => {
+      useStore.setState({ health: { s1: { state: "reconnecting", since, error: "Connection refused (os error 61)" } } });
+      render(<Toolbar />);
+      expect(screen.getByRole("button", { name: "Reconnecting…" })).toBeDisabled();
+      expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    });
+
+    it("shows the warning of the active session only", () => {
+      useStore.setState({ health: { s2: down } });
+      render(<Toolbar />);
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
+    it("disappears when the connection is back", async () => {
+      useStore.setState({ health: { s1: down } });
+      render(<Toolbar />);
+      await act(async () => useStore.getState().setHealth({ sessionId: "s1", health: { state: "ok" } }));
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
     });
   });
 });

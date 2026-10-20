@@ -416,6 +416,52 @@ mod tests {
     }
 
     #[test]
+    fn connection_lost_serializes_with_its_own_kind() {
+        let err = AppError::ConnectionLost("Could not connect: refused".into());
+
+        assert_eq!(err.kind(), ErrorKind::ConnectionLost);
+        assert_eq!(
+            serde_json::to_value(&err).unwrap(),
+            json!({
+                "kind": "connection_lost",
+                "message": "Connection lost: Could not connect: refused",
+                "code": null,
+                "account": null
+            })
+        );
+    }
+
+    #[test]
+    fn only_connection_and_timeout_errors_suggest_a_lost_connection() {
+        for (err, suggests) in [
+            (AppError::Connection("reset".into()), true),
+            (AppError::timeout(Duration::from_secs(30)), true),
+            (
+                AppError::Timeout {
+                    limit: Duration::from_secs(30),
+                    session_reset: true,
+                },
+                true,
+            ),
+            (AppError::ConnectionLost("down".into()), false),
+            (
+                AppError::Database {
+                    message: "no table".into(),
+                    code: Some("1146".into()),
+                },
+                false,
+            ),
+            (AppError::InvalidInput("bad".into()), false),
+            (AppError::Cancelled, false),
+            (AppError::AuthFailed("denied".into()), false),
+            (AppError::SessionNotFound("a".into()), false),
+            (AppError::Io("disk full".into()), false),
+        ] {
+            assert_eq!(err.suggests_connection_loss(), suggests, "{err:?}");
+        }
+    }
+
+    #[test]
     fn io_failures_map_to_connection_errors() {
         let io = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
         let err = AppError::from(sqlx::Error::Io(io));

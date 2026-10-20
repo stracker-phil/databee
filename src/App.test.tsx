@@ -75,6 +75,48 @@ describe("App", () => {
     expect(screen.queryByText(/\[object Object\]/)).not.toBeInTheDocument();
   });
 
+  describe("connection health", () => {
+    const down = { state: "down", since: 1_700_000_000_000, error: "Connection refused", retryAt: 1_700_000_030_000 } as const;
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      connectedStore();
+    });
+
+    it("shows the warning when Rust reports the connection lost and removes it when it is back", async () => {
+      render(<App />);
+      await screen.findByText("wp_options");
+      const report = mocked.onSessionHealth.mock.calls.at(-1)![0];
+
+      act(() => report({ sessionId: "s1", health: down }));
+      expect(await screen.findByRole("button", { name: "Retry" })).toBeInTheDocument();
+      expect(await screen.findByText("Lost the connection to Shop")).toBeInTheDocument();
+
+      await act(async () => report({ sessionId: "s1", health: { state: "ok" } }));
+      expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+      expect(await screen.findByText("Reconnected to Shop")).toBeInTheDocument();
+    });
+
+    it("retries a lost session when the window regains focus", async () => {
+      useStore.setState({ health: { s1: down } });
+      render(<App />);
+      await screen.findByText("wp_options");
+
+      act(() => void fireEvent.focus(window));
+
+      expect(mocked.reconnectSession).toHaveBeenCalledWith("s1");
+    });
+
+    it("does not reconnect anything on focus while every connection is fine", async () => {
+      render(<App />);
+      await screen.findByText("wp_options");
+
+      act(() => void fireEvent.focus(window));
+
+      expect(mocked.reconnectSession).not.toHaveBeenCalled();
+    });
+  });
+
   describe("sidebar toggle", () => {
     const tree = () => screen.queryByRole("tree", { name: "Databases" });
 

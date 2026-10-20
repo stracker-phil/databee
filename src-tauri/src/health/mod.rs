@@ -44,7 +44,10 @@ pub enum Health {
         retry_at: i64,
     },
     #[serde(rename_all = "camelCase")]
-    Reconnecting { since: i64, error: String },
+    Reconnecting {
+        since: i64,
+        error: String,
+    },
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq, TS)]
@@ -175,7 +178,10 @@ impl SessionHealth {
         if inner.health != Health::Ok {
             return;
         }
-        log::warn!("Lost the connection of session {}: {error}", self.session_id);
+        log::warn!(
+            "Lost the connection of session {}: {error}",
+            self.session_id
+        );
         inner.failed_retries = 0;
         self.mark_down(&mut inner, unix_ms(), &error, now);
     }
@@ -265,4 +271,366 @@ pub async fn retry(db: &dyn Database, health: &SessionHealth) -> Health {
     };
     let result = db.reconnect().await;
     attempt.finish(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use serde_json::json;
+    use tokio::sync::broadcast::Receiver;
+    use tokio::sync::broadcast::error::TryRecvError;
+
+    use super::*;
+    use crate::connection::ConnectionSpec;
+    use crate::db::FakeDatabase;
+    use crate::session::{Session, Sessions};
+
+    const REFUSED: &str = "Could not connect: refused";
+
+    pub(super) fn refused() -> AppError {
+        AppError::Connection("refused".into())
+    }
+
+    pub(super) fn spec() -> ConnectionSpec {
+        ConnectionSpec {
+            name: None,
+            host: "127.0.0.1".into(),
+            port: 3306,
+            socket: None,
+            user: "root".into(),
+            database: None,
+        }
+    }
+
+    pub(super) fn registered(db: &Arc<FakeDatabase>) -> (Arc<Session>, Receiver<HealthEvent>) {
+        let sessions = Sessions::default();
+        let events = sessions.health_events();
+        let session = sessions.insert(Session::new(
+            "a".into(),
+            spec(),
+            "local".into(),
+            Box::new(db.clone()),
+        ));
+        (session, events)
+    }
+
+    pub(super) fn drain(events: &mut Receiver<HealthEvent>) -> Vec<Health> {
+        let mut out = Vec::new();
+        while let Ok(event) = events.try_recv() {
+            assert_eq!(event.session_id, "a");
+            out.push(event.health);
+        }
+        out
+    }
+
+    pub(super) async fn go_down(db: &FakeDatabase, session: &Session) -> Health {
+        db.set_unreachable(Some(refused()));
+        check(session.db.as_ref(), &session.health).await;
+        session.health.get()
+    }
+
+    fn assert_retries_in(health: &Health, window: (i64, i64), secs: i64) {
+        let Health::Down { retry_at, .. } = health else {
+            panic!("not down: {health:?}");
+        };
+        let wait = secs * 1000;
+        assert!(
+            (window.0 + wait..=window.1 + wait).contains(retry_at),
+            "{secs} s: {retry_at} is outside {window:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_ping_turns_ok_into_down_and_sends_one_event() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, mut events) = registered(&db);
+        db.set_unreachable(Some(refused()));
+        let before = unix_ms();
+
+        check(session.db.as_ref(), &session.health).await;
+
+        let after = unix_ms();
+        let health = session.health.get();
+        let Health::Down { since, error, .. } = &health else {
+            panic!("not down: {health:?}");
+        };
+        assert!((before..=after).contains(since), "{since}");
+        assert_eq!(error, REFUSED);
+        assert_retries_in(&health, (before, after), 10);
+        assert_eq!(drain(&mut events), [health]);
+    }
+
+    #[tokio::test]
+    async fn successful_ping_changes_nothing_and_sends_nothing() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, mut events) = registered(&db);
+
+        check(session.db.as_ref(), &session.health).await;
+
+        assert_eq!(session.health.get(), Health::Ok);
+        assert!(matches!(events.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[tokio::test]
+    async fn check_leaves_a_down_session_as_it_is() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, mut events) = registered(&db);
+        let down = go_down(&db, &session).await;
+        drain(&mut events);
+        db.set_unreachable(None);
+
+        check(session.db.as_ref(), &session.health).await;
+
+        assert_eq!(session.health.get(), down);
+        assert!(drain(&mut events).is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_ok_session_is_checked_once_the_ping_interval_has_passed() {
+        let (session, _events) = registered(&Arc::new(FakeDatabase::new()));
+        let now = Instant::now();
+
+        assert_eq!(session.health.due(now), Due::Nothing);
+        assert_eq!(
+            session
+                .health
+                .due(now + PING_INTERVAL - Duration::from_secs(5)),
+            Due::Nothing
+        );
+        assert_eq!(session.health.due(now + PING_INTERVAL), Due::Check);
+    }
+
+    #[tokio::test]
+    async fn no_check_is_due_while_one_is_in_flight() {
+        let (session, _events) = registered(&Arc::new(FakeDatabase::new()));
+        let later = Instant::now() + PING_INTERVAL * 2;
+
+        let in_flight = session.health.begin_check(Instant::now()).unwrap();
+        assert_eq!(session.health.due(later), Due::Nothing);
+        assert!(session.health.begin_check(Instant::now()).is_none());
+
+        drop(in_flight);
+        assert_eq!(session.health.due(later), Due::Check);
+    }
+
+    #[tokio::test]
+    async fn a_down_session_is_retried_only_once_its_backoff_has_passed() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, _events) = registered(&db);
+        go_down(&db, &session).await;
+        let now = Instant::now();
+
+        assert_eq!(session.health.due(now), Due::Nothing);
+        assert_eq!(
+            session.health.due(now + Duration::from_secs(9)),
+            Due::Nothing
+        );
+        assert_eq!(
+            session.health.due(now + Duration::from_secs(11)),
+            Due::Retry
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reconnecting_session_is_neither_checked_nor_retried() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, _events) = registered(&db);
+        go_down(&db, &session).await;
+        let far = Instant::now() + Duration::from_secs(3600);
+
+        let attempt = session.health.begin_retry().unwrap();
+
+        assert!(matches!(session.health.get(), Health::Reconnecting { .. }));
+        assert_eq!(session.health.due(far), Due::Nothing);
+        drop(attempt);
+    }
+
+    #[tokio::test]
+    async fn successful_retry_goes_reconnecting_then_ok() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, mut events) = registered(&db);
+        let Health::Down { since, error, .. } = go_down(&db, &session).await else {
+            panic!("not down");
+        };
+        drain(&mut events);
+        db.set_unreachable(None);
+
+        let health = retry(session.db.as_ref(), &session.health).await;
+
+        assert_eq!(health, Health::Ok);
+        assert_eq!(session.health.get(), Health::Ok);
+        assert_eq!(
+            drain(&mut events),
+            [Health::Reconnecting { since, error }, Health::Ok]
+        );
+    }
+
+    #[tokio::test]
+    async fn failing_retry_goes_reconnecting_then_down_with_the_new_error_and_the_same_since() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, mut events) = registered(&db);
+        let Health::Down { since, error, .. } = go_down(&db, &session).await else {
+            panic!("not down");
+        };
+        drain(&mut events);
+        db.set_unreachable(Some(AppError::Connection("still down".into())));
+
+        let health = retry(session.db.as_ref(), &session.health).await;
+
+        let Health::Down {
+            since: new_since,
+            error: new_error,
+            ..
+        } = &health
+        else {
+            panic!("not down: {health:?}");
+        };
+        assert_eq!(*new_since, since);
+        assert_eq!(new_error, "Could not connect: still down");
+        assert_eq!(
+            drain(&mut events),
+            [Health::Reconnecting { since, error }, health]
+        );
+    }
+
+    #[tokio::test]
+    async fn retries_back_off_from_10_to_30_to_60_seconds_and_stay_at_60() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, _events) = registered(&db);
+        let before = unix_ms();
+        let health = go_down(&db, &session).await;
+        assert_retries_in(&health, (before, unix_ms()), 10);
+
+        for secs in [30, 60, 60, 60] {
+            let before = unix_ms();
+            let health = retry(session.db.as_ref(), &session.health).await;
+            assert_retries_in(&health, (before, unix_ms()), secs);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_retry_postpones_the_next_one_by_the_next_backoff_step() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, _events) = registered(&db);
+        go_down(&db, &session).await;
+        retry(session.db.as_ref(), &session.health).await;
+        let now = Instant::now();
+
+        assert_eq!(
+            session.health.due(now + Duration::from_secs(29)),
+            Due::Nothing
+        );
+        assert_eq!(
+            session.health.due(now + Duration::from_secs(31)),
+            Due::Retry
+        );
+    }
+
+    #[tokio::test]
+    async fn a_new_loss_after_a_reconnect_starts_the_backoff_over() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, _events) = registered(&db);
+        go_down(&db, &session).await;
+        retry(session.db.as_ref(), &session.health).await;
+        db.set_unreachable(None);
+        retry(session.db.as_ref(), &session.health).await;
+
+        let before = unix_ms();
+        let health = go_down(&db, &session).await;
+
+        assert_retries_in(&health, (before, unix_ms()), 10);
+    }
+
+    #[tokio::test]
+    async fn retry_on_an_ok_session_returns_ok_and_sends_nothing() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, mut events) = registered(&db);
+        db.set_unreachable(Some(refused()));
+
+        let health = retry(session.db.as_ref(), &session.health).await;
+
+        assert_eq!(health, Health::Ok);
+        assert!(matches!(events.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[tokio::test]
+    async fn a_retry_dropped_before_it_finishes_counts_as_failed() {
+        let db = Arc::new(FakeDatabase::new());
+        let (session, _events) = registered(&db);
+        let Health::Down { since, .. } = go_down(&db, &session).await else {
+            panic!("not down");
+        };
+
+        drop(session.health.begin_retry().unwrap());
+
+        let health = session.health.get();
+        let Health::Down {
+            since: new_since,
+            error,
+            ..
+        } = &health
+        else {
+            panic!("not down: {health:?}");
+        };
+        assert_eq!(*new_since, since);
+        assert_eq!(error, "Could not connect: the reconnect was interrupted");
+    }
+
+    #[test]
+    fn health_serializes_its_state_as_a_tag_with_camel_case_fields() {
+        for (health, expected) in [
+            (Health::Ok, json!({"state": "ok"})),
+            (
+                Health::Down {
+                    since: 1_000,
+                    error: "Could not connect: refused".into(),
+                    retry_at: 11_000,
+                },
+                json!({
+                    "state": "down",
+                    "since": 1_000,
+                    "error": "Could not connect: refused",
+                    "retryAt": 11_000
+                }),
+            ),
+            (
+                Health::Reconnecting {
+                    since: 1_000,
+                    error: "Could not connect: refused".into(),
+                },
+                json!({
+                    "state": "reconnecting",
+                    "since": 1_000,
+                    "error": "Could not connect: refused"
+                }),
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(&health).unwrap(),
+                expected,
+                "{health:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn health_event_serializes_the_session_id_in_camel_case() {
+        let event = HealthEvent {
+            session_id: "a".into(),
+            health: Health::Down {
+                since: 1_000,
+                error: "gone".into(),
+                retry_at: 11_000,
+            },
+        };
+
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            json!({
+                "sessionId": "a",
+                "health": {"state": "down", "since": 1_000, "error": "gone", "retryAt": 11_000}
+            })
+        );
+    }
 }

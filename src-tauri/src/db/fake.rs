@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use super::browse::browse_sql;
 use super::{
     BrowsePage, BrowseRequest, CellLimit, Database, DatabaseInfo, Dialect, ExecuteResponse,
-    ResultSet, TableInfo, TableKeys, TableStructure,
+    ResultSet, StatementFailure, TableInfo, TableKeys, TableStructure,
 };
 use crate::error::{AppError, AppResult};
 use crate::lock::MutexExt;
@@ -18,6 +18,7 @@ use crate::lock::MutexExt;
 pub struct FakeDatabase {
     database: Mutex<Option<String>>,
     responses: Vec<(String, AppResult<ResultSet>)>,
+    midway: Vec<(String, AppError)>,
     queries: Mutex<Vec<String>>,
     fetch_timeouts: Mutex<Vec<Duration>>,
     applied: Mutex<Vec<Vec<String>>>,
@@ -37,6 +38,7 @@ impl FakeDatabase {
         Self {
             database: Mutex::new(None),
             responses: Vec::new(),
+            midway: Vec::new(),
             queries: Mutex::default(),
             fetch_timeouts: Mutex::default(),
             applied: Mutex::default(),
@@ -83,6 +85,13 @@ impl FakeDatabase {
 
     pub fn failing(mut self, sql_contains: &str, error: AppError) -> Self {
         self.responses.push((sql_contains.to_string(), Err(error)));
+        self
+    }
+
+    /// A script containing `sql_contains` passed to `execute` runs its first statement and stops
+    /// at the second with `error`: an `ExecuteResponse` with one result and a `failure`.
+    pub fn failing_midway(mut self, sql_contains: &str, error: AppError) -> Self {
+        self.midway.push((sql_contains.to_string(), error));
         self
     }
 
@@ -134,6 +143,22 @@ impl Database for FakeDatabase {
         _cell_limit: CellLimit,
         _timeout: Duration,
     ) -> AppResult<ExecuteResponse> {
+        if let Some((_, error)) = self
+            .midway
+            .iter()
+            .find(|(fragment, _)| sql.contains(fragment))
+        {
+            self.queries.lock_unpoisoned().push(sql.to_string());
+            return Ok(ExecuteResponse {
+                results: vec![ResultSet::default()],
+                elapsed_ms: 0,
+                database: self.current_database(),
+                failure: Some(StatementFailure {
+                    index: 1,
+                    error: error.clone(),
+                }),
+            });
+        }
         Ok(ExecuteResponse {
             results: vec![self.respond(sql)?],
             elapsed_ms: 0,
@@ -397,6 +422,42 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(err, AppError::Cancelled), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn midway_failure_returns_one_result_and_the_failure_at_the_second_statement() {
+        let db = FakeDatabase::new().failing_midway("SELECT 2", AppError::Cancelled);
+
+        let response = db
+            .execute("SELECT 1; SELECT 2", 10, CellLimit::NONE, TIMEOUT)
+            .await
+            .unwrap();
+
+        assert_eq!(response.results, [ResultSet::default()]);
+        assert_eq!(
+            response.failure,
+            Some(StatementFailure {
+                index: 1,
+                error: AppError::Cancelled
+            })
+        );
+        assert_eq!(db.queries(), ["SELECT 1; SELECT 2"]);
+    }
+
+    #[tokio::test]
+    async fn unreachable_fake_fails_ping_and_reconnect_until_reset() {
+        let db = FakeDatabase::new();
+        db.set_unreachable(Some(AppError::Connection("refused".into())));
+
+        assert_eq!(db.ping().await.unwrap_err().kind(), ErrorKind::Connection);
+        assert_eq!(
+            db.reconnect().await.unwrap_err().kind(),
+            ErrorKind::Connection
+        );
+
+        db.set_unreachable(None);
+        assert!(db.ping().await.is_ok());
+        assert!(db.reconnect().await.is_ok());
     }
 
     #[tokio::test]

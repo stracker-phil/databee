@@ -453,7 +453,10 @@ impl Sessions {
     }
 
     pub fn has_slug(&self, slug: &str) -> bool {
-        self.open.read_unpoisoned().values().any(|s| s.slug() == slug)
+        self.open
+            .read_unpoisoned()
+            .values()
+            .any(|s| s.slug() == slug)
     }
 
     /// Gives every open session of the connection `identity` the renamed slug.

@@ -8,6 +8,7 @@ import { api, EMPTY_UI_STATE, type BrowsePage, type Cell, type TableProfile, typ
 import { useStore, type TableTab as TableTabState } from "../state/store";
 import { browsePage, connectedStore, num, pendingChange, queryTab, resultSet, session, tableTab, text, value } from "../test/fixtures";
 import { TableTab } from "./TableTab";
+import { Toasts } from "./Toasts";
 
 const mocked = vi.mocked(api, true);
 
@@ -180,6 +181,44 @@ describe("TableTab", () => {
       render(<TableTab tab={tab} />);
       await screen.findByText("p0-x");
       await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+      await waitFor(() => expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ offset: 500 })));
+    });
+  });
+
+  describe("while the connection is lost", () => {
+    const down = { state: "down", since: 1_700_000_000_000, error: "Connection refused", retryAt: 1_700_000_030_000 } as const;
+    const notice = "Connection lost: can't load rows until it is back";
+
+    beforeEach(async () => {
+      mocked.browseTable.mockResolvedValue(browsePage({ hasMore: true }));
+      render(
+        <>
+          <TableTab tab={tab} />
+          <Toasts />
+        </>,
+      );
+      await screen.findByText("Hello world");
+      mocked.browseTable.mockClear();
+      act(() => useStore.setState({ health: { s1: down } }));
+    });
+
+    it.each([
+      ["Next page", () => userEvent.click(screen.getByRole("button", { name: "Next page" }))],
+      ["a sort by a column header", () => userEvent.click(screen.getByRole("columnheader", { name: /post_title/ }))],
+      ["Reload", () => userEvent.click(screen.getByRole("button", { name: "Reload" }))],
+    ])("keeps the loaded rows and reads nothing on %s", async (_name, run) => {
+      await run();
+
+      expect(mocked.browseTable).not.toHaveBeenCalled();
+      expect(screen.getByText("Hello world")).toBeInTheDocument();
+      expect(await screen.findByText(notice)).toBeInTheDocument();
+    });
+
+    it("pages again once the connection is back", async () => {
+      act(() => useStore.setState({ health: {} }));
+
+      await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+
       await waitFor(() => expect(mocked.browseTable).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ offset: 500 })));
     });
   });
@@ -407,6 +446,17 @@ describe("TableTab", () => {
         expect(screen.getByText("live check paused · pending changes")).toBeInTheDocument();
         await stillOnce();
         act(() => useStore.setState({ pending: [] }));
+        await tick();
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(2);
+        expect(screen.queryByText(/live check paused/)).not.toBeInTheDocument();
+      });
+
+      it("waits while the connection is lost, says so, and resumes when it is back", async () => {
+        await open();
+        act(() => useStore.setState({ health: { s1: { state: "down", since: 1_700_000_000_000, error: "Connection refused", retryAt: 1_700_000_030_000 } } }));
+        expect(screen.getByText("live check paused · connection lost")).toBeInTheDocument();
+        await stillOnce();
+        act(() => useStore.setState({ health: {} }));
         await tick();
         expect(mocked.tableCheck).toHaveBeenCalledTimes(2);
         expect(screen.queryByText(/live check paused/)).not.toBeInTheDocument();

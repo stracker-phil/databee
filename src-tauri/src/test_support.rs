@@ -201,3 +201,30 @@ impl Database for Counting {
         self.inner.reconnect().await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::FakeDatabase;
+    use crate::error::AppError;
+
+    #[tokio::test]
+    async fn counting_forwards_ping_and_reconnect_without_logging_them() {
+        let fake = Arc::new(FakeDatabase::new());
+        let (counting, log) = Counting::new(Box::new(fake.clone()));
+        assert!(counting.ping().await.is_ok());
+        assert!(counting.reconnect().await.is_ok());
+
+        fake.set_unreachable(Some(AppError::Connection("refused".into())));
+
+        assert_eq!(
+            counting.ping().await,
+            Err(AppError::Connection("refused".into()))
+        );
+        assert_eq!(
+            counting.reconnect().await,
+            Err(AppError::Connection("refused".into()))
+        );
+        assert!(log.take().is_empty());
+    }
+}

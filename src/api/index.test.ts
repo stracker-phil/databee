@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { toAppError } from "./index";
 
 describe("toAppError", () => {
-  it.each(["database", "password_required", "confirmation_required", "io"])("keeps an error of the known kind %s as is", (kind) => {
+  it.each(["database", "connection_lost", "password_required", "confirmation_required", "io"])("keeps an error of the known kind %s as is", (kind) => {
     const error = { kind, message: "boom", code: null, account: null };
     expect(toAppError(error)).toBe(error);
   });

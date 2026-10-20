@@ -402,6 +402,54 @@ describe("CommandPalette", () => {
       await userEvent.type(openPalette(), "#4");
       expect(screen.queryByText(/no entities/)).not.toBeInTheDocument();
     });
+
+    it("does not say rows are unsearched while the connection is fine", async () => {
+      await userEvent.type(openPalette(), "#4");
+      expect(screen.queryByText(/rows are not searched/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("while the connection is lost", () => {
+    const down = { state: "down", since: 1_700_000_000_000, error: "Connection refused", retryAt: 1_700_000_030_000 } as const;
+
+    beforeEach(() => {
+      useStore.setState({ health: { s1: down } });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("searches no rows for an id query and says so in the footer", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      mocked.paletteSearch.mockResolvedValue([hit("123")]);
+      await userEvent.type(openPalette(), "#123");
+      await vi.advanceTimersByTimeAsync(400);
+      expect(mocked.paletteSearch).not.toHaveBeenCalled();
+      expect(screen.queryByRole("option", { name: "wp_wc_orders #123" })).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("connection lost: rows are not searched");
+    });
+
+    it("still lists tables, which the palette knows without the server", async () => {
+      await userEvent.type(openPalette(), "t:wp_posts");
+      expect(await screen.findByRole("option", { name: /wp_posts/ })).toBeInTheDocument();
+    });
+
+    it("lists Retry connection among the commands", async () => {
+      await userEvent.type(openPalette(), ">retry");
+      expect(await screen.findByRole("option", { name: /Retry connection/ })).toBeInTheDocument();
+    });
+
+    it("leaves Retry connection out while a retry is already running", async () => {
+      useStore.setState({ health: { s1: { state: "reconnecting", since: down.since, error: down.error } } });
+      await userEvent.type(openPalette(), ">retry");
+      expect(screen.queryByRole("option", { name: /Retry connection/ })).not.toBeInTheDocument();
+    });
+  });
+
+  it("leaves Retry connection out of the commands while the connection is fine", async () => {
+    await userEvent.type(openPalette(), ">retry");
+    expect(screen.queryByRole("option", { name: /Retry connection/ })).not.toBeInTheDocument();
   });
 });
 
