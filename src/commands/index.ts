@@ -122,6 +122,19 @@ const APP_COMMANDS: Command[] = [
   { id: "connection.new", title: "New connection…", scope: "global", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "connect" }) },
   { id: "connection.switch", title: "Switch connection…", scope: "global", defaultBinding: "Mod+Shift+P", menu: true, run: () => useStore.getState().setPaletteOpen(true, "c:") },
   {
+    id: "connection.retry",
+    title: "Retry connection",
+    scope: "global",
+    when: () => {
+      const s = useStore.getState();
+      return !!s.activeSessionId && s.health[s.activeSessionId]?.state === "down";
+    },
+    run: () => {
+      const id = useStore.getState().activeSessionId;
+      if (id) void useStore.getState().retryConnection(id);
+    },
+  },
+  {
     id: "settings.open",
     title: "Settings…",
     scope: "global",

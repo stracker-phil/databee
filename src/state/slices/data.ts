@@ -2,6 +2,7 @@ import { api } from "../../api";
 import { fail } from "../requests";
 import { selectActiveSession } from "../selectors";
 import type { Slice } from "../store";
+import { blockedWhileLost } from "./health";
 import { resetSelection } from "./tabs";
 
 export interface DataSlice {
@@ -27,6 +28,7 @@ export const dataSlice: Slice<DataSlice> = {
     async refreshView() {
       // The schema cache only notices DDL run in this app; a refresh also shows DDL made elsewhere.
       const session = selectActiveSession(get());
+      if (blockedWhileLost(get, session?.id, "refresh")) return;
       if (session) {
         try {
           await api.refreshSchema(session.id);

@@ -25,11 +25,11 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    `useBackendEvents()` once:
    1. `loadSettings()` loads settings and keybindings. `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch requests (`take_launch_events`).
-   2. It subscribes to `launch` (drain again), `command` (menu clicks → `runMenuCommand`) and `remote`
+   2. It subscribes to `launch` (drain again), `command` (menu clicks → `runMenuCommand`), `remote`
       (requests from `databee open` / `databee command` → `answerRemote` in `src/commands/remote.ts`, which
-      always replies with `remoteReply`).
-   3. It adds a capture-phase `keydown` → `handleKeydown`, `error` / `unhandledrejection` → error toast, and
-      `beforeunload` → `flushUiState`.
+      always replies with `remoteReply`) and `session_health` (`setHealth`, see [Connection health](#connection-health)).
+   3. It adds a capture-phase `keydown` → `handleKeydown`, `error` / `unhandledrejection` → error toast,
+      `beforeunload` → `flushUiState`, and window `focus` → `retryLostSessions`.
 7. `applyAppearance(settings, systemDark)` and `syncRowHeight()` run whenever settings or the OS appearance
    change.
 
@@ -66,7 +66,7 @@ and the state types, so components import everything from `state/store`.
 - `src/state/slices/*.ts`: one file per slice (`settings`, `session`, `tabs` (tab lifecycle), `query`
   (`runQuery`, `cancelQuery`), `changes`, `data`, `saved`, `ui` (toasts, dialogs, palette, hover, recent),
   `viewState` (the persisted per-connection `uiState` and its debounced writer), `nav`, `objects`, `columns`,
-  `project`, `readout`, `live`). Each exports its
+  `project`, `readout`, `live`, `health`). Each exports its
   member interface and a `Slice<T>`: `create(set, get)` returns the initial state and actions,
   the optional `sessionClosed(sessionId, state)` returns what to drop when a session closes.
 - `Store` is an interface extending every core slice's interface. A module adds its members with
@@ -112,6 +112,7 @@ and the state types, so components import everything from `state/store`.
 | `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar's `pending n` button uses it) |
 | `uiState` | per connection identity: column widths, pane sizes (the SQL editor), `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group (`selectCollapsedGroups` reads them) |
 | `savedQueries` | by `session/database`: the `SavedEntry` list of `saved_queries` (`loadSavedQueries`, read on every palette opening) |
+| `health` | sessions whose connection is lost (`LostHealth`: Rust's `down` or `reconnecting` `Health`) by session id; a session that is not here is ok (`health` slice, [Connection health](#connection-health)) |
 | `paletteOpen`, `keybindings`, `toasts`, `recentNav` | as named |
 
 Conventions:
@@ -121,7 +122,8 @@ Conventions:
   `selectActivePending`, `selectCanUndo`, `selectSidebarHidden`, `selectVisibleDatabases` (the active session's databases without
   system schemas unless shown or current; use with `useShallow`).
 - Store actions wrap API errors in `fail(e, context)`, which shows an error toast and writes the message to
-  the Rust log. Components that call `api` directly use the exported `fail` too, and update the UI only
+  the Rust log; a `connection_lost` error becomes a short `info` toast (`<context>: connection lost`)
+  instead. Components that call `api` directly use the exported `fail` too, and update the UI only
   after the call succeeded (removing a recent connection, clearing history).
 - Data loading: a component that reads from `api` outside the store uses
   `useApiResult(key, fetcher, { onError, keepData, delayMs })` (`lib/useApiResult.ts`), never a hand-written
@@ -176,7 +178,7 @@ Conventions:
 
 Only `api.ts` files import `@tauri-apps/api` or `@tauri-apps/plugin-*`: the core's is `src/api/index.ts`, a
 module's is `src/<module>/api.ts` (Stage: `src/stage/api.ts`) ([ADR 0002](adr/0002-ipc-in-api-files.md)). `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic, plus the event
-subscriptions `onLaunch`, `onCommand` and `onRemote`. The IPC types are generated from Rust with `ts-rs`
+subscriptions `onLaunch`, `onCommand`, `onRemote` and `onSessionHealth`. The IPC types are generated from Rust with `ts-rs`
 ([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts` (a module's types into its own folder, e.g. `src/stage/types.gen.ts`); never edit them. `bun run types`
 regenerates them (it runs the `export_bindings_*` tests), and `bun run lint` fails when a committed file is
 stale. `src/api/types.ts` re-exports the generated types plus the few frontend-only ones (`Keybindings`, `PaneSize`, `EMPTY_UI_STATE`, `TEXT_SIZES`, `SETTINGS_LIMITS`, `LOG_LEVELS`,
@@ -227,7 +229,8 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
     `#<digits>`, `@`/`=` with 2+ characters, free text with 6+ (`MIN_TEXT`); shorter text matches only tables
     and commands (substring `score`).
   - `useRowHits` calls `api.paletteSearch` 200 ms after the last keystroke; a newer input drops older
-    replies, and a failed search toasts. The hits come in Rust's sections, titled by what they are (`objects with id 4711`, `rows that
+    replies, and a failed search toasts. While the session's connection is lost it searches nothing and
+    `PaletteFooter` says `connection lost: rows are not searched`. The hits come in Rust's sections, titled by what they are (`objects with id 4711`, `rows that
     reference 4711`, `people matching jane`, `external id …`, `<table>.<column>` for `=`; see
     [architecture](architecture.md#palette-search)).
   - `PaletteList` renders a hit as its `source` (table, or `table.column`) in `--o2`, `#` and its key in the
@@ -242,7 +245,8 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
   - `c:` (`connection.switch`, ⌘⇧P) is the connection switcher, `useSwitchItems` (`palette/useSwitchItems.ts`):
     Connections (open sessions, the active one first, then `api.listRecents` minus the open identities) and
     Databases (`selectVisibleDatabases` of the active session), scored with `fuzzyScore`. An item whose database
-    has its own accent (`accents`, see [Styling](#styling)) shows an `AccentDot` before its title. Enter runs
+    has its own accent (`accents`, see [Styling](#styling)) shows an `AccentDot` before its title; an open
+    session whose connection is lost has `· connection lost` in its badge (`current · connection lost`). Enter runs
     `setActiveSession`, `connect` (its password dialog included) or `switchDatabase`. `CommandPalette` keys the
     sheet by `paletteSeed`, so a palette command that reopens it with a prefix starts fresh.
 - **Menu.** Native menu items emit `command` events. See [backend.md](backend.md#native-menu) for the Rust side
@@ -276,7 +280,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 
 | Area | Components |
 |---|---|
-| Shell | `Toolbar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
+| Shell | `Toolbar` (with `ConnectionHealth`, see [Connection health](#connection-health)), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
@@ -926,6 +930,35 @@ table in the sidebar.
 Anchors: `readout`, `readout:value:<id>`, `readout:anomaly:<id>`, `readout:fix:<id>`, `readout:entity:<entity>`,
 `readout:created:<row address>`, `readout:pinned:<id>`, `readout:recent:<address>`, `readout:collapse:<section>` (a band's chevron), and the tab
 `tab:readout:<db>`.
+
+### Connection health
+
+Rust watches each session's server ([database.md](database.md#connection-health)); the page shows the
+result and keeps what is loaded instead of failing on every click. What it looks like: [ux.md](ux.md#layout).
+
+- **State.** The `health` slice (`src/state/slices/health.ts`) keeps `health`, the lost sessions by id.
+  `setHealth(event)` applies a `session_health` event: a newly lost session toasts `Lost the connection to
+  <name>`; one that is back is dropped, toasts `Reconnected to <name>` and, when it is the active session,
+  reloads the view (`refreshView`, as ⌘R). Only events change the state: they arrive in order, while a
+  command's reply may overtake them.
+- **Retry.** `retryConnection(sessionId, quiet?)` calls `api.reconnectSession`; when the reply is still
+  `down` it toasts `Still no connection to <name>: <error>` (not when `quiet`). `retryLostSessions()` retries
+  every `down` session quietly; `App.tsx` runs it on window `focus`. The command `connection.retry` (Retry
+  connection, palette only, while the active session is `down`) runs `retryConnection`.
+- **Toolbar.** `ConnectionHealth` (`src/components/ConnectionHealth.tsx`, after `ConnectionText` in
+  `Toolbar`) renders only while the session is lost: the warning icon, the tooltip with the time, the error
+  and the next automatic retry, and the Retry button (disabled, `Reconnecting…`, while one runs). Anchors:
+  `toolbar:connection-health`, `toolbar:retry`.
+- **Gates.** `blockedWhileLost(get, sessionId, what)` (exported from `state/store`) stops an action while the
+  session is lost and toasts `Connection lost: can't <what> until it is back`; true when it stopped.
+  `blockedUnlessLoaded(get, sessionId, address)` (`nav.ts`) lets a row through whose document is loaded
+  (`documents`; Rows view always needs the server). Used by `runQuery`, `queueChange`,
+  `queueActionPreview`, `applyChanges`, `undoLast`, `switchDatabase`, `refreshView`, `openTableTab` (a new
+  tab; an open one only activates), `showRows` and `filterRows`, `setTableFilter`, `navigateTab`, back and
+  forward, `openObject` (a new tab), `openEntity`, `drill`, and `TableTab`'s paging, sort and reload
+  (`useBrowse`). Live polls skip a lost session (`live.ts`), `reloadValueColumn` keeps the value it read,
+  and `loadReadout` keeps a loaded readout.
+  Rust refuses whatever else asks the server with `connection_lost`, which `fail` turns into a short note.
 
 ### Rendering
 

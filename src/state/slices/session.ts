@@ -3,6 +3,7 @@ import { openFromOutside } from "../outside";
 import { fail } from "../requests";
 import { structureKey } from "../selectors";
 import { sessionClosedPatch, type Slice, type Store } from "../store";
+import { blockedWhileLost } from "./health";
 import { activate, resetSelection } from "./tabs";
 
 /** A table's `describeTable` reply for one `dataVersion`; the previous structure stays while reloading. */
@@ -123,6 +124,7 @@ export const sessionSlice: Slice<SessionSlice> = {
     },
 
     async switchDatabase(sessionId, database) {
+      if (blockedWhileLost(get, sessionId, "switch databases")) return;
       try {
         await api.useDatabase(sessionId, database);
         set((s) => ({

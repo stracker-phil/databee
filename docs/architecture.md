@@ -76,6 +76,8 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/deep_link.rs         databee:// links from other apps
   src/mcp/                 `databee mcp`: the read-only MCP server (rmcp, stdio), headless
   src/state.rs session.rs  AppState, open sessions
+  src/health/              connection health: pings, the guard that refuses calls while a server is gone,
+                           retries without a password prompt, `session_health` events (database.md)
   src/schema.rs            per-session schema cache: tables, columns, keys, foreign keys, structures
   src/value/               Value, ValueKind, ColumnKind, RowKey: what a cell is and where it came from
   src/lens/                the lens seam: the Lens trait, SchemaLens (keys, foreign keys, same-name inference),

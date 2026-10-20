@@ -23,6 +23,7 @@ pub struct FakeDatabase {
     applied: Mutex<Vec<Vec<String>>>,
     /// Structures by database and table, behind `tables`, `structure` and `keys`.
     schema: Mutex<BTreeMap<(String, String), TableStructure>>,
+    unreachable: Mutex<Option<AppError>>,
 }
 
 impl Default for FakeDatabase {
@@ -40,6 +41,19 @@ impl FakeDatabase {
             fetch_timeouts: Mutex::default(),
             applied: Mutex::default(),
             schema: Mutex::default(),
+            unreachable: Mutex::default(),
+        }
+    }
+
+    /// `Some(error)`: `ping` and `reconnect` fail with it, as if the server had stopped.
+    pub fn set_unreachable(&self, error: Option<AppError>) {
+        *self.unreachable.lock_unpoisoned() = error;
+    }
+
+    fn reachable(&self) -> AppResult<()> {
+        match self.unreachable.lock_unpoisoned().clone() {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
 
@@ -236,6 +250,14 @@ impl Database for FakeDatabase {
         self.applied.lock_unpoisoned().push(statements.to_vec());
         Ok(statements.len() as u64)
     }
+
+    async fn ping(&self) -> AppResult<()> {
+        self.reachable()
+    }
+
+    async fn reconnect(&self) -> AppResult<()> {
+        self.reachable()
+    }
 }
 
 /// Lets a test keep a handle on the fake after a session has taken ownership of it.
@@ -310,6 +332,14 @@ impl Database for Arc<FakeDatabase> {
 
     async fn apply(&self, statements: &[String], timeout: Duration) -> AppResult<u64> {
         (**self).apply(statements, timeout).await
+    }
+
+    async fn ping(&self) -> AppResult<()> {
+        (**self).ping().await
+    }
+
+    async fn reconnect(&self) -> AppResult<()> {
+        (**self).reconnect().await
     }
 }
 

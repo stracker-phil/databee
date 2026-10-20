@@ -5,12 +5,13 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use sqlx::ConnectOptions;
 use sqlx::mysql::{MySqlConnectOptions, MySqlConnection};
+use sqlx::{AssertSqlSafe, ConnectOptions};
 use tokio::sync::{MappedMutexGuard, MutexGuard};
 
 use super::kill::{KillTarget, Killer};
-use super::script::{read_dialect, scalar, thread_id};
+use super::script::{scalar, thread_id};
+use super::session_state::{self, SessionState, restore_sql};
 use super::timeouts::connect_within;
 use super::with_database;
 use crate::db::Dialect;
@@ -24,9 +25,15 @@ pub struct EditorConnection {
     thread_id: AtomicU64,
     /// Without a database; reconnects add the current one.
     options: MySqlConnectOptions,
-    database: Mutex<Option<String>>,
+    state: Mutex<Tracked>,
     connect_timeout: Duration,
     killer: Killer,
+}
+
+/// The session state of the live connection: as it opened, and as the last probe found it.
+struct Tracked {
+    opened: SessionState,
+    current: SessionState,
 }
 
 /// What a fresh editor connection reports about its server.
@@ -47,18 +54,22 @@ impl EditorConnection {
             .await?;
         let thread_id = thread_id(&mut conn).await?;
         let version = scalar(&mut conn, "SELECT VERSION()").await?;
-        let dialect = read_dialect(&mut conn).await?;
+        let opened = session_state::read(&mut conn).await?;
+        let info = ServerInfo {
+            version: version.unwrap_or_default(),
+            dialect: opened.dialect(),
+        };
+        let current = SessionState {
+            database,
+            ..opened.clone()
+        };
         let editor = Self {
             conn: tokio::sync::Mutex::new(Some(conn)),
             thread_id: AtomicU64::new(thread_id),
             killer,
             options,
-            database: Mutex::new(database),
+            state: Mutex::new(Tracked { opened, current }),
             connect_timeout,
-        };
-        let info = ServerInfo {
-            version: version.unwrap_or_default(),
-            dialect,
         };
         Ok((editor, info))
     }
@@ -66,6 +77,11 @@ impl EditorConnection {
     pub async fn lock(&self) -> AppResult<MappedMutexGuard<'_, MySqlConnection>> {
         MutexGuard::try_map(self.conn.lock().await, Option::as_mut)
             .map_err(|_| AppError::Connection("session closed".into()))
+    }
+
+    /// The connection, unless a query holds it or the session is closed.
+    pub fn try_lock(&self) -> Option<MappedMutexGuard<'_, MySqlConnection>> {
+        MutexGuard::try_map(self.conn.try_lock().ok()?, Option::as_mut).ok()
     }
 
     /// Ends a running query, then closes the connection; later calls fail.
@@ -82,11 +98,16 @@ impl EditorConnection {
     }
 
     pub fn current_database(&self) -> Option<String> {
-        self.database.lock_unpoisoned().clone()
+        self.state.lock_unpoisoned().current.database.clone()
     }
 
     pub fn set_database(&self, database: Option<String>) {
-        *self.database.lock_unpoisoned() = database;
+        self.state.lock_unpoisoned().current.database = database;
+    }
+
+    /// The state the probe after a user script found.
+    pub fn remember(&self, state: SessionState) {
+        self.state.lock_unpoisoned().current = state;
     }
 
     /// Interrupts the running statement; the connection stays usable.
@@ -100,19 +121,56 @@ impl EditorConnection {
         self.killer.kill(KillTarget::Connection, thread_id).await
     }
 
-    /// Replaces the connection with a fresh one in the current database and returns its
-    /// dialect. `conn` is the guard from `lock()`, which the caller keeps holding.
+    /// Replaces the connection with a fresh one in the current database, sets the session
+    /// variables the user had changed again, and returns the dialect of the server's defaults
+    /// (which the metadata pool shares). `conn` is the guard from `lock()`, which the caller
+    /// keeps holding.
     pub async fn reconnect(&self, conn: &mut MySqlConnection) -> AppResult<Dialect> {
-        let options = with_database(&self.options, self.current_database().as_deref());
+        let (lost_opened, lost_current) = {
+            let state = self.state.lock_unpoisoned();
+            (state.opened.clone(), state.current.clone())
+        };
+        let options = with_database(&self.options, lost_current.database.as_deref());
         let reconnect = async {
             let mut fresh = options.connect().await?;
             let id = thread_id(&mut fresh).await?;
-            let dialect = read_dialect(&mut fresh).await?;
-            Ok((fresh, id, dialect))
+            let opened = session_state::read(&mut fresh).await?;
+            let current = restore(&mut fresh, &lost_opened, &lost_current, &opened).await;
+            Ok((fresh, id, opened, current))
         };
-        let (fresh, id, dialect) = connect_within(self.connect_timeout, reconnect).await?;
+        let (fresh, id, opened, current) = connect_within(self.connect_timeout, reconnect).await?;
         self.thread_id.store(id, Ordering::SeqCst);
         *conn = fresh;
+        let dialect = opened.dialect();
+        *self.state.lock_unpoisoned() = Tracked { opened, current };
         Ok(dialect)
+    }
+}
+
+/// Sets the variables the lost connection had changed; a failure costs only them, logged.
+async fn restore(
+    fresh: &mut MySqlConnection,
+    lost_opened: &SessionState,
+    lost_current: &SessionState,
+    opened: &SessionState,
+) -> SessionState {
+    let Some(sql) = restore_sql(lost_opened, lost_current, opened.dialect()) else {
+        return opened.clone();
+    };
+    let restored = async {
+        sqlx::raw_sql(AssertSqlSafe(sql))
+            .execute(&mut *fresh)
+            .await?;
+        session_state::read(fresh).await
+    };
+    match restored.await {
+        Ok(current) => {
+            log::info!("Restored the session variables on the new editor connection");
+            current
+        }
+        Err(e) => {
+            log::warn!("Could not restore the session variables after reconnecting: {e}");
+            opened.clone()
+        }
     }
 }

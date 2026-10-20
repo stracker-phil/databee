@@ -134,7 +134,8 @@ export const liveSlice: Slice<LiveSlice> = {
     };
 
     const poll = async (key: string, watch: LiveWatch) => {
-      if (!watch.id || polling.has(key)) return;
+      // A lost session pauses its watches; they poll again once it is back.
+      if (!watch.id || polling.has(key) || get().health[watch.sessionId]) return;
       polling.add(key);
       try {
         const { delta, document } = await api.watchPoll(watch.sessionId, watch.id);

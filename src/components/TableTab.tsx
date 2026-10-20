@@ -6,7 +6,7 @@ import { address } from "../lib/address";
 import { DEFAULT_ROW_LIMIT, singleKey } from "../lib/cells";
 import { useApiResult } from "../lib/useApiResult";
 import { valueAt } from "../lib/values";
-import { selectStructure, useStore, type TableTab as TableTabState } from "../state/store";
+import { blockedWhileLost, selectStructure, useStore, type TableTab as TableTabState } from "../state/store";
 import type { MenuEntry } from "./ContextMenu";
 import { ErrorPanel } from "./ErrorPanel";
 import { InsetField } from "./Field";
@@ -57,7 +57,13 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
   };
   const key = ready ? JSON.stringify([tab.sessionId, request, dataVersion]) : null;
   const result = useApiResult(key, () => api.browseTable(tab.sessionId, request), { keepData: true });
-  return { browse, setBrowse, page: result.data, error: result.error, loading: key !== null && result.state === "loading", reload: result.reload, pageSize };
+  // Paging, sorting and reloading read the server; while the connection is lost the loaded page stays.
+  const unlessLost = (run: () => void) => {
+    if (!blockedWhileLost(useStore.getState, tab.sessionId, "load rows")) run();
+  };
+  const changeBrowse: typeof setBrowse = (next) => unlessLost(() => setBrowse(next));
+  const reload = () => unlessLost(result.reload);
+  return { browse, setBrowse: changeBrowse, page: result.data, error: result.error, loading: key !== null && result.state === "loading", reload, pageSize };
 }
 
 function FilterBar({ tabId, initial, primaryKey, onApply }: { tabId: string; initial: string; primaryKey: string | null; onApply: (filter: string) => void }) {

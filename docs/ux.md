@@ -274,6 +274,18 @@ value, else the current address. The Hover column is what the status bar shows.
   connection or database picker; a database with its own accent has a dot in that hue before its name), back and forward (‹ ›, for a table or object tab, disabled without history),
   the search field on the right, then icon buttons. An object tab shows where it stands in its trail (below),
   a table tab its table in its title and header. There is no mode switch: WordPress is a preset.
+- **Connection lost** (the server stopped answering, e.g. a stopped DDEV or Docker container): a warning
+  triangle (`--style-red`) and a small Retry button follow the connection text; the tooltip says `Connection
+  lost since 10:42 · <error> · retries by itself at 10:43:10`, and Retry reads `Reconnecting…` while one runs.
+  One `info` toast says so when it happens, a `success` toast when it is back. While lost, everything
+  loaded stays visible and readable: open tabs, their pages and results, loaded documents, the sidebar's
+  table list, the readout. What needs the server stops with a short `info` toast (`Connection lost: can't run
+  queries until it is back`) instead of an error: running queries, opening a table or a row that is not
+  loaded (switching to an open tab works), paging, sorting and filtering, back and forward to what is not
+  loaded, switching databases, ⌘R, edits, apply and undo. Live mode pauses, the palette's row search is off
+  (its footer says so), and the ⌘⇧P switcher badges the session `connection lost`. Retry needs no password;
+  coming back to the window retries once, and DataBee retries by itself after 10 s, 30 s, then every 60 s.
+  When the connection is back, the view reloads as with ⌘R.
 - **Tab bar** (`--chrome`): tabs are cells separated by `--line`; the active tab takes `--bg` and joins the
   content; preview tabs show italic titles. Tabs: readout (first, one per connection), query, table, object,
   project.

@@ -23,15 +23,17 @@ import "./styles/app.css";
 
 function useBackendEvents() {
   useEffect(() => {
-    const { loadSettings, loadAccents, handleLaunchEvents, toast } = useStore.getState();
+    const { loadSettings, loadAccents, handleLaunchEvents, toast, setHealth, retryLostSessions } = useStore.getState();
     const drainLaunches = () =>
       api.takeLaunchEvents().then(handleLaunchEvents, (e) => toast("error", `Launch request failed: ${toAppError(e).message}`));
 
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
     void loadSettings().then(() => (installCommands(), drainLaunches()));
     void loadAccents();
-    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), api.onRemote((e) => void answerRemote(e))];
+    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), api.onRemote((e) => void answerRemote(e)), api.onSessionHealth(setHealth)];
 
+    // Coming back to the window, often right after starting the container again, retries once.
+    const onFocus = () => retryLostSessions();
     const onKey = handleKeydown;
     const onError = (e: ErrorEvent) => toast("error", `Unexpected error: ${e.message}`);
     const onRejection = (e: PromiseRejectionEvent) => toast("error", `Unexpected error: ${toAppError(e.reason).message}`);
@@ -39,12 +41,14 @@ function useBackendEvents() {
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
     window.addEventListener("beforeunload", flushUiState);
+    window.addEventListener("focus", onFocus);
     return () => {
       unlisten.forEach((p) => void p.then((fn) => fn()).catch(() => {}));
       window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onRejection);
       window.removeEventListener("beforeunload", flushUiState);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 }

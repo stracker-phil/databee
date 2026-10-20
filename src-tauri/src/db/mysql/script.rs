@@ -7,7 +7,7 @@ use sqlx::{AssertSqlSafe, Column, Either, Executor, Row, SqlSafeStr, Statement, 
 use crate::db::cell::{self, CellLimit, Family};
 use crate::db::classify::returns_rows;
 use crate::db::lexer::split_statements;
-use crate::db::{Cell, ColumnMeta, ColumnOrigin, Dialect, FullText, ResultSet, StatementFailure};
+use crate::db::{Cell, ColumnMeta, ColumnOrigin, FullText, ResultSet, StatementFailure};
 use crate::error::{AppError, AppResult};
 
 pub async fn thread_id(conn: &mut MySqlConnection) -> AppResult<u64> {
@@ -15,11 +15,6 @@ pub async fn thread_id(conn: &mut MySqlConnection) -> AppResult<u64> {
         .await?
         .and_then(|v| v.parse().ok())
         .ok_or_else(|| AppError::Connection("server did not report a connection id".into()))
-}
-
-pub async fn read_dialect(conn: &mut MySqlConnection) -> AppResult<Dialect> {
-    let sql_mode = scalar(conn, "SELECT @@SESSION.sql_mode").await?;
-    Ok(Dialect::from_sql_mode(&sql_mode.unwrap_or_default()))
 }
 
 pub async fn scalar(conn: &mut MySqlConnection, sql: &'static str) -> AppResult<Option<String>> {

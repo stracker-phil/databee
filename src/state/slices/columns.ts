@@ -4,7 +4,7 @@ import { objectColumn, type ColumnStack, type StackColumn, type ValueColumn } fr
 import { fail } from "../requests";
 import { selectActiveTab } from "../selectors";
 import type { Slice, Store } from "../store";
-import { restacked } from "./nav";
+import { blockedUnlessLoaded, restacked } from "./nav";
 import { findTab, hasValueColumn, replaceTab, type ObjectTab, type Tab } from "./tabs";
 
 export interface ColumnsSlice {
@@ -73,7 +73,8 @@ function pushedAfter(tab: ObjectTab, from: number, column: StackColumn): ObjectT
 export const columnsSlice: Slice<ColumnsSlice> = {
   create: (set, get) => ({
     drill(tabId, from, target) {
-      if (target.target.kind !== "row") return;
+      const shown = findTab(get(), tabId, "object");
+      if (target.target.kind !== "row" || (shown && blockedUnlessLoaded(get, shown.sessionId, target))) return;
       set((s) => {
         const tab = findTab(s, tabId, "object");
         return tab ? withTab(s, pushedAfter(tab, from, objectColumn(target))) : {};
@@ -107,7 +108,8 @@ export const columnsSlice: Slice<ColumnsSlice> = {
       const tab = findTab(s, tabId);
       const column = tab && valueColumnOf(tab, index);
       const source = column?.value.source;
-      if (!tab || !column || !source || !column.database) return;
+      // A lost session keeps the value it read; the reload that asked for it says why.
+      if (!tab || !column || !source || !column.database || s.health[tab.sessionId]) return;
       const version = s.dataVersion;
       const write = (patch: Partial<ValueColumn>) =>
         set((s) => {

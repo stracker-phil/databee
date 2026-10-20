@@ -10,6 +10,7 @@ mod deep_link;
 mod dev;
 mod document;
 pub mod error;
+mod health;
 mod ipc;
 mod launch;
 mod lens;
@@ -267,6 +268,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             apply_dev_frame(app);
             start_ipc(app.handle().clone(), &socket);
             deep_link::listen(app.handle());
+            health::watch::start(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -309,6 +311,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             db_commands::discard_change,
             db_commands::apply_changes,
             db_commands::undo_batch,
+            health::commands::reconnect_session,
             decode::commands::decode_value,
             decode::commands::edit_serialized,
             rules::commands::presets_list,

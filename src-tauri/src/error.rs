@@ -16,6 +16,9 @@ pub enum AppError {
     },
     #[error("Could not connect: {0}")]
     Connection(String),
+    /// The session's server stopped answering; refused without asking it until a retry reconnects.
+    #[error("Connection lost: {0}")]
+    ConnectionLost(String),
     #[error("{0}")]
     AuthFailed(String),
     #[error("A password is required for {0}")]
@@ -58,6 +61,7 @@ impl AppError {
         match self {
             AppError::Database { .. } => ErrorKind::Database,
             AppError::Connection(_) => ErrorKind::Connection,
+            AppError::ConnectionLost(_) => ErrorKind::ConnectionLost,
             AppError::AuthFailed(_) => ErrorKind::AuthFailed,
             AppError::PasswordRequired(_) => ErrorKind::PasswordRequired,
             AppError::LoginFailed { .. } => ErrorKind::AuthFailed,
@@ -104,6 +108,12 @@ impl AppError {
                 ..
             }
         )
+    }
+
+    /// The server may be gone: worth a ping to find out. A timeout counts, because a paused or
+    /// unreachable server times out instead of refusing.
+    pub fn suggests_connection_loss(&self) -> bool {
+        matches!(self, AppError::Connection(_) | AppError::Timeout { .. })
     }
 
     /// The Keychain account a login error is about.
@@ -168,6 +178,7 @@ pub struct FieldJson<'a> {
 pub enum ErrorKind {
     Database,
     Connection,
+    ConnectionLost,
     AuthFailed,
     PasswordRequired,
     Timeout,

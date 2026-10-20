@@ -5,10 +5,11 @@
 import { api, type Address, type ColumnEquals } from "../../api";
 import { AddressError, formatAddress, parseAddress, sameAddress } from "../../lib/address";
 import { fail } from "../requests";
-import { noConnectionNamed, selectActiveTab, selectSessionBySlug, selectStructure } from "../selectors";
+import { noConnectionNamed, selectActiveTab, selectDocument, selectSessionBySlug, selectStructure } from "../selectors";
 import type { Slice, Store } from "../store";
 import { objectColumn, objectColumnAt, type ColumnStack, type StackColumn } from "../../lib/columns";
 import { documentText, objectTitle } from "../../lib/document";
+import { blockedWhileLost } from "./health";
 import { findTab, replaceTab, type DataTab, type ObjectTab, type Tab, type TableTab } from "./tabs";
 
 const NAV_LIMIT = 50;
@@ -61,6 +62,16 @@ const slugOf = (s: Store, sessionId: string) => s.sessions.find((x) => x.id === 
 
 function cachedPrimaryKey(s: Store, sessionId: string, database: string, table: string): string[] | null {
   return selectStructure(s, sessionId, database, table)?.structure?.primaryKey ?? null;
+}
+
+/**
+ * While `sessionId` is lost, only a row whose document is loaded can be shown (Rows view always reads the
+ * server); anything else stops with a short toast. True when it stopped.
+ */
+export function blockedUnlessLoaded(get: () => Store, sessionId: string, address: Address): boolean {
+  const { target } = address;
+  if (target.kind === "row" && address.view !== "rows" && selectDocument(get(), sessionId, documentText(address))?.document) return false;
+  return blockedWhileLost(get, sessionId, `open ${target.kind === "table" ? target.table : objectTitle(address)}`);
 }
 
 /** A filtered table says so, since the filter is not in the title. */
@@ -209,6 +220,7 @@ export const navSlice: Slice<NavSlice> = {
       const tab = selectActiveTab(get());
       const target = tab?.nav[direction].at(-1);
       if (!tab || !target || (tab.kind !== "table" && tab.kind !== "object")) return;
+      if (blockedUnlessLoaded(get, tab.sessionId, target.address)) return;
       const nav = stepped(tab, direction, target.kind);
       if (target.kind === "object") {
         if (target.address.target.kind === "row") set((st) => inPlace(st, objectified(tab, entryStack(tab, target), nav)));
@@ -248,6 +260,8 @@ export const navSlice: Slice<NavSlice> = {
       },
 
       showRows(tabId, location) {
+        const shown = findTab(get(), tabId, "table");
+        if (shown && blockedWhileLost(get, shown.sessionId, `open ${location.table}`)) return;
         set((s) => {
           const tab = findTab(s, tabId, "table");
           if (!tab) return {};
@@ -257,6 +271,8 @@ export const navSlice: Slice<NavSlice> = {
       },
 
       navigateTab(tabId, address) {
+        const shown = findTab(get(), tabId);
+        if (shown && blockedUnlessLoaded(get, shown.sessionId, address)) return;
         set((s) => {
           const tab = findTab(s, tabId);
           if (tab?.kind !== "table" && tab?.kind !== "object") return {};
@@ -280,6 +296,8 @@ export const navSlice: Slice<NavSlice> = {
       },
 
       setTableFilter(tabId, filter) {
+        const shown = findTab(get(), tabId, "table");
+        if (shown && blockedWhileLost(get, shown.sessionId, "filter rows")) return;
         set((s) => {
           const tab = findTab(s, tabId, "table");
           if (!tab) return {};

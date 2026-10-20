@@ -17,6 +17,8 @@ import type {
   OpenArgs,
   DatabaseInfo,
   ExecuteResponse,
+  Health,
+  HealthEvent,
   HistoryEntry,
   Keybindings,
   LaunchEvent,
@@ -79,6 +81,8 @@ export const api = {
 
   connect: (args: OpenArgs) => invoke<SessionInfo>("connect", { args }),
   disconnect: (sessionId: string) => invoke<void>("disconnect", { sessionId }),
+  /** Reconnects a `down` session with the password Rust already holds (no prompt); returns where it stands then. */
+  reconnectSession: (sessionId: string) => invoke<Health>("reconnect_session", { sessionId }),
   listDatabases: (sessionId: string) => invoke<DatabaseInfo[]>("list_databases", { sessionId }),
   listTables: (sessionId: string, database: string) =>
     invoke<TableInfo[]>("list_tables", { sessionId, database }),
@@ -213,12 +217,16 @@ export const api = {
   /** Requests from other processes (`databee open`, `databee command`); answer each with `remoteReply`. */
   onRemote: (handler: (event: RemoteEvent) => void): Promise<UnlistenFn> =>
     listen<RemoteEvent>("remote", (e) => handler(e.payload)),
+  /** A session's connection went down, is reconnecting or is back. */
+  onSessionHealth: (handler: (event: HealthEvent) => void): Promise<UnlistenFn> =>
+    listen<HealthEvent>("session_health", (e) => handler(e.payload)),
 };
 
 /** Every `ErrorKind` Rust sends; the `Record` makes the compiler check the list is complete. */
 const ERROR_KINDS: Record<ErrorKind, true> = {
   database: true,
   connection: true,
+  connection_lost: true,
   auth_failed: true,
   password_required: true,
   timeout: true,

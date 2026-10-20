@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 use ts_rs::TS;
 
 use crate::connection::{ConnectionSpec, Secret};
@@ -13,6 +14,7 @@ use crate::db::classify::changes_schema;
 use crate::db::plans::{AppliedBatchInfo, BatchId, PlanId, Plans};
 use crate::db::{BrowsePage, BrowseRequest, CellLimit, Connector, Database, ExecuteResponse};
 use crate::error::{AppError, AppResult};
+use crate::health::{Guarded, HealthEvent, SessionHealth};
 use crate::lock::RwLockExt;
 use crate::rules::annotate;
 use crate::rules::effective::{self, RuleSources};
@@ -25,7 +27,9 @@ use crate::store::slug::default_slug;
 pub struct Session {
     pub id: String,
     pub spec: ConnectionSpec,
+    /// Behind the session's health guard, which refuses calls while the server is gone.
     pub db: Box<dyn Database>,
+    pub health: Arc<SessionHealth>,
     /// Per-session data of modules, freed with the session (ADR 0013).
     pub ext: Extensions,
     /// Writes planned for review, and the undo history (ADR 0012).
@@ -105,11 +109,13 @@ impl SessionInfo {
 
 impl Session {
     pub fn new(id: String, spec: ConnectionSpec, slug: String, db: Box<dyn Database>) -> Self {
+        let health = Arc::new(SessionHealth::new(&id));
         Self {
+            db: Box::new(Guarded::new(db, health.clone())),
+            health,
             id,
             slug: RwLock::new(slug),
             spec,
-            db,
             ext: Extensions::default(),
             plans: Plans::default(),
             cells: CellCache::default(),
@@ -397,37 +403,62 @@ pub async fn close(state: &AppState, session_id: &str) {
     }
 }
 
-#[derive(Default)]
-pub struct Sessions(RwLock<HashMap<String, Arc<Session>>>);
+/// Health changes queued for the page; a longer burst makes the receiver resend every state.
+const HEALTH_EVENTS: usize = 64;
+
+pub struct Sessions {
+    open: RwLock<HashMap<String, Arc<Session>>>,
+    /// The health changes of every registered session (`health::watch` sends them to the page).
+    health: broadcast::Sender<HealthEvent>,
+}
+
+impl Default for Sessions {
+    fn default() -> Self {
+        Self {
+            open: RwLock::default(),
+            health: broadcast::channel(HEALTH_EVENTS).0,
+        }
+    }
+}
 
 impl Sessions {
+    /// Registers the session; from now on its health changes are reported.
     pub fn insert(&self, session: Session) -> Arc<Session> {
+        session.health.attach(self.health.clone());
         let session = Arc::new(session);
-        self.0
+        self.open
             .write_unpoisoned()
             .insert(session.id.clone(), session.clone());
         session
     }
 
     pub fn get(&self, id: &str) -> AppResult<Arc<Session>> {
-        self.0
+        self.open
             .read_unpoisoned()
             .get(id)
             .cloned()
             .ok_or_else(|| AppError::SessionNotFound(id.to_string()))
     }
 
+    pub fn all(&self) -> Vec<Arc<Session>> {
+        self.open.read_unpoisoned().values().cloned().collect()
+    }
+
     pub fn remove(&self, id: &str) -> Option<Arc<Session>> {
-        self.0.write_unpoisoned().remove(id)
+        self.open.write_unpoisoned().remove(id)
+    }
+
+    pub fn health_events(&self) -> broadcast::Receiver<HealthEvent> {
+        self.health.subscribe()
     }
 
     pub fn has_slug(&self, slug: &str) -> bool {
-        self.0.read_unpoisoned().values().any(|s| s.slug() == slug)
+        self.open.read_unpoisoned().values().any(|s| s.slug() == slug)
     }
 
     /// Gives every open session of the connection `identity` the renamed slug.
     pub fn rename_slug(&self, identity: &str, slug: &str) {
-        for session in self.0.read_unpoisoned().values() {
+        for session in self.open.read_unpoisoned().values() {
             if session.spec.identity() == identity {
                 session.set_slug(slug);
             }

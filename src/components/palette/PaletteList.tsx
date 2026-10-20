@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { CornerDownLeft } from "lucide-react";
 import type { PaletteHit } from "../../api";
+import { useStore } from "../../state/store";
 import { AccentDot } from "../Accent";
 import { KeyCap } from "../Field";
 import { TableIcon } from "../TableIcon";
@@ -103,9 +104,11 @@ export function PaletteList({ items, active, activeRef, empty, onHover, onChoose
 const PREFIX_HINTS = "# id · @ people · t: tables · q: queries · c: connections · > commands · = find everywhere · databee://";
 
 export function PaletteFooter({ prefix, hasEntities, hasHit }: { prefix: Prefix; hasEntities: boolean; hasHit: boolean }) {
+  const lost = useStore((s) => !!s.activeSessionId && !!s.health[s.activeSessionId]);
   return (
     <div className="palette-foot o3">
       <span>{prefix === "c:" ? "↵ connect or switch" : hasHit ? "↵ open in column · ⌘↵ new tab · ⌥ peek" : "↵ open · ⌘↵ new tab"}</span>
+      {lost && <span role="status">connection lost: rows are not searched</span>}
       {prefix === "#" && !hasEntities && <span>no entities: # reads tables under 1M estimated rows</span>}
       <span className="mono">{PREFIX_HINTS}</span>
     </div>

@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { runCommand, useBindingLabel } from "../commands";
 import { selectActiveSession, selectActiveTab, selectCanNav, selectDatabaseAccent, selectVisibleDatabases, useStore } from "../state/store";
 import { AccentDot } from "./Accent";
+import { ConnectionHealth } from "./ConnectionHealth";
 import { KeyCap } from "./Field";
 
 type Session = NonNullable<ReturnType<typeof selectActiveSession>>;
@@ -96,6 +97,7 @@ export function Toolbar() {
       {session ? (
         <>
           <ConnectionText session={session} />
+          <ConnectionHealth sessionId={session.id} />
           <button data-stage="toolbar:disconnect" className="icon-btn" aria-label="Disconnect" title="Disconnect" onClick={() => void disconnect(session.id)}>
             <Unplug size={ICON_SIZE} />
           </button>

@@ -436,7 +436,7 @@ export type EntityLine = { preset: string, name: string, filter: string | null, 
 
 export type EntityProfile = { preset: string, name: string, filter: string | null, summary: Array<string>, created: string | null, };
 
-export type ErrorKind = "database" | "connection" | "auth_failed" | "password_required" | "timeout" | "cancelled" | "confirmation_required" | "session_not_found" | "invalid_input" | "keychain" | "io";
+export type ErrorKind = "database" | "connection" | "connection_lost" | "auth_failed" | "password_required" | "timeout" | "cancelled" | "confirmation_required" | "session_not_found" | "invalid_input" | "keychain" | "io";
 
 export type ExecuteResponse = { results: Array<ResultSet>, elapsedMs: number, 
 /**
@@ -503,6 +503,17 @@ export type GroupRow = {
 key: RowKey | null, fields: Array<[string, Value]>, };
 
 export type GroupShape = "fields" | "meta" | "rows";
+
+/**
+ * Times are Unix milliseconds.
+ */
+export type Health = { "state": "ok" } | { "state": "down", since: number, error: string, 
+/**
+ * When the next automatic retry starts.
+ */
+retryAt: number, } | { "state": "reconnecting", since: number, error: string, };
+
+export type HealthEvent = { sessionId: string, health: Health, };
 
 export type HistoryEntry = { account: string, database: string | null, sql: string, 
 /**
