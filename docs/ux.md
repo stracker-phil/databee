@@ -44,6 +44,7 @@ file; a Vitest scan enforces it.
 | `--chrome` | `#1f2430` | `#eef0f2` | chrome surface |
 | `--bg` | `#242936` | `#fcfcfc` | content surface |
 | `--bg-quiet` | `#1b1f29` | `#f1f2f4` | a pane beside the active one, darker than `--bg` |
+| `--shade` | `#000000` | `#000000` | what a pressed primary button mixes into the accent |
 | `--pop` | `#323a4c` | `#ffffff` | overlay surface |
 | `--field` | `#1a1f29` | `#ffffff` | input background (inset) |
 | `--field-line` | `#3b4254` | `#cdd1d6` | input and overlay border, key caps |
@@ -89,15 +90,18 @@ Derived design tokens in `src/styles/theme.css`, the same for every scheme:
 | `--scrollbar-thumb`, `-hover`, `-active` | `--o3` at 55%, `--o3`, `--o2` | scrollbar thumb |
 | `--pad` | 1, 3, 5 or 8px | row padding (see row anatomy) |
 | `--row-h` | `20px + 2 × --pad` (the line grows with data sizes above 12.5px) | row height for CSS and the virtualizer |
-| `--grid-head-h` | `2 × --pad` + 1.3 × (data size + type size) + 1px | a grid header with its type line |
+| `--grid-head-h` | `2 × --pad` + 1.3 × (data size + type size) + 1px | the height of a grid header with its type line (the tallest `.grid-head`), which Rows view grids are sized by |
+| `--row-gap`, `--row-inset`, `--focus-out` | 20px, 12px, 8px | document rows: the gap between columns, the inset at both ends, how far a focused value's outline reaches past its text; a pinned key cell covers the inset and half the gap |
 | `--ui-font-size`, `--data-font-size` | 13px, 12px | UI and data size; `applyAppearance` (`lib/theme.ts`) sets them from Settings |
 | `--fs-small`, `--fs-base`, `--fs-large` | 11.5, 13 and 17px in rem | see type |
 | `--font-ui`, `--font-mono` | Geist, JetBrains Mono | bundled defaults; Settings accepts any installed family |
 
 `--cell`, `--sel` and `--lit-solid` are derived again inside `.column.quiet` (`:root, .column.quiet`), so
 a quiet pane's come from its `--accent-quiet` and `--bg-quiet`. Layout tokens in the same `:root`, in rem
-(px at the default UI size): `--radius-sm` 6px, `--radius` 9px, `--radius-lg` 12px, `--sidebar-width` 250px,
-`--toolbar-height` 44px; `--font-ui-bundled` / `--font-mono-bundled` hold the bundled stacks.
+(px at the default UI size): `--radius-sm` 6px (buttons, fields, segmented controls, inline panels), `--radius`
+9px, `--radius-lg` 12px, `--sidebar-width` 250px, `--toolbar-height` 44px; `--font-ui-bundled` /
+`--font-mono-bundled` hold the bundled stacks. The window's own buttons don't scale, so their tokens are px:
+`--traffic-lights` 88px (the toolbar's left inset) and `--title-bar` 40px (the connect screen's drag strip).
 
 **Accent:** Settings → Appearance → Look "Accent" picks the app accent from nine swatches (`AccentRow` in
 `settings/pages.tsx`); a database overrides it on its Project page, and the row names the open database's own
@@ -157,7 +161,9 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
   table `--sel` with its name in the accent. It is the only entry with a background besides the hovered one;
   a linked table only changes its text (see [linked table highlight](#section-header-band)). Each table
   shows its row estimate (or `view`) in `--o3`, each database its table count; a refresh button sits beside
-  the filter (`Sidebar.tsx`). History entries use the same row.
+  the filter (`Sidebar.tsx`). A cut-off name shows whole at once on hover: an overlay in the row's font, color
+  and background continues it past the sidebar's edge (`useOverflowReveal`, `.overflow-reveal`); no `title`
+  delay. History entries use the same row.
 
 ## Section header band
 
@@ -236,7 +242,8 @@ Inputs look like inputs, never like rows.
 Palette, peek, popovers, context menus, toasts and dialogs: `--pop` background, 1px `--field-line` border,
 10px radius, `--shadow` (a glow with zero offset, no 3D lift). Modal dialogs and the palette sit over
 `--scrim`. Overlays take `Esc` first. Palette results use the row anatomy; the active one is `--sel` with a
-2px accent bar on the left, and command shortcuts show as key caps. Context menus use the UI font wherever they
+2px accent bar on the left, and command shortcuts show as key caps. A section's label (`.palette-section`, small
+`--o3` text) is a list item of its own above the section's first result. Context menus use the UI font wherever they
 open (grid, document, sidebar); the hovered or keyboard-focused item is `--accent` with `--on-accent` text,
 disabled items `--o3`, separators a 1px `--line`. Contents:
 
@@ -368,15 +375,18 @@ value, else the current address. The Hover column is what the status bar shows.
   hovered), and a Rows view grid is as tall as its header,
   rows and a sideways bar (at most 12 rows). Panes, the sidebar, value columns, the Project page, the readout
   and Settings keep the vertical bar's gutter (`scrollbar-gutter: stable`), so content doesn't shift when it
-  starts to scroll; in the sidebar the gutter is the items' right inset. Boxes with rounded corners (dialogs,
+  starts to scroll; in the sidebar the gutter is the items' right inset. Every user-scrollable box is its own
+  stacking context (`isolation: isolate`), because WebKit keeps a nested scroller's bar with its own layers only
+  then; overlays therefore never render inside one (menus and `Modal` portal to `body`). Boxes with rounded corners (dialogs,
   the palette, popovers, toasts, autocompletion) keep the thumb clear of them. The tab bar scrolls without a
   bar.
 - **Wide tables:** document tables of related rows, events and changes scroll sideways in their own box with
   their header (`WideTable.tsx`, `.wide-table`); only that box scrolls, never the pane. A primary-key first
   column stays pinned on the opaque row background and carries the change mark (`.wide-table.pinned`,
   `keyFirst` in `groups.tsx`); grids pin it the same way (`pinned` in `ResultsGrid.tsx`, `.grid.pinned`).
-  While scrolled a `--line` hairline marks its edge (`[data-scrolled]`); keyboard moves keep the selection
-  right of it (scroll-padding, `revealColumn`).
+  While scrolled a `--line` hairline marks its edge (`[data-scrolled]`); a revealed value stays right of it
+  (`scroll-padding-left` on `.wide-table.pinned`; `revealColumn` in grids, where `revealRow` also keeps the
+  selected row below the sticky header). The pinned header cell sits above the other columns' resize handles.
 - **Pane dividers:** a `--line` hairline between two panes, accent on hover and keyboard focus; dragging it (or ← / → while it has the focus)
   resizes the two panes next to it, never below 560px; a double-click makes all panes equal. The widths belong
   to the tab (not saved, not in history) and start equal again when the number of panes changes.
@@ -508,8 +518,10 @@ title | value | source table in `--o3`). Then a collapsible section band per par
   it never disappears. "Watch on readout" is in the context menu of every sourced grid cell, Document value
   and value tree node, and the `value.watch` / `object.watch` commands (no default key);
 - **recently created**: one timeline of the newest rows across every entity with a `created` column, newest
-  first. Above it a chip per entity (entity name and its count in the window; a failed entity says `failed` in
-  `--style-red`, its error in the tooltip). A chip toggles its entity in the timeline (all on by default); its
+  first. Above it a text toggle per entity (entity name and its count in the window, no fill or border: a shown
+  entity's name in `--text`, a hidden one's in `--o3`, the table and count in `--o3`, `--row-hover` on hover; a
+  failed entity says `failed` in `--style-red`, its error in the tooltip). A toggle shows or hides its entity in
+  the timeline (all on by default); its
   chevron discloses the entity's table (opens it), preset and SQL. Each line: relative time in `--o3` (the
   stored value and its source column on hover) | entity in `--o2` | the table's icon and `#key` in the accent | the
   [summary](#summary-line);
@@ -547,7 +559,7 @@ separate tool.
 - **Table tabs** check the rows they show without live mode (Settings → Queries "Live check in table tabs",
   default on): every 4 s while the tab is active and the window has the focus, each shown row is read again by
   its primary key. Nothing on screen changes by itself. A changed row gets the 3px accent mark on its first
-  cell, each changed value an accent corner (top right, flashing once when first seen), a removed row stays in
+  cell (beside the selection ring when that cell is selected), each changed value an accent corner (top right, flashing once when first seen), a removed row stays in
   place in `--o3`, struck through. A bar above the grid counts them, `3 rows changed in the database ·
   Refresh` (`… and 1 row removed …`, or `1 row removed from the database` alone; `changesText` in
   `lib/tableCheck.ts`), with the accent mark on its left and `⌥ on a marked value shows old →

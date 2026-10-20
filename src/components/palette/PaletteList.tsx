@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { Fragment, useEffect, useRef, type RefObject } from "react";
 import { CornerDownLeft } from "lucide-react";
 import type { PaletteHit } from "../../api";
 import { useStore } from "../../state/store";
@@ -76,24 +76,29 @@ export function PaletteList({ items, active, activeRef, empty, onHover, onChoose
         const header = it.section !== lastSection ? it.section : null;
         lastSection = it.section;
         return (
-          <li
-            key={it.key}
-            ref={i === active ? activeRef : undefined}
-            data-stage={`palette:item:${it.key}`}
-            data-stage-list="palette:results"
-            data-stage-label={it.title}
-            data-row-table={it.hit && "table" in it.hit.address.target ? it.hit.address.target.table : undefined}
-            role="option"
-            aria-selected={i === active}
-            aria-label={it.hit ? it.title : undefined}
-            className={i === active ? "active" : ""}
-            onMouseEnter={() => onHover(i)}
-            onClick={(e) => onChoose(i, e.metaKey)}
-          >
-            {header && <span className="palette-section">{header}</span>}
-            {it.hit ? <HitRow hit={it.hit} /> : <PlainRow item={it} />}
-            {i === active && <CornerDownLeft size="0.923rem" className="muted" />}
-          </li>
+          <Fragment key={it.key}>
+            {header && (
+              <li role="presentation" className="palette-section">
+                {header}
+              </li>
+            )}
+            <li
+              ref={i === active ? activeRef : undefined}
+              data-stage={`palette:item:${it.key}`}
+              data-stage-list="palette:results"
+              data-stage-label={it.title}
+              data-row-table={it.hit && "table" in it.hit.address.target ? it.hit.address.target.table : undefined}
+              role="option"
+              aria-selected={i === active}
+              aria-label={it.hit ? it.title : undefined}
+              className={i === active ? "active" : ""}
+              onMouseEnter={() => onHover(i)}
+              onClick={(e) => onChoose(i, e.metaKey)}
+            >
+              {it.hit ? <HitRow hit={it.hit} /> : <PlainRow item={it} />}
+              {i === active && <CornerDownLeft size="0.923rem" className="muted" />}
+            </li>
+          </Fragment>
         );
       })}
       {items.length === 0 && <li className="muted">{empty}</li>}

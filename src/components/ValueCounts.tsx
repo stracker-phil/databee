@@ -81,8 +81,8 @@ export function ValueCounts({ target, onPick, pickRefusal, onClose }: Props) {
         {counts && counts.length >= VALUE_COUNTS_LIMIT && <span className="o3"> · top {VALUE_COUNTS_LIMIT}</span>}
       </div>
       {error && <div className="form-error">{error.message}</div>}
-      {!counts && !error && <div className="muted small">Counting…</div>}
-      {counts?.length === 0 && <div className="muted small">No rows.</div>}
+      {!counts && !error && <div className="muted text-small">Counting…</div>}
+      {counts?.length === 0 && <div className="muted text-small">No rows.</div>}
       {counts && counts.length > 0 && (
         <ul className="value-counts-list" role="listbox" aria-label="Values">
           {counts.map((c, i) => {

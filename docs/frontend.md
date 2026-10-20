@@ -158,7 +158,10 @@ Conventions:
 - Formatting (`lib/format.ts`): `formatCount` for every count shown in full (`12,345`), `compactCount`
   for tight spots (`1.2k`, `3.4M`), `relativeTime(isoOrUnixSeconds)` for past and future times
   ("2 h ago", "in 3 d").
-- Overlays: `Modal` traps Tab inside the sheet, focuses the first control unless a child has `autoFocus`,
+- Overlays: `Modal` portals into `document.body` (so no scroll box's stacking context or type reaches it) and
+  draws one of three `variant`s: `sheet` (default; `.dialog.sheet`, the padded form or message), `panel`
+  (`.dialog.panel`, the overlay surface laid out by its content: the palette, rule sheets, Settings) or `bare`
+  (the connect dialog, whose `.connect-card` is its own surface). It traps Tab inside the sheet, focuses the first control unless a child has `autoFocus`,
   and returns focus to the opener on close unless the closing action focused something else. It handles
   Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]`
   pass through). The palette renders inside `Modal` too. Every context menu is `ContextMenu.tsx`: callers build
@@ -254,8 +257,9 @@ The core commands are `APP_COMMANDS` (`src/commands/index.ts`); their default bi
     reference 4711`, `people matching jane`, `external id …`, `<table>.<column>` for `=`; see
     [architecture](architecture.md#palette-search)).
   - `PaletteList` renders a hit as its `source` (table, or `table.column`) in `--o2`, `#` and its key in the
-    accent, then its detail `Value`s; other items as title, badge and key cap. It scrolls the active item into
-    view. `PaletteFooter` lists the keys and the prefixes, and for `#` without entities says that it reads
+    accent, then its detail `Value`s; other items as title, badge and key cap. A section's label is an
+    `li role="presentation"` (`.palette-section`) before its first option, so options keep their indices and
+    names. It scrolls the active item into view. `PaletteFooter` lists the keys and the prefixes, and for `#` without entities says that it reads
     only tables under 1M estimated rows.
   - Enter on a hit (`openHit`) drills into the active object tab's stack (`drill` after its active column),
     else opens an object tab; ⌘↵ (`goAlt`) always opens a tab. A hit whose address is not a row opens with
@@ -302,7 +306,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 |---|---|
 | Shell | `Toolbar` (with `ConnectionHealth`, see [Connection health](#connection-health)), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers; also `usePaneSize`, the SQL editor's persisted height), `useWindowSize.ts` (`useWindowSize`, the window size for the SQL editor's maximum height), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit`), `Tabs`, `tabViews.tsx` (`TAB_VIEWS`; a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit`; a cut-off name shows whole on hover through `OverflowReveal.tsx` `useOverflowReveal(rowSelector, labelSelector)`, a portaled overlay in the row's font, color and opaque background), `Tabs`, `tabViews.tsx` (`TAB_VIEWS`; a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), `value/useAltHeld.ts` (`useAltHeld`: ⌥ held alone, one shared set of window listeners), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `WideTable` (a row table that scrolls sideways in its own box; `pinned` keeps a primary-key first column in view; used by `groups` and `ChangeList`), `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
@@ -551,7 +555,9 @@ cell shows `ChangePeek` (`grid/ChangePeek.tsx`, portaled to `body`): the shown v
 inline editor opening and closing.
 
 **Pinned key column:** when the first column holds primary keys, the grid is `grid pinned`: that column stays in
-view while the grid scrolls sideways, and `revealColumn` keeps the selected cell right of it. `markScrolled`
+view while the grid scrolls sideways, and `revealColumn` keeps the selected cell right of it. Keyboard moves
+reveal rows with `revealRow`, which keeps the selected row between the sticky header (`.grid-head`, measured)
+and the bottom edge. `markScrolled`
 (`gridHooks.ts`) sets `data-scrolled` on the scrolled box, which draws the pinned column's edge. Document row
 groups do the same with `WideTable pinned` (`keyFirst` in `groups.tsx`). The pinned cells paint `--pin-bg`, which
 `TableFocus` sets for lit rows.
@@ -683,8 +689,8 @@ the [readout](#readout) lists.
   value gets an accent outline on `--sel`, and stays in view as `j`/`k` move it. `+n keys` / `+n rows` under a
   capped group switches to Rows and scrolls to that group. Zero-row groups collapse into `AlsoLinked` ("Also linked: …").
 - **`RowsView`:** per group with a table its band, the `WHERE` of its rows address, and a compact `ResultsGrid`
-  (as tall as its header, rows and a sideways scrollbar, at most 12 rows (`.rows-grid` `max-height` from
-  `--row-h` and `--grid-head-h`), then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and
+  (at most its header, 12 rows and a sideways scrollbar tall (`.rows-grid` `max-height` from `--row-h`,
+  `--grid-head-h`, the tallest header, and `--scrollbar-size`), then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and
   editable cells, or, for a group no address names (patterns), its document rows read-only.
 - **Toggle:** `object.viewDocument` / `object.viewRows` (`⌘1` / `⌘2`, scope `object`; `Tab` stays focus
   navigation) and the segmented control call `toggleObjectView(tabId, index?)` / `setObjectView(tabId, view, focus?, index?)` on the
@@ -958,7 +964,7 @@ address call it. It has no history (`nav` stays empty).
   `refreshCoverage` empties it and bumps its `generation`, which reruns the hook.
 - **Forms** (`lib/ruleForms.ts`): form state lives in the tab, so it survives switching tabs, and every opener
   (a row's "edit", `openProject({ form })` from a value) shows it as the same sheet: `FormFrame` renders a
-  `Modal` with the palette's classes (`palette rule-sheet`, Stage window `rule-form`); ⎋ closes through the
+  `Modal` panel with the palette's classes (`variant="panel"`, `palette rule-sheet`, Stage window `rule-form`); ⎋ closes through the
   modal, ⌘↵ saves from any field. `referenceFormFromRow` sets `replacing` for a row the project stores
   (`storedInProject`: project or `edited`) and `ruleId` to a preset row's id, so saving overrides it;
   `referenceRule` maps the real tables of the pickers to rule names through `ProjectRules.tables`;
@@ -1117,7 +1123,9 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
   `AccentSwatches` (Settings → Appearance and the Project header; Stage anchors `<stage>:<accent>` in list
   `<stage>`) and `AccentDot` (toolbar, connection switcher), both colored by `--a-<accent>`. Old names that older rules in `app.css` still read remain as aliases
   onto scheme tokens; new CSS and components use only the new names.
-- **Sizing.** Everything is in rem. `html { font-size: var(--ui-font-size) }`, so ⌘= and ⌘- scale the whole UI.
+- **Sizing.** Chrome is in rem: `html { font-size: var(--ui-font-size) }`, so ⌘= and ⌘- scale it. The row
+  anatomy (the 20px line, `--pad`, `--row-gap`, `--row-inset`, `--focus-out`) and the window's own buttons
+  (`--traffic-lights`, `--title-bar`) are in px.
   `--data-font-size` sizes the grid, the editor and the value trees. The row-padding setting (steps 1 to 4)
   sets `--pad` (1, 3, 5 or 8px); `--row-h` is a 20px line (more for large data sizes) plus twice `--pad`.
   `useRowHeight` hands the measured value to the virtualizer.
@@ -1127,7 +1135,7 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
 - **CodeMirror.** `QueryEditor` passes `theme="none"` and adds `codeTheme(dark)`, so the editor reads the
   `--code-*` tokens; `dark` (from `useResolvedScheme`) only picks CodeMirror's base styles.
 - **macOS look.**
-  - The toolbar leaves `padding-left` for the traffic lights.
+  - The toolbar leaves `padding-left: var(--traffic-lights)` (88px, not scaled) for the traffic lights.
   - `data-tauri-drag-region` marks the draggable areas.
   - `user-select: none` applies globally; inputs and `.selectable` opt back in.
   - Shortcut labels use the ⌘⌃⌥⇧ glyphs.

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { isRecordingTarget } from "../commands/registry";
 
 interface Props {
   onClose: () => void;
+  /** `sheet`: the padded dialog; `panel`: the overlay surface, laid out by its content; `bare`: neither. */
+  variant?: "sheet" | "panel" | "bare";
   className?: string;
   labelledBy?: string;
   label?: string;
@@ -18,7 +21,7 @@ function focusables(root: HTMLElement): HTMLElement[] {
 }
 
 /** Keeps Tab inside the sheet and returns focus to the element that opened it. */
-export function Modal({ onClose, className = "", labelledBy, label, stageWindow, children }: Props) {
+export function Modal({ onClose, variant = "sheet", className = "", labelledBy, label, stageWindow, children }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -68,11 +71,11 @@ export function Modal({ onClose, className = "", labelledBy, label, stageWindow,
     }
   };
 
-  return (
+  return createPortal(
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={sheetRef}
-        className={`dialog ${className}`}
+        className={["dialog", variant === "bare" ? "" : variant, className].filter(Boolean).join(" ")}
         data-stage={stageWindow ? `${stageWindow}:sheet` : "dialog"}
         data-stage-window={stageWindow}
         role="dialog"
@@ -84,6 +87,7 @@ export function Modal({ onClose, className = "", labelledBy, label, stageWindow,
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -22,7 +22,7 @@ export function SettingsDialog() {
   const { Body } = page;
 
   return (
-    <Modal onClose={close} className="settings-window" labelledBy="settings-title" stageWindow="settings">
+    <Modal onClose={close} variant="panel" className="settings-window" labelledBy="settings-title" stageWindow="settings">
       <nav className="settings-nav" aria-label="Settings pages" data-stage="settings-nav" data-stage-label="Settings pages">
         {settingsGroups().map((g) => (
           <div key={g.group} className="settings-nav-group">

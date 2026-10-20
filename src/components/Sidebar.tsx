@@ -9,6 +9,7 @@ import { useApiResult } from "../lib/useApiResult";
 import { fail, selectActiveSession, selectActiveTab, selectVisibleDatabases, useStore, type Tab } from "../state/store";
 import { useContextMenu } from "./ContextMenu";
 import { InsetField } from "./Field";
+import { useOverflowReveal } from "./OverflowReveal";
 import { TableIcon } from "./TableIcon";
 
 const dbKey = (name: string) => `db:${name}`;
@@ -98,6 +99,7 @@ function TablesPanel() {
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const menu = useContextMenu();
+  const reveal = useOverflowReveal(".si", ".label");
   const filterRef = useRef<HTMLInputElement>(null);
   const filterKeys = useBindingLabel("sidebar.focusFilter");
 
@@ -176,7 +178,7 @@ function TablesPanel() {
           {current} · {formatCount(currentTables.length)} {currentTables.length === 1 ? "table" : "tables"}
         </div>
       )}
-      <div className="sidebar-body" role="tree" aria-label="Databases">
+      <div className="sidebar-body" role="tree" aria-label="Databases" onMouseOver={reveal.onMouseOver} onMouseLeave={reveal.onMouseLeave}>
         {tree.map(({ d, row, tableRows }) => (
           <div key={d.name} role="none">
             <div
@@ -232,6 +234,7 @@ function TablesPanel() {
         ))}
       </div>
       {menu.element}
+      {reveal.element}
     </>
   );
 }

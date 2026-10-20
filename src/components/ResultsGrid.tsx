@@ -61,6 +61,15 @@ function useEditingChange(editing: boolean, onEditingChange: ((editing: boolean)
   useEffect(() => notify.current?.(editing), [editing]);
 }
 
+/** Scrolls `grid` until row `row` shows between the sticky header `head` and the bottom edge; rows are `rowHeight` tall. */
+function revealRow(grid: HTMLElement | null, head: HTMLElement | null, row: number, rowHeight: number) {
+  if (!grid) return;
+  const top = row * rowHeight;
+  const bottom = (head?.offsetHeight ?? 0) + top + rowHeight;
+  if (top < grid.scrollTop) grid.scrollTop = top;
+  else if (bottom > grid.scrollTop + grid.clientHeight) grid.scrollTop = Math.min(bottom, grid.scrollHeight) - grid.clientHeight;
+}
+
 /** Scrolls `grid` sideways until column `col` shows, right of the pinned key column; its start wins when it is wider. */
 function revealColumn(grid: HTMLElement | null, widths: number[], col: number, pinned: boolean) {
   if (!grid || col < 0 || col >= widths.length || (pinned && col === 0)) return;
@@ -75,6 +84,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   const selectCell = useStore((s) => s.selectCell);
   const rowHeight = useRowHeight();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<CellPos | null>(null);
   const [selectionRows, setSelectionRows] = useState(rows);
   // New rows invalidate cell positions; resetting during render keeps stale indices out of every frame.
@@ -122,7 +132,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   const copyCell = (at: CellPos) => withFullText(at, (text) => void copyText(text, "value"));
 
   const reveal = (row: number, col: number) => {
-    virtualizer.scrollToIndex(row);
+    revealRow(scrollRef.current, headRef.current, row, rowHeight);
     revealColumn(scrollRef.current, widths, col, pinned);
   };
 
@@ -180,7 +190,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
       aria-rowcount={rows.length}
       style={colVars}
     >
-      <div className="grid-head" style={{ width: totalWidth }} role="row">
+      <div className="grid-head" ref={headRef} style={{ width: totalWidth }} role="row">
         {columns.map((c, i) => {
           const sorted = sort?.column === c.name;
           return (

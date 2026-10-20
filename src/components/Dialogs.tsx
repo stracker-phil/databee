@@ -260,7 +260,7 @@ export function Dialogs() {
       // Without sessions the connect screen is the main view and shows this state itself.
       if (!hasSessions) return null;
       return (
-        <Modal onClose={close} className="connect-dialog" labelledBy={CONNECT_TITLE_ID}>
+        <Modal onClose={close} variant="bare" className="connect-dialog" labelledBy={CONNECT_TITLE_ID}>
           <ConnectForm initial={dialog.spec} error={dialog.error} />
         </Modal>
       );

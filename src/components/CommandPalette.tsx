@@ -42,7 +42,7 @@ function PaletteSheet() {
   };
 
   return (
-    <Modal onClose={() => setPaletteOpen(false)} className="palette" label="Command palette" stageWindow="palette">
+    <Modal onClose={() => setPaletteOpen(false)} variant="panel" className="palette" label="Command palette" stageWindow="palette">
       <div className="palette-input">
         <Search size="1.077rem" aria-hidden="true" />
         <input
@@ -70,7 +70,7 @@ function PaletteSheet() {
             }
           }}
         />
-        {searching && <span className="muted small">searching…</span>}
+        {searching && <span className="muted text-small">searching…</span>}
       </div>
       <PaletteList items={items} active={active} activeRef={activeRef} empty={emptyText(prefix, needle, rowSearch)} onHover={setIndex} onChoose={choose} />
       <PaletteFooter prefix={prefix} hasEntities={hasEntities} hasHit={!!items[active]?.hit} />

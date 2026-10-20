@@ -1,8 +1,9 @@
 /* Scheme-independent design tokens (docs/ux.md). Colors come from the active scheme
    (`schemes/<id>.css`, chosen by `data-scheme` on <html>); this file only derives from them, so it holds
    no color literal. lib/theme.ts sets `data-scheme`, `data-accent`, `--pad`, the font sizes and the
-   chosen font families. Sizing: everything is rem; `--ui-font-size` drives chrome (html font-size),
-   `--data-font-size` drives grid cells, document values, trees and the SQL editor. */
+   chosen font families. Sizing: chrome is in rem of `--ui-font-size` (html font-size), so ⌘= and ⌘- scale it;
+   `--data-font-size` drives grid cells, document values, trees and the SQL editor; the row anatomy (line,
+   padding, insets) and the window's own chrome (traffic lights) are in px. */
 :root {
   --font-ui-bundled: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono-bundled: "JetBrains Mono", ui-monospace, Menlo, monospace;
@@ -33,7 +34,13 @@
      data font sizes, so rows never clip their text. */
   --pad: 3px;
   --row-h: calc(max(20px, var(--data-font-size) * 1.6) + 2 * var(--pad));
-  /* A grid header with a type line (app.css, grid): the name and the type at line-height 1.3, --pad around, a hairline. */
+  /* Document rows (app.css, object view): the gap between columns, the inset at both ends, and how far a focused
+     value's outline reaches past its text. A pinned key cell covers the inset and half the gap. */
+  --row-gap: 20px;
+  --row-inset: 12px;
+  --focus-out: 8px;
+  /* The tallest grid header (.grid-head, which sizes itself): the name and the type at line-height 1.3, --pad
+     around, a hairline; headers without a type line are shorter. */
   --grid-head-h: calc(2 * var(--pad) + 1.3 * (var(--data-font-size) + 0.808rem) + 1px);
 
   --radius-sm: 0.462rem;
@@ -41,8 +48,11 @@
   --radius-lg: 0.923rem;
   --sidebar-width: 19.231rem;
   --toolbar-height: 3.385rem;
+  /* The window's buttons (trafficLightPosition in tauri.conf.json) don't scale with the UI size: the toolbar's
+     left inset that keeps clear of them, and the title bar band they sit in on the connect screen. */
+  --traffic-lights: 88px;
+  --title-bar: 40px;
 
-  --text-tertiary: var(--o3);
   --chart-green: var(--style-green);
   --chart-orange: var(--a-orange);
 }

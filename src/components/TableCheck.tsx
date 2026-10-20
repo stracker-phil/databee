@@ -128,7 +128,7 @@ export function TableChangesBar({ rows, onRefresh }: { rows: TableCheckState["ro
     <div className="db-changes" role="status" data-stage="table:changes" data-stage-label="Changed in the database">
       <span>{text}</span>
       <span className="o3">·</span>
-      <button className="link-btn plain" onClick={onRefresh}>
+      <button className="link-btn" onClick={onRefresh}>
         Refresh
       </button>
       {counts.changed > 0 && <span className="o3 db-changes-hint">⌥ on a marked value shows old → new</span>}

@@ -35,10 +35,13 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 /* Document sections keep their bar's space but show the thumb only while hovered, so a page of small tables
    is not lined with bars. */
 .wide-table:not(:hover)::-webkit-scrollbar-thumb { background-color: transparent; }
-/* A scroll box nested in a scrolling pane whose content has z-indexed layers (sticky headers, pinned columns) is its
-   own stacking context: otherwise those layers, and WebKit with them the box's scrollbar, belong to an outer
-   context, and the bar stays behind while the pane scrolls. */
-:is(.grid, .wide-table) { isolation: isolate; }
+/* Every user-scrollable box is its own stacking context: WebKit keeps a nested scroller's scrollbar with its own
+   layers only then, so the bar never stays behind while an outer box scrolls. A fixed overlay inside one would be
+   stacked inside it too, so overlays render outside them (menus and modals portal to <body>). */
+:is(
+  .object, .project, .readout, .structure, .value-body, .sidebar-body, .settings-body, .settings-nav, .tray, .dialog,
+  .grid, .wide-table, .recents, .action-writes, .insert-grid, .palette-list, .value-counts-list, .toast-details, .connect-screen
+) { isolation: isolate; }
 /* Boxes with rounded corners keep the thumb clear of them. */
 :is(.dialog, .palette-list, .value-counts-list, .toast-details, .recents, .cm-tooltip-autocomplete > ul)::-webkit-scrollbar-track { margin: 0.462rem 0; }
 
@@ -46,26 +49,31 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .btn {
   display: inline-flex; align-items: center; gap: 0.462rem;
   height: 2rem; padding: 0 0.769rem;
-  border: 1px solid var(--field-line); border-radius: 6px;
+  border: 1px solid var(--field-line); border-radius: var(--radius-sm);
   background: var(--pop); cursor: default; white-space: nowrap;
 }
 .btn:hover:not(:disabled) { background: var(--row-hover); }
 .btn:active:not(:disabled) { background: color-mix(in srgb, var(--text) 12%, transparent); }
 .btn:disabled { opacity: 0.45; }
 .btn-primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
-.btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); }
+/* The accent 12% toward black, without a color literal. */
+.btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--shade)); }
 .btn-danger { background: var(--style-red); border-color: transparent; color: var(--on-accent); }
 .icon-btn {
   display: inline-grid; place-items: center; width: 2rem; height: 2rem; flex: none;
-  border: none; border-radius: 6px; background: transparent; color: var(--o2);
+  border: none; border-radius: var(--radius-sm); background: transparent; color: var(--o2);
 }
 .icon-btn:hover:not(:disabled) { background: var(--row-hover); color: var(--text); }
 .icon-btn:disabled { opacity: 0.35; }
+/* Buttons that read as their text: links and actions in rows and rules, secrets and serialized values. A selector
+   list, not :is(), so each keeps its own specificity. */
+.structure .link, .structure .act, .project .row .link, :is(.project, .rule-sheet) .act, .readout .line-open, .icon-rule .link,
+.val-secret > button, button.val-ser, button.val-ref { padding: 0; border: none; background: none; font: inherit; }
 
 /* Inputs look like inputs, never like rows (docs/ux.md, Inputs). */
 .input {
   height: 2rem; padding: 0 0.615rem; width: 100%;
-  border: 1px solid var(--field-line); border-radius: 6px;
+  border: 1px solid var(--field-line); border-radius: var(--radius-sm);
   background: var(--field); box-shadow: var(--shadow-inset); outline: none;
 }
 .input::placeholder { color: var(--o3); }
@@ -75,7 +83,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 /* The macOS field: leading icon, the control, an optional key cap (`InsetField` in Field.tsx). */
 .inset-field {
   display: flex; align-items: center; gap: 0.462rem; min-width: 0; height: 1.846rem; padding: 0 0.462rem 0 0.615rem;
-  border: 1px solid var(--field-line); border-radius: 6px; background: var(--field); box-shadow: var(--shadow-inset);
+  border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); box-shadow: var(--shadow-inset);
   color: var(--text); cursor: text;
 }
 .inset-field:focus-within { border-color: var(--accent); }
@@ -100,7 +108,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .spacer { flex: 1; }
 
 /* A field-styled track; the selected segment sits on the overlay surface. */
-.segmented { display: inline-flex; padding: 1px; border: 1px solid var(--field-line); border-radius: 6px; background: var(--field); }
+.segmented { display: inline-flex; padding: 1px; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); }
 .segmented button {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.308rem; white-space: nowrap;
   height: 1.538rem; padding: 0 0.923rem; border: none; border-radius: 5px; background: transparent; color: var(--o2);
@@ -128,11 +136,11 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .workspace { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 0; }
 /* view.sidebar hides the sidebar entirely, so its column goes too */
 .workspace.no-sidebar { grid-template-columns: minmax(0, 1fr); }
-.main { background: var(--bg); overflow: hidden; min-width: 0; min-height: 0; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }
 
 .toolbar {
   display: flex; align-items: center; gap: 0.769rem;
-  padding: 0 0.923rem 0 6.769rem; background: var(--chrome); border-bottom: 1px solid var(--line);
+  padding: 0 0.923rem 0 var(--traffic-lights); background: var(--chrome); border-bottom: 1px solid var(--line);
 }
 .app-title { font-weight: 600; font-size: 1rem; letter-spacing: -0.01em; }
 
@@ -156,19 +164,21 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .sidebar-head .sidebar-caption { flex: 1; padding: 0 0.308rem; }
 .sidebar-body { flex: 1; overflow: auto; padding: 0 0 0.769rem; scrollbar-gutter: stable; }
 /* Sidebar items share the row anatomy: --pad around a 20px line, 8px inset, 5px radius (docs/ux.md). On the
-   right the scrollbar's gutter is the inset. */
+   right the scrollbar's gutter (always kept) stands in for the inset, as far as it is wide. */
 .si {
   display: flex; align-items: center; gap: 0.462rem; margin: 0 8px; padding: var(--pad) 8px; line-height: 20px;
   border-radius: 5px; color: var(--o2); cursor: default; white-space: nowrap;
   font-family: var(--font-mono); font-size: var(--data-font-size);
 }
-.sidebar-body .si { margin-right: calc(8px - var(--scrollbar-size)); }
+.sidebar-body .si { margin-right: max(0px, 8px - var(--scrollbar-size)); }
 .si:hover { background: var(--row-hover); color: var(--text); }
 .si.sel { background: var(--sel); color: var(--text); }
 .si.sel .label { color: var(--accent); }
 .si:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .si .label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .si .label.current { color: var(--text); font-weight: 600; }
+/* The whole name of a cut-off entry, over the row and past the sidebar's edge (useOverflowReveal sets box, font, color and background). */
+.overflow-reveal { position: fixed; z-index: 60; box-sizing: border-box; white-space: nowrap; pointer-events: none; }
 .si .meta { color: var(--o3); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
 .si svg { flex: none; color: var(--o3); }
 .si.system .label { color: var(--o3); }
@@ -188,7 +198,6 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .history-item.failed .when { color: var(--style-red); }
 
 /* ---------- tabs ---------- */
-.main { display: flex; flex-direction: column; }
 /* The hairline is an inset shadow, so the active tab's --bg paints over it and joins the content. */
 .tabbar {
   display: flex; align-items: stretch; height: 2.462rem; flex: none; overflow-x: auto;
@@ -228,7 +237,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .message-panel { padding: 1.846rem; display: flex; flex-direction: column; gap: 0.462rem; align-items: flex-start; }
 .message-panel .big { font-size: 1.154rem; font-weight: 600; }
 .error-panel {
-  margin: 1.077rem; padding: 0.923rem 1.077rem; border-radius: 6px; background: color-mix(in srgb, var(--style-red) 12%, transparent);
+  margin: 1.077rem; padding: 0.923rem 1.077rem; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-red) 12%, transparent);
   color: var(--style-red); display: flex; gap: 0.769rem; align-items: flex-start;
 }
 .error-panel .msg { font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; color: var(--text); user-select: text; }
@@ -239,10 +248,11 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 /* Row anatomy (docs/ux.md): a --line hairline under every row, --row-hover on the hovered row, --cell on
    the hovered value, no row numbers. Kinds show through alignment and opacity, never color. */
 .grid {
-  flex: 1; overflow: auto; min-height: 0; position: relative; background: var(--bg);
+  flex: 1; overflow: auto; min-height: 0; background: var(--bg);
   font-family: var(--font-mono); font-size: var(--data-font-size);
 }
 .grid-inner { position: relative; }
+/* The header's height is the token the Rows view sizes its grids by (.rows-grid). */
 .grid-head {
   position: sticky; top: 0; z-index: 2; display: flex; background: var(--bg);
   border-bottom: 1px solid var(--line);
@@ -251,26 +261,33 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 }
 .grid-row { display: flex; position: absolute; left: 0; border-bottom: 1px solid var(--line); }
 .grid-row:hover { background: var(--row-hover); }
+/* The cell fills the row above its hairline (border-bottom), so its line is 1px short of --row-h. A cell draws its
+   ring (selection, editing) and its row's change mark (live check) as two shadows, so neither hides the other. */
 .grid-cell {
   flex: none; padding: 0 0.769rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   height: 100%; line-height: calc(var(--row-h) - 1px); border-radius: 3px;
+  box-shadow: var(--cell-ring, 0 0 transparent), var(--change-mark, 0 0 transparent);
 }
 .grid-cell:hover { background: var(--cell); }
 .grid-cell.num { text-align: right; font-variant-numeric: tabular-nums; }
 .grid-cell.null { color: var(--o3); font-style: italic; }
 .grid-cell.bytes { color: var(--o3); }
-.grid-cell.selected { box-shadow: inset 0 0 0 1.5px var(--accent); }
-/* The scroll container's own outline would be clipped by .main and covered by the sticky header, so focus
-   shows on the selected cell like the Document view's focused value, or under the header without one. */
+.grid-cell.selected { --cell-ring: inset 0 0 0 1.5px var(--accent); }
+/* The grid's own outline would be clipped by the pane around it and covered by the sticky header, so focus shows
+   on the selected cell like the Document view's focused value, or under the header without one. */
 .grid:focus-visible { outline: none; }
 .grid:focus .grid-cell.selected { background: var(--sel); }
-.grid:focus-visible:not(:has(.grid-cell.selected)) .grid-head { box-shadow: inset 0 -2px 0 0 var(--accent), 0 -2px 0 0 var(--bg); }
+.grid:focus-visible:not(:has(.grid-cell.selected)) .grid-head::after {
+  content: ""; position: absolute; inset: auto 0 0; height: 2px; background: var(--accent); pointer-events: none;
+}
 /* A first column holding the rows' primary key (.pinned) stays at the left while the grid scrolls sideways, header
-   cell included, on the opaque row background (a hovered or selected cell mixes its tint into it), with a hairline
-   at its edge while scrolled (data-scrolled). Keyboard moves keep the selected cell right of it (scroll-padding). */
-.grid.pinned { --pin-bg: var(--bg); scroll-padding-left: var(--col-0); }
+   cell included (above the other columns' resize handles), on the opaque row background (a hovered or selected
+   cell mixes its tint into it), with a hairline at its edge while scrolled (data-scrolled). revealColumn keeps
+   the selected cell right of it. */
+.grid.pinned { --pin-bg: var(--bg); }
 .grid.pinned .grid-row:hover { --pin-bg: var(--row-hover); }
 .grid.pinned :is(.grid-hcell, .grid-cell):first-child { position: sticky; left: 0; z-index: 1; background: var(--pin-bg); border-radius: 0; }
+.grid.pinned .grid-hcell:first-child { z-index: 2; }
 .grid.pinned .grid-hcell.sortable:first-child:hover { background: var(--row-hover); }
 .grid.pinned .grid-cell:first-child:hover { background: color-mix(in srgb, var(--accent) 24%, var(--pin-bg)); }
 .grid.pinned:focus .grid-cell.selected:first-child { background: color-mix(in srgb, var(--accent) 20%, var(--pin-bg)); }
@@ -298,15 +315,13 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .structure table { border-collapse: collapse; width: 100%; }
 .structure th, .structure td { text-align: left; padding: 0.308rem 0.769rem 0.308rem 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .structure th { font-weight: 600; color: var(--o2); font-size: var(--fs-small); }
-.structure td.mono { font-size: var(--data-font-size); }
 /* One row per column: name, type, keys, then the rules on it (kind, references, value styles), each rule a
    line with its origin and the Project page's controls; table-level blocks below. */
 .structure-grid { display: grid; grid-template-columns: minmax(7rem, max-content) minmax(7rem, 15rem) max-content minmax(12rem, 0.9fr) minmax(0, 1.6fr) minmax(15rem, 1.1fr) max-content; }
 .structure-row { display: contents; }
 .structure-row > * { padding: 0.462rem 0.769rem 0.462rem 0; border-bottom: 1px solid var(--line); min-width: 0; }
-.structure-row:hover > * { background: var(--row-hover); }
+.structure-row:not(.head):hover > * { background: var(--row-hover); }
 .structure-row.head > * { font-weight: 600; color: var(--o2); font-size: var(--fs-small); padding-top: 0.308rem; padding-bottom: 0.308rem; }
-.structure-row.head:hover > * { background: transparent; }
 .structure .col-name { font-family: var(--font-mono); font-size: var(--data-font-size); font-weight: 600; }
 .structure .col-type { font-size: var(--data-font-size); }
 .structure .col-facts { display: block; font-size: var(--fs-small); }
@@ -319,9 +334,9 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .structure .rule-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0.769rem; font-size: var(--fs-small); color: var(--o2); }
 .structure .origin { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o3); white-space: nowrap; }
 .structure .origin .mono { font-size: var(--fs-small); }
-.structure .link { border: none; background: none; padding: 0; font: inherit; color: inherit; }
+.structure .link { color: inherit; }
 .structure .link:hover { color: var(--accent); text-decoration: underline; }
-.structure .act { border: none; background: none; padding: 0; font: inherit; color: var(--accent); white-space: nowrap; }
+.structure .act { color: var(--accent); white-space: nowrap; }
 .structure .act:hover { color: var(--text); }
 .structure-block h3 .mono { text-transform: none; letter-spacing: 0; }
 .structure-block { display: flex; flex-direction: column; gap: 0.462rem; }
@@ -329,7 +344,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .structure-block .facts { display: flex; flex-wrap: wrap; gap: 2px 1.231rem; align-items: baseline; }
 .structure-block > .rule-item { padding-bottom: 0.462rem; border-bottom: 1px solid var(--line); }
 .structure .mono { font-family: var(--font-mono); font-size: var(--data-font-size); }
-.ddl { margin: 0; padding: 0.923rem; border-radius: 6px; background: var(--chrome); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; }
+.ddl { margin: 0; padding: 0.923rem; border-radius: var(--radius-sm); background: var(--chrome); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; }
 
 /* ---------- splitter: a hairline with a wider invisible grab area ---------- */
 .splitter { position: relative; z-index: 3; background: var(--line); outline: none; }
@@ -339,8 +354,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .splitter-x::after { inset: 0 -3px; }
 .splitter-y::after { inset: -3px 0; }
 .splitter:hover, .splitter:focus-visible, .resizing-x .splitter-x:active, .resizing-y .splitter-y:active { background: var(--accent); }
-.splitter-x:hover, .splitter-x:focus-visible { box-shadow: 0 0 0 1px var(--accent); }
-.splitter-y:hover, .splitter-y:focus-visible { box-shadow: 0 0 0 1px var(--accent); }
+.splitter:hover, .splitter:focus-visible { box-shadow: 0 0 0 1px var(--accent); }
 body.resizing-x, body.resizing-x * { cursor: col-resize !important; user-select: none; }
 body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select: none; }
 
@@ -389,18 +403,23 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .recent .sub { font-size: var(--fs-small); color: var(--o3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent .icon-btn { opacity: 0; }
 .recent:hover .icon-btn, .recent .icon-btn:focus-visible { opacity: 1; }
-.form-error { padding: 0.615rem 0.769rem; border-radius: 6px; background: color-mix(in srgb, var(--style-red) 12%, transparent); color: var(--style-red); font-size: var(--fs-small); user-select: text; }
-.drag-strip { position: fixed; top: 0; left: 0; right: 0; height: 3.077rem; }
+.form-error { padding: 0.615rem 0.769rem; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-red) 12%, transparent); color: var(--style-red); font-size: var(--fs-small); user-select: text; }
+.drag-strip { position: fixed; top: 0; left: 0; right: 0; height: var(--title-bar); }
 
 /* ---------- dialogs ---------- */
 /* Overlays (dialogs, palette, menus, toasts, popovers): --pop, a --field-line border, 10px radius and a
    zero-offset glow; modal sheets sit over --scrim (docs/ux.md, Overlays). */
 .overlay { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 50; animation: fade .12s ease-out; }
-.dialog {
+/* Modal's sheet (`variant`): a padded .sheet for forms and messages, a .panel surface laid out by its content
+   (palette, rule sheets, settings), or bare (the connect dialog brings its own card). */
+.dialog { animation: pop .14s ease-out; }
+.dialog:is(.sheet, .panel) { background: var(--pop); border: 1px solid var(--field-line); border-radius: 10px; box-shadow: var(--shadow); }
+.dialog.sheet {
   width: min(33.846rem, calc(100vw - 2.462rem)); max-height: calc(100vh - 4.615rem); overflow: auto;
-  background: var(--pop); border: 1px solid var(--field-line); border-radius: 10px; box-shadow: var(--shadow);
-  padding: 1.538rem; display: flex; flex-direction: column; gap: 0.923rem; animation: pop .14s ease-out;
+  padding: 1.538rem; display: flex; flex-direction: column; gap: 0.923rem;
 }
+.dialog.panel { overflow: hidden; }
+.dialog.connect-dialog { max-height: calc(100vh - 4.615rem); overflow: auto; display: flex; flex-direction: column; }
 .dialog.wide { width: min(43.077rem, calc(100vw - 2.462rem)); }
 .action-sheet h2 + .o3 { margin-top: 0.308rem; }
 .action-param { display: grid; grid-template-columns: minmax(8rem, auto) 1fr; gap: 0.615rem; align-items: center; }
@@ -413,13 +432,9 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .action-column > :first-child { padding-left: 1.231rem; }
 .action-sql { margin: 0; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; user-select: text; }
 .action-error { margin: 0; color: var(--style-red); }
-.dialog.connect-dialog { width: auto; padding: 0; background: none; border: none; box-shadow: none; }
-.dialog h2 { margin: 0; font-size: 1.154rem; }
+.dialog.sheet h2 { margin: 0; font-size: 1.154rem; }
 .form-contents { display: contents; }
 .dialog .actions { display: flex; justify-content: flex-end; gap: 0.615rem; margin-top: 0.308rem; }
-.dialog section { display: flex; flex-direction: column; gap: 0.769rem; }
-.dialog section + section { border-top: 1px solid var(--line); padding-top: 0.923rem; }
-.dialog h3 { margin: 0; font-size: var(--fs-small); text-transform: uppercase; letter-spacing: 0.04em; color: var(--o2); }
 .accent-swatches { display: flex; gap: 0.615rem; }
 .accent-swatches button { width: 1.538rem; height: 1.538rem; border-radius: 50%; border: none; }
 .accent-swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pop), 0 0 0 0.308rem var(--o2); }
@@ -441,10 +456,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .row-padding-preview > :first-child { color: var(--o2); }
 
 /* ---------- settings window: sidebar of pages, grouped cards of label/control rows ---------- */
-.dialog.settings-window {
-  width: min(54rem, calc(100vw - 2.462rem)); height: min(46rem, calc(100vh - 4.615rem));
-  padding: 0; gap: 0; flex-direction: row; overflow: hidden;
-}
+.dialog.settings-window { display: flex; width: min(54rem, calc(100vw - 2.462rem)); height: min(46rem, calc(100vh - 4.615rem)); }
 .settings-nav {
   flex: none; width: 13.5rem; padding: 1.231rem 0.769rem; overflow: auto;
   background: var(--chrome); border-right: 1px solid var(--line);
@@ -463,10 +475,10 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
 .settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; padding: 1.231rem 1.538rem 0.769rem; border-bottom: 1px solid var(--line); }
 .settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0.923rem 1.538rem 1.846rem; display: flex; flex-direction: column; gap: 0.923rem; }
-.settings-pane h2 { font-size: 1.231rem; }
+.settings-pane h2 { margin: 0; font-size: 1.231rem; }
 .settings-intro { margin: 0 0 0.154rem; color: var(--o2); line-height: 1.45; }
-.dialog .settings-group { display: flex; flex-direction: column; gap: 0.462rem; border: none; padding: 0; }
-.dialog .settings-group h3 { margin: 0 0 0 0.923rem; font-size: 0.923rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text); }
+.settings-group { display: flex; flex-direction: column; gap: 0.462rem; }
+.settings-group h3 { margin: 0 0 0 0.923rem; font-size: 0.923rem; font-weight: 600; }
 .settings-card { background: var(--chrome); border: 1px solid var(--line); border-radius: 8px; padding: 0 0.923rem; }
 .settings-row { display: flex; align-items: center; gap: 1.231rem; min-height: 2.923rem; padding: 0.615rem 0; }
 .settings-row + .settings-row { border-top: 1px solid var(--line); }
@@ -537,7 +549,6 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .vt-children { padding-left: 1.077rem; border-left: 1px solid var(--line); margin-left: 0.385rem; }
 .vt-key { color: var(--o2); }
 .vt-key::after { content: ":"; color: var(--o3); }
-.vt-key.int { color: var(--o2); }
 .vt-vis { font-size: 0.808rem; color: var(--o3); }
 .vt-string { word-break: break-word; white-space: pre-wrap; }
 .vt-quote { color: var(--o3); }
@@ -545,7 +556,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .vt-int, .vt-float { font-variant-numeric: tabular-nums; }
 .vt-null { color: var(--o3); font-style: italic; }
 .vt-ref, .vt-muted { color: var(--o3); }
-.vt-warning, .vt-error { display: flex; gap: 0.462rem; align-items: flex-start; padding: 0.462rem 0.615rem; border-radius: 6px; margin-bottom: 0.615rem; font-family: var(--font-ui); font-size: var(--fs-small); }
+.vt-warning, .vt-error { display: flex; gap: 0.462rem; align-items: flex-start; padding: 0.462rem 0.615rem; border-radius: var(--radius-sm); margin-bottom: 0.615rem; font-family: var(--font-ui); font-size: var(--fs-small); }
 .vt-warning { background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); }
 .vt-error { background: color-mix(in srgb, var(--style-red) 12%, transparent); color: var(--style-red); }
 
@@ -562,7 +573,6 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .val-num { font-variant-numeric: tabular-nums; }
 .val-sec { color: var(--o2); margin-left: 0.6em; }
 .val-note { color: var(--o3); margin-left: 0.6em; font-family: var(--font-ui); font-size: var(--fs-small); }
-.val-secret > button, button.val-ser, button.val-ref { border: none; background: none; padding: 0; font: inherit; }
 .val-secret > button { color: inherit; cursor: pointer; }
 .val-secret:hover, .val-ser:hover, .val-secret > .revealed { color: var(--text); }
 .val-secret > .revealed { outline: none; user-select: text; -webkit-user-select: text; }
@@ -575,22 +585,20 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .open-swap > .tbl-icon { margin-right: 0; }
 .open-swap > .open-glyph { display: none; vertical-align: -0.125em; }
 .open-swap > .ser-mark { display: inline-block; width: 1em; text-align: center; color: var(--o3); }
-:is(
-  .grid-cell:hover, .grid:focus .grid-cell.selected, .summary-pair:hover,
-  :is(.object, .project, .readout) .row > :hover:not(:has(.summary-pair)), .object .row > .focus:not(:has(.summary-pair))
-) .open-swap > :not(.open-glyph),
-:hover > .open-swap > :not(.open-glyph) { display: none; }
-:is(
-  .grid-cell:hover, .grid:focus .grid-cell.selected, .summary-pair:hover,
-  :is(.object, .project, .readout) .row > :hover:not(:has(.summary-pair)), .object .row > .focus:not(:has(.summary-pair))
-) .open-swap > .open-glyph,
-:hover > .open-swap > .open-glyph { display: inline; }
 .open-hint { display: inline-flex; vertical-align: -0.125em; margin-left: 0.308rem; color: var(--o2); pointer-events: none; visibility: hidden; }
 :is(
   .grid-cell:hover, .grid:focus .grid-cell.selected, .summary-pair:hover,
   :is(.object, .project, .readout) .row > :hover:not(:has(.summary-pair)), .object .row > .focus:not(:has(.summary-pair))
-) .val .open-hint,
-:hover > .open-hint { visibility: visible; }
+) {
+  & .open-swap > :not(.open-glyph) { display: none; }
+  & .open-swap > .open-glyph { display: inline; }
+  & .val .open-hint { visibility: visible; }
+}
+:hover {
+  & > .open-swap > :not(.open-glyph) { display: none; }
+  & > .open-swap > .open-glyph { display: inline; }
+  & > .open-hint { visibility: visible; }
+}
 /* A table's icon (TableIcon) before its name, a reference into it or a key of its rows, sized to the text. */
 .tbl-icon { flex: none; vertical-align: -0.125em; margin-right: 0.308em; color: var(--o2); }
 
@@ -679,8 +687,10 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .object-summary .summary-pair { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- shortcut overview ---------- */
-.shortcuts { max-height: 80vh; overflow: auto; }
-.shortcuts h3 { margin: 12px 0 4px; color: var(--o3); font-size: var(--fs-small); font-weight: 500; }
+.dialog.shortcuts { max-height: 80vh; }
+.shortcuts section { display: flex; flex-direction: column; gap: 0.769rem; }
+.shortcuts section + section { border-top: 1px solid var(--line); padding-top: 0.923rem; }
+.shortcuts h3 { margin: 12px 0 4px; font-size: var(--fs-small); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--o3); }
 .shortcuts dl { margin: 0; }
 .shortcut-row { display: flex; justify-content: space-between; gap: 16px; padding: var(--pad) 0; border-bottom: 1px solid var(--line); }
 .shortcut-row dd { margin: 0; }
@@ -726,22 +736,21 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 :is(.object, .project, .readout) .sh .sh-toggle:hover { color: var(--text); }
 :is(.object, .project, .readout) .sh .sh-toggle:focus-visible { outline: 1.5px solid var(--accent); }
 :is(.object, .project, .readout) .row {
-  display: grid; column-gap: 20px; padding: var(--pad) 12px; line-height: 20px; border-bottom: 1px solid var(--line);
+  display: grid; column-gap: var(--row-gap); padding: var(--pad) var(--row-inset); line-height: 20px; border-bottom: 1px solid var(--line);
   font-family: var(--font-mono); font-size: var(--data-font-size);
 }
 :is(.object, .project, .readout) .row > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-:is(.object, .project, .readout) .row:hover { background: var(--row-hover); }
+:is(.object, .project, .readout) .row:not(.hdr, :disabled):hover { background: var(--row-hover); }
 .object .row .val[data-src] { border-radius: 3px; padding: 0 3px; margin: 0 -3px; }
 .object .row .val[data-src]:hover { background: var(--cell); }
 .object .row > .focus {
-  margin: calc(-1 * var(--pad)) -8px; padding: var(--pad) 8px;
+  margin: calc(-1 * var(--pad)) calc(-1 * var(--focus-out)); padding: var(--pad) var(--focus-out);
   background: var(--sel); box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 3px;
 }
-.object .row .r { text-align: right; }
+:is(.object, .project, .readout) .row .r { text-align: right; }
 .object .row.kv { grid-template-columns: min(300px, 60%) minmax(0, 1fr); }
 .object .row.kv > :first-child { color: var(--o2); }
 :is(.object, .project, .readout) .row.hdr { color: var(--o3); font-family: var(--font-ui); font-size: var(--fs-small); }
-:is(.object, .project, .readout) .row.hdr:hover { background: transparent; }
 .object .row.group-error { color: var(--style-red); white-space: normal; }
 .object .more { align-self: flex-start; border: none; background: none; padding: var(--pad) 12px; color: var(--accent); font-size: var(--fs-small); }
 .object .also { padding: 14px 12px 0; color: var(--o3); font-size: var(--fs-small); }
@@ -749,33 +758,35 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .also-table:hover { color: var(--text); text-decoration: underline; }
 /* The pane only scrolls down: a table of rows (related rows, events, changes) scrolls sideways in its own box
    (WideTable), its header with it, below a band that keeps the pane's width. Rows take the column template
-   from --cols and are at least as wide as their columns, gaps (20px) and padding (2 × 12px); the header row
+   from --cols and are at least as wide as their columns, gaps and insets; the header row
    resolves `ch` in the data font too, so its columns line up. */
 .wide-table { overflow: auto hidden; font-family: var(--font-mono); font-size: var(--data-font-size); }
-.object .wide-table > .row { grid-template-columns: var(--cols); min-width: calc(var(--cols-sum) + (var(--col-count) - 1) * 20px + 24px); }
+.object .wide-table > .row { grid-template-columns: var(--cols); min-width: calc(var(--cols-sum) + (var(--col-count) - 1) * var(--row-gap) + 2 * var(--row-inset)); }
 .object .wide-table > .row.hdr { font-family: var(--font-mono); font-size: var(--data-font-size); }
 .object .wide-table > .row.hdr > * { font-family: var(--font-ui); font-size: var(--fs-small); }
 /* A primary key first column (.pinned) stays at the left while the table scrolls: the cell covers the row's
-   padding and half the gap on the opaque row background, carries the row's change mark, draws a focus as the
-   other cells do (::before), and has a hairline at its edge while scrolled (data-scrolled). scroll-padding keeps
-   a revealed value right of it. */
-.wide-table.pinned { --pin-bg: var(--bg); scroll-padding-left: calc(var(--first-col) + 22px); }
+   inset and half the gap on the opaque row background, carries the row's change mark (inherited --change-mark),
+   draws a focus as the other cells do (::before), and has a hairline at its edge while scrolled (data-scrolled).
+   scroll-padding keeps a revealed value right of it. */
+.wide-table.pinned { --pin-bg: var(--bg); scroll-padding-left: calc(var(--first-col) + var(--row-inset) + var(--row-gap) / 2); }
 .wide-table.pinned > .row:not(.hdr):hover { --pin-bg: var(--row-hover); }
-.wide-table.pinned > .row.chg { --pin-mark: inset 3px 0 0 var(--accent); }
 .object .wide-table.pinned > .row > :first-child:not(input) {
-  position: sticky; left: 0; z-index: 1; margin: calc(-1 * var(--pad)) -10px calc(-1 * var(--pad)) -12px;
-  padding: var(--pad) 10px var(--pad) 12px; background: var(--pin-bg); box-shadow: var(--pin-mark, none); border-radius: 0;
+  position: sticky; left: 0; z-index: 1;
+  margin: calc(-1 * var(--pad)) calc(var(--row-gap) / -2) calc(-1 * var(--pad)) calc(-1 * var(--row-inset));
+  padding: var(--pad) calc(var(--row-gap) / 2) var(--pad) var(--row-inset); background: var(--pin-bg); box-shadow: var(--change-mark, none); border-radius: 0;
 }
 .object .wide-table.pinned > .row > .focus:first-child::before {
-  content: ""; position: absolute; inset: 0 2px 0 4px; z-index: -1; pointer-events: none;
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  inset: 0 calc(var(--row-gap) / 2 - var(--focus-out)) 0 calc(var(--row-inset) - var(--focus-out));
   background: var(--sel); box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 3px;
 }
 .wide-table.pinned[data-scrolled] > .row > :first-child::after {
   content: ""; position: absolute; inset: 0 0 0 auto; width: 1px; background: var(--line); pointer-events: none;
 }
 .rows-view section { display: flex; flex-direction: column; }
-/* A group's grid is as tall as its header, its rows and a sideways scrollbar, at most 12 rows; then it scrolls. Block
-   layout: WebKit leaves the scrollbar out of an auto-height flex item, which would then scroll by its height. */
+/* A group's grid (.rows-grid) is at most its header (--grid-head-h, the tallest .grid-head), 12 rows and a sideways
+   scrollbar tall, the bar's room counted whether or not one shows; beyond that it scrolls. Block layout: WebKit
+   leaves the scrollbar out of an auto-height flex item, which would then scroll by its height. */
 .rows-grid > .grid { max-height: calc(12 * var(--row-h) + var(--grid-head-h) + var(--scrollbar-size)); }
 .rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); overflow-wrap: anywhere; }
 
@@ -785,7 +796,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
    off ones struck. The rule forms open in a palette-styled sheet (.rule-sheet). */
 .project { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .project section { display: flex; flex-direction: column; }
-:is(.project, .rule-sheet) .act { border: none; background: none; padding: 0; font: inherit; color: var(--accent); white-space: nowrap; }
+:is(.project, .rule-sheet) .act { color: var(--accent); white-space: nowrap; }
 :is(.project, .rule-sheet) .act:hover:not(:disabled) { color: var(--text); }
 :is(.project, .rule-sheet) .act.o2 { color: var(--o2); }
 .project .acts { text-align: right; }
@@ -793,7 +804,6 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .project .row.off { color: var(--o3); }
 .project .row.off .src, .project .referenced-by .off { text-decoration: line-through; }
 .project .row .dashed { text-decoration: underline dashed; text-underline-offset: 3px; }
-.project .row .r { text-align: right; }
 .project .row.empty { font-family: var(--font-ui); }
 .project .row.refs { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 0.8fr) max-content minmax(5.5rem, max-content); align-items: center; }
 .project .row.styles { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.5fr) minmax(0, 1.2fr) max-content minmax(5.5rem, max-content); align-items: center; }
@@ -812,7 +822,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .project .row.change { grid-template-columns: minmax(10rem, max-content) minmax(0, 1fr) minmax(5.5rem, max-content); align-items: baseline; }
 .project .row.problem { grid-template-columns: minmax(0, 1fr) minmax(5.5rem, max-content); align-items: baseline; }
 .project .row .what { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o2); }
-.project .row .link { border: none; background: none; padding: 0; font: inherit; color: inherit; text-align: left; }
+.project .row .link { color: inherit; text-align: left; }
 .project .row .link:hover { color: var(--accent); text-decoration: underline; }
 .project .project-more { padding: 14px 12px 0; font-size: var(--fs-small); }
 .switch.small { width: 1.846rem; height: 1.077rem; vertical-align: middle; }
@@ -822,7 +832,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .coverage-bar { display: inline-flex; flex: none; width: 3.077rem; height: 0.462rem; border-radius: 2px; overflow: hidden; background: var(--cell); box-shadow: inset 0 0 0 1px var(--line); }
 .coverage-bar .resolved { background: var(--o2); }
 .coverage-bar .zero { background: var(--o3); opacity: .5; }
-.rule-sheet .rule-form { display: flex; flex-direction: column; }
+.rule-sheet .rule-form { display: flex; flex-direction: column; gap: 0.769rem; }
 .rule-sheet .sheet-head { display: flex; align-items: baseline; gap: 0.923rem; padding: 1.077rem 1.231rem; border-bottom: 1px solid var(--line); }
 .rule-sheet .sheet-title { font-size: 1.154rem; font-weight: 600; }
 .rule-sheet .sheet-head .o3 { font-family: var(--font-mono); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -837,20 +847,9 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .rule-sheet .coverage-line { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--font-mono); font-size: var(--data-font-size); }
 .rule-sheet .warning { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o2); }
 .rule-sheet .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
-.rule-sheet .swatch-choice { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid transparent; border-radius: 6px; background: none; font-family: var(--font-mono); }
+.rule-sheet .swatch-choice { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; font-family: var(--font-mono); }
 .rule-sheet .swatch-choice[aria-pressed="true"] { border-color: var(--field-line); background: var(--field); }
 .rule-sheet .swatch { width: 10px; height: 10px; border-radius: 3px; }
-
-/* ---------- documents ---------- */
-.link-btn { border: none; background: var(--sel); color: var(--accent); border-radius: 0.308rem; padding: 0 0.462rem; margin-left: 0.462rem; font-size: 0.846rem; height: 1.385rem; }
-.link-btn:hover { background: var(--accent); color: var(--on-accent); }
-details > summary > svg:first-child { transition: transform .12s; }
-details[open] > summary > svg:first-child { transform: rotate(90deg); }
-
-/* ---------- typed values ---------- */
-.kv { display: grid; grid-template-columns: 16.923rem minmax(0, 1fr); column-gap: 1.231rem; }
-
-.icon-btn.tiny { width: 1.385rem; height: 1.385rem; }
 
 /* ---------- readout ---------- */
 /* A header block, then section bands as in the object view; tables align their columns with subgrid. */
@@ -859,12 +858,11 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .readout-title { margin: 0; font-family: var(--font-mono); font-size: var(--fs-large); font-weight: 600; color: var(--text); }
 .readout-meta { color: var(--o2); font-family: var(--font-mono); font-size: var(--fs-small); }
 .readout-section { display: flex; flex-direction: column; }
-.readout .line-open { border: none; background: none; padding: 0; font: inherit; color: inherit; text-align: left; }
+.readout .line-open { color: inherit; text-align: left; }
 .readout .line-open:hover { color: var(--accent); }
 .readout .line-open.key, .readout .line-open.act { color: var(--accent); }
 .readout .line-open.act:hover { color: var(--text); }
 .readout .line-error { color: var(--style-red); white-space: normal; }
-.readout .row .r { text-align: right; }
 .readout-table { display: grid; }
 .readout-table > .row { grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 28px; }
 .readout-facts { grid-template-columns: minmax(0, max-content) minmax(0, max-content) minmax(0, 1fr); margin: 0.615rem -0.923rem 0; }
@@ -883,15 +881,17 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .attention-text .o3 { font-family: var(--font-mono); font-size: var(--fs-small); }
 .attention-actions { display: flex; gap: 8px; }
 .attention-actions .btn.mono { font-size: var(--data-font-size); color: var(--accent); }
-.entity-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 12px 10px; }
-.entity-chip { display: inline-flex; align-items: center; border: 1px solid var(--field-line); border-radius: 999px; color: var(--o2); }
+.entity-chips { display: flex; flex-wrap: wrap; gap: 2px 4px; padding: 10px calc(var(--row-inset) - 6px) 6px; }
+/* Entity filters are text toggles: a shown entity's name in --text, a hidden one's in --o3, the row hover tint. */
+.entity-chip { display: inline-flex; align-items: center; border-radius: 5px; color: var(--o3); }
+.entity-chip:hover { background: var(--row-hover); }
+.entity-chip.on { color: var(--text); }
 .entity-chip button { display: inline-flex; align-items: center; gap: 6px; height: 1.692rem; border: none; background: none; color: inherit; }
-.entity-chip > button:first-child { padding: 0 4px 0 10px; font-family: var(--font-mono); font-size: var(--data-font-size); }
-.entity-chip .tbl { color: var(--o3); }
-.entity-chip .cnt { color: var(--o3); font-variant-numeric: tabular-nums; }
-.entity-chip.on { background: var(--sel); border-color: transparent; color: var(--accent); }
+.entity-chip > button:first-child { padding: 0 2px 0 6px; font-family: var(--font-mono); font-size: var(--data-font-size); }
+.entity-chip :is(.tbl, .cnt) { color: var(--o3); }
+.entity-chip .cnt { font-variant-numeric: tabular-nums; }
 .entity-chip.failed .cnt { color: var(--style-red); }
-.entity-chip-more { padding: 0 8px 0 2px; color: var(--o3); }
+.entity-chip-more { padding: 0 6px 0 0; color: var(--o3); }
 .entity-chip-more:hover { color: var(--text); }
 .entity-query { margin: 0 12px 10px; padding: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: var(--data-font-size); }
 .entity-query .readout-sql { padding: 4px 0 0; border: none; user-select: text; -webkit-user-select: text; }
@@ -899,7 +899,6 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .readout-blocks.wide { grid-template-columns: minmax(0, 1fr); }
 .readout-block { display: flex; flex-direction: column; min-width: 0; }
 .readout-block-head { display: flex; align-items: baseline; gap: 14px; padding: 0 12px; font-family: var(--font-mono); font-size: var(--data-font-size); }
-.readout-block-title { font-weight: 600; color: var(--text); }
 .readout-block-head .line-open:first-child { font-weight: 600; }
 .readout-sql { padding: 3px 12px 8px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); white-space: normal; word-break: break-word; border-bottom: 1px solid var(--line); }
 .readout .row.readout-empty { color: var(--o3); font-family: var(--font-ui); }
@@ -915,19 +914,17 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .readout-watched .row:hover .watched-actions, .readout-watched .watched-actions:focus-within { opacity: 1; }
 .readout-watched .icon-btn { height: 20px; width: 20px; }
 
-/* ---------- shared bits ---------- */
-.crumb { display: inline-flex; align-items: center; gap: 2px; color: var(--text-tertiary); white-space: nowrap; }
-.crumb > span { padding: 0.154rem 0.308rem; color: var(--text); font-weight: 600; }
+/* ---------- utilities ---------- */
+.icon-btn.tiny { width: 1.385rem; height: 1.385rem; }
+/* An inline text button in the accent (toast details, the live check's refresh). */
+.link-btn { margin: 0; padding: 0; border: none; border-radius: 0.308rem; background: none; color: var(--accent); font-size: inherit; }
 .grow-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pill { display: inline-flex; align-items: center; height: 1.538rem; padding: 0 0.692rem; border-radius: 0.769rem; font-size: 0.885rem; font-weight: 600; white-space: nowrap; }
 .pill.tone-green { background: color-mix(in srgb, var(--chart-green) 20%, transparent); color: var(--chart-green); }
 .pill.tone-orange { background: color-mix(in srgb, var(--chart-orange) 22%, transparent); color: var(--chart-orange); }
 
-.small { font-size: 0.885rem; }
-
-.items { display: flex; flex-direction: column; }
-.link-btn.plain { background: none; color: var(--accent); padding: 0; margin: 0; height: auto; font-size: inherit; }
+.text-small { font-size: var(--fs-small); }
 
 /* ---------- editing ---------- */
 
@@ -937,33 +934,32 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .vt-edit { border: none; background: none; color: var(--o3); opacity: 0; padding: 0 2px; }
 .vt-line:hover .vt-edit { opacity: 1; }
 .cell-input { display: block; width: 100%; height: 100%; margin: 0; padding: 0; border: none; border-radius: 0; background: transparent; font: inherit; color: inherit; line-height: inherit; text-align: inherit; outline: none; }
-.grid-cell.editing { box-shadow: inset 0 0 0 2px var(--accent); overflow: visible; text-overflow: clip; }
+.grid-cell.editing { --cell-ring: inset 0 0 0 2px var(--accent); overflow: visible; text-overflow: clip; }
 .insert-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.769rem; max-height: 50vh; overflow: auto; }
 .insert-field { display: flex; gap: 0.385rem; }
 .insert-field input { flex: 1; min-width: 0; }
 .insert-field select { flex: none; width: auto; }
 .tray { background: var(--bg); border-top: 1px solid var(--line); max-height: 40vh; overflow: auto; }
-.tray-head { display: flex; align-items: center; gap: 0.769rem; padding: 0.615rem 1.077rem; position: sticky; top: 0; background: var(--bg); }
+.tray-head { display: flex; align-items: center; gap: 0.769rem; padding: 0.615rem 1.077rem; position: sticky; top: 0; z-index: 1; background: var(--bg); }
 .tray-list { list-style: none; margin: 0; padding: 0 1.077rem 0.769rem; }
 .tray-row { display: flex; align-items: center; gap: 0.615rem; padding: 0.308rem 0; border-top: 1px solid var(--line); }
-.tray-sql { list-style: none; margin: 0.308rem 0 0.462rem 2rem; padding: 0.615rem; border-radius: 6px; background: var(--band); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-all; user-select: text; }
+.tray-sql { list-style: none; margin: 0.308rem 0 0.462rem 2rem; padding: 0.615rem; border-radius: var(--radius-sm); background: var(--band); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-all; user-select: text; }
 .tray-sql code { font: inherit; }
 
 /* ---------- palette ---------- */
 .overlay:has(> .dialog.palette) { place-items: start center; padding-top: 12vh; }
-.dialog.palette { width: min(58.462rem, calc(100vw - 2.462rem)); max-height: none; padding: 0; gap: 0; display: block; overflow: hidden; animation: pop .12s ease-out; }
+.dialog.palette { width: min(58.462rem, calc(100vw - 2.462rem)); animation-duration: .12s; }
 .palette-input { display: flex; align-items: center; gap: 0.769rem; padding: 1.077rem 1.231rem; border-bottom: 1px solid var(--line); color: var(--o3); }
 .palette-input input { flex: 1; border: none; outline: none; background: none; font-size: 1.154rem; color: var(--text); }
 .palette-input input::placeholder { color: var(--o3); }
 /* Results share the row anatomy; the active one is selected with an accent bar. */
 .palette-list { list-style: none; margin: 0; padding: 0.462rem 0; max-height: 50vh; overflow: auto; }
-.palette-list li { display: flex; align-items: center; gap: 0.769rem; padding: var(--pad) 1.231rem; line-height: 20px; position: relative; }
+.palette-list > li:not(.palette-section) { display: flex; align-items: center; gap: 0.769rem; padding: var(--pad) 1.231rem; line-height: 20px; }
 .palette-list li.active { background: var(--sel); box-shadow: inset 2px 0 0 var(--accent); }
 .palette-note { font-size: var(--fs-small); }
 .palette-kind { flex: none; min-width: 3.846rem; font-family: var(--font-mono); font-size: var(--fs-small); color: var(--o3); }
-.palette-section { position: absolute; left: 1.231rem; display: none; }
-.palette-list li:has(.palette-section) { margin-top: 1.4rem; }
-.palette-list li .palette-section { display: block; top: -1.25rem; font-size: var(--fs-small); color: var(--o3); }
+/* A section's label above its first result; its 20px line reaches into that result's top padding. */
+.palette-section { height: 1.4rem; padding: 0.15rem 1.231rem 0; line-height: 20px; font-size: var(--fs-small); color: var(--o3); }
 .palette-hit { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 17rem) 5.4rem minmax(0, 1fr); column-gap: 1.077rem; align-items: baseline; font-size: var(--data-font-size); }
 .palette-hit > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-hit .tn { color: var(--o2); }
@@ -971,19 +967,17 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .palette-foot { display: flex; flex-wrap: wrap; gap: 0.462rem 1.385rem; padding: 0.769rem 1.231rem 0.462rem; border-top: 1px solid var(--line); font-size: var(--fs-small); }
 
 /* ---------- shortcuts settings ---------- */
-.shortcut-field { display: inline-flex; align-items: center; justify-content: center; width: 7rem; height: 1.692rem; border: 1px solid var(--field-line); border-radius: 6px; background: var(--field); box-shadow: var(--shadow-inset); font-family: var(--font-ui); }
+.shortcut-field { display: inline-flex; align-items: center; justify-content: center; width: 7rem; height: 1.692rem; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); box-shadow: var(--shadow-inset); font-family: var(--font-ui); }
 .shortcut-field.recording { border-color: var(--accent); box-shadow: 0 0 0 3px var(--sel); color: var(--o3); }
 .shortcut-field.unbound { color: var(--o3); font-style: italic; }
-.shortcut-conflicts { padding: 0.462rem 0.615rem; border-radius: 6px; background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); font-size: var(--fs-small); }
+.shortcut-conflicts { padding: 0.462rem 0.615rem; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); font-size: var(--fs-small); }
 .toast-title { display: block; margin-bottom: 0.154rem; }
 .toast-details { margin: 0.385rem 0 0; max-height: 10rem; overflow: auto; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-word; color: var(--o2); }
-
-.link-btn.plain.small { font-size: inherit; display: inline-flex; align-items: center; gap: 0.154rem; }
 
 /* ---------- live mode, snapshots, compare ---------- */
 /* A changed value flashes once (--cell to transparent), then keeps its old value struck through; changed
    and new rows carry a 3px accent mark, removed rows stay struck through until dismissed. */
-.object .row.chg { box-shadow: inset 3px 0 0 var(--accent); }
+.object .row.chg { --change-mark: inset 3px 0 0 var(--accent); box-shadow: var(--change-mark); }
 .object .row.removed { color: var(--o3); text-decoration: line-through; }
 .object .row.removed .val { color: inherit; }
 .object .flash { border-radius: 3px; animation: change-flash 1.6s ease-out; }
@@ -993,14 +987,13 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .object button.row.change-line {
   width: 100%; border: none; border-bottom: 1px solid var(--line); background: none; color: inherit; text-align: left; cursor: default;
 }
-.object button.row.change-line:hover:not(:disabled) { background: var(--row-hover); }
 .object button.row.change-line:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
 .object.query-changes { flex: 0 1 auto; max-height: 40%; padding-bottom: 0.923rem; border-top: 1px solid var(--line); }
 .statusbar .status-text.live { color: var(--accent); }
 .compare { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
 .compare-summary { padding: 0.615rem 1.846rem; font-size: var(--fs-small); border-bottom: 1px solid var(--line); }
 .compare-sides { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.compare-side { padding: 0 0.923rem 3.692rem; }
+.object.compare-side { padding: 0 0.923rem 3.692rem; }
 .compare-side + .compare-side { border-left: 1px solid var(--line); }
 .snapshot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .snapshot-item { display: flex; align-items: center; gap: 0.615rem; border-bottom: 1px solid var(--line); }
@@ -1016,7 +1009,7 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .icon-rule { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.462rem; }
 .icon-rule .tbl-icon { margin-right: 0; }
 .icon-rule .origin { color: var(--o3); font-size: var(--fs-small); }
-.icon-rule .link { border: none; background: none; padding: 0; font: inherit; color: var(--o2); }
+.icon-rule .link { color: var(--o2); }
 .icon-rule .link:hover:not(:disabled) { color: var(--accent); text-decoration: underline; }
 .structure-icon { font-size: var(--fs-base); }
 .icon-sheet .icon-filter { padding: 0.923rem 1.231rem 0; }
@@ -1024,16 +1017,17 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 .icon-sheet .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.462rem, 1fr)); gap: 0.308rem; padding: 1.077rem 1.231rem; }
 .icon-sheet .icon-choice {
   display: inline-flex; align-items: center; justify-content: center; height: 2.462rem; border: 1px solid transparent;
-  border-radius: 6px; background: none; color: var(--o2); font-size: 1.231rem;
+  border-radius: var(--radius-sm); background: none; color: var(--o2); font-size: 1.231rem;
 }
 .icon-sheet .icon-choice:hover { color: var(--text); background: var(--row-hover); }
 .icon-sheet .icon-choice[aria-pressed="true"] { border-color: var(--field-line); background: var(--field); color: var(--accent); }
 
 /* ---------- table live check ---------- */
-/* Live mode's change marks in the grid: a changed row carries the 3px accent mark on its first cell, a changed
-   value an accent corner (flashing once when first seen), a removed row stays struck through in --o3. Above the
-   grid one bar counts them; ⌥ on a marked value opens a small --pop overlay with old → new. */
-.grid-row.db-changed > .grid-cell:first-child:not(.selected) { box-shadow: inset 3px 0 0 var(--accent); }
+/* A table tab's live check (TableCheck) in its grid: a changed row carries the 3px accent mark on its first cell
+   (--change-mark, beside any selection ring), a changed value an accent corner (flashing once when first seen), a
+   removed row stays struck through in --o3. Above the grid one bar counts them; ⌥ on a marked value opens a small
+   --pop overlay with old → new (ChangePeek). */
+.grid-row.db-changed > .grid-cell:first-child { --change-mark: inset 3px 0 0 var(--accent); }
 .grid-row.db-removed > .grid-cell, .grid-row.db-removed > .grid-cell * { color: var(--o3); text-decoration: line-through; }
 .grid-cell.db-changed { position: relative; }
 .grid-cell.db-changed::before {

@@ -98,7 +98,7 @@ export function FormFrame({ title, opener, anchor, children, footer, saving, err
     if (!saving) onSave();
   };
   return (
-    <Modal onClose={onCancel} className="palette rule-sheet" label={title} stageWindow="rule-form">
+    <Modal onClose={onCancel} variant="panel" className="palette rule-sheet" label={title} stageWindow="rule-form">
       <section className="rule-form" aria-label={title} data-stage={anchor} data-stage-label={title} onKeyDown={onKeyDown}>
         <div className="sheet-head">
           <span className="sheet-title">{title}</span>

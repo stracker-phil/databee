@@ -23,7 +23,7 @@ function ToastItem({ toast }: { toast: Toast }) {
         {rest.length > 0 && (
           <>
             {" "}
-            <button className="link-btn plain" onClick={() => setDetails((d) => !d)}>
+            <button className="link-btn" onClick={() => setDetails((d) => !d)}>
               {details ? "Hide details" : "Details"}
             </button>
             {details && <pre className="toast-details">{rest.join("\n")}</pre>}

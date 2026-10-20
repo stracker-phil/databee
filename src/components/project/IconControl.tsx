@@ -35,7 +35,7 @@ function IconPicker({ table, ruleName, icon, ctx, onClose }: Props & { ruleName:
     if (e.key === "Enter" && matches.length > 0) set(matches[0]);
   };
   return (
-    <Modal onClose={onClose} className="palette rule-sheet icon-sheet" label={`Icon for ${table}`}>
+    <Modal onClose={onClose} variant="panel" className="palette rule-sheet icon-sheet" label={`Icon for ${table}`}>
       <div className="sheet-head">
         <span className="sheet-title">Icon</span>
         <span className="o3">{table}</span>
