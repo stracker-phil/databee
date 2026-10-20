@@ -166,9 +166,9 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
   table `--sel` with its name in the accent. It is the only entry with a background besides the hovered one;
   a linked table only changes its text (see [linked table highlight](#section-header-band)). Each table
   shows its row estimate (or `view`) in `--o3`, each database its table count; a refresh button sits beside
-  the filter (`Sidebar.tsx`). A cut-off name shows whole at once on hover: an overlay in the row's font, color
-  and background continues it past the sidebar's edge (`useOverflowReveal`, `.overflow-reveal`); no `title`
-  delay. History entries use the same row.
+  the filter (`Sidebar.tsx`). A cut-off name shows whole at once on hover: an overlay over the whole row, in its font,
+  color and background from the name on, continues it past the sidebar's edge and draws the row's selection
+  ring and focus outline around it (`useOverflowReveal`, `.overflow-reveal`); no `title` delay. History entries use the same row.
 
 ## Section header band
 

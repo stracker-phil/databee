@@ -9,7 +9,12 @@ function Harness() {
   const { onMouseOver, onMouseLeave, element } = useOverflowReveal(".row", ".label");
   return (
     <div onMouseOver={onMouseOver} onMouseLeave={onMouseLeave}>
-      <style>{".label { color: rgb(1, 2, 3); } .row.lit .label { color: rgb(200, 100, 50); }"}</style>
+      <style>
+        {
+          ".label { color: rgb(1, 2, 3); } .row.lit .label { color: rgb(200, 100, 50); } " +
+            ".row { outline: 2px solid rgb(4, 5, 6); } .row.lit { box-shadow: inset 0 0 0 1px rgb(10, 20, 30); }"
+        }
+      </style>
       <div className={lit ? "row lit" : "row"} onMouseOver={() => setLit(true)}>
         <span className="label">a very long table name</span>
       </div>
@@ -43,6 +48,20 @@ describe("useOverflowReveal", () => {
     render(<Harness />);
     await userEvent.hover(screen.getByText("a very long table name"));
     expect(overlay()?.style.color).toBe("rgb(200, 100, 50)");
+  });
+
+  it("continues the lit row's box-shadow ring around the overlay", async () => {
+    overflow(true);
+    render(<Harness />);
+    await userEvent.hover(screen.getByText("a very long table name"));
+    expect(overlay()?.style.boxShadow).toContain("rgb(10, 20, 30)");
+  });
+
+  it("copies the row's outline onto the overlay", async () => {
+    overflow(true);
+    render(<Harness />);
+    await userEvent.hover(screen.getByText("a very long table name"));
+    expect(overlay()?.style.outline).toContain("rgb(4, 5, 6)");
   });
 
   it("shows no overlay when the label is not cut off", async () => {

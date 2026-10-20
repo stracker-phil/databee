@@ -12,38 +12,53 @@ function alphaOf(color: string): number {
   return alpha ? Number(alpha[1]) : 1;
 }
 
+const layer = (color: string) => `linear-gradient(${color}, ${color})`;
+
 /**
  * The row's background as drawn, opaque so the overlay can leave the row's box: the row's and its ancestors'
  * translucent layers over the first opaque one (the window's vibrancy has none, so `--chrome` stands in).
  */
-function backgroundOf(row: HTMLElement): string {
+function backgroundLayers(row: HTMLElement): string[] {
   const layers: string[] = [];
   for (let el: HTMLElement | null = row; el; el = el.parentElement) {
     const color = getComputedStyle(el).backgroundColor;
     const alpha = alphaOf(color);
     if (alpha === 0) continue;
-    if (alpha === 1) return [...layers, color].join(", ");
-    layers.push(`linear-gradient(${color}, ${color})`);
+    layers.push(layer(color));
+    if (alpha === 1) return layers;
   }
-  return [...layers, "var(--chrome)"].join(", ");
+  return [...layers, layer("var(--chrome)")];
 }
 
+/**
+ * The overlay covers the whole row, so the row's ring (box shadow, focus outline) continues around it; its
+ * background starts at the label and leaves the icon showing.
+ */
 function styleOf({ label, row }: Target): CSSProperties {
   const text = getComputedStyle(label);
   const rowStyle = getComputedStyle(row);
   const box = label.getBoundingClientRect();
   const rowBox = row.getBoundingClientRect();
+  const inset = box.left - rowBox.left;
+  const layers = backgroundLayers(row);
   return {
-    left: box.left,
+    left: rowBox.left,
     top: rowBox.top,
     height: rowBox.height,
     paddingTop: box.top - rowBox.top,
+    paddingLeft: inset,
     paddingRight: rowStyle.paddingRight,
-    borderRadius: `0 ${rowStyle.borderTopRightRadius} ${rowStyle.borderBottomRightRadius} 0`,
+    borderRadius: rowStyle.borderRadius,
+    boxShadow: rowStyle.boxShadow,
+    outline: rowStyle.outline,
+    outlineOffset: rowStyle.outlineOffset,
     font: text.font,
     letterSpacing: text.letterSpacing,
     color: text.color,
-    background: backgroundOf(row),
+    backgroundImage: layers.join(", "),
+    backgroundPosition: `${inset}px 0`,
+    backgroundSize: `calc(100% - ${inset}px) 100%`,
+    backgroundRepeat: "no-repeat",
   };
 }
 
@@ -59,13 +74,18 @@ export function useOverflowReveal(rowSelector: string, labelSelector: string) {
   useLayoutEffect(() => {
     if (!target) return;
     setStyle(styleOf(target));
-    const observer = new MutationObserver(() => setStyle(styleOf(target)));
+    const update = () => setStyle(styleOf(target));
+    const observer = new MutationObserver(update);
     observer.observe(target.row, { attributes: true, attributeFilter: ["class"], subtree: true });
+    target.row.addEventListener("focus", update);
+    target.row.addEventListener("blur", update);
     const hide = () => setTarget(null);
     window.addEventListener("scroll", hide, true);
     window.addEventListener("blur", hide);
     return () => {
       observer.disconnect();
+      target.row.removeEventListener("focus", update);
+      target.row.removeEventListener("blur", update);
       window.removeEventListener("scroll", hide, true);
       window.removeEventListener("blur", hide);
     };
