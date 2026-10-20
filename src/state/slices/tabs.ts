@@ -5,6 +5,7 @@ import type { ProjectForm } from "../../lib/ruleForms";
 import { selectActiveSession } from "../selectors";
 import { tabKind } from "../tabKinds";
 import type { Slice, Store } from "../store";
+import { blockedWhileLost } from "./health";
 import { EMPTY_NAV, homeAddress, navEntry, pushed, tableAddress, tableTitle, type TabNav } from "./nav";
 import { nextActiveSessionId } from "./session";
 import { remembered } from "./ui";
@@ -235,7 +236,6 @@ export const tabsSlice: Slice<TabsSlice> = {
         const session = selectActiveSession(get());
         if (!session) return;
         const where = opts.where ?? [];
-        set((s) => remembered(s, { kind: "table", database, table }));
         const existing = get().tabs.find(
           (t): t is TableTab =>
             t.kind === "table" &&
@@ -245,6 +245,9 @@ export const tabsSlice: Slice<TabsSlice> = {
             t.filter === filter &&
             sameWhere(t.where, where),
         );
+        // An open tab shows the rows it loaded; a new one needs the server.
+        if (!existing && blockedWhileLost(get, session.id, `open ${table}`)) return;
+        set((s) => remembered(s, { kind: "table", database, table }));
         if (existing) {
           const updated: TableTab = { ...existing, view: view ?? existing.view, preview: existing.preview && opts.preview !== false };
           set((s) => ({ ...replaceTab(s, updated), ...activate(s, existing.id) }));

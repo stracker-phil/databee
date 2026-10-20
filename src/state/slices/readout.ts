@@ -55,7 +55,8 @@ export const readoutSlice: Slice<ReadoutSlice> = {
       const key = readoutKey(sessionId, database);
       const version = get().dataVersion;
       const cached: ReadoutEntry | undefined = get().readouts[key];
-      if (cached?.version === version && !force) return;
+      // A lost session keeps the readout it loaded.
+      if ((cached?.version === version && !force) || (cached?.readout && get().health[sessionId])) return;
       const write = (entry: Omit<ReadoutEntry, "version">) => set((s) => ({ readouts: { ...s.readouts, [key]: { ...entry, version } } }));
       const current = () => get().readouts[key]?.version === version;
       write({ readout: cached?.readout ?? null, error: null });

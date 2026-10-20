@@ -42,6 +42,7 @@ layer and the Stage hook each have their own page.
    - `start_ipc` binds the IPC socket and serves it in a task; every message goes to
      `launch::on_ipc_message`. A bind error is logged and the app runs without single-instance handoff.
    - `deep_link::listen` handles `databee://` links ([below](#deep-links)).
+   - `health::watch::start` starts the connection health tasks ([below](#connection-health)).
 
    `start_app` also manages `remote::Bridge`, the pending requests only the page can answer
    ([below](#requests-the-page-answers)).
@@ -80,7 +81,7 @@ the stores and open sessions.
 | `snapshots` | `SnapshotStore` | `snapshots/v2/` (snapshots of rows and saved queries, see [Watches and snapshots](#watches-and-snapshots)) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
 | `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)`) |
-| `sessions` | `Sessions` | open database sessions: `RwLock<HashMap<id, Arc<Session>>>` |
+| `sessions` | `Sessions` | open database sessions (`RwLock<HashMap<id, Arc<Session>>>`) and the `broadcast` channel of their health changes (`health_events`) |
 | `connector` | `Arc<dyn db::Connector>` | opens database connections for `session::open`; `MySqlConnector` in the app, tests replace it |
 | `config_dir` | `PathBuf` | handed to the plugins in `start_app` |
 | `log_override` | `Option<LogLevel>` | the CLI `--log-level`; wins over the stored level (`settings_effects`) |
@@ -113,6 +114,7 @@ use the same names in camelCase.
 | `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `choose_save_path(fileName, extension)` (the native save panel through `tauri-plugin-dialog`'s Rust API; the chosen path or `null`), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `rename_connection_slug` (`AppState::rename_connection`: validates and stores the slug in the saved connections, which fails the rename; renames the slug of open sessions of that connection; then moves its projects, recent objects and snapshots, where a failure is logged and leaves that store under the old slug), `list_history`, `clear_history` |
 | `remote.rs` | `remote_reply(id, result, error)` (the page's answer to a `remote` event, see [Requests the page answers](#requests-the-page-answers)) |
 | `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `refresh_schema` (see [Schema cache](database.md#schema-cache)), `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `table_select_sql(sessionId, database, table)` (the quoted `SELECT *` with the new-query limit that "New query" on a table starts with), `resolve_address` (see [Addresses](#addresses)), `table_references` (declared and inferred references from and to a table, see [database.md](database.md#references-and-kinds)), `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), `value_condition(sessionId, database, provenance, raw)` (a value as a SQL condition, `value::value_condition`; see [database.md](database.md#value-conditions)), `narrow_refusal(sql)` and `narrow_query(sessionId, sql, column, value)` (one more `column = value` on a plain single-table `SELECT`, `db::narrow`; see [database.md](database.md#narrowing-a-query)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
+| `health/commands.rs` | `reconnect_session(sessionId)`: Retry; reconnects a `down` session with the password it holds and returns its `Health` (an `ok` or reconnecting session is left alone; see [Connection health](#connection-health)) |
 | `decode/commands.rs` | `decode_value`, `edit_serialized` (see [decode.md](decode.md)) |
 | `saved/commands.rs` | `saved_queries(sessionId, database)` (the project's saved queries, the global ones and the applied presets' `[[pinned]]` queries as `SavedEntry { id, title, sql, pin, origin, readOnly }`, `{p}`/`{np}` replaced; `origin` is a `SavedOrigin`: `project`, `global` or `preset { preset }`; the routing between project and global lives in `saved/mod.rs`: `add_to_project`, `update`, `remove`), `save_query(sessionId, database, title, sql, pin)` (a new project query with a fresh id), `update_saved_query(sessionId, database, query)` (replaces the project or global query with that id; preset queries are refused), `remove_saved_query(sessionId, database, id)`, `copy_preset_query_to_project(sessionId, database, preset, id)` (the preset query, prefixes replaced, as a new project query); see [presets.md](presets.md#pinned-queries) |
 | `table_check.rs` | `table_check(sessionId, request)`: one checksum per shown row of a table tab, by primary key (`TableCheckRequest { database, table, columns, keys }` → `TableCheck { hashes }`, `null` for a key no row has any more); `table_check_rows(sessionId, request)`: those rows as stored now (`TableCheckRowsRequest { database, table, columns, resultId, rows: [ShownRow { row, key, cells }] }` → `CheckedRow { row, hash, cells, changed }`, `changed` the columns whose value differs from the shown cell). One statement each, on the metadata pool, with the query timeout but at most 3 s; see [database.md](database.md#live-check-of-table-tabs) |
@@ -156,6 +158,7 @@ the set and keeps the full text of its `longText` cells.
 | `command` | command id, e.g. `"tabs.new"` | a native menu item was clicked |
 | `remote` | `RemoteEvent {id, request}` | another process asks the page (open, command, current); answered with `remote_reply` |
 | `stage:collect`, `stage:act`, `stage:info` | `{ request, … }` | a Stage request needs the page ([stage.md](stage.md)) |
+| `session_health` | `HealthEvent {sessionId, health}` | a session went `down`, is `reconnecting` or is `ok` again ([Connection health](#connection-health)) |
 
 A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}`, `{type:"error", message}` or
 `{type:"open", address, connection}` (a `databee open` that started the app; the page opens it after the
@@ -300,6 +303,27 @@ up to 4 s (below the 5 s IPC client timeout) for `remote_reply(id, result, error
 request, and a late or unknown reply is dropped. On the page, `useBackendEvents` (`src/App.tsx`) hands each
 event to `answerRemote` (`src/commands/remote.ts`), which opens through `openFromOutside`, runs commands
 through `runMenuCommand` and reads the active tab's address, and always replies.
+
+## Connection health
+
+`src-tauri/src/health/` tells the page when a session's server stops answering (a stopped DDEV or Docker
+container) and gets it back without a password prompt. The model, the ping, the error classification and
+the retry are in [database.md](database.md#connection-health); the parts here:
+
+- `mod.rs`: `Health` (`ok`, `down { since, error, retryAt }`, `reconnecting { since, error }`; Unix ms),
+  `HealthEvent`, `SessionHealth` (the state of one session, `due(now)`: `Check`, `Retry` or `Nothing`),
+  `check` and `retry`, `PING_INTERVAL` (10 s), `RETRY_BACKOFF` (10 s, 30 s, 60 s).
+- `guard.rs`: `Guarded`, the `Database` every `Session::new` wraps the engine in.
+- `watch.rs`: `start(app)` spawns two tasks. One ticks every second and starts, per session in its own task,
+  what it is due for (`tend`: a ping of an `ok` session every 10 s, a retry of a `down` one when its backoff
+  ran out). The other forwards every `HealthEvent` from `Sessions::health_events` to the page as
+  `session_health`; when it lags behind the channel, it sends every session's current state instead.
+- `commands.rs`: `reconnect_session`.
+
+Passwords: `MySqlConnectOptions` (the pool's, the editor connection's, the `Killer`'s) keep the password the
+session connected with in memory, so pool connections and editor reconnects never call `resolve_password`
+or the Keychain. A server that now wants another password fails the retry with `auth_failed`, shown as the
+session's error; disconnecting and connecting again asks for it.
 
 ## Addresses
 
@@ -452,7 +476,8 @@ gives up its value only through `expose()`.
 | kind | Raised for |
 |---|---|
 | `database` | server errors; `code` is the MySQL error number, or the SQLSTATE when there is none |
-| `connection` | IO/TLS/protocol failures, a crashed connection worker, pool timeouts or a closed pool, connect timeouts, and MySQL errors 1053, 1927, 2006, 2013, 4031 (the connection is gone, so `execute` reconnects) |
+| `connection` | IO/TLS/protocol failures, a crashed connection worker, pool timeouts or a closed pool, connect timeouts, and MySQL errors 1053, 1927, 2006, 2013, 4031 (the connection is gone, so `execute` reconnects). A `connection` or `timeout` error starts a health ping (`AppError::suggests_connection_loss`) |
+| `connection_lost` | a call that needs the server while its session is `down` or `reconnecting`; refused without asking the server (`AppError::ConnectionLost`, the last health error as message) |
 | `auth_failed` | MySQL error 1045 (the message is the server's); on connect `LoginFailed`, explained by the password source |
 | `password_required` | no password was available |
 | `timeout` | the query exceeded the timeout; the message shows `500 ms` below one second, else whole seconds. `AppError::Timeout { limit, session_reset }`: `sessionReset: true` (serialized only when set) means `execute` replaced the editor connection, so its session state is gone |

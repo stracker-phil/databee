@@ -68,6 +68,12 @@ pub trait Database: Send + Sync {
     async fn fetch(&self, sql: &str, timeout: Duration) -> AppResult<ResultSet>;
     /// Runs the statements in one transaction; returns the affected row count.
     async fn apply(&self, statements: &[String], timeout: Duration) -> AppResult<u64>;
+    /// A cheap, bounded check that the server still answers. Connections that are busy count as
+    /// alive; an idle editor connection that is gone is replaced with its session state restored.
+    async fn ping(&self) -> AppResult<()>;
+    /// Gets every connection working again with the credentials the session holds (no
+    /// password lookup). A connection that still answers is kept, session state and all.
+    async fn reconnect(&self) -> AppResult<()>;
 }
 
 /// Opens connections; the app uses `MySqlConnector`, tests swap in one that hands out fakes.

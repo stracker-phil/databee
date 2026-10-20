@@ -4,6 +4,7 @@ mod keys;
 mod kill;
 mod meta_rows;
 mod script;
+mod session_state;
 mod timeouts;
 
 use std::collections::BTreeMap;
@@ -16,7 +17,8 @@ use sqlx::mysql::{MySqlConnectOptions, MySqlConnection, MySqlPool, MySqlPoolOpti
 
 use self::editor::EditorConnection;
 use self::kill::Killer;
-use self::script::{ScriptOutcome, run_script, scalar};
+use self::script::{ScriptOutcome, run_script};
+use self::session_state::SessionState;
 use self::timeouts::{connect_within, pooled_within, query_within};
 use super::browse::{browse_sql, columns_filter, page_limit};
 use super::{
@@ -29,6 +31,8 @@ use crate::error::{AppError, AppResult};
 const META_POOL_SIZE: u32 = 3;
 /// Rows a metadata or planning read may return.
 const MAX_FETCH_ROWS: usize = 50_000;
+/// A server that takes longer to answer a ping counts as gone (at most the connect timeout).
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// One logical connection: a dedicated "editor" connection that keeps session state
 /// (`USE`, variables, transactions) for user queries, plus a small pool for metadata
@@ -36,6 +40,7 @@ const MAX_FETCH_ROWS: usize = 50_000;
 pub struct MySqlSession {
     /// Default bound for metadata and `USE`; `execute`, `browse`, `fetch` and `apply` take their own.
     query_timeout: Duration,
+    connect_timeout: Duration,
     meta: MySqlPool,
     editor: EditorConnection,
     /// Kills timed-out queries on pool connections.
@@ -102,6 +107,7 @@ impl MySqlSession {
             connect_within(connect_timeout, async { tokio::try_join!(pool, editor) }).await?;
         Ok(Self {
             query_timeout,
+            connect_timeout,
             meta,
             editor,
             killer,
@@ -135,17 +141,50 @@ impl MySqlSession {
     }
 
     /// The script already ran (and may have committed), so a failed probe must not lose it.
-    fn remember_database(&self, probe: AppResult<Option<String>>) -> Option<String> {
+    /// Returns the current database.
+    fn remember_state(&self, probe: AppResult<SessionState>) -> Option<String> {
         match probe {
-            Ok(database) => {
-                self.editor.set_database(database.clone());
+            Ok(state) => {
+                let database = state.database.clone();
+                self.editor.remember(state);
                 database
             }
             Err(e) => {
-                log::warn!("Could not read the current database after a query: {e}");
+                log::warn!("Could not read the session state after a query: {e}");
                 self.current_database()
             }
         }
+    }
+
+    fn ping_timeout(&self) -> Duration {
+        self.connect_timeout.min(PING_TIMEOUT)
+    }
+
+    /// COM_PING on a pool connection. When every pool connection is busy, the server is
+    /// answering queries, which proves more than a ping would, so none is waited for.
+    async fn ping_pool(&self) -> AppResult<()> {
+        if self.meta.num_idle() == 0 && self.meta.size() >= META_POOL_SIZE {
+            return Ok(());
+        }
+        connect_within(self.ping_timeout(), async {
+            let mut conn = self.meta.acquire().await?;
+            sqlx::Connection::ping(&mut *conn).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Pings the editor connection and replaces it when it is gone, its session state restored.
+    async fn ping_editor(&self, conn: &mut MySqlConnection) -> AppResult<()> {
+        let ping = async { Ok(sqlx::Connection::ping(&mut *conn).await?) };
+        if connect_within(self.ping_timeout(), ping).await.is_ok() {
+            return Ok(());
+        }
+        log::warn!("Editor connection lost, reconnecting");
+        let dialect = self.editor.reconnect(conn).await?;
+        self.backslash_escapes
+            .store(dialect.backslash_escapes, Ordering::SeqCst);
+        Ok(())
     }
 
     /// Reconnects after a failed run. The run's own error is what the user sees; a failed
@@ -197,15 +236,15 @@ impl Database for MySqlSession {
         let mut conn = self.editor.lock().await?;
         let run = async {
             let outcome = run_script(&mut conn, sql, row_limit, cell_limit).await;
-            // Also after a failure: a `USE` before the failing statement still counts.
-            let database = scalar(&mut conn, "SELECT DATABASE()").await;
-            Ok((outcome, database))
+            // Also after a failure: a `USE` or `SET` before the failing statement still counts.
+            let state = session_state::read(&mut conn).await;
+            Ok((outcome, state))
         };
         let (ScriptOutcome { results, failure }, probe) = match query_within(timeout, run).await {
             Ok(outcome) => outcome,
             Err(e) => return Err(self.recover_editor(e, &mut conn).await),
         };
-        let database = self.remember_database(probe);
+        let database = self.remember_state(probe);
         let failure = match failure {
             Some(mut failure) => {
                 failure.error = self.recover_editor(failure.error, &mut conn).await;
@@ -339,6 +378,21 @@ impl Database for MySqlSession {
         })
         .await?;
         Ok(results.into_iter().last().unwrap_or_default())
+    }
+
+    async fn ping(&self) -> AppResult<()> {
+        self.ping_pool().await?;
+        match self.editor.try_lock() {
+            Some(mut conn) => self.ping_editor(&mut conn).await,
+            None => Ok(()),
+        }
+    }
+
+    /// The pool replaces dead connections itself (it tests each before handing it out).
+    async fn reconnect(&self) -> AppResult<()> {
+        self.ping_pool().await?;
+        let mut conn = connect_within(self.connect_timeout, self.editor.lock()).await?;
+        self.ping_editor(&mut conn).await
     }
 }
 

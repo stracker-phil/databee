@@ -1,6 +1,7 @@
 import { api, toAppError } from "../../api";
 import { fail } from "../requests";
 import type { Slice } from "../store";
+import { blockedWhileLost } from "./health";
 import { findTab } from "./tabs";
 
 export interface QuerySlice {
@@ -13,7 +14,7 @@ export const querySlice: Slice<QuerySlice> = {
     async runQuery(tabId, sql, confirmed = false) {
       const tab = findTab(get(), tabId, "query");
       // `running` is set synchronously below, so a second run cannot start before the first replies.
-      if (!tab || tab.running || !sql.trim()) return;
+      if (!tab || tab.running || !sql.trim() || blockedWhileLost(get, tab.sessionId, "run queries")) return;
       get().updateQueryTab(tabId, { running: true, error: undefined });
       try {
         const response = await api.execute(tab.sessionId, sql, confirmed);

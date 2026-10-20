@@ -144,7 +144,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     serialized data, secrets) and have a provenance (list `values`; label: the raw value); the hover
     indicator of what a click does is decorative and no anchor
   - chrome: `toolbar:connection`, `toolbar:database`, `toolbar:back`, `toolbar:forward` (only for a table or
-    object tab), `toolbar:search` (opens the palette),
+    object tab), `toolbar:search` (opens the palette), `toolbar:connection-health` and `toolbar:retry` (only
+    while the active session's connection is lost),
     `statusbar:sidebar` (the ▤ toggle), `statusbar:presets` (opens the Project page),
     `statusbar:pending`, `statusbar:live` (`● live 2 s` while the active column is live; a click ends it)
 

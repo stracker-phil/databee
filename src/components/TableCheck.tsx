@@ -46,6 +46,7 @@ export function useTableCheck(tab: TableTab, page: BrowsePage | null, { hasPrima
   const enabled = useStore((s) => s.settings?.tableLiveCheck ?? false);
   const active = useStore((s) => s.activeTabId === tab.id);
   const pending = usePendingForTable(tab);
+  const lost = useStore((s) => !!s.health[tab.sessionId]);
   const focused = useWindowFocus();
   const [check, setCheckState] = useState<TableCheckState | null>(null);
   const current = useRef<TableCheckState | null>(null);
@@ -96,7 +97,7 @@ export function useTableCheck(tab: TableTab, page: BrowsePage | null, { hasPrima
     if (resultId !== null && usable) runLatest();
   }, [resultId, usable, setCheck, runLatest]);
 
-  const pausedBy = pending ? "pending changes" : editing ? "editing" : null;
+  const pausedBy = lost ? "connection lost" : pending ? "pending changes" : editing ? "editing" : null;
   const ticking = usable && active && focused && !loading && !pausedBy && !!check?.baseline && !check.error;
   useEffect(() => {
     if (!ticking) return;
@@ -112,7 +113,7 @@ export function useTableCheck(tab: TableTab, page: BrowsePage | null, { hasPrima
         ? { kind: "unavailable", reason: hasPrimaryKey ? "the primary key is not readable as text" : "no primary key" }
         : check?.error
           ? { kind: "failed", message: check.error }
-          : pausedBy === "pending changes"
+          : pausedBy === "pending changes" || pausedBy === "connection lost"
             ? { kind: "paused", reason: pausedBy }
             : { kind: "on" };
   return { status, rows: check?.rows };
@@ -121,7 +122,10 @@ export function useTableCheck(tab: TableTab, page: BrowsePage | null, { hasPrima
 /** Why the tab does not check its rows, in the table head; nothing while it checks. */
 export function TableCheckHint({ status }: { status: TableCheckStatus }) {
   if (status.kind === "unavailable") return <span className="hint" data-stage="table:live-check" title="The live check reads the shown rows again by primary key">no live check · {status.reason}</span>;
-  if (status.kind === "paused") return <span className="hint" data-stage="table:live-check" title="Apply or discard them to check the rows again">live check paused · {status.reason}</span>;
+  if (status.kind === "paused") {
+    const title = status.reason === "connection lost" ? "Checks again once the connection is back" : "Apply or discard them to check the rows again";
+    return <span className="hint" data-stage="table:live-check" title={title}>live check paused · {status.reason}</span>;
+  }
   if (status.kind === "failed") return <span className="hint" data-stage="table:live-check" title={status.message}>live check stopped · Refresh to retry</span>;
   return null;
 }

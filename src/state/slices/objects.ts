@@ -5,7 +5,8 @@ import { documentText, objectAddress, objectTitle, type ObjectView } from "../..
 import { fail } from "../requests";
 import { noConnectionNamed, selectActiveSession, selectSessionBySlug } from "../selectors";
 import type { Slice } from "../store";
-import { EMPTY_NAV, navEntry, pushed, restacked } from "./nav";
+import { blockedWhileLost } from "./health";
+import { blockedUnlessLoaded, EMPTY_NAV, navEntry, pushed, restacked } from "./nav";
 import { withoutSession } from "./session";
 import { activate, findTab, newTabId, placed, previewTab, replaceTab, type ObjectTab } from "./tabs";
 import { remembered } from "./ui";
@@ -78,10 +79,11 @@ export const objectsSlice: Slice<ObjectsSlice> = {
       if (address.target.kind !== "row") return;
       const session = selectSessionBySlug(get(), address.connection);
       if (!session) return get().toast("error", noConnectionNamed(address.connection));
+      const existing = get().tabs.find((t): t is ObjectTab => t.kind === "object" && t.sessionId === session.id && t.columns[0]?.kind === "object" && sameRow(t.columns[0].address, address));
+      if (!existing && blockedUnlessLoaded(get, session.id, address)) return;
       if (get().activeSessionId !== session.id) get().setActiveSession(session.id);
       void api.rememberObject(session.id, documentText(address)).catch((e) => fail(e, "Could not keep the recent object"));
       const root = objectColumn(address);
-      const existing = get().tabs.find((t): t is ObjectTab => t.kind === "object" && t.sessionId === session.id && t.columns[0]?.kind === "object" && sameRow(t.columns[0].address, address));
       if (existing) {
         const columns = address.view || address.compare ? replaced(existing, 0, { ...(existing.columns[0] as ObjectColumn), view: root.view, address: root.address }) : existing.columns;
         const updated = restacked({ ...existing, preview: existing.preview && opts.preview !== false }, { columns, active: 0 }, { record: false });
@@ -108,7 +110,7 @@ export const objectsSlice: Slice<ObjectsSlice> = {
 
     async openEntity(entity, id) {
       const session = selectActiveSession(get());
-      if (!session?.database) return;
+      if (!session?.database || blockedWhileLost(get, session.id, `open ${entity} #${id}`)) return;
       try {
         const document = await api.document(session.id, `${entity} ${id}`, session.database);
         get().keepDocument(session.id, document);

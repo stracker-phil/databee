@@ -2,6 +2,7 @@ import { api, type ChangeRequest, type PlannedChange } from "../../api";
 import { fail } from "../requests";
 import { selectActivePending, selectActiveSession, selectLastBatch } from "../selectors";
 import type { Slice } from "../store";
+import { blockedWhileLost } from "./health";
 
 /** The table a planned row edit writes; a rule action's plan has none, as it may write any table. */
 export interface ChangeTarget {
@@ -61,11 +62,12 @@ export const changesSlice: Slice<ChangesSlice> = {
 
       async queueChange(change) {
         const session = selectActiveSession(get());
-        if (!session) return null;
+        if (!session || blockedWhileLost(get, session.id, "edit")) return null;
         return queue(session.id, () => api.planChange(session.id, change), { database: change.database, table: change.table });
       },
 
       async queueActionPreview(sessionId, id) {
+        if (blockedWhileLost(get, sessionId, "queue the action")) return false;
         return (await queue(sessionId, () => api.queueActionPreview(sessionId, id))) !== null;
       },
 
@@ -87,7 +89,7 @@ export const changesSlice: Slice<ChangesSlice> = {
       async applyChanges() {
         const session = selectActiveSession(get());
         const batch = selectActivePending(get());
-        if (get().applying || !session || batch.length === 0) return;
+        if (get().applying || !session || batch.length === 0 || blockedWhileLost(get, session.id, "apply changes")) return;
         await whileApplying(async () => {
           try {
             const applied = await api.applyChanges(
@@ -109,7 +111,7 @@ export const changesSlice: Slice<ChangesSlice> = {
       async undoLast() {
         const session = selectActiveSession(get());
         const last = selectLastBatch(get());
-        if (get().applying || !session || !last) return;
+        if (get().applying || !session || !last || blockedWhileLost(get, session.id, "undo")) return;
         if (!last.canUndo) {
           get().toast("info", "This change can't be undone automatically");
           return;

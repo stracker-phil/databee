@@ -192,4 +192,12 @@ impl Database for Counting {
         }
         self.inner.apply(statements, timeout).await
     }
+
+    async fn ping(&self) -> AppResult<()> {
+        self.inner.ping().await
+    }
+
+    async fn reconnect(&self) -> AppResult<()> {
+        self.inner.reconnect().await
+    }
 }

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { api, type ConnectionSpec, type DatabaseInfo, type RecentConnection, type SessionInfo } from "../../api";
 import { useApiResult } from "../../lib/useApiResult";
-import { accentKey, fail, selectActiveSession, selectVisibleDatabases, useStore } from "../../state/store";
+import { accentKey, fail, selectActiveSession, selectVisibleDatabases, useStore, type LostHealth } from "../../state/store";
 import { fuzzyScore, type Prefix } from "./parse";
 import type { Item } from "./usePaletteItems";
 
@@ -29,7 +29,12 @@ function connections(sessions: SessionInfo[], activeId: string | null, recents: 
 
 type Accents = Record<string, string>;
 
-function connectionItems(list: Connection[], activeId: string | null, accents: Accents, needle: string): Item[] {
+function sessionBadge(session: SessionInfo, activeId: string | null, lost: Record<string, LostHealth>): string {
+  const badge = session.id === activeId ? "current" : "open";
+  return lost[session.id] ? `${badge} · connection lost` : badge;
+}
+
+function connectionItems(list: Connection[], activeId: string | null, accents: Accents, lost: Record<string, LostHealth>, needle: string): Item[] {
   return list
     .map((c) => {
       const title = c.spec.name ?? c.session?.displayName ?? c.spec.host;
@@ -45,7 +50,7 @@ function connectionItems(list: Connection[], activeId: string | null, accents: A
       subtitle: database ? `${endpoint(c.spec)} / ${database}` : endpoint(c.spec),
       note: c.slug,
       accent: database ? accents[accentKey(c.slug, database)] : undefined,
-      badge: c.session ? (c.session.id === activeId ? "current" : "open") : undefined,
+      badge: c.session ? sessionBadge(c.session, activeId, lost) : undefined,
       go: () => {
         close();
         const s = useStore.getState();
@@ -83,11 +88,12 @@ export function useSwitchItems(prefix: Prefix, needle: string): Item[] {
   const session = useStore(selectActiveSession) ?? null;
   const databases = useStore(useShallow(selectVisibleDatabases));
   const accents = useStore((s) => s.accents);
+  const lost = useStore((s) => s.health);
   return useMemo(() => {
     if (!active) return [];
     return [
-      ...connectionItems(connections(sessions, activeId, recents.data ?? []), activeId, accents, needle),
+      ...connectionItems(connections(sessions, activeId, recents.data ?? []), activeId, accents, lost, needle),
       ...databaseItems(session, databases, accents, needle),
     ];
-  }, [active, sessions, activeId, recents.data, needle, session, databases, accents]);
+  }, [active, sessions, activeId, recents.data, needle, session, databases, accents, lost]);
 }

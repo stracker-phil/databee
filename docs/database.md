@@ -12,14 +12,15 @@ in `src-tauri/src/db_commands.rs`.
 | `db/dialect.rs` | `Dialect { backslash_escapes }` (`Dialect::MYSQL`, or `from_sql_mode`): `quote_ident` (backticks), `sql_string`, `like` / `like_contains`, `table_ref`, `system_schemas`; `escape_like` |
 | `db/browse.rs` | `browse_sql` (the table view's paged SELECT plus the filter it applied), `page_limit`, `MAX_PAGE_ROWS` |
 | `db/mysql/mod.rs` | `MySqlSession`, the only driver, implementing `Database`: the metadata pool, the editor connection, `connect_options`. It owns all I/O. |
-| `db/mysql/editor.rs` | `EditorConnection`: the editor connection's lock, thread id, current database, `reconnect`, `kill_query` and `kill_connection` |
+| `db/mysql/editor.rs` | `EditorConnection`: the editor connection's lock (`lock`, `try_lock`), thread id, session state (as it opened and as the last probe found it: current database, kept variables), `reconnect` (restores both), `kill_query` and `kill_connection` |
+| `db/mysql/session_state.rs` | `SessionState` (database and the `KEPT` session variables), `read` (one probe query), `restore_sql` (the `SET` of the variables a lost connection had changed) |
 | `db/mysql/kill.rs` | `Killer`: `KILL QUERY <id>` or `KILL <id>` on a one-off connection, for any server thread id; `spawn_kill_query` fires one in the background |
 | `db/mysql/introspect.rs` | `databases`, `tables`, `structure`, `completion` over the pool; rows are read by column alias |
 | `db/mysql/meta_rows.rs` | `rows` (a bound `information_schema` query within the timeout), `text`, `text_or_empty` (read by column alias), shared by `introspect.rs` and `keys.rs` |
 | `db/mysql/keys.rs` | Indexes and foreign keys: `table_keys` for one table (inside `structure`), `database_keys` for every table of a database (`Database::keys`) |
-| `db/mysql/script.rs` | `run_script` (text protocol, one `ResultSet` per statement, column recovery; returns a `ScriptOutcome` of the finished results and the failing statement, `into_results` for callers that need all of it), `scalar`, `thread_id`, `read_dialect` |
+| `db/mysql/script.rs` | `run_script` (text protocol, one `ResultSet` per statement, column recovery; returns a `ScriptOutcome` of the finished results and the failing statement, `into_results` for callers that need all of it), `scalar`, `thread_id`, `raw_text` |
 | `db/mysql/timeouts.rs` | `connect_within`, `query_within`, and `pooled_within`, which reads the pool connection's thread id, kills its query on timeout and closes the connection |
-| `db/fake.rs` | `FakeDatabase`, an in-memory `Database` for unit tests (canned results matched by SQL fragment, recorded `apply` batches); behind `cfg(any(test, feature = "test-util"))` |
+| `db/fake.rs` | `FakeDatabase`, an in-memory `Database` for unit tests (canned results matched by SQL fragment, recorded `apply` batches, `set_unreachable` for a stopped server: `ping` and `reconnect` fail); behind `cfg(any(test, feature = "test-util"))` |
 | `db/lexer.rs` | A small MySQL-aware scanner, not a parser. `scan` is an iterator of borrowed `Piece { kind, text, start, depth }`. It knows the three quote styles, backslash escapes, the `#`, `-- ` and `/* */` comments, executable `/*! */` comments and `@` variables. `split_statements`, `words`, `pieces` (comments included; `Piece::span`, `is_comment`, `is_open`, `is_symbol`), `is_terminated`, `is_blank` |
 | `db/narrow.rs` | `refusal` and `narrowed`: one more condition on a plain single-table `SELECT` ([Narrowing a query](#narrowing-a-query)) |
 | `db/classify.rs` | What a statement is: `verb_index` (the deciding word, also after a `WITH` clause), `returns_rows`, `changes_schema` (a script with `CREATE`, `ALTER`, `DROP`, `RENAME` or `TRUNCATE`), and `is_read_only` (every statement is `SELECT`, `SHOW`, `DESCRIBE`/`DESC`, `EXPLAIN` or `WITH … SELECT`; refuses `SELECT … INTO`, `FOR UPDATE`/`FOR SHARE`/`LOCK IN SHARE MODE`, `EXPLAIN ANALYZE` of a non-read, `CALL`, `SET`, `HANDLER` and every other verb, naming the statement and why; functions called by a `SELECT` are not inspected) |
@@ -30,8 +31,9 @@ in `src-tauri/src/db_commands.rs`.
 
 Outside `db/`:
 - `connection.rs` has `ConnectionSpec` and `Secret`.
-- `session.rs` has `Session { id, spec, db: Box<dyn Database>, ext, plans, cells }` and the `Sessions` map
-  (`ddl_writes()` counts user scripts with DDL). `ext` is a
+- `session.rs` has `Session { id, spec, db: Box<dyn Database>, health, ext, plans, cells }` and the `Sessions`
+  map (`ddl_writes()` counts user scripts with DDL). `db` is the engine behind `health::Guarded` and `health`
+  its `SessionHealth` ([Connection health](#connection-health)). `ext` is a
   type-keyed `Extensions` map where a module keeps per-session data that dies with the session
   ([ADR 0013](adr/0013-session-extensions.md)); the rules keep their effective-rules cache there, the core its
   `SchemaCache` ([Schema cache](#schema-cache)).
@@ -58,10 +60,11 @@ Other details:
 - **Connect options** are built from `ConnectionSpec`: socket or host and port, user and optional password
   (`connect_options`). The database is added per connection (`with_database`): the spec's database for the
   pool and the first editor connection, the current database on reconnect, none for `KILL`. Server defaults are left alone on purpose: sqlx is told not to change `sql_mode`, `time_zone` or
-  `PIPES_AS_CONCAT`. Instead the editor connection reads `@@SESSION.sql_mode` on connect and reconnect, and
-  `Database::dialect` reports whether backslashes escape (`NO_BACKSLASH_ESCAPES`); browse and every
-  planned literal and identifier use it ([ADR 0018](adr/0018-escaping-follows-sql-mode.md)). A user's own
-  `SET sql_mode` on the editor connection is picked up only on the next reconnect.
+  `PIPES_AS_CONCAT`. Instead the editor connection reads `@@SESSION.sql_mode` of each fresh connection
+  (`session_state::read`, before any restored variable is set), and `Database::dialect` reports whether
+  backslashes escape (`NO_BACKSLASH_ESCAPES`); browse and every planned literal and identifier use it
+  ([ADR 0018](adr/0018-escaping-follows-sql-mode.md)). It is the server default the metadata pool shares, so a
+  user's own `SET sql_mode` on the editor connection never changes it.
 - **Timeouts:** every server call is bounded, so a half-dead connection can't hang a command.
   - `connect_timeout_secs` covers connecting, reconnecting the editor and the one-off `KILL` connection
     (`connect_within`; a timeout is a `connection` error).
@@ -71,7 +74,8 @@ Other details:
     `timeout` error.
   - When an `execute` times out, DataBee kills the whole editor connection, reconnects it, and returns
     `timeout` with `sessionReset: true` when the reconnect succeeded: temporary tables, `@vars` and open
-    transactions are gone, and the UI says so in a toast. A timed-out `browse`, `fetch` or `apply` spawns
+    transactions are gone (the current database and the kept session variables are restored, see
+    Reconnects), and the UI says so in a toast. A timed-out `browse`, `fetch` or `apply` spawns
     `KILL QUERY <thread id>` for its pool connection (`pooled_within` reads `CONNECTION_ID()` after acquiring
     it; closing the socket alone leaves the query running on the server) and closes the connection instead
     of returning it. The kill runs in the background and is not awaited; a failure is logged.
@@ -82,9 +86,54 @@ Other details:
   cancelled query on MariaDB returns error 1317, which maps to `cancelled`. MySQL instead reports an
   interrupted `SLEEP` as a result row.
 - **Reconnects:** when `execute` fails with a `connection` error (including a server-side kill or
-  `wait_timeout`, see the error mapping in [backend.md](backend.md#errors)), the editor connection is rebuilt
-  with the current database. The query itself is not retried. A failed reconnect is logged; the next run
-  tries again.
+  `wait_timeout`, see the error mapping in [backend.md](backend.md#errors)), the editor connection is rebuilt.
+  The query itself is not retried. A failed reconnect is logged; the next run or the health check tries
+  again. Every rebuild (`EditorConnection::reconnect`, also after a timeout and from a ping or a Retry) keeps
+  the session's state as far as it can:
+  - the current database: the fresh connection opens in it;
+  - the session variables `session_state::KEPT` names (`sql_mode`, `time_zone`, `autocommit`,
+    `foreign_key_checks`, `unique_checks`, `sql_safe_updates`, `group_concat_max_len`; character sets stay
+    out, cell decoding relies on the connection's own). The probe after every user script
+    (`session_state::read`: `SELECT DATABASE(), @@SESSION.…` in one statement, which replaced the former
+    `SELECT DATABASE()`) records them; a fresh connection gets one `SET @@SESSION.x = …, …` of those that
+    differ from how the lost connection opened (`restore_sql`, quoted for the fresh connection's dialect).
+    A failed restore is logged and costs only the variables. A `SET` in the script that timed out is not
+    recorded.
+  - Temporary tables, user variables (`@x`) and open transactions cannot be carried over.
+
+### Connection health
+
+`src-tauri/src/health/` watches every open session ([backend.md](backend.md#connection-health) has the
+command, the event and the tasks):
+
+- **States** (`Health`, Unix milliseconds): `ok`; `down { since, error, retryAt }`; `reconnecting { since,
+  error }`. `SessionHealth` (`Session.health`) holds the state; `Sessions::insert` attaches the session to the
+  `broadcast` channel its changes go out on, and `health::watch` sends each to the page as `session_health`.
+- **Ping** (`Database::ping`, `MySqlSession`): every `PING_INTERVAL` (10 s) per `ok` session, one at a time.
+  COM_PING on a pool connection, bounded by `PING_TIMEOUT` (5 s, at most the connect timeout; a timeout is a
+  failure). A pool whose 3 connections are all busy counts as alive without a ping (it is answering
+  queries). Then the editor connection, unless a query holds it: COM_PING, and when that fails it is
+  rebuilt right away (see Reconnects), so a server that restarted between two pings costs no failed query.
+  A failed ping marks the session `down`.
+- **Errors.** Every session's `db` is a `health::Guarded` around the engine. A call that fails with a
+  `connection` or `timeout` error (`AppError::suggests_connection_loss`, also the failed statement of a
+  partly run script) starts a ping in the background right away, so the caller gets its error without
+  waiting, and a lost server shows within the ping's time instead of the next interval. A timed-out query
+  on a healthy server only costs that ping.
+- **While not `ok`**, a registered session's `Guarded` refuses every call that needs the server (`execute`,
+  `use_database`, the metadata calls, `browse`, `fetch`, `apply`) at once with `connection_lost`, instead of
+  waiting on a dead socket until a timeout. The schema cache and everything else in memory keep answering.
+  `cancel` and `close` pass. A session that is not registered (`databee mcp`'s detached ones) is never
+  refused, since nothing retries it.
+- **Retry** (`Database::reconnect`, `health::retry`): `down` → `reconnecting` → `ok`, or `down` with the
+  new error. It uses the connect options the session holds, password included, so it asks for no password
+  and reads no Keychain item. The pool replaces dead connections itself (it tests each one before handing
+  it out), so a pool ping is enough; the editor connection waits for a running query (bounded by the
+  connect timeout), is pinged, and is rebuilt only when it is gone. A connection that survived (e.g. a
+  paused container) keeps all of its session state. Retries start from the Retry button, once per window
+  focus (the page), and automatically after `RETRY_BACKOFF` (10 s, 30 s, then every 60 s) counted from the
+  last failure. A retry already running is not started twice; one that is dropped unfinished counts as
+  failed, so the session is retried again.
 - **TLS:** none. sqlx is compiled without a TLS backend. `mysql-rsa` handles `caching_sha2_password` over
   plaintext connections by fetching the server's RSA key unencrypted, so a man in the middle could swap the key
   and read the password. That is fine on loopback and sockets, the intended use; sqlx has no option to refuse
@@ -416,7 +465,9 @@ reviewed.
 Callers only know `&dyn Database` and the `Dialect` it returns, so an engine is one folder and one factory
 arm; nothing in `rules/` changes:
 
-1. **Driver.** `src-tauri/src/db/<engine>/mod.rs` implementing `Database`.
+1. **Driver.** `src-tauri/src/db/<engine>/mod.rs` implementing `Database`, including `ping` (cheap and
+   bounded; SQLite: open the file) and `reconnect` (with the credentials the session holds, keeping session
+   state) for [connection health](#connection-health).
 2. **Dialect.** `Dialect` only knows MySQL (`backslash_escapes`); it needs an engine field and per-engine
    versions of: `quote_ident` and `table_ref` (backticks); `sql_string` and `like` (backslash escaping unless
    `NO_BACKSLASH_ESCAPES`); `system_schemas`. Outside the dialect: the lexer (`#` comments, backslash

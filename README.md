@@ -29,6 +29,9 @@ point a coding agent at it and adapt it to your platform or needs. See [Adapt it
 - **Value counts** on every grid column (right-click its header): each stored value with its count; a click
   filters the table, or adds a `WHERE` to a plain single-table query.
 - **Passwords** live in the macOS Keychain and never in files or logs.
+- **Connection watch:** when DDEV or Docker stops, a warning next to the connection says since when and why;
+  what is loaded stays readable, and Retry (or coming back to the window) reconnects without a password prompt,
+  with the current database and session variables such as `sql_mode` restored.
 
 **Rows as objects** (WordPress, WooCommerce and Action Scheduler come as presets)
 - **Readout:** the home page of every database, opened on connect. A status line (host, database, prefix,

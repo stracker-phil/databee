@@ -1,6 +1,7 @@
 //! SQL spelling that differs between servers.
 
-/// A user's own `SET sql_mode` on the editor connection is picked up only on reconnect.
+/// Follows the server's default `sql_mode`, which the metadata pool shares; a user's own `SET sql_mode`
+/// on the editor connection never changes it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dialect {
     pub backslash_escapes: bool,
