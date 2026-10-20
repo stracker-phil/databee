@@ -27,6 +27,28 @@ export interface TableCheckState {
   error: string | null;
 }
 
+export type PauseReason = "connection lost" | "pending changes" | "editing";
+
+export type TableCheckStatus = { kind: "off" } | { kind: "unavailable"; reason: string } | { kind: "paused"; reason: Exclude<PauseReason, "editing"> } | { kind: "failed"; message: string } | { kind: "on" };
+
+interface StatusInput {
+  enabled: boolean;
+  rows: number;
+  keyed: boolean;
+  hasPrimaryKey: boolean;
+  error: string | null | undefined;
+  pausedBy: PauseReason | null;
+}
+
+/** What the table head says about the check; editing pauses it without a hint. */
+export function checkStatus({ enabled, rows, keyed, hasPrimaryKey, error, pausedBy }: StatusInput): TableCheckStatus {
+  if (!enabled || rows === 0) return { kind: "off" };
+  if (!keyed) return { kind: "unavailable", reason: hasPrimaryKey ? "the primary key is not readable as text" : "no primary key" };
+  if (error) return { kind: "failed", message: error };
+  if (pausedBy && pausedBy !== "editing") return { kind: "paused", reason: pausedBy };
+  return { kind: "on" };
+}
+
 export const freshCheck = (resultId: number): TableCheckState => ({ resultId, baseline: null, rows: {}, error: null });
 
 /**

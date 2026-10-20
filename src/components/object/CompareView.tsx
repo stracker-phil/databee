@@ -36,8 +36,8 @@ export function CompareView({ tab, column, index, editable }: Props) {
     if (comparison) useStore.getState().keepDocument(tab.sessionId, comparison.left);
   }, [tab.sessionId, comparison]);
   const onFocus = useCallback((focus: Provenance | null) => useStore.getState().focusObject(tab.id, focus, index), [tab.id, index]);
-  const setView = useCallback((view: ObjectView) => useStore.getState().setObjectView(tab.id, view, undefined, index), [tab.id, index]);
-  const place = useMemo(() => ({ tabId: tab.id, index }), [tab.id, index]);
+  const setView = (view: ObjectView) => useStore.getState().setObjectView(tab.id, view, undefined, index);
+  const place = { tabId: tab.id, index };
 
   if (error && !comparison) return <ErrorPanel message={error.message} code={error.code} />;
   if (!comparison) return <div className="empty-state">Loading…</div>;

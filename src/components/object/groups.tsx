@@ -8,7 +8,7 @@ import { hasLeadIcon, LEAD_ICON_CH } from "../value/Value";
 import { Field, isNumeric, type FieldChange } from "./fields";
 import { WideTable } from "./WideTable";
 
-/** The focused and edited values, as provenance keys, and the change marks of live mode, a snapshot or compare. */
+/** Focus, edit and change marks for a group's values, by provenance key. */
 export interface Marks {
   focus: string | null;
   editing: string | null;
@@ -27,31 +27,33 @@ function changeOf(key: string | null, diff: DocumentMarks | null | undefined): F
   return undefined;
 }
 
+const isFocused = (value: StoredValue | null, marks: Marks) => !!marks.focus && keyOf(value) === marks.focus;
+const holdsFocus = (row: GroupRow, marks: Marks) => row.fields.some(([, value]) => isFocused(value, marks));
+
 function marksFor(value: StoredValue | null, marks: Marks): { focused: boolean; editing: boolean; change?: FieldChange } {
   const key = keyOf(value);
-  return { focused: !!key && key === marks.focus, editing: !!key && key === marks.editing, change: changeOf(key, marks.diff) };
+  return { focused: isFocused(value, marks), editing: !!key && key === marks.editing, change: changeOf(key, marks.diff) };
 }
 
 /** `chg` for a row with a changed or new value (a 3px accent mark), `removed` for a row that is gone. */
-function rowClass(values: (StoredValue | null)[], diff: DocumentMarks | null | undefined): string {
+function rowClass(values: (StoredValue | null)[], diff: DocumentMarks | null | undefined): "removed" | "chg" | "" {
   if (!diff) return "";
   const keys = values.map(keyOf).filter((key): key is string => !!key);
-  if (keys.some((key) => diff.removed.has(key))) return " removed";
-  if (keys.some((key) => diff.changed.has(key) || diff.added.has(key))) return " chg";
+  if (keys.some((key) => diff.removed.has(key))) return "removed";
+  if (keys.some((key) => diff.changed.has(key) || diff.added.has(key))) return "chg";
   return "";
 }
 
+const classes = (...names: string[]) => names.filter(Boolean).join(" ");
+
 function KvRow({ name, value, table, marks }: { name: string; value: StoredValue | null; table: string; marks: Marks }) {
   return (
-    <div className={`row kv${rowClass([value], marks.diff)}`} data-row-table={table || undefined}>
+    <div className={classes("row kv", rowClass([value], marks.diff))} data-row-table={table || undefined}>
       <span title={name}>{name}</span>
       <Field value={value} {...marksFor(value, marks)} />
     </div>
   );
 }
-
-const isFocused = (value: StoredValue | null, marks: Marks) => !!marks.focus && keyOf(value) === marks.focus;
-const holdsFocus = (row: GroupRow, marks: Marks) => row.fields.some(([, value]) => isFocused(value, marks));
 
 export function FieldsGroup({ group, marks }: { group: Group; marks: Marks }) {
   const row = group.rows[0];
@@ -109,7 +111,7 @@ interface TableRowProps {
 
 const TableRow = memo(function TableRow({ row, columns, table, marks }: TableRowProps) {
   return (
-    <div className={`row${rowClass(row.fields.map(([, value]) => value), marks.diff)}`} data-row-table={table || undefined}>
+    <div className={classes("row", rowClass(row.fields.map(([, value]) => value), marks.diff))} data-row-table={table || undefined}>
       {columns.map((column, i) => {
         const value = fieldOf(row, column, i);
         return <Field key={column} value={value} {...marksFor(value, marks)} numeric={isNumeric(value)} />;
@@ -154,8 +156,8 @@ export function EventsGroup({ group, marks }: { group: Group; marks: Marks }) {
         {(row, i) => {
           const [name, value] = row.fields[0] ?? ["", null];
           return (
-            <div key={i} className="row" data-row-table={value?.source?.table}>
-              <Field value={value} focused={marksFor(value, marks).focused} />
+            <div key={keyOf(value) ?? i} className="row" data-row-table={value?.source?.table}>
+              <Field value={value} focused={isFocused(value, marks)} />
               <span className="o2">{value?.source?.table}</span>
               <span>{name}</span>
             </div>

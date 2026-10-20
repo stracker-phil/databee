@@ -6,15 +6,7 @@ const KEY_STEP = 16;
 
 const clamp = (v: number, min: number, max: number) => Math.round(Math.min(Math.max(v, min), Math.max(min, max)));
 
-export function useWindowSize() {
-  const [size, setSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-  useEffect(() => {
-    const on = () => setSize({ width: window.innerWidth, height: window.innerHeight });
-    window.addEventListener("resize", on);
-    return () => window.removeEventListener("resize", on);
-  }, []);
-  return size;
-}
+const ARROW_KEYS = { x: ["ArrowLeft", "ArrowRight"], y: ["ArrowUp", "ArrowDown"] };
 
 /** A pane size kept per connection: live while dragging, persisted on release. */
 export function usePaneSize(pane: PaneSize, fallback: number, min: number, max: number) {
@@ -46,7 +38,6 @@ interface Props {
   label: string;
   /** A double-click: back to the default sizes. */
   onReset?: () => void;
-  /** The handle's Stage anchor. */
   stage?: string;
 }
 
@@ -56,13 +47,14 @@ export function Splitter({ axis, paneAfter, size, min, max, onResize, onCommit, 
   // Removes the window listeners and the body cursor class of a drag in progress.
   const stopDrag = useRef<(() => void) | null>(null);
   useEffect(() => () => stopDrag.current?.(), []);
+  const resizeBy = (delta: number) => clamp(size + sign * delta, min, max);
 
   const start = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
     stopDrag.current?.();
     const origin = axis === "x" ? e.clientX : e.clientY;
-    const next = (ev: MouseEvent) => clamp(size + sign * ((axis === "x" ? ev.clientX : ev.clientY) - origin), min, max);
+    const next = (ev: MouseEvent) => resizeBy((axis === "x" ? ev.clientX : ev.clientY) - origin);
     const move = (ev: MouseEvent) => onResize(next(ev));
     const up = (ev: MouseEvent) => {
       stopDrag.current?.();
@@ -79,11 +71,10 @@ export function Splitter({ axis, paneAfter, size, min, max, onResize, onCommit, 
     window.addEventListener("mouseup", up);
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
-    const keys = axis === "x" ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"];
-    const dir = keys.indexOf(e.key);
+    const dir = ARROW_KEYS[axis].indexOf(e.key);
     if (dir < 0) return;
     e.preventDefault();
-    onCommit(clamp(size + sign * (dir === 0 ? -KEY_STEP : KEY_STEP), min, max));
+    onCommit(resizeBy(dir === 0 ? -KEY_STEP : KEY_STEP));
   };
   return (
     <div

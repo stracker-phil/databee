@@ -15,7 +15,8 @@ import { ErrorPanel } from "./ErrorPanel";
 import { ChangeList } from "./object/ChangeList";
 import { currentStatement, QueryEditor } from "./QueryEditor";
 import { ResultsGrid } from "./ResultsGrid";
-import { Splitter, usePaneSize, useWindowSize } from "./Splitter";
+import { Splitter, usePaneSize } from "./Splitter";
+import { useWindowSize } from "./useWindowSize";
 import { ValueCounts, type ValueCountsTarget } from "./ValueCounts";
 
 const NO_SCHEMA: Record<string, string[]> = {};

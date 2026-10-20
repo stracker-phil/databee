@@ -4,11 +4,11 @@ import { EDIT_VALUE_EVENT } from "../commands";
 import type { CellSource } from "../lib/cells";
 import { cellText } from "../lib/format";
 import { cellValue } from "../lib/values";
-import { useStore } from "../state/store";
+import { useStore, type SelectedCell } from "../state/store";
 
 export type CellPos = { row: number; col: number };
 
-/** Width that fits the header and the given rows; one character is ~0.6 of the data font size. */
+/** Width that fits the header and the given rows. */
 export function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLabel: string, fontSize: number, cap: number, lead = 0): number {
   const charWidth = fontSize * 0.6;
   // The type sits under the name in smaller text, so the wider of the two sets the header's width.
@@ -18,10 +18,7 @@ export function fitWidth(col: ColumnMeta, index: number, rows: Cell[][], nullLab
   return Math.round(Math.min(cap, Math.max(64, Math.max(header, longest) * charWidth + 20)));
 }
 
-/**
- * Values per row, built on the row's first render, so `Value` keeps its memo while the grid re-renders.
- * `valueAt` reads the result `rows` came from, so new rows are what makes the cache stale.
- */
+/** Values per row, built on first render and kept until `rows` change, so `Value` keeps its memo. */
 export function useRowValues(rows: Cell[][], valueAt: ((row: number, col: number) => StoredValue) | undefined) {
   const cache = useMemo(() => ({ rows, values: new Map<number, StoredValue[]>() }), [rows]);
   return (row: number): StoredValue[] => {
@@ -34,22 +31,27 @@ export function useRowValues(rows: Cell[][], valueAt: ((row: number, col: number
   };
 }
 
+function isOwnGrid(at: SelectedCell | null, activeTabId: string | null, source: Pick<CellSource, "sessionId" | "resultId">): at is SelectedCell {
+  return !!at && at.tabId === activeTabId && at.source.sessionId === source.sessionId && at.source.resultId === source.resultId;
+}
+
 /** `value.edit` (e): the grid of the active tab that holds the selected cell starts editing it. */
 export function useEditValueCommand(source: CellSource, startEdit: (at: CellPos) => void) {
   const startEditRef = useRef(startEdit);
   useEffect(() => {
     startEditRef.current = startEdit;
   });
+  const { sessionId, resultId } = source;
   useEffect(() => {
     const edit = () => {
       const s = useStore.getState();
       const at = s.selectedCell;
-      if (!at || at.tabId !== s.activeTabId || at.source.sessionId !== source.sessionId || at.source.resultId !== source.resultId) return;
+      if (!isOwnGrid(at, s.activeTabId, { sessionId, resultId })) return;
       startEditRef.current({ row: at.row, col: at.col });
     };
     window.addEventListener(EDIT_VALUE_EVENT, edit);
     return () => window.removeEventListener(EDIT_VALUE_EVENT, edit);
-  }, [source.sessionId, source.resultId]);
+  }, [sessionId, resultId]);
 }
 
 /** Selects `focus` when it changes or new rows arrive, and scrolls the grid to it. */

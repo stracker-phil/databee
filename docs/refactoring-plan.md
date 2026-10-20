@@ -8,8 +8,8 @@
 > Remaining (checked 2026-10-20):
 > - 4.3: `noUncheckedIndexedAccess` is not set in `tsconfig.json`; `vite.config.ts` sets no
 >   `restoreMocks` or `unstubGlobals`.
-> - 3.4: no `memo(QueryTab)` or `memo(TableTab)`; `useWindowSize` in `Splitter.tsx` adds a resize
->   listener per consumer; `ResultsGrid` virtualizes rows only.
+> - 3.4: no `memo(QueryTab)` or `memo(TableTab)`; `useWindowSize` (`useWindowSize.ts`) adds a
+>   resize listener per consumer; `ResultsGrid` virtualizes rows only.
 > - 4.2: inline px styles remain in `ConnectScreen.tsx`.
 
 ## Context

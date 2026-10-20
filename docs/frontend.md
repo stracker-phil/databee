@@ -300,7 +300,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 
 | Area | Components |
 |---|---|
-| Shell | `Toolbar` (with `ConnectionHealth`, see [Connection health](#connection-health)), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers; also `usePaneSize` and `useWindowSize`, the SQL editor's persisted height), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
+| Shell | `Toolbar` (with `ConnectionHealth`, see [Connection health](#connection-health)), `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers; also `usePaneSize`, the SQL editor's persisted height), `useWindowSize.ts` (`useWindowSize`, the window size for the SQL editor's maximum height), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
 | Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit`), `Tabs`, `tabViews.tsx` (`TAB_VIEWS`; a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), `value/useAltHeld.ts` (`useAltHeld`: ⌥ held alone, one shared set of window listeners), see [Values](#values) |
@@ -529,7 +529,7 @@ name>, icon } }` through `ProjectContext.change` (`changeProject`), so it bumps 
 ### Results grid
 
 `ResultsGrid` resets its selection and inline editor when `rows` changes identity and clamps indices
-before use. It has no row-number column. Header cells show the column name with the sort arrow, and the type
+before use. It renders the header itself and each virtual row as `GridRow` (`grid/GridRow.tsx`, cells as `GridCell`). It has no row-number column. Header cells show the column name with the sort arrow, and the type
 below it. Hover is plain CSS (`--row-hover` on the row, `--cell` on the cell), so crossing cells never
 re-renders the grid. Cells render `Value` with `density="grid"`, from the `valueAt(row, col)` prop
 (`TableTab`: `lib/values.ts` `valueAt` on the page; `QueryTab`: `resultValueAt`; without it `cellValue`);
@@ -540,8 +540,8 @@ tab (`navigateTab`) and with `openAddress(…, { preview: true })` in a query ta
 opens a value column (in an object tab's column: the next column of the stack, through `ColumnContext`). On a
 primary key cell, double-click opens the object pinned and Enter in the preview tab (in a stack: the next
 column); Enter on a reference with one target opens it, on serialized data or long text a value column with the
-full text; otherwise double-click and Enter edit. Keys live in `KEY_ACTIONS` (arrows, Home/End,
-PageUp/PageDown, Enter, ⌘C). `owner` names the object whose rows a grid shows (Rows view), `focus` selects and
+full text; otherwise double-click and Enter edit. Keys live in `KEY_ACTIONS` (`grid/gridKeys.ts`: arrows, Home/End,
+PageUp/PageDown, Enter, ⌘C); the cell and header menus in `grid/useGridMenus.ts`. `owner` names the object whose rows a grid shows (Rows view), `focus` selects and
 reveals a cell (the focus carried over from the Document view). `bytes`
 cells are never editable: they show a `0x…` preview, which an edit would write back. `changes` (a table tab's
 live check, `RowChange` by row index) marks rows (`db-changed`, `db-removed`) and the cells whose stored
@@ -592,14 +592,15 @@ item's `target`; a rule action's plan has none and counts as writing any table).
 filter or a sort never pause it: rows are read by key. `withHashes` marks a row `changed` (another checksum) or
 `removed` (none) and unmarks one back at its baseline; `rowsToRead` picks the changed rows not read at their
 current checksum yet, which one `api.tableCheckRows` reads; `withRows` keeps their stored cells and changed
-columns. One check runs at a time; a reply for an earlier page is dropped. A failed check stops checking for
+columns. One check (`checkPage`) runs at a time; a reply for an earlier page is dropped. A failed check stops checking for
 that page. Settings → Queries "Live check in table tabs" (`tableLiveCheck`, default on) turns it off. Nothing it
 learns changes the page: `TableChangesBar` counts the marked rows above the grid (`changesText`) with a
 Refresh button (the Reload button's action), `TableCheckHint` says in the table head why a tab does not check
 (`no primary key`, a key that is not text, pending changes, a failed check with its message as tooltip), and
 the grid draws the marks (`changes`, [Results grid](#results-grid)); the bar adds "⌥ on a marked value shows
 old → new" while rows changed. The check also pauses while the connection is lost (`pausedBy = "connection
-lost"`, hint "live check paused · connection lost").
+lost"`, hint "live check paused · connection lost"); `checkStatus` turns the pause reason (`PauseReason`) and
+the page into the `TableCheckStatus` the hint draws, and editing pauses without a hint.
 
 ### Structure view
 
@@ -921,7 +922,7 @@ anchors for the [Stage hook](stage.md). Keep them stable when you change compone
 | `pins.ts` | a saved query's pin and the pin dialog's choices (`pinChoice`, `pinOf`, `pinLabel`) |
 | `nativeMenu.ts` | `installNativeMenuGuard` (see [Boot](#boot)) |
 | `columns.ts` | the column stack's types (`ObjectColumn`, `ValueColumn`, `StackColumn`, `ColumnStack`), `objectColumn`, `objectColumnAt`, `columnName` / `columnLabel`, `shownColumns`, `maximizable`, `paneShares`, `MIN_PANE_WIDTH`, `DIVIDER_WIDTH`, `DEFAULT_MAX_PANES` (see [Column stack](#column-stack)) |
-| `tableCheck.ts` | the table tab's live check (`TABLE_CHECK_MS`, `RowChange`, `TableCheckState`, `freshCheck`, `withHashes`, `rowsToRead`, `withRows`, `changeCounts`, `changesText`; see [Table tabs](#table-tabs)) |
+| `tableCheck.ts` | the table tab's live check (`TABLE_CHECK_MS`, `RowChange`, `TableCheckState`, `PauseReason`, `TableCheckStatus`, `checkStatus`, `freshCheck`, `withHashes`, `rowsToRead`, `withRows`, `changeCounts`, `changesText`; see [Table tabs](#table-tabs)) |
 | `trail.ts` | the trail's folding (`TrailUnit`, `TrailMore`, `trailUnits`, `foldSteps`; see [Column stack](#column-stack)) |
 
 ### Project tabs

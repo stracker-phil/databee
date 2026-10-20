@@ -35,6 +35,10 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 /* Document sections keep their bar's space but show the thumb only while hovered, so a page of small tables
    is not lined with bars. */
 .wide-table:not(:hover)::-webkit-scrollbar-thumb { background-color: transparent; }
+/* A scroll box nested in a scrolling pane whose content has z-indexed layers (sticky headers, pinned columns) is its
+   own stacking context: otherwise those layers, and WebKit with them the box's scrollbar, belong to an outer
+   context, and the bar stays behind while the pane scrolls. */
+:is(.grid, .wide-table) { isolation: isolate; }
 /* Boxes with rounded corners keep the thumb clear of them. */
 :is(.dialog, .palette-list, .value-counts-list, .toast-details, .recents, .cm-tooltip-autocomplete > ul)::-webkit-scrollbar-track { margin: 0.462rem 0; }
 

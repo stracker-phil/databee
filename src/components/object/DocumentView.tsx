@@ -88,7 +88,8 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
     }),
     [openValue, onFocus, owner, openMenu],
   );
-  const marks: Marks = { focus: focus ? provenanceKey(focus) : null, editing, diff };
+  const focusKey = focus ? provenanceKey(focus) : null;
+  const marks = useMemo<Marks>(() => ({ focus: focusKey, editing, diff }), [focusKey, editing, diff]);
   const groups = useMemo(() => withRemovedRows(document.groups, diff?.removedRows ?? []), [document.groups, diff]);
   const anchors = groupAnchors(groups);
   const shown = groups.filter((g) => !isEmpty(g));

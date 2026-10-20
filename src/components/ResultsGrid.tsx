@@ -4,19 +4,20 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import type { Address, Cell, ColumnMeta, Value as StoredValue } from "../api";
 import type { CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
-import { FLASH_MS } from "../lib/diff";
 import type { RowChange } from "../lib/tableCheck";
 import { useRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
-import { useContextMenu, type MenuEntry } from "./ContextMenu";
-import { cellMenu } from "./grid/cellMenu";
+import type { MenuEntry } from "./ContextMenu";
 import { ChangePeek } from "./grid/ChangePeek";
+import { handleGridKey } from "./grid/gridKeys";
+import { GridRow, storedCell, type CellHandlers, type Peek } from "./grid/GridRow";
 import { useCellEditing } from "./grid/useCellEditing";
 import { useColumnSizing } from "./grid/useColumnSizing";
+import { useGridMenus } from "./grid/useGridMenus";
 import { markScrolled, useEditValueCommand, useFocusCell, useRowValues, type CellPos } from "./gridHooks";
 import { openTarget, showValue } from "./value/open";
 import { useOpenValue } from "./value/useOpenValue";
-import { hasLeadIcon, LEAD_ICON_CH, Value } from "./value/Value";
+import { hasLeadIcon, LEAD_ICON_CH } from "./value/Value";
 
 export type { CellPos } from "./gridHooks";
 
@@ -52,24 +53,6 @@ interface Props {
 /** Viewport the virtualizer assumes until the first layout measurement, so the first frame already has rows. */
 const INITIAL_VIEWPORT = { width: 1000, height: 800 };
 
-const samePos = <T extends CellPos>(a: T | null, row: number, col: number): a is T => a?.row === row && a.col === col;
-
-/** Numbers align right; everything else about a kind is drawn by `Value` (docs/ux.md, Value grammar). */
-function cellClass(cell: Cell, row: number, col: number, marks: { selected: CellPos | null; editing: CellPos | null; change: RowChange | undefined }): string {
-  let name = cell.t === "number" ? "grid-cell num" : "grid-cell";
-  if (samePos(marks.selected, row, col)) name += " selected";
-  if (samePos(marks.editing, row, col)) name += " editing";
-  if (marks.change && storedCell(marks.change, col)) name += Date.now() - marks.change.at < FLASH_MS ? " db-changed db-flash" : " db-changed";
-  return name;
-}
-
-/** The stored value of a cell the database changed, once the check read it. */
-function storedCell(change: RowChange | undefined, col: number): Cell | undefined {
-  return change?.kind === "changed" && change.columns.includes(col) ? change.cells?.[col] : undefined;
-}
-
-const rowChangeClass = (change: RowChange | undefined) => (change ? (change.kind === "removed" ? " db-removed" : " db-changed") : "");
-
 function useEditingChange(editing: boolean, onEditingChange: ((editing: boolean) => void) | undefined) {
   const notify = useRef(onEditingChange);
   useEffect(() => {
@@ -77,38 +60,6 @@ function useEditingChange(editing: boolean, onEditingChange: ((editing: boolean)
   });
   useEffect(() => notify.current?.(editing), [editing]);
 }
-
-/** The table every sourced value of a row is stored in, when they share one, for the linked table highlight. */
-function rowTable(values: StoredValue[]): string | undefined {
-  const tables = new Set(values.flatMap((value) => (value.source ? [value.source.table] : [])));
-  return tables.size === 1 ? [...tables][0] : undefined;
-}
-
-interface KeyContext {
-  at: CellPos;
-  lastCol: number;
-  /** Rows that fit the viewport, for PageUp / PageDown. */
-  pageRows: number;
-  moveTo(row: number, col: number): void;
-  open(at: CellPos): void;
-  copyValue(at: CellPos): void;
-}
-
-/** Grid keys by `e.key`, with `Mod+` for ⌘ chords. */
-const KEY_ACTIONS: Record<string, (c: KeyContext) => void> = {
-  ArrowUp: (c) => c.moveTo(c.at.row - 1, c.at.col),
-  ArrowDown: (c) => c.moveTo(c.at.row + 1, c.at.col),
-  ArrowLeft: (c) => c.moveTo(c.at.row, c.at.col - 1),
-  ArrowRight: (c) => c.moveTo(c.at.row, c.at.col + 1),
-  Home: (c) => c.moveTo(c.at.row, 0),
-  End: (c) => c.moveTo(c.at.row, c.lastCol),
-  PageUp: (c) => c.moveTo(c.at.row - c.pageRows, c.at.col),
-  PageDown: (c) => c.moveTo(c.at.row + c.pageRows, c.at.col),
-  Enter: (c) => c.open(c.at),
-  "Mod+c": (c) => c.copyValue(c.at),
-};
-
-const clamp = (value: number, max: number) => Math.min(max, Math.max(0, value));
 
 /** Scrolls `grid` sideways until column `col` shows, right of the pinned key column; its start wins when it is wider. */
 function revealColumn(grid: HTMLElement | null, widths: number[], col: number, pinned: boolean) {
@@ -125,7 +76,6 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   const rowHeight = useRowHeight();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<CellPos | null>(null);
-  const menu = useContextMenu();
   const [selectionRows, setSelectionRows] = useState(rows);
   // New rows invalidate cell positions; resetting during render keeps stale indices out of every frame.
   if (selectionRows !== rows) {
@@ -134,7 +84,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
   }
   const { editing, startEdit, withFullText, setText, cancel, commit } = useCellEditing(rows, source, onEditCell);
   useEditingChange(editing !== null, onEditingChange);
-  const [peek, setPeek] = useState<(CellPos & { anchor: DOMRect; altHeld: boolean }) | null>(null);
+  const [peek, setPeek] = useState<Peek | null>(null);
   const peekStored = peek && rows[peek.row] ? storedCell(changes?.[peek.row], peek.col) : undefined;
 
   const virtualizer = useVirtualizer({
@@ -171,17 +121,18 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
 
   const copyCell = (at: CellPos) => withFullText(at, (text) => void copyText(text, "value"));
 
-  useEditValueCommand(source, startEdit);
-  useFocusCell(focus, rows, select, (row, col) => {
+  const reveal = (row: number, col: number) => {
     virtualizer.scrollToIndex(row);
     revealColumn(scrollRef.current, widths, col, pinned);
+  };
+
+  useEditValueCommand(source, startEdit);
+  useFocusCell(focus, rows, select, (row, col) => {
+    reveal(row, col);
     scrollRef.current?.scrollIntoView?.({ block: "nearest" });
   });
 
-  /**
-   * A primary key cell opens its row as an object (double-click pinned, Enter in the preview tab). Enter on a
-   * reference opens its target like a click, on serialized data or long text a value column; other cells edit.
-   */
+  /** Opens a key, reference, serialized or long text cell (`preview`: Enter) or edits it. */
   const openOrEdit = (at: CellPos, preview: boolean) => {
     const value = rows[at.row] ? rowValues(at.row)[at.col] : null;
     const kind = value?.kind;
@@ -191,53 +142,23 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
     startEdit(at);
   };
 
-  const openMenu = (e: React.MouseEvent, row: number, col: number) => {
-    select(row, col);
-    menu.open(
-      e,
-      cellMenu({
-        row,
-        col,
-        rows,
-        names,
-        value: rowValues(row)[col],
-        copy: (text, what) => void copyText(text, what),
-        copyValue: () => copyCell({ row, col }),
-        edit: onEditCell && { start: () => startEdit({ row, col }), setNull: () => onEditCell(row, col, null) },
-        rowActions: rowActions?.(row),
-      }),
-    );
-  };
+  const { openCellMenu, openColumnMenu, menuElement } = useGridMenus({ rows, names, rowValues, select, copyCell, startEdit, onEditCell, rowActions, columnMenu });
 
-  const openColumnMenu = async (e: React.MouseEvent, col: number) => {
-    if (!columnMenu) return;
-    e.preventDefault();
-    const at = { x: e.clientX, y: e.clientY };
-    const items = await columnMenu(col, at);
-    if (items.length > 0) menu.open(at, items);
-  };
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    const action = KEY_ACTIONS[e.metaKey ? `Mod+${e.key.toLowerCase()}` : e.key];
-    if (!action || !selected || rows.length === 0) return;
-    e.preventDefault();
-    const lastRow = rows.length - 1;
-    const lastCol = columns.length - 1;
-    action({
-      at: { row: clamp(selected.row, lastRow), col: clamp(selected.col, lastCol) },
-      lastCol,
-      pageRows: Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 0) / rowHeight) - 1),
-      moveTo: (row, col) => {
-        const target = clamp(row, lastRow);
-        const column = clamp(col, lastCol);
-        select(target, column);
-        virtualizer.scrollToIndex(target);
-        revealColumn(scrollRef.current, widths, column, pinned);
-      },
+  const onKeyDown = (e: React.KeyboardEvent) =>
+    handleGridKey(e, {
+      selected,
+      rowCount: rows.length,
+      colCount: columns.length,
+      viewport: scrollRef.current,
+      rowHeight,
+      select,
+      reveal,
       open: (at) => openOrEdit(at, true),
       copyValue: copyCell,
     });
-  };
+
+  const handlers: CellHandlers = { select, openOrEdit, openMenu: openCellMenu, setPeek };
+  const editor = editing && { ...editing, setText, cancel, commit };
 
   if (columns.length === 0) {
     return <div className="empty-state">No columns</div>;
@@ -293,49 +214,24 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
         })}
       </div>
       <div className="grid-inner" style={{ height: virtualizer.getTotalSize(), width: totalWidth }}>
-        {virtualizer.getVirtualItems().map((v) => {
-          const row = rows[v.index];
-          const values = rowValues(v.index);
-          const change = changes?.[v.index];
-          return (
-            <div key={v.key} className={`grid-row${rowChangeClass(change)}`} role="row" data-row-table={rowTable(values)} style={{ top: v.start, height: rowHeight, width: totalWidth }}>
-              {row.map((cell, ci) => (
-                <div
-                  key={ci}
-                  role="gridcell"
-                  className={cellClass(cell, v.index, ci, { selected, editing, change })}
-                  style={{ width: `var(--col-${ci})` }}
-                  data-db-change={storedCell(change, ci) ? "" : undefined}
-                  onMouseEnter={storedCell(change, ci) ? (e) => setPeek({ row: v.index, col: ci, anchor: e.currentTarget.getBoundingClientRect(), altHeld: e.altKey }) : undefined}
-                  onMouseLeave={storedCell(change, ci) ? () => setPeek(null) : undefined}
-                  onMouseDown={() => select(v.index, ci)}
-                  onDoubleClick={() => openOrEdit({ row: v.index, col: ci }, false)}
-                  onContextMenu={(e) => openMenu(e, v.index, ci)}
-                >
-                  {samePos(editing, v.index, ci) ? (
-                    <input
-                      className="cell-input"
-                      autoFocus
-                      aria-label="Edit cell"
-                      value={editing.text}
-                      onChange={(e) => setText(e.target.value)}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === "Escape") cancel();
-                        if (e.key === "Enter") commit();
-                      }}
-                      onBlur={cancel}
-                    />
-                  ) : (
-                    <Value value={values[ci]} onOpen={openValue} density="grid" />
-                  )}
-                </div>
-              ))}
-            </div>
-          );
-        })}
+        {virtualizer.getVirtualItems().map((v) => (
+          <GridRow
+            key={v.key}
+            index={v.index}
+            cells={rows[v.index]}
+            values={rowValues(v.index)}
+            change={changes?.[v.index]}
+            top={v.start}
+            height={rowHeight}
+            width={totalWidth}
+            selectedCol={selected?.row === v.index ? selected.col : null}
+            editor={editor?.row === v.index ? editor : null}
+            handlers={handlers}
+            openValue={openValue}
+          />
+        ))}
       </div>
-      {menu.element}
+      {menuElement}
       {targetMenu}
       {peek && peekStored && <ChangePeek altHeld={peek.altHeld} column={columns[peek.col].name} shown={rows[peek.row][peek.col]} stored={peekStored} anchor={peek.anchor} />}
     </div>
