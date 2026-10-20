@@ -978,10 +978,11 @@ result and keeps what is loaded instead of failing on every click. What it looks
 - **State.** The `health` slice (`src/state/slices/health.ts`) keeps `health`, the lost sessions by id.
   `setHealth(event)` applies a `session_health` event: a newly lost session toasts `Lost the connection to
   <name>`; one that is back is dropped, toasts `Reconnected to <name>` and, when it is the active session,
-  reloads the view (`refreshView`, as ⌘R). Only events change the state: they arrive in order, while a
-  command's reply may overtake them.
-- **Retry.** `retryConnection(sessionId, quiet?)` calls `api.reconnectSession`; when the reply is still
-  `down` it toasts `Still no connection to <name>: <error>` (not when `quiet`). `retryLostSessions()` retries
+  reloads the view (`refreshView`, as ⌘R). Events change the state: they arrive in order, while a command's
+  reply may overtake them; the one exception is an `ok` reply to a retry, which is applied as well, because Rust
+  sends no event for a session it already considers healthy.
+- **Retry.** `retryConnection(sessionId, quiet?)` calls `api.reconnectSession`; an `ok` reply goes through
+  `setHealth`; when the reply is still `down` it toasts `Still no connection to <name>: <error>` (not when `quiet`). `retryLostSessions()` retries
   every `down` session quietly; `App.tsx` runs it on window `focus`. The command `connection.retry` (Retry
   connection, palette only, while the active session is `down`) runs `retryConnection`.
 - **Toolbar.** `ConnectionHealth` (`src/components/ConnectionHealth.tsx`, after `ConnectionText` in

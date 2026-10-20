@@ -50,8 +50,10 @@ export const healthSlice: Slice<HealthSlice> = {
 
     async retryConnection(sessionId, quiet = false) {
       try {
-        // The state itself arrives as events, in order; this reply may overtake them.
+        // The state arrives as events, in order, and this reply may overtake them; only an `ok` reply is applied too,
+        // since Rust sends no event for a session it already considers healthy.
         const health = await api.reconnectSession(sessionId);
+        if (health.state === "ok") get().setHealth({ sessionId, health });
         if (!quiet && health.state === "down") get().toast("info", `Still no connection to ${nameOf(get(), sessionId)}: ${health.error}`);
       } catch (e) {
         if (!quiet) fail(e, "Retry failed");

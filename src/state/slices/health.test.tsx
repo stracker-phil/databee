@@ -110,12 +110,22 @@ describe("connection health", () => {
       lost("s1");
     });
 
-    it("asks Rust to reconnect the session and leaves the recorded health to the events", async () => {
+    it("asks Rust to reconnect and clears the entry when the reply is ok, since Rust sends no event then", async () => {
       mocked.reconnectSession.mockResolvedValue({ state: "ok" });
+
+      await act(() => store().retryConnection("s1"));
+
+      expect(mocked.reconnectSession).toHaveBeenCalledWith("s1");
+      expect(store().health).toEqual({});
+      expect(toasts()).toEqual([{ kind: "success", message: "Reconnected to Shop", count: 1 }]);
+      await vi.waitFor(() => expect(mocked.refreshSchema).toHaveBeenCalledWith("s1"));
+    });
+
+    it("leaves the recorded health to the events when the reply is reconnecting", async () => {
+      mocked.reconnectSession.mockResolvedValue(reconnecting);
 
       await store().retryConnection("s1");
 
-      expect(mocked.reconnectSession).toHaveBeenCalledWith("s1");
       expect(store().health).toEqual({ s1: down() });
       expect(toasts()).toEqual([]);
     });
