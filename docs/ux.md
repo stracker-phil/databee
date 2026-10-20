@@ -81,9 +81,14 @@ Derived tokens in `src/styles/theme.css`, the same for every scheme:
 | `--o2`, `--o3` | `--text` at 62% and 40% | secondary and tertiary text (see opacity levels) |
 | `--cell` | `--accent` at 24% | hovered value |
 | `--sel` | `--accent` at 20% | selected row or sidebar entry, focused value |
-| `--lit` | `--accent` at 15% | linked table highlight |
+| `--lit` | `--accent` at 15% | linked band highlight |
+| `--accent-quiet` | `--accent` at 45%, the rest `--a-graphite` (oklab) | the accent of a pane beside the active one |
+| `--bg-quiet` | `--bg` at 70%, the rest `--chrome` | the background of a pane beside the active one |
+| `--scrollbar-size` | 8px | scrollbar track, both directions |
+| `--scrollbar-thumb`, `-hover`, `-active` | `--o3` at 55%, `--o3`, `--o2` | scrollbar thumb |
 | `--pad` | 1, 3, 5 or 8px | row padding (see row anatomy) |
 | `--row-h` | `20px + 2 × --pad` (the line grows with data sizes above 12.5px) | row height for CSS and the virtualizer |
+| `--grid-head-h` | `2 × --pad` + 1.3 × (data size + type size) + 1px | a grid header with its type line |
 | `--fs-small`, `--fs-base`, `--fs-large` | 11.5, 13 and 17px in rem | see type |
 | `--font-ui`, `--font-mono` | Geist, JetBrains Mono | bundled defaults; Settings accepts any installed family |
 
@@ -137,7 +142,9 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
   show the column name in mono and its type below it in `--o3` small text. Table groups always have one, so
   every value is labelled.
 - **Sidebar items** (`.si`): 8px inset, 5px radius, mono, secondary text; hover `--row-hover`; the active
-  table `--sel`. History entries use the same row.
+  table `--sel` with its name in the accent. It is the only entry with a background besides the hovered one;
+  a linked table only changes its text (see [linked table highlight](#section-header-band)). History entries
+  use the same row.
 
 ## Section header band
 
@@ -180,8 +187,13 @@ column name, type below) with the table's full columns, 12 rows high before it s
 
 **Linked table highlight:** hovering a table in the sidebar lights every band of that table
 (`--lit` background, 3px accent bar on the left, accent table name); hovering a band lights its sidebar
-entry (`--lit` and a 1px accent outline). Hovering a value lights only its provenance table in the sidebar; hovering
-anywhere else on a row of a known table (Document, grid, readout, palette hit) does the same for its table.
+entry (its name in the accent; the icon keeps its color; no background). Hovering a value lights only its provenance table in the
+sidebar (its name in the accent); hovering anywhere else on a row of a known table (Document, grid, readout,
+palette hit) does the same for its table. The selected table keeps its `--sel` background, so at most one
+entry has one; lit as well, it adds a 1px accent outline.
+
+**Band layout:** the band is one line. The table name keeps its icon on its line and is never wrapped; the
+relation takes the free space and is cut with an ellipsis first, then the name; the count always shows.
 
 ## Inputs
 
@@ -293,7 +305,10 @@ value, else the current address. The Hover column is what the status bar shows.
   by side: at most **Panes side by side** (Settings → Appearance → Layout: 1, 2 or 3; default 2), and only as
   many as fit at 560px each (one always). The panes end at the newest column unless the active one lies further
   left; the other columns are hidden and live only in the trail. Value columns are panes too. While several
-  panes show, the active one has a 2px accent line on top; `h`/`l` move it (to a hidden column too, which then
+  panes show, the active one has a 2px accent line on top and the others are quiet: their accent leans toward
+  graphite (`--accent-quiet`, so keys, links, the focused value's outline and `--sel` in them are muted), their
+  background toward chrome (`--bg-quiet`) and their content is at 96% opacity, so one pane and one strong focus
+  ring stand out. A single pane is never quiet; `h`/`l` move it (to a hidden column too, which then
   shows), a click in a pane activates it; ⌘⌥← / ⌘⌥→ do the same from anywhere in the tab (the keyboard focus
   moves into the pane, also from the sidebar), but not while text is edited. Every column after the first has a
   close button (×) in its header, which pops back to the column left of it; ⌘⇧W does that for the active pane.
@@ -301,6 +316,17 @@ value, else the current address. The Hover column is what the status bar shows.
   as a pane (⌘W closes the tab). ⌘⌥↵ opens the active pane's row (a value column's: the row it came from) as a
   tab of its own, not a preview, and leaves the current tab as it is; a tab rooted at that row is reused. It is
   offered for every pane whose row is not the tab's first row. Back and forward restore the stack each address had.
+- **Scrollbars:** one style for every scroll box (`app.css`, scrollbars): a transparent 8px track
+  (`--scrollbar-size`) with a rounded 6px thumb in `--scrollbar-thumb` (stronger on hover and drag), the same
+  size vertically and horizontally, no arrow buttons, a transparent corner. A styled scrollbar takes its own
+  space whatever macOS's "Show scroll bars" setting, so it never covers the last row or column: a wide table
+  in a document grows by the bar's height below its last row (its thumb shows only while the table is
+  hovered), and a Rows view grid is as tall as its header,
+  rows and a sideways bar (at most 12 rows). Panes, the sidebar, value columns, the Project page, the readout
+  and Settings keep the vertical bar's gutter (`scrollbar-gutter: stable`), so content doesn't shift when it
+  starts to scroll; in the sidebar the gutter is the items' right inset. Boxes with rounded corners (dialogs,
+  the palette, popovers, toasts, autocompletion) keep the thumb clear of them. The tab bar scrolls without a
+  bar.
 - **Pane dividers:** a `--line` hairline between two panes; dragging it (or ← / → while it has the focus)
   resizes the two panes next to it, never below 560px; a double-click makes all panes equal. The widths belong
   to the tab (not saved, not in history) and start equal again when the number of panes changes.

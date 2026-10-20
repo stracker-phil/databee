@@ -1,5 +1,5 @@
-/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import process from "node:process";
 
@@ -20,5 +20,7 @@ export default defineConfig(() => ({
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
     globals: false,
+    // Agent worktrees under .claude/ hold their own copies of the tests.
+    exclude: [...configDefaults.exclude, ".claude/**"],
   },
 }));

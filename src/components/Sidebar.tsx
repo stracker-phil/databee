@@ -94,7 +94,6 @@ function TablesPanel() {
   const activeTab = useStore(selectActiveTab);
   const activeTable = tableOf(activeTab);
   const hoverTable = useStore((s) => s.hover.table);
-  const hoverLinked = useStore((s) => s.hover.linked);
   const { loadTables, loadDatabases, openTableTab, openQueryTab } = useStore.getState();
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -203,7 +202,7 @@ function TablesPanel() {
                 {tableRows.map((tr) => {
                   const t = tr.table;
                   const active = activeTable?.database === d.name && activeTable.table === t.name;
-                  const lit = d.name === current && hoverTable === t.name ? (hoverLinked ? " lit" : " lit-value") : "";
+                  const lit = d.name === current && hoverTable === t.name ? " lit" : "";
                   const meta = t.isView ? "view" : t.rowsEstimate != null ? compactCount(t.rowsEstimate) : null;
                   return (
                     <div

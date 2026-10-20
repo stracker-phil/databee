@@ -22,8 +22,6 @@ import { AlsoLinked } from "./AlsoLinked";
 import { GroupHeader } from "./GroupHeader";
 import { useCollapsedGroups } from "./useCollapsedGroups";
 
-const VISIBLE_ROWS = 12;
-
 const sameKey = (a: RowKey, b: RowKey) =>
   a.length === b.length && a.every((p, i) => p.column.toLowerCase() === b[i].column.toLowerCase() && p.value === b[i].value);
 
@@ -40,11 +38,6 @@ function useGroupPage(sessionId: string | null, database: string, group: Group) 
   const { data: page, error } = useApiResult(key, () => api.browseTable(sessionId!, request!), { keepData: true });
   return { browsed: !!where, page, error };
 }
-
-/** Grid height for `rows` rows plus the two-line column header. */
-const gridHeight = (rows: number) => ({
-  height: `calc(${Math.max(1, Math.min(VISIBLE_ROWS, rows))} * var(--row-h) + 2.8rem)`,
-});
 
 interface GridProps {
   sessionId: string;
@@ -65,7 +58,7 @@ function BrowsedGrid({ page, sessionId, owner, focus }: GridProps & { page: Brow
     void useStore.getState().queueChange({ type: "setCell", database: owner.database, table: page.table, ...key, column: page.result.columns[col].name, value });
   };
   return (
-    <div className="rows-grid" style={gridHeight(page.result.rows.length)}>
+    <div className="rows-grid">
       <ResultsGrid
         columns={page.result.columns}
         rows={page.result.rows}
@@ -106,7 +99,7 @@ function DocumentGrid({ group, sessionId, owner, focus }: GridProps & { group: G
   const rows = useMemo(() => values.map((row) => row.map((v) => v.raw)), [values]);
   const cell = useMemo(() => cellOf(values, focus), [values, focus]);
   return (
-    <div className="rows-grid" style={gridHeight(rows.length)}>
+    <div className="rows-grid">
       <ResultsGrid columns={columns} rows={rows} source={{ sessionId, resultId: 0 }} valueAt={(row, col) => values[row][col]} owner={owner} focus={cell} />
     </div>
   );

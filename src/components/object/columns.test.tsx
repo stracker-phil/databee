@@ -159,6 +159,58 @@ describe("column stack", () => {
     });
   });
 
+  describe("quiet panes", () => {
+    async function drilled() {
+      await openOrder();
+      drillToUser();
+      await screen.findByText("ada");
+    }
+
+    it("marks the active pane and quiets the pane beside it", async () => {
+      await drilled();
+      expect(userColumn()).toHaveClass("active");
+      expect(userColumn()).not.toHaveClass("quiet");
+      expect(orderColumn()).toHaveClass("quiet");
+      expect(orderColumn()).not.toHaveClass("active");
+    });
+
+    it("moves the quiet class when the other pane is activated by the mouse", async () => {
+      await drilled();
+      fireEvent.mouseDown(within(orderColumn()).getByText("wc-processing"));
+      expect(orderColumn()).toHaveClass("active");
+      expect(orderColumn()).not.toHaveClass("quiet");
+      expect(userColumn()).toHaveClass("quiet");
+      expect(userColumn()).not.toHaveClass("active");
+    });
+
+    it("moves the quiet class when the active pane changes with h", async () => {
+      await drilled();
+      await userEvent.keyboard("h");
+      expect(orderColumn()).not.toHaveClass("quiet");
+      expect(userColumn()).toHaveClass("quiet");
+    });
+
+    it("neither marks nor quiets a single column", async () => {
+      await openOrder();
+      expect(orderColumn()).not.toHaveClass("active");
+      expect(orderColumn()).not.toHaveClass("quiet");
+    });
+
+    it("neither marks nor quiets the only pane shown when one pane is allowed", async () => {
+      connectWithMaxPanes(mocked, 1);
+      await drilled();
+      expect(userColumn()).not.toHaveClass("active");
+      expect(userColumn()).not.toHaveClass("quiet");
+    });
+
+    it("neither marks nor quiets a maximized pane", async () => {
+      await drilled();
+      act(() => useStore.getState().toggleMaximized(activeObject().id));
+      expect(userColumn()).not.toHaveClass("active");
+      expect(userColumn()).not.toHaveClass("quiet");
+    });
+  });
+
   describe("hidden columns", () => {
     beforeEach(() => {
       restoreWidth = stubOffsetWidth(700);

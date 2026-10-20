@@ -18,14 +18,22 @@
   --accent: var(--a-orange);
   --o2: color-mix(in srgb, var(--text) 62%, transparent);
   --o3: color-mix(in srgb, var(--text) 40%, transparent);
-  --cell: color-mix(in srgb, var(--accent) 24%, transparent);
-  --sel: color-mix(in srgb, var(--accent) 20%, transparent);
-  --lit: color-mix(in srgb, var(--accent) 15%, transparent);
+  /* A pane beside the active one (.column.quiet): its accent toward graphite, its background toward chrome. */
+  --accent-quiet: color-mix(in oklab, var(--accent) 45%, var(--a-graphite));
+  --bg-quiet: color-mix(in srgb, var(--bg) 70%, var(--chrome));
+
+  /* One scrollbar everywhere (app.css, scrollbars): an 8px track, a 6px thumb. */
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: color-mix(in srgb, var(--o3) 55%, transparent);
+  --scrollbar-thumb-hover: var(--o3);
+  --scrollbar-thumb-active: var(--o2);
 
   /* Row padding step 2; lib/theme.ts sets the chosen step. The line grows past 20px only for large
      data font sizes, so rows never clip their text. */
   --pad: 3px;
   --row-h: calc(max(20px, var(--data-font-size) * 1.6) + 2 * var(--pad));
+  /* A grid header with a type line (app.css, grid): the name and the type at line-height 1.3, --pad around, a hairline. */
+  --grid-head-h: calc(2 * var(--pad) + 1.3 * (var(--data-font-size) + 0.808rem) + 1px);
 
   --radius-sm: 0.462rem;
   --radius: 0.692rem;
@@ -36,6 +44,13 @@
   --text-tertiary: var(--o3);
   --chart-green: var(--style-green);
   --chart-orange: var(--a-orange);
+}
+
+/* Derived from the accent wherever it is set: a quiet pane sets its own. */
+:root, .column.quiet {
+  --cell: color-mix(in srgb, var(--accent) 24%, transparent);
+  --sel: color-mix(in srgb, var(--accent) 20%, transparent);
+  --lit: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 :root[data-accent="gold"] { --accent: var(--a-gold); }

@@ -45,12 +45,13 @@ function Column({ tab, column, index, shown, share, beside, canMaximize }: Colum
   const maximized = !!tab.maximized;
   const pane = useMemo(() => (canMaximize ? { tabId: tab.id, index, maximized } : null), [canMaximize, tab.id, index, maximized]);
   const active = index === tab.active;
-  const classes = ["column", active && beside ? "active" : "", column.kind === "value" ? "value-column" : ""].filter(Boolean).join(" ");
+  const quiet = beside && !active;
+  const classes = ["column", active && beside ? "active" : "", quiet ? "quiet" : "", column.kind === "value" ? "value-column" : ""].filter(Boolean).join(" ");
   const label = columnLabel(column);
   return (
     <ColumnContext.Provider value={place}>
       <PaneContext.Provider value={pane}>
-        <QuietPaneContext.Provider value={beside && !active}>
+        <QuietPaneContext.Provider value={quiet}>
           <section
             className={classes}
             style={{ flexGrow: share, minWidth: beside ? MIN_PANE_WIDTH : undefined }}

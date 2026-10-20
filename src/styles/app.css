@@ -20,6 +20,24 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 
+/* ---------- scrollbars ---------- */
+/* One style for every scroll box (docs/ux.md, Scrollbars): a transparent 8px track with a rounded 6px thumb,
+   the same both ways, no buttons. A styled scrollbar takes its own space in WebKit, whatever macOS's "Show
+   scroll bars" says, so it never covers the last row or column. */
+::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar-thumb {
+  border: 1px solid transparent; border-radius: var(--scrollbar-size); background: var(--scrollbar-thumb) padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
+::-webkit-scrollbar-thumb:active { background-color: var(--scrollbar-thumb-active); }
+/* Document sections keep their bar's space but show the thumb only while hovered, so a page of small tables
+   is not lined with bars. */
+.wide-table:not(:hover)::-webkit-scrollbar-thumb { background-color: transparent; }
+/* Boxes with rounded corners keep the thumb clear of them. */
+:is(.dialog, .palette-list, .value-counts-list, .toast-details, .recents, .cm-tooltip-autocomplete > ul)::-webkit-scrollbar-track { margin: 0.462rem 0; }
+
 /* ---------- primitives ---------- */
 .btn {
   display: inline-flex; align-items: center; gap: 0.462rem;
@@ -132,24 +150,28 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .sidebar-filter input { font-size: var(--fs-small); }
 .sidebar-caption { padding: 0.154rem 1.231rem 0.308rem; font-size: var(--fs-small); color: var(--o3); }
 .sidebar-head .sidebar-caption { flex: 1; padding: 0 0.308rem; }
-.sidebar-body { flex: 1; overflow: auto; padding: 0 0 0.769rem; }
-/* Sidebar items share the row anatomy: --pad around a 20px line, 8px inset, 5px radius (docs/ux.md). */
+.sidebar-body { flex: 1; overflow: auto; padding: 0 0 0.769rem; scrollbar-gutter: stable; }
+/* Sidebar items share the row anatomy: --pad around a 20px line, 8px inset, 5px radius (docs/ux.md). On the
+   right the scrollbar's gutter is the inset. */
 .si {
   display: flex; align-items: center; gap: 0.462rem; margin: 0 8px; padding: var(--pad) 8px; line-height: 20px;
   border-radius: 5px; color: var(--o2); cursor: default; white-space: nowrap;
   font-family: var(--font-mono); font-size: var(--data-font-size);
 }
+.sidebar-body .si { margin-right: calc(8px - var(--scrollbar-size)); }
 .si:hover { background: var(--row-hover); color: var(--text); }
 .si.sel { background: var(--sel); color: var(--text); }
+.si.sel .label { color: var(--accent); }
 .si:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .si .label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .si .label.current { color: var(--text); font-weight: 600; }
 .si .meta { color: var(--o3); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
 .si svg { flex: none; color: var(--o3); }
 .si.system .label { color: var(--o3); }
-/* Linked table highlight (docs/ux.md): a hovered band or table link lights its entry; a hovered value, lighter. */
-.si.lit { background: var(--lit); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
-.si.lit-value { background: var(--lit); color: var(--text); }
+/* Linked table highlight (docs/ux.md): only the selected table has a background, so a lit entry changes its name
+   alone; the icon keeps its color. The selected table, lit as well, adds a 1px accent outline. */
+.si.lit .label { color: var(--accent); }
+.si.sel.lit { box-shadow: inset 0 0 0 1px var(--accent); }
 .tree-children { padding-left: 1.077rem; }
 .sidebar-empty { padding: 0.462rem 1.231rem; color: var(--o3); font-size: var(--fs-small); }
 
@@ -324,7 +346,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .value-head { display: flex; align-items: center; gap: 0.462rem; padding: 0.615rem 0.769rem; border-bottom: 1px solid var(--line); }
 .value-head .tn { color: var(--o2); font-family: var(--font-mono); font-size: var(--data-font-size); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .value-head .key { color: var(--accent); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: nowrap; }
-.value-body { flex: 1; overflow: auto; padding: 0.769rem; }
+.value-body { flex: 1; overflow: auto; padding: 0.769rem; scrollbar-gutter: stable; }
 .value-body pre { margin: 0; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-word; user-select: text; }
 .value-body .hint { margin-top: 8px; }
 .tab-columns { flex: 1; min-height: 0; display: flex; }
@@ -436,7 +458,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 /* The title bar stays put; only the page below it scrolls. */
 .settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
 .settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; padding: 1.231rem 1.538rem 0.769rem; border-bottom: 1px solid var(--line); }
-.settings-body { flex: 1; min-height: 0; overflow: auto; padding: 0.923rem 1.538rem 1.846rem; display: flex; flex-direction: column; gap: 0.923rem; }
+.settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0.923rem 1.538rem 1.846rem; display: flex; flex-direction: column; gap: 0.923rem; }
 .settings-pane h2 { font-size: 1.231rem; }
 .settings-intro { margin: 0 0 0.154rem; color: var(--o2); line-height: 1.45; }
 .dialog .settings-group { display: flex; flex-direction: column; gap: 0.462rem; border: none; padding: 0; }
@@ -570,12 +592,16 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 
 /* ---------- column stack ---------- */
 /* The trail above the panes, then the panes side by side with hairline dividers (Splitter); the active pane has
-   an accent line on top while others show next to it. */
+   an accent line on top while others show next to it. Those others are quiet (docs/ux.md, Layout): their accent
+   leans toward graphite (keys, links, focus, selection; theme.css derives --cell, --sel, --lit from it again),
+   their background toward chrome and their content a little lighter, so one pane and one focus ring stand out. */
 .object-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .stack { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
 .stack > .column { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; outline: none; }
 .stack > .splitter { flex: none; }
 .stack > .column.active::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: var(--accent); z-index: 1; pointer-events: none; }
+.stack > .column.quiet { --accent: var(--accent-quiet); --bg: var(--bg-quiet); background: var(--bg); }
+.stack > .column.quiet > * { opacity: 0.96; }
 
 /* ---------- trail ---------- */
 /* One line in the UI font; the crumbs of the shown panes share a --band pill. Folded crumbs sit in "…" menus,
@@ -657,11 +683,11 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 
 /* ---------- object view ---------- */
 /* The header block, section bands (.sh) and rows (.row, .kv, .hdr) share the row anatomy. */
-.object { flex: 1; min-height: 0; overflow: hidden auto; overflow-anchor: none; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.object { flex: 1; min-height: 0; overflow: hidden auto; overflow-anchor: none; scrollbar-gutter: stable; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .object-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 1.231rem; border-bottom: 1px solid var(--line); }
 .object-title { display: flex; align-items: center; gap: 0.923rem; min-width: 0; }
 .object-title > * { flex: none; }
-.object-title > .tn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.object-title > .tn { flex: 0 1 auto; min-width: min(12ch, 45%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .object-title > .spacer { flex: 1 1 0; }
 .object-title .tn { font-family: var(--font-mono); font-size: var(--fs-large); color: var(--o2); }
 .object-title button.tn { border: none; background: none; padding: 0; }
@@ -676,15 +702,21 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
   display: flex; align-items: baseline; gap: 0.923rem; margin-top: 28px; padding: 6px 12px;
   background: var(--band); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: default;
 }
-:is(.object, .project, .readout) .sh .tn { border: none; background: none; padding: 0; font-family: var(--font-mono); font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+/* The name keeps its icon on its line and ends in an ellipsis only when nothing else is left to give; the count stays. */
+:is(.object, .project, .readout) .sh .tn {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: none; background: none; padding: 0; font-family: var(--font-mono); font-size: var(--fs-base); font-weight: 600; color: var(--text);
+}
 :is(.object, .project, .readout) .sh .tn.sans { font-family: var(--font-ui); }
 .object .sh button.tn:hover { text-decoration: underline; }
-:is(.object, .project, .readout) .sh .via { color: var(--o2); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-:is(.object, .project, .readout) .sh .cnt { color: var(--o3); font-size: var(--fs-small); white-space: nowrap; }
+/* The relation takes the free space (the spacer after it goes), so it is cut first and the name only once it is gone. */
+:is(.object, .project, .readout) .sh .via { flex: 1 1 0; color: var(--o2); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+:is(.object, .project, .readout) .sh .via + .spacer { display: none; }
+:is(.object, .project, .readout) .sh .cnt { flex: none; color: var(--o3); font-size: var(--fs-small); white-space: nowrap; }
 .object .sh.lit { background: var(--lit); box-shadow: inset 3px 0 0 var(--accent); }
 .object .sh.lit .tn { color: var(--accent); }
 :is(.object, .project, .readout) .sh .sh-toggle {
-  align-self: center; display: inline-flex; margin-left: -0.462rem; padding: 0.154rem; border: none; border-radius: 3px;
+  flex: none; align-self: center; display: inline-flex; margin-left: -0.462rem; padding: 0.154rem; border: none; border-radius: 3px;
   background: none; color: var(--o3);
 }
 :is(.object, .project, .readout) .sh .sh-toggle:hover { color: var(--text); }
@@ -738,14 +770,16 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
   content: ""; position: absolute; inset: 0 0 0 auto; width: 1px; background: var(--line); pointer-events: none;
 }
 .rows-view section { display: flex; flex-direction: column; }
-.rows-grid { display: flex; flex-direction: column; min-height: 0; }
+/* A group's grid is as tall as its header, its rows and a sideways scrollbar, at most 12 rows; then it scrolls. Block
+   layout: WebKit leaves the scrollbar out of an auto-height flex item, which would then scroll by its height. */
+.rows-grid > .grid { max-height: calc(12 * var(--row-h) + var(--grid-head-h) + var(--scrollbar-size)); }
 .rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); overflow-wrap: anywhere; }
 
 /* ---------- project page ---------- */
 /* One header row, then the overview (bands "Your changes" and "Problems", one sentence-like row each) or every
    rule: a filter and a band per table with its rules as in the object view; read-only rows in --o2, switched
    off ones struck. The rule forms open in a palette-styled sheet (.rule-sheet). */
-.project { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.project { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .project section { display: flex; flex-direction: column; }
 :is(.project, .rule-sheet) .act { border: none; background: none; padding: 0; font: inherit; color: var(--accent); white-space: nowrap; }
 :is(.project, .rule-sheet) .act:hover:not(:disabled) { color: var(--text); }
@@ -816,7 +850,7 @@ details[open] > summary > svg:first-child { transform: rotate(90deg); }
 
 /* ---------- readout ---------- */
 /* A header block, then section bands as in the object view; tables align their columns with subgrid. */
-.readout { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.readout { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .readout-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 0.308rem; }
 .readout-title { margin: 0; font-family: var(--font-mono); font-size: var(--fs-large); font-weight: 600; color: var(--text); }
 .readout-meta { color: var(--o2); font-family: var(--font-mono); font-size: var(--fs-small); }

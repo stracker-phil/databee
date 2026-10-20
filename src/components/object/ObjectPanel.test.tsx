@@ -460,11 +460,10 @@ describe("ObjectPanel", () => {
       expect(sidebarRow("wp_wc_orders")).not.toHaveClass("lit");
     });
 
-    it("lights only the sidebar row, more softly, when a value is hovered", async () => {
+    it("lights only the sidebar row, not the bands, when a value is hovered", async () => {
       await openOrder();
       await userEvent.hover(screen.getByText("119.00"));
-      await waitFor(() => expect(sidebarRow("wp_wc_orders")).toHaveClass("lit-value"));
-      expect(sidebarRow("wp_wc_orders")).not.toHaveClass("lit");
+      await waitFor(() => expect(sidebarRow("wp_wc_orders")).toHaveClass("lit"));
       for (const band of bandsOf("wp_wc_orders")) expect(band).not.toHaveClass("lit");
     });
   });

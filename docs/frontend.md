@@ -278,7 +278,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 |---|---|
 | Shell | `Toolbar`, `StatusBar`, `PendingTray`, `Splitter` (resizable panes, persisted per connection; the column stack's pane dividers), `ErrorBoundary`, `Field` (`InsetField`: the macOS field frame with icon and key cap; `KeyCap`), `LongList` (see [Rendering](#rendering)) |
 | Connect | `ConnectScreen` / `ConnectForm`: TCP or socket, recent connections |
-| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit` / `lit-value`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
+| Database workspace | `Sidebar` (tables tree with filter and arrow-key navigation over a roving `tabIndex`, history reloaded on `historyVersion`; table rows of the current database carry `data-table` and take `lit`), `Tabs` (a table or query tab inside `WithValueColumn`, which adds its value column on the right without moving the tab in the tree), `QueryTab`, `QueryEditor` (CodeMirror, MySQL dialect, schema completion), `ResultsGrid` (virtualized, resizable, sortable, keyboard navigation, copy as TSV/JSON, inline edit, a column header menu from `columnMenu`; `grid/`: `useColumnSizing` (measured, saved and dragged widths, auto-fit), `useCellEditing` (the inline editor, full text of `longText` cells) and the pure `cellMenu` (the cell context menu); its other hooks and `fitWidth` in `gridHooks.ts`), `ValueCounts` (the value counts popover, see [Value counts](#value-counts)), `TableTab` (paged browse, WHERE/id filter, column filter chip; the Structure view in `structure/`, see [Structure view](#structure-view)), `ErrorPanel` (query and load errors), `ValueTree` (PHP/JSON decode) |
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `AlsoLinked`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
@@ -620,7 +620,8 @@ the [readout](#readout) lists.
   value gets an accent outline on `--sel`, and stays in view as `j`/`k` move it. `+n keys` / `+n rows` under a
   capped group switches to Rows and scrolls to that group. Zero-row groups collapse into `AlsoLinked` ("Also linked: …").
 - **`RowsView`:** per group with a table its band, the `WHERE` of its rows address, and a compact `ResultsGrid`
-  (12 rows high, then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and
+  (as tall as its header, rows and a sideways scrollbar, at most 12 rows (`.rows-grid` `max-height` from
+  `--row-h` and `--grid-head-h`), then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and
   editable cells, or, for a group no address names (patterns), its document rows read-only.
 - **Toggle:** `object.viewDocument` / `object.viewRows` (`⌘1` / `⌘2`, scope `object`; `Tab` stays focus
   navigation) and the segmented control call `toggleObjectView(tabId, index?)` / `setObjectView(tabId, view, focus?, index?)` on the
@@ -637,7 +638,8 @@ the [readout](#readout) lists.
   keeps its band and drops its body and `+n` button; in Rows its grid does not mount, so nothing is browsed. A
   click or key in the view ends `useViewScroll`'s offset restore, so collapsing does not jump back.
 - **Linked table highlight:** a section band takes `lit` while `hover` is a table link to its table; sidebar
-  rows take `lit` for a link and `lit-value` (lighter) for a hovered value of that table.
+  rows take `lit` for a link or a hovered value of that table: the name in the accent, the icon unchanged, no
+  background; only the selected row (`sel`) has one.
 
 ### Live mode, snapshots, compare
 
@@ -712,7 +714,8 @@ tab's pane layout (never stored). The `columns` slice
 `maxPanes` (`selectMaxPanes`, the `maxPanes` setting), as many as fit at `MIN_PANE_WIDTH` (560px) with
 `DIVIDER_WIDTH` between them, one always, ending at the newest unless the active column lies further left. A
 maximized tab shows only the active column. Only the shown columns mount; a hidden one has no DOM. Each pane is
-a `section` (`aria-current` when active, a 2px accent line on top while several show) with `flex-grow` from
+a `section` (`aria-current` when active; while several show, class `active` with a 2px accent line on top, the
+others class `quiet`, which mutes their accent and background, see [ux.md](ux.md#layout)) with `flex-grow` from
 `paneShares(tab.paneWidths, panes)` and, beside others, `min-width: MIN_PANE_WIDTH`. Shares of another number
 of panes are cleared (`useResetShares`), except while maximized. The active column takes the keyboard focus
 (`tabIndex=-1`) when it or the shown panes change and nothing outside the panel holds it (`useFocusActive`).
