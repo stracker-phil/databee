@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
+import { useLayoutEffect, useState, type CSSProperties, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 interface Target {
@@ -50,14 +50,15 @@ function styleOf({ label, row }: Target): CSSProperties {
 /**
  * While a `rowSelector` row is hovered and its `labelSelector` text is cut off, shows the whole text at once:
  * an overlay in the same font, color and background that continues the row past the edge of its scroll box.
- * A class change in the row (hover lighting) restyles it.
+ * It reads the row after the render that the same hover lights (`lit`), and again on later class changes.
  */
 export function useOverflowReveal(rowSelector: string, labelSelector: string) {
   const [target, setTarget] = useState<Target | null>(null);
   const [style, setStyle] = useState<CSSProperties>({});
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!target) return;
+    setStyle(styleOf(target));
     const observer = new MutationObserver(() => setStyle(styleOf(target)));
     observer.observe(target.row, { attributes: true, attributeFilter: ["class"], subtree: true });
     const hide = () => setTarget(null);
@@ -73,11 +74,9 @@ export function useOverflowReveal(rowSelector: string, labelSelector: string) {
   const onMouseOver = (e: MouseEvent) => {
     const row = e.target instanceof Element ? e.target.closest<HTMLElement>(rowSelector) : null;
     const label = row?.querySelector<HTMLElement>(labelSelector);
-    if (!row || !label || label.scrollWidth <= label.clientWidth) return setTarget(null);
-    if (target?.label === label) return;
-    const next = { label, row };
-    setTarget(next);
-    setStyle(styleOf(next));
+    const cutOff = !!row && !!label && label.scrollWidth > label.clientWidth;
+    if (!cutOff) setTarget(null);
+    else if (target?.label !== label) setTarget({ label, row });
   };
   const onMouseLeave = () => setTarget(null);
 
