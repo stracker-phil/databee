@@ -86,13 +86,14 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
   border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); box-shadow: var(--shadow-inset);
   color: var(--text); cursor: text;
 }
+.inset-field:has(> .keycap) { padding-right: calc((1.846rem - 2px - var(--keycap-h)) / 2); }
 .inset-field:focus-within { border-color: var(--accent); }
 .inset-field input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; outline: none; color: var(--text); }
 .inset-field input::placeholder { color: var(--o3); }
 .inset-field-icon { display: inline-flex; flex: none; color: var(--o3); }
 .keycap {
   flex: none; padding: 0 0.308rem; border: 1px solid var(--field-line); border-radius: 4px;
-  font-family: var(--font-mono); font-size: 0.846rem; line-height: 1.231rem; color: var(--o3); white-space: nowrap;
+  font-family: var(--font-mono); font-size: 0.846rem; line-height: calc(var(--keycap-h) - 2px); color: var(--o3); white-space: nowrap;
 }
 
 .field { display: flex; flex-direction: column; gap: 0.308rem; }
@@ -107,14 +108,15 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .o3 { color: var(--o3); }
 .spacer { flex: 1; }
 
-/* A field-styled track; the selected segment sits on the overlay surface. */
-.segmented { display: inline-flex; padding: 1px; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); }
+/* A field-styled track of square tabs; the selected one is underlined in the accent. */
+.segmented { display: inline-flex; overflow: hidden; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); }
 .segmented button {
   display: inline-flex; align-items: center; justify-content: center; gap: 0.308rem; white-space: nowrap;
-  height: 1.538rem; padding: 0 0.923rem; border: none; border-radius: 5px; background: transparent; color: var(--o2);
+  height: calc(1.538rem + 2px); padding: 0 0.923rem; border: none; border-radius: 0; background: transparent; color: var(--o2);
 }
-.segmented button:hover { color: var(--text); }
-.segmented button[aria-pressed="true"] { background: var(--pop); color: var(--text); box-shadow: var(--shadow-small); }
+.segmented button:has(.keycap) { padding-right: calc((1.538rem + 2px - var(--keycap-h)) / 2); }
+.segmented button:hover { background: var(--row-hover); color: var(--text); }
+.segmented button[aria-pressed="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
 
 .badge {
   display: inline-flex; align-items: center; height: 1.308rem; padding: 0 0.462rem;

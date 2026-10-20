@@ -69,8 +69,8 @@ function useBrowse(tab: TableTabState, primaryKey: string | null, ready: boolean
 }
 
 function placeholder(mode: FilterMode, primaryKey: string | null): string {
-  if (mode === "sql") return "WHERE …   e.g. post_type = 'page' AND post_status = 'draft'   ↵ to apply";
-  return primaryKey ? "Text in any column, '5' as text, or IDs: 3229, 3220-3229   ↵ to apply" : "Text in any column   ↵ to apply";
+  if (mode === "sql") return "WHERE …   e.g. post_type = 'page'";
+  return primaryKey ? "Text or IDs: 3229, 3220-3229" : "Text in any column";
 }
 
 interface FilterBarProps {
@@ -121,7 +121,7 @@ function FilterBar({ tabId, initial, mode, primaryKey, onApply, onToggleMode }: 
           className="filter-mode"
           data-stage="table:filter-mode"
           aria-label={mode === "sql" ? "SQL filter, switch to smart filter" : "Smart filter, switch to SQL"}
-          title={`${mode === "sql" ? "Switch to smart filter" : "Switch to SQL WHERE"}${modeKeys ? ` (${modeKeys})` : ""}`}
+          title={`${mode === "sql" ? "SQL WHERE condition. Switch to smart filter" : "Smart filter: text in any column, numbers as IDs, '5' as text. Switch to SQL WHERE"}${modeKeys ? ` (${modeKeys})` : ""}`}
           onClick={onToggleMode}
         >
           {mode === "sql" ? "SQL" : "Smart"}

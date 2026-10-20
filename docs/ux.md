@@ -231,11 +231,12 @@ Inputs look like inputs, never like rows.
   toolbar search field ("Order ID, email, PayPal ID, table…", `⌘K`) opens the palette; the sidebar filter
   carries `⌘⇧F`, the table filter bar `⌘F`. Plain `.input` controls (dialogs, Settings) share the frame
   without the icon. Key caps follow the user's bindings.
-- **Segmented control** (`.segmented`): a field-styled track with 1px padding; segments in `--o2`; the
-  selected segment on `--pop` with primary text and `--shadow-small`. Used for Settings choices, the
+- **Segmented control** (`.segmented`): a field-styled track (rounded, clipping its square tabs); segments in
+  `--o2` on the track, hover `--row-hover`; the selected segment in primary text over a 2px accent underline. Used for Settings choices, the
   Tables/History switch, Data/Structure in table tabs, the query results picker, PHP/JSON/Raw in value
   columns and Document/Rows.
-- **Key cap:** mono 11px, `--o3`, 1px `--field-line` border, 4px radius.
+- **Key cap:** mono 11px, `--o3`, 1px `--field-line` border, 4px radius, `--keycap-h` tall. A field or segment
+  that ends in one keeps the same gap to its right edge as above and below it.
 
 ## Overlays
 

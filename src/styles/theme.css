@@ -43,6 +43,9 @@
      around, a hairline; headers without a type line are shorter. */
   --grid-head-h: calc(2 * var(--pad) + 1.3 * (var(--data-font-size) + 0.808rem) + 1px);
 
+  /* A key cap's height (.keycap); a field or tab ending in one keeps the same gap beside it as above and below. */
+  --keycap-h: calc(1.231rem + 2px);
+
   --radius-sm: 0.462rem;
   --radius: 0.692rem;
   --radius-lg: 0.923rem;
