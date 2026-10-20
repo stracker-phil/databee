@@ -110,6 +110,18 @@ describe("SettingsDialog", () => {
     expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ confirmDestructive: !settings().confirmDestructive }));
   });
 
+  it("turns the table live check off and on from the Queries page", async () => {
+    render(<SettingsDialog />);
+    await userEvent.click(screen.getByRole("button", { name: "Queries" }));
+    const toggle = screen.getByRole("switch", { name: "Live check in table tabs" });
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ tableLiveCheck: false }));
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ tableLiveCheck: true }));
+  });
+
   it("closes without saving anything when nothing changed", async () => {
     render(<SettingsDialog />);
     await userEvent.click(screen.getByRole("button", { name: "Close settings" }));

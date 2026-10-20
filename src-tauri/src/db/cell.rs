@@ -404,6 +404,72 @@ mod tests {
     }
 
     #[test]
+    fn limited_cuts_only_text_beyond_the_limit() {
+        let long = "x".repeat(8);
+        let cases = [
+            (
+                "short text",
+                Cell::Text("hello".into()),
+                Cell::Text("hello".into()),
+            ),
+            (
+                "long text",
+                Cell::Text("hello!".into()),
+                Cell::LongText {
+                    len: 6,
+                    preview: "hello".into(),
+                },
+            ),
+            ("null", Cell::Null, Cell::Null),
+            (
+                "number",
+                Cell::Number(long.clone()),
+                Cell::Number(long.clone()),
+            ),
+            (
+                "temporal",
+                Cell::Temporal(long.clone()),
+                Cell::Temporal(long.clone()),
+            ),
+            ("json", Cell::Json(long.clone()), Cell::Json(long.clone())),
+            (
+                "bytes",
+                Cell::Bytes {
+                    len: 40,
+                    hex_preview: "00".repeat(16),
+                },
+                Cell::Bytes {
+                    len: 40,
+                    hex_preview: "00".repeat(16),
+                },
+            ),
+            (
+                "long text preview",
+                Cell::LongText {
+                    len: 99,
+                    preview: "abcdefgh".into(),
+                },
+                Cell::LongText {
+                    len: 99,
+                    preview: "abcdefgh".into(),
+                },
+            ),
+        ];
+        for (what, cell, expected) in cases {
+            assert_eq!(cell.limited(CellLimit(5)), expected, "{what}");
+        }
+    }
+
+    #[test]
+    fn limited_without_a_limit_keeps_long_text() {
+        let long = "x".repeat(10_000);
+        assert_eq!(
+            Cell::Text(long.clone()).limited(CellLimit::NONE),
+            Cell::Text(long)
+        );
+    }
+
+    #[test]
     fn long_text_serializes_with_camel_case_fields() {
         assert_eq!(
             serde_json::to_value(Cell::LongText {

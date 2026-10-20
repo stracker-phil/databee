@@ -15,6 +15,7 @@ export function settings(patch: Partial<Settings> = {}): Settings {
     rowLimit: 1000,
     queryTimeoutSecs: 30,
     liveIntervalSecs: 2,
+    tableLiveCheck: true,
     confirmDestructive: true,
     nullLabel: "NULL",
     maxCellChars: 500,

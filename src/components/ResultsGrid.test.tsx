@@ -482,3 +482,65 @@ describe("ResultsGrid pinned key column", () => {
     });
   });
 });
+
+describe("ResultsGrid changes prop", () => {
+  const rs = resultSet();
+  const read = { kind: "changed" as const, at: 0, hash: "h1", cells: [num("2"), text("Stored title")], columns: [1] };
+  const marked = () => screen.getAllByRole("gridcell").filter((c) => c.hasAttribute("data-db-change"));
+
+  beforeEach(() => connectedStore());
+
+  it("marks the cells whose stored value differs from the shown one", () => {
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: read }} />);
+    expect(marked()).toHaveLength(1);
+    expect(marked()[0]).toHaveTextContent("NULL");
+  });
+
+  it.each([
+    ["a removed row", { kind: "removed" as const, at: 0, hash: null, cells: null, columns: [] }],
+    ["a changed row not read yet", { kind: "changed" as const, at: 0, hash: null, cells: null, columns: [] }],
+    ["a changed row where only a hidden part differs", { ...read, columns: [] }],
+  ])("marks no cell of %s", (_name, change) => {
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: change }} />);
+    expect(marked()).toHaveLength(0);
+  });
+
+  it("shows old → new for a marked cell while Alt is held over it", () => {
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: read }} />);
+    fireEvent.mouseEnter(marked()[0], { altKey: true });
+    expect(screen.getByRole("tooltip")).toHaveTextContent("post_title changed in the database");
+    expect(screen.getByRole("tooltip")).toHaveTextContent("NULL → Stored title");
+    fireEvent.keyUp(window, { key: "Alt" });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("shows the overlay when Alt is pressed after the pointer entered", () => {
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: read }} />);
+    fireEvent.mouseEnter(marked()[0]);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Alt", altKey: true });
+    expect(screen.getByRole("tooltip")).toHaveTextContent("NULL → Stored title");
+  });
+
+  it("closes the overlay when the pointer leaves the cell", () => {
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} changes={{ 1: read }} />);
+    fireEvent.mouseEnter(marked()[0], { altKey: true });
+    fireEvent.mouseLeave(marked()[0]);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+});
+
+describe("ResultsGrid onEditingChange", () => {
+  beforeEach(() => connectedStore());
+
+  it("reports the inline editor opening and closing", async () => {
+    const rs = resultSet();
+    const onEditingChange = vi.fn();
+    render(<ResultsGrid columns={rs.columns} rows={rs.rows} source={source} onEditCell={vi.fn()} onEditingChange={onEditingChange} />);
+    expect(onEditingChange).toHaveBeenLastCalledWith(false);
+    await userEvent.dblClick(screen.getByText("Hello world"));
+    expect(onEditingChange).toHaveBeenLastCalledWith(true);
+    await userEvent.keyboard("{Escape}");
+    expect(onEditingChange).toHaveBeenLastCalledWith(false);
+  });
+});

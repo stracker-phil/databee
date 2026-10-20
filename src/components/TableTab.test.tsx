@@ -1,12 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api, EMPTY_UI_STATE, type BrowsePage, type Cell, type TableProfile, type TableStructure, type ValueCount } from "../api";
 import { useStore, type TableTab as TableTabState } from "../state/store";
-import { browsePage, connectedStore, num, resultSet, session, tableTab, text, value } from "../test/fixtures";
+import { browsePage, connectedStore, num, pendingChange, queryTab, resultSet, session, tableTab, text, value } from "../test/fixtures";
 import { TableTab } from "./TableTab";
 
 const mocked = vi.mocked(api, true);
@@ -291,6 +291,220 @@ describe("TableTab", () => {
       mocked.valueCounts.mockRejectedValue({ kind: "database", message: "Unknown column 'status'", code: "1054" });
       await showCounts();
       expect(await screen.findByText("Unknown column 'status'")).toBeInTheDocument();
+    });
+  });
+
+  describe("live check", () => {
+    const keys = [[{ column: "ID", value: "1" }], [{ column: "ID", value: "2" }]];
+    const keyedPage = (id = 1) => browsePage({ keys, result: resultSet({ id }) });
+    const request = { database: "db", table: "wp_posts", columns: ["ID", "post_title"], keys };
+    const stored = { row: 1, hash: "h1", cells: [num("2"), text("Stored title")], changed: [1] };
+    const tick = (ms = 4000) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+    const marked = () => screen.getAllByRole("gridcell").filter((c) => c.hasAttribute("data-db-change"));
+    let focus: ReturnType<typeof vi.spyOn>;
+
+    const open = async () => {
+      render(<TableTab tab={tab} />);
+      await screen.findByText("Hello world");
+      await waitFor(() => expect(mocked.tableCheck).toHaveBeenCalledTimes(1));
+    };
+    const hashesPerCheck = (...checks: (string | null)[][]) => {
+      for (const hashes of checks) mocked.tableCheck.mockResolvedValueOnce({ hashes });
+    };
+    const changedInDatabase = async () => {
+      hashesPerCheck(["h0", "h0"], ["h0", "h1"]);
+      mocked.tableCheckRows.mockResolvedValueOnce([stored]);
+      await open();
+      await tick();
+      await screen.findByText("1 row changed in the database");
+    };
+    const stillOnce = async () => {
+      await tick(12000);
+      expect(mocked.tableCheck).toHaveBeenCalledTimes(1);
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      focus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      mocked.tableCheck.mockReset().mockImplementation(async (_s, req) => ({ hashes: req.keys.map(() => "h0") }));
+      mocked.tableCheckRows.mockReset().mockResolvedValue([]);
+      mocked.browseTable.mockResolvedValue(keyedPage());
+    });
+
+    afterEach(() => {
+      focus.mockRestore();
+      vi.useRealTimers();
+    });
+
+    describe("checking", () => {
+      it("reads the shown rows by primary key right after the page loads and marks nothing", async () => {
+        await open();
+        expect(mocked.tableCheck).toHaveBeenCalledWith(session.id, request);
+        expect(screen.queryByRole("status")).not.toBeInTheDocument();
+        expect(marked()).toHaveLength(0);
+      });
+
+      it("checks again every 4 seconds", async () => {
+        await open();
+        await tick(3900);
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(1);
+        await tick(200);
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(2);
+        await tick(4000);
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(3);
+      });
+
+      it("does not check at all when the setting is off", async () => {
+        connectedStore({ tabs: [tab], settings: { tableLiveCheck: false } });
+        render(<TableTab tab={tab} />);
+        await screen.findByText("Hello world");
+        await tick(12000);
+        expect(mocked.tableCheck).not.toHaveBeenCalled();
+        expect(screen.queryByText(/live check/)).not.toBeInTheDocument();
+      });
+    });
+
+    describe("pausing", () => {
+      it("waits while another tab is active", async () => {
+        useStore.setState({ tabs: [tab, queryTab()], activeTabId: "q1" });
+        await open();
+        await stillOnce();
+      });
+
+      it("resumes when the tab becomes active again", async () => {
+        useStore.setState({ tabs: [tab, queryTab()], activeTabId: "q1" });
+        await open();
+        await stillOnce();
+        act(() => useStore.setState({ activeTabId: tab.id }));
+        await tick();
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(2);
+      });
+
+      it("waits while the window is in the background and resumes on focus", async () => {
+        await open();
+        focus.mockReturnValue(false);
+        act(() => void fireEvent.blur(window));
+        await stillOnce();
+        focus.mockReturnValue(true);
+        act(() => void fireEvent.focus(window));
+        await tick();
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(2);
+      });
+
+      it("waits while a cell is being edited and resumes when the editor closes", async () => {
+        await open();
+        await userEvent.dblClick(screen.getByText("Hello world"));
+        await screen.findByLabelText("Edit cell");
+        await stillOnce();
+        await userEvent.keyboard("{Escape}");
+        await tick();
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(2);
+      });
+
+      it("waits while a change to this table is pending, says so, and resumes after it is discarded", async () => {
+        await open();
+        act(() => useStore.setState({ pending: [pendingChange({ target: { database: "db", table: "wp_posts" } })] }));
+        expect(screen.getByText("live check paused · pending changes")).toBeInTheDocument();
+        await stillOnce();
+        act(() => useStore.setState({ pending: [] }));
+        await tick();
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(2);
+        expect(screen.queryByText(/live check paused/)).not.toBeInTheDocument();
+      });
+
+      it("waits while an action plan without a table is pending", async () => {
+        await open();
+        act(() => useStore.setState({ pending: [pendingChange()] }));
+        await stillOnce();
+      });
+
+      it("keeps checking while a change to another table is pending", async () => {
+        await open();
+        act(() => useStore.setState({ pending: [pendingChange({ target: { database: "db", table: "wp_options" } })] }));
+        await tick();
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    describe("rows changed in the database", () => {
+      it("counts a changed row in the bar and reads its stored values once", async () => {
+        await changedInDatabase();
+        expect(mocked.tableCheckRows).toHaveBeenCalledTimes(1);
+        expect(mocked.tableCheckRows).toHaveBeenCalledWith(session.id, { database: "db", table: "wp_posts", columns: ["ID", "post_title"], resultId: 1, rows: [{ row: 1, key: keys[1], cells: [num("2"), { t: "null" }] }] });
+        hashesPerCheck(["h0", "h1"]);
+        await tick();
+        expect(mocked.tableCheck).toHaveBeenCalledTimes(3);
+        expect(mocked.tableCheckRows).toHaveBeenCalledTimes(1);
+      });
+
+      it("marks the changed cell and shows old → new while Alt is held over it", async () => {
+        await changedInDatabase();
+        expect(marked()).toHaveLength(1);
+        fireEvent.mouseEnter(marked()[0], { altKey: true });
+        expect(screen.getByRole("tooltip")).toHaveTextContent("post_title changed in the database");
+        expect(screen.getByRole("tooltip")).toHaveTextContent("NULL → Stored title");
+      });
+
+      it("explains the Alt hover when a value is marked", async () => {
+        await changedInDatabase();
+        expect(screen.getByText("⌥ on a marked value shows old → new")).toBeInTheDocument();
+      });
+
+      it("counts a removed row without reading values", async () => {
+        hashesPerCheck(["h0", "h0"], ["h0", null]);
+        await open();
+        await tick();
+        expect(await screen.findByText("1 row removed from the database")).toBeInTheDocument();
+        expect(screen.queryByText(/⌥ on a marked value/)).not.toBeInTheDocument();
+        expect(mocked.tableCheckRows).not.toHaveBeenCalled();
+      });
+
+      it("drops the mark once the row is back as shown", async () => {
+        await changedInDatabase();
+        await tick();
+        await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+        expect(marked()).toHaveLength(0);
+      });
+
+      it("reloads the page on Refresh and starts without marks", async () => {
+        await changedInDatabase();
+        mocked.browseTable.mockResolvedValue(keyedPage(2));
+        await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+        await waitFor(() => expect(mocked.browseTable).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+        expect(marked()).toHaveLength(0);
+        await waitFor(() => expect(mocked.tableCheck).toHaveBeenCalledTimes(3));
+      });
+    });
+
+    describe("hints", () => {
+      it("says there is no live check for a table without a primary key", async () => {
+        mocked.describeTable.mockResolvedValue({ ...structure, primaryKey: [], indexes: [] });
+        mocked.browseTable.mockResolvedValue(browsePage());
+        render(<TableTab tab={tab} />);
+        expect(await screen.findByText("no live check · no primary key")).toBeInTheDocument();
+        await tick(12000);
+        expect(mocked.tableCheck).not.toHaveBeenCalled();
+      });
+
+      it("says so when the primary key cannot be read as text", async () => {
+        mocked.browseTable.mockResolvedValue(browsePage());
+        render(<TableTab tab={tab} />);
+        expect(await screen.findByText("no live check · the primary key is not readable as text")).toBeInTheDocument();
+        expect(mocked.tableCheck).not.toHaveBeenCalled();
+      });
+
+      it("stops and names the failure when the check fails, until the page is reloaded", async () => {
+        mocked.tableCheck.mockRejectedValueOnce({ kind: "database", message: "Lost connection", code: null });
+        render(<TableTab tab={tab} />);
+        const hint = await screen.findByText("live check stopped · Refresh to retry");
+        expect(hint).toHaveAttribute("title", "Lost connection");
+        await stillOnce();
+        mocked.browseTable.mockResolvedValue(keyedPage(2));
+        await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+        await waitFor(() => expect(screen.queryByText(/live check stopped/)).not.toBeInTheDocument());
+        await waitFor(() => expect(mocked.tableCheck).toHaveBeenCalledTimes(2));
+      });
     });
   });
 

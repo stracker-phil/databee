@@ -67,6 +67,18 @@ describe("PendingTray", () => {
       expect(statements.map((li) => li.textContent)).toEqual(["UPDATE `wp_posts` SET `post_title` = 'x' WHERE `ID` = 1", "-- second"]);
     });
 
+    it("remembers the table a queued row edit writes", async () => {
+      mocked.planChange.mockResolvedValueOnce(planned({ id: 5 }));
+      await useStore.getState().queueChange({ type: "setCell", database: "db", table: "wp_posts", keyColumn: "ID", key: "1", column: "post_title", value: "x" });
+      expect(useStore.getState().pending[0]).toMatchObject({ id: 5, target: { database: "db", table: "wp_posts" } });
+    });
+
+    it("keeps no table for the plan of a rule action", async () => {
+      mocked.queueActionPreview.mockResolvedValueOnce(planned({ id: 6 }));
+      await useStore.getState().queueActionPreview("s1", 3);
+      expect(useStore.getState().pending[0].target).toBeUndefined();
+    });
+
     it("resolves to the id of the plan Rust returned", async () => {
       mocked.planChange.mockResolvedValueOnce(planned({ id: 5 }));
       const id = await useStore.getState().queueChange({ type: "deleteRow", database: "db", table: "wp_posts", keyColumn: "ID", key: "1" });

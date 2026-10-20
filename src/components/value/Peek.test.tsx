@@ -56,6 +56,45 @@ describe("Peek", () => {
     expect(screen.queryByRole("complementary", { name: /^Peek/ })).not.toBeInTheDocument();
   });
 
+  describe("over a value the live check marked", () => {
+    const reference = "databee://shop/db/wp_users/12";
+    const renderCells = () =>
+      render(
+        <>
+          <PeekOverlay />
+          <div>
+            <span data-ref={reference}>plain 12</span>
+          </div>
+          <div data-db-change="">
+            <span data-ref={reference}>marked 12</span>
+          </div>
+        </>,
+      );
+
+    it("shows no reference peek when Alt is pressed on it", () => {
+      renderCells();
+      fireEvent.mouseOver(screen.getByText("marked 12"));
+      fireEvent.keyDown(window, { key: "Alt", altKey: true });
+      expect(screen.queryByRole("complementary", { name: /^Peek/ })).not.toBeInTheDocument();
+    });
+
+    it("closes the peek when the pointer moves from a reference onto it", async () => {
+      renderCells();
+      fireEvent.mouseOver(screen.getByText("plain 12"));
+      fireEvent.keyDown(window, { key: "Alt", altKey: true });
+      await peekCard();
+      fireEvent.mouseOver(screen.getByText("marked 12"));
+      expect(screen.queryByRole("complementary", { name: /^Peek/ })).not.toBeInTheDocument();
+    });
+
+    it("still peeks an unmarked reference beside it", async () => {
+      renderCells();
+      fireEvent.mouseOver(screen.getByText("plain 12"));
+      fireEvent.keyDown(window, { key: "Alt", altKey: true });
+      expect(await peekCard()).toBeInTheDocument();
+    });
+  });
+
   it("shows the error when the target cannot be read", async () => {
     mocked.peek.mockRejectedValue({ kind: "invalid_input", message: "No such row", code: null });
     useStore.setState({ dataVersion: 1000 });

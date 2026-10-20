@@ -103,7 +103,7 @@ export function readoutOf(patch: Partial<Readout> = {}): Readout {
   };
 }
 
-type PendingChange = PlannedChange & { sessionId: string };
+type PendingChange = PlannedChange & { sessionId: string; target?: { database: string; table: string } };
 
 export function pendingChange(patch: Partial<PendingChange> = {}): PendingChange {
   return { id: 1, description: "Set x", statements: ["UPDATE `wp_options` SET `option_value` = 'x'"], canUndo: true, sessionId: "s1", ...patch };

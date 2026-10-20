@@ -331,6 +331,26 @@ mod tests {
     }
 
     #[test]
+    fn table_live_check_is_on_unless_the_file_turns_it_off() {
+        assert!(Settings::default().table_live_check);
+        for (stored, expected) in [
+            (r#"{}"#, true),
+            (r#"{"rowLimit": 42}"#, true),
+            (r#"{"tableLiveCheck": true}"#, true),
+            (r#"{"tableLiveCheck": false}"#, false),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(dir.path().join("settings.json"), stored).unwrap();
+
+            assert_eq!(
+                SettingsStore::open(dir.path()).get().table_live_check,
+                expected,
+                "{stored}"
+            );
+        }
+    }
+
+    #[test]
     fn peek_on_corrupt_file_returns_defaults_and_leaves_the_file() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("settings.json");
