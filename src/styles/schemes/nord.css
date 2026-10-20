@@ -1,19 +1,22 @@
-/* Nord: colors from the Nord palette. */
+/* Nord: the official palette (nordtheme.com) in its documented roles: nord0 content, nord1 panels and
+   controls, nord2 popups, nord3 borders, Frost and Aurora for accents and syntax. Not in the palette: the
+   band (between nord0 and nord1), magenta (Aurora has none) and graphite (the brightened nord3 of the official
+   editor ports). */
 [data-scheme="nord"] {
   color-scheme: dark;
 
   /* surfaces */
-  --chrome: #2b303b;
+  --chrome: #3b4252;
   --bg: #2e3440;
-  --bg-quiet: #292e39;
+  --bg-quiet: #3b4252;
   --shade: #000000;
-  --pop: #3b4252;
-  --field: #292e39;
+  --pop: #434c5e;
+  --field: #2e3440;
   --field-line: #4c566a;
   --text: #d8dee9;
-  --line: #3b4252;
-  --band: #333a47;
-  --row-hover: #363d4b;
+  --line: #434c5e;
+  --band: #353c4a;
+  --row-hover: #3b4252;
   --shadow: 0 0 28px rgba(0, 0, 0, 0.38);
   --shadow-small: 0 1px 2px rgba(0, 0, 0, 0.25);
   --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.15);
@@ -32,7 +35,7 @@
   --a-magenta: #c895bf;
   --a-indigo: #81a1c1;
   --a-teal: #8fbcbb;
-  --a-graphite: #7b88a1;
+  --a-graphite: #616e88;
 
   /* value-style colors */
   --style-red: #bf616a;
