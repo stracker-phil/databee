@@ -273,8 +273,10 @@ The core commands are `APP_COMMANDS` (`src/commands/index.ts`); their default bi
     session whose connection is lost has `· connection lost` in its badge (`current · connection lost`). Enter runs
     `setActiveSession`, `connect` (its password dialog included) or `switchDatabase`. `CommandPalette` keys the
     sheet by `paletteSeed`, so a palette command that reopens it with a prefix starts fresh.
-- **Menu.** Native menu items emit `command` events. See [backend.md](backend.md#native-menu) for the Rust side
-  of `menu: true`.
+- **Menu.** Native menu items emit `command` events with a command id; `runMenuCommand` runs that command, or
+  the one whose `menu` names it, whose scope is active and whose `when()` passes (`databee command` uses it
+  too). The movement keys of the column stack (J/K/H/L, arrows, ↵, ⎋) have no menu item. See
+  [backend.md](backend.md#native-menu) for the Rust side of `menu`.
 
 Some targets live inside a component, such as running the editor's statement or focusing the WHERE field.
 Those commands dispatch window events (`databee:run-query`, `databee:focus-where`,

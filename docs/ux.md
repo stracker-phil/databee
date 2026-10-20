@@ -342,7 +342,7 @@ value, else the current address. The Hover column is what the status bar shows.
   content; preview tabs show italic titles. Tabs: readout (first, one per connection), query, table, object,
   project.
 - **Sidebar** (`--chrome`): the Tables/History switch, the filter field, a `db · N tables` caption, then the
-  database tree. `view.sidebar` (⌘\, the palette, or the ▤ button) hides it entirely (no rail); the state
+  database tree. `view.sidebar` (⌘⌃S, the palette, or the ▤ button) hides it entirely (no rail); the state
   is persisted per connection (`sidebarHidden` in `ui_state.json`).
 - **Status bar** (`--chrome`), left to right: ▤ sidebar toggle, the active tab's address in mono
   (`databee://wc-pp/db/wp_posts?post_type=page`; a click copies it; `· filtered` follows when a typed SQL
@@ -619,7 +619,7 @@ rebindable.
 | ⌘R | global | refresh the current view |
 | ⌘N / ⌘, | global | new connection / Settings |
 | ⌘= / ⌘- / ⌘0 | global | zoom in / out / reset |
-| ⌘\ | global | toggle the sidebar |
+| ⌘⌃S | global | toggle the sidebar |
 | `?` | global | shortcut overview |
 
 Scopes are the registry's (`src/commands/index.ts`, `registerCoreScopes`): `global`, `db` under it, `table`

@@ -167,7 +167,7 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset | everywhere |
 | ⌘R | Refresh the current view | everywhere |
 | ⌘S | Apply pending changes; in a query tab with nothing pending, save the query | everywhere / editor |
-| ⌘N / ⌘, / ⌘\ | New connection / Settings / toggle sidebar | everywhere |
+| ⌘N / ⌘, / ⌘⌃S | New connection / Settings / toggle sidebar | everywhere |
 | ? | Keyboard shortcuts | everywhere |
 | ⎋ | Restore a maximized pane, else close the rightmost column | everywhere |
 | ⌘F | WHERE filter | Table |

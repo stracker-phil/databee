@@ -26,12 +26,12 @@ const chooseSnapshot = () => void useStore.getState().chooseSnapshot();
 const dismiss = () => useStore.getState().dismissMarks();
 
 export const LIVE_COMMANDS: Command[] = [
-  { id: "object.live", title: "Toggle live mode", scope: "object", defaultBinding: "W", when: targetIs("object"), run: () => void useStore.getState().toggleLive() },
-  { id: "object.dismissChanges", title: "Dismiss change marks", scope: "object", defaultBinding: "X", when: canDismiss, run: dismiss },
-  { id: "object.snapshot", title: "Take a snapshot…", scope: "object", defaultBinding: "S", when: targetIs("object"), run: takeSnapshot },
-  { id: "object.sinceSnapshot", title: "Changes since snapshot…", scope: "object", when: targetIs("object"), run: chooseSnapshot },
-  { id: "object.compare", title: "Compare with another row…", scope: "object", when: targetIs("object"), run: compareWith },
-  { id: "query.snapshot", title: "Snapshot saved query results…", scope: "editor", when: targetIs("query"), run: takeSnapshot },
-  { id: "query.sinceSnapshot", title: "Changes since snapshot…", scope: "editor", when: targetIs("query"), run: chooseSnapshot },
-  { id: "query.dismissChanges", title: "Dismiss change marks", scope: "editor", when: canDismiss, run: dismiss },
+  { id: "object.live", title: "Toggle live mode", scope: "object", defaultBinding: "W", menu: true, when: targetIs("object"), run: () => void useStore.getState().toggleLive() },
+  { id: "object.dismissChanges", title: "Dismiss change marks", scope: "object", defaultBinding: "X", menu: true, when: canDismiss, run: dismiss },
+  { id: "object.snapshot", title: "Take a snapshot…", scope: "object", defaultBinding: "S", menu: true, when: targetIs("object"), run: takeSnapshot },
+  { id: "object.sinceSnapshot", title: "Changes since snapshot…", scope: "object", menu: true, when: targetIs("object"), run: chooseSnapshot },
+  { id: "object.compare", title: "Compare with another row…", scope: "object", menu: true, when: targetIs("object"), run: compareWith },
+  { id: "query.snapshot", title: "Snapshot saved query results…", scope: "editor", menu: "object.snapshot", when: targetIs("query"), run: takeSnapshot },
+  { id: "query.sinceSnapshot", title: "Changes since snapshot…", scope: "editor", menu: "object.sinceSnapshot", when: targetIs("query"), run: chooseSnapshot },
+  { id: "query.dismissChanges", title: "Dismiss change marks", scope: "editor", menu: "object.dismissChanges", when: canDismiss, run: dismiss },
 ];

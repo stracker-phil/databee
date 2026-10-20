@@ -136,16 +136,18 @@ export const RULE_MENU = [
 
 const canAddRule = () => !!sourced();
 
+/** Object-scope commands share the menu items of the table-scope ones (`value.*`). */
 function valueCommands(scope: Scope, idPrefix: string): Command[] {
+  const menu = (name: string) => (scope === "table" ? true : `value.${name}`);
   return [
-    { id: `${idPrefix}copyRaw`, title: "Copy value", scope, defaultBinding: "Y", when: () => !!focused(), run: copyRaw },
-    { id: `${idPrefix}copyCondition`, title: "Copy value as SQL condition", scope, defaultBinding: "Shift+Y", when: () => !!sourced(), run: copyCondition },
-    { id: `${idPrefix}edit`, title: "Edit value", scope, defaultBinding: "E", when: editable, run: editValue },
-    { id: `${idPrefix}filter`, title: "Filter rows by value", scope, defaultBinding: "F", when: () => !!sourced(), run: filterByValue },
-    { id: `${idPrefix}addReference`, title: "Add reference from this value…", scope, defaultBinding: "R", when: canAddRule, run: () => openRuleForm("reference") },
-    { id: `${idPrefix}setKind`, title: "Set the kind of this column or meta key…", scope, when: canAddRule, run: () => openRuleForm("kind") },
-    { id: `${idPrefix}setStyle`, title: "Add a value style for this value…", scope, when: canAddRule, run: () => openRuleForm("style") },
-    { id: `${idPrefix}watch`, title: "Watch value on the readout", scope, when: () => !!watchable(), run: watchFocused },
+    { id: `${idPrefix}copyRaw`, title: "Copy value", scope, menu: menu("copyRaw"), defaultBinding: "Y", when: () => !!focused(), run: copyRaw },
+    { id: `${idPrefix}copyCondition`, title: "Copy value as SQL condition", scope, menu: menu("copyCondition"), defaultBinding: "Shift+Y", when: () => !!sourced(), run: copyCondition },
+    { id: `${idPrefix}edit`, title: "Edit value", scope, menu: menu("edit"), defaultBinding: "E", when: editable, run: editValue },
+    { id: `${idPrefix}filter`, title: "Filter rows by value", scope, menu: menu("filter"), defaultBinding: "F", when: () => !!sourced(), run: filterByValue },
+    { id: `${idPrefix}addReference`, title: "Add reference from this value…", scope, menu: menu("addReference"), defaultBinding: "R", when: canAddRule, run: () => openRuleForm("reference") },
+    { id: `${idPrefix}setKind`, title: "Set the kind of this column or meta key…", scope, menu: menu("setKind"), when: canAddRule, run: () => openRuleForm("kind") },
+    { id: `${idPrefix}setStyle`, title: "Add a value style for this value…", scope, menu: menu("setStyle"), when: canAddRule, run: () => openRuleForm("style") },
+    { id: `${idPrefix}watch`, title: "Watch value on the readout", scope, menu: menu("watch"), when: () => !!watchable(), run: watchFocused },
   ];
 }
 

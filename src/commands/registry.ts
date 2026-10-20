@@ -10,8 +10,8 @@ export interface Command {
   /** Enabled-state check; disabled commands neither fire nor show in the palette. */
   when?: () => boolean;
   run: () => void | Promise<void>;
-  /** Also bound as a native menu accelerator; rebinding rebuilds the menu. */
-  menu?: boolean;
+  /** Native menu item in `MENU_ITEMS` (`menu.rs`); rebinding rebuilds the menu. A string names the command whose item this one shares. */
+  menu?: true | string;
   /** Has no key of its own: it takes this command's binding and runs while that one is disabled, so the two never conflict. */
   fallbackFor?: string;
 }

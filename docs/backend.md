@@ -191,8 +191,8 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
     page resolves in that connection's session (default: the active one) through `document`;
   - `--background` on `open`: no focus change; otherwise the window comes to the front;
   - `databee mcp`: the MCP server on stdio ([below](#mcp-server));
-  - `databee command <command-id>`: runs a command of the page's registry (`runMenuCommand`, so an open
-    dialog or the palette blocks it). Unknown or unavailable commands fail.
+  - `databee command <command-id>`: runs a command of the page's registry (`runMenuCommand`, so it runs
+    only in its active scope, and an open dialog or the palette blocks it). Unknown or unavailable commands fail.
   Errors print to stderr with exit 1; a result other than `null` prints to stdout.
 
 `ipc.rs`:
@@ -505,18 +505,28 @@ escaped, so the page cannot forge log lines.
 
 ## Native menu
 
-`menu.rs` builds the menus: DataBee, File, Edit, View, Go and Window. Items that map to app commands are listed
-once in `MENU_ITEMS` (id, label, default binding). Their accelerators come from
-`KeybindingsStore::menu_binding`: the user override, else the `MENU_ITEMS` default. Those defaults mirror the
-`defaultBinding` of the TypeScript commands marked `menu: true` (a unit test in `menu.rs` compares them). A
-click emits `command` with the id (`menu::forward`; `is_menu_command` filters out the native items).
-`keybindings::accelerator` converts a binding to Tauri's form (`Mod` → `CmdOrCtrl`, `-` → `Minus`, `=` →
-`Equal`). Tauri accelerators name physical keys and have none for `+`, so `+` becomes `Shift+Equal` (its
-US-layout key); a binding without an accelerator (e.g. `Ä`) is logged and the item gets no menu accelerator,
-while the webview still handles it.
+`menu.rs` builds the menus: DataBee, File, Edit, View, Data, Go, Window and Help. Items that map to app
+commands are listed once in `MENU_ITEMS` (id, label, default binding, and `binding_of` for an item that shows
+another command's binding, as `query.save` shows `changes.apply`'s); `build()` places them (`submenu` takes
+groups of ids, separated). Their bindings come from `KeybindingsStore::menu_binding`: the user override, else
+the `MENU_ITEMS` default. Those defaults mirror the `defaultBinding` of the TypeScript commands marked
+`menu: true` (`src/commands/menu.test.ts` reads `menu.rs` and compares both ways). A click emits `command`
+with the id (`menu::forward`; `is_menu_command` filters out the native items).
+
+`label_and_accelerator` turns a binding with ⌘ or ⌃ (`keybindings::is_chord`) into an accelerator. Any other
+binding (`Y`, `⇧?`) would take its key from text fields as a menu accelerator, so it is appended to the label
+instead (`Copy Value (Y)`, `keybindings::key_label`). `keybindings::accelerator` converts a binding to Tauri's
+form (`Mod` → `CmdOrCtrl`, `-` → `Minus`, `=` → `Equal`). Tauri accelerators name physical keys and have none
+for `+`, so `+` becomes `Shift+Equal` (its US-layout key); a binding without an accelerator (e.g. `Ä`) is
+logged and the item gets no menu accelerator, while the webview still handles it.
+
+Menu items are always enabled; the page decides. `runMenuCommand` runs the command only while its scope is
+active and its `when()` passes, so an accelerator the webview did not take (⌘F outside a table tab) does
+nothing.
 
 To add a menu item:
-1. Set `menu: true` (and `defaultBinding`) on the TypeScript command.
+1. Set `menu: true` (and `defaultBinding`) on the TypeScript command. The same action in another scope sets
+   `menu: "<id of the listed command>"` and shares its item (the object value commands share `value.*`).
 2. Add the id, label and default to `MENU_ITEMS` in `menu.rs`.
 3. Place the item in `build()`.
 

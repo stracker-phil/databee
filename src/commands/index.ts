@@ -69,36 +69,38 @@ const inResults = () => !!document.activeElement?.closest(".results [role='grid'
 const hasDatabase = () => !!selectActiveSession(useStore.getState())?.database;
 
 const APP_COMMANDS: Command[] = [
-  { id: "palette.open", title: "Command palette", scope: "global", defaultBinding: "Mod+K", run: () => useStore.getState().setPaletteOpen(true) },
-  { id: "palette.openTable", title: "Open table or entity", scope: "global", defaultBinding: "Mod+P", run: () => useStore.getState().setPaletteOpen(true, "t:") },
+  { id: "palette.open", title: "Command palette", scope: "global", defaultBinding: "Mod+K", menu: true, run: () => useStore.getState().setPaletteOpen(true) },
+  { id: "palette.openTable", title: "Open table or entity", scope: "global", defaultBinding: "Mod+P", menu: true, run: () => useStore.getState().setPaletteOpen(true, "t:") },
   // Without history the keys stay with the editor (⌘[ outdents there).
   { id: "nav.back", title: "Back", scope: "global", defaultBinding: "Mod+[", menu: true, when: () => selectCanNav(useStore.getState(), "back"), run: () => useStore.getState().navBack() },
   { id: "nav.forward", title: "Forward", scope: "global", defaultBinding: "Mod+]", menu: true, when: () => selectCanNav(useStore.getState(), "forward"), run: () => useStore.getState().navForward() },
-  { id: "view.zoomIn", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", run: () => zoom(1) },
-  { id: "view.zoomOut", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", run: () => zoom(-1) },
-  { id: "view.zoomReset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", run: () => zoom(null) },
+  { id: "view.zoomIn", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", menu: true, run: () => zoom(1) },
+  { id: "view.zoomOut", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", menu: true, run: () => zoom(-1) },
+  { id: "view.zoomReset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", menu: true, run: () => zoom(null) },
   {
     id: "view.sidebar",
     title: "Toggle sidebar",
     scope: "global",
-    defaultBinding: "Mod+\\",
+    defaultBinding: "Mod+Ctrl+S",
+    menu: true,
     when: () => !!selectActiveSession(useStore.getState()),
     run: () => useStore.getState().toggleSidebar(),
   },
   { id: "view.refresh", title: "Refresh current view", scope: "global", defaultBinding: "Mod+R", menu: true, run: () => void useStore.getState().refreshView() },
-  { id: "help.shortcuts", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", run: toggleShortcuts },
-  { id: "table.focusFilter", title: "Value filter (WHERE)", scope: "table", defaultBinding: "Mod+F", run: () => void window.dispatchEvent(new Event(EVENTS.focusWhere)) },
+  { id: "help.shortcuts", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", menu: true, run: toggleShortcuts },
+  { id: "table.focusFilter", title: "Value filter (WHERE)", scope: "table", defaultBinding: "Mod+F", menu: true, run: () => void window.dispatchEvent(new Event(EVENTS.focusWhere)) },
   {
     id: "table.filterMode",
     title: "Switch the WHERE filter between smart and SQL",
     scope: "table",
     defaultBinding: "Ctrl+Alt+X",
+    menu: true,
     run: () => {
       const tab = selectActiveTab(useStore.getState());
       if (tab?.kind === "table") useStore.getState().toggleFilterMode(tab.id);
     },
   },
-  { id: "sidebar.focusFilter", title: "Filter tables", scope: "db", defaultBinding: "Mod+Shift+F", run: () => void window.dispatchEvent(new Event(EVENTS.focusTableFilter)) },
+  { id: "sidebar.focusFilter", title: "Filter tables", scope: "db", defaultBinding: "Mod+Shift+F", menu: true, run: () => void window.dispatchEvent(new Event(EVENTS.focusTableFilter)) },
   {
     id: "tabs.new",
     title: "New query tab",
@@ -121,14 +123,14 @@ const APP_COMMANDS: Command[] = [
       if (tab) s.closeTab(tab.id);
     },
   },
-  { id: "tabs.next", title: "Next tab", scope: "db", defaultBinding: "Ctrl+Tab", run: () => useStore.getState().cycleTab(1) },
-  { id: "tabs.previous", title: "Previous tab", scope: "db", defaultBinding: "Ctrl+Shift+Tab", run: () => useStore.getState().cycleTab(-1) },
-  { id: "editor.run", title: "Run statement at cursor", scope: "editor", defaultBinding: "Mod+Enter", run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "statement" })) },
-  { id: "editor.runAll", title: "Run all statements", scope: "editor", defaultBinding: "Mod+Shift+Enter", run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "all" })) },
-  { id: "object.viewDocument", title: "Show Document", scope: "object", defaultBinding: "Mod+1", run: () => showObjectView("document") },
-  { id: "object.viewRows", title: "Show Rows", scope: "object", defaultBinding: "Mod+2", run: () => showObjectView("rows") },
-  { id: "readout.open", title: "Readout", scope: "global", when: hasDatabase, run: () => useStore.getState().openReadout() },
-  { id: "project.open", title: "Project", scope: "global", when: hasDatabase, run: () => useStore.getState().openProject() },
+  { id: "tabs.next", title: "Next tab", scope: "db", defaultBinding: "Ctrl+Tab", menu: true, run: () => useStore.getState().cycleTab(1) },
+  { id: "tabs.previous", title: "Previous tab", scope: "db", defaultBinding: "Ctrl+Shift+Tab", menu: true, run: () => useStore.getState().cycleTab(-1) },
+  { id: "editor.run", title: "Run statement at cursor", scope: "editor", defaultBinding: "Mod+Enter", menu: true, run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "statement" })) },
+  { id: "editor.runAll", title: "Run all statements", scope: "editor", defaultBinding: "Mod+Shift+Enter", menu: true, run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "all" })) },
+  { id: "object.viewDocument", title: "Show Document", scope: "object", defaultBinding: "Mod+1", menu: true, run: () => showObjectView("document") },
+  { id: "object.viewRows", title: "Show Rows", scope: "object", defaultBinding: "Mod+2", menu: true, run: () => showObjectView("rows") },
+  { id: "readout.open", title: "Readout", scope: "global", when: hasDatabase, menu: true, run: () => useStore.getState().openReadout() },
+  { id: "project.open", title: "Project", scope: "global", when: hasDatabase, menu: true, run: () => useStore.getState().openProject() },
   { id: "connection.new", title: "New connection…", scope: "global", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "connect" }) },
   { id: "connection.switch", title: "Switch connection…", scope: "global", defaultBinding: "Mod+Shift+P", menu: true, run: () => useStore.getState().setPaletteOpen(true, "c:") },
   {
@@ -139,6 +141,7 @@ const APP_COMMANDS: Command[] = [
       const s = useStore.getState();
       return !!s.activeSessionId && s.health[s.activeSessionId]?.state === "down";
     },
+    menu: true,
     run: () => {
       const id = useStore.getState().activeSessionId;
       if (id) void useStore.getState().retryConnection(id);
@@ -162,6 +165,7 @@ const APP_COMMANDS: Command[] = [
     scope: "editor",
     fallbackFor: "changes.apply",
     when: () => selectActivePending(useStore.getState()).length === 0,
+    menu: true,
     run: () => void withQueryTab((tab) => useStore.getState().saveQueryTab(tab.id)),
   },
   {
@@ -170,10 +174,11 @@ const APP_COMMANDS: Command[] = [
     scope: "editor",
     defaultBinding: "P",
     when: inResults,
+    menu: true,
     run: () => void withQueryTab((tab) => useStore.getState().pinQueryTab(tab.id)),
   },
   { id: "changes.apply", title: "Apply pending changes", scope: "global", defaultBinding: "Mod+S", menu: true, when: () => selectActivePending(useStore.getState()).length > 0, run: () => void useStore.getState().applyChanges() },
-  { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => selectCanUndo(useStore.getState()), run: () => void useStore.getState().undoLast() },
+  { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => selectCanUndo(useStore.getState()), menu: true, run: () => void useStore.getState().undoLast() },
   ...VALUE_COMMANDS,
   ...OBJECT_VALUE_COMMANDS,
   ...COLUMN_COMMANDS,
@@ -215,9 +220,13 @@ function blockedByOverlay(id: string): boolean {
   return (s.dialog !== null || s.paletteOpen) && !MODAL_ALLOWED.has(id);
 }
 
-/** Native menu items yield to an open dialog or palette, like shortcuts. */
+/** Runs a menu item or `databee command` id: the command, or the one sharing its menu item, in an active scope. */
 export function runMenuCommand(id: string): boolean {
-  return !blockedByOverlay(id) && runCommand(id);
+  const scopes = activeScopes();
+  const target = allCommands().find((c) => (c.id === id || c.menu === id) && scopes.includes(c.scope) && c.when?.() !== false);
+  if (!target || blockedByOverlay(target.id)) return false;
+  void target.run();
+  return true;
 }
 
 /** Capture-phase keydown handler for the window. */

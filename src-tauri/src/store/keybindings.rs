@@ -113,6 +113,41 @@ pub fn accelerator(binding: &str) -> Option<String> {
     Some(parts.join("+"))
 }
 
+/// Holds ⌘ or ⌃, so it never types a character.
+pub fn is_chord(binding: &str) -> bool {
+    split(binding)
+        .is_some_and(|(modifiers, _)| modifiers.iter().any(|m| matches!(*m, "Mod" | "Ctrl")))
+}
+
+/// `Shift+Y` → `⇧Y`, as `bindingLabel` in `src/commands/registry.ts` shows it.
+pub fn key_label(binding: &str) -> Option<String> {
+    let (modifiers, key) = split(binding)?;
+    let mut label: String = modifiers
+        .iter()
+        .map(|m| match *m {
+            "Mod" => "⌘",
+            "Ctrl" => "⌃",
+            "Alt" => "⌥",
+            "Shift" => "⇧",
+            other => unreachable!("split admits only MODIFIERS, got {other}"),
+        })
+        .collect();
+    label.push_str(match key {
+        "Enter" => "↵",
+        "Escape" => "⎋",
+        "Tab" => "⇥",
+        "Backspace" => "⌫",
+        "Delete" => "⌦",
+        "ArrowUp" => "↑",
+        "ArrowDown" => "↓",
+        "ArrowLeft" => "←",
+        "ArrowRight" => "→",
+        "Space" => "␣",
+        other => other,
+    });
+    Some(label)
+}
+
 fn is_accelerator_char(key: &str) -> bool {
     key.chars()
         .all(|c| c.is_ascii_alphanumeric() || "`\\[],.';/".contains(c))
@@ -180,7 +215,38 @@ mod tests {
     fn command_without_default_has_no_menu_binding() {
         let dir = tempfile::tempdir().unwrap();
         let store = KeybindingsStore::open(dir.path());
-        assert_eq!(store.menu_binding("help.shortcuts"), None);
+        assert_eq!(store.menu_binding("readout.open"), None);
+    }
+
+    #[test]
+    fn only_bindings_with_command_or_control_are_chords() {
+        for (binding, expected) in [
+            ("Mod+S", true),
+            ("Ctrl+Tab", true),
+            ("Mod+Ctrl+S", true),
+            ("Y", false),
+            ("Shift+Y", false),
+            ("Alt+X", false),
+            ("Shift+?", false),
+            ("Mod+", false),
+        ] {
+            assert_eq!(is_chord(binding), expected, "{binding}");
+        }
+    }
+
+    #[test]
+    fn key_labels_use_mac_symbols() {
+        for (binding, expected) in [
+            ("Y", Some("Y")),
+            ("Shift+Y", Some("⇧Y")),
+            ("Shift+?", Some("⇧?")),
+            ("Mod+Shift+Enter", Some("⌘⇧↵")),
+            ("Mod+Alt+ArrowLeft", Some("⌘⌥←")),
+            ("Ctrl+Tab", Some("⌃⇥")),
+            ("Mod+", None),
+        ] {
+            assert_eq!(key_label(binding).as_deref(), expected, "{binding}");
+        }
     }
 
     #[test]

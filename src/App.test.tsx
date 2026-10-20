@@ -134,12 +134,12 @@ describe("App", () => {
       await waitFor(() => expect(mocked.setUiState).toHaveBeenCalledWith(session.identity, expect.objectContaining({ sidebarHidden: true })));
     });
 
-    it("toggles the sidebar on ⌘\\", async () => {
+    it("toggles the sidebar on ⌘⌃S", async () => {
       render(<App />);
       await screen.findByRole("tree", { name: "Databases" });
-      fireEvent.keyDown(window, { key: "\\", code: "Backslash", metaKey: true });
+      fireEvent.keyDown(window, { key: "s", code: "KeyS", metaKey: true, ctrlKey: true });
       expect(tree()).not.toBeInTheDocument();
-      fireEvent.keyDown(window, { key: "\\", code: "Backslash", metaKey: true });
+      fireEvent.keyDown(window, { key: "s", code: "KeyS", metaKey: true, ctrlKey: true });
       expect(await screen.findByRole("tree", { name: "Databases" })).toBeInTheDocument();
     });
 
