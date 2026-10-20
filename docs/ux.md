@@ -60,6 +60,7 @@ file; a Vitest scan enforces it.
 | `--shadow-inset` | `inset 0 1px 2px rgba(0,0,0,.15)` | `inset 0 1px 2px rgba(30,40,60,.08)` | field inset |
 | `--scrim` | `rgba(10,12,18,.55)` | `rgba(40,50,70,.2)` | behind modal dialogs |
 | `--on-accent` | `#1f2430` | `#ffffff` | text on an accent or value-style fill |
+| `--accent-text-max-l` | `1` | `0.5` | the highest OKLCH lightness of `--accent-text` |
 | `--knob` | `#cccac2` | `#ffffff` | switch thumb while off; on, it is `--on-accent` on the accent track |
 | `--a-orange` | `#ffa659` | `#fa8d3e` | accent hue (default) |
 | `--a-gold` | `#ffcc66` | `#f2ae49` | accent hue |
@@ -87,6 +88,7 @@ Derived design tokens in `src/styles/theme.css`, the same for every scheme:
 | `--cell` | `--accent` at 24% | hovered value |
 | `--sel` | `--accent` at 20% | selected row or sidebar entry, focused value |
 | `--lit-solid` | `--accent` at 15% over `--bg` | the linked table highlight's rows and bands, opaque so a pinned key column matches its row |
+| `--accent-text` | `--accent` with its OKLCH lightness capped at `--accent-text-max-l` | the accent as text (links, keys, selected labels), readable on light surfaces |
 | `--accent-quiet` | `--accent` at 45%, the rest `--a-graphite` (oklab) | the accent of a pane beside the active one |
 | `--dimmed` | 0.3 | opacity of what the linked table highlight fades (`TableFocus.tsx`) |
 | `--scrollbar-size` | 8px | scrollbar track, both directions |

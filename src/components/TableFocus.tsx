@@ -15,7 +15,7 @@ export function TableFocus() {
   const lit = `
 .main [data-row-table=${t}] { background: var(--lit-solid); --pin-bg: var(--lit-solid); }
 .main .sh[data-table=${t}] { background: var(--lit-solid); box-shadow: inset 3px 0 0 var(--accent); }
-.main .sh[data-table=${t}] .tn, .main [data-table=${t}]:not(.val, .sh) { color: var(--accent); }
+.main .sh[data-table=${t}] .tn, .main [data-table=${t}]:not(.val, .sh) { color: var(--accent-text); }
 .main .grid-cell:has(> .val[data-lead-table=${t}]):not([data-row-table=${t}] > *) { background: var(--cell); }
 .main .val[data-lead-table=${t}]:not([data-row-table=${t}] .val, .grid-cell > .val) { background: var(--cell); border-radius: 3px; padding: 0 3px; margin: 0 -3px; }`;
   const dim = `

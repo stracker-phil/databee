@@ -21,6 +21,7 @@
   --scrim: rgba(76, 79, 105, 0.2);
   /* text and marks drawn on an accent or value-style fill */
   --on-accent: #eff1f5;
+  --accent-text-max-l: 0.5;
   /* the thumb of a switch, on either track */
   --knob: #eff1f5;
 

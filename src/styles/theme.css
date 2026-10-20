@@ -64,6 +64,8 @@
   --cell: color-mix(in srgb, var(--accent) 24%, transparent);
   --sel: color-mix(in srgb, var(--accent) 20%, transparent);
   --lit-solid: color-mix(in srgb, var(--accent) 15%, var(--bg));
+  /* The accent as text: no lighter than the scheme allows, so it stays readable on light surfaces. */
+  --accent-text: oklch(from var(--accent) min(l, var(--accent-text-max-l)) c h);
 }
 /* A pane beside the active one (.column.quiet): its accent toward graphite. */
 :root, [data-accent] { --accent-quiet: color-mix(in oklab, var(--accent) 45%, var(--a-graphite)); }
