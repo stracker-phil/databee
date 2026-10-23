@@ -88,7 +88,7 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 
 | Script | Does |
 |---|---|
-| `bun run build:app` | builds the debug `.app` bundle |
+| `bun run build:app` | builds the debug bundle `DataBee (Debug).app` (`tauri.debug.conf.json`: its own name and bundle id, no `databee://` scheme; the same data folder and socket as the release app) |
 | `scripts/dev/launch.sh [cli args]` | quits a running DataBee (`scripts/stop-app.sh`, through `databee quit`; `databee mcp` keeps running) and starts the debug build next to the terminal window, without focus. The log goes to `$TMPDIR/databee-dev.log`. The terminal app is set by `DATABEE_DEV_TERMINAL` (default `Terminal`). |
 | `scripts/sign-app.sh <app> <identifier>` | signs a bundle; `launch.sh` calls it. It uses `$DATABEE_SIGN_IDENTITY`, else the "DataBee Local Signing" certificate, else signs ad hoc |
 | `scripts/create-signing-cert.sh` | once per Mac: adds the self-signed "DataBee Local Signing" code-signing certificate to the login keychain, so the Keychain keeps trusting rebuilt apps for saved passwords (see [backend: MCP server](backend.md#mcp-server)) |
@@ -98,7 +98,7 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 
 The store is available as `window.databee` in the debug bundle: `bun run build:app` (and `bun run app`) set
 `VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build
-(`bun run tauri build`) has no `window.databee`; `bun run build` builds the frontend only.
+(`bun run release`) has no `window.databee`; `bun run build` builds the frontend only.
 
 ```sh
 scripts/dev/js.sh 'databee.getState().openDialog({type:"settings", page:"shortcuts"})'

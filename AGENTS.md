@@ -29,12 +29,15 @@ As shipped it builds and runs on **macOS on Apple Silicon** only; everything els
 git clone https://github.com/stracker-phil/databee.git
 cd databee
 bun install
-bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/DataBee.app
-bun run tauri build      # release bundle: src-tauri/target/release/bundle/macos/DataBee.app
+bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/DataBee (Debug).app
+bun run release          # release bundle, installed for the user (below)
 ```
 
-The first Rust build takes several minutes. Optional links for the user: `scripts/install-cli.sh` (the
-`databee` command in `~/.local/bin`) and `scripts/install-app.sh` (the app in `~/Applications`).
+The first Rust build takes several minutes. `bun run release` ends with `scripts/install.sh`: it links
+`~/Applications/DataBee.app` to the release bundle and `~/.local/bin/databee` through that app, and restarts
+a running DataBee on the new build. Debug builds are never installed; `scripts/dev/launch.sh` runs one by its
+path. Run `scripts/create-signing-cert.sh` once, so the Keychain keeps trusting rebuilt apps for saved
+passwords instead of asking again after every build.
 
 ## Verify
 

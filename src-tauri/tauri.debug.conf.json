@@ -1,0 +1,11 @@
+{
+  "productName": "DataBee (Debug)",
+  "identifier": "com.philippstracker.databee.debug",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": []
+      }
+    }
+  }
+}

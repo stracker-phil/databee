@@ -3,10 +3,11 @@
 # Usage: scripts/dev/launch.sh [databee CLI args...]     Terminal app name: $DATABEE_DEV_TERMINAL (default Terminal)
 set -e
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-BIN="$ROOT/src-tauri/target/debug/bundle/macos/DataBee.app/Contents/MacOS/databee"
+APP="$ROOT/src-tauri/target/debug/bundle/macos/DataBee (Debug).app"
+BIN="$APP/Contents/MacOS/databee"
 [[ -x "$BIN" ]] || { echo "Build first: bun run build:app"; exit 1; }
 
-"$ROOT/scripts/sign-app.sh" "${BIN%/Contents/MacOS/databee}" com.philippstracker.databee
+"$ROOT/scripts/sign-app.sh" "$APP" com.philippstracker.databee.debug
 
 FRAME=$(swift - "${DATABEE_DEV_TERMINAL:-Terminal}" <<'SWIFT' 2>/dev/null
 import AppKit
@@ -34,6 +35,8 @@ let w = min(free.width - 16, 1600), h = min(free.height - 16, 1200)
 print("\(Int(free.minX + 8)),\(Int(free.minY + 8)),\(Int(w)),\(Int(h))")
 SWIFT
 )
+# One instance runs at a time (shared data and socket), so the installed release app stops too; while the
+# debug app runs, `databee` on the PATH talks to it. `bun run release` brings the release app back.
 "$ROOT/scripts/stop-app.sh" "$BIN"
 LOG="${TMPDIR:-/tmp}/databee-dev.log"
 DATABEE_WINDOW_FRAME="$FRAME" DATABEE_BACKGROUND=1 nohup "$BIN" "$@" >"$LOG" 2>&1 &

@@ -260,12 +260,10 @@ waits until the page has loaded:
   that follows a failed connect;
 - neither: an `error`, "No open or saved connection is named …".
 
-Links only reach a bundled app (`bun run build:app` or a release bundle) that LaunchServices knows, e.g. after
-it was started once or linked by `scripts/install-app.sh`. The debug build needs no scheme of its own: it has
-the release build's identifier, socket and lock, so only one of them runs at a time, and macOS hands the link
-to the running one. When the registered bundle is not the one running (two bundles on disk, one of them
-running), macOS starts the other bundle, which only activates the running app through the socket, and the
-link is lost.
+Only the release bundle registers the scheme (`tauri.debug.conf.json` empties it for debug builds), so
+LaunchServices always hands links to `~/Applications/DataBee.app` (`scripts/install.sh`). Debug and release
+share the data folder, socket and lock, so only one of them runs at a time. While the debug app runs, a link
+starts the release bundle, which only activates the running app through the socket, and the link is lost.
 
 ### MCP server
 
@@ -291,7 +289,7 @@ starts (`lib.rs` binds the outcome first): tokio's stdin would block on it other
 - **UI tools** (`mcp/ui.rs`): `current`, `open(address, focus = false)` and `command(id)` go to the app with
   `ipc::request`. Without a listener they fail with "DataBee is not running".
 - **Read-only:** no tool writes. Plans, actions and project rules are not reachable.
-- **Keychain:** `databee mcp` normally runs the app's own binary (`scripts/install-cli.sh` links
+- **Keychain:** `databee mcp` normally runs the app's own binary (`scripts/install.sh` links
   `DataBee.app/Contents/MacOS/databee`). The Keychain trusts that binary for the items the app saved, so
   there is no prompt. The trust follows the code signature: `scripts/sign-app.sh` signs builds with the local
   certificate of `scripts/create-signing-cert.sh`, so it survives rebuilds; an ad-hoc signed build is a new
@@ -398,7 +396,8 @@ on a blocking thread. A failed write is logged and retried after the next change
 it runs on `RunEvent::Exit` and from `clear`. History is best-effort: a crash can lose the last half second of
 queries.
 
-Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.databee/`.
+Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.databee/` (debug builds:
+`com.philippstracker.databee.debug/`, since the log dir follows the bundle id).
 
 **Adding a setting:**
 1. Add the field to `Settings` in `store/settings.rs`, with a default.
