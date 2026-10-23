@@ -11,11 +11,14 @@ layer and the Stage hook each have their own page.
    and `create_private_dir` (`store/json_file.rs`) makes it mode 0700. This happens before Tauri starts, because the CLI and the
    socket need the path first. The CLI reads `default_port` with `Settings::peek`, which never quarantines a
    corrupt file.
-2. **CLI.** `cli::parse` returns one of four outcomes:
+2. **CLI.** `cli::parse` returns one of five outcomes:
    - `Exit`: `--help` or `--version`.
    - `Run { launch, log_level }`: an `IpcMessage::Launch` with a connection, or `Activate` without one.
    - `Mcp`: `databee mcp` serves MCP on stdio through `mcp::run` and exits with its code, before any
      socket handoff, instance lock or Tauri ([below](#mcp-server)).
+   - `Quit`: `databee quit` forwards `IpcMessage::Quit` one-way (the app exits before it could reply) and
+     exits 0, or 2 ("DataBee is not running"). The app calls `AppHandle::exit`, so the history is flushed as
+     on a menu quit.
    - `Remote { message }`: a subcommand (`open`, `command`) for the running app. `ask_running_instance`
      sends it as a request and exits with its reply. With no instance running, `command` exits 2 ("DataBee
      is not running") and `open` starts the app with the open queued.
@@ -192,7 +195,8 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
   - `--background` on `open`: no focus change; otherwise the window comes to the front;
   - `databee mcp`: the MCP server on stdio ([below](#mcp-server));
   - `databee command <command-id>`: runs a command of the page's registry (`runMenuCommand`, so it runs
-    only in its active scope, and an open dialog or the palette blocks it). Unknown or unavailable commands fail.
+    only in its active scope, and an open dialog or the palette blocks it). Unknown or unavailable commands fail;
+  - `databee quit`: quits the running app (`IpcMessage::Quit`); `scripts/stop-app.sh` uses it.
   Errors print to stderr with exit 1; a result other than `null` prints to stdout.
 
 `ipc.rs`:
@@ -201,7 +205,7 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
   peers with another uid.
 - **Protocol:** one line of JSON per connection (at most 64 KiB, within 5 s), in one of two forms:
   - one-way (a bare `IpcMessage`): answered with `ok\n` before it is handled. `try_forward` sends `launch`,
-    `error` and `activate` this way, so old and new processes understand each other; `scripts/dev/js.sh`
+    `error`, `activate` and `quit` this way, so old and new processes understand each other; `scripts/dev/js.sh`
     sends `eval` this way.
   - request (`IpcRequest {id, message}`, sent by `ipc::request`): answered once handled with one
     `IpcReply {id, ok, result, error}` line. A reply that is not JSON or has another id is an error ("may be

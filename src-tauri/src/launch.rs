@@ -139,7 +139,7 @@ impl LaunchQueue {
 }
 
 /// Handles a message from another DataBee process (CLI launch, activation, remote request,
-/// dev eval).
+/// quit, dev eval).
 pub async fn on_ipc_message(handle: AppHandle, message: IpcMessage) -> HandlerResult {
     #[cfg(debug_assertions)]
     if let IpcMessage::Eval { js } = &message {
@@ -147,6 +147,10 @@ pub async fn on_ipc_message(handle: AppHandle, message: IpcMessage) -> HandlerRe
         return Ok(serde_json::Value::Null);
     }
     log::info!("Received {} from another process", message.kind());
+    if matches!(message, IpcMessage::Quit) {
+        handle.exit(0);
+        return Ok(serde_json::Value::Null);
+    }
     let request = match message {
         IpcMessage::Open {
             address,

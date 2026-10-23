@@ -51,6 +51,8 @@ pub enum IpcMessage {
     },
     /// Replies with the active tab's address, or `null`.
     Current,
+    /// Quits the app the way the menu does, so it saves its state on the way out.
+    Quit,
     /// Runs JavaScript in the window (used by scripts/dev to drive the UI).
     #[cfg(debug_assertions)]
     Eval {
@@ -68,6 +70,7 @@ impl IpcMessage {
             IpcMessage::Open { .. } => "Open",
             IpcMessage::Command { .. } => "Command",
             IpcMessage::Current => "Current",
+            IpcMessage::Quit => "Quit",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
         }
@@ -581,6 +584,20 @@ mod tests {
             assert_eq!(forward(&socket, message.clone()).await, Forward::Delivered);
             assert_eq!(rx.recv().await.unwrap(), message);
         }
+    }
+
+    #[tokio::test]
+    async fn quit_message_is_acknowledged_and_reaches_the_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("db.sock");
+        let mut rx = serve_into_channel(&socket);
+
+        assert_eq!(
+            serde_json::to_value(IpcMessage::Quit).unwrap(),
+            serde_json::json!({ "type": "quit" })
+        );
+        assert_eq!(forward(&socket, IpcMessage::Quit).await, Forward::Delivered);
+        assert_eq!(rx.recv().await.unwrap(), IpcMessage::Quit);
     }
 
     #[tokio::test]

@@ -17,7 +17,7 @@ const DEFAULT_USER: &str = "root";
     version,
     about = "Minimalistic SQL client",
     args_conflicts_with_subcommands = true,
-    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/site --password-env DB_PASS\n  echo secret | databee -u wp -d site --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/site/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar\n  claude mcp add databee -- databee mcp"
+    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/site --password-env DB_PASS\n  echo secret | databee -u wp -d site --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/site/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar\n  databee quit\n  claude mcp add databee -- databee mcp"
 )]
 struct Args {
     #[command(subcommand)]
@@ -83,6 +83,8 @@ enum CliCommand {
         /// The command id, as listed in the keybindings file
         id: String,
     },
+    /// Quit the running DataBee
+    Quit,
 }
 
 /// A connection request from the command line, including its password if one was given.
@@ -107,6 +109,8 @@ pub enum CliOutcome {
     Remote { message: IpcMessage },
     /// `databee mcp`: serve MCP on stdio instead of starting the app.
     Mcp,
+    /// `databee quit`: sent one-way, since the app exits before it could reply.
+    Quit,
 }
 
 /// Parses the full argv (including the program name).
@@ -162,6 +166,7 @@ fn subcommand_outcome(command: CliCommand) -> Result<CliOutcome, String> {
         }
         CliCommand::Command { id } => IpcMessage::Command { id },
         CliCommand::Mcp => return Ok(CliOutcome::Mcp),
+        CliCommand::Quit => return Ok(CliOutcome::Quit),
     };
     Ok(CliOutcome::Remote { message })
 }
@@ -647,6 +652,16 @@ mod tests {
     #[test]
     fn connection_flags_cannot_be_mixed_with_mcp() {
         assert!(run(&["-d", "db", "mcp"]).is_err());
+    }
+
+    #[test]
+    fn quit_subcommand_asks_the_running_app_to_quit() {
+        assert_eq!(run(&["quit"]).unwrap(), CliOutcome::Quit);
+    }
+
+    #[test]
+    fn connection_flags_cannot_be_mixed_with_quit() {
+        assert!(run(&["-d", "db", "quit"]).is_err());
     }
 
     #[test]

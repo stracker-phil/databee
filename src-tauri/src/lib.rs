@@ -208,6 +208,10 @@ pub fn run() {
             log_level,
         ),
         Ok(CliOutcome::Mcp) => std::process::exit(mcp::run(&config_dir, socket)),
+        Ok(CliOutcome::Quit) => {
+            forward(&socket, &IpcMessage::Quit, 0);
+            fail("DataBee is not running");
+        }
         Ok(CliOutcome::Remote { message }) => {
             ask_running_instance(&socket, &message);
             if !matches!(message, IpcMessage::Open { .. }) {
