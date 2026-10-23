@@ -6,6 +6,8 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BIN="$ROOT/src-tauri/target/debug/bundle/macos/DataBee.app/Contents/MacOS/databee"
 [[ -x "$BIN" ]] || { echo "Build first: bun run build:app"; exit 1; }
 
+"$ROOT/scripts/sign-app.sh" "${BIN%/Contents/MacOS/databee}" com.philippstracker.databee
+
 FRAME=$(swift - "${DATABEE_DEV_TERMINAL:-Terminal}" <<'SWIFT' 2>/dev/null
 import AppKit
 let owner = CommandLine.arguments[1]

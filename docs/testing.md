@@ -90,6 +90,8 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 |---|---|
 | `bun run build:app` | builds the debug `.app` bundle |
 | `scripts/dev/launch.sh [cli args]` | quits a running DataBee (`scripts/stop-app.sh`, through `databee quit`; `databee mcp` keeps running) and starts the debug build next to the terminal window, without focus. The log goes to `$TMPDIR/databee-dev.log`. The terminal app is set by `DATABEE_DEV_TERMINAL` (default `Terminal`). |
+| `scripts/sign-app.sh <app> <identifier>` | signs a bundle; `launch.sh` calls it. It uses `$DATABEE_SIGN_IDENTITY`, else the "DataBee Local Signing" certificate, else signs ad hoc |
+| `scripts/create-signing-cert.sh` | once per Mac: adds the self-signed "DataBee Local Signing" code-signing certificate to the login keychain, so the Keychain keeps trusting rebuilt apps for saved passwords (see [backend: MCP server](backend.md#mcp-server)) |
 | `scripts/dev/js.sh '<js>'` | runs JavaScript in the running debug app over the IPC socket. It is fire-and-forget: there is no return value, and top-level `const` declarations collide across calls, so wrap them in an IIFE. |
 | `scripts/dev/screenshot.sh out.png` | captures the DataBee window, also while it is in the background |
 | `bun run app` | builds and `open`s the app; this takes focus |

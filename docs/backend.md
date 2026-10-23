@@ -293,7 +293,9 @@ starts (`lib.rs` binds the outcome first): tokio's stdin would block on it other
 - **Read-only:** no tool writes. Plans, actions and project rules are not reachable.
 - **Keychain:** `databee mcp` normally runs the app's own binary (`scripts/install-cli.sh` links
   `DataBee.app/Contents/MacOS/databee`). The Keychain trusts that binary for the items the app saved, so
-  there is no prompt. After a rebuild (ad-hoc signed debug builds get a new signature) or from another binary
+  there is no prompt. The trust follows the code signature: `scripts/sign-app.sh` signs builds with the local
+  certificate of `scripts/create-signing-cert.sh`, so it survives rebuilds; an ad-hoc signed build is a new
+  app to the Keychain after every rebuild. After such a rebuild or from another binary
   (e.g. `target/debug/databee`), macOS shows its "wants to use your confidential information" dialog once
   per item, as it does for the app. The lookup waits on a blocking thread until it is answered; after "Deny"
   no password is sent, and the tool's error says why the login failed.
