@@ -58,6 +58,7 @@
 :root, .column.quiet, [data-accent] {
   --cell: color-mix(in srgb, var(--accent) 24%, transparent);
   --sel: color-mix(in srgb, var(--accent) 20%, transparent);
+  --value-hover: color-mix(in srgb, var(--accent) 8%, transparent);
   --lit-solid: color-mix(in srgb, var(--accent) 15%, var(--bg));
   /* The accent as text: no lighter than the scheme allows, so it stays readable on light surfaces. */
   --accent-text: oklch(from var(--accent) min(l, var(--accent-text-max-l)) c h);

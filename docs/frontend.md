@@ -735,7 +735,7 @@ the [readout](#readout) lists.
   `FieldsGroup` and `MetaGroup` as `.row.kv` rows, `RowsGroup` as a `.row.hdr` header plus rows on a grid
   template sized in characters, `EventsGroup` as time, table and column or key. Values render through the
   memoized `Field` (no effects per value); a mousedown focuses its provenance (`focusObject`), the focused
-  value gets an accent outline on `--sel`, and stays in view as `j`/`k` move it. `+n keys` / `+n rows` under a
+  value gets an accent outline, and stays in view as `j`/`k` move it. `+n keys` / `+n rows` under a
   capped group switches to Rows and scrolls to that group. Zero-row groups are left out.
 - **`RowsView`:** per group with a table its band, the `WHERE` of its rows address, and a compact `ResultsGrid`
   (at most its header and 12 rows tall (`.rows-grid` `max-height` from `--row-h` and
@@ -1162,7 +1162,7 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
 - **No color literals** (`#hex`, `rgb(`, `hsl(`) outside `styles/schemes/`. Everything else uses a token or
   a `color-mix()` of tokens.
 - **Derived tokens.** `theme.css` derives the opacity levels (`--o2`, `--o3`, `--dimmed` at 0.3), the accent
-  mixes (`--cell`, `--sel`, `--lit-solid`), `--accent` from `html[data-accent]` (default orange), the type sizes
+  mixes (`--cell`, `--sel`, `--value-hover`, `--lit-solid`), `--accent` from `html[data-accent]` (default orange), the type sizes
   (`--fs-*`) and the row height `--row-h` from `--pad`. `--bg-quiet` is a scheme token (`schemes/*.css`), not
   derived.
 - **Accent per database.** `data-accent` is the accent in effect, `selectEffectiveAccent` (`project` slice):

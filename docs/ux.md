@@ -108,8 +108,9 @@ Derived design tokens in `src/styles/theme.css`, the same for every scheme:
 |---|---|---|
 | `--accent` | `var(--a-<choice>)` via `[data-accent]` on `<html>`: the open database's own accent, else the setting; the Settings window always uses the setting | interactive things only |
 | `--o2`, `--o3` | `--text` at 62% and 40% | secondary and tertiary text (see opacity levels) |
-| `--cell` | `--accent` at 24% | hovered value |
-| `--sel` | `--accent` at 20% | selected row or sidebar entry, focused value |
+| `--cell` | `--accent` at 24% | linked table highlight, a changed value's flash |
+| `--sel` | `--accent` at 20% | selected row or sidebar entry |
+| `--value-hover` | `--accent` at 8% | hovered value or cell, in every view |
 | `--lit-solid` | `--accent` at 15% over `--bg` | the linked table highlight's rows and bands, opaque so a pinned key column matches its row |
 | `--accent-text` | `--accent` with its OKLCH lightness capped at `--accent-text-max-l` | the accent as text (links, keys, selected labels), readable on light surfaces |
 | `--accent-quiet` | `--accent` at 45%, the rest `--a-graphite` (oklab) | the accent of a pane beside the active one |
@@ -122,7 +123,7 @@ Derived design tokens in `src/styles/theme.css`, the same for every scheme:
 | `--fs-small`, `--fs-base`, `--fs-large` | 11.5, 13 and 17px in rem | see type |
 | `--font-ui`, `--font-mono` | Geist, JetBrains Mono | bundled defaults; Settings accepts any installed family |
 
-`--cell`, `--sel` and `--lit-solid` are derived again inside `.column.quiet` (`:root, .column.quiet`), so
+`--cell`, `--sel`, `--value-hover` and `--lit-solid` are derived again inside `.column.quiet` (`:root, .column.quiet`), so
 a quiet pane's come from its `--accent-quiet` and `--bg-quiet`. Layout tokens in the same `:root`, in rem
 (px at the default UI size): `--radius-sm` 6px (buttons, fields, segmented controls, inline panels), `--radius`
 9px, `--radius-lg` 12px, `--sidebar-width` 250px, `--toolbar-height` 44px; `--font-ui-bundled` /
@@ -172,12 +173,13 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
   document rows and Project page lists too.
 - **Hairline:** every row has a 1px `--line` below it.
 - **Row hover:** the whole row takes `--row-hover` (subtle).
-- **Cell hover:** the hovered cell takes `--cell` (stronger), with a 3px radius. In the Document view the
-  hover and the focus fill the same box around the value (`.field`) and replace each other; a cell of several
-  values (a summary) marks only the hovered value, and a tree takes no fill.
-- **Selected cell:** a 1.5px accent outline. While its grid has the keyboard focus it also takes `--sel`, like the Document view's
-  focused value; the grid itself draws no focus outline (a focused grid without a selected cell underlines
-  its header in the accent).
+- **Cell hover:** the hovered cell takes the subtle `--value-hover`, with a 3px radius, in every view and for
+  every kind of value, trees included. In the Document view hover and focus use the same box around the value
+  (`.field`); a cell of several values (a summary) tints only the hovered value.
+- **Selected or focused cell:** a 1.5px accent outline and no fill, so its content stays as readable as any
+  other; hovered, it takes the same tint as any cell. Fill always means hover, the outline always means
+  selection or focus, and the two never mix. The grid itself draws no focus outline (a focused grid without a
+  selected cell underlines its header in the accent).
 - **No row-number column.** The primary key identifies a row; result sets without one show no number.
 - **Kinds without color:** numbers are right-aligned with tabular figures, `NULL` is italic tertiary, binary
   values are tertiary. There are no type tints.
@@ -227,7 +229,7 @@ Running an action opens the action sheet (a modal like the palette, `ActionSheet
 tertiary), deleted rows as `table #key deleted`, or for free SQL "affects rows not known in advance" and
 its statements. It previews again 250 ms after a param changes. Below: `<n> rows · undo available` or
 `no undo`, and that the change is queued for review in the pending tray before `⌘S`. Buttons: Cancel and
-Queue change (accent, disabled while the preview loads or failed; a failure shows in red). In the Document view the focused value has a 1.5px accent outline on a `--sel` background; a tree keeps only the outline, so its text stays readable.
+Queue change (accent, disabled while the preview loads or failed; a failure shows in red). In the Document view the focused value has a 1.5px accent outline and no fill, the same for one line and a tree, so its text stays readable.
 
 **Rows view:** per group the same band, the group's `WHERE` in tertiary mono, then a compact grid (grid header:
 column name, type below) with the table's full columns, 12 rows high before it scrolls.
@@ -647,7 +649,7 @@ rebindable.
 | Key | Scope | Action |
 |---|---|---|
 | `⌘1` / `⌘2` | object | Document / Rows of the active column; focus stays on the same provenance (`object.viewDocument`, `object.viewRows`) |
-| `j` / `k`, ↓ / ↑ | object | move the focused value in a Document column (focus ring `--sel` and accent outline; the status bar shows its provenance when nothing is hovered); grids keep their arrow keys |
+| `j` / `k`, ↓ / ↑ | object | move the focused value in a Document column (an accent outline; the status bar shows its provenance when nothing is hovered); grids keep their arrow keys |
 | `h` / `l`, ← / → | object | move the active column (a focused grid keeps ← / →) |
 | `Enter` | object | drill into the focused reference or another row's key (next column), open serialized data as a value column (`object.drill`); grids handle Enter themselves: open the row as an object, a reference's target, a value column for serialized data or long text |
 | `Esc` | global | restore a maximized stack, else close the rightmost column, a stack's or a tab's value column (`columns.close`); overlays, menus and inputs take `Esc` first |

@@ -232,7 +232,7 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .empty-state { flex: 1; display: grid; place-items: center; color: var(--o3); text-align: center; padding: 1.538rem; }
 
 /* ---------- grid ---------- */
-/* Row anatomy (docs/ux.md): a --line hairline under every row, --row-hover on the hovered row, --cell on
+/* Row anatomy (docs/ux.md): a --line hairline under every row, --row-hover on the hovered row, --value-hover on
    the hovered value, no row numbers. Kinds show through alignment and opacity, never color. */
 .grid {
   flex: 1; overflow: auto; min-height: 0; background: var(--bg);
@@ -255,29 +255,27 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
   height: 100%; line-height: calc(var(--row-h) - 1px); border-radius: 3px;
   box-shadow: var(--cell-ring, 0 0 transparent), var(--change-mark, 0 0 transparent);
 }
-.grid-cell:hover { background: var(--cell); }
+.grid-cell:hover { background: var(--value-hover); }
 .grid-cell.num { text-align: right; font-variant-numeric: tabular-nums; }
 .grid-cell.null { color: var(--o3); font-style: italic; }
 .grid-cell.bytes { color: var(--o3); }
 .grid-cell.selected { --cell-ring: inset 0 0 0 1.5px var(--accent); }
 /* The grid's own outline would be clipped by the pane around it and covered by the sticky header, so focus shows
-   on the selected cell like the Document view's focused value, or under the header without one. */
+   as the selected cell's outline, like the Document view's focused value, or under the header without one. */
 .grid:focus-visible { outline: none; }
-.grid:focus .grid-cell.selected { background: var(--sel); }
 .grid:focus-visible:not(:has(.grid-cell.selected)) .grid-head::after {
   content: ""; position: absolute; inset: auto 0 0; height: 2px; background: var(--accent); pointer-events: none;
 }
 /* A first column holding the rows' primary key (.pinned) stays at the left while the grid scrolls sideways, header
-   cell included (above the other columns' resize handles), on the opaque row background (a hovered or selected
-   cell mixes its tint into it), with a hairline at its edge while scrolled (data-scrolled). revealColumn keeps
+   cell included (above the other columns' resize handles), on the opaque row background (a hovered cell lays
+   its tint over it), with a hairline at its edge while scrolled (data-scrolled). revealColumn keeps
    the selected cell right of it. */
 .grid.pinned { --pin-bg: var(--bg); }
 .grid.pinned .grid-row:hover { --pin-bg: var(--row-hover); }
 .grid.pinned :is(.grid-hcell, .grid-cell):first-child { position: sticky; left: 0; z-index: 1; background: var(--pin-bg); border-radius: 0; }
 .grid.pinned .grid-hcell:first-child { z-index: 2; }
 .grid.pinned .grid-hcell.sortable:first-child:hover { background: var(--row-hover); }
-.grid.pinned .grid-cell:first-child:hover { background: color-mix(in srgb, var(--accent) 24%, var(--pin-bg)); }
-.grid.pinned:focus .grid-cell.selected:first-child { background: color-mix(in srgb, var(--accent) 20%, var(--pin-bg)); }
+.grid.pinned .grid-cell:first-child:hover { background: linear-gradient(var(--value-hover), var(--value-hover)) var(--pin-bg); }
 .grid.pinned[data-scrolled] :is(.grid-hcell, .grid-cell):first-child::after {
   content: ""; position: absolute; inset: 0 0 0 auto; width: 1px; background: var(--line); pointer-events: none;
 }
@@ -591,6 +589,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .val-secret:hover, .val-ser:hover, .val-secret > .revealed { color: var(--text); }
 .val-secret > .revealed { outline: none; user-select: text; -webkit-user-select: text; }
 .val-tree { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; }
+.val-tree > .val-ser { align-self: flex-start; }
 /* What a click does (OpenHint, OpenSwap). A link with a leading icon (a table icon, the serialized marker) holds it
    in a 1em box with the indicator beside it, hidden; while its cell, line or link is hovered (or the selected grid
    cell has focus) the two trade places, so nothing shifts or cuts. Links without one show the indicator after
@@ -619,7 +618,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 /* ---------- column stack ---------- */
 /* The trail above the panes, then the panes side by side with hairline dividers (Splitter); the active pane has
    an accent line on top while others show next to it. Those others are quiet (docs/ux.md, Layout): their accent
-   leans toward graphite (keys, links, focus, selection; theme.css derives --cell, --sel, --lit-solid from it again),
+   leans toward graphite (keys, links, focus, selection; theme.css derives --cell, --sel, --value-hover, --lit-solid from it again),
    their background darker (--bg-quiet) and their content fainter, so one pane and one focus ring stand out. */
 .object-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .stack { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
@@ -755,18 +754,16 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 }
 :is(.object, .project, .readout) .row > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 :is(.object, .project, .readout) .row:not(.hdr, :disabled):hover { background: var(--row-hover); }
-/* One box per value: hover and focus fill the same cell box and replace each other, the focus adds an outline.
-   A tree has no fill (it would sit under all its text); a cell of several values marks the hovered one. */
+/* One box per value: hover tints it, focus outlines it, and the two never mix, so a focused value stays as
+   readable as any other. A cell of several values tints the hovered one instead. */
 .object .row > .field {
   margin: calc(-1 * var(--pad)) calc(-1 * var(--focus-out)); padding: var(--pad) var(--focus-out); border-radius: 3px;
   background: var(--field-bg, transparent); box-shadow: var(--field-ring, none);
 }
-.object .row > .field:hover { --field-bg: var(--cell); }
+.object .row > .field:hover:not(:has(.summary-pair)) { --field-bg: var(--value-hover); }
 .object .row > .focus { --field-ring: inset 0 0 0 1.5px var(--accent); }
-.object .row > .focus:not(:hover) { --field-bg: var(--sel); }
-.object .row > .field:has(.val-tree, .summary-pair) { --field-bg: transparent; }
 .object .row .summary-pair .val[data-src] { border-radius: 3px; padding: 0 3px; margin: 0 -3px; }
-.object .row .summary-pair .val[data-src]:hover { background: var(--cell); }
+.object .row .summary-pair .val[data-src]:hover { background: var(--value-hover); }
 :is(.object, .project, .readout) .row .r { text-align: right; }
 .object .row.kv { grid-template-columns: min(300px, 60%) minmax(0, 1fr); }
 .object .row.kv > :first-child { color: var(--o2); }
