@@ -301,6 +301,19 @@ export type ColumnWrite = { column: string, old: Value, new: Value, };
 export type ColumnsRef = { table: string, columns: Array<string>, };
 
 /**
+ * A catalog entry as the page and `databee commands --json` read it.
+ */
+export type CommandInfo = { id: string, title: string, scope: string, defaultBinding: string | null, 
+/**
+ * The label of its own native menu item.
+ */
+menuLabel: string | null, 
+/**
+ * The command whose native menu item it runs through.
+ */
+menuShares: string | null, fallbackFor: string | null, skipInText: boolean, runs: Runs, };
+
+/**
  * Two rows of one table side by side: the row of `address` and the one its `compare` names.
  */
 export type Comparison = { left: Document, right: Document, 
@@ -1002,7 +1015,7 @@ export type ReferencedBy = { from: ColumnsRef, to: ColumnsRef, when: string, dis
 
 export type RemoteEvent = { id: string, request: RemoteRequest, };
 
-export type RemoteRequest = { "type": "open", address: string, connection: string | null, } | { "type": "command", id: string, } | { "type": "current" };
+export type RemoteRequest = { "type": "open", address: string, connection: string | null, } | { "type": "pageCommand", id: string, } | { "type": "current" };
 
 export type Resolved = { 
 /**
@@ -1101,6 +1114,12 @@ tableEntities: { [key in string]: Array<string> },
  * The icon by real table, every table included.
  */
 tableIcons: { [key in string]: TableIcon }, };
+
+/**
+ * Where a command runs. Page commands need the page's state (the active tab, the selection); Rust commands
+ * run without it, also while the window is hidden.
+ */
+export type Runs = "page" | "rust";
 
 /**
  * A saved query as the palette offers it, with `{p}`/`{np}` replaced. Preset queries are

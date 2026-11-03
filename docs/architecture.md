@@ -62,8 +62,11 @@ These rules hold everywhere in the code. Keep them when you change things.
   ([backend: CLI and IPC](backend.md#cli-and-single-instance-handoff)).
 - **Launch requests are pulled, not pushed.** Rust queues launch requests and emits a bare `launch` event. The
   page calls `take_launch_events`. The page can't miss the initial request even though it subscribes late.
-- **The native menu emits `command` events** carrying a command id. The page runs that id through the same
-  registry that handles shortcuts and the palette.
+- **Every command is in one Rust catalog** (`bus/catalog.rs`, [ADR 0036](adr/0036-commands-live-in-a-rust-catalog.md)):
+  id, title, scope, default key, menu item and where it runs. The menu, `keybindings.json`, the CLI, MCP and the
+  page (`src/commands/catalog.gen.json`) read it. Rust commands (Settings, zoom) run in `bus/` even with the
+  window hidden; page commands run in the page (`page_command` events from the menu, `pageCommand` requests
+  from the CLI and MCP).
 - **The Stage hook** is an optional local HTTP API through which a presenter app drives the UI
   ([stage.md](stage.md)).
 
@@ -108,7 +111,8 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/stage/               Stage plugin: HTTP API, request hub, commands
   src/test_support.rs      fixture-server helpers for tests (`test-util`)
   src/secrets/             SecretStore trait; Keychain (release) and MemoryStore (debug builds, tests)
-  src/menu.rs              native menu (MENU_ITEMS)
+  src/bus/                 the command catalog and bus: runs commands by id for the menu, page, CLI and MCP
+  src/menu.rs              native menu, built from the catalog
   src/window/              window theme, bring-to-front, the Settings window, the navigation guard
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
   src/lock.rs              poison-tolerant std lock access

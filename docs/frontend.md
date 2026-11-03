@@ -198,7 +198,7 @@ Conventions:
 
 Only `api.ts` files import `@tauri-apps/api` or `@tauri-apps/plugin-*`: the core's is `src/api/index.ts`, a
 module's is `src/<module>/api.ts` (Stage: `src/stage/api.ts`) ([ADR 0002](adr/0002-ipc-in-api-files.md)). `src/api/index.ts` exports `api`, a flat object of thin `invoke` wrappers with no logic whose members include
-the event subscriptions (`api.onLaunch`, `api.onCommand`, `api.onRemote`, `api.onSessionHealth`), plus
+the event subscriptions (`api.onLaunch`, `api.onPageCommand`, `api.onRemote`, `api.onSessionHealth`), plus
 `toAppError` and the types. The IPC types are generated from Rust with `ts-rs`
 ([ADR 0014](adr/0014-generated-ipc-types.md)) into `src/api/types.gen.ts` (a module's types into its own folder, e.g. `src/stage/types.gen.ts`); never edit them. `bun run types`
 regenerates them (it runs the `export_bindings_*` tests), and `bun run lint` fails when a committed file is
@@ -275,9 +275,13 @@ The core commands are `APP_COMMANDS` (`src/commands/index.ts`); their default bi
     session whose connection is lost has `· connection lost` in its badge (`current · connection lost`). Enter runs
     `setActiveSession`, `connect` (its password dialog included) or `switchDatabase`. `CommandPalette` keys the
     sheet by `paletteSeed`, so a palette command that reopens it with a prefix starts fresh.
-- **Menu.** Native menu items emit `command` events with a command id; `runMenuCommand` runs that command, or
-  the one whose `menu` names it, whose scope is active and whose `when()` passes (`databee command` uses it
-  too). The movement keys of the column stack (J/K/H/L, arrows, ↵, ⎋) have no menu item. See
+- **Catalog.** Titles, scopes, default keys and menu items come from Rust's catalog
+  (`src/commands/catalog.gen.json`, [backend.md](backend.md#command-catalog-and-bus)). The page's lists hold
+  only handlers (`Handler`: `{id, when?, run}`); `catalogCommands` (`src/commands/catalog.ts`) merges them and
+  gives Rust-run commands (`settings.open`, zoom) a `run` that calls `api.runCommand`.
+- **Menu.** Native menu items of page commands emit `page_command` with a command id; `runMenuCommand` runs
+  that command, or the one whose `menu` names it, whose scope is active and whose `when()` passes
+  (`databee command` uses it too for page commands). The movement keys of the column stack (J/K/H/L, arrows, ↵, ⎋) have no menu item. See
   [backend.md](backend.md#native-menu) for the Rust side of `menu`.
 
 Some targets live inside a component, such as running the editor's statement or focusing the WHERE field.

@@ -6,7 +6,8 @@ import { collapseKey, documentText, focusOrder, provenanceKey } from "../lib/doc
 import { maximizable, objectColumnAt } from "../lib/columns";
 import { drillable, openValueAt } from "../components/value/open";
 import { hasValueColumn, selectActiveTab, selectCollapsedGroups, selectDocument, selectFocusedValue, selectMaxPanes, useStore, type ObjectTab } from "../state/store";
-import { isTextInput, type Command } from "./registry";
+import type { Handler } from "./catalog";
+import { isTextInput } from "./registry";
 
 const focused = () => document.activeElement;
 const typing = () => isTextInput(focused());
@@ -137,31 +138,28 @@ export function paneMenu(): { label: string; action: () => void }[] {
   return entries.filter((e) => e.applies).map(({ label, action }) => ({ label, action }));
 }
 
-const vertical = (id: string, title: string, key: string, delta: number): Command => ({ id, title, scope: "object", defaultBinding: key, when: canMoveFocus, run: () => moveFocus(delta) });
+const vertical = (id: string, delta: number): Handler => ({ id, when: canMoveFocus, run: () => moveFocus(delta) });
 
-const sideways = (id: string, title: string, key: string, delta: number): Command => ({
+const sideways = (id: string, arrow: boolean, delta: number): Handler => ({
   id,
-  title,
-  scope: "object",
-  defaultBinding: key,
-  when: () => canMoveColumn(key.startsWith("Arrow")),
+  when: () => canMoveColumn(arrow),
   run: () => useStore.getState().moveActiveColumn(delta),
 });
 
-export const COLUMN_COMMANDS: Command[] = [
-  vertical("object.down", "Focus the next value", "J", 1),
-  vertical("object.downArrow", "Focus the next value (arrow)", "ArrowDown", 1),
-  vertical("object.up", "Focus the previous value", "K", -1),
-  vertical("object.upArrow", "Focus the previous value (arrow)", "ArrowUp", -1),
-  sideways("object.left", "Move to the column on the left", "H", -1),
-  sideways("object.leftArrow", "Move to the column on the left (arrow)", "ArrowLeft", -1),
-  sideways("object.right", "Move to the column on the right", "L", 1),
-  sideways("object.rightArrow", "Move to the column on the right (arrow)", "ArrowRight", 1),
-  { id: "object.drill", title: "Open the focused reference in a new column", scope: "object", defaultBinding: "Enter", when: canDrill, run: drill },
-  { id: "column.maximize", title: "Maximize or restore the active pane", scope: "object", defaultBinding: "Mod+Shift+Enter", menu: true, when: canMaximize, run: toggleMaximized },
-  { id: "column.focusLeft", title: "Focus the pane on the left", scope: "object", defaultBinding: "Mod+Alt+ArrowLeft", menu: true, when: canFocusPane, run: () => focusPane(-1) },
-  { id: "column.focusRight", title: "Focus the pane on the right", scope: "object", defaultBinding: "Mod+Alt+ArrowRight", menu: true, when: canFocusPane, run: () => focusPane(1) },
-  { id: "column.close", title: "Close the active pane and the panes opened from it", scope: "object", defaultBinding: "Mod+Shift+W", menu: true, when: canCloseActive, run: () => useStore.getState().closeActiveColumn() },
-  { id: "column.openInTab", title: "Open the active pane's row in a new tab", scope: "object", defaultBinding: "Mod+Alt+Enter", menu: true, when: canOpenInTab, run: openInTab },
-  { id: "columns.close", title: "Close the rightmost column (restores a maximized pane first)", scope: "global", defaultBinding: "Escape", when: canClose, run: () => useStore.getState().closeRightmostColumn() },
+export const COLUMN_COMMANDS: Handler[] = [
+  vertical("object.down", 1),
+  vertical("object.downArrow", 1),
+  vertical("object.up", -1),
+  vertical("object.upArrow", -1),
+  sideways("object.left", false, -1),
+  sideways("object.leftArrow", true, -1),
+  sideways("object.right", false, 1),
+  sideways("object.rightArrow", true, 1),
+  { id: "object.drill", when: canDrill, run: drill },
+  { id: "column.maximize", when: canMaximize, run: toggleMaximized },
+  { id: "column.focusLeft", when: canFocusPane, run: () => focusPane(-1) },
+  { id: "column.focusRight", when: canFocusPane, run: () => focusPane(1) },
+  { id: "column.close", when: canCloseActive, run: () => useStore.getState().closeActiveColumn() },
+  { id: "column.openInTab", when: canOpenInTab, run: openInTab },
+  { id: "columns.close", when: canClose, run: () => useStore.getState().closeRightmostColumn() },
 ];

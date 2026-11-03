@@ -85,7 +85,7 @@ pub struct OpenArgs {
 #[derive(Deserialize, JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
 pub struct CommandArgs {
-    /// A command id, as in DataBee's keybindings.json (e.g. `view.sidebar`)
+    /// A command id, as `databee commands` lists it (e.g. `view.sidebar`)
     pub id: String,
 }
 
@@ -195,6 +195,12 @@ impl DataBeeServer {
 
     #[tool(description = "Runs a command of the running DataBee app by its id")]
     async fn command(&self, Parameters(args): Parameters<CommandArgs>) -> Result<String, String> {
+        if crate::bus::find(&args.id).is_none() {
+            return Err(format!(
+                "No command {}; `databee commands` lists them",
+                args.id
+            ));
+        }
         json(&ui::ask(&self.socket, IpcMessage::Command { id: args.id }).await?)
     }
 }

@@ -10,7 +10,7 @@ async function handle(request: RemoteRequest): Promise<unknown> {
   switch (request.type) {
     case "open":
       return openFromOutside(useStore.getState, request.address, request.connection);
-    case "command":
+    case "pageCommand":
       if (!getCommand(request.id)) throw new Error(`No command ${request.id}`);
       if (!runMenuCommand(request.id)) throw new Error(`${request.id} is not available right now`);
       return null;

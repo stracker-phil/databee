@@ -24,7 +24,7 @@ keep their form.
 | [0012](0012-plans-applied-by-id.md) | Planned changes are stored server-side and applied by id | Accepted, amended by 0026 |
 | [0013](0013-session-extensions.md) | Per-session module data lives in `Session.ext` | Accepted, amended |
 | [0014](0014-generated-ipc-types.md) | TypeScript IPC types are generated from Rust with ts-rs | Accepted |
-| [0015](0015-frontend-registries.md) | Frontend modules contribute through registries | Accepted, amended by 0020 |
+| [0015](0015-frontend-registries.md) | Frontend modules contribute through registries | Accepted, amended by 0020 and 0036 |
 | [0016](0016-module-settings-files.md) | Module settings live in the module's own JSON file | Accepted |
 | [0017](0017-panic-unwind.md) | Keep `panic = "unwind"` so a panic in one command does not take the app down | Accepted |
 | [0018](0018-escaping-follows-sql-mode.md) | Value escaping follows the server's `sql_mode` | Accepted |
@@ -45,3 +45,4 @@ keep their form.
 | [0033](0033-the-app-talks-only-to-hosts-the-user-configured.md) | The app talks only to hosts the user configured | Accepted (2026-11-03) |
 | [0034](0034-reads-stay-in-the-store-not-tanstack-query.md) | Reads stay in the store, not TanStack Query | Rejected (2026-11-03) |
 | [0035](0035-databee-keeps-its-own-look.md) | DataBee keeps its own look | Rejected (2026-11-03) |
+| [0036](0036-commands-live-in-a-rust-catalog.md) | Commands live in a Rust catalog | Accepted (2026-11-03), implemented |

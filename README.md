@@ -118,7 +118,8 @@ With DataBee running, `open` and `command` act on its window:
 databee open 'databee://shop/wordpress/wp_posts/42'       # any address (copy it from the status bar)
 databee open order 4711 --connection shop                 # <entity> <id>; default: the active connection
 databee open order 4711 --background                      # without bringing DataBee to the front
-databee command view.sidebar                              # a command id, as in keybindings.json
+databee command view.sidebar                              # a command id, as `databee commands` lists it
+databee commands [--json]                                 # every command: id, title, default key
 databee quit                                              # quit DataBee
 ```
 

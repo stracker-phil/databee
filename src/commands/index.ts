@@ -1,7 +1,7 @@
-import { TEXT_SIZES } from "../api";
 import { selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, useStore, type Tab } from "../state/store";
-import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Command, type Scope } from "./registry";
+import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Scope } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
+import { catalogCommands, type Handler } from "./catalog";
 import { COLUMN_COMMANDS } from "./columns";
 import { LIVE_COMMANDS } from "./live";
 import { OBJECT_VALUE_COMMANDS, VALUE_COMMANDS } from "./values";
@@ -33,17 +33,6 @@ export function registerCoreScopes() {
   registerScope({ id: "object", parent: "global", label: "Object", isActive: () => activeTabIs("object") });
 }
 
-/** Rust's `Settings::sanitized` clamps the sizes, so zooming past a bound is a no-op. */
-function zoom(step: number | null) {
-  const s = useStore.getState();
-  if (!s.settings) return;
-  const next =
-    step === null
-      ? { uiFontSize: TEXT_SIZES.ui.default, dataFontSize: TEXT_SIZES.data.default }
-      : { uiFontSize: s.settings.uiFontSize + step, dataFontSize: s.settings.dataFontSize + step };
-  void s.saveSettings({ ...s.settings, ...next });
-}
-
 const inScope = (scope: Scope) => () => activeScopes().includes(scope);
 
 /** `?` opens the overview of the scopes active now; pressed again it closes it. */
@@ -70,54 +59,35 @@ function showObjectView(view: "document" | "rows") {
 const inResults = () => !!document.activeElement?.closest(".results [role='grid']");
 const hasDatabase = () => !!selectActiveSession(useStore.getState())?.database;
 
-const APP_COMMANDS: Command[] = [
-  { id: "palette.open", title: "Command palette", scope: "global", defaultBinding: "Mod+K", menu: true, run: () => useStore.getState().setPaletteOpen(true) },
-  { id: "palette.openTable", title: "Open table or entity", scope: "global", defaultBinding: "Mod+P", menu: true, run: () => useStore.getState().setPaletteOpen(true, "t:") },
+const APP_HANDLERS: Handler[] = [
+  { id: "palette.open", run: () => useStore.getState().setPaletteOpen(true) },
+  { id: "palette.openTable", run: () => useStore.getState().setPaletteOpen(true, "t:") },
   // Without history the keys stay with the editor (⌘[ outdents there).
-  { id: "nav.back", title: "Back", scope: "global", defaultBinding: "Mod+[", menu: true, when: () => selectCanNav(useStore.getState(), "back"), run: () => useStore.getState().navBack() },
-  { id: "nav.forward", title: "Forward", scope: "global", defaultBinding: "Mod+]", menu: true, when: () => selectCanNav(useStore.getState(), "forward"), run: () => useStore.getState().navForward() },
-  { id: "view.zoomIn", title: "Zoom in", scope: "global", defaultBinding: "Mod+=", menu: true, run: () => zoom(1) },
-  { id: "view.zoomOut", title: "Zoom out", scope: "global", defaultBinding: "Mod+-", menu: true, run: () => zoom(-1) },
-  { id: "view.zoomReset", title: "Reset zoom", scope: "global", defaultBinding: "Mod+0", menu: true, run: () => zoom(null) },
+  { id: "nav.back", when: () => selectCanNav(useStore.getState(), "back"), run: () => useStore.getState().navBack() },
+  { id: "nav.forward", when: () => selectCanNav(useStore.getState(), "forward"), run: () => useStore.getState().navForward() },
   {
     id: "view.sidebar",
-    title: "Toggle sidebar",
-    scope: "global",
-    defaultBinding: "Mod+Ctrl+S",
-    menu: true,
     when: () => !!selectActiveSession(useStore.getState()),
     run: () => useStore.getState().toggleSidebar(),
   },
-  { id: "view.refresh", title: "Refresh current view", scope: "global", defaultBinding: "Mod+R", menu: true, run: () => void useStore.getState().refreshView() },
-  { id: "help.shortcuts", title: "Keyboard shortcuts", scope: "global", defaultBinding: "Shift+?", menu: true, run: toggleShortcuts },
-  { id: "table.focusFilter", title: "Value filter (WHERE)", scope: "table", defaultBinding: "Mod+F", menu: true, run: () => void window.dispatchEvent(new Event(EVENTS.focusWhere)) },
+  { id: "view.refresh", run: () => void useStore.getState().refreshView() },
+  { id: "help.shortcuts", run: toggleShortcuts },
+  { id: "table.focusFilter", run: () => void window.dispatchEvent(new Event(EVENTS.focusWhere)) },
   {
     id: "table.filterMode",
-    title: "Switch the WHERE filter between smart and SQL",
-    scope: "table",
-    defaultBinding: "Ctrl+Alt+X",
-    menu: true,
     run: () => {
       const tab = selectActiveTab(useStore.getState());
       if (tab?.kind === "table") useStore.getState().toggleFilterMode(tab.id);
     },
   },
-  { id: "sidebar.focusFilter", title: "Filter tables", scope: "db", defaultBinding: "Mod+Shift+F", menu: true, run: () => void window.dispatchEvent(new Event(EVENTS.focusTableFilter)) },
+  { id: "sidebar.focusFilter", run: () => void window.dispatchEvent(new Event(EVENTS.focusTableFilter)) },
   {
     id: "tabs.new",
-    title: "New query tab",
-    scope: "global",
-    defaultBinding: "Mod+T",
-    menu: true,
     when: () => useStore.getState().sessions.length > 0,
     run: () => useStore.getState().openQueryTab(),
   },
   {
     id: "tabs.close",
-    title: "Close tab",
-    scope: "global",
-    defaultBinding: "Mod+W",
-    menu: true,
     when: () => inDb() && !!selectActiveTab(useStore.getState()),
     run: () => {
       const s = useStore.getState();
@@ -125,58 +95,39 @@ const APP_COMMANDS: Command[] = [
       if (tab) s.closeTab(tab.id);
     },
   },
-  { id: "tabs.next", title: "Next tab", scope: "db", defaultBinding: "Ctrl+Tab", menu: true, run: () => useStore.getState().cycleTab(1) },
-  { id: "tabs.previous", title: "Previous tab", scope: "db", defaultBinding: "Ctrl+Shift+Tab", menu: true, run: () => useStore.getState().cycleTab(-1) },
-  { id: "editor.run", title: "Run statement at cursor", scope: "editor", defaultBinding: "Mod+Enter", menu: true, run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "statement" })) },
-  { id: "editor.runAll", title: "Run all statements", scope: "editor", defaultBinding: "Mod+Shift+Enter", menu: true, run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "all" })) },
-  { id: "object.viewDocument", title: "Show Document", scope: "object", defaultBinding: "Mod+1", menu: true, run: () => showObjectView("document") },
-  { id: "object.viewRows", title: "Show Rows", scope: "object", defaultBinding: "Mod+2", menu: true, run: () => showObjectView("rows") },
-  { id: "readout.open", title: "Readout", scope: "global", when: hasDatabase, menu: true, run: () => useStore.getState().openReadout() },
-  { id: "project.open", title: "Project", scope: "global", when: hasDatabase, menu: true, run: () => useStore.getState().openProject() },
-  { id: "connection.new", title: "New connection…", scope: "global", defaultBinding: "Mod+N", menu: true, run: () => useStore.getState().openDialog({ type: "connect" }) },
-  { id: "connection.switch", title: "Switch connection…", scope: "global", defaultBinding: "Mod+Shift+P", menu: true, run: () => useStore.getState().setPaletteOpen(true, "c:") },
+  { id: "tabs.next", run: () => useStore.getState().cycleTab(1) },
+  { id: "tabs.previous", run: () => useStore.getState().cycleTab(-1) },
+  { id: "editor.run", run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "statement" })) },
+  { id: "editor.runAll", run: () => void window.dispatchEvent(new CustomEvent(EVENTS.runQuery, { detail: "all" })) },
+  { id: "object.viewDocument", run: () => showObjectView("document") },
+  { id: "object.viewRows", run: () => showObjectView("rows") },
+  { id: "readout.open", when: hasDatabase, run: () => useStore.getState().openReadout() },
+  { id: "project.open", when: hasDatabase, run: () => useStore.getState().openProject() },
+  { id: "connection.new", run: () => useStore.getState().openDialog({ type: "connect" }) },
+  { id: "connection.switch", run: () => useStore.getState().setPaletteOpen(true, "c:") },
   {
     id: "connection.retry",
-    title: "Retry connection",
-    scope: "global",
     when: () => {
       const s = useStore.getState();
       return !!s.activeSessionId && s.health[s.activeSessionId]?.state === "down";
     },
-    menu: true,
     run: () => {
       const id = useStore.getState().activeSessionId;
       if (id) void useStore.getState().retryConnection(id);
     },
   },
   {
-    id: "settings.open",
-    title: "Settings…",
-    scope: "global",
-    defaultBinding: "Mod+,",
-    menu: true,
-    run: () => useStore.getState().openSettings(),
-  },
-  {
     id: "query.save",
-    title: "Save query",
-    scope: "editor",
-    fallbackFor: "changes.apply",
     when: () => selectActivePending(useStore.getState()).length === 0,
-    menu: true,
     run: () => void withQueryTab((tab) => useStore.getState().saveQueryTab(tab.id)),
   },
   {
     id: "query.pin",
-    title: "Pin query…",
-    scope: "editor",
-    defaultBinding: "P",
     when: inResults,
-    menu: true,
     run: () => void withQueryTab((tab) => useStore.getState().pinQueryTab(tab.id)),
   },
-  { id: "changes.apply", title: "Apply pending changes", scope: "global", defaultBinding: "Mod+S", menu: true, when: () => selectActivePending(useStore.getState()).length > 0, run: () => void useStore.getState().applyChanges() },
-  { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => selectCanUndo(useStore.getState()), menu: true, run: () => void useStore.getState().undoLast() },
+  { id: "changes.apply", when: () => selectActivePending(useStore.getState()).length > 0, run: () => void useStore.getState().applyChanges() },
+  { id: "changes.undo", when: () => selectCanUndo(useStore.getState()), run: () => void useStore.getState().undoLast() },
   ...VALUE_COMMANDS,
   ...ROW_COMMANDS,
   ...OBJECT_VALUE_COMMANDS,
@@ -190,7 +141,7 @@ const APP_COMMANDS: Command[] = [
  */
 export function installCommands() {
   registerCoreScopes();
-  if (allCommands().length === 0) registerCommands(APP_COMMANDS);
+  if (allCommands().length === 0) registerCommands(catalogCommands(APP_HANDLERS));
   setOverrides(useStore.getState().keybindings);
 }
 

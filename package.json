@@ -14,7 +14,7 @@
     "test": "bun run test:ui && bun run test:rust",
     "test:ui": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "lint": "bun run types && git diff --exit-code -- src/api/types.gen.ts src/stage/types.gen.ts && tsc --noEmit && eslint . && cargo clippy --manifest-path src-tauri/Cargo.toml --lib --bins -- -D warnings",
+    "lint": "bun run types && git diff --exit-code -- src/api/types.gen.ts src/stage/types.gen.ts src/commands/catalog.gen.json && tsc --noEmit && eslint . && cargo clippy --manifest-path src-tauri/Cargo.toml --lib --bins -- -D warnings",
     "test:db": "docker compose -f dev/docker-compose.yml down -v && docker compose -f dev/docker-compose.yml up -d --wait && cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --skip real_data",
     "build:app": "PATH=/opt/homebrew/opt/rustup/bin:$PATH VITE_DEV_HOOKS=1 tauri build --debug --bundles app --config src-tauri/tauri.debug.conf.json",
     "release": "PATH=/opt/homebrew/opt/rustup/bin:$PATH tauri build && scripts/install.sh",

@@ -1,4 +1,5 @@
 mod address;
+mod bus;
 mod cli;
 mod commands;
 pub mod connection;
@@ -224,7 +225,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
         .plugin(tauri_plugin_deep_link::init())
         .plugin(window::navigation::guard())
         .plugin(stage::init(&config_dir))
-        .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
+        .on_menu_event(|app, event| bus::run_from_menu(app, event.id().as_ref()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event
                 && window::hide_instead_of_close(window.app_handle(), window.label())
@@ -257,6 +258,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             commands::open_url,
             commands::open_settings,
             commands::hide_settings,
+            bus::run_command,
             commands::choose_save_path,
             commands::take_launch_events,
             commands::list_recents,

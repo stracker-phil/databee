@@ -9,7 +9,7 @@ import { cellText } from "../lib/format";
 import { kindFormFor, referenceFormFor, styleFormFor } from "../lib/ruleForms";
 import { fail, selectActiveTab, selectFocusedValue, useStore, type Tab } from "../state/store";
 import { tabDatabase } from "../state/tabKinds";
-import type { Command, Scope } from "./registry";
+import type { Handler } from "./catalog";
 
 /** Window event: the view holding the focused value (a grid, a document) opens its inline editor there. */
 export const EDIT_VALUE_EVENT = "databee:edit-value";
@@ -127,20 +127,19 @@ function watchFocused() {
 
 const canAddRule = () => !!sourced();
 
-/** Object-scope commands share the menu items of the table-scope ones (`value.*`). */
-function valueCommands(scope: Scope, idPrefix: string): Command[] {
-  const menu = (name: string) => (scope === "table" ? true : `value.${name}`);
+/** The same handlers for the table (`value.*`) and the object (`object.*`) commands. */
+function valueCommands(idPrefix: string): Handler[] {
   return [
-    { id: `${idPrefix}copyRaw`, title: "Copy value", scope, menu: menu("copyRaw"), defaultBinding: "Y", when: () => !!focused(), run: copyRaw },
-    { id: `${idPrefix}copyCondition`, title: "Copy value as SQL condition", scope, menu: menu("copyCondition"), defaultBinding: "Shift+Y", when: () => !!sourced(), run: copyCondition },
-    { id: `${idPrefix}edit`, title: "Edit value", scope, menu: menu("edit"), defaultBinding: "E", when: editable, run: editValue },
-    { id: `${idPrefix}filter`, title: "Filter rows by value", scope, menu: menu("filter"), defaultBinding: "F", when: () => !!sourced(), run: filterByValue },
-    { id: `${idPrefix}addReference`, title: "Add reference from this value…", scope, menu: menu("addReference"), defaultBinding: "R", when: canAddRule, run: () => openRuleForm("reference") },
-    { id: `${idPrefix}setKind`, title: "Set the kind of this column or meta key…", scope, menu: menu("setKind"), when: canAddRule, run: () => openRuleForm("kind") },
-    { id: `${idPrefix}setStyle`, title: "Add a value style for this value…", scope, menu: menu("setStyle"), when: canAddRule, run: () => openRuleForm("style") },
-    { id: `${idPrefix}watch`, title: "Watch value on the readout", scope, menu: menu("watch"), when: () => !!watchable(), run: watchFocused },
+    { id: `${idPrefix}copyRaw`, when: () => !!focused(), run: copyRaw },
+    { id: `${idPrefix}copyCondition`, when: () => !!sourced(), run: copyCondition },
+    { id: `${idPrefix}edit`, when: editable, run: editValue },
+    { id: `${idPrefix}filter`, when: () => !!sourced(), run: filterByValue },
+    { id: `${idPrefix}addReference`, when: canAddRule, run: () => openRuleForm("reference") },
+    { id: `${idPrefix}setKind`, when: canAddRule, run: () => openRuleForm("kind") },
+    { id: `${idPrefix}setStyle`, when: canAddRule, run: () => openRuleForm("style") },
+    { id: `${idPrefix}watch`, when: () => !!watchable(), run: watchFocused },
   ];
 }
 
-export const VALUE_COMMANDS: Command[] = valueCommands("table", "value.");
-export const OBJECT_VALUE_COMMANDS: Command[] = valueCommands("object", "object.");
+export const VALUE_COMMANDS = valueCommands("value.");
+export const OBJECT_VALUE_COMMANDS = valueCommands("object.");

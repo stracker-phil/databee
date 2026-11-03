@@ -226,6 +226,24 @@ impl Settings {
         self
     }
 
+    /// Both text sizes one step larger or smaller, or back to the defaults with `None`; clamped like any edit.
+    pub fn zoomed(self, step: Option<i8>) -> Self {
+        let d = Settings::default();
+        let (ui_font_size, data_font_size) = match step {
+            None => (d.ui_font_size, d.data_font_size),
+            Some(step) => (
+                self.ui_font_size.saturating_add_signed(step),
+                self.data_font_size.saturating_add_signed(step),
+            ),
+        };
+        Settings {
+            ui_font_size,
+            data_font_size,
+            ..self
+        }
+        .sanitized()
+    }
+
     /// Reads the settings without the store's quarantine, so a short-lived second process
     /// never moves the running app's file aside.
     pub fn peek(dir: &Path) -> Settings {
@@ -408,6 +426,39 @@ mod tests {
         assert_eq!(saved.data_font_size, 28);
         assert_eq!(saved.ui_font_size, 10);
         assert_eq!(saved.accent, "orange");
+    }
+
+    #[test]
+    fn zoom_steps_change_both_text_sizes_within_their_limits() {
+        let at = |ui_font_size, data_font_size| Settings {
+            ui_font_size,
+            data_font_size,
+            ..Settings::default()
+        };
+        for (start, step, expected) in [
+            (at(13, 12), Some(1), (14, 13)),
+            (at(13, 12), Some(-1), (12, 11)),
+            (at(24, 28), Some(1), (24, 28)),
+            (at(10, 9), Some(-1), (10, 9)),
+            (at(20, 20), None, (13, 12)),
+            (at(10, 9), None, (13, 12)),
+        ] {
+            let zoomed = start.clone().zoomed(step);
+            assert_eq!(
+                (zoomed.ui_font_size, zoomed.data_font_size),
+                expected,
+                "{start:?} {step:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn zooming_keeps_the_other_settings() {
+        let settings = Settings {
+            row_limit: 250,
+            ..Settings::default()
+        };
+        assert_eq!(settings.clone().zoomed(Some(1)).row_limit, 250);
     }
 
     fn open_with_json(json: &str) -> (tempfile::TempDir, SettingsStore) {

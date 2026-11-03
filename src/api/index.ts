@@ -82,6 +82,8 @@ export const api = {
   takeLaunchEvents: () => invoke<LaunchEvent[]>("take_launch_events"),
   /** Answers a `remote` event; a non-null `error` fails the request. */
   remoteReply: (id: string, result: unknown, error: string | null) => invoke<void>("remote_reply", { id, result, error }),
+  /** Runs a command of the catalog that runs in Rust (`bus::run_command`). */
+  runCommand: (id: string) => invoke<void>("run_command", { id }),
   listRecents: () => invoke<RecentConnection[]>("list_recents"),
   removeRecent: (identity: string) => invoke<void>("remove_recent", { identity }),
   /** Rust validates the slug (`[a-z0-9-]`, unique among saved connections) and renames open sessions too. */
@@ -237,9 +239,9 @@ export const api = {
   /** The Settings window was shown (true) or hidden. */
   onSettingsShown: (handler: (shown: boolean) => void): Promise<UnlistenFn> =>
     listen<boolean>("settings_shown", (e) => handler(e.payload)),
-  /** Native menu items emit the id of the command they run. */
-  onCommand: (handler: (id: string) => void): Promise<UnlistenFn> =>
-    listen<string>("command", (e) => handler(e.payload)),
+  /** A native menu item of a page command was clicked (`bus::run_from_menu`). */
+  onPageCommand: (handler: (id: string) => void): Promise<UnlistenFn> =>
+    listen<string>("page_command", (e) => handler(e.payload)),
   /** Requests from other processes (`databee open`, `databee command`); answer each with `remoteReply`. */
   onRemote: (handler: (event: RemoteEvent) => void): Promise<UnlistenFn> =>
     listen<RemoteEvent>("remote", (e) => handler(e.payload)),

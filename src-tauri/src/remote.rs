@@ -1,4 +1,4 @@
-//! Requests from other processes that only the page can answer (open an address, run a command,
+//! Requests from other processes that only the page can answer (open an address, run a page command,
 //! the active tab's address): emitted as `REMOTE_EVENT` with an id, answered by `remote_reply`.
 
 use std::time::Duration;
@@ -25,7 +25,7 @@ pub enum RemoteRequest {
         address: String,
         connection: Option<String>,
     },
-    Command {
+    PageCommand {
         id: String,
     },
     Current,

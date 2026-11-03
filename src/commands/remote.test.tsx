@@ -66,14 +66,14 @@ describe("remote requests", () => {
 
   it("runs a command and replies with success", async () => {
     const send = await remote();
-    send("r6", { type: "command", id: "tabs.new" });
+    send("r6", { type: "pageCommand", id: "tabs.new" });
     await waitFor(() => expect(mocked.remoteReply).toHaveBeenCalledWith("r6", null, null));
     expect(screen.getAllByRole("tab")).toHaveLength(2);
   });
 
   it("replies with an error for an unknown command id", async () => {
     const send = await remote();
-    send("r7", { type: "command", id: "no.such.command" });
+    send("r7", { type: "pageCommand", id: "no.such.command" });
     await waitFor(() => expect(mocked.remoteReply).toHaveBeenCalledWith("r7", null, "No command no.such.command"));
   });
 

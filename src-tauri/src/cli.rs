@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use url::{Host, Url};
 
 use crate::address::{Address, SCHEME};
+use crate::bus;
 use crate::connection::{ConnectionSpec, Secret};
 use crate::ipc::IpcMessage;
 use crate::store::settings::LogLevel;
@@ -80,8 +81,14 @@ enum CliCommand {
     Mcp,
     /// Run a command of the running DataBee by its id, e.g. `view.sidebar`
     Command {
-        /// The command id, as listed in the keybindings file
+        /// The command id, as `databee commands` lists it
         id: String,
+    },
+    /// List every command: id, title and default key
+    Commands {
+        /// Print the catalog as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Quit the running DataBee
     Quit,
@@ -164,7 +171,20 @@ fn subcommand_outcome(command: CliCommand) -> Result<CliOutcome, String> {
                 focus: !background,
             }
         }
-        CliCommand::Command { id } => IpcMessage::Command { id },
+        CliCommand::Command { id } => {
+            if bus::find(&id).is_none() {
+                return Err(format!("No command {id}; `databee commands` lists them"));
+            }
+            IpcMessage::Command { id }
+        }
+        CliCommand::Commands { json } => {
+            let message = if json {
+                bus::catalog::catalog_json()
+            } else {
+                bus::catalog::catalog_text()
+            };
+            return Ok(CliOutcome::Exit { message });
+        }
         CliCommand::Mcp => return Ok(CliOutcome::Mcp),
         CliCommand::Quit => return Ok(CliOutcome::Quit),
     };
@@ -642,6 +662,34 @@ mod tests {
                 id: "view.sidebar".into()
             }
         );
+    }
+
+    #[test]
+    fn command_subcommand_rejects_an_id_outside_the_catalog() {
+        let err = run(&["command", "nope.unknown"]).unwrap_err();
+        assert_eq!(
+            err,
+            "No command nope.unknown; `databee commands` lists them"
+        );
+    }
+
+    #[test]
+    fn commands_subcommand_lists_id_title_and_binding_per_line() {
+        let CliOutcome::Exit { message } = run(&["commands"]).unwrap() else {
+            panic!("expected a listing")
+        };
+        let lines: Vec<&str> = message.lines().collect();
+        assert_eq!(lines.len(), bus::catalog::CATALOG.len());
+        assert!(lines.contains(&"tabs.close\tClose tab\tMod+W"), "{message}");
+        assert!(lines.contains(&"readout.open\tReadout\t"), "{message}");
+    }
+
+    #[test]
+    fn commands_json_prints_the_catalog() {
+        let CliOutcome::Exit { message } = run(&["commands", "--json"]).unwrap() else {
+            panic!("expected a listing")
+        };
+        assert_eq!(message, bus::catalog::catalog_json());
     }
 
     #[test]

@@ -6,6 +6,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use ts_rs::TS;
 
+use crate::bus;
 use crate::connection::{ConnectionSpec, Secret};
 use crate::ipc::{HandlerResult, IpcMessage};
 use crate::lock::MutexExt;
@@ -165,7 +166,7 @@ pub async fn on_ipc_message(handle: AppHandle, message: IpcMessage) -> HandlerRe
                 connection,
             }
         }
-        IpcMessage::Command { id } => RemoteRequest::Command { id },
+        IpcMessage::Command { id } => return bus::run(&handle, &id).await,
         IpcMessage::Current => RemoteRequest::Current,
         launch => {
             queue_launches(&handle, [launch]);

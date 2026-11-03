@@ -38,7 +38,7 @@ describe("App", () => {
     await act(() => runCommand("tabs.close"));
     expect(screen.getAllByRole("tab")).toHaveLength(1);
     await act(() => runCommand("settings.open"));
-    expect(mocked.openSettings).toHaveBeenCalledWith(undefined);
+    expect(mocked.runCommand).toHaveBeenCalledWith("settings.open");
   });
 
   it("resolves shortcuts through the registry in both views", async () => {
@@ -52,8 +52,7 @@ describe("App", () => {
     await userEvent.keyboard("{Control>}{Tab}{/Control}");
     expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-selected"))).toEqual(["true", "false"]);
     await userEvent.keyboard("{Meta>}={/Meta}");
-    expect(useStore.getState().settings?.uiFontSize).toBe(14);
-    expect(useStore.getState().settings?.dataFontSize).toBe(13);
+    expect(mocked.runCommand).toHaveBeenCalledWith("view.zoomIn");
   });
 
   it("applies rebound shortcuts without a restart", async () => {
@@ -189,7 +188,7 @@ describe("App", () => {
         render(<App />);
         await screen.findByText("wp_options");
         fireEvent.keyDown(window, cmdComma);
-        expect(mocked.openSettings).toHaveBeenCalledWith(undefined);
+        expect(mocked.runCommand).toHaveBeenCalledWith("settings.open");
       });
 
       it("opens the Settings window on ⌘, with the palette open", async () => {
@@ -198,7 +197,7 @@ describe("App", () => {
         act(() => useStore.getState().setPaletteOpen(true));
         await screen.findByRole("dialog", { name: "Command palette" });
         fireEvent.keyDown(window, cmdComma);
-        expect(mocked.openSettings).toHaveBeenCalled();
+        expect(mocked.runCommand).toHaveBeenCalledWith("settings.open");
       });
 
       it("remembers whether the Settings window is shown when Rust reports it", async () => {

@@ -5,7 +5,7 @@ import { copyText } from "../lib/clipboard";
 import { rowsToJson, rowsToTsv } from "../lib/format";
 import { selectActiveTab, useStore } from "../state/store";
 import { gridRowsOf } from "./gridRows";
-import type { Command } from "./registry";
+import type { Handler } from "./catalog";
 
 interface RowTarget {
   tabId: string;
@@ -101,13 +101,13 @@ function copyRows(format: "tsv" | "json", which: "row" | "all") {
 const hasRow = () => rowTarget() !== null;
 const hasGrid = () => selectedGrid() !== null;
 
-export const ROW_COMMANDS: Command[] = [
-  { id: "row.delete", title: "Delete row", scope: "table", defaultBinding: "Mod+Backspace", skipInText: true, when: hasRow, run: toggleDelete },
-  { id: "row.duplicate", title: "Duplicate row", scope: "table", defaultBinding: "Mod+D", skipInText: true, when: hasRow, run: duplicate },
-  { id: "value.setNull", title: "Set value to NULL", scope: "table", defaultBinding: "Mod+Shift+Backspace", skipInText: true, when: hasRow, run: setNull },
-  { id: "row.openObject", title: "Open row as object", scope: "table", when: hasRow, run: openObject },
-  { id: "row.copyTsv", title: "Copy row as TSV", scope: "db", when: hasGrid, run: () => copyRows("tsv", "row") },
-  { id: "row.copyJson", title: "Copy row as JSON", scope: "db", when: hasGrid, run: () => copyRows("json", "row") },
-  { id: "grid.copyAllTsv", title: "Copy all rows as TSV", scope: "db", when: hasGrid, run: () => copyRows("tsv", "all") },
-  { id: "grid.copyAllJson", title: "Copy all rows as JSON", scope: "db", when: hasGrid, run: () => copyRows("json", "all") },
+export const ROW_COMMANDS: Handler[] = [
+  { id: "row.delete", when: hasRow, run: toggleDelete },
+  { id: "row.duplicate", when: hasRow, run: duplicate },
+  { id: "value.setNull", when: hasRow, run: setNull },
+  { id: "row.openObject", when: hasRow, run: openObject },
+  { id: "row.copyTsv", when: hasGrid, run: () => copyRows("tsv", "row") },
+  { id: "row.copyJson", when: hasGrid, run: () => copyRows("json", "row") },
+  { id: "grid.copyAllTsv", when: hasGrid, run: () => copyRows("tsv", "all") },
+  { id: "grid.copyAllJson", when: hasGrid, run: () => copyRows("json", "all") },
 ];

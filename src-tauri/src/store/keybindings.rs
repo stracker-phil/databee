@@ -3,8 +3,8 @@
 //! accelerators so the two never disagree.
 
 use super::json_store::JsonStore;
+use crate::bus;
 use crate::error::AppResult;
-use crate::menu::MENU_ITEMS;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -42,33 +42,25 @@ impl KeybindingsStore {
         if let Some(custom) = self.store.read(|current| current.get(id).cloned()) {
             return custom;
         }
-        MENU_ITEMS
-            .iter()
-            .find(|item| item.id == id)
-            .map(|item| item.default_binding.to_string())
-            .filter(|b| !b.is_empty())
+        bus::find(id)?.default_binding.map(str::to_string)
     }
 }
 
 const MODIFIERS: &[&str] = &["Mod", "Ctrl", "Alt", "Shift"];
 
-/// Drops overrides whose command id or binding the webview could never match. Ids are not
-/// checked against the registry: the frontend owns most commands and Rust does not know them.
+/// Drops overrides for ids the catalog doesn't know and bindings the webview could never match.
 pub fn sanitize(bindings: Keybindings) -> Keybindings {
     bindings
         .into_iter()
         .filter(|(id, binding)| {
-            let valid = is_command_id(id) && binding.as_deref().is_none_or(|b| split(b).is_some());
+            let valid =
+                bus::find(id).is_some() && binding.as_deref().is_none_or(|b| split(b).is_some());
             if !valid {
                 log::warn!("Ignoring key binding {id:?} = {binding:?}");
             }
             valid
         })
         .collect()
-}
-
-fn is_command_id(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
 }
 
 /// `Mod+Shift+K` into its modifiers and key. A trailing `++` (or a bare `+`) is the `+` key.
@@ -273,11 +265,13 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_drops_bad_syntax_and_bad_ids() {
+    fn sanitize_drops_bad_syntax_and_ids_missing_from_the_catalog() {
         let cleaned = sanitize(overrides(&[
-            ("a.bad", Some("Mod+")),
-            ("b.bad", Some("Hyper+K")),
-            ("c.bad", Some("Mod+K+J")),
+            ("tabs.close", Some("Mod+")),
+            ("tabs.next", Some("Hyper+K")),
+            ("tabs.previous", Some("Mod+K+J")),
+            ("nope.unknown", Some("Mod+K")),
+            ("nope.unbound", None),
             ("bad id!", Some("Mod+K")),
             ("tabs.new", Some("Mod+Shift+T")),
             ("view.refresh", None),
@@ -301,6 +295,7 @@ mod tests {
             .update(overrides(&[
                 ("tabs.new", Some("Mod+Shift+T")),
                 ("tabs.close", Some("Hyper+K")),
+                ("nope.unknown", Some("Mod+K")),
             ]))
             .await
             .unwrap();

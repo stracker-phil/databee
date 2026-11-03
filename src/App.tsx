@@ -41,7 +41,7 @@ function useBackendEvents() {
     const unlisten = [
       api.onSettingsChanged(reloadSettings),
       api.onSettingsShown(useStore.getState().setSettingsShown),
-      api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), api.onRemote((e) => void answerRemote(e)), api.onSessionHealth(setHealth)];
+      api.onLaunch(() => void drainLaunches()), api.onPageCommand(runMenuCommand), api.onRemote((e) => void answerRemote(e)), api.onSessionHealth(setHealth)];
 
     // Coming back to the window, often right after starting the container again, retries once.
     const onFocus = () => retryLostSessions();

@@ -165,7 +165,7 @@ describe("Stage page hooks", () => {
     vi.mocked(document.hasFocus).mockReturnValue(false);
     const reply = await hooks().act({ kind: "keys", keys: key(",", "", { meta: true }), focused: false });
     expect(reply).toMatchObject({ handled: true, ok: true, command: "app:settings" });
-    expect(mocked_api.openSettings).toHaveBeenCalledWith(undefined);
+    expect(mocked_api.runCommand).toHaveBeenCalledWith("settings.open");
   });
 
   it("sends other keys to the focused element, and Enter submits its form", async () => {

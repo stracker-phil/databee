@@ -197,8 +197,12 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
     page resolves in that connection's session (default: the active one) through `document`;
   - `--background` on `open`: no focus change; otherwise the window comes to the front;
   - `databee mcp`: the MCP server on stdio ([below](#mcp-server));
-  - `databee command <command-id>`: runs a command of the page's registry (`runMenuCommand`, so it runs
-    only in its active scope, and an open dialog or the palette blocks it). Unknown or unavailable commands fail;
+  - `databee command <command-id>`: runs a command of the catalog (`bus::run`): a Rust command runs in Rust,
+    also with the window hidden; a page command goes to the page (`runMenuCommand`, so it runs only in its
+    active scope, and an open dialog or the palette blocks it). Unknown ids fail before anything is sent;
+    unavailable commands fail;
+  - `databee commands [--json]`: lists the catalog (id, title, default key; `--json` is
+    `src/commands/catalog.gen.json`), without asking the app;
   - `databee quit`: quits the running app (`IpcMessage::Quit`); `scripts/stop-app.sh` uses it.
   Errors print to stderr with exit 1; a result other than `null` prints to stdout.
 
@@ -306,7 +310,7 @@ starts (`lib.rs` binds the outcome first): tokio's stdin would block on it other
 
 `remote.rs`: `Bridge::ask` registers a fresh id in its `pending::PendingReplies` (a map of request ids to
 oneshot senders, also used by the Stage hub), emits `remote` with
-`RemoteEvent {id, request: RemoteRequest}` (`open {address, connection}`, `command {id}`, `current`) and waits
+`RemoteEvent {id, request: RemoteRequest}` (`open {address, connection}`, `pageCommand {id}`, `current`) and waits
 up to 4 s (below the 5 s IPC client timeout) for `remote_reply(id, result, error)`; a set `error` fails the
 request, and a late or unknown reply is dropped. On the page, `useBackendEvents` (`src/App.tsx`) hands each
 event to `answerRemote` (`src/commands/remote.ts`), which opens through `openFromOutside`, runs commands
@@ -515,12 +519,12 @@ escaped, so the page cannot forge log lines.
 ## Native menu
 
 `menu.rs` builds the menus: DataBee, File, Edit, View, Data, Go, Window and Help. Items that map to app
-commands are listed once in `MENU_ITEMS` (id, label, default binding, and `binding_of` for an item that shows
-another command's binding, as `query.save` shows `changes.apply`'s); `build()` places them (`submenu` takes
-groups of ids, separated). Their bindings come from `KeybindingsStore::menu_binding`: the user override, else
-the `MENU_ITEMS` default. Those defaults mirror the `defaultBinding` of the TypeScript commands marked
-`menu: true` (`src/commands/menu.test.ts` reads `menu.rs` and compares both ways). A click emits `command`
-with the id (`menu::forward`; `is_menu_command` filters out the native items).
+commands take their label from the command's `Menu::Item` in the catalog (`bus/catalog.rs`); `build()` places
+them (`submenu` takes groups of ids, separated). An item shows its command's binding, or that of the command it
+is a `fallback_for` (`query.save` shows `changes.apply`'s). Bindings come from
+`KeybindingsStore::menu_binding`: the user override, else the catalog default. A click runs
+`bus::run_from_menu`: a Rust command runs there, a page command is emitted as `page_command` with its id; ids
+the catalog doesn't know (About, Quit) are left to macOS.
 
 `label_and_accelerator` turns a binding with ⌘ or ⌃ (`keybindings::is_chord`) into an accelerator. Any other
 binding (`Y`, `⇧?`) would take its key from text fields as a menu accelerator, so it is appended to the label
@@ -533,11 +537,25 @@ Menu items are always enabled; the page decides. `runMenuCommand` runs the comma
 active and its `when()` passes, so an accelerator the webview did not take (⌘F outside a table tab) does
 nothing.
 
-To add a menu item:
-1. Set `menu: true` (and `defaultBinding`) on the TypeScript command. The same action in another scope sets
-   `menu: "<id of the listed command>"` and shares its item (the object value commands share `value.*`).
-2. Add the id, label and default to `MENU_ITEMS` in `menu.rs`.
-3. Place the item in `build()`.
+## Command catalog and bus
+
+`bus/catalog.rs` lists every command once (`CATALOG`, built with `page(id, title, scope)` and `.key()`,
+`.menu(label)`, `.shares(id)`, `.fallback_for(id)`, `.skip_in_text()`, `.in_rust()`). `bun run types` writes
+it as `src/commands/catalog.gen.json` (`export_bindings_command_catalog`), which the lint drift check compares
+and the page imports. `bus/mod.rs` runs commands by id: `run_from_menu` (menu clicks), `run` (CLI and MCP
+through `IpcMessage::Command`; page commands go through `remote::Bridge` as `pageCommand`) and the
+`run_command` IPC command (the page runs Rust commands from a key or the palette). Rust commands today:
+`settings.open` and `view.zoomIn` / `zoomOut` / `zoomReset` (`Settings::zoomed`, saved like any settings edit,
+then `settings_changed`). `keybindings.json` keeps only ids the catalog knows.
+
+To add a command:
+1. Add it to `CATALOG` with its title, scope and default key; `.menu("Label…")` for a native item, or
+   `.shares("<id>")` to run through another command's item in another scope (the object value commands share
+   `value.*`); `.in_rust()` when it needs no page state.
+2. A page command gets a handler (`{id, when?, run}`) in `src/commands/`; `catalogCommands` throws at install
+   when one is missing. A Rust command gets a `RustAction` in `bus/mod.rs`.
+3. Place a menu item in `menu.rs` `build()`.
+4. `bun run types` regenerates the JSON.
 
 `set_keybindings` rebuilds the menu (`menu::rebuild`), so a new accelerator applies at once.
 
