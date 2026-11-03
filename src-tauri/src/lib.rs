@@ -167,30 +167,36 @@ pub fn run() {
         &mut std::io::stdin().lock(),
         &|key| std::env::var(key).ok(),
     );
-    let (message, log_override) = match outcome {
+    let (message, log_override, hidden) = match outcome {
         Ok(CliOutcome::Exit { message }) => {
             print!("{message}");
             std::process::exit(0);
         }
-        Ok(CliOutcome::Run { launch, log_level }) => (
+        Ok(CliOutcome::Run {
+            launch,
+            log_level,
+            hidden,
+        }) => (
             launch.map(IpcMessage::from).unwrap_or(IpcMessage::Activate),
             log_level,
+            hidden,
         ),
         Ok(CliOutcome::Mcp) => std::process::exit(mcp::run(&config_dir, socket)),
         Ok(CliOutcome::Quit) => {
             instance::forward(&socket, &IpcMessage::Quit, 0);
             fail("DataBee is not running");
         }
+        Ok(CliOutcome::Status { json }) => instance::status(&socket, json),
         Ok(CliOutcome::Remote { message }) => {
             instance::ask(&socket, &message);
             if !matches!(message, IpcMessage::Open { .. }) {
                 fail("DataBee is not running");
             }
-            (message, None)
+            (message, None, false)
         }
         Err(message) => {
             eprintln!("{message}");
-            (IpcMessage::Error { message }, None)
+            (IpcMessage::Error { message }, None, false)
         }
     };
     let exit_code = if matches!(message, IpcMessage::Error { .. }) {
@@ -199,7 +205,13 @@ pub fn run() {
         0
     };
 
-    let _instance_lock = instance::forward_or_lock(&config_dir, &socket, &message, exit_code);
+    // `--hidden` leaves a running instance alone: it only asks for the status.
+    let forwarded = if hidden {
+        &IpcMessage::Status
+    } else {
+        &message
+    };
+    let _instance_lock = instance::forward_or_lock(&config_dir, &socket, forwarded, exit_code);
 
     let mut state = AppState::open(&config_dir, secrets::app_store());
     #[cfg(debug_assertions)]
@@ -210,10 +222,17 @@ pub fn run() {
         socket,
         message,
         log_override.unwrap_or(stored.log_level),
+        hidden,
     );
 }
 
-fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: LogLevel) {
+fn start_app(
+    state: AppState,
+    socket: PathBuf,
+    initial: IpcMessage,
+    log_level: LogLevel,
+    hidden: bool,
+) {
     let config_dir = state.config_dir.clone();
     tauri::Builder::default()
         .manage(state)
@@ -242,6 +261,9 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             commands::apply_settings(app.handle(), None, &state.settings.get());
             #[cfg(debug_assertions)]
             apply_dev_frame(app);
+            if hidden {
+                window::hide_main(app.handle());
+            }
             start_ipc(app.handle().clone(), &socket);
             deep_link::listen(app.handle());
             health::watch::start(app.handle());
@@ -337,12 +359,18 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event
-                && let Err(e) = app.state::<AppState>().history.flush()
-            {
-                log::warn!("Could not save the query history: {e}");
+        .run(|app, event| match event {
+            // Hiding the last window must not end the app; only Quit does (with an exit code).
+            tauri::RunEvent::ExitRequested {
+                code: None, api, ..
+            } => api.prevent_exit(),
+            tauri::RunEvent::Reopen { .. } => window::bring_to_front(app),
+            tauri::RunEvent::Exit => {
+                if let Err(e) = app.state::<AppState>().history.flush() {
+                    log::warn!("Could not save the query history: {e}");
+                }
             }
+            _ => {}
         });
 }
 

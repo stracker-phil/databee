@@ -11,14 +11,19 @@ layer and the Stage hook each have their own page.
    and `create_private_dir` (`store/json_file.rs`) makes it mode 0700. This happens before Tauri starts, because the CLI and the
    socket need the path first. The CLI reads `default_port` with `Settings::peek`, which never quarantines a
    corrupt file.
-2. **CLI.** `cli::parse` returns one of five outcomes:
+2. **CLI.** `cli::parse` returns one of six outcomes:
    - `Exit`: `--help` or `--version`.
-   - `Run { launch, log_level }`: an `IpcMessage::Launch` with a connection, or `Activate` without one.
+   - `Run { launch, log_level, hidden }`: an `IpcMessage::Launch` with a connection, or `Activate` without one.
+     `--hidden` starts the app with its window hidden (`window::hide_main` in setup); while an instance runs it
+     only sends `Status`, so the running app stays as it is.
    - `Mcp`: `databee mcp` serves MCP on stdio through `mcp::run` and exits with its code, before any
      socket handoff, instance lock or Tauri ([below](#mcp-server)).
    - `Quit`: `databee quit` forwards `IpcMessage::Quit` one-way (the app exits before it could reply) and
      exits 0, or 2 ("DataBee is not running"). The app calls `AppHandle::exit`, so the history is flushed as
      on a menu quit.
+   - `Status { json }`: `databee status [--json]` asks the running app (`IpcMessage::Status`, answered in Rust:
+     `{"running": true, "windowVisible": …}`) and prints it, or `{"running": false}` when none runs
+     (`instance::status`). `scripts/install.sh` uses it to restart a hidden app with `--hidden`.
    - `Remote { message }`: a subcommand (`open`, `command`) for the running app. `instance::ask`
      sends it as a request and exits with its reply. With no instance running, `command` exits 2 ("DataBee
      is not running") and `open` starts the app with the open queued.
@@ -515,6 +520,19 @@ ts-rs generates `AppError` and `AppErrorField` from `ErrorJson` and `FieldJson` 
 Logging of failures: a failed query logs `kind` and `code` at Info and the message (which may quote SQL) at
 Debug; the SQL itself only at Trace. Text from `log_frontend_error` is cut to 4 KiB and its `\n`/`\r` are
 escaped, so the page cannot forge log lines.
+
+## Windows and quitting
+
+Closing a window hides it ([ADR 0037](adr/0037-closing-the-window-keeps-the-app-running.md)):
+`on_window_event` hands `CloseRequested` to `window::hide_instead_of_close` (the main window: `hide_main`;
+Settings: `settings::hide`). The run loop prevents `RunEvent::ExitRequested` without an exit code, so only an
+explicit quit ends the app: ⌘Q, the app menu, `databee quit` (`AppHandle::exit(0)`). `RunEvent::Reopen` (a Dock
+click) and every request that brings DataBee forward (`window::bring_to_front`) show the window again.
+`RunEvent::Exit` still flushes the history. ⌘W runs `tabs.close`: it closes the active tab, or hides the window
+(`window.hide`, a Rust command) when none is open; with Settings in front the Close item hides Settings
+(`bus::run_from_menu`). The table live check already pauses while the window isn't visible
+(`TableCheck.tsx`).
+
 
 ## Native menu
 

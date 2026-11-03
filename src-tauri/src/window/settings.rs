@@ -68,3 +68,8 @@ pub fn hide(app: &AppHandle) {
     announce_shown(app, false);
     super::bring_to_front(app);
 }
+
+pub fn is_focused(app: &AppHandle) -> bool {
+    app.get_webview_window(LABEL)
+        .is_some_and(|window| window.is_focused().unwrap_or(false))
+}

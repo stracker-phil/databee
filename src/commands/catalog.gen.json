@@ -155,14 +155,25 @@
   },
   {
     "id": "tabs.close",
-    "title": "Close tab",
+    "title": "Close tab or window",
     "scope": "global",
     "defaultBinding": "Mod+W",
-    "menuLabel": "Close Tab",
+    "menuLabel": "Close",
     "menuShares": null,
     "fallbackFor": null,
     "skipInText": false,
     "runs": "page"
+  },
+  {
+    "id": "window.hide",
+    "title": "Hide window",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": null,
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
   },
   {
     "id": "tabs.next",

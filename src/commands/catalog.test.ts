@@ -43,7 +43,7 @@ describe("catalogCommands", () => {
     const command = (id: string) => catalogCommands(pageHandlers()).find((c) => c.id === id)!;
 
     it("takes title, binding and a menu item from a command with a menu label", () => {
-      expect(command("tabs.close")).toMatchObject({ title: "Close tab", defaultBinding: "Mod+W", menu: true });
+      expect(command("tabs.close")).toMatchObject({ title: "Close tab or window", defaultBinding: "Mod+W", menu: true });
     });
 
     it("points a command without a menu label at the item it shares", () => {

@@ -18,7 +18,7 @@ const DEFAULT_USER: &str = "root";
     version,
     about = "Minimalistic SQL client",
     args_conflicts_with_subcommands = true,
-    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/site --password-env DB_PASS\n  echo secret | databee -u wp -d site --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/site/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar\n  databee quit\n  claude mcp add databee -- databee mcp"
+    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/site --password-env DB_PASS\n  echo secret | databee -u wp -d site --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/site/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar\n  databee status --json\n  databee quit\n  claude mcp add databee -- databee mcp"
 )]
 struct Args {
     #[command(subcommand)]
@@ -60,6 +60,10 @@ struct Args {
     /// Log level for this run
     #[arg(long, value_enum)]
     log_level: Option<LogLevel>,
+    /// Start with the window hidden (scripts/install.sh restarts a hidden app this way); does nothing while
+    /// DataBee runs
+    #[arg(long)]
+    hidden: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -92,6 +96,12 @@ enum CliCommand {
     },
     /// Quit the running DataBee
     Quit,
+    /// Whether DataBee runs and its window shows
+    Status {
+        /// Print `{"running": …, "windowVisible": …}`
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// A connection request from the command line, including its password if one was given.
@@ -109,6 +119,7 @@ pub enum CliOutcome {
     Run {
         launch: Option<Launch>,
         log_level: Option<LogLevel>,
+        hidden: bool,
     },
     /// `--help` / `--version`: print and exit without starting the app.
     Exit { message: String },
@@ -118,6 +129,8 @@ pub enum CliOutcome {
     Mcp,
     /// `databee quit`: sent one-way, since the app exits before it could reply.
     Quit,
+    /// `databee status`: asks the running app, answers itself when none runs.
+    Status { json: bool },
 }
 
 /// Parses the full argv (including the program name).
@@ -149,8 +162,13 @@ where
         return subcommand_outcome(command);
     }
     let log_level = args.log_level;
+    let hidden = args.hidden;
     let launch = build_launch(args, default_port, stdin, env)?;
-    Ok(CliOutcome::Run { launch, log_level })
+    Ok(CliOutcome::Run {
+        launch,
+        log_level,
+        hidden,
+    })
 }
 
 fn subcommand_outcome(command: CliCommand) -> Result<CliOutcome, String> {
@@ -187,6 +205,7 @@ fn subcommand_outcome(command: CliCommand) -> Result<CliOutcome, String> {
         }
         CliCommand::Mcp => return Ok(CliOutcome::Mcp),
         CliCommand::Quit => return Ok(CliOutcome::Quit),
+        CliCommand::Status { json } => return Ok(CliOutcome::Status { json }),
     };
     Ok(CliOutcome::Remote { message })
 }
@@ -387,9 +406,52 @@ mod tests {
             run(&[]).unwrap(),
             CliOutcome::Run {
                 launch: None,
-                log_level: None
+                log_level: None,
+                hidden: false
             }
         );
+    }
+
+    #[test]
+    fn hidden_flag_starts_the_app_with_the_window_hidden() {
+        assert_eq!(
+            run(&["--hidden"]).unwrap(),
+            CliOutcome::Run {
+                launch: None,
+                log_level: None,
+                hidden: true
+            }
+        );
+    }
+
+    #[test]
+    fn hidden_flag_combines_with_a_connection_url() {
+        let CliOutcome::Run {
+            launch: Some(l),
+            hidden,
+            ..
+        } = run(&["--hidden", "mysql://wp@db.local/site"]).unwrap()
+        else {
+            panic!("expected a launch")
+        };
+        assert!(hidden);
+        assert_eq!(l.spec.host, "db.local");
+        assert_eq!(l.spec.database.as_deref(), Some("site"));
+    }
+
+    #[test]
+    fn a_connection_url_alone_does_not_hide_the_window() {
+        let CliOutcome::Run { hidden, .. } = run(&["mysql://wp@db.local/site"]).unwrap() else {
+            panic!("expected a run")
+        };
+        assert!(!hidden);
+    }
+
+    #[test]
+    fn status_subcommand_asks_the_running_app_for_its_state() {
+        for (args, json) in [(&["status"][..], false), (&["status", "--json"], true)] {
+            assert_eq!(run(args).unwrap(), CliOutcome::Status { json }, "{args:?}");
+        }
     }
 
     #[test]
@@ -680,7 +742,10 @@ mod tests {
         };
         let lines: Vec<&str> = message.lines().collect();
         assert_eq!(lines.len(), bus::catalog::CATALOG.len());
-        assert!(lines.contains(&"tabs.close\tClose tab\tMod+W"), "{message}");
+        assert!(
+            lines.contains(&"tabs.close\tClose tab or window\tMod+W"),
+            "{message}"
+        );
         assert!(lines.contains(&"readout.open\tReadout\t"), "{message}");
     }
 

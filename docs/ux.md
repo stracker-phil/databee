@@ -668,7 +668,7 @@ rebindable.
 | ⌘⇧F | db | focus the sidebar filter |
 | ⌘K / ⌘P | global | palette / palette with `t:` (tables) |
 | ⌘⇧P | global | switch connection or database: the palette with `c:` (`connection.switch`, also File menu) |
-| ⌘T / ⌘W | global | new query tab / close tab |
+| ⌘T / ⌘W | global | new query tab / close the tab, or hide the window when no tab is open (`tabs.close`); DataBee keeps running until ⌘Q |
 | ⌃Tab / ⌃⇧Tab | db | next / previous tab |
 | ⌘R | global | refresh the current view |
 | ⌘N / ⌘, | global | new connection / Settings |

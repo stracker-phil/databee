@@ -20,6 +20,7 @@ pub const PAGE_COMMAND_EVENT: &str = "page_command";
 #[derive(Debug, Clone, Copy)]
 enum RustAction {
     OpenSettings,
+    HideWindow,
     /// One text size step up or down; `None` resets.
     Zoom(Option<i8>),
 }
@@ -27,6 +28,7 @@ enum RustAction {
 fn rust_action(id: &str) -> Option<RustAction> {
     match id {
         "settings.open" => Some(RustAction::OpenSettings),
+        "window.hide" => Some(RustAction::HideWindow),
         "view.zoomIn" => Some(RustAction::Zoom(Some(1))),
         "view.zoomOut" => Some(RustAction::Zoom(Some(-1))),
         "view.zoomReset" => Some(RustAction::Zoom(None)),
@@ -46,6 +48,7 @@ async fn zoom(app: &AppHandle, step: Option<i8>) -> AppResult<()> {
 async fn run_in_rust(app: &AppHandle, id: &str) -> AppResult<()> {
     match rust_action(id) {
         Some(RustAction::OpenSettings) => window::settings::open(app, None),
+        Some(RustAction::HideWindow) => window::hide_main(app),
         Some(RustAction::Zoom(step)) => zoom(app, step).await?,
         None => {
             return Err(AppError::InvalidInput(format!(
@@ -62,6 +65,11 @@ pub fn run_from_menu(app: &AppHandle, id: &str) {
         return;
     };
     let id = command.id;
+    // The Close item (⌘W) acts on the window in front; Settings has no tabs.
+    if id == "tabs.close" && window::settings::is_focused(app) {
+        window::settings::hide(app);
+        return;
+    }
     match command.runs {
         Runs::Rust => {
             let app = app.clone();
@@ -72,7 +80,7 @@ pub fn run_from_menu(app: &AppHandle, id: &str) {
             });
         }
         Runs::Page => {
-            if let Err(e) = app.emit(PAGE_COMMAND_EVENT, id) {
+            if let Err(e) = app.emit_to(window::MAIN, PAGE_COMMAND_EVENT, id) {
                 log::warn!("Couldn't forward menu command {id}: {e}");
             }
         }

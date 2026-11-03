@@ -31,13 +31,28 @@ pub fn announce_settings(app: &AppHandle) {
     }
 }
 
-/// Settings hides instead of closing, so it reopens on its last page; true when the close was taken over.
+/// Closing a window hides it: the app keeps running until Quit (docs/adr/0037), and Settings reopens on its
+/// last page. True when the close was taken over.
 pub fn hide_instead_of_close(app: &AppHandle, label: &str) -> bool {
-    if label != settings::LABEL {
-        return false;
+    match label {
+        settings::LABEL => settings::hide(app),
+        MAIN => hide_main(app),
+        _ => return false,
     }
-    settings::hide(app);
     true
+}
+
+pub fn hide_main(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN)
+        && let Err(e) = window.hide()
+    {
+        log::warn!("Couldn't hide the window: {e}");
+    }
+}
+
+pub fn main_visible(app: &AppHandle) -> bool {
+    app.get_webview_window(MAIN)
+        .is_some_and(|window| window.is_visible().unwrap_or(false))
 }
 
 pub fn bring_to_front(app: &AppHandle) {
@@ -53,6 +68,7 @@ fn focus(window: &WebviewWindow) {
         return;
     }
     // Failing only means the window is gone; there is nothing left to bring forward.
+    let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
 }

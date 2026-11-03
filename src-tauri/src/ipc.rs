@@ -51,6 +51,8 @@ pub enum IpcMessage {
     },
     /// Replies with the active tab's address, or `null`.
     Current,
+    /// Replies with `{"running": true, "windowVisible": …}`; answered by Rust, also while the window is hidden.
+    Status,
     /// Quits the app the way the menu does, so it saves its state on the way out.
     Quit,
     /// Runs JavaScript in the window (used by scripts/dev to drive the UI).
@@ -70,6 +72,7 @@ impl IpcMessage {
             IpcMessage::Open { .. } => "Open",
             IpcMessage::Command { .. } => "Command",
             IpcMessage::Current => "Current",
+            IpcMessage::Status => "Status",
             IpcMessage::Quit => "Quit",
             #[cfg(debug_assertions)]
             IpcMessage::Eval { .. } => "Eval",
@@ -584,6 +587,24 @@ mod tests {
             assert_eq!(forward(&socket, message.clone()).await, Forward::Delivered);
             assert_eq!(rx.recv().await.unwrap(), message);
         }
+    }
+
+    #[tokio::test]
+    async fn status_message_reaches_the_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("db.sock");
+        let mut rx = serve_into_channel(&socket);
+
+        assert_eq!(
+            serde_json::to_value(IpcMessage::Status).unwrap(),
+            serde_json::json!({ "type": "status" })
+        );
+        assert_eq!(IpcMessage::Status.kind(), "Status");
+        assert_eq!(
+            forward(&socket, IpcMessage::Status).await,
+            Forward::Delivered
+        );
+        assert_eq!(rx.recv().await.unwrap(), IpcMessage::Status);
     }
 
     #[tokio::test]

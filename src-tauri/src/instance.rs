@@ -88,3 +88,26 @@ pub fn ask(socket: &Path, message: &IpcMessage) {
         )),
     }
 }
+
+/// `databee status`: prints the running app's answer, or that none runs; always exits.
+pub fn status(socket: &Path, json: bool) -> ! {
+    let reply = match ipc::request(socket, IpcMessage::Status) {
+        Ok(None) => serde_json::json!({ "running": false }),
+        Ok(Some(reply)) => reply
+            .into_result()
+            .unwrap_or_else(|error| fail(&error.to_string())),
+        Err(e) => fail(&format!(
+            "Could not reach the running DataBee instance: {e}"
+        )),
+    };
+    if json {
+        println!("{reply}");
+    } else if reply["running"] != true {
+        println!("DataBee is not running");
+    } else if reply["windowVisible"] == true {
+        println!("DataBee is running; its window shows");
+    } else {
+        println!("DataBee is running; its window is hidden");
+    }
+    std::process::exit(0);
+}

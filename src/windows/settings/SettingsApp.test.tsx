@@ -94,6 +94,13 @@ describe("SettingsApp", () => {
       expect(mocked.hideSettings).not.toHaveBeenCalled();
     });
 
+    it("hides the window on ⌘W, also inside the search field", async () => {
+      await renderApp();
+      await userEvent.click(screen.getByLabelText("Search Settings"));
+      await userEvent.keyboard("{Meta>}w{/Meta}");
+      expect(mocked.hideSettings).toHaveBeenCalled();
+    });
+
     it("keeps the window when Escape cancels a shortcut recording", async () => {
       installCommands();
       await renderApp("?page=shortcuts");

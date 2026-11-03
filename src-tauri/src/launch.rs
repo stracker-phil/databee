@@ -152,6 +152,10 @@ pub async fn on_ipc_message(handle: AppHandle, message: IpcMessage) -> HandlerRe
         handle.exit(0);
         return Ok(serde_json::Value::Null);
     }
+    if matches!(message, IpcMessage::Status) {
+        let visible = window::main_visible(&handle);
+        return Ok(serde_json::json!({ "running": true, "windowVisible": visible }));
+    }
     let request = match message {
         IpcMessage::Open {
             address,

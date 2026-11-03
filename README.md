@@ -120,10 +120,13 @@ databee open order 4711 --connection shop                 # <entity> <id>; defau
 databee open order 4711 --background                      # without bringing DataBee to the front
 databee command view.sidebar                              # a command id, as `databee commands` lists it
 databee commands [--json]                                 # every command: id, title, default key
+databee status [--json]                                   # running? window shown or hidden?
 databee quit                                              # quit DataBee
 ```
 
 `open` starts DataBee when it is not running; `command` and `quit` then fail with "DataBee is not running".
+Closing the window (⌘W, the red light) hides it; DataBee keeps running until you quit it (⌘Q or `databee quit`),
+and clicking its Dock icon shows the window again. `databee --hidden` starts it without showing the window.
 
 DataBee takes the password from the first source that has one:
 1. `--password`, `--password-stdin` or `--password-env`;
@@ -181,7 +184,7 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | ⌘F | WHERE filter | Table |
 | ⌃⌥X | Switch the WHERE filter between smart and SQL | Table |
 | ⌘⇧F | Filter tables | Database |
-| ⌘T / ⌘W | New query tab / close tab | Database |
+| ⌘T / ⌘W | New query tab / close tab (hides the window when no tab is open) | Database |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab | Database |
 | ⌘↵ / ⇧⌘↵ | Run statement / run all | editor |
 | P | Pin the saved query (focus in the results) | editor |

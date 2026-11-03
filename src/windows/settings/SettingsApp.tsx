@@ -44,13 +44,18 @@ function useOpenSettings(setPage: (page: string) => void) {
   }, [setPage]);
 }
 
-/** ⌘F focuses the search; Esc hides the window unless a field or a recording shortcut takes it. */
+/** ⌘F focuses the search; ⌘W hides the window, and so does Esc unless a field or a recording shortcut takes it. */
 function useWindowKeys() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
         document.querySelector<HTMLInputElement>(".settings-nav-search")?.focus();
+      }
+      if (e.metaKey && e.key.toLowerCase() === "w") {
+        e.preventDefault();
+        void api.hideSettings();
+        return;
       }
       const target = e.target as HTMLElement | null;
       const inField = !!target?.closest("input, textarea, select, [contenteditable], [data-recording]");

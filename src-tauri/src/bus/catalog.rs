@@ -148,9 +148,10 @@ pub const CATALOG: &[CommandDef] = &[
     page("tabs.new", "New query tab", "global")
         .key("Mod+T")
         .menu("New Query Tab"),
-    page("tabs.close", "Close tab", "global")
+    page("tabs.close", "Close tab or window", "global")
         .key("Mod+W")
-        .menu("Close Tab"),
+        .menu("Close"),
+    page("window.hide", "Hide window", "global").in_rust(),
     page("tabs.next", "Next tab", "db")
         .key("Ctrl+Tab")
         .menu("Next Tab"),
@@ -497,10 +498,10 @@ mod tests {
             serde_json::to_value(&info).unwrap(),
             serde_json::json!({
                 "id": "tabs.close",
-                "title": "Close tab",
+                "title": "Close tab or window",
                 "scope": "global",
                 "defaultBinding": "Mod+W",
-                "menuLabel": "Close Tab",
+                "menuLabel": "Close",
                 "menuShares": null,
                 "fallbackFor": null,
                 "skipInText": false,
@@ -531,6 +532,25 @@ mod tests {
         assert_eq!(
             CommandInfo::from(find("view.zoomIn").unwrap()).runs,
             Runs::Rust
+        );
+    }
+
+    #[test]
+    fn hide_window_is_a_global_rust_command_without_key_or_menu_item() {
+        let info = CommandInfo::from(find("window.hide").unwrap());
+        assert_eq!(
+            serde_json::to_value(&info).unwrap(),
+            serde_json::json!({
+                "id": "window.hide",
+                "title": "Hide window",
+                "scope": "global",
+                "defaultBinding": null,
+                "menuLabel": null,
+                "menuShares": null,
+                "fallbackFor": null,
+                "skipInText": false,
+                "runs": "rust",
+            })
         );
     }
 

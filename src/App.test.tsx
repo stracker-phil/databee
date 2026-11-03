@@ -41,6 +41,26 @@ describe("App", () => {
     expect(mocked.runCommand).toHaveBeenCalledWith("settings.open");
   });
 
+  describe("close command", () => {
+    it("closes the active tab on ⌘W without hiding the window", async () => {
+      connectedStore();
+      render(<App />);
+      await screen.findByText("wp_options");
+      await userEvent.keyboard("{Meta>}t{/Meta}");
+      expect(screen.getAllByRole("tab")).toHaveLength(2);
+      await userEvent.keyboard("{Meta>}w{/Meta}");
+      expect(screen.getAllByRole("tab")).toHaveLength(1);
+      expect(mocked.runCommand).not.toHaveBeenCalledWith("window.hide");
+    });
+
+    it("hides the window when no tab is open", async () => {
+      render(<App />);
+      await screen.findByRole("heading", { name: "New connection" });
+      await act(() => runCommand("tabs.close"));
+      expect(mocked.runCommand).toHaveBeenCalledWith("window.hide");
+    });
+  });
+
   it("resolves shortcuts through the registry in both views", async () => {
     connectedStore();
     render(<App />);

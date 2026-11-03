@@ -1,5 +1,6 @@
+import { api } from "../api";
 import { selectActivePending, selectActiveSession, selectActiveTab, selectCanNav, selectCanUndo, useStore, type Tab } from "../state/store";
-import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides, type Scope } from "./registry";
+import { allCommands, bindingFor, bindingLabel, getCommand, isRecordingTarget, registerCommands, resolveKeydown, setOverrides } from "./registry";
 import { activeScopes, registerScope } from "./scopes";
 import { catalogCommands, type Handler } from "./catalog";
 import { COLUMN_COMMANDS } from "./columns";
@@ -33,15 +34,12 @@ export function registerCoreScopes() {
   registerScope({ id: "object", parent: "global", label: "Object", isActive: () => activeTabIs("object") });
 }
 
-const inScope = (scope: Scope) => () => activeScopes().includes(scope);
-
 /** `?` opens the overview of the scopes active now; pressed again it closes it. */
 function toggleShortcuts() {
   const s = useStore.getState();
   if (s.dialog?.type === "shortcuts") return s.closeDialog();
   if (!s.dialog) s.openDialog({ type: "shortcuts", scopes: activeScopes() });
 }
-const inDb = inScope("db");
 
 function withQueryTab(run: (tab: Extract<Tab, { kind: "query" }>) => unknown) {
   const tab = selectActiveTab(useStore.getState());
@@ -88,11 +86,11 @@ const APP_HANDLERS: Handler[] = [
   },
   {
     id: "tabs.close",
-    when: () => inDb() && !!selectActiveTab(useStore.getState()),
     run: () => {
       const s = useStore.getState();
       const tab = selectActiveTab(s);
       if (tab) s.closeTab(tab.id);
+      else void api.runCommand("window.hide");
     },
   },
   { id: "tabs.next", run: () => useStore.getState().cycleTab(1) },

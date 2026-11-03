@@ -46,3 +46,4 @@ keep their form.
 | [0034](0034-reads-stay-in-the-store-not-tanstack-query.md) | Reads stay in the store, not TanStack Query | Rejected (2026-11-03) |
 | [0035](0035-databee-keeps-its-own-look.md) | DataBee keeps its own look | Rejected (2026-11-03) |
 | [0036](0036-commands-live-in-a-rust-catalog.md) | Commands live in a Rust catalog | Accepted (2026-11-03), implemented |
+| [0037](0037-closing-the-window-keeps-the-app-running.md) | Closing the window keeps the app running | Accepted (2026-11-03), implemented |
