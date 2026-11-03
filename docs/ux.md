@@ -419,7 +419,9 @@ is left to fold do names end in an ellipsis (`.trail.tight`, `.trail-name`). A n
 `--o3` (`.trail-key`).
 - **Value column:** Enter on a serialized value, or Enter in a grid cell with serialized data or long text,
   opens the value as a column: in an object tab the next column of the stack, in table and query tabs a
-  column on the right of the tab (at least 420px). Its head names `table.column` and the row key, offers
+  column on the right of the tab. Its divider resizes it (drag, or ← / → while focused; never below 280px;
+  by default 36% of the window, at least 420px); the width is saved per connection (`valueColumnWidth`) and a
+  double-click on the divider goes back to the default. Its head names `table.column` and the row key, offers
   PHP/JSON or Raw, copy and close; the tree edits leaves (`edit_serialized`, queued as a cell edit through the
   pending tray) when the value's row has a single-column key. It reads its value again by the row's key (not
   its position, so a changed row order does not matter) on ⌘R, after an applied write, when its pane shows again

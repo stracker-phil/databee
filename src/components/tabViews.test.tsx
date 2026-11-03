@@ -1,16 +1,18 @@
-import { render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
-import type { Address } from "../api";
+import { api, EMPTY_UI_STATE, type Address } from "../api";
 import { formatAddress } from "../lib/address";
 import { objectColumn } from "../lib/columns";
 import { documentText } from "../lib/document";
-import type { ObjectTab, ProjectTab, Tab } from "../state/store";
-import { connectedStore, queryTab, readoutTab, session, tableTab } from "../test/fixtures";
+import { useStore, type ObjectTab, type ProjectTab, type Tab, type TableTab } from "../state/store";
+import { browsePage, connectedStore, queryTab, readoutTab, session, tableTab, text, value } from "../test/fixtures";
 import { showTableIcons } from "../test/iconFixtures";
 import { tabView } from "./tabViews";
+
+const mocked = vi.mocked(api, true);
 
 const rowAddress: Address = {
   connection: session.slug,
@@ -72,6 +74,60 @@ describe("table view", () => {
     expect(hint("post_status = 'draft'")).toBe("· filtered");
     expect(hint(undefined)).toBe("");
     expect(hint("")).toBe("");
+  });
+});
+
+describe("value column", () => {
+  const openColumn = value({ raw: text("a:1:{i:0;s:1:\"x\";}") });
+  const withColumn = () => tableTab({ valueColumn: { kind: "value", value: openColumn, text: "x", database: "db" } });
+  const separator = () => screen.getByRole("separator", { name: "Resize value column" });
+  const renderPanel = (tab: TableTab) => {
+    const Panel = tabView(tab).Panel;
+    render(<Panel tab={tab} />);
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    connectedStore();
+    window.innerWidth = 1600;
+    mocked.describeTable.mockResolvedValue({ columns: [], indexes: [], primaryKey: [], foreignKeys: [], ddl: "" });
+    mocked.browseTable.mockResolvedValue(browsePage());
+  });
+
+  it("offers a resize handle only while a value column is open", () => {
+    renderPanel(tableTab());
+    expect(screen.queryByRole("separator", { name: "Resize value column" })).not.toBeInTheDocument();
+    cleanup();
+    renderPanel(withColumn());
+    expect(separator()).toBeInTheDocument();
+  });
+
+  it("widens the column with ArrowLeft and persists the width", async () => {
+    renderPanel(withColumn());
+    expect(separator()).toHaveAttribute("aria-valuenow", "576");
+    fireEvent.keyDown(separator(), { key: "ArrowLeft" });
+    expect(separator()).toHaveAttribute("aria-valuenow", "592");
+    await waitFor(() => expect(mocked.setUiState).toHaveBeenLastCalledWith(session.identity, expect.objectContaining({ valueColumnWidth: 592 })), { timeout: 1500 });
+  });
+
+  it("starts at the stored width of the connection, no narrower than the minimum", () => {
+    useStore.setState({ uiState: { [session.identity]: { ...EMPTY_UI_STATE, valueColumnWidth: 100 } } });
+    renderPanel(withColumn());
+    expect(separator()).toHaveAttribute("aria-valuenow", "280");
+  });
+
+  it("starts at a stored width within the limits unchanged", () => {
+    useStore.setState({ uiState: { [session.identity]: { ...EMPTY_UI_STATE, valueColumnWidth: 700 } } });
+    renderPanel(withColumn());
+    expect(separator()).toHaveAttribute("aria-valuenow", "700");
+  });
+
+  it("returns to the default width on double-click and persists it", async () => {
+    useStore.setState({ uiState: { [session.identity]: { ...EMPTY_UI_STATE, valueColumnWidth: 700 } } });
+    renderPanel(withColumn());
+    fireEvent.doubleClick(separator());
+    expect(separator()).toHaveAttribute("aria-valuenow", "576");
+    await waitFor(() => expect(mocked.setUiState).toHaveBeenLastCalledWith(session.identity, expect.objectContaining({ valueColumnWidth: 576 })), { timeout: 1500 });
   });
 });
 

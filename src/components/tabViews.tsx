@@ -14,6 +14,8 @@ import { QueryTab } from "./QueryTab";
 import { Readout } from "./readout/Readout";
 import { TableTab } from "./TableTab";
 import { ValueColumnView } from "./value/ValueColumnView";
+import { Splitter, usePaneSize } from "./Splitter";
+import { useWindowSize } from "./useWindowSize";
 
 interface TabView<T extends Tab = Tab> {
   icon: (tab: T) => ReactNode;
@@ -38,11 +40,31 @@ function WithValueColumn({ tab, children }: { tab: QueryTabState | TableTabState
     <div className="tab-columns">
       <div className="tab-main">{children}</div>
       {column && (
-        <section className="column value-column" aria-label={columnLabel(column)} data-stage="value-column" data-stage-label={columnLabel(column)}>
+        <ResizableValueColumn label={columnLabel(column)}>
           <ValueColumnView column={column} place={{ tabId: tab.id, index: null }} onClose={() => useStore.getState().closeRightmostColumn()} />
-        </section>
+        </ResizableValueColumn>
       )}
     </div>
+  );
+}
+
+const VALUE_COLUMN_MIN = 280;
+const DEFAULT_SHARE = 0.36;
+const DEFAULT_MIN = 420;
+/** Room the grid keeps beside the value column, the sidebar included. */
+const GRID_ROOM = 560;
+
+function ResizableValueColumn({ label, children }: { label: string; children: ReactNode }) {
+  const { width } = useWindowSize();
+  const fallback = Math.max(DEFAULT_MIN, Math.round(width * DEFAULT_SHARE));
+  const pane = usePaneSize("valueColumnWidth", fallback, VALUE_COLUMN_MIN, width - GRID_ROOM);
+  return (
+    <>
+      <Splitter axis="x" paneAfter label="Resize value column" stage="value-column:resize" onReset={() => pane.onCommit(fallback)} {...pane} />
+      <section className="column value-column" style={{ flexBasis: pane.size }} aria-label={label} data-stage="value-column" data-stage-label={label}>
+        {children}
+      </section>
+    </>
   );
 }
 

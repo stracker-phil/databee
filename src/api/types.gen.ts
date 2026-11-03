@@ -1368,7 +1368,7 @@ export type Target = { "kind": "home" } | { "kind": "table", table: string, filt
 
 export type Theme = "system" | "light" | "dark";
 
-export type UiState = { tables: { [key in string]: TableUi }, detailPaneWidth: number | null, sqlEditorHeight: number | null, sidebarHidden: boolean, 
+export type UiState = { tables: { [key in string]: TableUi }, valueColumnWidth: number | null, sqlEditorHeight: number | null, sidebarHidden: boolean, 
 /**
  * Collapsed object view groups by database, each as `<document table>::<group id>`.
  */

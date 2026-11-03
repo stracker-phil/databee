@@ -23,8 +23,8 @@ pub struct TableUi {
 #[serde(default, rename_all = "camelCase")]
 pub struct UiState {
     pub tables: BTreeMap<String, TableUi>,
-    #[serde(alias = "splitWidth")]
-    pub detail_pane_width: Option<u32>,
+    #[serde(alias = "detailPaneWidth", alias = "splitWidth")]
+    pub value_column_width: Option<u32>,
     #[serde(alias = "editorHeight")]
     pub sql_editor_height: Option<u32>,
     pub sidebar_hidden: bool,
@@ -86,7 +86,7 @@ mod tests {
                     .collect(),
             },
         );
-        state.detail_pane_width = Some(520);
+        state.value_column_width = Some(520);
         state.sql_editor_height = Some(90);
         store
             .set("root@127.0.0.1:32768/db", state.clone())
@@ -108,7 +108,7 @@ mod tests {
         .unwrap();
         let state = UiStateStore::open(dir.path()).get("a@b:1/db");
         assert!(state.tables["t"].widths.is_empty());
-        assert_eq!(state.detail_pane_width, None);
+        assert_eq!(state.value_column_width, None);
     }
 
     #[test]
@@ -120,8 +120,29 @@ mod tests {
         )
         .unwrap();
         let state = UiStateStore::open(dir.path()).get("a@b:1/db");
-        assert_eq!(state.detail_pane_width, Some(500));
+        assert_eq!(state.value_column_width, Some(500));
         assert_eq!(state.sql_editor_height, Some(120));
+    }
+
+    #[tokio::test]
+    async fn detail_pane_width_loads_into_value_column_width_and_saves_under_the_new_key() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("ui_state.json"),
+            r#"{"a@b:1/db": {"detailPaneWidth": 480}}"#,
+        )
+        .unwrap();
+        let store = UiStateStore::open(dir.path());
+        let state = store.get("a@b:1/db");
+        assert_eq!(state.value_column_width, Some(480));
+
+        store.set("a@b:1/db", state).await.unwrap();
+        let saved: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("ui_state.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved["a@b:1/db"]["valueColumnWidth"], 480);
+        assert!(saved["a@b:1/db"].get("detailPaneWidth").is_none());
     }
 
     #[tokio::test]
@@ -192,11 +213,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = UiStateStore::open(dir.path());
         let kept = UiState {
-            detail_pane_width: Some(300),
+            value_column_width: Some(300),
             ..UiState::default()
         };
         let gone = UiState {
-            detail_pane_width: Some(400),
+            value_column_width: Some(400),
             ..UiState::default()
         };
         store.set("keep", kept.clone()).await.unwrap();
