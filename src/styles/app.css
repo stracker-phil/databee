@@ -556,7 +556,8 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .vt-vis { font-size: 0.808rem; color: var(--o3); }
 .vt-string { color: var(--code-string); word-break: break-word; white-space: pre-wrap; }
 .vt-quote { color: var(--o3); }
-.vt-pair { display: inline-flex; gap: 0.385rem; margin-left: 0.615rem; }
+/* A pair never shrinks: squeezed, its string would wrap one letter per line. */
+.vt-pair { display: inline-flex; flex: none; gap: 0.385rem; margin-left: 0.615rem; }
 .vt-int, .vt-float { color: var(--code-number); font-variant-numeric: tabular-nums; }
 .vt-bool { color: var(--code-number); }
 .vt-enum { color: var(--code-type); }

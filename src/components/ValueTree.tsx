@@ -62,7 +62,7 @@ function summary(node: ValueNode): string {
   return node.kind;
 }
 
-/** Arrays and objects this small show their leaf pairs on one line. */
+/** Arrays and objects this small show their leaf pairs on one line; the length counts all shown text, hints included. */
 const INLINE_CHILDREN = 4;
 const INLINE_TEXT = 60;
 
@@ -70,7 +70,7 @@ function inlinePairs(node: ValueNode): boolean {
   const children = node.children ?? [];
   if (children.length === 0 || children.length > INLINE_CHILDREN) return false;
   if (children.some((c) => (c.node.children?.length ?? 0) > 0 || c.node.kind === "array" || c.node.kind === "object")) return false;
-  return children.reduce((n, c) => n + c.key.length + (c.node.text?.length ?? 0), 0) <= INLINE_TEXT;
+  return children.reduce((n, c) => n + c.key.length + keyHint(c).length + (c.node.text?.length ?? 0), 0) <= INLINE_TEXT;
 }
 
 /** Quotes are dim, so a string `"2.04"` and a number `2.04` look different. */

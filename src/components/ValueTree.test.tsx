@@ -90,6 +90,31 @@ describe("ValueTree small collections", () => {
     expect(screen.getAllByRole("treeitem")).toHaveLength(6);
   });
 
+  describe("objects with two string properties", () => {
+    const declaringClass = "Acme\\Shop\\Entity\\StatusCapability";
+    const object = (keyKind: ValueChild["keyKind"]): ValueNode => ({
+      kind: "object",
+      class: "Acme\\Shop\\Entity",
+      children: [
+        { key: "name", keyKind, declaringClass: keyKind === "private" ? declaringClass : undefined, node: str("CARD") },
+        { key: "status", keyKind, declaringClass: keyKind === "private" ? declaringClass : undefined, node: str("ACTIVE") },
+      ],
+    });
+
+    it("keeps one row per property when the key hints make the line too long", () => {
+      render(<ValueTree value={decoded(object("private"))} />);
+      expect(screen.getAllByRole("treeitem")).toHaveLength(3);
+      expect(screen.getAllByText(`private ${declaringClass}`)).toHaveLength(2);
+    });
+
+    it("shows short public properties on one line", () => {
+      render(<ValueTree value={decoded(object("public"))} />);
+      expect(screen.getAllByRole("treeitem")).toHaveLength(1);
+      expect(screen.getByText("name")).toBeInTheDocument();
+      expect(screen.getByText("status")).toBeInTheDocument();
+    });
+  });
+
   it("keeps rows for an array that holds another array", () => {
     const nested: ValueNode = { kind: "array", children: [{ key: "inner", keyKind: "string", node: small }] };
     render(<ValueTree value={decoded(nested)} />);
