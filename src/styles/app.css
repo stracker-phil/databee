@@ -755,12 +755,18 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 }
 :is(.object, .project, .readout) .row > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 :is(.object, .project, .readout) .row:not(.hdr, :disabled):hover { background: var(--row-hover); }
-.object .row .val[data-src] { border-radius: 3px; padding: 0 3px; margin: 0 -3px; }
-.object .row .val[data-src]:hover { background: var(--cell); }
-.object .row > .focus {
-  margin: calc(-1 * var(--pad)) calc(-1 * var(--focus-out)); padding: var(--pad) var(--focus-out);
-  background: var(--sel); box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 3px;
+/* One box per value: hover and focus fill the same cell box and replace each other, the focus adds an outline.
+   A tree has no fill (it would sit under all its text); a cell of several values marks the hovered one. */
+.object .row > .field {
+  margin: calc(-1 * var(--pad)) calc(-1 * var(--focus-out)); padding: var(--pad) var(--focus-out); border-radius: 3px;
+  background: var(--field-bg, transparent); box-shadow: var(--field-ring, none);
 }
+.object .row > .field:hover { --field-bg: var(--cell); }
+.object .row > .focus { --field-ring: inset 0 0 0 1.5px var(--accent); }
+.object .row > .focus:not(:hover) { --field-bg: var(--sel); }
+.object .row > .field:has(.val-tree, .summary-pair) { --field-bg: transparent; }
+.object .row .summary-pair .val[data-src] { border-radius: 3px; padding: 0 3px; margin: 0 -3px; }
+.object .row .summary-pair .val[data-src]:hover { background: var(--cell); }
 :is(.object, .project, .readout) .row .r { text-align: right; }
 .object .row.kv { grid-template-columns: min(300px, 60%) minmax(0, 1fr); }
 .object .row.kv > :first-child { color: var(--o2); }
@@ -777,7 +783,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .object .wide-table > .row.hdr > * { font-family: var(--font-ui); font-size: var(--fs-small); }
 /* A primary key first column (.pinned) stays at the left while the table scrolls: the cell covers the row's
    inset and half the gap on the opaque row background, carries the row's change mark (inherited --change-mark),
-   draws a focus as the other cells do (::before), and has a hairline at its edge while scrolled (data-scrolled).
+   draws hover and focus as the other cells do (::before), and has a hairline at its edge while scrolled (data-scrolled).
    scroll-padding keeps a revealed value right of it. */
 .wide-table.pinned { --pin-bg: var(--bg); scroll-padding-left: calc(var(--first-col) + var(--row-inset) + var(--row-gap) / 2); }
 .wide-table.pinned > .row:not(.hdr):hover { --pin-bg: var(--row-hover); }
@@ -786,10 +792,10 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
   margin: calc(-1 * var(--pad)) calc(var(--row-gap) / -2) calc(-1 * var(--pad)) calc(-1 * var(--row-inset));
   padding: var(--pad) calc(var(--row-gap) / 2) var(--pad) var(--row-inset); background: var(--pin-bg); box-shadow: var(--change-mark, none); border-radius: 0;
 }
-.object .wide-table.pinned > .row > .focus:first-child::before {
+.object .wide-table.pinned > .row > .field:first-child::before {
   content: ""; position: absolute; z-index: -1; pointer-events: none;
   inset: 0 calc(var(--row-gap) / 2 - var(--focus-out)) 0 calc(var(--row-inset) - var(--focus-out));
-  background: var(--sel); box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 3px;
+  background: var(--field-bg, transparent); box-shadow: var(--field-ring, none); border-radius: 3px;
 }
 .wide-table.pinned[data-scrolled] > .row > :first-child::after {
   content: ""; position: absolute; inset: 0 0 0 auto; width: 1px; background: var(--line); pointer-events: none;

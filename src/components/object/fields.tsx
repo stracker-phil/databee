@@ -51,7 +51,7 @@ export const Field = memo(function Field({ value, focused, editing = false, nume
   const { onOpen, focus, menu } = useContext(DocumentContext);
   if (!value) return <span />;
   if (editing) return <ValueEditor value={value} />;
-  const classes = [numeric ? "r" : "", focused ? "focus" : ""].filter(Boolean).join(" ");
+  const classes = ["field", numeric ? "r" : "", focused ? "focus" : ""].filter(Boolean).join(" ");
   const onContextMenu = (e: MouseEvent) => {
     if (!value.source || value.raw.t === "bytes") return;
     e.preventDefault();
@@ -59,7 +59,7 @@ export const Field = memo(function Field({ value, focused, editing = false, nume
     menu(e);
   };
   return (
-    <span className={classes || undefined} onMouseDown={() => focus(value.source)} onContextMenu={onContextMenu}>
+    <span className={classes} onMouseDown={() => focus(value.source)} onContextMenu={onContextMenu}>
       {change?.at != null && Date.now() - change.at < FLASH_MS ? (
         <span key={change.at} className="flash">
           <Value value={value} onOpen={onOpen} />

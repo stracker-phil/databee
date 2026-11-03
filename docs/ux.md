@@ -172,7 +172,9 @@ Every list shares one row: document rows, grid rows, sidebar items, palette resu
   document rows and Project page lists too.
 - **Hairline:** every row has a 1px `--line` below it.
 - **Row hover:** the whole row takes `--row-hover` (subtle).
-- **Cell hover:** the hovered value itself takes `--cell` (stronger), with a 3px radius.
+- **Cell hover:** the hovered cell takes `--cell` (stronger), with a 3px radius. In the Document view the
+  hover and the focus fill the same box around the value (`.field`) and replace each other; a cell of several
+  values (a summary) marks only the hovered value, and a tree takes no fill.
 - **Selected cell:** a 1.5px accent outline. While its grid has the keyboard focus it also takes `--sel`, like the Document view's
   focused value; the grid itself draws no focus outline (a focused grid without a selected cell underlines
   its header in the accent).
@@ -225,7 +227,7 @@ Running an action opens the action sheet (a modal like the palette, `ActionSheet
 tertiary), deleted rows as `table #key deleted`, or for free SQL "affects rows not known in advance" and
 its statements. It previews again 250 ms after a param changes. Below: `<n> rows · undo available` or
 `no undo`, and that the change is queued for review in the pending tray before `⌘S`. Buttons: Cancel and
-Queue change (accent, disabled while the preview loads or failed; a failure shows in red). In the Document view the focused value has a 1.5px accent outline on a `--sel` background.
+Queue change (accent, disabled while the preview loads or failed; a failure shows in red). In the Document view the focused value has a 1.5px accent outline on a `--sel` background; a tree keeps only the outline, so its text stays readable.
 
 **Rows view:** per group the same band, the group's `WHERE` in tertiary mono, then a compact grid (grid header:
 column name, type below) with the table's full columns, 12 rows high before it scrolls.
