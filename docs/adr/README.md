@@ -42,3 +42,6 @@ keep their form.
 | [0030](0030-hardened-runtime-strict-csp-no-navigation.md) | Hardened runtime, a strict CSP and no navigation | Accepted (2026-11-03), implemented |
 | [0031](0031-settings-is-a-window-of-its-own.md) | Settings is a window of its own | Accepted (2026-11-03), implemented |
 | [0032](0032-native-overlay-scrollbars.md) | Native overlay scrollbars | Accepted (2026-11-03), implemented |
+| [0033](0033-the-app-talks-only-to-hosts-the-user-configured.md) | The app talks only to hosts the user configured | Accepted (2026-11-03) |
+| [0034](0034-reads-stay-in-the-store-not-tanstack-query.md) | Reads stay in the store, not TanStack Query | Rejected (2026-11-03) |
+| [0035](0035-databee-keeps-its-own-look.md) | DataBee keeps its own look | Rejected (2026-11-03) |

@@ -56,6 +56,19 @@ own identity and data ([ADR 0028](adr/0028-debug-build-is-a-separate-app-with-de
 | Icons | `src-tauri/icons/` | Regenerate with `bun tauri icon <1024px png>` |
 | Author, license | `Cargo.toml`, `package.json`, `LICENSE` | |
 
+## Network
+
+DataBee connects only to the database hosts the user configured and listens only on loopback
+([ADR 0033](adr/0033-the-app-talks-only-to-hosts-the-user-configured.md)). There is no HTTP client. A new host or
+listener needs an ADR and a row here.
+
+| Host | Direction | Why | Where |
+|---|---|---|---|
+| Each connection's host and port (MySQL/MariaDB protocol without TLS; `sqlx` is built without a TLS feature, passwords use `mysql-rsa`) | out | the user's databases | `db/mysql/`, `connection.rs` `ConnectionSpec` |
+| `127.0.0.1:27184` (debug `27185`), HTTP | in, loopback only | the Stage presentation API ([stage.md](stage.md)) | `stage/mod.rs` `bind`, `stage/settings.rs` `STAGE_PORT` |
+| none: Unix socket `databee.sock` in the config dir | in, local | single instance, CLI and `scripts/dev/js.sh` | `ipc.rs`, `instance.rs` |
+| none: stdio | in, local | `databee mcp` | `mcp/` |
+
 ## Platform-specific code
 
 The code is portable apart from the following. Nothing uses `cfg(target_os)` yet, and there are no direct
