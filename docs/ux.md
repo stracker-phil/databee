@@ -284,7 +284,8 @@ disabled items `--o3`, separators a 1px `--line`. An item that runs a command sh
 - grid cell (`cellMenu` in `grid/cellMenu.ts`): Copy value; Edit value and Set to NULL when editable; for a
   sourced cell Watch on readout, Add reference…, Kind…, Style… (no rule items for binary); Copy row as TSV /
   JSON; Copy all n rows as TSV / JSON; the row's actions;
-- Document value (`DocumentView.tsx`): Watch on readout, a separator, Add reference…, Kind…, Style…;
+- Document value (`DocumentView.tsx`): the grid cell's menu (`cellMenu` with `commands: "object"`, so the items
+  show the `object.*` keys), its rows being the value's group;
 - sidebar table (`tableMenu` in `Sidebar.tsx`): Open data, Show structure, New query: SELECT …, Copy name.
 
 ## Settings
@@ -348,7 +349,7 @@ value, else the current address. The Hover column is what the status bar shows.
   keeps its icon on hover since its click only toggles the view). It is decorative; the name stays.
 - **Trees** (`ValueTree`): a hairline guide on the left, Ayu syntax colors like the SQL editor (keys `--code-property`, integer keys secondary, strings `--code-string`, numbers, booleans and null `--code-number`, enums `--code-type`), container types tertiary
   (`array(2)`), strings in dim quotes so `"2.04"` and `2.04` differ, leaf pairs of a small array (up to 4
-  leaves, 60 characters) on one line unless the tree is editable. Tree rows keep the row anatomy. A
+  leaves, 60 characters with their visibility hints) on one line unless the tree is editable. Tree rows keep the row anatomy. A
   right-click on a node of a sourced value's tree (or on one pair of an inline line) offers "Watch on readout"
   for that node.
 - **Value styles:** a project (or preset, off by default) rule `{ columns or meta keys, match:

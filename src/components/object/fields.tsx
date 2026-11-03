@@ -10,8 +10,8 @@ export interface DocumentActions {
   /** Queues the new text (null for NULL) for the value's provenance row. */
   save: (value: StoredValue, text: string | null) => void;
   cancelEdit: () => void;
-  /** Right-click on a sourced value, after it took the focus. */
-  menu: (event: MouseEvent) => void;
+  /** Right-click on a value, after a sourced one took the focus. */
+  menu: (event: MouseEvent, value: StoredValue) => void;
 }
 
 const noop = () => {};
@@ -53,10 +53,9 @@ export const Field = memo(function Field({ value, focused, editing = false, nume
   if (editing) return <ValueEditor value={value} />;
   const classes = ["field", numeric ? "r" : "", focused ? "focus" : ""].filter(Boolean).join(" ");
   const onContextMenu = (e: MouseEvent) => {
-    if (!value.source || value.raw.t === "bytes") return;
     e.preventDefault();
-    focus(value.source);
-    menu(e);
+    if (value.source) focus(value.source);
+    menu(e, value);
   };
   return (
     <span className={classes} onMouseDown={() => focus(value.source)} onContextMenu={onContextMenu}>

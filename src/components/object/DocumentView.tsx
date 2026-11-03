@@ -1,10 +1,13 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { Address, Document, Group, Provenance, Value as StoredValue } from "../../api";
-import { commandItem, EDIT_VALUE_EVENT } from "../../commands";
+import { EDIT_VALUE_EVENT, runCommand } from "../../commands";
+import { copyText } from "../../lib/clipboard";
+import { cellText } from "../../lib/format";
 import { withRemovedRows, type DocumentMarks } from "../../lib/diff";
 import { groupAnchors, isEmpty, provenanceKey } from "../../lib/document";
 import { useStore } from "../../state/store";
 import { useContextMenu } from "../ContextMenu";
+import { cellMenu } from "../grid/cellMenu";
 import { useOpenValue } from "../value/useOpenValue";
 import { DocumentContext, type DocumentActions } from "./fields";
 import { GroupHeader } from "./GroupHeader";
@@ -38,6 +41,22 @@ function saveValue(owner: Address, value: StoredValue, text: string | null) {
   if (source?.row.length !== 1) return;
   const [key] = source.row;
   void useStore.getState().queueChange({ type: "setCell", database: owner.database, table: source.table, keyColumn: key.column, key: key.value, column: source.column, value: text });
+}
+
+/** Where a value sits in its group, as the grid's rows and columns, for the menu's row copy items. */
+function placeOf(groups: Group[], value: StoredValue) {
+  for (const group of groups) {
+    const row = group.rows.findIndex((r) => r.fields.some(([, v]) => v === value));
+    if (row < 0) continue;
+    const fields = group.rows[row].fields;
+    return {
+      row,
+      col: fields.findIndex(([, v]) => v === value),
+      names: fields.map(([name]) => name),
+      rows: group.rows.map((r) => r.fields.map(([, v]) => v.raw)),
+    };
+  }
+  return null;
 }
 
 function useEditCommand(editable: boolean, focus: Provenance | null, setEditing: (key: string | null) => void) {
@@ -74,6 +93,7 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
   const collapse = useCollapsedGroups(owner);
   useEditCommand(editable, focus, setEditing);
 
+  const groups = useMemo(() => withRemovedRows(document.groups, diff?.removedRows ?? []), [document.groups, diff]);
   const actions = useMemo<DocumentActions>(
     () => ({
       onOpen: openValue,
@@ -83,20 +103,31 @@ export function DocumentView({ document, owner, focus, onFocus, onMore, editable
         saveValue(owner, value, text);
       },
       cancelEdit: () => setEditing(null),
-      menu: (e) =>
-        openMenu(e, [
-          commandItem("object.watch", "Watch on readout"),
-          "separator",
-          commandItem("object.addReference", "Add reference…"),
-          commandItem("object.setKind", "Kind…"),
-          commandItem("object.setStyle", "Style…"),
-        ]),
+      menu: (e, value) => {
+        const place = placeOf(groups, value);
+        if (!place) return;
+        const source = value.source;
+        const edit =
+          editable && source?.row.length === 1
+            ? { start: () => setEditing(provenanceKey(source)), setNull: () => saveValue(owner, value, null) }
+            : undefined;
+        openMenu(
+          e,
+          cellMenu({
+            ...place,
+            value,
+            commands: "object",
+            copy: (text, what) => void copyText(text, what),
+            copyValue: () => (source ? runCommand("object.copyRaw") : void copyText(cellText(value.raw), "value")),
+            edit,
+          }),
+        );
+      },
     }),
-    [openValue, onFocus, owner, openMenu],
+    [openValue, onFocus, owner, openMenu, groups, editable],
   );
   const focusKey = focus ? provenanceKey(focus) : null;
   const marks = useMemo<Marks>(() => ({ focus: focusKey, editing, diff }), [focusKey, editing, diff]);
-  const groups = useMemo(() => withRemovedRows(document.groups, diff?.removedRows ?? []), [document.groups, diff]);
   const anchors = groupAnchors(groups);
   const shown = groups.filter((g) => !isEmpty(g));
 
