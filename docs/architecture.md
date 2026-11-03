@@ -107,7 +107,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/store/               JSON stores in the config dir
   src/stage/               Stage plugin: HTTP API, request hub, commands
   src/test_support.rs      fixture-server helpers for tests (`test-util`)
-  src/secrets/             SecretStore trait; Keychain and test MemoryStore
+  src/secrets/             SecretStore trait; Keychain (release) and MemoryStore (debug builds, tests)
   src/menu.rs              native menu (MENU_ITEMS)
   src/window/              window theme, bring-to-front, the Settings window, the navigation guard
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
@@ -122,7 +122,8 @@ src/                       React app
   state/                   zustand store: store.ts (composition root), slices/, selectors
   commands/                command registry, scopes, default shortcuts
   registry/                extension points modules register into (settingsPages.ts)
-  components/              UI; components/readout/ the home page, components/settings/ the Settings dialog
+  components/              UI; components/readout/ the home page, components/settings/ the Settings pages
+  windows/settings/        the Settings window's entry (index.html, main.tsx, SettingsApp.tsx)
   stage/                   page side of the Stage hook, its Settings page, installStage()
   lib/                     pure helpers (formatting, SQL ranges, theme, addresses, values)
   styles/                  schemes/ (one file per color scheme), theme.css (derived tokens), fonts.css, app.css

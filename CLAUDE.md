@@ -5,6 +5,19 @@ Minimalistic SQL client for senior WordPress developers working on local sites: 
 preset (`src-tauri/presets/`), not code; presets and projects follow `.claude/rules/presets.md`. See
 README.md for features and CLI, docs/roadmap.md for ideas.
 
+## Rules
+- Every step ends in a commit, so it can be reverted; commit each finished part as soon as it is green.
+  Never push. Tests and lint run green through the `ci` agent before every commit (`.claude/rules/commits.md`).
+- Tests pin behavior, not internals: public interfaces only, no log assertions, no call counts.
+- Refactor continuously: when a file grows over ~400 lines of production code or gets complex, simplify it
+  and split it into focused modules in the same step, without asking.
+- Demo data only: code, docs, tests, commits and screenshots never contain the owner's real data
+  (`.claude/rules/demo-data.md`). The debug build runs on its own data folder with the demo seed.
+- Decisions are ADRs (`docs/adr/`). A record is never edited: a new one supersedes or amends it, and the
+  index says so. Status is dated (`Accepted (YYYY-MM-DD)`), the Decision names the alternatives it rejected,
+  and a record adopted from a sibling app says so.
+- UI changes keep controls stable (`.claude/rules/stable-controls.md`).
+
 ## Docs
 Technical docs live in `docs/` (index: `docs/README.md`). Read `docs/architecture.md` and the page of the
 layer you change before changing it; `docs/adapting.md` lists everything macOS-, name- or WordPress-specific
@@ -19,17 +32,7 @@ commands, files or extension points change. Document by file and symbol, never b
 ## Architecture
 - Rust owns all logic; React only renders. Only `api.ts` files call `invoke`/`listen`, one per module
   (`src/<module>/api.ts`; the core's is `src/api/index.ts`). Tests mock them.
-- `src-tauri/src/`: `cli.rs` (argv), `ipc.rs` (single-instance socket), `db/` (lexer, safety, cell decoding,
-  `mysql/` session: dedicated editor connection + metadata pool), `store/` (JSON files), `rules/` (presets and
-  projects: TOML rule types, the preset catalog, effective rules, the rules lens, coverage), `document/` (a
-  row's document and rule actions), `readout/` (the home page of a database), `search/` (palette),
-  `saved/` (saved and pinned queries), `decode/` (lossless PHP serialize and JSON value trees), `health/`
-  (connection health, `session_health` events), `table_check.rs` (table tab live check), `mcp/`
-  (read-only MCP server), `stage/` (Stage presentation hook: local HTTP API, registered with
-  `stage register`; the page side is `src/stage/`, anchors are `data-stage` attributes; see docs/stage.md).
-  Also: `address/` (`databee://` addresses), `query/` (reads through schema, rules and lens), `lens/` (what
-  a column holds, a table's references), `value/` (values with provenance), `secrets/`, `value_counts.rs`,
-  `deep_link.rs`.
+- Module map: `docs/architecture.md` → Repository map.
 - Frontend state: zustand store in `src/state/store.ts`; components in `src/components/`.
 - Errors cross the boundary as `{ kind, message, code }` (`error.rs`); passwords use the redacting `Secret` type.
 

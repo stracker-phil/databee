@@ -18,6 +18,29 @@ structure): [frontend.md](frontend.md#styling).
 - Icons appear in chrome buttons and fields. In data only two kinds: a table's configured icon (`[[icon]]`) before
   its name and before references to it, and the passive click indicator on hover.
 
+## Stable controls
+
+Adopted from Taskboard (2026-11-03), for every control, list and popover (`.claude/rules/stable-controls.md`):
+
+- **A click never changes what is under the cursor.** Clicking the same spot again does the same thing again:
+  a toggle toggles back, a second ⌘⌫ on a row pending deletion discards the delete. Only closing an overlay or
+  menu and navigating away may replace what was clicked.
+- **Lists don't re-sort while they are used.** A popover, picker or palette keeps the order it opened with;
+  ticking or switching an item changes only its box or switch.
+- **Controls keep their size.** A toggle shows its state in color and outline, never by adding an icon or text
+  that changes its width. Buttons that only sometimes apply keep their slot, invisible, so their neighbors
+  don't move. New controls appear where the row has free room, not where they push others aside.
+- **Nothing jumps; things move.** See Motion. A window resize may move things at once.
+
+## Motion
+
+Nothing jumps from one state to another. What appears fades in (overlays `fade` .12s, dialogs `pop` .14s,
+`app.css`); hover and toggles answer within .12–.15s; the live flash fades over 1.6s. When a change first needs
+a glide or an exit animation, it ports Taskboard's `src/lib/motion.ts` (`useGlide`, `usePresence`) and
+`src/styles/motion.css` (the `--motion-*` and `--ease-*` tokens, `prefers-reduced-motion`), and new durations
+use those tokens instead of literals.
+
+
 ## Surfaces
 
 | Token | Used for |

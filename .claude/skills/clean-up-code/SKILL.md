@@ -47,6 +47,6 @@ You have the following permissions:
 
 The ideal comment is one that does not exist, because the code itself is clear enough. The next best thing is a single sentence or line. Only add multi-line comments when they are actually needed to prevent future code rot.
 
-## Flag only
+## Large or complex files
 
-Critically review files that are longer than 400 lines, evaluating if the module is doing too many things; consider refactoring that code into multiple focused files. Never split files automatically, always confirm with user
+Critically review files that are longer than 400 lines (production code; inline `mod tests` blocks and test files excluded) or hard to follow. When a module does too many things, split it into focused files and simplify it as part of the change; no confirmation needed. Move a module's tests with the code they cover, and update the docs that name the moved symbols.

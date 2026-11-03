@@ -4,6 +4,10 @@ Each record (`NNNN-<slug>.md`, Nygard format: Status, Context, Decision, Consequ
 the docs pages explain how. An accepted decision is never edited: a new record supersedes it, and a dated amendment under Status
 only corrects facts that changed.
 
+From 0028 on, the Status is dated (`Accepted (YYYY-MM-DD)`), the Decision names the alternatives it rejected,
+and a record adopted from a sibling app (Taskboard, Daybook, TimeTracker) says so under Status. Older records
+keep their form.
+
 | No. | Title | Status |
 |---|---|---|
 | [0001](0001-rust-owns-the-logic.md) | Rust owns the logic, React only renders | Accepted |

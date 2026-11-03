@@ -58,6 +58,8 @@ If the caller names a file without a mode, default to `CHANGES in`.
   `useShallow`.
 - A preset or a rule view that labels values instead of showing the stored name next to them, or attributes
   data to a plugin by naming heuristics (`.claude/rules/presets.md`).
+- A color literal (hex, `rgb()`, `hsl()`, named color) outside `src/styles/schemes/` and `src/styles/theme.css`;
+  use a scheme token.
 
 ### 4. Over-engineering (bias toward the simpler shape)
 Flag speculative structure without a present payoff:
