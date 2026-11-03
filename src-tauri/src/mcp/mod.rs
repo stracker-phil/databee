@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::address::Address;
 use crate::ipc::IpcMessage;
-use crate::secrets::{Keychain, SecretStore};
+use crate::secrets::SecretStore;
 use data::Core;
 
 const INSTRUCTIONS: &str = "Read-only access to the databases saved in DataBee, a SQL client for \
@@ -211,7 +211,7 @@ pub fn run(config_dir: &Path, socket: PathBuf) -> i32 {
             return 2;
         }
     };
-    let secrets: Arc<dyn SecretStore> = Arc::new(Keychain);
+    let secrets: Arc<dyn SecretStore> = crate::secrets::app_store();
     let core = Arc::new(Core::new(config_dir.to_path_buf(), secrets));
     let server = DataBeeServer::new(core, socket);
     runtime.block_on(async move {

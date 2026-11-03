@@ -74,6 +74,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/lib.rs               startup, plugin setup, command registration, run loop
   src/address/             addresses: parse, format, resolve against a session
   src/cli.rs ipc.rs        argv parsing, single-instance socket
+  src/instance.rs          hand-off to a running instance, instance lock
   src/launch.rs            queue of launch requests + one-shot passwords
   src/remote.rs            requests the page answers (open, command, current), by id with a timeout
   src/pending.rs           PendingReplies: requests waiting for the reply with their id (remote::Bridge, Stage hub)

@@ -15,10 +15,9 @@
     "test:ui": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "lint": "bun run types && git diff --exit-code -- src/api/types.gen.ts src/stage/types.gen.ts && tsc --noEmit && eslint . && cargo clippy --manifest-path src-tauri/Cargo.toml --lib --bins -- -D warnings",
-    "app": "bun run build:app && open 'src-tauri/target/debug/bundle/macos/DataBee (Debug).app'",
     "test:db": "docker compose -f dev/docker-compose.yml down -v && docker compose -f dev/docker-compose.yml up -d --wait && cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --skip real_data",
-    "build:app": "VITE_DEV_HOOKS=1 tauri build --debug --bundles app --config src-tauri/tauri.debug.conf.json",
-    "release": "tauri build && scripts/install.sh",
+    "build:app": "PATH=/opt/homebrew/opt/rustup/bin:$PATH VITE_DEV_HOOKS=1 tauri build --debug --bundles app --config src-tauri/tauri.debug.conf.json",
+    "release": "PATH=/opt/homebrew/opt/rustup/bin:$PATH tauri build && scripts/install.sh",
     "types": "PATH=/opt/homebrew/opt/rustup/bin:$PATH cargo test --manifest-path src-tauri/Cargo.toml --lib export_bindings"
   },
   "dependencies": {

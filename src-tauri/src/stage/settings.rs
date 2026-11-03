@@ -9,7 +9,8 @@ use crate::error::AppResult;
 use crate::store::json_store::JsonStore;
 
 /// One fixed port per presentable app: 27180–27183 belong to other apps; Stage itself listens on 27190.
-pub const STAGE_PORT: u16 = 27184;
+/// The debug build takes the next port, so both builds can run side by side.
+pub const STAGE_PORT: u16 = if cfg!(debug_assertions) { 27185 } else { 27184 };
 
 const FILE_NAME: &str = "stage.json";
 /// Where the settings lived before Stage had its own file.
@@ -133,6 +134,16 @@ mod tests {
     fn read_stage_file(dir: &Path) -> StageSettings {
         let raw = std::fs::read_to_string(dir.join(FILE_NAME)).unwrap();
         serde_json::from_str(&raw).unwrap()
+    }
+
+    #[test]
+    fn the_debug_build_uses_a_different_port_than_the_release_build() {
+        const RELEASE_PORT: u16 = 27184;
+        if cfg!(debug_assertions) {
+            assert_ne!(STAGE_PORT, RELEASE_PORT);
+        } else {
+            assert_eq!(STAGE_PORT, RELEASE_PORT);
+        }
     }
 
     #[test]

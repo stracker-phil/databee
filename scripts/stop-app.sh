@@ -1,8 +1,13 @@
 #!/bin/zsh
-# Quits the running DataBee app through its socket and waits until it is gone, so it saves its state.
-# `running` matches only the app bundle's binary: `databee mcp` and other CLI processes keep running.
+# Quits the running DataBee of the build that `path/to/databee` belongs to (release or debug; each has its own
+# socket and data) through its socket, and waits until it is gone, so it saves its state. `running` matches
+# only that build's app binary: `databee mcp` and other CLI processes keep running.
 # Usage: scripts/stop-app.sh path/to/databee
-running() { pgrep -lf '\.app/Contents/MacOS/databee( |$)' | grep -vq ' mcp$'; }
+case "$1" in
+  *"DataBee (Debug).app/"*) BUNDLE='DataBee \(Debug\)' ;;
+  *) BUNDLE='DataBee' ;;
+esac
+running() { pgrep -lf "${BUNDLE}\.app/Contents/MacOS/databee( |\$)" | grep -vq ' mcp$'; }
 running || exit 0
 "$1" quit >/dev/null 2>&1
 for _ in {1..50}; do

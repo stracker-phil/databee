@@ -12,7 +12,7 @@ off under Settings → Presentations.
 
 ## Transport
 
-- **Server.** A local HTTP/1.1 server on `127.0.0.1:27184`, the default port, set under Settings →
+- **Server.** A local HTTP/1.1 server on `127.0.0.1:27184` (the debug build: 27185), the default port, set under Settings →
   Presentations. Endpoints are `/v1/stage/{describe,window,act,state}`, taking GET or POST. Parameters come
   from the query string or a flat JSON or form body.
 - **Rejected requests.** Requests with an `Origin` header or a foreign `Host` get 403, so browsers can't reach

@@ -1,14 +1,16 @@
-//! `databee://` links from other apps, queued like a launch so they wait for the page.
+//! Links from other apps (the build's `LINK_SCHEME`), queued like a launch so they wait for the page.
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-use crate::address::Address;
+use crate::LINK_SCHEME;
+use crate::address::{Address, SCHEME};
 use crate::connection::ConnectionSpec;
 use crate::ipc::IpcMessage;
 use crate::launch::queue_launches;
 use crate::state::AppState;
 
+/// Also opens the link that started the app, which arrives before the listener exists.
 pub fn listen(handle: &AppHandle) {
     let app = handle.clone();
     handle.deep_link().on_open_url(move |event| {
@@ -17,9 +19,27 @@ pub fn listen(handle: &AppHandle) {
             open(&app, url.as_str());
         }
     });
+    if let Ok(Some(urls)) = handle.deep_link().get_current() {
+        for url in urls {
+            log::info!("Started by a deep link");
+            open(handle, url.as_str());
+        }
+    }
+}
+
+/// A link in the build's scheme as the address it names; addresses inside the app always use `SCHEME`.
+fn link_address(url: &str) -> String {
+    match url
+        .strip_prefix(LINK_SCHEME)
+        .and_then(|rest| rest.strip_prefix("://"))
+    {
+        Some(rest) => format!("{SCHEME}{rest}"),
+        None => url.to_string(),
+    }
 }
 
 fn open(handle: &AppHandle, url: &str) {
+    let url = &link_address(url);
     let state = handle.state::<AppState>();
     let saved_spec = |slug: &str| {
         state
@@ -92,6 +112,28 @@ mod tests {
             address: url.into(),
             connection: None,
             focus: true,
+        }
+    }
+
+    #[test]
+    fn a_link_in_the_builds_scheme_becomes_an_address_with_the_app_scheme() {
+        let link = format!("{LINK_SCHEME}://shop/wp/wp_posts?post_status=publish");
+
+        assert_eq!(
+            link_address(&link),
+            format!("{SCHEME}shop/wp/wp_posts?post_status=publish")
+        );
+    }
+
+    #[test]
+    fn text_outside_the_builds_scheme_is_left_unchanged() {
+        for url in [
+            "databee://shop/wp/",
+            "https://example.com/",
+            "",
+            "databee-debug-x://shop/",
+        ] {
+            assert_eq!(link_address(url), url, "{url}");
         }
     }
 

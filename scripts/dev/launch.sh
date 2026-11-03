@@ -6,6 +6,12 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 APP="$ROOT/src-tauri/target/debug/bundle/macos/DataBee (Debug).app"
 BIN="$APP/Contents/MacOS/databee"
 [[ -x "$BIN" ]] || { echo "Build first: bun run build:app"; exit 1; }
+# A failed build leaves the previous bundle behind; never start one older than the code it should run.
+STALE=$(find "$ROOT/src" "$ROOT/src-tauri/src" "$ROOT/src-tauri/presets" "$ROOT/src-tauri/capabilities" \
+  "$ROOT/src-tauri/build.rs" "$ROOT/src-tauri/Cargo.toml" "$ROOT/src-tauri/tauri.conf.json" "$ROOT/src-tauri/tauri.debug.conf.json" \
+  -type f -not -name '*.test.*' -not -name '*.gen.ts' -not -name '.DS_Store' -not -path '*/test/*' -not -name 'test_support.rs' \
+  -not -name 'server_tests.rs' -not -path '*/fixtures/*' -newer "$BIN" -print -quit)
+[[ -z "$STALE" ]] || { echo "The debug build is older than ${STALE#$ROOT/}; run bun run build:app first"; exit 1; }
 
 "$ROOT/scripts/sign-app.sh" "$APP" com.philippstracker.databee.debug
 
@@ -35,8 +41,7 @@ let w = min(free.width - 16, 1600), h = min(free.height - 16, 1200)
 print("\(Int(free.minX + 8)),\(Int(free.minY + 8)),\(Int(w)),\(Int(h))")
 SWIFT
 )
-# One instance runs at a time (shared data and socket), so the installed release app stops too; while the
-# debug app runs, `databee` on the PATH talks to it. `bun run release` brings the release app back.
+# Only the debug app restarts: it has its own data, socket and Stage port, so the release app keeps running beside it.
 "$ROOT/scripts/stop-app.sh" "$BIN"
 LOG="${TMPDIR:-/tmp}/databee-dev.log"
 DATABEE_WINDOW_FRAME="$FRAME" DATABEE_BACKGROUND=1 nohup "$BIN" "$@" >"$LOG" 2>&1 &

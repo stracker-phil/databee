@@ -11,6 +11,7 @@ mod dev;
 mod document;
 pub mod error;
 mod health;
+mod instance;
 mod ipc;
 mod launch;
 mod lens;
@@ -33,30 +34,41 @@ mod state;
 mod statement_counts;
 mod store;
 mod table_check;
-#[cfg(any(test, feature = "test-util"))]
+#[cfg(any(test, debug_assertions, feature = "test-util"))]
 pub mod test_support;
 mod value;
 mod value_counts;
 mod window;
 
-use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
 use crate::cli::CliOutcome;
-use crate::ipc::{Forward, IpcMessage};
+use crate::ipc::IpcMessage;
 use crate::state::AppState;
 use crate::store::json_file::create_private_dir;
 use crate::store::settings::{LogLevel, Settings};
 
-const IDENTIFIER: &str = "com.philippstracker.databee";
+/// Each build is its own app with its own data (docs/adr/0028).
+const IDENTIFIER: &str = if cfg!(debug_assertions) {
+    "com.philippstracker.databee.debug"
+} else {
+    "com.philippstracker.databee"
+};
+pub const APP_NAME: &str = if cfg!(debug_assertions) {
+    "DataBee (Debug)"
+} else {
+    "DataBee"
+};
+/// The URL scheme the build registers; `databee://` addresses follow it.
+pub const LINK_SCHEME: &str = if cfg!(debug_assertions) {
+    "databee-debug"
+} else {
+    "databee"
+};
 const MAX_LOG_BYTES: u128 = 5 * 1024 * 1024;
-const LOCK_POLL: Duration = Duration::from_millis(200);
-const LOCK_POLLS: u32 = 25;
 
 /// Same directory Tauri resolves as `app_config_dir`, but available before the app starts.
 fn config_dir() -> PathBuf {
@@ -66,67 +78,9 @@ fn config_dir() -> PathBuf {
     home.join("Library/Application Support").join(IDENTIFIER)
 }
 
-/// Held for the app's lifetime, so two launches that both find no listener can't both start.
-/// `None` when another process holds it.
-fn lock_instance(dir: &Path) -> std::io::Result<Option<File>> {
-    let file = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(dir.join("databee.lock"))?;
-    match file.try_lock() {
-        Ok(()) => Ok(Some(file)),
-        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
-        Err(std::fs::TryLockError::Error(e)) => Err(e),
-    }
-}
-
-fn fail(message: &str) -> ! {
+pub(crate) fn fail(message: &str) -> ! {
     eprintln!("{message}");
     std::process::exit(2);
-}
-
-/// Exits when a running instance answers or refuses the message; returns when none is listening.
-fn forward(socket: &Path, message: &IpcMessage, exit_code: i32) {
-    match ipc::try_forward(socket, message) {
-        Ok(Forward::Delivered) => std::process::exit(exit_code),
-        Ok(Forward::NoInstance) => {}
-        Ok(Forward::Rejected) => fail("The running DataBee instance did not accept the request"),
-        Err(e) => fail(&format!(
-            "Could not reach the running DataBee instance: {e}"
-        )),
-    }
-}
-
-/// Exits with the running instance's answer; returns when none is listening.
-fn ask_running_instance(socket: &Path, message: &IpcMessage) {
-    match ipc::request(socket, message.clone()) {
-        Ok(None) => {}
-        Ok(Some(reply)) => match reply.into_result() {
-            Ok(result) => {
-                if !result.is_null() {
-                    println!("{result}");
-                }
-                std::process::exit(0);
-            }
-            Err(error) => {
-                eprintln!("{error}");
-                std::process::exit(1);
-            }
-        },
-        Err(e) => fail(&format!(
-            "Could not reach the running DataBee instance: {e}"
-        )),
-    }
-}
-
-/// The lock holder may still be starting up and not listen yet.
-fn forward_to_starting_instance(socket: &Path, message: &IpcMessage, exit_code: i32) -> ! {
-    for _ in 0..LOCK_POLLS {
-        std::thread::sleep(LOCK_POLL);
-        forward(socket, message, exit_code);
-    }
-    fail("Another DataBee instance is starting but does not answer")
 }
 
 fn log_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
@@ -169,6 +123,19 @@ fn apply_dev_frame(app: &tauri::App) {
     let _ = window.set_size(tauri::LogicalSize::new(w, h));
 }
 
+/// The debug build starts with the demo connections (their passwords are in `secrets::app_store`).
+#[cfg(debug_assertions)]
+fn seed_demo(state: &AppState) {
+    if state.config_dir.join("connections.json").exists() {
+        return;
+    }
+    for (spec, _) in test_support::demo_connections() {
+        if let Err(e) = tauri::async_runtime::block_on(state.recents.touch(&spec)) {
+            log::warn!("Could not add the demo connection: {e}");
+        }
+    }
+}
+
 /// Without the socket the app still runs, only without single-instance handoff.
 fn start_ipc(handle: AppHandle, socket: &Path) {
     let listener = match ipc::bind(socket) {
@@ -209,11 +176,11 @@ pub fn run() {
         ),
         Ok(CliOutcome::Mcp) => std::process::exit(mcp::run(&config_dir, socket)),
         Ok(CliOutcome::Quit) => {
-            forward(&socket, &IpcMessage::Quit, 0);
+            instance::forward(&socket, &IpcMessage::Quit, 0);
             fail("DataBee is not running");
         }
         Ok(CliOutcome::Remote { message }) => {
-            ask_running_instance(&socket, &message);
+            instance::ask(&socket, &message);
             if !matches!(message, IpcMessage::Open { .. }) {
                 fail("DataBee is not running");
             }
@@ -230,17 +197,11 @@ pub fn run() {
         0
     };
 
-    forward(&socket, &message, exit_code);
-    let _instance_lock = match lock_instance(&config_dir) {
-        Ok(Some(lock)) => Some(lock),
-        Ok(None) => forward_to_starting_instance(&socket, &message, exit_code),
-        Err(e) => {
-            eprintln!("Cannot lock the DataBee instance: {e}");
-            None
-        }
-    };
+    let _instance_lock = instance::forward_or_lock(&config_dir, &socket, &message, exit_code);
 
-    let mut state = AppState::open(&config_dir, Arc::new(secrets::Keychain));
+    let mut state = AppState::open(&config_dir, secrets::app_store());
+    #[cfg(debug_assertions)]
+    seed_demo(&state);
     state.log_override = log_override;
     start_app(
         state,
@@ -376,10 +337,53 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
 mod tests {
     use super::*;
 
+    fn configs() -> (serde_json::Value, serde_json::Value) {
+        let release = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let debug = serde_json::from_str(include_str!("../tauri.debug.conf.json")).unwrap();
+        (release, debug)
+    }
+
+    fn this_build() -> serde_json::Value {
+        let (release, debug) = configs();
+        if cfg!(debug_assertions) {
+            debug
+        } else {
+            release
+        }
+    }
+
     #[test]
     fn identifier_matches_the_tauri_config() {
-        let conf: serde_json::Value =
-            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        assert_eq!(conf["identifier"], serde_json::json!(IDENTIFIER));
+        assert_eq!(this_build()["identifier"], serde_json::json!(IDENTIFIER));
+    }
+
+    #[test]
+    fn app_name_matches_the_product_name_in_the_tauri_config() {
+        assert_eq!(this_build()["productName"], serde_json::json!(APP_NAME));
+    }
+
+    #[test]
+    fn link_scheme_matches_the_deep_link_scheme_in_the_tauri_config() {
+        assert_eq!(
+            this_build()["plugins"]["deep-link"]["desktop"]["schemes"],
+            serde_json::json!([LINK_SCHEME])
+        );
+    }
+
+    #[test]
+    fn the_debug_build_differs_from_the_release_build_in_name_identifier_and_scheme() {
+        let (release, debug) = configs();
+        assert_eq!(release["productName"], "DataBee");
+        assert_eq!(release["identifier"], "com.philippstracker.databee");
+        assert_eq!(debug["productName"], "DataBee (Debug)");
+        assert_eq!(
+            debug["identifier"],
+            serde_json::json!(format!("{}.debug", release["identifier"].as_str().unwrap()))
+        );
+        let schemes = |config: &serde_json::Value| {
+            config["plugins"]["deep-link"]["desktop"]["schemes"].clone()
+        };
+        assert_eq!(schemes(&release), serde_json::json!(["databee"]));
+        assert_eq!(schemes(&debug), serde_json::json!(["databee-debug"]));
     }
 }

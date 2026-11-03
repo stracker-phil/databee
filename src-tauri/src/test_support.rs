@@ -1,6 +1,6 @@
-//! Helpers shared by unit tests and the integration tests in `tests/` (through the `test-util`
-//! feature): the Docker fixture servers, a statement-logging `Database` wrapper and the plugin
-//! command lists in `build.rs`.
+//! Helpers shared by unit tests, the integration tests in `tests/` (through the `test-util`
+//! feature) and the debug build: the Docker fixture servers, the debug build's demo connections, a
+//! statement-logging `Database` wrapper and the plugin command lists in `build.rs`.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -42,6 +42,22 @@ pub fn spec(host: &str, port: u16, database: &str) -> ConnectionSpec {
         user: "root".into(),
         database: Some(database.into()),
     }
+}
+
+/// The debug build's connections: the Docker fixtures, each with its password, so the debug app never
+/// needs the owner's connections or Keychain (docs/adr/0028).
+pub fn demo_connections() -> Vec<(ConnectionSpec, Secret)> {
+    servers()
+        .into_iter()
+        .zip(["Fixtures MariaDB", "Fixtures MySQL"])
+        .map(|((host, port), name)| {
+            let spec = ConnectionSpec {
+                name: Some(name.into()),
+                ..spec(&host, port, "wp_test")
+            };
+            (spec, Secret::new("root"))
+        })
+        .collect()
 }
 
 pub async fn connect_to(host: &str, port: u16, database: &str) -> MySqlSession {
@@ -207,6 +223,22 @@ mod tests {
     use super::*;
     use crate::db::FakeDatabase;
     use crate::error::AppError;
+
+    #[test]
+    fn demo_connections_name_one_fixture_connection_per_server() {
+        let demo = demo_connections();
+
+        assert_eq!(demo.len(), servers().len().min(2));
+        for ((spec, password), name) in demo.iter().zip(["Fixtures MariaDB", "Fixtures MySQL"]) {
+            assert_eq!(spec.name.as_deref(), Some(name));
+            assert_eq!(spec.user, "root");
+            assert_eq!(spec.database.as_deref(), Some("wp_test"));
+            assert_eq!(password, &Secret::new("root"));
+        }
+        for ((spec, _), (host, port)) in demo.iter().zip(servers()) {
+            assert_eq!((spec.host.as_str(), spec.port), (host.as_str(), port));
+        }
+    }
 
     #[tokio::test]
     async fn counting_forwards_ping_and_reconnect_without_logging_them() {

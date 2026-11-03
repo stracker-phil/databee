@@ -9,8 +9,8 @@ only corrects facts that changed.
 | [0001](0001-rust-owns-the-logic.md) | Rust owns the logic, React only renders | Accepted |
 | [0002](0002-ipc-in-api-files.md) | IPC only through `api.ts` files, one per module | Accepted, amended |
 | [0003](0003-errors-as-kinds.md) | Errors cross IPC as `{kind, message, code}` | Accepted |
-| [0004](0004-passwords-in-secret.md) | Passwords live in `Secret` | Accepted |
-| [0005](0005-own-single-instance-socket.md) | Own Unix-socket single-instance handoff | Accepted |
+| [0004](0004-passwords-in-secret.md) | Passwords live in `Secret` | Accepted, amended by 0028 |
+| [0005](0005-own-single-instance-socket.md) | Own Unix-socket single-instance handoff | Accepted, amended by 0028 |
 | [0006](0006-two-channels-per-connection.md) | Two channels per connection | Accepted |
 | [0007](0007-plan-review-apply-undo.md) | Plan, review, apply in one transaction, undo | Accepted |
 | [0008](0008-wp-layer-shows-stored-data.md) | The WordPress layer shows stored data, no naming heuristics | Superseded by 0022 |
@@ -33,3 +33,4 @@ only corrects facts that changed.
 | [0025](0025-standalone-mcp-server.md) | A standalone, read-only MCP server (`databee mcp`) | Accepted (2026-10-17), implemented |
 | [0026](0026-connection-health.md) | Connection health | Accepted (2026-10-20), implemented |
 | [0027](0027-table-live-check.md) | Table live check by per-row checksums | Accepted (2026-10-20), implemented |
+| [0028](0028-debug-build-is-a-separate-app-with-demo-data.md) | The debug build is a separate app with demo data | Accepted (2026-11-03), implemented |

@@ -1,13 +1,31 @@
 use crate::connection::{ConnectionSpec, Secret};
 use crate::error::AppResult;
 
+#[cfg(not(debug_assertions))]
 mod keychain;
-#[cfg(test)]
+#[cfg(any(test, debug_assertions))]
 mod memory;
 
+#[cfg(not(debug_assertions))]
 pub use keychain::Keychain;
-#[cfg(test)]
+#[cfg(any(test, debug_assertions))]
 pub use memory::MemoryStore;
+
+/// Debug builds never touch the Keychain: their passwords live in memory, starting with the demo
+/// connections' (docs/adr/0028).
+#[cfg(debug_assertions)]
+pub fn app_store() -> std::sync::Arc<dyn SecretStore> {
+    let store = MemoryStore::default();
+    for (spec, password) in crate::test_support::demo_connections() {
+        let _ = store.set(&spec.account(), &password);
+    }
+    std::sync::Arc::new(store)
+}
+
+#[cfg(not(debug_assertions))]
+pub fn app_store() -> std::sync::Arc<dyn SecretStore> {
+    std::sync::Arc::new(Keychain)
+}
 
 pub trait SecretStore: Send + Sync {
     fn get(&self, account: &str) -> AppResult<Option<Secret>>;
@@ -68,6 +86,26 @@ mod tests {
             user: "wp".into(),
             database: None,
         }
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn the_debug_app_store_knows_each_demo_connections_password() {
+        let store = app_store();
+
+        for (spec, password) in crate::test_support::demo_connections() {
+            assert_eq!(store.get(&spec.account()).unwrap(), Some(password));
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn the_debug_app_store_is_not_shared_between_calls() {
+        app_store()
+            .set(&spec().account(), &Secret::new("typed"))
+            .unwrap();
+
+        assert_eq!(app_store().get(&spec().account()).unwrap(), None);
     }
 
     #[test]

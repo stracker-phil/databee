@@ -25,17 +25,32 @@ lists what such changes touch.
 
 ## Identity
 
-The app's name and ids live in a few places. Change them together.
+The app's name and ids live in a few places. Change them together. The debug build is a second app with its
+own identity and data ([ADR 0028](adr/0028-debug-build-is-a-separate-app-with-demo-data.md)):
+
+| What | Release | Debug | Where |
+|---|---|---|---|
+| Product name, bundle | `DataBee`, `DataBee.app` | `DataBee (Debug)`, `DataBee (Debug).app` | `tauri.conf.json` / `tauri.debug.conf.json` `productName`; `lib.rs` `APP_NAME` |
+| Bundle id | `com.philippstracker.databee` | `com.philippstracker.databee.debug` | the configs' `identifier`; `lib.rs` `IDENTIFIER` |
+| URL scheme | `databee` | `databee-debug` | the configs' deep-link schemes; `lib.rs` `LINK_SCHEME` |
+| Config dir (connections, history, projects, settings, `stage.json`, snapshots) | `~/Library/Application Support/com.philippstracker.databee` | `…/com.philippstracker.databee.debug` | `lib.rs` `config_dir()` |
+| Logs | `~/Library/Logs/com.philippstracker.databee` | `…/com.philippstracker.databee.debug` | the bundle id |
+| Socket, lock | `databee.sock`, `databee.lock` in the config dir | the same names in the debug config dir | `lib.rs`, `instance.rs` |
+| Passwords | Keychain service `databee` | in memory, starting with the demo passwords | `secrets::app_store()` |
+| Connections on first launch | none | the Docker fixtures | `test_support::demo_connections` |
+| Stage port | 27184 | 27185 | `stage/settings.rs` `STAGE_PORT` |
+| Installed links | `~/Applications/DataBee.app`, `~/.local/bin/databee` | none (run by path) | `scripts/install.sh`, `scripts/dev/launch.sh` |
+| Dev hooks (`window.databee`, JavaScript over the socket) | no | yes | `dev.rs`, `VITE_DEV_HOOKS` |
 
 | What | Where | Note |
 |---|---|---|
-| Product name (window title, bundle `DataBee.app`, app menu) | `src-tauri/tauri.conf.json` `productName` and window `title`; `menu.rs`; `index.html`; `Toolbar.tsx`; `stage/mod.rs` `NAME` and `stage/windows.rs` (`Window::Main` title); `mcp/mod.rs` `INSTRUCTIONS`; `productName` in `tauri.debug.conf.json` ("DataBee (Debug)"); the `DataBee.app` paths in `scripts/install.sh`, `scripts/dev/launch.sh` and the `app` script of `package.json`; the window owner prefix `"DataBee"` in `scripts/dev/screenshot.sh`; the certificate name "DataBee Local Signing" and `DATABEE_SIGN_IDENTITY` in `scripts/create-signing-cert.sh` and `scripts/sign-app.sh` | Also in user-facing strings: `mcp/ui.rs` `NOT_RUNNING`, the errors in `lib.rs`, `ipc.rs` and `remote.rs`, `src/lib/address.ts` ("Not a DataBee address"), the intros in `settings/pages.tsx` and `src/stage/install.ts`, `src/stage/PresentationsPage.tsx` |
-| Bundle identifier `com.philippstracker.databee` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER`; `scripts/dev/js.sh` (socket path); `tauri.debug.conf.json` (`.debug`); `scripts/install.sh` and `scripts/dev/launch.sh` (`sign-app.sh` arguments) | Also names the config dir and the log dir. The config dir uses `IDENTIFIER` for both builds; the log dir follows the bundle id. Changing it starts with empty settings. |
+| Product name (window title, bundle `DataBee.app`, app menu) | `src-tauri/tauri.conf.json` `productName` and window `title`; `menu.rs`; `index.html`; `Toolbar.tsx`; `stage/mod.rs` `NAME` and `stage/windows.rs` (`Window::Main` title); `mcp/mod.rs` `INSTRUCTIONS`; `productName` in `tauri.debug.conf.json` ("DataBee (Debug)"); `lib.rs` `APP_NAME`; the `DataBee.app` and `DataBee (Debug).app` paths in `scripts/install.sh`, `scripts/stop-app.sh` and `scripts/dev/launch.sh`; the window owner `"DataBee (Debug)"` in `scripts/dev/screenshot.sh`; the certificate name "DataBee Local Signing" and `DATABEE_SIGN_IDENTITY` in `scripts/create-signing-cert.sh` and `scripts/sign-app.sh` | Also in user-facing strings: `mcp/ui.rs` `NOT_RUNNING`, the errors in `lib.rs`, `ipc.rs` and `remote.rs`, `src/lib/address.ts` ("Not a DataBee address"), the intros in `settings/pages.tsx` and `src/stage/install.ts`, `src/stage/PresentationsPage.tsx` |
+| Bundle identifier `com.philippstracker.databee` | `tauri.conf.json` `identifier`; `lib.rs` `IDENTIFIER`; `scripts/dev/js.sh` (socket path); `tauri.debug.conf.json` (`.debug`); `scripts/install.sh` and `scripts/dev/launch.sh` (`sign-app.sh` arguments) | Also names the config dir and the log dir, per build. Changing it starts with empty settings. |
 | Binary and CLI command `databee` | Cargo package `name` in `src-tauri/Cargo.toml`; `cli.rs` `name` and `after_help`; `scripts/install.sh`; `scripts/stop-app.sh`; `scripts/dev/launch.sh`; the MCP server name in `mcp/mod.rs` (`get_info`) | The Rust lib is `databee_lib`, also used by `main.rs` and `tests/` |
 | Keychain service `"databee"` | `secrets/keychain.rs` `SERVICE` | Changing it loses saved passwords |
-| Socket file `databee.sock`, lock file `databee.lock` | `lib.rs` (both), `scripts/dev/js.sh` (the socket) | |
+| Socket file `databee.sock`, lock file `databee.lock` | `lib.rs` (the socket), `instance.rs` `LOCK_NAME`, `scripts/dev/js.sh` (the debug socket) | Inside each build's config dir |
 | Address scheme `databee://` | `src-tauri/src/address/mod.rs` `SCHEME`; `src/lib/address.ts` `SCHEME`; `src/test/fixtures/addresses.json`; spelled out in `palette/parse.ts` (`Prefix`, `PREFIXES`), `palette/usePaletteItems.ts`, `palette/PaletteList.tsx` `PREFIX_HINTS`, `CommandPalette.tsx`, `settings/ConnectionSlugs.tsx`, `mcp/mod.rs` `INSTRUCTIONS` and tool descriptions, `cli.rs` `after_help` | Copied and saved addresses stop parsing when it changes |
-| Deep-link URL scheme `databee` | `tauri.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`) | Keep it equal to the address scheme, or links stop opening. `tauri.debug.conf.json` empties it, so only the release app gets links |
+| Deep-link URL scheme `databee` (debug: `databee-debug`) | `tauri.conf.json` and `tauri.debug.conf.json` `plugins.deep-link.desktop.schemes` (the bundler writes it into `Info.plist`); `lib.rs` `LINK_SCHEME` | Keep the release scheme equal to the address scheme, or links stop opening. `deep_link.rs` reads a link in the build's scheme as a `databee://` address |
 | Env vars `DATABEE_*` | `dev.rs`, `scripts/dev/launch.sh`, tests | |
 | Window events `databee:*`, `window.databee` | `src/commands/index.ts` (`EVENTS`), `src/commands/values.ts` (`EDIT_VALUE_EVENT`), `src/main.tsx`, the dev scripts | Internal only |
 | Icons | `src-tauri/icons/` | Regenerate with `bun tauri icon <1024px png>` |

@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Runs JavaScript in the running debug app without focusing it (dev builds only).
 # Usage: scripts/dev/js.sh 'document.querySelector("[aria-label=\"Settings\"]").click()'
-SOCK="$HOME/Library/Application Support/com.philippstracker.databee/databee.sock"
+SOCK="$HOME/Library/Application Support/com.philippstracker.databee.debug/databee.sock"
 python3 -I - "$SOCK" "$1" <<'PY'
 import json, socket, sys
 s = socket.socket(socket.AF_UNIX)

@@ -19,14 +19,17 @@ layer and the Stage hook each have their own page.
    - `Quit`: `databee quit` forwards `IpcMessage::Quit` one-way (the app exits before it could reply) and
      exits 0, or 2 ("DataBee is not running"). The app calls `AppHandle::exit`, so the history is flushed as
      on a menu quit.
-   - `Remote { message }`: a subcommand (`open`, `command`) for the running app. `ask_running_instance`
+   - `Remote { message }`: a subcommand (`open`, `command`) for the running app. `instance::ask`
      sends it as a request and exits with its reply. With no instance running, `command` exits 2 ("DataBee
      is not running") and `open` starts the app with the open queued.
    - An error: it becomes `IpcMessage::Error`, and the app shows it.
 3. **Single-instance handoff.** `ipc::try_forward` sends the message to a running instance (see
    [below](#cli-and-single-instance-handoff)). Only when no instance listens does startup continue, after
-   taking the instance lock. The handoff is custom (no `tauri-plugin-single-instance`).
-4. **`AppState`.** `run` opens every JSON store with `AppState::open`, installs the Keychain secret store and
+   taking the instance lock (`instance::forward_or_lock`, `instance.rs`). Each build has its own socket and
+   lock, in its own config dir ([ADR 0028](adr/0028-debug-build-is-a-separate-app-with-demo-data.md)). The handoff is custom (no `tauri-plugin-single-instance`).
+4. **`AppState`.** `run` opens every JSON store with `AppState::open`, installs the secret store
+   (`secrets::app_store()`: the Keychain; in debug builds an in-memory store with the demo passwords, and the
+   first launch adds the demo connections, `seed_demo`) and
    keeps the `--log-level` override in `AppState::log_override`. The effective level (override, else the
    stored `log_level`) is computed here, so logging never starts at `Trace`.
 5. **`start_app`** builds Tauri, with `.manage(state)` as the first builder call so plugins can use it:

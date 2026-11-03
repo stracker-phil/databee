@@ -6,7 +6,7 @@ use crate::connection::Secret;
 use crate::error::AppResult;
 use crate::lock::MutexExt;
 
-/// In-memory store for tests.
+/// In-memory store for tests and debug builds.
 #[derive(Default)]
 pub struct MemoryStore(Mutex<HashMap<String, Secret>>);
 

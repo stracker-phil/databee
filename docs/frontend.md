@@ -19,7 +19,7 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    nothing, so the WebView's own Reload and Inspect Element never appear; text fields and the SQL editor keep
    the native Cut/Copy/Paste menu.
 5. `main.tsx` assigns the store to `window.databee` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`, which
-   `bun run build:app` and `bun run app` set for the debug bundle the dev scripts drive; `bun run build`
+   `bun run build:app` sets for the debug bundle the dev scripts drive; `bun run build`
    (release) leaves it out. It renders `<ErrorBoundary><App/></ErrorBoundary>`.
 6. `App.tsx` imports the stylesheets (fonts, the scheme files, `theme.css`, `app.css`) and calls
    `useBackendEvents()` once:

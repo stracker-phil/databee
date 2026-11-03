@@ -135,7 +135,7 @@ DataBee takes the password from the first source that has one:
 Addresses are also links: `open 'databee://shop/wordpress/wp_posts/42'` in the terminal, or clicking such a
 link in another app, opens it in DataBee. When no session of that connection is open but a saved
 connection has the slug, DataBee connects first (Keychain password, else it asks). Links need the bundled
-release app (`bun run release`); the debug build and `bun tauri dev` register no scheme.
+release app (`bun run release`); the debug build registers its own `databee-debug://` scheme, and `bun tauri dev` none.
 
 ## Claude Code
 
