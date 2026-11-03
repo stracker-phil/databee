@@ -294,9 +294,10 @@ starts (`lib.rs` binds the outcome first): tokio's stdin would block on it other
 - **Read-only:** no tool writes. Plans, actions and project rules are not reachable.
 - **Keychain:** `databee mcp` normally runs the app's own binary (`scripts/install.sh` links
   `DataBee.app/Contents/MacOS/databee`). The Keychain trusts that binary for the items the app saved, so
-  there is no prompt. The trust follows the code signature: `scripts/sign-app.sh` signs builds with the local
-  certificate of `scripts/create-signing-cert.sh`, so it survives rebuilds; an ad-hoc signed build is a new
-  app to the Keychain after every rebuild. After such a rebuild or from another binary
+  there is no prompt. The trust follows the code signature: with an Apple Development certificate (its Team ID,
+  [ADR 0029](adr/0029-builds-are-signed-with-an-apple-development-certificate.md)) it survives rebuilds; with
+  the local certificate or ad hoc, a new build is a new app to the Keychain. The debug build never asks: it
+  keeps its passwords in memory. After such a rebuild or from another binary
   (e.g. `target/debug/databee`), macOS shows its "wants to use your confidential information" dialog once
   per item, as it does for the app. The lookup waits on a blocking thread until it is answered; after "Deny"
   no password is sent, and the tool's error says why the login failed.
@@ -580,8 +581,16 @@ content:
 
 - `default-src 'self'`: scripts, fonts and frames come from the bundle only;
 - `img-src 'self' data:`: images from the bundle or inline only; no view loads a remote image;
-- `style-src 'self' 'unsafe-inline'`: React `style` attributes;
-- `connect-src ipc: http://ipc.localhost`: Tauri IPC (commands and events).
+- `style-src 'self' 'unsafe-inline'`: React `style` attributes and the `<style>` elements CodeMirror and
+  `TableFocus` insert (no `style-src-elem`, [ADR 0030](adr/0030-hardened-runtime-strict-csp-no-navigation.md));
+- `script-src 'self'`: no inline script;
+- `connect-src ipc: http://ipc.localhost`: Tauri IPC (commands and events);
+- `frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`.
+
+The navigation guard (`window/navigation.rs`, a plugin with `on_navigation`) keeps the webview on the app's
+own pages (`is_app_page`: `tauri://localhost`, `tauri.localhost`, in debug builds the Vite dev server); any
+other navigation is refused and logged. Builds are signed with the hardened runtime and no entitlements
+(`scripts/sign-app.sh`).
 
 `app.security.devCsp` applies under `tauri dev` and adds inline scripts (the React refresh preamble) and Vite's
 HMR websocket on `localhost:1420`/`1421`.

@@ -34,3 +34,5 @@ only corrects facts that changed.
 | [0026](0026-connection-health.md) | Connection health | Accepted (2026-10-20), implemented |
 | [0027](0027-table-live-check.md) | Table live check by per-row checksums | Accepted (2026-10-20), implemented |
 | [0028](0028-debug-build-is-a-separate-app-with-demo-data.md) | The debug build is a separate app with demo data | Accepted (2026-11-03), implemented |
+| [0029](0029-builds-are-signed-with-an-apple-development-certificate.md) | Builds are signed with an Apple Development certificate | Accepted (2026-11-03), implemented |
+| [0030](0030-hardened-runtime-strict-csp-no-navigation.md) | Hardened runtime, a strict CSP and no navigation | Accepted (2026-11-03), implemented |

@@ -36,8 +36,8 @@ bun run release          # release bundle, installed for the user (below)
 The first Rust build takes several minutes. `bun run release` ends with `scripts/install.sh`: it links
 `~/Applications/DataBee.app` to the release bundle and `~/.local/bin/databee` through that app, and restarts
 a running release app on the new build. Debug builds are never installed; `scripts/dev/launch.sh` runs one by its
-path, beside the release app: it has its own data and starts with the Docker fixtures as connections. Run `scripts/create-signing-cert.sh` once, so the Keychain keeps trusting rebuilt apps for saved
-passwords instead of asking again after every build.
+path, beside the release app: it has its own data and starts with the Docker fixtures as connections. Builds are signed with an Apple Development certificate when the Mac has one (a free Apple ID in Xcode), so the Keychain trusts every release build after one "Always Allow"; without one, run `scripts/create-signing-cert.sh` once, and each new build asks once for saved
+passwords.
 
 ## Verify
 

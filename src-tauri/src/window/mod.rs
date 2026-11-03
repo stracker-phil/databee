@@ -1,3 +1,5 @@
+pub mod navigation;
+
 use tauri::{AppHandle, Manager};
 
 use crate::store::settings::Theme;

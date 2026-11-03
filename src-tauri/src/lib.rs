@@ -221,6 +221,7 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(window::navigation::guard())
         .plugin(stage::init(&config_dir))
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
         .setup(move |app| {
