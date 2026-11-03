@@ -481,11 +481,10 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .row-padding-preview > :first-child { color: var(--o2); }
 
 /* ---------- settings window: sidebar of pages, grouped cards of label/control rows ---------- */
-.dialog.settings-window { display: flex; width: min(54rem, calc(100vw - 2.462rem)); height: min(46rem, calc(100vh - 4.615rem)); }
 .settings-nav {
-  flex: none; width: 13.5rem; padding: 1.231rem 0.769rem; overflow: auto;
+  flex: none; width: 13.5rem; padding: 0 0.769rem 1.231rem;
   background: var(--chrome); border-right: 1px solid var(--line);
-  display: flex; flex-direction: column; gap: 1.077rem;
+  display: flex; flex-direction: column; gap: 0.769rem;
 }
 .settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
 .settings-nav-heading { padding: 0 0.615rem 0.308rem; font-size: var(--fs-small); font-weight: 500; color: var(--o3); }

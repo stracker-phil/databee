@@ -7,6 +7,8 @@ const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(() => ({
   plugins: [react()],
+  // The main window and the Settings window are separate pages.
+  build: { rollupOptions: { input: { main: "index.html", settings: "src/windows/settings/index.html" } } },
   // Keep Rust errors visible; Tauri expects the fixed port.
   clearScreen: false,
   server: {

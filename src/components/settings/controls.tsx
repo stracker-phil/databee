@@ -1,14 +1,23 @@
 /** Shared controls for settings pages: grouped cards and rows that apply their change right away. */
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 export const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
 
 /** Optional Stage anchor id (`data-stage`) for controls a presentation can point at. */
 type Staged = { stage?: string };
 
-export function Group({ title, children }: { title?: string; children: ReactNode }) {
+/** The section the Settings window was opened at; its `Group` scrolls into view. */
+export const SectionTarget = createContext<string | undefined>(undefined);
+
+/** `anchor`: the section id (`registerSettingsPage` `sections`) that scrolls to this group. */
+export function Group({ title, anchor, children }: { title?: string; anchor?: string; children: ReactNode }) {
+  const target = useContext(SectionTarget);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (anchor && anchor === target) ref.current?.scrollIntoView?.({ block: "start" });
+  }, [anchor, target]);
   return (
-    <section className="settings-group">
+    <section ref={ref} className="settings-group" aria-label={title} data-section={anchor}>
       {title && <h3>{title}</h3>}
       <div className="settings-card">{children}</div>
     </section>

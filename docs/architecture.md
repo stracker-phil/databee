@@ -1,6 +1,6 @@
 # Architecture
 
-DataBee is a single-window desktop app built with Tauri 2. A Rust process owns every piece of logic:
+DataBee is a desktop app built with Tauri 2, with a main window and a Settings window. A Rust process owns every piece of logic:
 connections, SQL, rules and presets, persistence, secrets, and the CLI. A React 19 webview renders
 state and forwards user intent. This page covers the overall shape. The layer pages go into detail:
 [backend](backend.md), [database](database.md), [presets](presets.md), [frontend](frontend.md),
@@ -109,7 +109,7 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/test_support.rs      fixture-server helpers for tests (`test-util`)
   src/secrets/             SecretStore trait; Keychain and test MemoryStore
   src/menu.rs              native menu (MENU_ITEMS)
-  src/window.rs            window theme and bring-to-front
+  src/window/              window theme, bring-to-front, the Settings window, the navigation guard
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
   src/lock.rs              poison-tolerant std lock access
   presets/                 built-in presets: wordpress, woocommerce, action-scheduler (docs/presets.md)

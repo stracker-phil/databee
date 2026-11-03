@@ -114,7 +114,7 @@ export function Toolbar() {
       <button data-stage="toolbar:new-query" className="icon-btn" aria-label="New query" title="New query (⌘T)" disabled={!session} onClick={() => openQueryTab()}>
         <FilePlus2 size={ICON_SIZE} />
       </button>
-      <button data-stage="toolbar:settings" className="icon-btn" aria-label="Settings" title="Settings (⌘,)" onClick={() => openDialog({ type: "settings" })}>
+      <button data-stage="toolbar:settings" className="icon-btn" aria-label="Settings" title="Settings (⌘,)" onClick={() => useStore.getState().openSettings()}>
         <SettingsIcon size={ICON_SIZE} />
       </button>
     </header>

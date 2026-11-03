@@ -262,6 +262,20 @@ disabled items `--o3`, separators a 1px `--line`. An item that runs a command sh
 - Document value (`DocumentView.tsx`): Watch on readout, a separator, Add reference…, Kind…, Style…;
 - sidebar table (`tableMenu` in `Sidebar.tsx`): Open data, Show structure, New query: SELECT …, Copy name.
 
+## Settings
+
+Settings is a window of its own (⌘,, the toolbar's gear), about 880×720, not maximizable. On the left, under a
+drag strip that holds the traffic lights, a search field and the page list (only the list scrolls); on the
+right, the page title as a drag strip and the page. Every change applies at once, in every window; there is
+no Save and no ✕: closing (⌘W, the red light, or Esc outside a field) hides the window, which reopens on the
+same page.
+
+- **Search** (⌘F) narrows the page list to pages whose name, group or section title contains the text;
+  a page found by a section shows that section's title beside it in `--o3`, and opening it scrolls the section
+  to the top. ↵ opens the first hit; nothing matching shows "No Results".
+- **Sections:** every group of a page has a title; Stage and `openSettings` can name a page or a section.
+- While the window is in the background, its page list dims (`window-blurred`), like an inactive macOS window.
+
 ## Value grammar
 
 One component (`src/components/value/Value.tsx`) renders every value: grids, documents, peek, the

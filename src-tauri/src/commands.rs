@@ -65,6 +65,7 @@ pub async fn update_settings(
 ) -> AppResult<Settings> {
     let (previous, saved) = state.settings.update(settings).await?;
     apply_settings(&app, Some(&previous), &saved);
+    window::announce_settings(&app);
     log::info!("Settings updated");
     Ok(saved)
 }
@@ -82,7 +83,19 @@ pub async fn set_keybindings(
 ) -> AppResult<Keybindings> {
     let saved = state.keybindings.update(bindings).await?;
     menu::rebuild(&app);
+    window::announce_settings(&app);
     Ok(saved)
+}
+
+/// Opens the Settings window at a page or section id, else where it was.
+#[tauri::command]
+pub fn open_settings(app: AppHandle, page: Option<String>) {
+    window::settings::open(&app, page.as_deref());
+}
+
+#[tauri::command]
+pub fn hide_settings(app: AppHandle) {
+    window::settings::hide(&app);
 }
 
 #[tauri::command]

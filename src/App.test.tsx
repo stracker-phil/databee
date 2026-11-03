@@ -38,7 +38,7 @@ describe("App", () => {
     await act(() => runCommand("tabs.close"));
     expect(screen.getAllByRole("tab")).toHaveLength(1);
     await act(() => runCommand("settings.open"));
-    expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+    expect(mocked.openSettings).toHaveBeenCalledWith(undefined);
   });
 
   it("resolves shortcuts through the registry in both views", async () => {
@@ -180,34 +180,44 @@ describe("App", () => {
       mocked.execute.mockResolvedValue({ results: [resultSet()], elapsedMs: 3, database: "db", failure: null });
     });
 
-    describe("with Settings open", () => {
-      beforeEach(() => {
-        connectedStore();
-        useStore.getState().openDialog({ type: "settings" });
+    describe("Settings window", () => {
+      const cmdComma = { key: ",", code: "Comma", metaKey: true };
+
+      beforeEach(() => connectedStore());
+
+      it("opens the Settings window on ⌘,", async () => {
+        render(<App />);
+        await screen.findByText("wp_options");
+        fireEvent.keyDown(window, cmdComma);
+        expect(mocked.openSettings).toHaveBeenCalledWith(undefined);
       });
 
-      it("keeps the tab when ⌘W is pressed", async () => {
+      it("opens the Settings window on ⌘, with the palette open", async () => {
         render(<App />);
-        await screen.findByRole("heading", { name: "Appearance" });
-        fireEvent.keyDown(window, cmdW);
-        expect(screen.getByRole("tab", { name: /Query 1/ })).toBeInTheDocument();
-        expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+        await screen.findByText("wp_options");
+        act(() => useStore.getState().setPaletteOpen(true));
+        await screen.findByRole("dialog", { name: "Command palette" });
+        fireEvent.keyDown(window, cmdComma);
+        expect(mocked.openSettings).toHaveBeenCalled();
       });
 
-      it("closes Settings on Escape", async () => {
+      it("remembers whether the Settings window is shown when Rust reports it", async () => {
         render(<App />);
-        await screen.findByRole("heading", { name: "Appearance" });
-        await userEvent.keyboard("{Escape}");
-        expect(screen.queryByRole("heading", { name: "Appearance" })).not.toBeInTheDocument();
+        await screen.findByText("wp_options");
+        const report = mocked.onSettingsShown.mock.calls.at(-1)![0];
+        act(() => report(true));
+        expect(useStore.getState().settingsWindow.shown).toBe(true);
+        act(() => report(false));
+        expect(useStore.getState().settingsWindow.shown).toBe(false);
       });
 
-      it("closes Settings on ⌘, and reopens it on the next press", async () => {
+      it("reloads the settings when the Settings window saved a change", async () => {
         render(<App />);
-        await screen.findByRole("heading", { name: "Appearance" });
-        fireEvent.keyDown(window, { key: ",", code: "Comma", metaKey: true });
-        expect(screen.queryByRole("heading", { name: "Appearance" })).not.toBeInTheDocument();
-        fireEvent.keyDown(window, { key: ",", code: "Comma", metaKey: true });
-        expect(await screen.findByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+        await screen.findByText("wp_options");
+        mocked.getSettings.mockResolvedValue({ ...useStore.getState().settings!, uiFontSize: 15 });
+        const changed = mocked.onSettingsChanged.mock.calls.at(-1)![0];
+        act(() => changed());
+        await waitFor(() => expect(useStore.getState().settings?.uiFontSize).toBe(15));
       });
     });
 

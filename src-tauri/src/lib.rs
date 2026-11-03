@@ -115,7 +115,8 @@ fn init_logging(level: LogLevel) -> tauri::plugin::TauriPlugin<tauri::Wry> {
 
 #[cfg(debug_assertions)]
 fn apply_dev_frame(app: &tauri::App) {
-    let (Some((x, y, w, h)), Some(window)) = (dev::window_frame(), app.get_webview_window("main"))
+    let (Some((x, y, w, h)), Some(window)) =
+        (dev::window_frame(), app.get_webview_window(window::MAIN))
     else {
         return;
     };
@@ -224,6 +225,13 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
         .plugin(window::navigation::guard())
         .plugin(stage::init(&config_dir))
         .on_menu_event(|app, event| menu::forward(app, event.id().as_ref()))
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && window::hide_instead_of_close(window.app_handle(), window.label())
+            {
+                api.prevent_close();
+            }
+        })
         .setup(move |app| {
             log::info!("DataBee {} started", env!("CARGO_PKG_VERSION"));
             let state = app.state::<AppState>();
@@ -247,6 +255,8 @@ fn start_app(state: AppState, socket: PathBuf, initial: IpcMessage, log_level: L
             commands::set_ui_state,
             commands::open_log_folder,
             commands::open_url,
+            commands::open_settings,
+            commands::hide_settings,
             commands::choose_save_path,
             commands::take_launch_events,
             commands::list_recents,

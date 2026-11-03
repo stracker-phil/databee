@@ -61,7 +61,7 @@ export function ShortcutsPage() {
           ))}
         </div>
       )}
-      <Group>
+      <Group title="Commands" anchor="shortcuts-list">
         {list.length === 0 && <div className="settings-row muted">No matching commands.</div>}
         {list.map((c) => {
           const overridden = Object.prototype.hasOwnProperty.call(bindings, c.id);

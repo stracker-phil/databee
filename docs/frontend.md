@@ -6,8 +6,9 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 ## Boot
 
 1. `index.html` loads `main.tsx`.
-2. `main.tsx` calls `installModules()` (`src/modules.ts`, see [Modules](architecture.md#modules)) before the
-   first render:
+2. `main.tsx` calls `installModules("main")` (`src/modules.ts`, see [Modules](architecture.md#modules)) before the
+   first render (the Settings window's `main.tsx` calls `installModules("settings")`, which skips the Stage
+   listeners):
    1. `registerCoreSettingsPages()` (`components/settings/pages.tsx`).
    2. `installStage()` (`src/stage/install.ts`): the Presentations Settings page and the Stage event
       listeners, which stay subscribed for the app's lifetime.
@@ -313,7 +314,7 @@ The command then appears in the palette, in Settings → Shortcuts and in the St
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), `value/altPeek.ts` (`useAltPeek`: whether ⌥ is held alone and the element it peeks, by the ⌥ peek rule in [ux.md](ux.md): `[data-db-change]` first, else `[data-peek]` or `[data-ref]`; one shared set of window listeners, so one peek at a time), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `WideTable` (a row table that scrolls sideways in its own box; `pinned` keeps a primary-key first column in view; used by `groups` and `ChangeList`), `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
-| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsDialog` (see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsWindow` (in its own window, see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
 | Readout | `readout/Readout.tsx`, see [Readout](#readout) |
 
 ### Saved queries
@@ -356,21 +357,35 @@ Binary and long text values show but cannot filter.
 
 ### Settings pages
 
-`src/registry/settingsPages.ts` holds the pages; `components/settings/SettingsDialog.tsx` only renders them.
+Settings is a window of its own ([ADR 0031](adr/0031-settings-is-a-window-of-its-own.md)):
+`src/windows/settings/` (`index.html`, `main.tsx`, `SettingsApp.tsx`, the second Vite input) renders
+`components/settings/SettingsWindow.tsx`. `src/registry/settingsPages.ts` holds the pages.
 
 ```ts
-interface SettingsPage { id, group, label, icon, intro?, Body, order? }
+interface SettingsPage { id, group, label, icon, intro?, Body, order?, sections? }
 registerSettingsPage(page)   // replaces a page with the same id
 settingsPages()              // by group (Interface, Database, System, then others by name), order, label
-settingsGroups()             // the same, grouped for the nav
+resolveSettingsPage(id)      // a page id, else the page holding that section id, else the first page
+settingsGroups(query?)       // the nav groups, narrowed to pages whose label, group or section title matches
 ```
 
 - `Body` gets `{ s, set }`: the current `Settings` and a patch function that saves quietly. A page with its
   own settings file (Stage's Presentations page) ignores them and loads its own.
-- The dialog shows the page `dialog.page` names, or the first page when it is absent or unknown. It
-  re-renders on registration (`useSettingsPagesVersion`), so a page may register after the dialog opened.
+- Every `Group` has a title and an `anchor`, which the page lists in `sections`, so the nav's search finds it
+  and `openSettings("<section id>")` opens the page scrolled to it (`SectionTarget`).
+- Opening: `openSettings(page?)` in the store (the ⌘, command, the toolbar button, Stage) calls Rust's
+  `open_settings`; Rust builds the window on first use, else emits `open_settings` with the page to it.
+  Closing hides the window (Esc outside a field does too), so it reopens on its last page.
+- State across windows: the Settings window loads its own settings into its own store. Rust emits
+  `settings_changed` to every window after `update_settings` and `set_keybindings`; each window reloads its
+  settings and keybinding overrides, so scheme, accent and text size apply in both at once. Rust tells the
+  main page `settings_shown` (true or false), kept as `settingsWindow` for the Stage hook.
+- The window re-renders on registration (`useSettingsPagesVersion`), so a page may register after it opened.
+  Search: the field above the page list (⌘F) narrows it; ↵ opens the first hit; "No Results" when none
+  matches. `lib/windowFocus.ts` dims the page list while the window is in the background (`window-blurred`).
 - The Stage hook lists `settingsPages()` as the settings window's sections and the `settings:open:<page>`
-  choices, so a registered page is reachable from Stage without further code.
+  choices, so a registered page is reachable from Stage without further code. Stage opens and closes the
+  window but reaches no anchor inside it.
 - `components/settings/`: `controls.tsx` (`Group`, `Row`, `Switch`, `Segmented`, `TextField`,
   `NumberField`), `ShortcutsPage.tsx`, `pages.tsx` (`registerCoreSettingsPages()`: Appearance, Shortcuts,
   Queries, Display, Connections, Logging). Numeric bounds come from `SETTINGS_LIMITS` /

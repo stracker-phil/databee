@@ -44,7 +44,7 @@ export function PresentationsPage() {
       (e) => fail(e, "Could not replace the token"),
     );
   return (
-    <Group>
+    <Group title="Presentation API" anchor="presentations-api">
       <Switch label="Allow presentations" description="Runs a local API on 127.0.0.1; requests from web pages are refused." checked={s.enabled} onChange={(enabled) => void patchStage({ enabled })} />
       <Row label="Status" description={status?.running ? status.url : undefined}>
         {statusError ? (

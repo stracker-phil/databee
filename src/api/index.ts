@@ -72,6 +72,9 @@ export const api = {
   setUiState: (identity: string, ui: UiState) => invoke<UiState>("set_ui_state", { identity, ui }),
   openLogFolder: () => invoke<void>("open_log_folder"),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
+  /** Opens the Settings window at a page or section id, else where it was. */
+  openSettings: (page?: string) => invoke<void>("open_settings", { page: page ?? null }),
+  hideSettings: () => invoke<void>("hide_settings"),
   /** The native save panel; the chosen path, or null when cancelled. */
   chooseSavePath: (fileName: string, extension: string) => invoke<string | null>("choose_save_path", { fileName, extension }),
   logError: (message: string) => invoke<void>("log_frontend_error", { message }),
@@ -226,6 +229,14 @@ export const api = {
   editSerialized: (raw: string, path: number[], value: NewValue) => invoke<string>("edit_serialized", { raw, path, value }),
 
   onLaunch: (handler: () => void): Promise<UnlistenFn> => listen("launch", handler),
+  /** Settings or keybindings changed in any window. */
+  onSettingsChanged: (handler: () => void): Promise<UnlistenFn> => listen("settings_changed", handler),
+  /** The Settings window is asked to show a page or section. */
+  onOpenSettings: (handler: (page: string) => void): Promise<UnlistenFn> =>
+    listen<string>("open_settings", (e) => handler(e.payload)),
+  /** The Settings window was shown (true) or hidden. */
+  onSettingsShown: (handler: (shown: boolean) => void): Promise<UnlistenFn> =>
+    listen<boolean>("settings_shown", (e) => handler(e.payload)),
   /** Native menu items emit the id of the command they run. */
   onCommand: (handler: (id: string) => void): Promise<UnlistenFn> =>
     listen<string>("command", (e) => handler(e.payload)),

@@ -5,7 +5,6 @@ import { DEFAULT_PIN_ROWS, pinChoice, pinOf, type PinChoice } from "../lib/pins"
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
 import { CONNECT_TITLE_ID, ConnectForm } from "./ConnectScreen";
-import { SettingsDialog } from "./settings/SettingsDialog";
 import { ActionSheet } from "./object/ActionSheet";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { SnapshotsDialog } from "./SnapshotsDialog";
@@ -248,8 +247,6 @@ export function Dialogs() {
       return <PinDialog {...dialog} />;
     case "password":
       return <PasswordDialog key={dialog.account ?? ""} {...dialog} />;
-    case "settings":
-      return <SettingsDialog />;
     case "insertRow":
       return <InsertRowDialog {...dialog} />;
     case "shortcuts":

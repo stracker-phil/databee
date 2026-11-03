@@ -9,7 +9,7 @@ import { TabBar, TabPanels } from "./components/Tabs";
 import { Toasts } from "./components/Toasts";
 import { Toolbar } from "./components/Toolbar";
 import { CommandPalette } from "./components/CommandPalette";
-import { handleKeydown, installCommands, runMenuCommand } from "./commands";
+import { handleKeydown, installCommands, runMenuCommand, setOverrides } from "./commands";
 import { answerRemote } from "./commands/remote";
 import { PendingTray } from "./components/PendingTray";
 import { PeekOverlay } from "./components/value/Peek";
@@ -37,7 +37,11 @@ function useBackendEvents() {
     // Re-installing applies the user's keybinding overrides, which arrive with the settings.
     void loadSettings().then(() => (installCommands(), drainLaunches()));
     void loadAccents();
-    const unlisten = [api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), api.onRemote((e) => void answerRemote(e)), api.onSessionHealth(setHealth)];
+    const reloadSettings = () => void loadSettings().then(() => setOverrides(useStore.getState().keybindings));
+    const unlisten = [
+      api.onSettingsChanged(reloadSettings),
+      api.onSettingsShown(useStore.getState().setSettingsShown),
+      api.onLaunch(() => void drainLaunches()), api.onCommand(runMenuCommand), api.onRemote((e) => void answerRemote(e)), api.onSessionHealth(setHealth)];
 
     // Coming back to the window, often right after starting the container again, retries once.
     const onFocus = () => retryLostSessions();

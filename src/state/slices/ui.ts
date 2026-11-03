@@ -1,4 +1,5 @@
 import { api, type Address, type AppError, type ColumnInfo, type ConnectionSpec, type Home, type ObjectAction, type SnapshotInfo } from "../../api";
+import { fail } from "../requests";
 import type { Slice, Store } from "../store";
 
 export interface Toast {
@@ -10,8 +11,6 @@ export interface Toast {
 }
 
 type Dialog =
-  /** `page`: the Settings page shown (ids from `settingsPages()` in `registry/settingsPages.ts`); the first one when absent. */
-  | { type: "settings"; page?: string }
   | { type: "connect"; spec?: ConnectionSpec; error?: AppError }
   | { type: "password"; spec: ConnectionSpec; account: string | null; error?: string; savePassword: boolean }
   | { type: "confirm"; title: string; message: string; confirmLabel: string; onConfirm: () => void }
@@ -47,6 +46,8 @@ export const NO_HOVER: ValueHover = { src: null, table: null, linked: false, sid
 export interface UiSlice {
   toasts: Toast[];
   dialog: Dialog | null;
+  /** Shown as reported by `settings_shown`, and the page last requested from this window. */
+  settingsWindow: { shown: boolean; page?: string };
   sidebarPanel: "tables" | "history";
   paletteOpen: boolean;
   /** Text the palette opens with, e.g. `t:` for tables. */
@@ -57,6 +58,10 @@ export interface UiSlice {
   toast: (kind: Toast["kind"], message: string) => void;
   dismissToast: (id: number) => void;
   openDialog: (dialog: Dialog) => void;
+  /** Opens the Settings window at a page or section, else where it was. */
+  openSettings: (page?: string) => void;
+  closeSettings: () => void;
+  setSettingsShown: (shown: boolean) => void;
   closeDialog: () => void;
   setSidebarPanel: (panel: UiSlice["sidebarPanel"]) => void;
   setPaletteOpen: (open: boolean, seed?: string) => void;
@@ -77,6 +82,7 @@ export const uiSlice: Slice<UiSlice> = {
   create: (set, get) => ({
     toasts: [],
     dialog: null,
+    settingsWindow: { shown: false },
     sidebarPanel: "tables",
     paletteOpen: false,
     paletteSeed: "",
@@ -96,6 +102,19 @@ export const uiSlice: Slice<UiSlice> = {
 
     dismissToast(id) {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    },
+
+    openSettings(page) {
+      set((s) => ({ settingsWindow: { ...s.settingsWindow, page: page ?? s.settingsWindow.page } }));
+      void api.openSettings(page).catch((e) => fail(e, "Could not open Settings"));
+    },
+
+    closeSettings() {
+      void api.hideSettings().catch((e) => fail(e, "Could not close Settings"));
+    },
+
+    setSettingsShown(shown) {
+      set((s) => ({ settingsWindow: { ...s.settingsWindow, shown } }));
     },
 
     openDialog(dialog) {

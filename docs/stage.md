@@ -53,7 +53,7 @@ The page side lives in `src/stage/`:
 
 | File | Responsibility |
 |---|---|
-| `install.ts` | `installStage()`, called once from `installModules()` (`src/modules.ts`): registers the Presentations Settings page (`registerStageSettingsPage`) and starts the hooks (`installStageHooks`) |
+| `install.ts` | `installStage(window)`, called once per window from `installModules()` (`src/modules.ts`): registers the Presentations Settings page (`registerStageSettingsPage`) and, in the main window only, starts the hooks (`installStageHooks`) |
 | `api.ts` | `stageApi`, the module's only `invoke`/`listen` caller: `status`, `settings`, `updateSettings`, `newToken` (`plugin:stage|…`), the `stage:collect`, `stage:info` and `stage:act` subscriptions (`onCollect`, `onInfo`, `onAct`) and the replies `anchors` (the caller passes the page id), `done`, `info` |
 | `apiMock.ts` | `createStageApiMock()` for tests that mock `./api` (status running, settings with `token-123`) |
 | `types.gen.ts` | ts-rs output for the Stage types in `src-tauri/src/stage/` (`#[ts(export_to = "src/stage/types.gen.ts")]`); regenerate with `bun run types`, never edit |
@@ -74,9 +74,11 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
 
 ## Model
 
-- **Windows.** `main` is the native window. Settings and the command palette are sheets inside it. The hook
-  exposes them as the windows `settings` and `palette`, with `movable: false`; their bounds come from the page.
-  `settings` lists its pages as `sections`. `main.view` reports the current view; `main.ui.valueColumn` and
+- **Windows.** `main` is the native window. The command palette is a sheet inside it; Settings is a native
+  window of its own ([ADR 0031](adr/0031-settings-is-a-window-of-its-own.md)) that Stage opens and closes but
+  does not see into: no anchors, and while it shows its bounds cover the main page. The hook exposes both as
+  the windows `settings` and `palette`, with `movable: false`. `settings` lists its pages as `sections`; its
+  `section` is the page it was last opened at from the main window. `main.view` reports the current view; `main.ui.valueColumn` and
   `main.ui.sidebar` report whether the active tab shows a value column and whether the database sidebar is
   open (the sidebar toggles with the `view.sidebar` command). `state.object` is the active column's address
   and view, plus `column n of m` when the stack holds several (and `maximized` while one pane is maximized).

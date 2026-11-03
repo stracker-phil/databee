@@ -6,9 +6,12 @@ import { installCommands } from "./commands";
 import { registerCoreSettingsPages } from "./components/settings/pages";
 import { installStage } from "./stage/install";
 
-/** Call once, before the first render. Stage's event listeners live for the app's lifetime. */
-export function installModules() {
+/** The windows a page runs in: the app's main window, or Settings. */
+export type AppWindow = "main" | "settings";
+
+/** Call once per window, before the first render. Stage's event listeners live for the app's lifetime. */
+export function installModules(window: AppWindow = "main") {
   registerCoreSettingsPages();
-  installStage();
+  installStage(window);
   installCommands();
 }

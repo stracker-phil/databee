@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,11 +36,12 @@ describe("ConnectionSlugs", () => {
     expect(screen.getByLabelText("Blog")).toHaveValue("blog");
   });
 
-  it("shows nothing without saved connections", async () => {
+  it("shows the Addresses section with a note and no fields without saved connections", async () => {
     mocked.listRecents.mockResolvedValue([]);
     render(<ConnectionSlugs />);
-    await vi.waitFor(() => expect(mocked.listRecents).toHaveBeenCalled());
-    expect(screen.queryByRole("heading", { name: "Addresses" })).not.toBeInTheDocument();
+    const region = screen.getByRole("region", { name: "Addresses" });
+    expect(await within(region).findByText("No saved connections yet.")).toBeInTheDocument();
+    expect(within(region).queryByRole("textbox")).not.toBeInTheDocument();
   });
 
   it("renames the connection when the slug is committed", async () => {

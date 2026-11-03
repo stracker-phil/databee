@@ -15,7 +15,7 @@ pub fn background() -> bool {
 /// Runs JavaScript sent by `scripts/dev/js.sh` in the main window.
 pub fn eval(app: &tauri::AppHandle, js: &str) {
     use tauri::Manager;
-    let Some(window) = app.get_webview_window("main") else {
+    let Some(window) = app.get_webview_window(crate::window::MAIN) else {
         return;
     };
     if let Err(e) = window.eval(js) {

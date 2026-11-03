@@ -63,7 +63,7 @@ const FAMILIES: Family[] = [
     choices: () => settingsSections().map((p) => ({ argument: p.id, title: p.title })),
     run: (page) => {
       if (!settingsSections().some((p) => p.id === page)) return false;
-      useStore.getState().openDialog({ type: "settings", page });
+      useStore.getState().openSettings(page);
       return true;
     },
   },

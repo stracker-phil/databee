@@ -24,20 +24,24 @@ export function settingsSections(): { id: string; title: string }[] {
   return settingsPages().map(({ id, label }) => ({ id, title: label }));
 }
 
-/** The page the dialog shows: the named one, or the first when the name is absent or unknown. */
+/** The page Settings was last opened at from this window, while it shows; Stage doesn't see the window's own page changes. */
 function settingsPage(): string | null {
-  const dialog = useStore.getState().dialog;
-  if (dialog?.type !== "settings") return null;
-  return resolveSettingsPage(dialog.page)?.id ?? null;
+  const { shown, page } = useStore.getState().settingsWindow;
+  return shown ? (resolveSettingsPage(page)?.id ?? null) : null;
 }
 
-/** Settings and the palette are sheets in the main window; Stage sees them as windows. */
+/** The Settings window is in front of the main one; Stage reaches no anchor inside it, so it covers the page. */
+function settingsRect(): StageRect | null {
+  return useStore.getState().settingsWindow.shown ? { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight } : null;
+}
+
+/** The palette is a sheet in the main window and Settings a window of its own; Stage sees both as windows. */
 export function stageSurfaces(): StageSurface[] {
   return [
     {
       id: "settings",
       title: "Settings",
-      rect: rectOf(document.querySelector('[data-stage-window="settings"]')),
+      rect: settingsRect(),
       sections: settingsSections(),
       section: settingsPage(),
     },
@@ -98,7 +102,7 @@ export function stageState(): Flat {
     sidebar: sidebarState(),
     settings: settingsPage() ?? "closed",
     palette: s.paletteOpen ? "open" : "closed",
-    dialog: s.dialog && s.dialog.type !== "settings" ? s.dialog.type : null,
+    dialog: s.dialog?.type ?? null,
     pendingChanges: s.pending.length,
   };
   if (tab) state[tab.kind] = tabState(tab);

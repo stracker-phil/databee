@@ -1,3 +1,4 @@
+import type { AppWindow } from "../modules";
 /** Stage's one install line: its Settings page and the page-side hook. */
 import { Presentation } from "lucide-react";
 import { registerSettingsPage } from "../registry/settingsPages";
@@ -12,12 +13,13 @@ function registerStageSettingsPage() {
     icon: Presentation,
     order: 10,
     intro: "Lets a presenter app such as Stage highlight parts of DataBee and click through it for a demo. Only apps on this Mac can connect.",
+    sections: [{ id: "presentations-api", title: "Presentation API" }],
     Body: PresentationsPage,
   });
 }
 
-/** Call once, when the app starts. */
-export function installStage() {
+/** Call once, when a window starts; only the main window answers Stage. */
+export function installStage(window: AppWindow) {
   registerStageSettingsPage();
-  void Promise.all(installStageHooks());
+  if (window === "main") void Promise.all(installStageHooks());
 }

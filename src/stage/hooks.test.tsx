@@ -33,7 +33,7 @@ const key = (k: string, code: string, mods: Partial<StageKeys> = {}): StageKeys 
 
 /** Installs the hooks and returns what Rust would send them. */
 function hooks() {
-  installStage();
+  installStage("main");
   const handler = <T,>(on: { mock: { calls: unknown[][] } }) => on.mock.calls.at(-1)![0] as (arg: T) => void;
   const act = async (request: StageAct) => {
     mocked.done.mockClear();
@@ -165,7 +165,7 @@ describe("Stage page hooks", () => {
     vi.mocked(document.hasFocus).mockReturnValue(false);
     const reply = await hooks().act({ kind: "keys", keys: key(",", "", { meta: true }), focused: false });
     expect(reply).toMatchObject({ handled: true, ok: true, command: "app:settings" });
-    expect(useStore.getState().dialog).toEqual({ type: "settings" });
+    expect(mocked_api.openSettings).toHaveBeenCalledWith(undefined);
   });
 
   it("sends other keys to the focused element, and Enter submits its form", async () => {
@@ -194,7 +194,7 @@ describe("Stage page hooks", () => {
     installCommands();
     const { act } = hooks();
     expect(await act({ kind: "command", command: "settings:open:queries" })).toMatchObject({ ok: true });
-    expect(useStore.getState().dialog).toEqual({ type: "settings", page: "queries" });
+    expect(mocked_api.openSettings).toHaveBeenCalledWith("queries");
     expect(await act({ kind: "command", command: "table:open:wp_options" })).toMatchObject({ ok: true });
     expect(useStore.getState().tabs.at(-1)).toMatchObject({ kind: "table", table: "wp_options" });
     expect(await act({ kind: "command", command: "view:palette" })).toMatchObject({ ok: true });
@@ -227,9 +227,10 @@ describe("Stage page hooks", () => {
     connectedStore();
     const { act } = hooks();
     await act({ kind: "window", window: "settings", action: "show", section: "presentations" });
-    expect(useStore.getState().dialog).toEqual({ type: "settings", page: "presentations" });
+    expect(mocked_api.openSettings).toHaveBeenCalledWith("presentations");
+    expect(useStore.getState().settingsWindow.page).toBe("presentations");
     await act({ kind: "window", window: "settings", action: "hide" });
-    expect(useStore.getState().dialog).toBeNull();
+    expect(mocked_api.hideSettings).toHaveBeenCalled();
     await act({ kind: "window", window: "palette", action: "show" });
     expect(useStore.getState().paletteOpen).toBe(true);
     await act({ kind: "window", window: "palette", action: "hide" });
@@ -290,16 +291,23 @@ describe("Stage page hooks", () => {
     });
   });
 
+  it("describes Settings as closed without a rect while its window is hidden", () => {
+    connectedStore();
+    useStore.setState({ settingsWindow: { shown: false, page: "shortcuts" } });
+    const reply = hooks().info();
+    expect(reply.state).toMatchObject({ settings: "closed" });
+    expect(reply.surfaces.find((s) => s.id === "settings")).toMatchObject({ rect: null, section: null });
+  });
+
   it("describes the view, panels, sheets and commands with shortcuts and families", () => {
     connectedStore();
     installCommands();
-    useStore.getState().openDialog({ type: "settings", page: "shortcuts" });
-    render(<div role="dialog" data-stage-window="settings" data-rect="200,100,700,600" />);
+    useStore.setState({ settingsWindow: { shown: true, page: "shortcuts" } });
     const reply = hooks().info();
     expect(reply).toMatchObject({ request: "i1", page: "main", view: "db", ui: { valueColumn: "closed" } });
     expect(reply.state).toMatchObject({ connection: "root@127.0.0.1:32768/db", tab: "query: Query 1", settings: "shortcuts", palette: "closed" });
     const settings = reply.surfaces.find((s) => s.id === "settings")!;
-    expect(settings).toMatchObject({ title: "Settings", rect: { x: 200, y: 100, width: 700, height: 600 }, section: "shortcuts" });
+    expect(settings).toMatchObject({ title: "Settings", rect: { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }, section: "shortcuts" });
     expect(settings.sections).toContainEqual({ id: "presentations", title: "Presentations" });
     expect(reply.surfaces.find((s) => s.id === "palette")).toMatchObject({ rect: null });
     expect(reply.commands).toContainEqual({ id: "app:settings", help: expect.any(String), shortcut: "cmd+,", enabled: true });

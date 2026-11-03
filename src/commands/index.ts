@@ -155,11 +155,7 @@ const APP_COMMANDS: Command[] = [
     scope: "global",
     defaultBinding: "Mod+,",
     menu: true,
-    run: () => {
-      const s = useStore.getState();
-      if (s.dialog?.type === "settings") s.closeDialog();
-      else s.openDialog({ type: "settings" });
-    },
+    run: () => useStore.getState().openSettings(),
   },
   {
     id: "query.save",

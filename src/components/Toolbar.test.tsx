@@ -38,6 +38,12 @@ describe("Toolbar", () => {
     expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Disconnect", "Go to", "New connection", "New query", "Settings"]);
   });
 
+  it("opens the Settings window from the Settings button", async () => {
+    render(<Toolbar />);
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(mocked.openSettings).toHaveBeenCalledWith(undefined);
+  });
+
   it("shows the palette shortcut as a key cap", () => {
     render(<Toolbar />);
     expect(screen.getByRole("button", { name: "Go to" })).toHaveTextContent("⌘K");

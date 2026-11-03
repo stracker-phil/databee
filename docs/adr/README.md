@@ -36,3 +36,4 @@ only corrects facts that changed.
 | [0028](0028-debug-build-is-a-separate-app-with-demo-data.md) | The debug build is a separate app with demo data | Accepted (2026-11-03), implemented |
 | [0029](0029-builds-are-signed-with-an-apple-development-certificate.md) | Builds are signed with an Apple Development certificate | Accepted (2026-11-03), implemented |
 | [0030](0030-hardened-runtime-strict-csp-no-navigation.md) | Hardened runtime, a strict CSP and no navigation | Accepted (2026-11-03), implemented |
+| [0031](0031-settings-is-a-window-of-its-own.md) | Settings is a window of its own | Accepted (2026-11-03), implemented |

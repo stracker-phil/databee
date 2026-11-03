@@ -91,7 +91,7 @@ function AccentRow({ accent, onChange }: { accent: string; onChange: (accent: st
 function AppearancePage({ s, set }: SettingsPageProps) {
   return (
     <>
-      <Group title="Look">
+      <Group title="Look" anchor="appearance-look">
         <Segmented
           label="Theme"
           description="Which scheme applies; System follows macOS."
@@ -130,7 +130,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
           </div>
         </Row>
       </Group>
-      <Group title="Layout">
+      <Group title="Layout" anchor="appearance-layout">
         <Segmented
           label="Panes side by side"
           description="Columns of an object tab shown next to each other at most; fewer when the window is narrow."
@@ -140,7 +140,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
           onChange={(step) => set({ maxPanes: Number(step) })}
         />
       </Group>
-      <Group title="Text">
+      <Group title="Text" anchor="appearance-text">
         <NumberField
           label="UI size"
           description="Sidebar, tabs and labels."
@@ -184,7 +184,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
 
 function QueriesPage({ s, set }: SettingsPageProps) {
   return (
-    <Group>
+    <Group title="Queries and checks" anchor="queries-limits">
       <NumberField label="Row limit" description="Rows fetched per query in the SQL editor." value={s.rowLimit} {...SETTINGS_LIMITS.rowLimit} onCommit={(rowLimit) => set({ rowLimit })} />
       <NumberField label="Query timeout" description="Queries running longer are stopped." suffix="s" value={s.queryTimeoutSecs} {...SETTINGS_LIMITS.queryTimeoutSecs} onCommit={(queryTimeoutSecs) => set({ queryTimeoutSecs })} />
       <NumberField stage="queries:live-interval" label="Live interval" description="How often a live object reads its row again (w)." suffix="s" value={s.liveIntervalSecs} {...SETTINGS_LIMITS.liveIntervalSecs} onCommit={(liveIntervalSecs) => set({ liveIntervalSecs })} />
@@ -196,7 +196,7 @@ function QueriesPage({ s, set }: SettingsPageProps) {
 
 function DisplayPage({ s, set }: SettingsPageProps) {
   return (
-    <Group>
+    <Group title="Values and schemas" anchor="display-values">
       <TextField label="NULL label" description="Shown in cells that hold NULL." value={s.nullLabel} onCommit={(nullLabel) => set({ nullLabel })} />
       <NumberField label="Max characters per cell" description="Longer values are truncated in the grid." value={s.maxCellChars} {...SETTINGS_LIMITS.maxCellChars} onCommit={(maxCellChars) => set({ maxCellChars })} />
       <Switch label="Show system databases" description="mysql, sys, information_schema and performance_schema." checked={s.showSystemSchemas} onChange={(showSystemSchemas) => set({ showSystemSchemas })} />
@@ -207,7 +207,7 @@ function DisplayPage({ s, set }: SettingsPageProps) {
 function ConnectionsPage({ s, set }: SettingsPageProps) {
   return (
     <>
-      <Group>
+      <Group title="New connections" anchor="connections-defaults">
         <NumberField label="Connect timeout" suffix="s" value={s.connectTimeoutSecs} {...SETTINGS_LIMITS.connectTimeoutSecs} onCommit={(connectTimeoutSecs) => set({ connectTimeoutSecs })} />
         <NumberField label="Default port" description="Used when a connection doesn't name one." value={s.defaultPort} {...SETTINGS_LIMITS.defaultPort} onCommit={(defaultPort) => set({ defaultPort })} />
       </Group>
@@ -218,7 +218,7 @@ function ConnectionsPage({ s, set }: SettingsPageProps) {
 
 function LoggingPage({ s, set }: SettingsPageProps) {
   return (
-    <Group>
+    <Group title="Log" anchor="logging-log">
       <Row label="Log level" htmlFor="settings-log-level" description={s.logLevel === "trace" ? "Trace logs include the SQL text of every query." : "Higher levels write more detail."}>
         <select id="settings-log-level" className="input" value={s.logLevel} onChange={(e) => set({ logLevel: e.target.value as LogLevel })}>
           {LOG_LEVELS.map((l) => (
@@ -236,10 +236,10 @@ function LoggingPage({ s, set }: SettingsPageProps) {
 }
 
 export function registerCoreSettingsPages() {
-  registerSettingsPage({ id: "appearance", group: "Interface", label: "Appearance", icon: Palette, order: 10, intro: "How DataBee looks. Changes apply right away.", Body: AppearancePage });
-  registerSettingsPage({ id: "shortcuts", group: "Interface", label: "Shortcuts", icon: Keyboard, order: 20, intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.", Body: ShortcutsPage });
-  registerSettingsPage({ id: "queries", group: "Database", label: "Queries", icon: SquareTerminal, order: 10, intro: "Limits and safety checks for the SQL editor and table views.", Body: QueriesPage });
-  registerSettingsPage({ id: "display", group: "Database", label: "Display", icon: Table2, order: 20, intro: "How values and schemas show up in grids, documents and the sidebar.", Body: DisplayPage });
-  registerSettingsPage({ id: "connections", group: "Database", label: "Connections", icon: Plug, order: 30, intro: "Defaults for new connections, and the name each saved connection has in addresses.", Body: ConnectionsPage });
-  registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What DataBee writes to its log file.", Body: LoggingPage });
+  registerSettingsPage({ id: "appearance", group: "Interface", label: "Appearance", icon: Palette, order: 10, intro: "How DataBee looks. Changes apply right away.", sections: [{ id: "appearance-look", title: "Look" }, { id: "appearance-layout", title: "Layout" }, { id: "appearance-text", title: "Text" }], Body: AppearancePage });
+  registerSettingsPage({ id: "shortcuts", group: "Interface", label: "Shortcuts", icon: Keyboard, order: 20, intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.", sections: [{ id: "shortcuts-list", title: "Commands" }], Body: ShortcutsPage });
+  registerSettingsPage({ id: "queries", group: "Database", label: "Queries", icon: SquareTerminal, order: 10, intro: "Limits and safety checks for the SQL editor and table views.", sections: [{ id: "queries-limits", title: "Queries and checks" }], Body: QueriesPage });
+  registerSettingsPage({ id: "display", group: "Database", label: "Display", icon: Table2, order: 20, intro: "How values and schemas show up in grids, documents and the sidebar.", sections: [{ id: "display-values", title: "Values and schemas" }], Body: DisplayPage });
+  registerSettingsPage({ id: "connections", group: "Database", label: "Connections", icon: Plug, order: 30, intro: "Defaults for new connections, and the name each saved connection has in addresses.", sections: [{ id: "connections-defaults", title: "New connections" }, { id: "connections-addresses", title: "Addresses" }], Body: ConnectionsPage });
+  registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What DataBee writes to its log file.", sections: [{ id: "logging-log", title: "Log" }], Body: LoggingPage });
 }

@@ -1,0 +1,12 @@
+/* The Settings window (SettingsWindow, src/windows/settings): page list on the left, the page on the right.
+   The traffic lights sit in the nav's drag strip; only the page list and the page scroll. */
+.settings-window { display: flex; height: 100%; background: var(--bg); color: var(--text); }
+.settings-titlebar { flex: none; height: 2.769rem; margin: 0 -0.769rem; }
+.settings-nav-search { flex: none; width: 100%; }
+.settings-nav-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 1.077rem; }
+.settings-nav-empty { margin: 0.462rem 0.615rem; color: var(--o3); }
+.settings-nav-section { color: var(--o3); font-size: var(--fs-small); }
+.settings-pane > header { padding-top: 0.923rem; min-height: 2.769rem; }
+/* The window in the background dims its page list, like an inactive macOS window. */
+.window-blurred .settings-nav button { color: var(--o2); }
+.window-blurred .settings-nav button[aria-current="page"] { background: var(--row-hover); }

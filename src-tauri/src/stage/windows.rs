@@ -1,5 +1,5 @@
-//! The window model Stage sees. DataBee has one native window; Settings and the command palette
-//! are sheets inside it, exposed as the windows `settings` and `palette` and measured by the page.
+//! The window model Stage sees: the main window, the command palette (a sheet inside it) and Settings (a
+//! window of its own that the main page reports as open or closed), exposed as `settings` and `palette`.
 
 use std::str::FromStr;
 

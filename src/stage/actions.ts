@@ -163,7 +163,7 @@ export function focusedWindow(): StageWindow {
   if (active && active !== document.body) return windowOf(active);
   const s = useStore.getState();
   if (s.paletteOpen) return "palette";
-  return s.dialog?.type === "settings" ? "settings" : "main";
+  return s.settingsWindow.shown && !document.hasFocus() ? "settings" : "main";
 }
 
 export function press(keys: StageKeys, target: HTMLElement): void {
@@ -193,10 +193,6 @@ export function sheet(window: StageWindow, action: StageSheetAction, section?: s
     return;
   }
   if (window !== "settings") throw new StageFailure(`“${window}” isn't a sheet`, 404);
-  if (show) {
-    const current = s.dialog?.type === "settings" ? s.dialog.page : undefined;
-    s.openDialog({ type: "settings", page: section ?? current });
-    return;
-  }
-  if (s.dialog?.type === "settings") s.closeDialog();
+  if (show) s.openSettings(section);
+  else s.closeSettings();
 }
