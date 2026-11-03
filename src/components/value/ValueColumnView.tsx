@@ -95,7 +95,7 @@ export function ValueColumnView({ column, place, onClose }: Props) {
           <X size="1rem" />
         </button>
       </div>
-      <div className="value-body">
+      <div className="value-body scroller">
         {gone ? (
           <div className="empty-state" role="status">
             <span>

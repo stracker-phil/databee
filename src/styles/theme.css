@@ -22,11 +22,6 @@
   /* What the linked table highlight leaves of everything else (TableFocus). */
   --dimmed: 0.3;
 
-  /* One scrollbar everywhere (app.css, scrollbars): an 8px track, a 6px thumb. */
-  --scrollbar-size: 8px;
-  --scrollbar-thumb: color-mix(in srgb, var(--o3) 55%, transparent);
-  --scrollbar-thumb-hover: var(--o3);
-  --scrollbar-thumb-active: var(--o2);
 
   /* Row padding step 2; lib/theme.ts sets the chosen step. The line grows past 20px only for large
      data font sizes, so rows never clip their text. */

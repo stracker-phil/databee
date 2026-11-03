@@ -540,7 +540,7 @@ export function Readout({ tab }: { tab: ReadoutTab }) {
   if (entry?.error && !readout) return <ErrorPanel message={entry.error.message} code={entry.error.code} />;
   if (!readout) return <div className="empty-state">Loading…</div>;
   return (
-    <div className="readout" data-stage="readout" data-stage-label={`readout · ${tab.database}`}>
+    <div className="readout scroller" data-stage="readout" data-stage-label={`readout · ${tab.database}`}>
       <StatusHeader status={readout.status} onOpen={openValue} />
       <Anomalies part={readout.anomalies} collapse={collapse} />
       <WatchedSection part={readout.watched} tab={tab} collapse={collapse} onOpen={openValue} />

@@ -734,8 +734,8 @@ the [readout](#readout) lists.
   value gets an accent outline on `--sel`, and stays in view as `j`/`k` move it. `+n keys` / `+n rows` under a
   capped group switches to Rows and scrolls to that group. Zero-row groups are left out.
 - **`RowsView`:** per group with a table its band, the `WHERE` of its rows address, and a compact `ResultsGrid`
-  (at most its header, 12 rows and a sideways scrollbar tall (`.rows-grid` `max-height` from `--row-h`,
-  `--grid-head-h`, the tallest header, and `--scrollbar-size`), then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and
+  (at most its header and 12 rows tall (`.rows-grid` `max-height` from `--row-h` and
+  `--grid-head-h`, the tallest header), then it scrolls): a browse of the group's `rowsAddress` with the table's full columns and
   editable cells, or, for a group no address names (patterns), its document rows read-only.
 - **Toggle:** `object.viewDocument` / `object.viewRows` (`⌘1` / `⌘2`, scope `object`; `Tab` stays focus
   navigation) and the segmented control call `toggleObjectView(tabId, index?)` / `setObjectView(tabId, view, focus?, index?)` on the
@@ -1144,6 +1144,9 @@ aliases) and `styles/app.css` (components, sectioned with `/* ---------- name --
 are no CSS modules. Icons come from `lucide-react`. Token names, values and roles are in
 [ux.md](ux.md#color-schemes-and-tokens).
 
+- **Scroll boxes.** Every element that scrolls carries the `.scroller` class next to its own (e.g.
+  `className="value-body scroller"`; `Modal` adds it to every sheet). Scrollbars are macOS's overlay bars;
+  never add a `::-webkit-scrollbar` rule ([ADR 0032](adr/0032-native-overlay-scrollbars.md), ux.md Scrollbars).
 - **Color schemes.** A scheme file sets every scheme token under `[data-scheme="<id>"]`: surfaces, text,
   hairlines, shadows, the scrim, the accent hues `--a-*`, the value-style colors `--style-*` and the CodeMirror
   colors `--code-*`. `applyAppearance` sets `data-scheme` on `<html>` from `theme` (system, light or dark)

@@ -212,7 +212,7 @@ function InsertRowDialog({ database, table, columns }: { database: string; table
       >
         <h2 id="insert-title">Insert into {table}</h2>
         <p className="hint" style={{ margin: 0 }}>Typing sets a value; Default leaves the column out of the INSERT.</p>
-        <div className="insert-grid">
+        <div className="insert-grid scroller">
           {editable.map((c) => (
             <InsertField
               key={c.name}

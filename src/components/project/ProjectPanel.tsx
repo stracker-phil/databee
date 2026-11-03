@@ -73,7 +73,7 @@ export function ProjectPanel({ tab }: { tab: ProjectTab }) {
   const section = tab.section ?? "overview";
   const show = (next: ProjectSection) => useStore.getState().setProjectSection(tab.id, next);
   return (
-    <div className="project" data-stage="project" data-stage-label={`project · ${tab.database}`}>
+    <div className="project scroller" data-stage="project" data-stage-label={`project · ${tab.database}`}>
       <ProjectHeader ctx={ctx}>
         <div className="segmented" role="group" aria-label="Project section" data-stage="project:section" data-stage-label="Overview / All rules">
           <button data-stage="project:overview" aria-pressed={section === "overview"} onClick={() => show("overview")}>

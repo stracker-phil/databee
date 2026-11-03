@@ -71,7 +71,7 @@ export function PaletteList({ items, active, activeRef, empty, onHover, onChoose
 
   let lastSection: string | null = null;
   return (
-    <ul className="palette-list" role="listbox" aria-label="Results" ref={listRef}>
+    <ul className="palette-list scroller" role="listbox" aria-label="Results" ref={listRef}>
       {items.map((it, i) => {
         const header = it.section !== lastSection ? it.section : null;
         lastSection = it.section;

@@ -19,7 +19,7 @@ export function PendingTray() {
   if (!session || (pending.length === 0 && !canUndo)) return null;
 
   return (
-    <section className="tray" aria-label="Pending changes" data-stage="tray">
+    <section className="tray scroller" aria-label="Pending changes" data-stage="tray">
       <header className="tray-head">
         <strong>{pending.length ? `${pending.length} pending ${pending.length === 1 ? "change" : "changes"}` : "No pending changes"}</strong>
         <span className="muted text-small">Raw SQL writes: no application hooks run.</span>

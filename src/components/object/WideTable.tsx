@@ -24,7 +24,7 @@ function columnVars(widths: string[]): CSSProperties {
 export function WideTable({ widths, pinned = false, children }: Props) {
   const style = useMemo(() => columnVars(widths), [widths]);
   return (
-    <div className={pinned ? "wide-table pinned" : "wide-table"} style={style} onScroll={pinned ? markScrolled : undefined}>
+    <div className={pinned ? "wide-table scroller pinned" : "wide-table scroller"} style={style} onScroll={pinned ? markScrolled : undefined}>
       {children}
     </div>
   );

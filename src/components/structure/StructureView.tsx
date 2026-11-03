@@ -204,7 +204,7 @@ function Profile({ tab, profile }: { tab: TableTabState; profile: TableProfile }
   };
 
   return (
-    <div className="structure" data-stage="table:structure-view" data-stage-label="Table structure">
+    <div className="structure scroller" data-stage="table:structure-view" data-stage-label="Table structure">
       <div className="structure-icon">
         <IconControl table={profile.table} ruleName={profile.ruleName} icon={profile.icon} ctx={ctx} />
       </div>

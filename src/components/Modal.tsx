@@ -77,7 +77,7 @@ export function Modal({ onClose, variant = "sheet", className = "", labelledBy, 
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={sheetRef}
-        className={["dialog", variant === "bare" ? "" : variant, className].filter(Boolean).join(" ")}
+        className={["dialog", "scroller", variant === "bare" ? "" : variant, className].filter(Boolean).join(" ")}
         data-stage={stageWindow ? `${stageWindow}:sheet` : "dialog"}
         data-stage-window={stageWindow}
         data-accent={accent}

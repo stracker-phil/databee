@@ -84,7 +84,7 @@ export function ValueCounts({ target, onPick, pickRefusal, onClose }: Props) {
       {!counts && !error && <div className="muted text-small">Counting…</div>}
       {counts?.length === 0 && <div className="muted text-small">No rows.</div>}
       {counts && counts.length > 0 && (
-        <ul className="value-counts-list" role="listbox" aria-label="Values">
+        <ul className="value-counts-list scroller" role="listbox" aria-label="Values">
           {counts.map((c, i) => {
             const text = filterText(c.value.raw);
             const reason = pickRefusal ?? (text ? null : "Binary and long values cannot filter");

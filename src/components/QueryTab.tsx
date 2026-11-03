@@ -133,7 +133,7 @@ function QueryChanges({ tab }: { tab: QueryTabState }) {
   const marks = useStore((s) => s.changeMarks[queryMarksKey(tab.sessionId, tab.id)]);
   if (!marks) return null;
   return (
-    <div className="object query-changes">
+    <div className="object scroller query-changes">
       <ChangeList marks={marks} dismissCommand="query.dismissChanges" onJump={(source) => openSource(tab, source)} />
     </div>
   );

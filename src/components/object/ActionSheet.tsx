@@ -55,7 +55,7 @@ function RowWrites({ row }: { row: PreviewRow }) {
 function Writes({ preview }: { preview: ActionPreview }) {
   if (preview.sql.length > 0) {
     return (
-      <div className="action-writes">
+      <div className="action-writes scroller">
         <p className="muted">Free SQL: affects rows not known in advance.</p>
         {preview.sql.map((statement) => (
           <pre key={statement} className="action-sql">{statement}</pre>
@@ -64,7 +64,7 @@ function Writes({ preview }: { preview: ActionPreview }) {
     );
   }
   return (
-    <div className="action-writes">
+    <div className="action-writes scroller">
       {preview.rows.map((row) => (
         <RowWrites key={`${row.table}:${row.key.map((part) => part.value).join(",")}`} row={row} />
       ))}

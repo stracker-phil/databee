@@ -50,11 +50,11 @@ export function CompareView({ tab, column, index, editable }: Props) {
         {formatCount(differences)} {differences === 1 ? "difference" : "differences"} · groups by rule, meta rows by key, other rows by position
       </div>
       <div className="compare-sides">
-        <div className="object compare-side" role="group" aria-label={objectTitle(comparison.left.address)}>
+        <div className="object scroller compare-side" role="group" aria-label={objectTitle(comparison.left.address)}>
           <ObjectHeader document={comparison.left} owner={comparison.left.address} view={view} place={place} />
           <DocumentView document={comparison.left} owner={comparison.left.address} focus={column.focus} onFocus={onFocus} onMore={noMore} editable={editable} diff={left} />
         </div>
-        <div className="object compare-side" role="group" aria-label={objectTitle(comparison.right.address)}>
+        <div className="object scroller compare-side" role="group" aria-label={objectTitle(comparison.right.address)}>
           <ObjectHeader document={comparison.right} owner={comparison.right.address} view={view} />
           <DocumentView document={comparison.right} owner={comparison.right.address} focus={rightFocus} onFocus={setRightFocus} onMore={noMore} editable={false} diff={right} />
         </div>

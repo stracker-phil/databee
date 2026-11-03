@@ -20,30 +20,12 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 
-/* ---------- scrollbars ---------- */
-/* One style for every scroll box (docs/ux.md, Scrollbars): a transparent 8px track with a rounded 6px thumb,
-   the same both ways, no buttons. A styled scrollbar takes its own space in WebKit, whatever macOS's "Show
-   scroll bars" says, so it never covers the last row or column. */
-::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); background: transparent; }
-::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
-::-webkit-scrollbar-button { display: none; }
-::-webkit-scrollbar-thumb {
-  border: 1px solid transparent; border-radius: var(--scrollbar-size); background: var(--scrollbar-thumb) padding-box;
-}
-::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
-::-webkit-scrollbar-thumb:active { background-color: var(--scrollbar-thumb-active); }
-/* Document sections keep their bar's space but show the thumb only while hovered, so a page of small tables
-   is not lined with bars. */
-.wide-table:not(:hover)::-webkit-scrollbar-thumb { background-color: transparent; }
-/* Every user-scrollable box is its own stacking context: WebKit keeps a nested scroller's scrollbar with its own
-   layers only then, so the bar never stays behind while an outer box scrolls. A fixed overlay inside one would be
-   stacked inside it too, so overlays render outside them (menus and modals portal to <body>). */
-:is(
-  .object, .project, .readout, .structure, .value-body, .sidebar-body, .settings-body, .settings-nav, .tray, .dialog,
-  .grid, .wide-table, .recents, .action-writes, .insert-grid, .palette-list, .value-counts-list, .toast-details, .connect-screen
-) { isolation: isolate; }
-/* Boxes with rounded corners keep the thumb clear of them. */
-:is(.dialog, .palette-list, .value-counts-list, .toast-details, .recents, .cm-tooltip-autocomplete > ul)::-webkit-scrollbar-track { margin: 0.462rem 0; }
+/* ---------- scrollers ---------- */
+/* macOS draws its own overlay scrollbars, only while scrolling, as long as no ::-webkit-scrollbar rule exists
+   (docs/ux.md, Scrollbars). A scroller is its own stacking context: WebKit keeps a nested scroller's bar with
+   its own layers only then, so it never stays behind while an outer box scrolls. Overlays therefore render
+   outside scrollers (menus and modals portal to <body>). */
+.scroller { overflow: auto; isolation: isolate; }
 
 /* ---------- primitives ---------- */
 .btn {
@@ -170,15 +152,13 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 .sidebar-filter input { font-size: var(--fs-small); }
 .sidebar-caption { padding: 0.154rem 1.231rem 0.308rem; font-size: var(--fs-small); color: var(--o3); }
 .sidebar-head .sidebar-caption { flex: 1; padding: 0 0.308rem; }
-.sidebar-body { flex: 1; overflow: auto; padding: 0 0 0.769rem; scrollbar-gutter: stable; }
-/* Sidebar items share the row anatomy: --pad around a 20px line, 8px inset, 5px radius (docs/ux.md). On the
-   right the scrollbar's gutter (always kept) stands in for the inset, as far as it is wide. */
+.sidebar-body { flex: 1; overflow: auto; padding: 0 0 0.769rem; }
+/* Sidebar items share the row anatomy: --pad around a 20px line, 8px inset, 5px radius (docs/ux.md). */
 .si {
   display: flex; align-items: center; gap: 0.462rem; margin: 0 8px; padding: var(--pad) 8px; line-height: 20px;
   border-radius: 5px; color: var(--o2); cursor: default; white-space: nowrap;
   font-family: var(--font-mono); font-size: var(--data-font-size);
 }
-.sidebar-body .si { margin-right: max(0px, 8px - var(--scrollbar-size)); }
 .si:hover { background: var(--row-hover); color: var(--text); }
 .si.sel { background: var(--sel); color: var(--text); }
 .si.sel .label { color: var(--accent-text); }
@@ -208,10 +188,9 @@ input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
 /* ---------- tabs ---------- */
 /* The hairline is an inset shadow, so the active tab's --bg paints over it and joins the content. */
 .tabbar {
-  display: flex; align-items: stretch; height: 2.462rem; flex: none; overflow-x: auto;
+  display: flex; align-items: stretch; height: 2.462rem; flex: none; overflow-x: auto; scrollbar-width: none;
   background: var(--chrome); box-shadow: inset 0 -1px 0 var(--line); font-size: var(--fs-small);
 }
-.tabbar::-webkit-scrollbar { display: none; }
 .tab {
   display: flex; align-items: center; gap: 0.462rem; padding: 0 0.385rem 0 1.231rem; min-width: 8.462rem; max-width: 16.923rem;
   border-right: 1px solid var(--line); color: var(--o2); position: relative; flex: none;
@@ -389,7 +368,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .value-head { display: flex; align-items: center; gap: 0.462rem; padding: 0.615rem 0.769rem; border-bottom: 1px solid var(--line); }
 .value-head .tn { color: var(--o2); font-family: var(--font-mono); font-size: var(--data-font-size); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .value-head .key { color: var(--accent-text); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: nowrap; }
-.value-body { flex: 1; overflow: auto; padding: 0.769rem; scrollbar-gutter: stable; }
+.value-body { flex: 1; overflow: auto; padding: 0.769rem; }
 .value-body pre { margin: 0; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-word; user-select: text; }
 .value-body .hint { margin-top: 8px; }
 .tab-columns { flex: 1; min-height: 0; display: flex; }
@@ -498,7 +477,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 /* The title bar stays put; only the page below it scrolls. */
 .settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
 .settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; padding: 1.231rem 1.538rem 0.769rem; border-bottom: 1px solid var(--line); }
-.settings-body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0.923rem 1.538rem 1.846rem; display: flex; flex-direction: column; gap: 0.923rem; }
+.settings-body { flex: 1; min-height: 0; overflow: auto; padding: 0.923rem 1.538rem 1.846rem; display: flex; flex-direction: column; gap: 0.923rem; }
 .settings-pane h2 { margin: 0; font-size: 1.231rem; }
 .settings-intro { margin: 0 0 0.154rem; color: var(--o2); line-height: 1.45; }
 .settings-group { display: flex; flex-direction: column; gap: 0.462rem; }
@@ -732,7 +711,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 
 /* ---------- object view ---------- */
 /* The header block, section bands (.sh) and rows (.row, .kv, .hdr) share the row anatomy. */
-.object { flex: 1; min-height: 0; overflow: hidden auto; overflow-anchor: none; scrollbar-gutter: stable; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.object { flex: 1; min-height: 0; overflow: hidden auto; overflow-anchor: none; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .object-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 1.231rem; border-bottom: 1px solid var(--line); }
 .object-title { display: flex; align-items: center; gap: 0.923rem; min-width: 0; }
 .object-title > * { flex: none; }
@@ -816,17 +795,16 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
   content: ""; position: absolute; inset: 0 0 0 auto; width: 1px; background: var(--line); pointer-events: none;
 }
 .rows-view section { display: flex; flex-direction: column; }
-/* A group's grid (.rows-grid) is at most its header (--grid-head-h, the tallest .grid-head), 12 rows and a sideways
-   scrollbar tall, the bar's room counted whether or not one shows; beyond that it scrolls. Block layout: WebKit
-   leaves the scrollbar out of an auto-height flex item, which would then scroll by its height. */
-.rows-grid > .grid { max-height: calc(12 * var(--row-h) + var(--grid-head-h) + var(--scrollbar-size)); }
+/* A group's grid (.rows-grid) is at most its header (--grid-head-h, the tallest .grid-head) and 12 rows tall;
+   beyond that it scrolls. */
+.rows-grid > .grid { max-height: calc(12 * var(--row-h) + var(--grid-head-h)); }
 .rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); overflow-wrap: anywhere; }
 
 /* ---------- project page ---------- */
 /* One header row, then the overview (bands "Your changes" and "Problems", one sentence-like row each) or every
    rule: a filter and a band per table with its rules as in the object view; read-only rows in --o2, switched
    off ones struck. The rule forms open in a palette-styled sheet (.rule-sheet). */
-.project { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.project { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .project section { display: flex; flex-direction: column; }
 :is(.project, .rule-sheet) .act { color: var(--accent-text); white-space: nowrap; }
 :is(.project, .rule-sheet) .act:hover:not(:disabled) { color: var(--text); }
@@ -885,7 +863,7 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 
 /* ---------- readout ---------- */
 /* A header block, then section bands as in the object view; tables align their columns with subgrid. */
-.readout { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.readout { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
 .readout-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 0.308rem; }
 .readout-title { margin: 0; font-family: var(--font-mono); font-size: var(--fs-large); font-weight: 600; color: var(--text); }
 .readout-meta { color: var(--o2); font-family: var(--font-mono); font-size: var(--fs-small); }

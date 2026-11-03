@@ -181,7 +181,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
 
   return (
     <div
-      className={pinned ? "grid pinned" : "grid"}
+      className={pinned ? "grid scroller pinned" : "grid scroller"}
       data-stage="results"
       data-stage-label="Results"
       ref={scrollRef}

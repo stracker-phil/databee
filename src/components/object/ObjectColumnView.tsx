@@ -61,7 +61,7 @@ function SingleColumnView({ tab, column, index, editable }: Props) {
   if (error && !document) return <ErrorPanel message={error.message} code={error.code} />;
   if (!document) return <div className="empty-state">Loading…</div>;
   return (
-    <div className="object" ref={scroll.ref} onScroll={scroll.onScroll}>
+    <div className="object scroller" ref={scroll.ref} onScroll={scroll.onScroll}>
       <ObjectHeader document={document} owner={column.address} view={{ current: column.view, onChange: setView }} place={{ tabId: tab.id, index }} />
       {column.view === "document" ? (
         <DocumentView document={document} owner={column.address} focus={column.focus} onFocus={onFocus} onMore={onMore} editable={editable} diff={diff} />

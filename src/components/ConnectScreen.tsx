@@ -157,7 +157,7 @@ export function ConnectForm({ initial, error }: { initial?: ConnectionSpec; erro
           {busy ? "Connecting…" : "Connect"}
         </button>
       </form>
-      <aside className="recents" data-stage="connect:recents" data-stage-label="Recent connections">
+      <aside className="recents scroller" data-stage="connect:recents" data-stage-label="Recent connections">
         <h2>Recent</h2>
         {recents.length === 0 && <div className="sidebar-empty">Connections you open appear here.</div>}
         {recents.map((r) => (
@@ -196,7 +196,7 @@ export function ConnectScreen() {
   const defaultPort = useStore((s) => s.settings?.defaultPort ?? 3306);
   const state = dialog?.type === "connect" ? dialog : undefined;
   return (
-    <div className="connect-screen">
+    <div className="connect-screen scroller">
       <div className="drag-strip" data-tauri-drag-region />
       {/* The form reads the default port once; the key remounts it when the configured one loads. */}
       <ConnectForm key={`${defaultPort}:${state?.spec ? JSON.stringify(state.spec) : "empty"}`} initial={state?.spec} error={state?.error} />

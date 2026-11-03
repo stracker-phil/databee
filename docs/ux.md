@@ -91,8 +91,6 @@ Derived design tokens in `src/styles/theme.css`, the same for every scheme:
 | `--accent-text` | `--accent` with its OKLCH lightness capped at `--accent-text-max-l` | the accent as text (links, keys, selected labels), readable on light surfaces |
 | `--accent-quiet` | `--accent` at 45%, the rest `--a-graphite` (oklab) | the accent of a pane beside the active one |
 | `--dimmed` | 0.3 | opacity of what the linked table highlight fades (`TableFocus.tsx`) |
-| `--scrollbar-size` | 8px | scrollbar track, both directions |
-| `--scrollbar-thumb`, `-hover`, `-active` | `--o3` at 55%, `--o3`, `--o2` | scrollbar thumb |
 | `--pad` | 1, 3, 5 or 8px | row padding (see row anatomy) |
 | `--row-h` | `20px + 2 × --pad` (the line grows with data sizes above 12.5px) | row height for CSS and the virtualizer |
 | `--grid-head-h` | `2 × --pad` + 1.3 × (data size + type size) + 1px | the height of a grid header with its type line (the tallest `.grid-head`), which Rows view grids are sized by |
@@ -394,19 +392,15 @@ value, else the current address. The Hover column is what the status bar shows.
   as a pane (⌘W closes the tab). ⌘⌥↵ opens the active pane's row (a value column's: the row it came from) as a
   tab of its own, not a preview, and leaves the current tab as it is; a tab rooted at that row is reused. It is
   offered for every pane whose row is not the tab's first row. Back and forward restore the stack each address had.
-- **Scrollbars:** one style for every scroll box (`app.css`, scrollbars): a transparent 8px track
-  (`--scrollbar-size`) with a rounded 6px thumb in `--scrollbar-thumb` (stronger on hover and drag), the same
-  size vertically and horizontally, no arrow buttons, a transparent corner. A styled scrollbar takes its own
-  space whatever macOS's "Show scroll bars" setting, so it never covers the last row or column: a wide table
-  in a document grows by the bar's height below its last row (its thumb shows only while the table is
-  hovered), and a Rows view grid is as tall as its header,
-  rows and a sideways bar (at most 12 rows). Panes, the sidebar, value columns, the Project page, the readout
-  and Settings keep the vertical bar's gutter (`scrollbar-gutter: stable`), so content doesn't shift when it
-  starts to scroll; in the sidebar the gutter is the items' right inset. Every user-scrollable box is its own
-  stacking context (`isolation: isolate`), because WebKit keeps a nested scroller's bar with its own layers only
-  then; overlays therefore never render inside one (menus and `Modal` portal to `body`). Boxes with rounded corners (dialogs,
-  the palette, popovers, toasts, autocompletion) keep the thumb clear of them. The tab bar scrolls without a
-  bar.
+- **Scrollbars:** none styled ([ADR 0032](adr/0032-native-overlay-scrollbars.md)). Every scroll box keeps
+  macOS's overlay scrollbars, shown only while scrolling (with "Show scroll bars: Automatically"); no
+  `::-webkit-scrollbar` rule exists, because one makes WebKit draw a permanent bar. A bar takes no room, so
+  nothing reserves a gutter and content never shifts when it starts to scroll. Every scroll box carries the
+  `.scroller` class (`app.css`, scrollers): `overflow: auto` (a box narrows it, e.g. `.object` scrolls only
+  down) and its own stacking context (`isolation: isolate`), because WebKit keeps a nested scroller's bar with
+  its own layers only then; overlays therefore never render inside one (menus and `Modal` portal to `body`).
+  The tab bar scrolls sideways without a bar (`scrollbar-width: none`). A scroll box starts below its title
+  row, never under the traffic lights.
 - **Wide tables:** document tables of related rows, events and changes scroll sideways in their own box with
   their header (`WideTable.tsx`, `.wide-table`); only that box scrolls, never the pane. A primary-key first
   column stays pinned on the opaque row background and carries the change mark (`.wide-table.pinned`,

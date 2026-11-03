@@ -26,7 +26,7 @@ function ToastItem({ toast }: { toast: Toast }) {
             <button className="link-btn" onClick={() => setDetails((d) => !d)}>
               {details ? "Hide details" : "Details"}
             </button>
-            {details && <pre className="toast-details">{rest.join("\n")}</pre>}
+            {details && <pre className="toast-details scroller">{rest.join("\n")}</pre>}
           </>
         )}
       </span>

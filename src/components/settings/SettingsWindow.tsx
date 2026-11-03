@@ -25,7 +25,7 @@ function SettingsNav({ current, onPage }: { current: string; onPage: (id: string
           if (e.key === "Enter" && first) onPage(targetOf(first));
         }}
       />
-      <div className="settings-nav-list">
+      <div className="settings-nav-list scroller">
         {groups.length === 0 && <p className="settings-nav-empty">No Results</p>}
         {groups.map((g) => (
           <div key={g.group} className="settings-nav-group">
@@ -75,7 +75,7 @@ export function SettingsWindow({ page: shown, onPage }: { page: string | undefin
         <header data-tauri-drag-region>
           <h2 data-tauri-drag-region>{page.label}</h2>
         </header>
-        <div className="settings-body" key={page.id}>
+        <div className="settings-body scroller" key={page.id}>
           {page.intro && <p className="settings-intro">{page.intro}</p>}
           <SectionTarget.Provider value={target}>
             <Body s={settings} set={set} />

@@ -178,7 +178,7 @@ function TablesPanel() {
           {current} · {formatCount(currentTables.length)} {currentTables.length === 1 ? "table" : "tables"}
         </div>
       )}
-      <div className="sidebar-body" role="tree" aria-label="Databases" onMouseOver={reveal.onMouseOver} onMouseLeave={reveal.onMouseLeave}>
+      <div className="sidebar-body scroller" role="tree" aria-label="Databases" onMouseOver={reveal.onMouseOver} onMouseLeave={reveal.onMouseLeave}>
         {tree.map(({ d, row, tableRows }) => (
           <div key={d.name} role="none">
             <div
@@ -269,7 +269,7 @@ function HistoryPanel() {
           <Trash2 size="1rem" />
         </button>
       </div>
-      <div className="sidebar-body" data-stage="sidebar:history-list" data-stage-label="Query history">
+      <div className="sidebar-body scroller" data-stage="sidebar:history-list" data-stage-label="Query history">
         {history.error ? (
           <div className="sidebar-empty" role="alert">
             Could not load the history: {history.error.message}
