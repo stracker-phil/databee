@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import type { api as realApi } from "../api";
 // Must not import the store or "../api": they would load the real api module while it is being mocked.
-import { EMPTY_UI_STATE, type ActionPreview, type BrowsePage, type Comparison, type Coverage, type Document, type Keybindings, type Peek, type PlannedChange, type Project, type ProjectRules, type Readout, type Resolved, type RuleDraft, type RulesInfo, type SnapshotDiff, type SnapshotInfo, type TableProfile, type TableReferences, type TableStructure, type UiState, type WatchPoll } from "../api/types";
+import { EMPTY_UI_STATE, type ActionPreview, type BrowsePage, type Comparison, type ChangeRequest, type Coverage, type Document, type Keybindings, type Peek, type PlannedChange, type PlannedRow, type Project, type ProjectRules, type Readout, type Resolved, type RuleDraft, type RulesInfo, type SnapshotDiff, type SnapshotInfo, type TableProfile, type TableReferences, type TableStructure, type UiState, type WatchPoll } from "../api/types";
 import { parseAddress } from "../lib/address";
 import { session } from "./session";
 import { settings } from "./settings";
@@ -27,7 +27,19 @@ function emptyReadout(database: string): Readout {
 /** An `api` where every call resolves to a minimal valid value of its return type; override per test with mockResolvedValue. */
 export function createApiMock(): typeof realApi {
   let nextChangeId = 1;
-  const planned = (type: string): PlannedChange => ({ id: nextChangeId++, description: `planned ${type}`, statements: [`-- ${type}`], canUndo: true });
+  const planned = (type: string, rows: PlannedRow[] = []): PlannedChange => ({ id: nextChangeId++, description: `planned ${type}`, statements: [`-- ${type}`], canUndo: true, rows });
+  const plannedRows = (change: ChangeRequest): PlannedRow[] => {
+    switch (change.type) {
+      case "setCell":
+        return [{ database: change.database, table: change.table, keyColumn: change.keyColumn, key: change.key, effect: { kind: "set", column: change.column } }];
+      case "deleteRow":
+        return [{ database: change.database, table: change.table, keyColumn: change.keyColumn, key: change.key, effect: { kind: "delete" } }];
+      case "duplicateRow":
+        return [{ database: change.database, table: change.table, keyColumn: change.keyColumn, key: change.key, effect: { kind: "duplicate" } }];
+      default:
+        return [];
+    }
+  };
   return {
     getSettings: vi.fn().mockResolvedValue(settings()),
     updateSettings: vi.fn(async (s) => s),
@@ -116,7 +128,7 @@ export function createApiMock(): typeof realApi {
     rememberObject: vi.fn().mockResolvedValue(undefined),
     decodeValue: vi.fn().mockResolvedValue(null),
     paletteSearch: vi.fn().mockResolvedValue([]),
-    planChange: vi.fn(async (_s, change) => planned(change.type)),
+    planChange: vi.fn(async (_s, change) => planned(change.type, plannedRows(change))),
     discardChange: vi.fn().mockResolvedValue(undefined),
     applyChanges: vi.fn().mockResolvedValue({ batchId: 1, affected: 1, canUndo: true }),
     undoBatch: vi.fn().mockResolvedValue(1),

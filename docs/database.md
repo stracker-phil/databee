@@ -455,8 +455,10 @@ apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/
    so a condition may read the table it changes. Undo restores each row's set columns by key, last step
    first, or re-inserts the deleted rows; a binary value means no undo. Updating a key column is refused.
 3. The plan is stored in the session (`Session.plans`, `db/plans.rs`) under an id; the page receives a
-   `PlannedChange { id, description, statements, canUndo }`, where `statements` are for display only.
-   `discard_change` drops one. The pending tray lists each plan's description and statements as returned.
+   `PlannedChange { id, description, statements, canUndo, rows }`, where `statements` are for display only
+   and `rows` (`ChangeRequest::touched_rows`: `PlannedRow { database, table, keyColumn, key, effect }`,
+   effect `delete`, `duplicate` or `set { column }`) names the existing rows it touches, so the grid can mark
+   them; inserts and rule actions touch none. `discard_change` drops one. The pending tray lists each plan's description and statements as returned.
 4. `apply_changes(ids)` takes the plans (atomically: an unknown id fails and leaves every plan pending) and
    runs their statements in **one transaction** on a pool connection (`Database::apply`). This is atomic only
    for transactional engines; MyISAM tables and implicit DDL commits are not covered. On failure the plans

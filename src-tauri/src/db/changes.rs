@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::browse::equals_sql;
@@ -54,6 +54,71 @@ pub enum ChangeRequest {
         key_column: String,
         values: Vec<(String, Option<String>)>,
     },
+}
+
+/// A row a pending change touches, so the page can mark it before the change is applied.
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct PlannedRow {
+    pub database: String,
+    pub table: String,
+    pub key_column: String,
+    pub key: String,
+    pub effect: RowEffect,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq, TS)]
+#[ts(export, export_to = "src/api/types.gen.ts")]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RowEffect {
+    Delete,
+    Duplicate,
+    Set { column: String },
+}
+
+impl ChangeRequest {
+    /// The existing rows the change touches; inserted rows have no key yet.
+    pub fn touched_rows(&self) -> Vec<PlannedRow> {
+        let row = |database: &str, table: &str, key_column: &str, key: &str, effect| PlannedRow {
+            database: database.to_string(),
+            table: table.to_string(),
+            key_column: key_column.to_string(),
+            key: key.to_string(),
+            effect,
+        };
+        match self {
+            Self::SetCell {
+                database,
+                table,
+                key_column,
+                key,
+                column,
+                ..
+            } => vec![row(
+                database,
+                table,
+                key_column,
+                key,
+                RowEffect::Set {
+                    column: column.clone(),
+                },
+            )],
+            Self::DeleteRow {
+                database,
+                table,
+                key_column,
+                key,
+            } => vec![row(database, table, key_column, key, RowEffect::Delete)],
+            Self::DuplicateRow {
+                database,
+                table,
+                key_column,
+                key,
+            } => vec![row(database, table, key_column, key, RowEffect::Duplicate)],
+            Self::InsertRow { .. } | Self::AddRow { .. } => Vec::new(),
+        }
+    }
 }
 
 /// A planned write, kept in the session until it is applied or discarded.
@@ -473,6 +538,86 @@ mod tests {
     use crate::error::ErrorKind;
 
     const TIMEOUT: Duration = Duration::from_secs(1);
+
+    #[test]
+    fn touched_rows_name_the_existing_row_each_request_changes() {
+        let planned = |effect| {
+            vec![PlannedRow {
+                database: "wp".into(),
+                table: "t".into(),
+                key_column: "id".into(),
+                key: "7".into(),
+                effect,
+            }]
+        };
+        let (database, table, key_column, key) = (
+            "wp".to_string(),
+            "t".to_string(),
+            "id".to_string(),
+            "7".to_string(),
+        );
+        let values = vec![("a".to_string(), Some("1".to_string()))];
+
+        let cases = [
+            (
+                "set cell",
+                ChangeRequest::SetCell {
+                    database: database.clone(),
+                    table: table.clone(),
+                    key_column: key_column.clone(),
+                    key: key.clone(),
+                    column: "name".into(),
+                    value: None,
+                },
+                planned(RowEffect::Set {
+                    column: "name".into(),
+                }),
+            ),
+            (
+                "delete row",
+                ChangeRequest::DeleteRow {
+                    database: database.clone(),
+                    table: table.clone(),
+                    key_column: key_column.clone(),
+                    key: key.clone(),
+                },
+                planned(RowEffect::Delete),
+            ),
+            (
+                "duplicate row",
+                ChangeRequest::DuplicateRow {
+                    database: database.clone(),
+                    table: table.clone(),
+                    key_column: key_column.clone(),
+                    key: key.clone(),
+                },
+                planned(RowEffect::Duplicate),
+            ),
+            (
+                "insert row",
+                ChangeRequest::InsertRow {
+                    database: database.clone(),
+                    table: table.clone(),
+                    values: values.clone(),
+                },
+                Vec::new(),
+            ),
+            (
+                "add row",
+                ChangeRequest::AddRow {
+                    database,
+                    table,
+                    key_column,
+                    values,
+                },
+                Vec::new(),
+            ),
+        ];
+
+        for (name, request, expected) in cases {
+            assert_eq!(request.touched_rows(), expected, "{name}");
+        }
+    }
 
     const ROW: ChangeKey<'static> = ChangeKey {
         database: "wp",

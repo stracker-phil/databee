@@ -19,6 +19,7 @@ const planned = (patch: Partial<PlannedChange> = {}): PlannedChange => ({
   description: "Set post_title",
   statements: ["UPDATE wp_posts SET post_title = 'x'"],
   canUndo: true,
+  rows: [],
   ...patch,
 });
 

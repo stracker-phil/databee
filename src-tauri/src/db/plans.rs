@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::changes::Plan;
+use super::changes::{Plan, PlannedRow};
 use crate::error::{AppError, AppResult};
 use crate::lock::MutexExt;
 
@@ -27,6 +27,7 @@ pub struct PlannedChange {
     pub description: String,
     pub statements: Vec<String>,
     pub can_undo: bool,
+    pub rows: Vec<PlannedRow>,
 }
 
 /// What the page learns about an applied batch.
@@ -62,12 +63,17 @@ impl Plans {
     }
 
     pub fn add(&self, plan: Plan) -> PlannedChange {
+        self.add_touching(plan, Vec::new())
+    }
+
+    pub fn add_touching(&self, plan: Plan, rows: Vec<PlannedRow>) -> PlannedChange {
         let id = self.next_id();
         let change = PlannedChange {
             id,
             description: plan.description.clone(),
             statements: plan.statements.clone(),
             can_undo: !plan.undo.is_empty(),
+            rows,
         };
         self.pending.lock_unpoisoned().push((id, plan));
         change
@@ -147,6 +153,7 @@ impl Plans {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::changes::RowEffect;
     use crate::error::ErrorKind;
 
     fn plan(name: &str, undo: &[&str]) -> Plan {
@@ -176,9 +183,47 @@ mod tests {
                 "description": "change a",
                 "statements": ["DO a"],
                 "canUndo": true,
+                "rows": [],
             })
         );
         assert!(!without_undo.can_undo);
+    }
+
+    fn set_row() -> PlannedRow {
+        PlannedRow {
+            database: "wp".into(),
+            table: "wp_options".into(),
+            key_column: "option_id".into(),
+            key: "7".into(),
+            effect: RowEffect::Set {
+                column: "option_value".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn add_touching_returns_the_rows_while_add_returns_none() {
+        let plans = Plans::default();
+
+        let touching = plans.add_touching(plan("a", &["UNDO a"]), vec![set_row()]);
+        let plain = plans.add(plan("b", &["UNDO b"]));
+
+        assert_eq!(touching.rows, vec![set_row()]);
+        assert!(plain.rows.is_empty());
+    }
+
+    #[test]
+    fn planned_set_row_serializes_with_camel_case_fields_and_a_tagged_effect() {
+        assert_eq!(
+            serde_json::to_value(set_row()).unwrap(),
+            serde_json::json!({
+                "database": "wp",
+                "table": "wp_options",
+                "keyColumn": "option_id",
+                "key": "7",
+                "effect": { "kind": "set", "column": "option_value" },
+            })
+        );
     }
 
     #[test]

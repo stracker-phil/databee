@@ -51,7 +51,7 @@ const inspect = (tabId: string) =>
 
 const tabTitles = () => screen.getAllByRole("tab").map((t) => t.querySelector(".title")?.textContent);
 
-const planned = (description: string) => ({ description, statements: [`-- ${description}`], canUndo: true });
+const planned = (description: string) => ({ description, statements: [`-- ${description}`], canUndo: true, rows: [] });
 
 describe("store behavior", () => {
   beforeEach(() => {

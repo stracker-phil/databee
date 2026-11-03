@@ -304,7 +304,7 @@ pub async fn plan_change(
     let session = state.sessions.get(&session_id)?;
     let timeout = state.settings.get().query_timeout();
     let plan = changes::plan(session.db.as_ref(), &change, timeout).await?;
-    Ok(session.plans.add(plan))
+    Ok(session.plans.add_touching(plan, change.touched_rows()))
 }
 
 #[tauri::command]

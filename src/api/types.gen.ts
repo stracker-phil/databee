@@ -742,7 +742,12 @@ export type PinnedResult = { "show": "count", count: number, } | { "show": "rows
 /**
  * What the page renders for review; `statements` are for display only.
  */
-export type PlannedChange = { id: number, description: string, statements: Array<string>, canUndo: boolean, };
+export type PlannedChange = { id: number, description: string, statements: Array<string>, canUndo: boolean, rows: Array<PlannedRow>, };
+
+/**
+ * A row a pending change touches, so the page can mark it before the change is applied.
+ */
+export type PlannedRow = { database: string, table: string, keyColumn: string, key: string, effect: RowEffect, };
 
 /**
  * One preset: rules for tables named without the prefix.
@@ -1044,6 +1049,8 @@ cellKinds: Array<CellKind>,
 styles: Array<CellStyle>, };
 
 export type RowChange = { "kind": "update", columns: Array<ColumnWrite>, } | { "kind": "delete" };
+
+export type RowEffect = { "kind": "delete" } | { "kind": "duplicate" } | { "kind": "set", column: string, };
 
 /**
  * A row's primary key, in key order. Unlike `db::changes::ChangeKey` it owns its values and

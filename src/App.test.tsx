@@ -322,7 +322,7 @@ describe("App", () => {
   });
 
   describe("palette commands across sessions", () => {
-    const planned = { id: 1, description: "Set post_title", statements: ["UPDATE wp_posts SET post_title = 'x'"], canUndo: true };
+    const planned = { id: 1, description: "Set post_title", statements: ["UPDATE wp_posts SET post_title = 'x'"], canUndo: true, rows: [] };
     const other: SessionInfo = { ...session, id: "s2", identity: "root@127.0.0.1:32768/blog", displayName: "Blog", database: "db", slug: "blog" };
 
     const search = async (text: string) => {
