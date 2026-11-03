@@ -1,6 +1,7 @@
 import type { MouseEvent } from "react";
 import type { Cell, Value as StoredValue } from "../../api";
 import { FLASH_MS } from "../../lib/diff";
+import type { RowMark } from "../../lib/pendingMarks";
 import type { RowChange } from "../../lib/tableCheck";
 import type { CellPos } from "../gridHooks";
 import { Value, type OpenValue } from "../value/Value";
@@ -15,6 +16,8 @@ export function storedCell(change: RowChange | undefined, col: number): Cell | u
 
 const rowChangeClass = (change: RowChange | undefined) => (change ? (change.kind === "removed" ? " db-removed" : " db-changed") : "");
 
+const pendingClass = (mark: RowMark | undefined) => (mark?.deleted ? " pending-delete" : "") + (mark?.duplicated ? " pending-duplicate" : "");
+
 /** The table every sourced value of a row is stored in, when they share one, for the linked table highlight. */
 function rowTable(values: StoredValue[]): string | undefined {
   const tables = new Set(values.flatMap((value) => (value.source ? [value.source.table] : [])));
@@ -22,10 +25,19 @@ function rowTable(values: StoredValue[]): string | undefined {
 }
 
 /** Numbers align right; everything else about a kind is drawn by `Value` (docs/ux.md, Value grammar). */
-function cellClass(cell: Cell, selected: boolean, editing: boolean, changedAt: number | undefined): string {
+interface CellState {
+  selected: boolean;
+  editing: boolean;
+  /** When the database changed the value (live check). */
+  changedAt: number | undefined;
+  pendingEdit: boolean;
+}
+
+function cellClass(cell: Cell, { selected, editing, changedAt, pendingEdit }: CellState): string {
   let name = cell.t === "number" ? "grid-cell num" : "grid-cell";
   if (selected) name += " selected";
   if (editing) name += " editing";
+  if (pendingEdit) name += " pending-edit";
   if (changedAt !== undefined) name += Date.now() - changedAt < FLASH_MS ? " db-changed db-flash" : " db-changed";
   return name;
 }
@@ -49,6 +61,7 @@ interface RowProps {
   cells: Cell[];
   values: StoredValue[];
   change: RowChange | undefined;
+  pending: RowMark | undefined;
   top: number;
   height: number;
   width: number;
@@ -60,9 +73,15 @@ interface RowProps {
   openValue: OpenValue;
 }
 
-export function GridRow({ index, cells, values, change, top, height, width, selectedCol, editor, handlers, openValue }: RowProps) {
+export function GridRow({ index, cells, values, change, pending, top, height, width, selectedCol, editor, handlers, openValue }: RowProps) {
   return (
-    <div className={`grid-row${rowChangeClass(change)}`} role="row" data-row-table={rowTable(values)} style={{ top, height, width }}>
+    <div
+      className={`grid-row${rowChangeClass(change)}${pendingClass(pending)}`}
+      role="row"
+      title={pending?.title}
+      data-row-table={rowTable(values)}
+      style={{ top, height, width }}
+    >
       {cells.map((cell, ci) => (
         <GridCell
           key={ci}
@@ -71,6 +90,7 @@ export function GridRow({ index, cells, values, change, top, height, width, sele
           cell={cell}
           value={values[ci]}
           change={change}
+          pendingEdit={!!pending?.columns.has(ci)}
           selected={selectedCol === ci}
           editor={editor?.col === ci ? editor : null}
           handlers={handlers}
@@ -87,18 +107,19 @@ interface CellProps {
   cell: Cell;
   value: StoredValue;
   change: RowChange | undefined;
+  pendingEdit: boolean;
   selected: boolean;
   editor: CellEditor | null;
   handlers: CellHandlers;
   openValue: OpenValue;
 }
 
-function GridCell({ row, col, cell, value, change, selected, editor, handlers, openValue }: CellProps) {
+function GridCell({ row, col, cell, value, change, pendingEdit, selected, editor, handlers, openValue }: CellProps) {
   const stored = storedCell(change, col);
   return (
     <div
       role="gridcell"
-      className={cellClass(cell, selected, editor !== null, stored ? change?.at : undefined)}
+      className={cellClass(cell, { selected, editing: editor !== null, changedAt: stored ? change?.at : undefined, pendingEdit })}
       style={{ width: `var(--col-${col})` }}
       data-db-change={stored ? "" : undefined}
       onMouseEnter={stored ? (e) => handlers.setPeek({ row, col, cell: e.currentTarget }) : undefined}

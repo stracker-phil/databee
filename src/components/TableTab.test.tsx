@@ -324,6 +324,43 @@ describe("TableTab", () => {
     });
   });
 
+  describe("pending row marks", () => {
+    const rowAt = (index: number) => screen.getAllByRole("gridcell")[index * 2].closest<HTMLElement>('[role="row"]')!;
+
+    beforeEach(() => {
+      mocked.browseTable.mockResolvedValue(browsePage({ keys: [[{ column: "ID", value: "1" }], [{ column: "ID", value: "2" }]] }));
+    });
+
+    it("marks only the deleted row until the plan is discarded", async () => {
+      render(<TableTab tab={tab} />);
+      fireEvent.contextMenu(await screen.findByText("Hello world"));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Delete row" }));
+      await waitFor(() => expect(rowAt(0)).toHaveClass("pending-delete"));
+      expect(rowAt(1)).not.toHaveClass("pending-delete");
+
+      await act(() => useStore.getState().discardChange(useStore.getState().pending[0].id));
+      expect(rowAt(0)).not.toHaveClass("pending-delete");
+    });
+
+    it("marks a duplicated row", async () => {
+      render(<TableTab tab={tab} />);
+      fireEvent.contextMenu(await screen.findByText("Hello world"));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Duplicate row" }));
+      await waitFor(() => expect(rowAt(0)).toHaveClass("pending-duplicate"));
+      expect(rowAt(1)).not.toHaveClass("pending-duplicate");
+    });
+
+    it("marks only the edited cell", async () => {
+      render(<TableTab tab={tab} />);
+      await userEvent.dblClick(await screen.findByText("Hello world"));
+      const input = screen.getByLabelText("Edit cell");
+      await userEvent.clear(input);
+      await userEvent.type(input, "Hi{Enter}");
+      await waitFor(() => expect(screen.getAllByRole("gridcell")[1]).toHaveClass("pending-edit"));
+      expect(screen.getAllByRole("gridcell").filter((cell) => cell.classList.contains("pending-edit"))).toHaveLength(1);
+    });
+  });
+
   describe("value counts", () => {
     const pages = [{ column: "post_type", value: "page" }];
     const orders = tableTab({ table: "wp_wc_orders", where: pages });

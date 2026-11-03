@@ -1066,6 +1066,12 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
   border-style: solid; border-width: 0 6px 6px 0; border-color: transparent var(--accent) transparent transparent;
 }
 .grid-cell.db-flash { animation: change-flash 1.6s ease-out; }
+/* Rows and cells a plan waiting for review touches (pendingRowMarks): a row to delete is struck through in red on a
+   red tint, a row to duplicate carries a --o3 mark, an edited cell an accent underline. */
+.grid-row.pending-delete { background: color-mix(in srgb, var(--style-red) 8%, transparent); }
+.grid-row.pending-delete > .grid-cell, .grid-row.pending-delete > .grid-cell * { color: var(--style-red); text-decoration: line-through; }
+.grid-row.pending-duplicate > .grid-cell:first-child { --change-mark: inset 3px 0 0 var(--o3); }
+.grid-cell.pending-edit { --change-mark: inset 0 -2px 0 var(--accent); }
 .db-changes {
   display: flex; align-items: center; gap: 0.462rem; padding: 0.231rem 0.769rem; border-bottom: 1px solid var(--line);
   background: var(--bg); box-shadow: inset 3px 0 0 var(--accent); font-size: var(--fs-small);

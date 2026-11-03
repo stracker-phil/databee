@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Filter, Hash, Loader2, Plus, RefreshCw, TextSearch, X } from "lucide-react";
 import { api, type AppliedFilter, type BrowsePage, type FilterMode, type TableStructure } from "../api";
 import { EVENTS, useBindingLabel } from "../commands";
 import { address } from "../lib/address";
 import { DEFAULT_ROW_LIMIT, singleKey } from "../lib/cells";
+import { pendingRowMarks } from "../lib/pendingMarks";
 import { useApiResult } from "../lib/useApiResult";
 import { valueAt } from "../lib/values";
 import { blockedWhileLost, selectStructure, useStore, type TableTab as TableTabState } from "../state/store";
@@ -229,6 +230,11 @@ function DataView({ tab }: { tab: TableTabState }) {
   const filterRows = useStore((s) => s.filterRows);
   const [editing, setEditing] = useState(false);
   const live = useTableCheck(tab, page, { hasPrimaryKey: (structure?.primaryKey.length ?? 0) > 0, editing, loading });
+  const pending = useStore((s) => s.pending);
+  const pendingMarks = useMemo(
+    () => page && pendingRowMarks(pending, { sessionId: tab.sessionId, database: tab.database, table: tab.table, keys: page.keys, columns: page.result.columns }),
+    [pending, page, tab.sessionId, tab.database, tab.table],
+  );
 
   const columnMenu = (col: number, at: { x: number; y: number }): MenuEntry[] => {
     const column = page?.result.columns[col]?.name;
@@ -314,6 +320,7 @@ function DataView({ tab }: { tab: TableTabState }) {
           onEditCell={onEditCell}
           columnMenu={columnMenu}
           changes={live.rows}
+          pending={pendingMarks ?? undefined}
           onEditingChange={setEditing}
         />
       ) : (

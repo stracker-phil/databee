@@ -323,6 +323,10 @@ value, else the current address. The Hover column is what the status bar shows.
   value in `--o2`, never instead of it.
 - **Change marks:** a changed value flashes (`--cell` fading out over 1.6s), then shows the old
   value tertiary and struck through, with a 3px accent bar on the row ([Live mode](#live-mode-snapshots-compare)).
+- **Pending marks:** in a table tab, a row a pending plan deletes is struck through in `--style-red` on a light
+  red tint; a row it duplicates carries a 3px `--o3` bar; a cell it sets an accent underline. The row's tooltip
+  lists the plans. The marks go away when the plan is applied or discarded. The red is change state (the
+  user's own queued write, like `.btn-danger`), not a value colored by its content, so it is not a value style.
 
 ## Layout
 

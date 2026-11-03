@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import type { Address, Cell, ColumnMeta, Value as StoredValue } from "../api";
 import type { CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
+import type { RowMark } from "../lib/pendingMarks";
 import type { RowChange } from "../lib/tableCheck";
 import { useRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
@@ -46,6 +47,8 @@ interface Props {
   columnMenu?: (col: number, at: { x: number; y: number }) => MenuEntry[] | Promise<MenuEntry[]>;
   /** Rows the database changed or removed since they were read, by row index (a table tab's live check). */
   changes?: Readonly<Record<number, RowChange>>;
+  /** Rows touched by plans waiting for review, by row index. */
+  pending?: Readonly<Record<number, RowMark>>;
   /** Called when the inline editor opens (true) or closes (false). */
   onEditingChange?: (editing: boolean) => void;
 }
@@ -80,7 +83,7 @@ function revealColumn(grid: HTMLElement | null, widths: number[], col: number, p
   else if (right > grid.scrollLeft + grid.clientWidth) grid.scrollLeft = Math.min(left, right - grid.clientWidth);
 }
 
-export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus, columnMenu, changes, onEditingChange }: Props) {
+export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowActions, onEditCell, columnWidths, onColumnWidthsChange, owner, focus, columnMenu, changes, pending, onEditingChange }: Props) {
   const selectCell = useStore((s) => s.selectCell);
   const rowHeight = useRowHeight();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -231,6 +234,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
             cells={rows[v.index]}
             values={rowValues(v.index)}
             change={changes?.[v.index]}
+            pending={pending?.[v.index]}
             top={v.start}
             height={rowHeight}
             width={totalWidth}

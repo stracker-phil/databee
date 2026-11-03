@@ -594,6 +594,12 @@ button calls `showRows` with no matches, which records the filtered address for 
 (`table:reload`) fetches the page again and calls `reloadValueColumn(tab, null)`, so a value column opened from the
 grid reads its value again too ([Column stack](#column-stack)).
 
+**Pending marks** (`lib/pendingMarks.ts`): `DataView` maps the store's `pending` plans onto the page with
+`pendingRowMarks(pending, { sessionId, database, table, keys, columns })`, matching each plan's `rows`
+(`PlannedRow`, by key column and key) to the page's single-column row keys. `ResultsGrid` passes each row's
+`RowMark` (`pending` prop) to `GridRow`, which adds `pending-delete`, `pending-duplicate` and the cell's
+`pending-edit` class and the plans' descriptions as the row's tooltip.
+
 **Live check** (`TableCheck.tsx`, pure state in `lib/tableCheck.ts`): `useTableCheck(tab, page, { hasPrimaryKey,
 editing, loading })` reads the checksums of the page's rows (`api.tableCheck`) right after each page loads (its
 result id: Refresh, paging, a filter, ⌘R or an applied write start over), as the baseline, then every
