@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import type { Document, Group, Provenance } from "../../api";
+import { installCommands } from "../../commands";
 import { connectedStore } from "../../test/fixtures";
 import { objectDocument, orderAddress, orderGroups, paidViaSource } from "../../test/objectFixtures";
 import { DocumentView } from "./DocumentView";
@@ -26,6 +27,7 @@ describe("DocumentView value menu", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     connectedStore();
+    installCommands();
   });
 
   it("offers Watch on readout before the rule entries on a sourced value", () => {

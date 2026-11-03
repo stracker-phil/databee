@@ -172,6 +172,7 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | ⌘[ / ⌘] | Back / forward in the tab's history | everywhere |
 | ⌘= / ⌘- / ⌘0 | Zoom in / out / reset | everywhere |
 | ⌘R | Refresh the current view | everywhere |
+| ⌘⌫ / ⌘D / ⌘⇧⌫ | Delete / duplicate the selected row, set the selected cell to NULL (queued for review) | table |
 | ⌘S | Apply pending changes; in a query tab with nothing pending, save the query | everywhere / editor |
 | ⌘N / ⌘, / ⌘⌃S | New connection / Settings / toggle sidebar | everywhere |
 | ? | Keyboard shortcuts | everywhere |

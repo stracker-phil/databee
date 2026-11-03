@@ -253,7 +253,8 @@ Palette, peek, popovers, context menus, toasts and dialogs: `--pop` background, 
 2px accent bar on the left, and command shortcuts show as key caps. A section's label (`.palette-section`, small
 `--o3` text) is a list item of its own above the section's first result. Context menus use the UI font wherever they
 open (grid, document, sidebar); the hovered or keyboard-focused item is `--accent` with `--on-accent` text,
-disabled items `--o3`, separators a 1px `--line`. Contents:
+disabled items `--o3`, separators a 1px `--line`. An item that runs a command shows its key on the right in
+`--o3` while the command's scope is active. Contents:
 
 - grid cell (`cellMenu` in `grid/cellMenu.ts`): Copy value; Edit value and Set to NULL when editable; for a
   sourced cell Watch on readout, Add reference…, Kind…, Style… (no rule items for binary); Copy row as TSV /
@@ -629,6 +630,7 @@ rebindable.
 | `s` | object | take a snapshot of the active column's row, after a label prompt (`object.snapshot`) |
 | `x` | object | dismiss the change marks of the active column (`object.dismissChanges`) |
 | `p` | editor (focus in the results) | pin the tab's saved query: Not pinned, Count, Value or Rows(n) (`query.pin`) |
+| ⌘⌫ / ⌘D / ⌘⇧⌫ | table | delete / duplicate the selected row, set the selected cell to NULL (queued for review; ⌘⌫ on a row already pending deletion takes the delete back); not in text fields or the editor |
 | ⌘S | global, editor | `changes.apply` applies pending changes; with nothing pending, `query.save` (its fallback) saves the query tab |
 | ⌘↵ / ⌘⇧↵ | editor | run the statement at the cursor / all statements |
 | ⌘F | table | focus the table's `WHERE` filter |

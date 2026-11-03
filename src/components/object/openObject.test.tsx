@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
 import { api, type TableStructure } from "../../api";
+import { installCommands } from "../../commands";
 import { address, formatAddress } from "../../lib/address";
 import { useStore } from "../../state/store";
 import { browsePage, columnMeta, connectedStore, num, resultSet, tableTab, text } from "../../test/fixtures";
@@ -40,6 +41,7 @@ describe("opening a row as an object from a table tab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     connectedStore();
+    installCommands();
     useStore.setState({ tabs: [tab], activeTabId: tab.id });
     mocked.describeTable.mockResolvedValue(structure);
     mocked.browseTable.mockResolvedValue(page);

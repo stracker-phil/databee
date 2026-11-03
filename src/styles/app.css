@@ -544,6 +544,8 @@ body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select:
 .menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
 .menu button:disabled { color: var(--o3); }
 .menu button.with-detail { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0.154rem; height: auto; min-height: 1.846rem; padding: 0.308rem 0.615rem; }
+.menu-key { margin-left: auto; padding-left: 1.538rem; color: var(--o3); font-variant-numeric: tabular-nums; }
+.menu button:hover:not(:disabled) .menu-key, .menu button:focus-visible .menu-key { color: inherit; opacity: 0.8; }
 .menu-detail { max-width: 36rem; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-small); color: var(--o3); }
 .menu button:hover:not(:disabled) .menu-detail, .menu button:focus-visible .menu-detail { color: inherit; opacity: 0.8; }
 .menu hr { border: none; border-top: 1px solid var(--line); margin: 0.308rem 0; }

@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { installCommands } from "../commands";
+import { useStore } from "../state/store";
+import { connectedStore, queryTab, tableTab } from "../test/fixtures";
 import { ContextMenu, type MenuEntry, useContextMenu } from "./ContextMenu";
 
 const renderMenu = (items: MenuEntry[], onClose = vi.fn()) => {
@@ -42,6 +45,32 @@ describe("ContextMenu", () => {
     renderMenu([{ label: "Paste", action, disabled: true }]);
     await userEvent.click(screen.getByRole("menuitem", { name: "Paste" }));
     expect(action).not.toHaveBeenCalled();
+  });
+
+  describe("command keys", () => {
+    const items: MenuEntry[] = [{ label: "Delete row", action: () => {}, command: "row.delete" }];
+
+    beforeEach(installCommands);
+
+    it("shows the key of the item's command while its scope is active, outside the accessible name", () => {
+      connectedStore({ tabs: [tableTab()] });
+      renderMenu(items);
+      const item = screen.getByRole("menuitem", { name: "Delete row" });
+      expect(item).toHaveTextContent("Delete row⌘⌫");
+    });
+
+    it("shows the user's rebinding", () => {
+      connectedStore({ tabs: [tableTab()] });
+      useStore.setState({ keybindings: { "row.delete": "Mod+Shift+X" } });
+      renderMenu(items);
+      expect(screen.getByRole("menuitem", { name: "Delete row" })).toHaveTextContent("Delete row⌘⇧X");
+    });
+
+    it("shows no key while the command's scope is inactive", () => {
+      connectedStore({ tabs: [queryTab()] });
+      renderMenu(items);
+      expect(screen.getByRole("menuitem", { name: "Delete row" })).toHaveTextContent(/^Delete row$/);
+    });
   });
 
   describe("closing", () => {

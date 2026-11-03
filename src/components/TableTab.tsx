@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Filter, Hash, Loader2, Plus, RefreshCw, TextSearch, X } from "lucide-react";
 import { api, type AppliedFilter, type BrowsePage, type FilterMode, type TableStructure } from "../api";
-import { EVENTS, useBindingLabel } from "../commands";
-import { address } from "../lib/address";
+import { commandItem, EVENTS, useBindingLabel } from "../commands";
 import { DEFAULT_ROW_LIMIT, singleKey } from "../lib/cells";
 import { pendingRowMarks } from "../lib/pendingMarks";
 import { useApiResult } from "../lib/useApiResult";
@@ -171,21 +170,12 @@ function Pager({ offset, rows, limit, hasMore, onOffset }: PagerProps) {
 
 /** Row menu entries and cell edits, which address the row by the single-column key Rust sent with the page. */
 function useRowEditing(tab: TableTabState, page: BrowsePage | null, primaryKey: string | null) {
-  const slug = useStore((s) => s.sessions.find((x) => x.id === tab.sessionId)?.slug ?? "");
   const queueChange = useStore((s) => s.queueChange);
   const pinTab = useStore((s) => s.pinTab);
   const rowOf = (row: number) => (primaryKey && page ? singleKey(page.keys[row]) : null);
 
-  const rowActions = (row: number): MenuEntry[] => {
-    const key = rowOf(row);
-    if (!key) return [];
-    const base = { database: tab.database, table: tab.table, ...key };
-    return [
-      { label: "Open as object", action: () => useStore.getState().openObject(address(slug, tab.database, { kind: "row", table: tab.table, key: key.key })) },
-      { label: "Duplicate row", action: () => void queueChange({ type: "duplicateRow", ...base }) },
-      { label: "Delete row", action: () => void queueChange({ type: "deleteRow", ...base }) },
-    ];
-  };
+  const rowActions = (row: number): MenuEntry[] =>
+    rowOf(row) ? [commandItem("row.openObject", "Open as object"), commandItem("row.duplicate"), commandItem("row.delete")] : [];
 
   const editCell = (row: number, col: number, value: string | null) => {
     const key = rowOf(row);

@@ -115,6 +115,35 @@ describe("resolveKeydown", () => {
     expect(resolveKeydown(key("j", {}, document.createElement("div")), ["global"])?.id).toBe("plain");
   });
 
+  describe("skipInText", () => {
+    const deleteRow = () => cmd("row.delete", "table", "Mod+Backspace", { skipInText: true });
+    const press = (target: EventTarget) => resolveKeydown(key("Backspace", { meta: true }, target), ["global", "table"])?.id;
+
+    it("labels Mod+Backspace with the delete glyph", () => {
+      expect(bindingLabel("Mod+Backspace")).toBe("⌘⌫");
+    });
+
+    it("fires from a target that is not a text field", () => {
+      registerCommands([deleteRow()]);
+      expect(press(document.createElement("div"))).toBe("row.delete");
+      expect(press(document.createElement("button"))).toBe("row.delete");
+    });
+
+    it("leaves the key to text inputs, textareas and editable content", () => {
+      registerCommands([deleteRow()]);
+      const editable = document.createElement("div");
+      Object.defineProperty(editable, "isContentEditable", { value: true });
+      expect(press(document.createElement("input"))).toBeUndefined();
+      expect(press(document.createElement("textarea"))).toBeUndefined();
+      expect(press(editable)).toBeUndefined();
+    });
+
+    it("still fires other Mod commands in a text input", () => {
+      registerCommands([cmd("other", "table", "Mod+Backspace")]);
+      expect(press(document.createElement("input"))).toBe("other");
+    });
+  });
+
   it("honors user overrides, including unbinding", () => {
     registerCommands([cmd("a", "global", "Mod+K"), cmd("b", "global")]);
     setOverrides({ a: null, b: "Mod+Shift+X" });

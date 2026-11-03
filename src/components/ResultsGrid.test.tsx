@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api, type Address, type Cell } from "../api";
+import { installCommands } from "../commands";
 import { address, formatAddress } from "../lib/address";
 import { syncRowHeight } from "../lib/theme";
 import { useStore } from "../state/store";
@@ -15,6 +16,8 @@ import { useValueHover } from "./value/useValueHover";
 
 const mocked = vi.mocked(api, true);
 const source = { sessionId: "s1", resultId: 1 };
+
+beforeEach(installCommands);
 
 describe("ResultsGrid editing", () => {
   beforeEach(() => connectedStore());

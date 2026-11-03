@@ -125,15 +125,6 @@ function watchFocused() {
   if (found) watchValue(found.source);
 }
 
-export const WATCH_MENU = { label: "Watch on readout", action: watchFocused };
-
-/** Rule entries for a value's context menu; `sourced` values only. */
-export const RULE_MENU = [
-  { label: "Add reference…", action: () => void openRuleForm("reference") },
-  { label: "Kind…", action: () => void openRuleForm("kind") },
-  { label: "Style…", action: () => void openRuleForm("style") },
-];
-
 const canAddRule = () => !!sourced();
 
 /** Object-scope commands share the menu items of the table-scope ones (`value.*`). */

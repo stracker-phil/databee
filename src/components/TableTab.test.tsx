@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
 
 import { api, EMPTY_UI_STATE, type BrowsePage, type Cell, type TableProfile, type TableStructure, type ValueCount } from "../api";
+import { installCommands } from "../commands";
 import { useStore, type TableTab as TableTabState } from "../state/store";
 import { browsePage, connectedStore, num, pendingChange, queryTab, resultSet, session, tableTab, text, value } from "../test/fixtures";
 import { TableTab } from "./TableTab";
@@ -29,6 +30,7 @@ describe("TableTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     connectedStore();
+    installCommands();
     useStore.setState({ tabs: [tab], activeTabId: tab.id });
     mocked.describeTable.mockResolvedValue(structure);
     mocked.browseTable.mockResolvedValue(browsePage());

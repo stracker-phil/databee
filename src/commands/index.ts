@@ -5,10 +5,12 @@ import { activeScopes, registerScope } from "./scopes";
 import { COLUMN_COMMANDS } from "./columns";
 import { LIVE_COMMANDS } from "./live";
 import { OBJECT_VALUE_COMMANDS, VALUE_COMMANDS } from "./values";
+import { ROW_COMMANDS } from "./rows";
 
 export * from "./registry";
 export * from "./scopes";
-export { EDIT_VALUE_EVENT, RULE_MENU, WATCH_MENU, watchValue } from "./values";
+export { EDIT_VALUE_EVENT, watchValue } from "./values";
+export { commandItem } from "./menuItems";
 export { paneMenu } from "./columns";
 
 /** Window events for commands whose target lives inside a component. */
@@ -180,6 +182,7 @@ const APP_COMMANDS: Command[] = [
   { id: "changes.apply", title: "Apply pending changes", scope: "global", defaultBinding: "Mod+S", menu: true, when: () => selectActivePending(useStore.getState()).length > 0, run: () => void useStore.getState().applyChanges() },
   { id: "changes.undo", title: "Undo last apply", scope: "global", when: () => selectCanUndo(useStore.getState()), menu: true, run: () => void useStore.getState().undoLast() },
   ...VALUE_COMMANDS,
+  ...ROW_COMMANDS,
   ...OBJECT_VALUE_COMMANDS,
   ...COLUMN_COMMANDS,
   ...LIVE_COMMANDS,

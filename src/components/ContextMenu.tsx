@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { bindingFor, bindingLabel, getCommand } from "../commands/registry";
+import { activeScopes } from "../commands/scopes";
+import { useStore } from "../state/store";
 
-interface MenuItem {
+export interface MenuItem {
   label: string;
   action: () => void;
   disabled?: boolean;
@@ -9,6 +12,8 @@ interface MenuItem {
   title?: string;
   /** A secondary line under the label. */
   detail?: string;
+  /** The command the item runs; its key shows on the right while the command's scope is active. */
+  command?: string;
 }
 
 export type MenuEntry = MenuItem | "separator";
@@ -31,6 +36,7 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const [pos, setPos] = useState({ left: x, top: y });
+  const keyOf = useCommandKey();
 
   // Measured after render, so separators and long labels keep the menu inside the window.
   useLayoutEffect(() => {
@@ -103,7 +109,10 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
                 <span className="menu-detail">{item.detail}</span>
               </>
             ) : (
-              item.label
+              <>
+                {item.label}
+                <MenuKey label={item.command ? keyOf(item.command) : ""} />
+              </>
             )}
           </button>
         ),
@@ -122,6 +131,24 @@ export function useContextMenu() {
   }, []);
   const element = menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />;
   return { open, element };
+}
+
+function MenuKey({ label }: { label: string }) {
+  return label ? (
+    <span className="menu-key" aria-hidden>
+      {label}
+    </span>
+  ) : null;
+}
+
+/** The key label of a command in an active scope, "" otherwise; follows the user's rebinding. */
+function useCommandKey() {
+  const custom = useStore((s) => s.keybindings);
+  const scopes = activeScopes();
+  return (id: string) => {
+    const command = getCommand(id);
+    return command && scopes.includes(command.scope) ? bindingLabel(bindingFor(id, custom)) : "";
+  };
 }
 
 function menuButtons(menu: HTMLElement | null): HTMLButtonElement[] {

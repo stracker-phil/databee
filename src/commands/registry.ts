@@ -14,6 +14,8 @@ export interface Command {
   menu?: true | string;
   /** Has no key of its own: it takes this command's binding and runs while that one is disabled, so the two never conflict. */
   fallbackFor?: string;
+  /** Leaves its key to text fields and the editor even with a modifier (⌘⌫ deletes text there). */
+  skipInText?: true;
 }
 
 export type Overrides = Record<string, string | null>;
@@ -196,9 +198,10 @@ function scopesOverlap(a: Scope, b: Scope): boolean {
 export function resolveKeydown(e: KeyLike & { target?: EventTarget | null }, activeScopes: Scope[], mac = true): Command | null {
   const binding = bindingFromEvent(e, mac);
   if (!binding) return null;
-  if (isTextInput(e.target ?? null) && !binding.includes("Mod+") && !binding.includes("Ctrl+") && binding !== "Escape") return null;
+  const inText = isTextInput(e.target ?? null);
+  if (inText && !binding.includes("Mod+") && !binding.includes("Ctrl+") && binding !== "Escape") return null;
   const matches = allCommands()
-    .filter((c) => bindingFor(c.id) === binding && activeScopes.includes(c.scope) && (c.when?.() ?? true))
+    .filter((c) => bindingFor(c.id) === binding && !(inText && c.skipInText) && activeScopes.includes(c.scope) && (c.when?.() ?? true))
     .sort((a, b) => specificity(b.scope) - specificity(a.scope));
   return matches[0] ?? null;
 }

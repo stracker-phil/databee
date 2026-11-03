@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Cell } from "../../api";
+import { installCommands } from "../../commands";
 import { rowsToJson, rowsToTsv } from "../../lib/format";
 import { num, text, value } from "../../test/fixtures";
 import type { MenuEntry } from "../ContextMenu";
@@ -32,7 +33,10 @@ function entry(entries: MenuEntry[], label: string) {
 }
 
 describe("cellMenu", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    installCommands();
+  });
 
   it("offers copying the value, the row and all rows", () => {
     expect(labels(menu())).toEqual([

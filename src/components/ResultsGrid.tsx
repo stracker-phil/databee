@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import type { Address, Cell, ColumnMeta, Value as StoredValue } from "../api";
+import { useGridRows } from "../commands/gridRows";
 import type { CellSource } from "../lib/cells";
 import { copyText } from "../lib/clipboard";
 import type { RowMark } from "../lib/pendingMarks";
@@ -121,6 +122,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
     leads,
   });
   const names = columns.map((c) => c.name);
+  useGridRows(source, useMemo(() => ({ rows, names: columns.map((c) => c.name) }), [rows, columns]));
 
   // The first column stays in view while the grid scrolls sideways when it holds the rows' primary key.
   const pinned = rows.length > 0 && rowValues(0)[0]?.kind.kind === "primaryKey";

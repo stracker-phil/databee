@@ -213,7 +213,7 @@ errors (`AppError.account`).
 Every user action that has a shortcut or appears in the palette is a `Command` (`src/commands/registry.ts`):
 
 ```ts
-{ id, title, scope, defaultBinding?, when?, run, menu?, fallbackFor? }
+{ id, title, scope, defaultBinding?, when?, run, menu?, fallbackFor?, skipInText? }
 ```
 
 The core commands are `APP_COMMANDS` (`src/commands/index.ts`); their default bindings are listed in
@@ -234,7 +234,8 @@ The core commands are `APP_COMMANDS` (`src/commands/index.ts`); their default bi
   most specific active scope wins; specificity is the depth in the parent chain (`global` is 0). The
   `label` names the scope in Settings → Shortcuts.
 - **Keys.** `handleKeydown` runs in the capture phase, so app shortcuts beat CodeMirror and inputs. Inside text
-  inputs, only `Mod`/`Ctrl` combinations and Escape fire. While a dialog or the palette is open, only the
+  inputs, only `Mod`/`Ctrl` combinations and Escape fire, and not those of a `skipInText` command (the row
+  commands' ⌘⌫, ⌘D, ⌘⇧⌫ edit text there). While a dialog or the palette is open, only the
   commands in `MODAL_ALLOWED` (Settings toggle, the shortcut overview, zoom) run; other keys reach the overlay. Native menu items
   go through `runMenuCommand`, which applies the same rule. Auto-repeated keydowns are swallowed unless the
   command is in `REPEATABLE` (zoom, back/forward, next/previous tab, the focus moves of the column stack). Keys inside a `[data-recording]`
@@ -495,8 +496,26 @@ Bare keys never fire in inputs or the editor (`resolveKeydown`).
 | `value.watch` | | watches the value's cell on the readout of the tab's database (`watchValue(source)`, the `readout` slice's `watchValue`); binary cells too, since the readout reads the cell itself |
 
 Binary cells offer none of `Y`, `e`, `f` and the rule commands, since their cell holds only a preview. The grid's
-cell menu and the Document view's value menu (right-click) list `WATCH_MENU` ("Watch on readout", for any
-sourced value) and `RULE_MENU`: "Add reference…", "Kind…", "Style…".
+cell menu and the Document view's value menu (right-click) build "Watch on readout" (any sourced value), "Add
+reference…", "Kind…" and "Style…" from these commands with `commandItem(id, label?)` (`commands/menuItems.ts`),
+so the menu, the key and the palette share one definition. A `MenuItem` with `command` shows that command's key
+on the right while its scope is active (`ContextMenu`, following the user's rebinding).
+
+**Row commands** (`commands/rows.ts`, `ROW_COMMANDS`) act on the selected grid cell, read from the store
+(`selectedCell`), never from the focus, so they also run from the palette and the cell menu (which selects the
+cell before it opens):
+
+| Command | Key | Does |
+|---|---|---|
+| `row.delete` | ⌘⌫ | queues `deleteRow` for the selected row of a table tab (`rowTarget()`: a single-column key); on a row already pending deletion it discards that plan |
+| `row.duplicate` | ⌘D | queues `duplicateRow` |
+| `value.setNull` | ⌘⇧⌫ | pins the tab and queues `setCell` with `NULL` for the selected cell |
+| `row.openObject` | | opens the row as an object tab |
+| `row.copyTsv`, `row.copyJson`, `grid.copyAllTsv`, `grid.copyAllJson` | | copy the selected row or every row of the selected cell's grid (scope `db`, so query results too); `ResultsGrid` registers its rows by result with `useGridRows` (`commands/gridRows.ts`) |
+
+The three keyed commands are `skipInText` and have no native menu item, since a ⌘⌫ accelerator would take
+the key from text fields. The table tab's row menu is `commandItem("row.openObject")`, `row.duplicate` and
+`row.delete`.
 
 `ValueTree` takes `onWatch(path)`: a right-click on a node (a line, or one pair of an inline line) opens a menu
 with "Watch on readout" for that node's keys from the root (the tree's `labels`; the root line is the whole
