@@ -384,6 +384,28 @@ mod tests {
         (release, debug)
     }
 
+    #[test]
+    fn version_is_the_same_in_cargo_tauri_config_and_package_json() {
+        let (release, _) = configs();
+        let package: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../package.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        let cargo = env!("CARGO_PKG_VERSION");
+
+        assert_eq!(release["version"], serde_json::json!(cargo), "tauri.conf.json");
+        assert_eq!(package["version"], serde_json::json!(cargo), "package.json");
+        let parts: Vec<&str> = cargo.split('.').collect();
+        assert!(
+            parts.len() == 3
+                && parts
+                    .iter()
+                    .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit())),
+            "{cargo}"
+        );
+    }
+
     fn this_build() -> serde_json::Value {
         let (release, debug) = configs();
         if cfg!(debug_assertions) {

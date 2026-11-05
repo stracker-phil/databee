@@ -2,12 +2,13 @@
 # Installs the release build as the one DataBee of this machine: ~/Applications/DataBee.app links to it and
 # the `databee` command links through that app. A running release app restarts on it, its window shown or hidden
 # as before; a debug app keeps running.
-# `bun run release` ends here; debug builds are never installed (scripts/dev/launch.sh runs them by path).
+# scripts/release.sh runs this before it commits and tags the version; debug builds are never installed
+# (scripts/dev/launch.sh runs them by path).
 # Usage: scripts/install.sh [--replace-cli]   (--replace-cli replaces a `databee` command that is not this link)
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 APP="$ROOT/src-tauri/target/release/bundle/macos/DataBee.app"
-[[ -d "$APP" ]] || { echo "Not found: $APP (run 'bun run release')"; exit 1; }
+[[ -d "$APP" ]] || { echo "Not found: $APP (run 'bun run release patch')"; exit 1; }
 LINK="$HOME/Applications/DataBee.app"
 
 running() { pgrep -lf 'DataBee\.app/Contents/MacOS/databee( |$)' | grep -vq ' mcp$'; }

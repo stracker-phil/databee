@@ -97,7 +97,7 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 
 The store is available as `window.databee` in the debug bundle: `bun run build:app` sets
 `VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build
-(`bun run release`) has no `window.databee`; `bun run build` builds the frontend only.
+(`bun run release major|minor|patch`, [ADR 0038](adr/0038-every-release-gets-a-new-version.md)) has no `window.databee`; `bun run build` builds the frontend only.
 
 ```sh
 scripts/dev/js.sh 'databee.getState().openDialog({type:"settings", page:"shortcuts"})'
