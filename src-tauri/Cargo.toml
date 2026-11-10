@@ -48,6 +48,14 @@ rmcp = { version = "3.5.0", features = ["server", "transport-io", "macros", "sch
 # Exposes test doubles (`MemoryStore`) to integration tests.
 test-util = []
 
+# Debug builds keep file and line numbers for backtraces, not full debug info; dependencies keep none. This
+# shrinks target/ by more than half (scripts/clean-build.sh removes what is left over).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 codegen-units = 1
 lto = true

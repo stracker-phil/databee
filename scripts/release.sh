@@ -43,3 +43,4 @@ git add -- "${FILES[@]}"
 git commit -q -m "Release $NEXT"
 git tag "v$NEXT"
 echo "Released $NEXT (commit and tag v$NEXT, not pushed)"
+scripts/clean-build.sh
