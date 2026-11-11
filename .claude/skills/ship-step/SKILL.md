@@ -26,9 +26,9 @@ description: Finish a development step in DataBee - clean up and review the code
 6. Stage the step's files by path (check `git status` for stray files), then commit following
    `.claude/rules/commits.md`. Never push.
 7. Choose the bump from `git log v<last>..HEAD` (`git describe --tags --abbrev=0` names the last; with no
-   tag yet, release `1.0.0`) per ADR 0038: major if existing use breaks, minor for new features or visible
-   behavior, patch otherwise. Run `bun run release major|minor|patch` (or `bun run release 1.0.0`; in the
-   background, it takes minutes): `scripts/install.sh` installs the release build as
+   tag yet, release `1.0.0`) per ADR 0038 and 0039: minor for new features, visible behavior and changes
+   that break existing use, patch otherwise. Major only with the owner's explicit approval, asked first.
+   Run `bun run release major|minor|patch` (or `bun run release 1.0.0`; in the background, it takes minutes): `scripts/install.sh` installs the release build as
    `~/Applications/DataBee.app` and `databee`, and restarts the release app if it runs, so the user's app
    always matches the last commit; then the script commits "Release X.Y.Z" and tags `vX.Y.Z` (never pushed).
 8. Report to the user: what changed, the `ci` summary, open review questions, that the debug app was checked and

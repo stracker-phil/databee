@@ -30,7 +30,7 @@ git clone https://github.com/stracker-phil/databee.git
 cd databee
 bun install
 bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/DataBee (Debug).app
-bun run release patch    # next version (major|minor|patch, ADR 0038); release bundle, installed for the user (below)
+bun run release patch    # next version (major|minor|patch, ADR 0038 and 0039); release bundle, installed for the user (below)
 ```
 
 The first Rust build takes several minutes. `bun run release` ends with `scripts/install.sh`: it links
