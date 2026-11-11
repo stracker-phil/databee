@@ -34,7 +34,7 @@ Ideas not built yet. Not ordered by priority. Shipped features are in the [READM
 - Export results (CSV/JSON/SQL), and import.
 - SSH tunnels (staging databases), e.g. via `russh`.
 - Stream large results over `tauri::ipc::Channel` instead of one JSON payload.
-- Multiple windows; query plan (EXPLAIN) view.
+- Multiple main windows (Settings already has its own); query plan (EXPLAIN) view.
 
 ## Presets
 - Taxonomies resolved by name (`product_cat: [Mugs, Sale]`).

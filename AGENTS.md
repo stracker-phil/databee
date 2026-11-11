@@ -12,7 +12,8 @@ As shipped it builds and runs on **macOS on Apple Silicon** only; everything els
   code, and the page of the layer you touch ([docs/README.md](docs/README.md) is the index).
 - [CLAUDE.md](CLAUDE.md) and [.claude/rules/](.claude/rules/) are the maintainer's conventions (tests,
   commits, presets). Follow them in this repo; in a fork, keep what serves you.
-- IPC types in `src/api/types.gen.ts` are generated from Rust with ts-rs (`bun run types`); never edit them.
+- IPC types in `src/api/types.gen.ts` and `src/stage/types.gen.ts` and the command catalog `src/commands/catalog.gen.json`
+  are generated from Rust (`bun run types`); never edit them. Commands are defined in `src-tauri/src/bus/catalog.rs`.
 
 ## Prerequisites (macOS)
 
@@ -30,14 +31,15 @@ git clone https://github.com/stracker-phil/databee.git
 cd databee
 bun install
 bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/DataBee (Debug).app
-bun run release patch    # next version (major|minor|patch, ADR 0038 and 0039); release bundle, installed for the user (below)
+bun run release patch    # next version (major|minor|patch|X.Y.Z, ADR 0038 and 0039); release bundle, installed for the user (below)
 ```
 
-The first Rust build takes several minutes. `bun run release` ends with `scripts/install.sh`: it links
+The first Rust build takes several minutes. `bun run release` needs a clean working tree and runs `scripts/install.sh`
+after the build: it links
 `~/Applications/DataBee.app` to the release bundle and `~/.local/bin/databee` through that app, and restarts
 a running release app on the new build. Then it commits the version as "Release X.Y.Z" and tags `vX.Y.Z` (never
-pushed); a failed build puts the version back. Debug builds are never installed; `scripts/dev/launch.sh` runs one by its
-path, beside the release app: it has its own data and starts with the Docker fixtures as connections. Builds are signed with an Apple Development certificate when the Mac has one (a free Apple ID in Xcode), so the Keychain trusts every release build after one "Always Allow"; without one, run `scripts/create-signing-cert.sh` once, and each new build asks once for saved
+pushed), and `scripts/clean-build.sh` trims `src-tauri/target/`; a failed build puts the version back. Debug builds are never installed; `scripts/dev/launch.sh` runs one by its
+path, beside the release app: it has its own data and starts with the Docker fixtures as connections. Builds are signed with the hardened runtime and an Apple Development certificate when the Mac has one (a free Apple ID in Xcode), so the Keychain trusts every release build after one "Always Allow"; without one, run `scripts/create-signing-cert.sh` once, and each new build asks once for saved
 passwords.
 
 ## Verify
@@ -45,7 +47,7 @@ passwords.
 | Command | Expect |
 |---|---|
 | `bun run test` | Vitest and Rust unit tests pass |
-| `bun run lint` | exits 0: types drift check, `tsc`, ESLint, `clippy -D warnings` |
+| `bun run lint` | exits 0: generated types and catalog drift check, `tsc`, ESLint, `clippy -D warnings` |
 | `bun run test:db` | starts MariaDB 11.4 (`127.0.0.1:33306`) and MySQL 8.4 (`127.0.0.1:33307`), user `root`, password `root`, seeded from `dev/fixture.sql`; the integration tests pass |
 
 Try the app against the fixtures: `scripts/dev/launch.sh mysql://root:root@127.0.0.1:33306/wp_write`, and quit it with
@@ -61,7 +63,8 @@ secret store, remove Stage or the presets) and when a port counts as done.
 
 Starting points for common requests:
 - **Linux:** replace the Keychain with the `keyring` crate, move the config dir to `dirs::config_dir()`,
-  map `Mod` to Ctrl, drop the macOS window chrome and traffic-light padding, add `deb`/`appimage` targets.
+  map `Mod` to Ctrl, drop the macOS window chrome and traffic-light padding, quit on close (there is no Dock
+  icon to show a hidden window again), add `deb`/`appimage` targets.
   The Unix socket handoff works as is.
 - **Windows 10/11:** as Linux, plus a named pipe instead of the Unix socket and `#[cfg(unix)]` around file
   permissions. Windows 8 and older cannot run it: Tauri 2 needs the WebView2 runtime, which no longer

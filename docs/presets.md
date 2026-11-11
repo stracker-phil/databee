@@ -20,7 +20,7 @@ sources feed the palette.
 | Source | Location | Notes |
 |---|---|---|
 | Built-in | `src-tauri/presets/*.toml`, compiled in (`rules::catalog::BUILT_IN`) | `wordpress`, `woocommerce`, `action-scheduler` ([Built-in presets](#built-in-presets)) |
-| User | `~/Library/Application Support/com.philippstracker.databee/presets/*.toml` | reread when a file is added, removed or saved |
+| User | `~/Library/Application Support/com.philippstracker.databee/presets/*.toml` (the debug build: `…databee.debug/presets/`, [ADR 0028](adr/0028-debug-build-is-a-separate-app-with-demo-data.md)) | reread when a file is added, removed or saved |
 
 - A user preset whose `name` equals a built-in's **replaces** that built-in.
 - Two user files with the same `name`: the second (by file name) is listed with an error and does not load.

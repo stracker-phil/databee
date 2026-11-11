@@ -10,7 +10,7 @@ out of the main context ([`.claude/rules/testing.md`](../.claude/rules/testing.m
 |---|---|
 | `bun run test` | Vitest UI tests (`test:ui`), then the Rust unit tests (`test:rust`) |
 | `bun run test:db` | recreates the Docker fixtures, then `cargo test -- --ignored --skip real_data` (integration tests only, in `tests/` and in modules; the real-data tests are left out) |
-| `bun run lint` | regenerates the IPC types (`types`: the ts-rs `export_bindings` tests) and fails when `src/api/types.gen.ts` or `src/stage/types.gen.ts` changed, then `tsc --noEmit` (app and tests), `eslint .` (`eslint.config.js`: `@eslint/js` and type-checked `typescript-eslint` recommended plus `react-hooks/rules-of-hooks` and `exhaustive-deps`, no style rules; test files and `apiMock.ts` turn off the `no-unsafe-*`, `unbound-method` and `require-await` rules that fight mocks) and `cargo clippy --lib --bins -- -D warnings` (production code only; test code is compiled by `cargo test` but not linted, because tests deliberately use `unwrap`, clones and odd inputs) |
+| `bun run lint` | regenerates the IPC types and the command catalog (`types`: the `export_bindings` tests) and fails when `src/api/types.gen.ts`, `src/stage/types.gen.ts` or `src/commands/catalog.gen.json` changed, then `tsc --noEmit` (app and tests), `eslint .` (`eslint.config.js`: `@eslint/js` and type-checked `typescript-eslint` recommended plus `react-hooks/rules-of-hooks` and `exhaustive-deps`, no style rules; test files and `apiMock.ts` turn off the `no-unsafe-*`, `unbound-method` and `require-await` rules that fight mocks) and `cargo clippy --lib --bins -- -D warnings` (production code only; test code is compiled by `cargo test` but not linted, because tests deliberately use `unwrap`, clones and odd inputs) |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | Rust formatting (run before lint) |
 
 The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules/testing.md):
@@ -26,8 +26,8 @@ The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules
 - **Integration tests** need a server, so every one is `#[ignore]`. The core's live in `src-tauri/tests/` and use
   the public `databee_lib` API; a module's live inside the module, so they are deleted with it. The fixture
   helpers (`servers`, `spec`, `connect_to`, `sessions`, and `Counting`, a `Database` wrapper whose
-  `StatementLog` lists what reached the server) are in `src/test_support.rs`, compiled with `cfg(test)`
-  or the `test-util` feature; `tests/common/mod.rs` re-exports them for the test binaries.
+  `StatementLog` lists what reached the server) are in `src/test_support.rs`, compiled with `cfg(test)`,
+  the `test-util` feature or into debug builds (which take `demo_connections` from it); `tests/common/mod.rs` re-exports them for the test binaries.
 
   | File | Needs | Run alone |
   |---|---|---|
@@ -101,7 +101,7 @@ The store is available as `window.databee` in the debug bundle: `bun run build:a
 (`bun run release major|minor|patch`, [ADR 0038](adr/0038-every-release-gets-a-new-version.md), [ADR 0039](adr/0039-a-major-version-needs-the-owners-approval.md)) has no `window.databee`; `bun run build` builds the frontend only.
 
 ```sh
-scripts/dev/js.sh 'databee.getState().openDialog({type:"settings", page:"shortcuts"})'
+scripts/dev/js.sh 'databee.getState().openSettings("shortcuts")'
 scripts/dev/js.sh 'databee.getState().openTableTab("wp_test", "wp_options")'
 ```
 

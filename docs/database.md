@@ -25,17 +25,17 @@ in `src-tauri/src/db_commands.rs`.
 | `db/narrow.rs` | `refusal` and `narrowed`: one more condition on a plain single-table `SELECT` ([Narrowing a query](#narrowing-a-query)) |
 | `db/classify.rs` | What a statement is: `verb_index` (the deciding word, also after a `WITH` clause), `returns_rows`, `changes_schema` (a script with `CREATE`, `ALTER`, `DROP`, `RENAME` or `TRUNCATE`), and `is_read_only` (every statement is `SELECT`, `SHOW`, `DESCRIBE`/`DESC`, `EXPLAIN` or `WITH … SELECT`; refuses `SELECT … INTO`, `FOR UPDATE`/`FOR SHARE`/`LOCK IN SHARE MODE`, `EXPLAIN ANALYZE` of a non-read, `CALL`, `SET`, `HANDLER` and every other verb, naming the statement and why; functions called by a `SELECT` are not inspected) |
 | `db/safety.rs` | `destructive_reason` (which statements need confirmation) |
-| `db/changes.rs` | `ChangeRequest` (`setCell`, `deleteRow`, `duplicateRow`, `insertRow`, `addRow`) and `plan`, which reads the current values and builds a `Plan { description, statements, undo }`; the reinsert helpers the undo of a delete uses |
+| `db/changes.rs` | `ChangeRequest` (`setCell`, `deleteRow`, `duplicateRow`, `insertRow`, `addRow`) and `plan`, which reads the current values and builds a `Plan { description, statements, undo }`; `touched_rows` (`PlannedRow`, `RowEffect`); the reinsert helpers the undo of a delete uses |
 | `db/where_changes.rs` | `plan_update` and `plan_delete` for the rows a condition selects (`RowsUpdate`, `RowsDelete`; actions): the rows are read first, the statements name their keys, the undo restores each row; more than `MAX_ROWS` (10,000) is refused |
-| `db/plans.rs` | `Plans` (`Session.plans`): planned changes kept by id until applied or discarded (`PlannedChange`), and the last `MAX_BATCHES` (20) applied batches with their undo statements (`AppliedBatch`) |
+| `db/plans.rs` | `Plans` (`Session.plans`): planned changes kept by id until applied or discarded (`PlannedChange`, with the rows it touches: `add_touching`), and the last `MAX_BATCHES` (20) applied batches with their undo statements (`AppliedBatch`) |
 | `db/cell.rs` | `Cell`: decodes text-protocol bytes by column `Family`, computed once per result set from the type name; `CellLimit` cuts long text to a preview |
 | `db/cell_cache.rs` | `CellCache`: numbers result sets per session and keeps the full text of their `LongText` cells for `fetch_cell` |
 | `db/id_filter.rs` | Primary-key shorthand in the WHERE field: `3229`, `3229, 3227`, `3220-3229` |
 
 Outside `db/`:
 - `connection.rs` has `ConnectionSpec` and `Secret`.
-- `session.rs` has `Session { id, spec, db: Box<dyn Database>, health, ext, plans, cells }` and the `Sessions`
-  map. `Session::ddl_writes()` counts user scripts with DDL. `db` is the engine behind `health::Guarded` and `health`
+- `session.rs` has `Session { id, spec, db: Box<dyn Database>, health, ext, plans, cells }` (plus its connection
+  `slug` and the `ddl_writes` counter) and the `Sessions` map. `Session::ddl_writes()` counts user scripts with DDL. `db` is the engine behind `health::Guarded` and `health`
   its `SessionHealth` ([Connection health](#connection-health)). `ext` is a
   type-keyed `Extensions` map where a module keeps per-session data that dies with the session
   ([ADR 0013](adr/0013-session-extensions.md)); the rules keep their effective-rules cache there, the core its
@@ -438,8 +438,7 @@ apply by id, undo by batch; the page never sends SQL to execute ([ADR 0012](adr/
    `insertRow` or `addRow`. Documents use the same requests on a value's provenance row (see
    [architecture.md](architecture.md#documents)).
 2. `plan_change` plans it (`db::changes::plan`): each variant fetches what it needs (the current row, the
-   structure), then a pure `build_*` function turns that into a `Plan { database, description, statements,
-   undo }`. A `setCell`, `deleteRow` or `duplicateRow` requires the key to match **exactly one row**. For
+   structure), then a pure `build_*` function turns that into a `Plan { description, statements, undo }`. A `setCell`, `deleteRow` or `duplicateRow` requires the key to match **exactly one row**. For
    `setCell` the undo restores the old value; for `deleteRow` it reinserts the row without its generated
    columns (and the description warns when a zero date would be reinserted, which fails under `NO_ZERO_DATE`).
    A row with binary cells can't be reinserted, because only a preview of its bytes is known, so it has no
@@ -512,7 +511,6 @@ along with its `SELECT`. Unit tests count with `FakeDatabase::queries()`.
 | `palette_search` | `#4711` | 35 | 43 |
 | `palette_search` | `=sandbox` | 28 | 16 |
 | `readout` | `wp_test` | 19 | 20 |
-
 | `readout` | `wp_test` with two watched `wp_options` | – | 21 |
 | `reference_coverage` | each of the 40 references of the Project page | 43 | 43 |
 

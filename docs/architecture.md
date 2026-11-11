@@ -45,10 +45,12 @@ These rules hold everywhere in the code. Keep them when you change things.
 │  │ commands/ (registry) │ ◀────────── │  readout/     stage/cmds  │  │
 │  │ api/index.ts, api.ts │   events    ├───────────────────────────┤  │
 │  └──────────────────────┘ launch,     │ AppState: stores, sessions│  │
-│                           command,    │ db/ (dyn Database)        │  │
-│                           remote,     │ rules/      store/ (JSON) │  │
-│                           session_    │ secrets (Keychain)        │  │
-│                           health,     │                           │  │
+│                           page_       │ db/ (dyn Database)        │  │
+│                           command,    │ rules/      store/ (JSON) │  │
+│                           remote,     │ secrets (Keychain)        │  │
+│                           session_    │ bus/ (command catalog)    │  │
+│                           health,     │ window/ (main, Settings)  │  │
+│                           settings_*, │                           │  │
 │                           stage:*     │                           │  │
 │                                       └──────┬───────┬────────┬───┘  │
 └──────────────────────────────────────────────┼───────┼────────┼──────┘
@@ -57,6 +59,12 @@ These rules hold everywhere in the code. Keep them when you change things.
                                                 MySQL/MariaDB   Stage presenter app
 ```
 
+- **Two windows.** `main` is declared in `tauri.conf.json`; Settings is built on first use by `window/settings.rs`
+  from `src/windows/settings/index.html` ([ADR 0031](adr/0031-settings-is-a-window-of-its-own.md)). Closing
+  either hides it; only Quit ends the app ([ADR 0037](adr/0037-closing-the-window-keeps-the-app-running.md)).
+- **Two builds.** The debug build is a separate app ("DataBee (Debug)", its own identifier, config dir, socket,
+  link scheme and Stage port) that starts on demo data with passwords in memory
+  ([ADR 0028](adr/0028-debug-build-is-a-separate-app-with-demo-data.md)).
 - **One instance.** The first `databee` process binds a Unix socket in the config directory. Later launches,
   such as `databee mysql://…` from a script, send their parsed request over that socket and exit
   ([backend: CLI and IPC](backend.md#cli-and-single-instance-handoff)).
@@ -64,8 +72,8 @@ These rules hold everywhere in the code. Keep them when you change things.
   page calls `take_launch_events`. The page can't miss the initial request even though it subscribes late.
 - **Every command is in one Rust catalog** (`bus/catalog.rs`, [ADR 0036](adr/0036-commands-live-in-a-rust-catalog.md)):
   id, title, scope, default key, menu item and where it runs. The menu, `keybindings.json`, the CLI, MCP and the
-  page (`src/commands/catalog.gen.json`) read it. Rust commands (Settings, zoom) run in `bus/` even with the
-  window hidden; page commands run in the page (`page_command` events from the menu, `pageCommand` requests
+  page (`src/commands/catalog.gen.json`) read it. Rust commands (Settings, hide window, zoom) run in `bus/` even
+  with the window hidden; page commands run in the page (`page_command` events from the menu, `pageCommand` requests
   from the CLI and MCP).
 - **The Stage hook** is an optional local HTTP API through which a presenter app drives the UI
   ([stage.md](stage.md)).
@@ -113,18 +121,20 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/secrets/             SecretStore trait; Keychain (release) and MemoryStore (debug builds, tests)
   src/bus/                 the command catalog and bus: runs commands by id for the menu, page, CLI and MCP
   src/menu.rs              native menu, built from the catalog
-  src/window/              window theme, bring-to-front, the Settings window, the navigation guard
+  src/window/              window theme, hide on close, bring-to-front, the Settings window, the navigation guard
   src/error.rs connection.rs  AppError, ConnectionSpec, Secret
   src/lock.rs              poison-tolerant std lock access
   presets/                 built-in presets: wordpress, woocommerce, action-scheduler (docs/presets.md)
   tests/                   integration tests of the database layer (Docker, #[ignore]): mysql.rs, changes.rs,
                            sql_mode.rs, health.rs; the others sit next to their module
-  tauri.conf.json          window, bundle and identifier config
+  tauri.conf.json          main window, CSP, bundle and identifier config
+  tauri.debug.conf.json    the debug build's name, identifier and link scheme (ADR 0028)
+  capabilities/            permissions of the main and Settings windows (default.json, stage.json)
 src/                       React app
   main.tsx modules.ts       boot; the install list (core, then one line per module)
   api/                     the core's IPC file (index.ts) + types generated from Rust (ts-rs)
   state/                   zustand store: store.ts (composition root), slices/, selectors
-  commands/                command registry, scopes, default shortcuts
+  commands/                command registry, scopes, handlers; catalog.gen.json (written from bus/catalog.rs)
   registry/                extension points modules register into (settingsPages.ts)
   components/              UI; components/readout/ the home page, components/settings/ the Settings pages
   windows/settings/        the Settings window's entry (index.html, main.tsx, SettingsApp.tsx)
@@ -134,7 +144,7 @@ src/                       React app
   assets/fonts/            bundled Geist and JetBrains Mono (OFL)
   test/                    api mock (apiMock.ts), fixtures, the IPC boundary test
 dev/                       Docker fixtures for integration tests
-scripts/                   install links; dev/ drives the app headlessly
+scripts/                   release, install, signing, stop-app; dev/ drives the debug app in the background
 .claude/                   rules and the ship-step skill for Claude Code
 ```
 
@@ -144,9 +154,10 @@ A module is an optional capability (Stage) that the core works without. It keeps
 code in its own folder and contributes to the core only through registries, so removing it is deleting the
 folder and its install line. The core never imports a module; modules import the core.
 
-- **Frontend.** `src/modules.ts` is the install list: `installModules()` runs the core's install, then one
-  call per module (`installStage()` from `src/stage/install.ts`), then `installCommands()`. `main.tsx` calls it once before the first
-  render. The registries a module can add to:
+- **Frontend.** `src/modules.ts` is the install list: `installModules(window)` runs the core's install
+  (`registerCoreSettingsPages()`), then one call per module (`installStage(window)` from `src/stage/install.ts`),
+  then `installCommands()`. Each window calls it once before the first render: `main.tsx` for `main`,
+  `src/windows/settings/main.tsx` with `"settings"`. The registries a module can add to:
   - store slices: `registerSlice(slice)` in `src/state/store.ts`, typed by augmenting `Store`;
   - Settings pages: `registerSettingsPage(page)` in `src/registry/settingsPages.ts`;
   - command scopes: `registerScope(def)` in `src/commands/scopes.ts`.
@@ -425,8 +436,9 @@ Running `SELECT * FROM wp_options` in a query tab:
    `confirmation_required`, the store opens a confirm dialog and re-runs with `confirmed = true`.
 6. `ResultsGrid` renders the last result set, virtualized.
 
-Editing a cell is a separate round trip. `queueChange` calls `plan_change`, which reads the current value and
-returns `{description, statements, undo}`. The plan appears in the pending tray, and ⌘S calls
+Editing a cell is a separate round trip. `queueChange` calls `plan_change`, which reads the current value,
+keeps the plan in the session and returns a `PlannedChange {id, description, statements, canUndo, rows}`
+(`rows`: the existing rows it touches, which the grid marks as pending). The plan appears in the pending tray, and ⌘S calls
 `apply_changes`, which runs every pending statement in one transaction. Undo replays the `undo` statements.
 
 ## Platform

@@ -27,7 +27,8 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
    1. `loadSettings()` loads settings and keybindings. `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch requests (`take_launch_events`) into
       `handleLaunchEvents` (`session` slice). `loadAccents()` loads the databases' accents.
-   2. It subscribes to `launch` (drain again), `command` (menu clicks → `runMenuCommand`), `remote`
+   2. It subscribes to `settings_changed` (load settings again, then `setOverrides`), `settings_shown`
+      (`setSettingsShown`), `launch` (drain again), `page_command` (menu clicks → `runMenuCommand`), `remote`
       (requests from `databee open` / `databee command` → `answerRemote` in `src/commands/remote.ts`, which
       always replies with `remoteReply`) and `session_health` (`setHealth`, see [Connection health](#connection-health)).
    3. It adds a capture-phase `keydown` → `handleKeydown`, `error` / `unhandledrejection` → error toast,
@@ -109,7 +110,8 @@ and the state types, so components import everything from `state/store`.
 | `schema` | per session: databases and tables per database |
 | `structures` | `describeTable` replies by `session/database/table`, tagged with the `dataVersion` they belong to (`loadStructure`, `selectStructure`) |
 | `readouts` | `readout` replies by `session/database`, tagged with their `dataVersion` (`loadReadout`, `openReadout`; `watchValue`, `unwatchValue` and `labelWatched` change the [watched values](#readout) and read a loaded readout again) |
-| `dialog` | one dialog at a time, as a discriminated union (settings, connect, password, confirm, prompt, insertRow, pin, shortcuts, snapshots, `action`: `{ address, action }` for the `ActionSheet`) |
+| `dialog` | one dialog at a time, as a discriminated union (connect, password, confirm, prompt, insertRow, pin, shortcuts, snapshots, `action`: `{ address, action }` for the `ActionSheet`) |
+| `settingsWindow` | `{ shown, page? }`: whether the Settings window shows (`setSettingsShown`, from Rust's `settings_shown`) and the page `openSettings` asked for last; the Stage hook reads it ([Settings pages](#settings-pages)) |
 | `pending`, `applied`, `applying` | plans Rust keeps (`PlannedChange`: id, description, statements for display, `canUndo`, the `rows` it touches); the last 20 applied batch ids, for undo (`dismissUndo` marks the newest `dismissed`: `PendingTray`'s × hides its undo until the next apply, `selectOffersUndo`, while the `changes.undo` command still works); an apply or undo is in flight |
 | `selectedCell` | `{ tabId, row, col, column, cell, source, value? }`, the selected grid cell of a tab (in an object tab: of its active column). `source` (`{ sessionId, resultId }`, `lib/cells.ts`) lets a value column and the value commands fetch a `longText` cell in full; `value` (set by grids) is the focused value of the status bar and the value commands |
 | `hover` | `{ src, table, linked, sidebar }` under the pointer (`setHover`, from `useValueHover`): a value's provenance, or a table link (`linked`: a sidebar row, a section band); the status bar shows `src`, the linked table highlight reads `table` |
@@ -117,7 +119,7 @@ and the state types, so components import everything from `state/store`.
 | `dataVersion` | bumped by ⌘R (`refreshView`, which first drops the session's schema cache with `refreshSchema`) and after apply or undo; views re-fetch when it changes |
 | `historyVersion` | bumped when `runQuery` finishes; the history panel reloads on change |
 | `trayFocusRequest` | bumped by `focusPendingTray()`; `PendingTray` focuses its Apply button (the status bar's `pending n` button uses it) |
-| `uiState` | per connection identity: column widths, pane sizes (the SQL editor), `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group (`selectCollapsedGroups` reads them) |
+| `uiState` | per connection identity: column widths, pane sizes (`PaneSize`: `sqlEditorHeight`, `valueColumnWidth`), `sidebarHidden` and `collapsedGroups` (`ui_state.json`); `toggleSidebar()` flips the active connection's flag, `toggleGroupCollapsed` an object group (`selectCollapsedGroups` reads them) |
 | `savedQueries` | by `session/database`: the `SavedEntry` list of `saved_queries` (`loadSavedQueries`, read on every palette opening) |
 | `health` | sessions whose connection is lost (`LostHealth`: Rust's `down` or `reconnecting` `Health`) by session id; a session that is not here is ok (`health` slice, [Connection health](#connection-health)) |
 | `sidebarPanel` | `tables` or `history`, the sidebar's switch (`setSidebarPanel`) |
@@ -166,8 +168,9 @@ Conventions:
   and returns focus to the opener on close unless the closing action focused something else. It handles
   Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]`
   pass through). The palette renders inside `Modal` too. Every context menu is `ContextMenu.tsx`: callers build
-  `MenuEntry[]` (items `MenuItem` `{ label, action, disabled?, title?, detail? }`, `detail` a second line in
-  `.menu-detail`, used by `actionMenu`; and `"separator"`) and call `open(anchor, entries)`
+  `MenuEntry[]` (items `MenuItem` `{ label, action, disabled?, title?, detail?, command? }`, `detail` a second
+  line in `.menu-detail`, used by `actionMenu`, `command` the command whose key shows on the right; and
+  `"separator"`) and call `open(anchor, entries)`
   from `useContextMenu()`, rendering its `element`; the anchor is a pointer event (its default menu is
   suppressed) or a point. The menu portals into `document.body`, so it never inherits the font of the grid or
   document it opened from, and `.menu` in `app.css` sets the UI font itself. It focuses its first item, moves
@@ -178,8 +181,8 @@ Conventions:
 - In-flight guard: `applyChanges` and `undoLast` return early while `applying` is set; they set it before
   the first `await` and clear it in `finally`. `PendingTray` disables Apply and Undo meanwhile. `runQuery`
   refuses a tab that is already `running`.
-- Selection: `selectCell` tags the cell with the active tab. `clearSelectionFor(state, tabId)` drops it when
-  its tab closes or is left (`activate`); a `dataVersion` bump (`bumpData`) clears it outright.
+- Selection: `selectCell` tags the cell with the active tab. It is dropped when its tab closes (`closeTab`) or
+  is left (`activate`); a `dataVersion` bump (`bumpData`) clears it outright.
 - `disconnect(sessionId)` closes the session in Rust, then applies one `set` that merges every registered
   slice's `sessionClosed` result: the session and the next active session (`session`), its schema and
   `structures` keys (`session`), its tabs, `queryCounter` and the selection if its tab was closed (`tabs`),
@@ -217,8 +220,10 @@ Every user action that has a shortcut or appears in the palette is a `Command` (
 { id, title, scope, defaultBinding?, when?, run, menu?, fallbackFor?, skipInText? }
 ```
 
-The core commands are `APP_COMMANDS` (`src/commands/index.ts`); their default bindings are listed in
-[ux.md](ux.md#keys).
+Every command is declared once in Rust's catalog (`CATALOG` in `src-tauri/src/bus/catalog.rs`, see Catalog
+below); the page adds the handlers, `APP_HANDLERS` in `src/commands/index.ts` plus the lists it spreads in
+(`VALUE_COMMANDS`, `ROW_COMMANDS`, `OBJECT_VALUE_COMMANDS`, `COLUMN_COMMANDS`, `LIVE_COMMANDS`). The default
+bindings are listed in [ux.md](ux.md#keys).
 
 - **Bindings** are strings like `Mod+Shift+K`, where `Mod` means ⌘. They are normalized to the order
   `Mod, Ctrl, Alt, Shift` and shown as `⌘⇧K`. A trailing `++` is the `+` key (`Mod+Shift++`).
@@ -237,7 +242,7 @@ The core commands are `APP_COMMANDS` (`src/commands/index.ts`); their default bi
 - **Keys.** `handleKeydown` runs in the capture phase, so app shortcuts beat CodeMirror and inputs. Inside text
   inputs, only `Mod`/`Ctrl` combinations and Escape fire, and not those of a `skipInText` command (the row
   commands' ⌘⌫, ⌘D, ⌘⇧⌫ edit text there). While a dialog or the palette is open, only the
-  commands in `MODAL_ALLOWED` (Settings toggle, the shortcut overview, zoom) run; other keys reach the overlay. Native menu items
+  commands in `MODAL_ALLOWED` (Settings, the shortcut overview, zoom) run; other keys reach the overlay. Native menu items
   go through `runMenuCommand`, which applies the same rule. Auto-repeated keydowns are swallowed unless the
   command is in `REPEATABLE` (zoom, back/forward, next/previous tab, the focus moves of the column stack). Keys inside a `[data-recording]`
   element (the Settings → Shortcuts recorder) are left alone, so already-bound combos can be recorded.
@@ -278,7 +283,8 @@ The core commands are `APP_COMMANDS` (`src/commands/index.ts`); their default bi
 - **Catalog.** Titles, scopes, default keys and menu items come from Rust's catalog
   (`src/commands/catalog.gen.json`, [backend.md](backend.md#command-catalog-and-bus)). The page's lists hold
   only handlers (`Handler`: `{id, when?, run}`); `catalogCommands` (`src/commands/catalog.ts`) merges them and
-  gives Rust-run commands (`settings.open`, zoom) a `run` that calls `api.runCommand`.
+  gives Rust-run commands (`settings.open`, zoom, `window.hide`) a `run` that calls `api.runCommand`;
+  `tabs.close` (⌘W) calls `window.hide` when no tab is open, so the window hides instead of closing.
 - **Menu.** Native menu items of page commands emit `page_command` with a command id; `runMenuCommand` runs
   that command, or the one whose `menu` names it, whose scope is active and whose `when()` passes
   (`databee command` uses it too for page commands). The movement keys of the column stack (J/K/H/L, arrows, ↵, ⎋) have no menu item. See
@@ -288,25 +294,27 @@ Some targets live inside a component, such as running the editor's statement or 
 Those commands dispatch window events (`databee:run-query`, `databee:focus-where`,
 `databee:focus-table-filter`), and the active component listens for them.
 
-Adding a command:
+Adding a command: declare it in Rust, then give it a page handler.
+
+```rust
+// src-tauri/src/bus/catalog.rs, in CATALOG
+page("tabs.duplicate", "Duplicate query tab", "editor")
+    .key("Mod+Shift+D"),
+```
 
 ```ts
-// src/commands/index.ts, in APP_COMMANDS
+// src/commands/index.ts, in APP_HANDLERS
 {
   id: "tabs.duplicate",
-  title: "Duplicate query tab",
-  scope: "editor",
-  defaultBinding: "Mod+Shift+D",
   when: () => selectActiveTab(useStore.getState())?.kind === "query",
-  run: () => {
-    const tab = selectActiveTab(useStore.getState());
-    if (tab?.kind === "query") useStore.getState().openQueryTab(tab.sql);
-  },
+  run: () => void withQueryTab((tab) => useStore.getState().openQueryTab(tab.sql)),
 },
 ```
 
-The command then appears in the palette, in Settings → Shortcuts and in the Stage command list. Test it with
-`installCommands(); runCommand("tabs.duplicate")`, or by sending its keys to a rendered `<App/>`.
+`bun run types` rewrites `catalog.gen.json`; `catalogCommands` throws on a page command without a handler and on
+a handler the catalog lacks. The command then appears in the palette, in Settings → Shortcuts and in the Stage
+command list (a native menu item also needs `.menu(…)` and a place in `menu.rs`). Test it with `installCommands(); runCommand("tabs.duplicate")`, or by
+sending its keys to a rendered `<App/>`.
 
 ## Components
 
@@ -515,7 +523,8 @@ Bare keys never fire in inputs or the editor (`resolveKeydown`).
 | `value.watch` | | watches the value's cell on the readout of the tab's database (`watchValue(source)`, the `readout` slice's `watchValue`); binary cells too, since the readout reads the cell itself |
 
 Binary cells offer none of `Y`, `e`, `f` and the rule commands, since their cell holds only a preview. The grid's
-cell menu and the Document view's value menu (right-click) build "Watch on readout" (any sourced value), "Add
+cell menu and the Document view's value menu (right-click) are one `cellMenu` (`grid/cellMenu.ts`; the Document
+view passes `commands: "object"` and the value's group as its rows); it builds "Watch on readout" (any sourced value), "Add
 reference…", "Kind…" and "Style…" from these commands with `commandItem(id, label?)` (`commands/menuItems.ts`),
 so the menu, the key and the palette share one definition. A `MenuItem` with `command` shows that command's key
 on the right while its scope is active (`ContextMenu`, following the user's rebinding).
@@ -1155,7 +1164,7 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
   hairlines, shadows, the scrim, the accent hues `--a-*`, the value-style colors `--style-*` and the CodeMirror
   colors `--code-*`. `applyAppearance` sets `data-scheme` on `<html>` from `theme` (system, light or dark)
   and the `lightScheme` / `darkScheme` settings; `App.tsx` reapplies when macOS switches appearance. Rust
-  (`window.rs`) sets the native window theme from `theme`. The
+  (`window/mod.rs`) sets the native window theme from `theme`. The
   selector is not tied to `<html>`, so Settings previews a scheme inside a swatch. Adding a scheme: a new file
   in `styles/schemes/`, its import in `App.tsx`, its id in Rust's `SCHEMES` and in `SCHEMES` in
   `src/api/types.ts`.
@@ -1168,8 +1177,9 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
 - **Accent per database.** `data-accent` is the accent in effect, `selectEffectiveAccent` (`project` slice):
   the active session's current database's own accent, else `settings.accent` (also on the connect screen).
   `App.tsx` passes it to `applyAppearance(settings, systemDark, accent ?? settings.accent)`, so switching the session, the
-  database or the accent applies at once. The Settings window always shows `settings.accent`: `Modal`'s `accent`
-  sets `data-accent` on its sheet, and `theme.css` derives the accent tokens on any `[data-accent]` element. The project slice keeps `accents` by `accentKey(slug, database)`
+  database or the accent applies at once. The Settings window always shows `settings.accent`: `SettingsApp` calls
+  `applyAppearance(settings, systemDark)` without a database accent. `theme.css` derives the accent tokens on any
+  `[data-accent]` element (`Modal`'s optional `accent` sets one on its sheet). The project slice keeps `accents` by `accentKey(slug, database)`
   (`api.projectAccents`, loaded at startup and after `renameConnectionSlug`); every session of a connection
   shares them. `setAccent(sessionId, database, accent)` stores one through `api.projectSetAccent` and patches
   `accents`; nothing reloads. `selectDatabaseAccent(s, slug, database)` reads one. `components/Accent.tsx` has

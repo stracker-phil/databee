@@ -47,7 +47,7 @@ api act '{"kind":"keys","keys":"Enter","window":"palette"}'
 | `test_host.rs` | Tests only: `FakePage`, a host whose page answers like `hooks.ts`, and `hub_with` |
 | `mod.rs` | `init(config_dir)`, the inline Tauri plugin ([ADR 0010](adr/0010-inline-tauri-plugins.md)): commands, managed `Stage`, start on setup, stop on exit. `Stage`: start, stop and restart from its settings, `update_settings`, `rotate_token`, status for the settings page (including the register command), last request time |
 | `settings.rs` | `StageSettings` (enabled, port, token; `Debug` redacts the token) in `<config>/stage.json` through `StageStore` ([ADR 0016](adr/0016-module-settings-files.md)). `sanitized()` clamps the port and generates a token when it is empty (`new_token`: 32 random bytes as hex). `StageStore::open` takes the `stage` object of a legacy `settings.json` once, so a registered token survives the upgrade; it never writes `settings.json`. |
-| `commands.rs` | The plugin's commands (`plugin:stage|…`): `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_settings`, `stage_update_settings`, `stage_new_token`. `COMMANDS` must match `STAGE_COMMANDS` in `build.rs` (a test checks it); `capabilities/stage.json` grants them to the main window. |
+| `commands.rs` | The plugin's commands (`plugin:stage|…`): `stage_anchors`, `stage_done`, `stage_info` (the page's replies), `stage_status`, `stage_settings`, `stage_update_settings`, `stage_new_token`. `COMMANDS` must match `STAGE_COMMANDS` in `build.rs` (a test checks it); `capabilities/stage.json` grants them to the main and the Settings window. |
 
 The page side lives in `src/stage/`:
 
@@ -76,7 +76,8 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
 
 - **Windows.** `main` is the native window. The command palette is a sheet inside it; Settings is a native
   window of its own ([ADR 0031](adr/0031-settings-is-a-window-of-its-own.md)) that Stage opens and closes but
-  does not see into: no anchors, and while it shows its bounds cover the main page. The hook exposes both as
+  does not see into: no anchors, and while it shows its bounds cover the main page. The page learns whether it
+  shows from the `settings_shown` event. The hook exposes both as
   the windows `settings` and `palette`, with `movable: false`. `settings` lists its pages as `sections`; its
   `section` is the page it was last opened at from the main window. `main.view` reports the current view; `main.ui.valueColumn` and
   `main.ui.sidebar` report whether the active tab shows a value column and whether the database sidebar is
@@ -84,7 +85,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
   and view, plus `column n of m` when the stack holds several (and `maximized` while one pane is maximized).
 - **Anchors** are `data-stage` attributes, with optional `-label`, `-role` and `-list`. Ids follow the data
   where rows have stable ids. The list below names anchor families, not every id; `describe`
-  (`stage_describe`) returns the live set with labels. `:a|b` stands for the ids `:a` and `:b`.
+  returns the live set with labels. `:a|b` stands for the ids `:a` and `:b`.
   - connect screen: `connect:form`, `connect:name|host|port|user|password|database|socket-path`,
     `connect:tcp|socket` (the transport), `connect:connect`, `connect:recents` with `recent:<identity>` (list
     `recents`)
@@ -99,7 +100,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `structure:reference:<key>`, `structure:kind:<index or origin>:<scope>`, `structure:style:<id>`, each
     with `:switch` (where it can be switched) and `:<action>` buttons
   - query tabs: `editor`, `results`, `query:run|run-all|cancel|error|results-picker`
-  - dialogs: `dialog` (a plain modal), `<window>:sheet` (`settings:sheet`, `palette:sheet`, `rule-form:sheet`),
+  - dialogs: `dialog` (a plain modal), `<window>:sheet` (`palette:sheet`, `rule-form:sheet`),
     `dialog:confirm|cancel`
   - the pending changes tray: `tray`, `tray:apply|discard|undo`
   - object tabs: `object` (the panel), `object-header`, `object-actions` (the Actions button, only when the row has actions),
@@ -156,13 +157,12 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `hit:<address>` (a row hit; label `<table> #<key>`), `address:<address>`, `table:<name>`, `saved:<origin>:<id>` (a saved query), `cmd:<id>`,
     `recent:<title>`, and the switch items of ⌘⇧P (`components/palette/useSwitchItems.ts`)
     `connection:<identity>` and `database:<name>`; holding ⌥ shows the selected hit's `peek`
-  - `settings:<page>`, `settings-nav` with `settings-nav:<page>` (list `settings-nav`), `settings:close`,
-    `settings:slug:<identity>` (a connection's slug field)
-  - `queries:live-interval` on Settings → Queries
-  - `appearance:<control>` on Settings → Appearance (`theme`, `light-scheme`, `dark-scheme`, `row-padding`, `max-panes`,
+  - in the Settings window, which the hook does not collect (only `main` answers Stage), so `describe` does
+    not list them: `settings:<page>`, `settings-nav` with `settings-nav:<page>` (list `settings-nav`),
+    `settings:close`, `settings:slug:<identity>` (a connection's slug field), `queries:live-interval` on
+    Settings → Queries, and `appearance:<control>` on Settings → Appearance (`theme`, `light-scheme`, `dark-scheme`, `row-padding`, `max-panes`,
     `ui-size`, `data-size`, `font-ui`, `font-mono`); segment buttons add `:<option>`, accent swatches are
     `appearance:accent:<id>` (list `appearance:accent`)
-
   - `value:<table>.<column>:<key>` for values that act on click or reveal (primary keys, references, enums,
     serialized data, secrets) and have a provenance (list `values`; label: the raw value); the hover
     indicator of what a click does is decorative and no anchor
@@ -172,7 +172,7 @@ One verb, for example `act kind=click anchor=toolbar:settings`:
     `statusbar:sidebar` (the ▤ toggle), `statusbar:presets` (opens the Project page),
     `statusbar:pending`, `statusbar:live` (`● live 2 s` while the active column is live; a click ends it)
 
-  Sheets are marked with `data-stage-window`. Only `settings` and `palette` become Stage windows
+  Sheets are marked with `data-stage-window`. Only `palette` is a sheet that becomes a Stage window
   (`anchors.ts` `windowOf`); anchors in any other sheet report `main`.
 
   **Removed anchors.** These anchors, views and commands are gone; a presenter script that uses them needs

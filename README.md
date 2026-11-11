@@ -23,16 +23,19 @@ If you want it on your machine or your platform, point a coding agent at [AGENTS
   - run the statement at the cursor or the whole script;
   - cancel, timeout and row limit;
   - asks before `DROP`, `TRUNCATE` and unscoped `DELETE`/`UPDATE`.
-- **Results grid:** virtualized and typed, with inline editing. Copy cells or rows as TSV or JSON.
-- **Value column:** Enter on serialized data or long text opens it as a column with a tree of PHP-serialized
-  or JSON values, including serialized data nested in strings, whose leaves you can edit. Values with broken
-  string lengths are decoded leniently, with a warning. An open value column reads its value again when the data
+- **Results grid:** virtualized and typed, with inline editing. Delete, duplicate or set NULL by key, palette or
+  menu; rows and cells with pending changes are marked until you apply or discard them. Copy cells or rows as
+  TSV or JSON.
+- **Value column:** Enter on serialized data or long text opens it as a resizable column with a tree of
+  PHP-serialized or JSON values, including serialized data nested in strings, whose leaves you can edit. Values
+  with broken string lengths are decoded leniently, with a warning. An open value column reads its value again when the data
   changes (⌘R, an applied edit).
 - **Saved queries** (⌘S in a query tab, `q:` in the palette; pinned with Count or Rows), per-server **query
   history**, and a **⌘K command palette** for commands, tables, records, saved queries and recent items.
 - **Value counts** on every grid column (right-click its header): each stored value with its count; a click
   filters the table, or adds a `WHERE` to a plain single-table query.
 - **Passwords** live in the macOS Keychain and never in files or logs.
+- **Settings** in a window of their own, with search.
 - **Connection watch:** when DDEV or Docker stops, a warning next to the connection says since when and why;
   what is loaded stays readable, and Retry (or coming back to the window) reconnects without a password prompt,
   with the current database and session variables such as `sql_mode` restored. It also retries by itself
@@ -184,7 +187,7 @@ database, and project rules cannot be edited from MCP. An agent's answer can be 
 | ⌘F | WHERE filter | Table |
 | ⌃⌥X | Switch the WHERE filter between smart and SQL | Table |
 | ⌘⇧F | Filter tables | Database |
-| ⌘T / ⌘W | New query tab / close tab (hides the window when no tab is open) | Database |
+| ⌘T / ⌘W | New query tab / close tab (hides the window when no tab is open) | everywhere |
 | ⌃Tab / ⌃⇧Tab | Next / previous tab | Database |
 | ⌘↵ / ⇧⌘↵ | Run statement / run all | editor |
 | P | Pin the saved query (focus in the results) | editor |

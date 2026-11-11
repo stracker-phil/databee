@@ -283,7 +283,7 @@ disabled items `--o3`, separators a 1px `--line`. An item that runs a command sh
 
 - grid cell (`cellMenu` in `grid/cellMenu.ts`): Copy value; Edit value and Set to NULL when editable; for a
   sourced cell Watch on readout, Add reference…, Kind…, Style… (no rule items for binary); Copy row as TSV /
-  JSON; Copy all n rows as TSV / JSON; the row's actions;
+  JSON; Copy all n rows as TSV / JSON; in a table tab the row's commands (Open as object, Duplicate row ⌘D, Delete row ⌘⌫);
 - Document value (`DocumentView.tsx`): the grid cell's menu (`cellMenu` with `commands: "object"`, so the items
   show the `object.*` keys), its rows being the value's group;
 - sidebar table (`tableMenu` in `Sidebar.tsx`): Open data, Show structure, New query: SELECT …, Copy name.
@@ -641,8 +641,10 @@ separate tool.
 
 ## Keys
 
-Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`). Bare keys fire only in
-the `table` and `object` scopes (`commands/values.ts` for the value keys), never in inputs, the editor or dialogs. `Tab` is never bound: it moves the keyboard focus everywhere. The
+Defaults; every key is a rebindable command (Settings → Shortcuts, `keybindings.json`), declared with its
+default in Rust's command catalog (`bus/catalog.rs`, [ADR 0036](adr/0036-commands-live-in-a-rust-catalog.md)),
+which also gives the native menu items their keys. Bare keys fire only in
+the `table` and `object` scopes (`commands/values.ts` for the value keys; `p` also in a query tab's results), never in inputs, the editor or dialogs. `Tab` is never bound: it moves the keyboard focus everywhere. The
 column keys act only while the keyboard focus is in the stack (or nowhere), so the sidebar and the tab bar
 keep their arrow keys; the ⌘⌥ and ⌘⇧ pane keys act from anywhere in an object tab, except while text is edited. A key and its arrow are two commands (`object.down`, `object.downArrow`), each
 rebindable.

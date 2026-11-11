@@ -17,7 +17,7 @@ The page asks `decode_value` for the tree when a value is opened.
 ## PHP serialize
 
 `php.rs` round-trips exactly: `serialize(parse(x)) == x` for every value it accepts. The test suite checks
-this, and `every_serialized_meta_value_round_trips` (`mod real_data` in `src-tauri/src/document/server_tests.rs`) checks it against every serialized value in the `[[meta]]` tables of a real database. The parser:
+this, and `every_serialized_meta_value_round_trips` (`mod real_data` in `src-tauri/src/document/server_tests.rs`) checks it against every serialized value in the `[[meta]]` tables of the database `DATABEE_WP_TEST` names (an `#[ignore]` test run by name). The parser:
 
 - keeps **strings as bytes**, because `s:N` counts bytes; invalid UTF-8 is preserved;
 - keeps **floats as their source text**, accepting only PHP's float syntax (digits with optional sign,

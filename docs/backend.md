@@ -28,7 +28,7 @@ layer and the Stage hook each have their own page.
      sends it as a request and exits with its reply. With no instance running, `command` exits 2 ("DataBee
      is not running") and `open` starts the app with the open queued.
    - An error: it becomes `IpcMessage::Error`, and the app shows it.
-3. **Single-instance handoff.** `ipc::try_forward` sends the message to a running instance (see
+3. **Single-instance handoff.** `instance::forward` sends the message to a running instance with `ipc::try_forward` (see
    [below](#cli-and-single-instance-handoff)). Only when no instance listens does startup continue, after
    taking the instance lock (`instance::forward_or_lock`, `instance.rs`). Each build has its own socket and
    lock, in its own config dir ([ADR 0028](adr/0028-debug-build-is-a-separate-app-with-demo-data.md)). The handoff is custom (no `tauri-plugin-single-instance`).
@@ -40,16 +40,22 @@ layer and the Stage hook each have their own page.
 5. **`start_app`** builds Tauri, with `.manage(state)` as the first builder call so plugins can use it:
    - plugins: log (stdout plus a rotating file, 3 × 5 MiB; `sqlx` is capped at Warn so SQL text stays out of
      the log), `init_logging` (a one-line plugin that sets the effective level right after the log plugin's
-     setup, which sets `Trace` because its dispatch level caps every later change), opener, dialog and
-     deep-link;
-   - `on_menu_event` → `menu::forward`.
+     setup, which sets `Trace` because its dispatch level caps every later change), opener, dialog,
+     deep-link, the navigation guard (`window::navigation::guard`, [below](#content-security-policy)) and
+     Stage (`stage::init`, [Plugins](#plugins));
+   - `on_menu_event` → `bus::run_from_menu` ([Command catalog and bus](#command-catalog-and-bus));
+   - `on_window_event`: `CloseRequested` hides the window instead ([Windows and quitting](#windows-and-quitting));
+   - the run loop: `ExitRequested` without an exit code is prevented, `Reopen` brings the window back, `Exit`
+     flushes the history.
 
    Then `setup` runs:
    - It builds the native menu from the keybindings store.
    - It queues the initial launch request. The page pulls it later.
+   - It starts the history writer (`HistoryStore::start_writer`, [Persistence](#persistence)).
    - It calls `commands::apply_settings(app, None, &settings)`: window theme
      (`window::apply_window_theme`) and log level.
    - In debug builds `apply_dev_frame` applies `DATABEE_WINDOW_FRAME` (see [testing](testing.md#driving-the-app)).
+   - With `--hidden` it hides the main window (`window::hide_main`).
    - `start_ipc` binds the IPC socket and serves it in a task; every message goes to
      `launch::on_ipc_message`. A bind error is logged and the app runs without single-instance handoff.
    - `deep_link::listen` handles `databee://` links ([below](#deep-links)).
@@ -62,11 +68,18 @@ layer and the Stage hook each have their own page.
 
 `update_settings` and startup both call `commands::apply_settings(app, previous, saved)`. The decision is the
 pure `settings_effects(previous, saved, log_override)`: without `previous` everything applies; otherwise only
-what changed (theme, log level, Stage settings). A CLI `--log-level` wins for the app's lifetime, so a
-settings change never resets it.
+what changed (theme, log level). A CLI `--log-level` wins for the app's lifetime, so a settings change never
+resets it. Stage keeps its own settings and applies them itself ([stage.md](stage.md)). After a settings or
+keybindings change, `window::announce_settings` emits `settings_changed` to every window, so the main window
+and Settings both reload them.
 
-The window itself is declared in `tauri.conf.json`: label `main`, overlay title bar, transparent background
-with the `sidebar` vibrancy effect. No Rust code creates windows.
+The main window is declared in `tauri.conf.json`: label `main`, overlay title bar, transparent background
+with the `sidebar` vibrancy effect. The Settings window (label `settings`) is built in Rust on first use
+(`window/settings.rs`: `WebviewWindowBuilder` on `src/windows/settings/index.html?page=…`, created hidden,
+overlay title bar, [ADR 0031](adr/0031-settings-is-a-window-of-its-own.md)); `settings::open` shows it at a
+page (emitting `open_settings` to an open window) and `settings::hide` hides it and brings `main` forward.
+Both tell the main page `settings_shown` (`true` or `false`), for the Stage hook. `capabilities/default.json`
+and `capabilities/stage.json` grant both windows their permissions.
 
 ## AppState
 
@@ -91,7 +104,7 @@ the stores and open sessions.
 | `recent_objects` | `RecentObjectsStore` | `recent_objects.json` (rows opened per project, for the readout) |
 | `snapshots` | `SnapshotStore` | `snapshots/v2/` (snapshots of rows and saved queries, see [Watches and snapshots](#watches-and-snapshots)) |
 | `launches` | `LaunchQueue` | pending launch events and one-shot passwords by request id |
-| `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `Keychain` in the app, `MemoryStore` in tests (compiled only with `cfg(test)`) |
+| `secrets` | `Arc<dyn SecretStore>` | shared into blocking tasks (the Keychain may block on a dialog); `secrets::app_store()`: `Keychain` in release builds, `MemoryStore` with the demo passwords in debug builds; tests pass a `MemoryStore` |
 | `sessions` | `Sessions` | open database sessions (`RwLock<HashMap<id, Arc<Session>>>`) and the `broadcast` channel of their health changes (`health_events`) |
 | `connector` | `Arc<dyn db::Connector>` | opens database connections for `session::open`; `MySqlConnector` in the app, tests replace it |
 | `config_dir` | `PathBuf` | handed to the plugins in `start_app` |
@@ -122,7 +135,8 @@ use the same names in camelCase.
 
 | Module | Commands |
 |---|---|
-| `commands.rs` | `get_settings`, `update_settings` (sanitizes; restarts Stage and applies theme and log level), `get_keybindings`, `set_keybindings`, `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `choose_save_path(fileName, extension)` (the native save panel through `tauri-plugin-dialog`'s Rust API; the chosen path or `null`), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `rename_connection_slug` (`AppState::rename_connection`: validates and stores the slug in the saved connections, which fails the rename; renames the slug of open sessions of that connection; then moves its projects, recent objects and snapshots, where a failure is logged and leaves that store under the old slug), `list_history`, `clear_history` |
+| `commands.rs` | `get_settings`, `update_settings` (sanitizes, applies theme and log level, emits `settings_changed`), `get_keybindings`, `set_keybindings` (rebuilds the menu, emits `settings_changed`), `open_settings(page)` and `hide_settings` (the Settings window, see [Settings side effects](#settings-side-effects)), `get_ui_state`, `set_ui_state`, `open_log_folder`, `open_url` (http/https only, no credentials in the URL), `choose_save_path(fileName, extension)` (the native save panel through `tauri-plugin-dialog`'s Rust API; the chosen path or `null`), `take_launch_events`, `log_frontend_error` (truncated to 4 KiB, line breaks escaped), `list_recents`, `remove_recent` (also forgets that connection's UI state), `rename_connection_slug` (`AppState::rename_connection`: validates and stores the slug in the saved connections, which fails the rename; renames the slug of open sessions of that connection; then moves its projects, recent objects and snapshots, where a failure is logged and leaves that store under the old slug), `list_history`, `clear_history` |
+| `bus/mod.rs` | `run_command(id)`: runs a Rust command of the catalog for the page (a key or the palette; see [Command catalog and bus](#command-catalog-and-bus)) |
 | `remote.rs` | `remote_reply(id, result, error)` (the page's answer to a `remote` event, see [Requests the page answers](#requests-the-page-answers)) |
 | `db_commands.rs` | `connect` and `disconnect` (thin wrappers over `session::open` / `session::close`), `list_databases`, `list_tables`, `describe_table`, `refresh_schema` (see [Schema cache](database.md#schema-cache)), `completion_schema`, `use_database`, `execute`, `cancel_query`, `browse_table`, `table_select_sql(sessionId, database, table)` (the quoted `SELECT *` with the new-query limit that "New query" on a table starts with), `resolve_address` (see [Addresses](#addresses)), `table_references` (declared and inferred references from and to a table, see [database.md](database.md#references-and-kinds)), `fetch_cell` (the full text of a `longText` cell, see [database.md](database.md#cell-decoding)), `value_condition(sessionId, database, provenance, raw)` (a value as a SQL condition, `value::value_condition`; see [database.md](database.md#value-conditions)), `narrow_refusal(sql)` and `narrow_query(sessionId, sql, column, value)` (one more `column = value` on a plain single-table `SELECT`, `db::narrow`; see [database.md](database.md#narrowing-a-query)), and the write pipeline `plan_change`, `discard_change`, `apply_changes(ids)`, `undo_batch` (see [database.md](database.md#editing-rows)) |
 | `health/commands.rs` | `reconnect_session(sessionId)`: Retry; reconnects a `down` session with the password it holds and returns its `Health` (an `ok` or reconnecting session is left alone; see [Connection health](#connection-health)) |
@@ -166,10 +180,13 @@ the set and keeps the full text of its `longText` cells.
 | Event | Payload | Emitted when |
 |---|---|---|
 | `launch` | none | a second process handed over a request; the page then calls `take_launch_events` |
-| `command` | command id, e.g. `"tabs.new"` | a native menu item was clicked |
+| `page_command` | command id, e.g. `"tabs.new"` | a native menu item of a page command was clicked (to `main` only; `bus::run_from_menu`) |
 | `remote` | `RemoteEvent {id, request}` | another process asks the page (open, command, current); answered with `remote_reply` |
 | `stage:collect`, `stage:act`, `stage:info` | `{ request, … }` | a Stage request needs the page ([stage.md](stage.md)) |
 | `session_health` | `HealthEvent {sessionId, health}` | a session went `down`, is `reconnecting` or is `ok` again ([Connection health](#connection-health)) |
+| `settings_changed` | none | settings or keybindings were saved (or zoomed); every window reloads them (`window::announce_settings`) |
+| `open_settings` | page or section id | Settings, already open, is asked to show that page (to `settings` only) |
+| `settings_shown` | `true` / `false` | Settings was shown or hidden (to `main` only; the Stage hook reports it) |
 
 A `LaunchEvent` is `{type:"connect", requestId, spec, hasPassword, savePassword}`, `{type:"error", message}` or
 `{type:"open", address, connection}` (a `databee open` that started the app; the page opens it after the
@@ -208,6 +225,7 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
     unavailable commands fail;
   - `databee commands [--json]`: lists the catalog (id, title, default key; `--json` is
     `src/commands/catalog.gen.json`), without asking the app;
+  - `databee status [--json]`: whether the app runs and its window shows ([Startup](#startup));
   - `databee quit`: quits the running app (`IpcMessage::Quit`); `scripts/stop-app.sh` uses it.
   Errors print to stderr with exit 1; a result other than `null` prints to stdout.
 
@@ -232,7 +250,7 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
   - `NoInstance` (socket missing or refused): start the app;
   - `Rejected` (no `ok`) or an error such as a timeout: print it and exit 2, so a hung instance never
     leads to a second one.
-- **Instance lock:** before starting, `run` takes an exclusive `flock` on `<config dir>/databee.lock` and
+- **Instance lock:** before starting, `run` takes an exclusive lock (`File::try_lock`) on `<config dir>/databee.lock` and
   holds it for the process lifetime. A launch that finds it held polls `try_forward` for up to 5 s while
   the holder starts up.
 - **Messages** (`IpcMessage`, tagged by `type`):
@@ -243,12 +261,16 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
     `connection` (a slug) picks the session of a shorthand
   - `command {id}`
   - `current`: replies with the active tab's address, or `null`
+  - `status`: replies with `{"running": true, "windowVisible": …}`
+  - `quit`
   - `eval {js}`: compiled into debug builds only, used by `scripts/dev/js.sh`.
 - **Handling** (`launch::on_ipc_message`, async, returns the reply's result): `eval` runs in the window;
-  everything else is logged by type (`IpcMessage::kind`, never the contents). `open`, `command` and `current`
-  go to the page through `remote::Bridge` (`open` with `focus` first brings the window to the front). The
-  rest goes through `LaunchQueue::push`, emits `launch` when it queued an event, then unminimizes and focuses
-  the window (not with `DATABEE_BACKGROUND=1`).
+  everything else is logged by type (`IpcMessage::kind`, never the contents). `quit` calls
+  `AppHandle::exit(0)`; `status` is answered in Rust (`window::main_visible`). `command` goes to `bus::run`
+  (a Rust command runs there, a page command goes to the page). `open` and `current` go to the page through
+  `remote::Bridge` (`open` with `focus` first brings the window to the front). The rest goes through
+  `launch::queue_launches`: `LaunchQueue::push`, `launch` when it queued an event, then
+  `window::bring_to_front` shows, unminimizes and focuses the window (not with `DATABEE_BACKGROUND=1`).
 - The launch `password` is a `Secret`: plain string on the wire (`connection::serialize_exposed`), redacted in
   `IpcMessage`'s derived `Debug`.
 - **Stale sockets:** `bind` removes a leftover socket only when connecting to it is refused; it refuses to
@@ -256,10 +278,13 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
 
 ### Deep links
 
-`tauri-plugin-deep-link` registers the `databee` scheme (`tauri.conf.json` `plugins.deep-link.desktop.schemes`;
-the bundler writes it into the app's `Info.plist`). macOS delivers a link to the running app, or starts the app
-and then delivers it, as `RunEvent::Opened`; the plugin re-emits it, and `deep_link::listen`
-(`on_open_url`) takes it. No capability is needed, because the page never calls the plugin's commands.
+`tauri-plugin-deep-link` registers the build's scheme (`LINK_SCHEME` in `lib.rs`: `databee`, in debug builds
+`databee-debug`; `plugins.deep-link.desktop.schemes` in `tauri.conf.json` and `tauri.debug.conf.json`, checked
+by tests in `lib.rs`; the bundler writes it into the app's `Info.plist`). macOS delivers a link to the running
+app, or starts the app and then delivers it, as `RunEvent::Opened`; the plugin re-emits it, and
+`deep_link::listen` takes it (`on_open_url`, and `get_current` for the link that started the app).
+`link_address` turns a link in the build's scheme into the `databee://` address the app uses inside. No
+capability is needed, because the page never calls the plugin's commands.
 
 `deep_link::link_messages(url, is_open, saved_spec)` decides what a link takes, and `open` queues the result
 with `launch::queue_launches`. The queue is used instead of `remote::Bridge`, so a link that started the app
@@ -272,10 +297,9 @@ waits until the page has loaded:
   that follows a failed connect;
 - neither: an `error`, "No open or saved connection is named …".
 
-Only the release bundle registers the scheme (`tauri.debug.conf.json` empties it for debug builds), so
-LaunchServices always hands links to `~/Applications/DataBee.app` (`scripts/install.sh`). Debug and release
-share the data folder, socket and lock, so only one of them runs at a time. While the debug app runs, a link
-starts the release bundle, which only activates the running app through the socket, and the link is lost.
+Each build has its own scheme, data folder, socket and lock
+([ADR 0028](adr/0028-debug-build-is-a-separate-app-with-demo-data.md)), so both can run at once and
+`databee://` links always go to the installed release app (`~/Applications/DataBee.app`, `scripts/install.sh`).
 
 ### MCP server
 
@@ -367,7 +391,8 @@ socket `<file stem>-<database>`), `unique(base, taken)` (`-2`, `-3`, …) and `v
 
 ## Persistence
 
-Everything lives in the config dir, `~/Library/Application Support/com.philippstracker.databee/`. Most JSON
+Everything lives in the config dir, `~/Library/Application Support/com.philippstracker.databee/` (debug builds:
+`com.philippstracker.databee.debug/`, which starts with the demo connections, `seed_demo`). Most JSON
 stores wrap a `JsonStore<T>` (`store/json_store.rs`): the parsed value behind an `RwLock`, with `read(|t| ..)`
 and `update_async(|t| ..) -> AppResult<R>`. `update_async` runs on a blocking thread (`spawn_blocking`), so
 async commands never wait on the disk: under a write gate it applies the closure to a clone, saves the clone
@@ -465,11 +490,15 @@ implementation has its own file:
 - `keychain.rs`, `Keychain`: the only file that imports `security_framework`. Generic passwords with service `"databee"` and account `ConnectionSpec::account()`
   (`user@host:port`, or `user@socket`), so one password covers every database on a server. `%`, `@` and `:` in
   the user are percent-encoded, so `a@b` on `c` and `a` on `b@c` get different entries; other users keep
-  their plain name.
-- `memory.rs`, `MemoryStore`: for unit tests, behind `#[cfg(test)]`; release builds never contain it.
+  their plain name. Compiled into release builds only (`cfg(not(debug_assertions))`).
+- `memory.rs`, `MemoryStore`: for unit tests and debug builds (`cfg(any(test, debug_assertions))`); release
+  builds never contain it.
 
-The implementation is chosen in exactly one line, `Arc::new(secrets::Keychain)` where `run` builds `AppState`
-in `lib.rs`. To use another store, see [adapting.md](adapting.md#swap-the-secret-store).
+The implementation is chosen in one function, `secrets::app_store()`, which `run` (and `mcp::run`) call: the
+`Keychain` in release builds; in debug builds a `MemoryStore` filled with the demo connections' passwords
+(`test_support::demo_connections`), so the debug app never reads the Keychain
+([ADR 0028](adr/0028-debug-build-is-a-separate-app-with-demo-data.md)). To use another store, see
+[adapting.md](adapting.md#swap-the-secret-store).
 
 `resolve_password` returns a `PasswordSource`: `Provided` (the page's password, else the CLI password for the
 launch request), `Stored` (Keychain), `None`, or `Unavailable(reason)` when the Keychain lookup failed.
@@ -533,7 +562,6 @@ click) and every request that brings DataBee forward (`window::bring_to_front`) 
 (`bus::run_from_menu`). The table live check already pauses while the window isn't visible
 (`TableCheck.tsx`).
 
-
 ## Native menu
 
 `menu.rs` builds the menus: DataBee, File, Edit, View, Data, Go, Window and Help. Items that map to app
@@ -562,9 +590,9 @@ nothing.
 it as `src/commands/catalog.gen.json` (`export_bindings_command_catalog`), which the lint drift check compares
 and the page imports. `bus/mod.rs` runs commands by id: `run_from_menu` (menu clicks), `run` (CLI and MCP
 through `IpcMessage::Command`; page commands go through `remote::Bridge` as `pageCommand`) and the
-`run_command` IPC command (the page runs Rust commands from a key or the palette). Rust commands today:
-`settings.open` and `view.zoomIn` / `zoomOut` / `zoomReset` (`Settings::zoomed`, saved like any settings edit,
-then `settings_changed`). `keybindings.json` keeps only ids the catalog knows.
+`run_command` IPC command (the page runs Rust commands from a key or the palette). Rust commands today
+(`RustAction`): `settings.open`, `window.hide` and `view.zoomIn` / `zoomOut` / `zoomReset` (`Settings::zoomed`,
+saved like any settings edit, then `settings_changed`). `keybindings.json` keeps only ids the catalog knows.
 
 To add a command:
 1. Add it to `CATALOG` with its title, scope and default key; `.menu("Label…")` for a native item, or
@@ -610,6 +638,13 @@ tokio catch a panic per command or task, so one bug fails one call instead of ki
 user's open transactions ([ADR 0017](adr/0017-panic-unwind.md)). The toolchain is pinned to
 stable in `rust-toolchain.toml` at the repo root. The crate uses edition 2024 and let-chains.
 
+The version lives in `package.json`, `tauri.conf.json` and `Cargo.toml`;
+`version_is_the_same_in_cargo_tauri_config_and_package_json` in `lib.rs` keeps them equal. Every release bumps
+it (`bun run release`, `scripts/release.sh`; [ADR 0038](adr/0038-every-release-gets-a-new-version.md), a major
+bump only with the owner's approval, [ADR 0039](adr/0039-a-major-version-needs-the-owners-approval.md)); debug
+builds keep the last release's version. The debug build's name, identifier and link scheme come from
+`tauri.debug.conf.json`, mirrored by `APP_NAME`, `IDENTIFIER` and `LINK_SCHEME` in `lib.rs` (tests compare them).
+
 ## Content security policy
 
 `app.security.csp` in `tauri.conf.json` limits what the webview may load, because it renders arbitrary database
@@ -625,8 +660,17 @@ content:
 
 The navigation guard (`window/navigation.rs`, a plugin with `on_navigation`) keeps the webview on the app's
 own pages (`is_app_page`: `tauri://localhost`, `tauri.localhost`, in debug builds the Vite dev server); any
-other navigation is refused and logged. Builds are signed with the hardened runtime and no entitlements
-(`scripts/sign-app.sh`).
+other navigation is refused and logged; web links open in the browser through `open_url`. Builds are signed
+with the hardened runtime and no entitlements (`scripts/sign-app.sh`: an Apple Development certificate, else
+the local one of `scripts/create-signing-cert.sh`, else ad hoc;
+[ADR 0029](adr/0029-builds-are-signed-with-an-apple-development-certificate.md),
+[ADR 0030](adr/0030-hardened-runtime-strict-csp-no-navigation.md)).
+
+**Network** ([ADR 0033](adr/0033-the-app-talks-only-to-hosts-the-user-configured.md)): the only outgoing
+connections are the database connections the user configured; the crate has no HTTP client. The only
+listening network socket is the Stage API on `127.0.0.1` (`stage/mod.rs` `bind`); the instance socket is a
+Unix socket and `databee mcp` speaks over stdio. A new host or listener needs an ADR and a row in
+[adapting.md → Network](adapting.md#network).
 
 `app.security.devCsp` applies under `tauri dev` and adds inline scripts (the React refresh preamble) and Vite's
 HMR websocket on `localhost:1420`/`1421`.
