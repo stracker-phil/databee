@@ -43,7 +43,8 @@ Test, lint and format-check commands run through the `ci` agent, never in the ma
 - `bun run lint`: IPC types drift check (`src/api/types.gen.ts`, `src/stage/types.gen.ts`), tsc, ESLint (correctness rules, `eslint.config.js`) and clippy on production code (warnings are errors; Rust tests are not linted)
 - `bun run release major|minor|patch`: bumps the version (ADR 0038), release build, installed by `scripts/install.sh`
   as `~/Applications/DataBee.app` and the `databee` command, committed as "Release X.Y.Z" and tagged `vX.Y.Z`, then `scripts/clean-build.sh` trims `target/`; debug builds ("DataBee (Debug)", a separate app on demo data, ADR 0028) are never installed
-- `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus
+- `bun run build:app` + `scripts/dev/launch.sh`: debug build, restarted next to the terminal without stealing focus;
+  quit it with `scripts/stop-app.sh <debug CLI>` when the check is done
 - `scripts/dev/js.sh` / `scripts/dev/screenshot.sh`: drive and capture the running window in the background
 
 ## Workflow

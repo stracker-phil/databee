@@ -18,7 +18,8 @@ description: Finish a development step in DataBee - clean up and review the code
    Drive the UI with `scripts/dev/js.sh '<js>'` (fire-and-forget; wrap code in an IIFE, the store is `window.databee`) and check it with
    `scripts/dev/screenshot.sh <png>`. Never use AppleScript clicks or keystrokes; they need focus.
    For UI changes, click every new or changed control twice and check nothing beside it moved
-   (`.claude/rules/stable-controls.md`).
+   (`.claude/rules/stable-controls.md`). When the checks are done, quit the debug app fully
+   (`scripts/stop-app.sh "src-tauri/target/debug/bundle/macos/DataBee (Debug).app/Contents/MacOS/databee"`).
 5. Update the affected `docs/` page if behavior, commands, files or extension points changed; add an ADR for
    a new decision (`docs/adr/`; never edit an old one: a new record supersedes or amends it). Check that no
    real data slipped into code, docs or screenshots (`.claude/rules/demo-data.md`).
@@ -30,5 +31,5 @@ description: Finish a development step in DataBee - clean up and review the code
    background, it takes minutes): `scripts/install.sh` installs the release build as
    `~/Applications/DataBee.app` and `databee`, and restarts the release app if it runs, so the user's app
    always matches the last commit; then the script commits "Release X.Y.Z" and tags `vX.Y.Z` (never pushed).
-8. Report to the user: what changed, the `ci` summary, open review questions, that the debug app launched and
-   that the release app was installed, with its new version.
+8. Report to the user: what changed, the `ci` summary, open review questions, that the debug app was checked and
+   quit, and that the release app was installed, with its new version.

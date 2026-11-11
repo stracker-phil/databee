@@ -48,7 +48,8 @@ passwords.
 | `bun run lint` | exits 0: types drift check, `tsc`, ESLint, `clippy -D warnings` |
 | `bun run test:db` | starts MariaDB 11.4 (`127.0.0.1:33306`) and MySQL 8.4 (`127.0.0.1:33307`), user `root`, password `root`, seeded from `dev/fixture.sql`; the integration tests pass |
 
-Try the app against the fixtures: `scripts/dev/launch.sh mysql://root:root@127.0.0.1:33306/wp_write`. Write only to the fixture databases (`wp_write`,
+Try the app against the fixtures: `scripts/dev/launch.sh mysql://root:root@127.0.0.1:33306/wp_write`, and quit it with
+`scripts/stop-app.sh "src-tauri/target/debug/bundle/macos/DataBee (Debug).app/Contents/MacOS/databee"` when done. Write only to the fixture databases (`wp_write`,
 `databee_test`), never to a user's own databases. [docs/testing.md](docs/testing.md) covers the suites,
 the fixtures and scripts that drive the running app.
 
