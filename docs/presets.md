@@ -168,7 +168,7 @@ enabled = false
 trailing empty parts left out, the match written as in reference ids (`=x`, `=like(x)`, `=regexp(x)`). So
 `style:orders.status=failed`, `style:|_status|order_meta=like(ok%)`. When two styles of a preset would get the
 same id, both get `-><color>` appended. Ids are unique per preset; a project switches a style and overrides it
-by its id (`StyleRule::default_id`, `fill_style_ids` in `rules/preset.rs`).
+by its id (`StyleRule::default_id`, `fill_style_ids` in `rules/preset/mod.rs`).
 
 ### `[[icon]]` table icons
 
@@ -491,7 +491,7 @@ rule naming the table exactly, or any rule of a later preset or the project, bea
 
 ## Projects
 
-A project holds the rules a user adds for one database of one connection (`rules/project.rs`). Projects
+A project holds the rules a user adds for one database of one connection (`rules/project/`; the store in `rules/project/store.rs`). Projects
 live in `projects.json` in the config directory, keyed by `<connection slug>/<database>`; renaming a
 connection's slug moves its keys. A database without a stored project gets an empty one.
 
@@ -715,7 +715,7 @@ switches, edits and resets are the Project page's:
 
 ## Effective rules
 
-`rules/effective.rs` combines the applied presets and the project of a database into `EffectiveRules`, with
+`rules/effective/` combines the applied presets and the project of a database into `EffectiveRules`, with
 real table names and compiled conditions. It is cached per session and database and rebuilt when the schema
 changes (DDL, refresh), a preset file changes or the project changes.
 
@@ -841,7 +841,7 @@ object. Recent objects are no rules: projects and their exports do not hold them
 
 A watched value is one column of one row, or the node at a path in its decoded PHP or JSON value, that the
 readout shows as it is stored now (`readout/watched.rs`). Watches are personal: they live in the project's
-`watched` (`rules/project.rs`, `WatchedValue`), move with a slug rename and are left out of exports.
+`watched` (`rules/project/mod.rs`, `WatchedValue`), move with a slug rename and are left out of exports.
 
 - **Adding.** `readout_watch(session_id, database, source, path)` takes the value's provenance (table, column,
   primary key) and the child keys from the decoded value's root as the value tree shows them (`decoded` steps
@@ -999,6 +999,6 @@ WordPress has no code of its own: no detection, screens or commands. A WordPress
 documents, rows and saved queries like any other, with these rules applied. Removing WordPress support is
 deleting the three files and their lines in `BUILT_IN` ([adapting.md](adapting.md#removing-the-wordpress-presets)).
 
-The preset tests (`src-tauri/src/rules/server_tests.rs`, `rules/coverage.rs`, `rules/effective.rs`,
+The preset tests (`src-tauri/src/rules/server_tests.rs`, `rules/coverage.rs`, `rules/effective/tests.rs`,
 `document/server_tests.rs`, `document/actions/server_tests.rs`, `search/server_tests.rs`) run the built-in files
 on the fixtures `wp_test`, `wp_write`, `wp_legacy`, `wp_custom` (prefix `xy_`), `wp_multi` and `databee_test`.
