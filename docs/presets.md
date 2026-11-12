@@ -653,7 +653,7 @@ Every change bumps `dataVersion`, so documents, grids and the page reload with t
 
 ### Your changes
 
-`ProjectRules.changes` (`rules/overview/changes.rs`) lists only what the project changes, one
+`ProjectRules.changes` (`rules/overview/changes/`) lists only what the project changes, one
 `ProjectChangeLine` each, in this order (`Overview::changes`): settings, references, value styles, kinds,
 icons, then switched-off ids that name nothing here.
 

@@ -1,22 +1,22 @@
 //! "Your changes" on the Project page: every way the project deviates from the presets as they
 //! ship for this database, one line each with the change that undoes it.
 
+mod references;
+mod rules;
+mod text;
+
 use std::sync::Arc;
 
 use serde::Serialize;
 use ts_rs::TS;
 
+use super::Overview;
 use super::rows::{ReferenceRow, RuleOrigin};
-use super::{Overview, preset_origin};
-use crate::lens::{ColumnsRef, ResolvedReference};
 use crate::rules::applied::Applied;
-use crate::rules::condition::conditions_text;
-use crate::rules::effective::overrides;
-use crate::rules::icons::{self, IconRule};
-use crate::rules::kinds::{KindRule, StyleMatch, StyleRule, ValueRule};
 use crate::rules::project::Project;
 use crate::rules::project_change::ProjectChange;
-use crate::rules::types::{Preset, Reference};
+use crate::rules::types::Preset;
+use text::list_text;
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, TS)]
 #[ts(export, export_to = "src/api/types.gen.ts")]
@@ -92,81 +92,6 @@ impl ProjectChangeLine {
     }
 }
 
-fn columns_text(columns: &ColumnsRef) -> String {
-    format!("{}.{}", columns.table, columns.columns.join(", "))
-}
-
-fn reference_text(from: &ColumnsRef, when: &str, to: &ColumnsRef, to_when: &str) -> String {
-    let mut text = columns_text(from);
-    if !when.is_empty() {
-        text.push_str(&format!(" when {when}"));
-    }
-    text.push_str(&format!(" → {}", columns_text(to)));
-    if !to_when.is_empty() {
-        text.push_str(&format!(" where {to_when}"));
-    }
-    text
-}
-
-fn row_text(row: &ReferenceRow) -> String {
-    reference_text(&row.from, &row.when, &row.to, &row.to_when)
-}
-
-/// `wc_orders.status, meta keys _wc_* in wc_orders_meta`, as the rule stores it.
-fn scope_text<T: ToString>(columns: &[T], meta_keys: &[String], in_meta: &[String]) -> String {
-    let mut parts = Vec::new();
-    if !columns.is_empty() {
-        let columns: Vec<String> = columns.iter().map(ToString::to_string).collect();
-        parts.push(columns.join(", "));
-    }
-    if !meta_keys.is_empty() {
-        let mut keys = format!("meta keys {}", meta_keys.join(", "));
-        if !in_meta.is_empty() {
-            keys.push_str(&format!(" in {}", in_meta.join(", ")));
-        }
-        parts.push(keys);
-    }
-    parts.join(" · ")
-}
-
-fn style_text(rule: &StyleRule) -> String {
-    let matching = match rule.matching {
-        StyleMatch::Eq => "=",
-        StyleMatch::Like => "LIKE",
-        StyleMatch::Regexp => "REGEXP",
-    };
-    let scope = scope_text(&rule.columns, &rule.meta_keys, &rule.r#in);
-    format!(
-        "{scope} {matching} '{}' · {}",
-        rule.value,
-        rule.color.name()
-    )
-}
-
-fn kind_text(rule: &KindRule) -> String {
-    let kind = match &rule.value {
-        ValueRule::Money(money) if money.currency.is_empty() => "money".to_string(),
-        ValueRule::Money(money) => format!("money · currency from {}", money.currency.join(", ")),
-        ValueRule::Timestamp(zone) => {
-            let zone = serde_json::to_value(zone).ok();
-            let zone = zone.as_ref().and_then(|z| z.as_str()).unwrap_or_default();
-            format!("timestamp · {zone}")
-        }
-        ValueRule::Enum => "enum".into(),
-        ValueRule::Secret => "secret".into(),
-        ValueRule::Number => "number".into(),
-    };
-    let scope = scope_text(&rule.columns, &rule.meta_keys, &rule.in_meta);
-    format!("{scope} · {kind}")
-}
-
-fn list_text(names: &[String]) -> String {
-    if names.is_empty() {
-        return "none".into();
-    }
-    names.join(", ")
-}
-
 impl Overview<'_> {
     /// Settings, then references, value styles, kinds and switched-off ids that name nothing here.
     pub(super) fn changes(
@@ -234,225 +159,6 @@ impl Overview<'_> {
         lines
     }
 
-    fn reference_changes(&self, rows: &[ReferenceRow]) -> Vec<ProjectChangeLine> {
-        let mut lines = Vec::new();
-        for row in rows {
-            let Some(id) = row.id.clone() else { continue };
-            let line = |action, undo| ProjectChangeLine {
-                id: Some(id.clone()),
-                table: Some(row.from.table.clone()),
-                ..ProjectChangeLine::new(action, ChangedRule::Reference, row_text(row), undo)
-            };
-            let remove = ProjectChange::RemoveReference { id: id.clone() };
-            let edit = Some(EditRule::Reference { id: id.clone() });
-            if row.origin == RuleOrigin::Project {
-                lines.push(ProjectChangeLine {
-                    off: row.disabled,
-                    edit,
-                    ..line(ChangeAction::Added, remove)
-                });
-                continue;
-            }
-            let origin = Some(row.origin.clone());
-            if row.edited {
-                lines.push(ProjectChangeLine {
-                    origin: origin.clone(),
-                    was: row.rule.as_ref().and_then(|own| self.replaced_text(own)),
-                    edit,
-                    ..line(ChangeAction::Edited, remove)
-                });
-            }
-            if row.disabled {
-                let enable = ProjectChange::Enable { id: id.clone() };
-                lines.push(ProjectChangeLine {
-                    origin,
-                    ..line(ChangeAction::SwitchedOff, enable)
-                });
-            }
-        }
-        lines.extend(self.unplaced_references(rows));
-        lines
-    }
-
-    /// Project references whose tables this database lacks, as stored.
-    fn unplaced_references<'r>(
-        &'r self,
-        rows: &'r [ReferenceRow],
-    ) -> impl Iterator<Item = ProjectChangeLine> + 'r {
-        self.project
-            .references
-            .iter()
-            .filter(|own| !rows.iter().any(|r| r.id.as_deref() == Some(&own.id)))
-            .map(|own| {
-                let when = conditions_text(&own.when);
-                let to_when = conditions_text(&own.to_when);
-                let from = ColumnsRef::new(&own.from.table, vec![own.from.column.clone()]);
-                let to = ColumnsRef::new(&own.to.table, vec![own.to.column.clone()]);
-                let undo = ProjectChange::RemoveReference { id: own.id.clone() };
-                let text = reference_text(&from, &when, &to, &to_when);
-                ProjectChangeLine {
-                    id: Some(own.id.clone()),
-                    off: self.project.disabled.contains(&own.id),
-                    ..ProjectChangeLine::new(
-                        ChangeAction::Added,
-                        ChangedRule::Reference,
-                        text,
-                        undo,
-                    )
-                }
-            })
-    }
-
-    /// The preset rule or inference the project rule `own` replaces, as it would apply.
-    fn replaced_text(&self, own: &Reference) -> Option<String> {
-        let shipped = self
-            .rules
-            .preset_reference_rules(self.schema)
-            .flat_map(|(_, rules)| rules)
-            .find(|rule| overrides(own, rule));
-        if let Some(rule) = shipped {
-            let (from, to) = (self.real(&rule.from)?, self.real(&rule.to)?);
-            let (when, to_when) = (conditions_text(&rule.when), conditions_text(&rule.to_when));
-            return Some(reference_text(&from, &when, &to, &to_when));
-        }
-        let from = self.real(&own.from)?;
-        self.inferred_references()
-            .into_iter()
-            .find(|r| r.from == from)
-            .map(|ResolvedReference { from, to, .. }| reference_text(&from, "", &to, ""))
-    }
-
-    fn style_table(&self, rule: &StyleRule) -> Option<String> {
-        let covered = self.covered_tables(&rule.columns, &rule.meta_keys, &rule.r#in);
-        covered.into_iter().next()
-    }
-
-    fn style_changes(&self) -> Vec<ProjectChangeLine> {
-        let project = self.project;
-        let mut lines = Vec::new();
-        for own in &project.styles {
-            let shipped = self.applied_presets().find_map(|preset| {
-                let rule = preset.styles.iter().find(|s| s.id == own.id)?;
-                Some((preset, rule))
-            });
-            let action = if shipped.is_some() {
-                ChangeAction::Edited
-            } else {
-                ChangeAction::Added
-            };
-            let undo = ProjectChange::RemoveStyle { id: own.id.clone() };
-            lines.push(ProjectChangeLine {
-                origin: shipped.map(|(preset, _)| preset_origin(preset)),
-                id: Some(own.id.clone()),
-                was: shipped.map(|(_, rule)| style_text(rule)),
-                off: shipped.is_none() && !own.enabled,
-                table: self.style_table(own),
-                edit: Some(EditRule::Style { id: own.id.clone() }),
-                ..ProjectChangeLine::new(action, ChangedRule::ValueStyle, style_text(own), undo)
-            });
-        }
-        for preset in self.applied_presets() {
-            for shipped in &preset.styles {
-                let id = shipped.id.clone();
-                let (action, undo) = if shipped.enabled && project.disabled.contains(&id) {
-                    (ChangeAction::SwitchedOff, ProjectChange::EnableStyle { id })
-                } else if !shipped.enabled && project.enabled.contains(&id) {
-                    (ChangeAction::SwitchedOn, ProjectChange::DisableStyle { id })
-                } else {
-                    continue;
-                };
-                let rule = project.style_override(&shipped.id).unwrap_or(shipped);
-                lines.push(ProjectChangeLine {
-                    origin: Some(preset_origin(preset)),
-                    id: Some(shipped.id.clone()),
-                    table: self.style_table(rule),
-                    ..ProjectChangeLine::new(
-                        action,
-                        ChangedRule::ValueStyle,
-                        style_text(rule),
-                        undo,
-                    )
-                });
-            }
-        }
-        lines
-    }
-
-    fn kind_changes(&self) -> Vec<ProjectChangeLine> {
-        self.project
-            .kinds
-            .iter()
-            .enumerate()
-            .map(|(index, rule)| {
-                let covered = self.covered_tables(&rule.columns, &rule.meta_keys, &rule.in_meta);
-                let undo = ProjectChange::RemoveKind { index };
-                ProjectChangeLine {
-                    table: covered.into_iter().next(),
-                    edit: Some(EditRule::Kind { index }),
-                    ..ProjectChangeLine::new(
-                        ChangeAction::Added,
-                        ChangedRule::Kind,
-                        kind_text(rule),
-                        undo,
-                    )
-                }
-            })
-            .collect()
-    }
-
-    /// The real tables an icon rule names: by name, or every table its glob covers.
-    fn icon_tables(&self, rule: &IconRule) -> Vec<String> {
-        let applied = &self.rules.applied;
-        self.schema
-            .tables
-            .iter()
-            .filter(|t| {
-                icons::rule_for(std::slice::from_ref(rule), &applied.rule_names(&t.name)).is_some()
-            })
-            .map(|t| t.name.clone())
-            .collect()
-    }
-
-    /// Each project icon: edited where a preset gives the table an icon, else added.
-    fn icon_changes(&self) -> Vec<ProjectChangeLine> {
-        self.project
-            .icons
-            .iter()
-            .map(|own| {
-                let table = self.icon_tables(own).into_iter().next();
-                let names = table
-                    .as_deref()
-                    .map(|t| self.rules.applied.rule_names(t))
-                    .unwrap_or_default();
-                let shipped = icons::preset_rule_for(&self.rules.applied.presets, &names);
-                let action = if shipped.is_some() {
-                    ChangeAction::Edited
-                } else {
-                    ChangeAction::Added
-                };
-                let shown = match &table {
-                    Some(real) if !own.is_glob() => real.clone(),
-                    _ => own.table.clone(),
-                };
-                let undo = ProjectChange::RemoveIcon {
-                    table: own.table.clone(),
-                };
-                ProjectChangeLine {
-                    origin: shipped.map(|(preset, _)| preset_origin(preset)),
-                    id: Some(own.table.clone()),
-                    was: shipped.map(|(_, rule)| format!("{} · {}", rule.table, rule.icon.name())),
-                    table,
-                    ..ProjectChangeLine::new(
-                        action,
-                        ChangedRule::Icon,
-                        format!("{shown} · {}", own.icon.name()),
-                        undo,
-                    )
-                }
-            })
-            .collect()
-    }
-
     /// Switched-off ids that no listed reference or applied preset style carries.
     fn unknown_switches(&self, rows: &[ReferenceRow]) -> Vec<ProjectChangeLine> {
         let known = |id: &String| {
@@ -485,10 +191,10 @@ mod tests {
     use super::super::project_rules;
     use super::*;
     use crate::rules::effective::EffectiveRules;
-    use crate::rules::icons::TableIcon;
-    use crate::rules::kinds::StyleColor;
+    use crate::rules::icons::{IconRule, TableIcon};
+    use crate::rules::kinds::{KindRule, StyleColor, StyleMatch, StyleRule, ValueRule};
     use crate::rules::testing::{preset, project, reference, schema};
-    use crate::rules::types::{ColumnGlob, Conditions, Match};
+    use crate::rules::types::{ColumnGlob, Conditions, Match, Reference};
     use crate::schema::DatabaseSchema;
 
     const KIT: &str = r#"
