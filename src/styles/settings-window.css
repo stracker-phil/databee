@@ -1,39 +1,59 @@
 /* ---------- settings window: sidebar of pages, grouped cards of label/control rows ---------- */
 .settings-nav {
-  flex: none; width: 13.5rem; padding: 0 0.769rem 1.231rem;
+  flex: none; width: 190px; padding: 0 10px 16px;
   background: var(--chrome); border-right: 1px solid var(--line);
   display: flex; flex-direction: column; gap: 0.769rem;
 }
 .settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
 .settings-nav-heading { padding: 0 0.615rem 0.308rem; font-size: var(--fs-small); font-weight: 500; color: var(--o3); }
 .settings-nav button {
-  display: flex; align-items: center; gap: 0.615rem; height: 2rem; padding: 0 0.615rem;
-  border: none; border-radius: 5px; background: transparent; color: var(--text); text-align: left;
+  display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 4px 8px;
+  border: none; border-radius: 8px; background: transparent; color: var(--text); text-align: left;
 }
+/* A search hit on a row: the page as listed, the row's title below it. */
+.settings-nav-text { display: flex; flex-direction: column; min-width: 0; }
+.settings-nav-title, .settings-nav-setting { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-nav-setting { font-size: var(--fs-small); color: var(--o2); }
 .settings-nav button svg { color: var(--o2); flex: none; }
 .settings-nav button:hover { background: var(--row-hover); }
-.settings-nav button[aria-current="page"] { background: var(--sel); }
+/* The current page is filled with the accent (DataBee has an accent choice). */
+.settings-nav button[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
+.settings-nav button[aria-current="page"] svg { color: var(--on-accent); }
 /* The title bar stays put; only the page below it scrolls. */
 .settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
-.settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; padding: 1.231rem 1.538rem 0.769rem; border-bottom: 1px solid var(--line); }
-.settings-body { flex: 1; min-height: 0; overflow: auto; padding: 0.923rem 1.538rem 1.846rem; display: flex; flex-direction: column; gap: 0.923rem; }
+.settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+.settings-body { flex: 1; min-height: 0; overflow: auto; padding: 16px 20px 32px; display: flex; flex-direction: column; gap: 24px; }
 .settings-pane h2 { margin: 0; font-size: 1.231rem; }
-.settings-intro { margin: 0 0 0.154rem; color: var(--o2); line-height: 1.45; }
-.settings-group { display: flex; flex-direction: column; gap: 0.462rem; }
-.settings-group h3 { margin: 0 0 0 0.923rem; font-size: 0.923rem; font-weight: 600; }
-.settings-card { background: var(--chrome); border: 1px solid var(--line); border-radius: 8px; padding: 0 0.923rem; }
-.settings-row { display: flex; align-items: center; gap: 1.231rem; min-height: 2.923rem; padding: 0.615rem 0; }
+.settings-intro { margin: 0 0 -12px; color: var(--o2); line-height: 1.45; }
+.settings-group { display: flex; flex-direction: column; gap: 6px; scroll-margin-top: 8px; }
+.settings-group h3 { margin: 0 0 0 16px; font-size: 13px; font-weight: 600; }
+/* Inset groups: a quiet fill, no border, 12px corners. */
+.settings-card { background: var(--chrome); border-radius: 12px; padding: 0 16px; }
+.settings-row { position: relative; isolation: isolate; display: flex; align-items: center; gap: 16px; min-height: 44px; padding: 10px 0; scroll-margin-top: 8px; }
 .settings-row + .settings-row { border-top: 1px solid var(--line); }
 .settings-row.stacked { flex-direction: column; align-items: stretch; gap: 0.462rem; }
 .settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.154rem; }
 .settings-row-text label, .settings-row-label { color: var(--text); }
 .settings-row-desc { font-size: var(--fs-small); color: var(--o2); line-height: 1.4; }
 .settings-row-control { flex: none; display: flex; align-items: center; gap: 0.462rem; }
-.settings-row-control select.input { width: 9rem; }
+.settings-row-control .popup-button.input { min-width: 9rem; }
+.settings-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--o2); }
+.settings-value.danger { color: var(--style-red); }
+.settings-empty { color: var(--o3); }
+.slot-hidden { visibility: hidden; }
+/* The row or group Settings was opened at (a search hit, a link): an accent wash that fades once. */
+.settings-row.found::before {
+  content: ""; position: absolute; inset: 2px -8px; z-index: -1; border-radius: 8px; pointer-events: none;
+  animation: settings-found var(--motion-highlight) var(--ease-out);
+}
+.settings-group.found > .settings-card { animation: settings-found var(--motion-highlight) var(--ease-out); }
+/* No end stop: the wash fades into each element's own background. */
+@keyframes settings-found {
+  0%, 35% { background: color-mix(in srgb, var(--accent) 15%, var(--chrome)); }
+}
 .settings-input { display: flex; align-items: center; gap: 0.462rem; }
 .settings-input .input { width: 12rem; }
 .settings-input .input.number { width: 6.5rem; text-align: right; }
-.settings-search { flex: none; }
 .shortcut-control { display: flex; align-items: center; gap: 0.308rem; }
 
 /* macOS-style toggle */

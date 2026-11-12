@@ -45,8 +45,8 @@ export function PresentationsPage() {
     );
   return (
     <Group title="Presentation API" anchor="presentations-api">
-      <Switch label="Allow presentations" description="Runs a local API on 127.0.0.1; requests from web pages are refused." checked={s.enabled} onChange={(enabled) => void patchStage({ enabled })} />
-      <Row label="Status" description={status?.running ? status.url : undefined}>
+      <Switch anchor="presentations-allow" label="Allow presentations" description="Runs a local API on 127.0.0.1; requests from web pages are refused." checked={s.enabled} onChange={(enabled) => void patchStage({ enabled })} />
+      <Row label="Status" anchor="presentations-status" description={status?.running ? status.url : undefined}>
         {statusError ? (
           <span className="pill tone-orange">{statusError.message}</span>
         ) : status?.error ? (
@@ -57,8 +57,8 @@ export function PresentationsPage() {
           <span className="badge">Off</span>
         )}
       </Row>
-      <NumberField label="Port" description="27184 unless another app needs it. Register again after a change." value={s.port} {...PORT_LIMITS} onCommit={(port) => void patchStage({ port })} />
-      <Row label="Token" description="A new token disconnects presenters until DataBee is registered again.">
+      <NumberField anchor="presentations-port" label="Port" description="27184 unless another app needs it. Register again after a change." value={s.port} {...PORT_LIMITS} onCommit={(port) => void patchStage({ port })} />
+      <Row label="Token" anchor="presentations-token" description="A new token disconnects presenters until DataBee is registered again.">
         <button type="button" className="btn mono" data-tooltip={revealed ? "Hide" : "Show the token"} onClick={() => setRevealed((r) => !r)}>
           {revealed ? s.token : "••••••••••••"}
         </button>
@@ -70,13 +70,13 @@ export function PresentationsPage() {
         </button>
       </Row>
       {status && (
-        <Row label="Register with Stage" description={<code className="mono small selectable">{status.registerCommand}</code>}>
+        <Row label="Register with Stage" anchor="presentations-register" description={<code className="mono small selectable">{status.registerCommand}</code>}>
           <button type="button" className="btn" onClick={() => void copyText(status.registerCommand, "the register command")}>
             <Copy size="1rem" /> Copy
           </button>
         </Row>
       )}
-      <Row label="Last presenter request">
+      <Row label="Last presenter request" anchor="presentations-last-request">
         <span className="muted">{status?.lastRequest ? relativeTime(status.lastRequest) : "None yet"}</span>
       </Row>
     </Group>

@@ -121,6 +121,20 @@ field?: AppErrorField, };
  */
 export type AppErrorField = { path: string, message: string, };
 
+export type AppStatus = { version: string, 
+/**
+ * `release`, or `debug` for the separate debug app on demo data.
+ */
+build: string, 
+/**
+ * With the home folder as `~`.
+ */
+dataFolder: string, logFolder: string, logLevel: LogLevel, 
+/**
+ * The level comes from `--log-level` for this run, not from Settings.
+ */
+logLevelFromCli: boolean, connections: Array<ConnectionStatus>, };
+
 /**
  * What the page learns about an applied batch.
  */
@@ -326,6 +340,8 @@ delta: DocDelta, };
  * Everything needed to reach a database, except the password.
  */
 export type ConnectionSpec = { name?: string | null, host: string, port: number, socket?: string | null, user: string, database?: string | null, };
+
+export type ConnectionStatus = { slug: string, account: string, database: string | null, serverVersion: string, health: Health, };
 
 export type Coverage = { 
 /**

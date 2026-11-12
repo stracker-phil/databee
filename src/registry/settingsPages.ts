@@ -1,16 +1,23 @@
-/** Settings pages by id. Core and modules register their own; the Settings window and the Stage hook read them here. */
+/** Settings pages by id and the search over their rows. Core and modules register their own; the Settings window and the Stage hook
+ *  read them here. */
 import { useSyncExternalStore, type ComponentType, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { Settings } from "../api";
+import { ranked } from "../lib/rank";
 
 export interface SettingsPageProps {
   s: Settings;
   set: (patch: Partial<Settings>) => void;
 }
 
-interface SettingsSection {
+/** A row (or group) the search finds: `id` is its `anchor`, `title` its label. */
+export interface SettingsRow {
   id: string;
   title: string;
+  /** More words the search finds the row by. */
+  keywords?: string[];
+  /** The anchor to scroll to while the row isn't shown. */
+  under?: string;
 }
 
 interface SettingsPage {
@@ -23,8 +30,10 @@ interface SettingsPage {
   Body: ComponentType<SettingsPageProps>;
   /** Position inside its group; pages without one follow, by label. */
   order?: number;
-  /** Sections the page renders, each scrolled to by its id and found by the nav's search. */
-  sections?: SettingsSection[];
+  /** More words the search finds the page by. */
+  keywords?: string[];
+  /** Every row and group the page shows, by anchor; a function for rows that follow other state. */
+  rows?: SettingsRow[] | (() => SettingsRow[]);
 }
 
 /** Nav order of the known groups; any other group follows them, by name. */
@@ -60,38 +69,37 @@ export function settingsPages(): SettingsPage[] {
   return [...pages.values()].sort(compare);
 }
 
-export const hasSection = (page: SettingsPage, id: string | undefined) => page.sections?.some((section) => section.id === id) ?? false;
+export const pageRows = (page: SettingsPage): SettingsRow[] => (typeof page.rows === "function" ? page.rows() : (page.rows ?? []));
 
-/** The named page, the page holding the named section, or the first when the name is absent or unknown. */
+export const findRow = (page: SettingsPage, id: string | undefined) => pageRows(page).find((row) => row.id === id);
+
+/** The named page, the page holding the named row, or the first when the name is absent or unknown. */
 export function resolveSettingsPage(id: string | undefined): SettingsPage | undefined {
   const all = settingsPages();
-  return all.find((p) => p.id === id) ?? all.find((p) => hasSection(p, id)) ?? all[0];
+  return all.find((p) => p.id === id) ?? all.find((p) => findRow(p, id)) ?? all[0];
 }
 
-/** A page in the nav; `section` when the search found the page by that section's title. */
-export interface SettingsNavEntry {
+/** A search hit: its page, and the row that matched, if any. */
+export interface SettingsMatch {
   page: SettingsPage;
-  section?: SettingsSection;
+  row?: SettingsRow;
 }
 
-/** Pages whose label, nav group or a section title contains `query` (any case). */
-function searchSettingsPages(query: string): SettingsNavEntry[] {
-  const needle = query.trim().toLowerCase();
-  const has = (text: string) => text.toLowerCase().includes(needle);
-  return settingsPages().flatMap((page) => {
-    if (has(page.label) || has(page.group)) return [{ page }];
-    const section = page.sections?.find((candidate) => has(candidate.title));
-    return section ? [{ page, section }] : [];
-  });
+/** Every page and row matching `query`, best first; ties keep registration order. */
+export function searchSettings(query: string): SettingsMatch[] {
+  const entries = settingsPages().flatMap((page): SettingsMatch[] => [{ page }, ...pageRows(page).map((row) => ({ page, row }))]);
+  return ranked(entries, query, ({ page, row }) =>
+    row ? [row.title, (row.keywords ?? []).join(" ")] : [page.label, [page.group, ...(page.keywords ?? [])].join(" ")],
+  );
 }
 
-/** The nav groups in nav order, filtered to `query` when one is given. */
-export function settingsGroups(query = ""): { group: string; pages: SettingsNavEntry[] }[] {
-  const groups: { group: string; pages: SettingsNavEntry[] }[] = [];
-  for (const hit of searchSettingsPages(query)) {
+/** The page list under its group headings. */
+export function settingsGroups(): { group: string; pages: SettingsPage[] }[] {
+  const groups: { group: string; pages: SettingsPage[] }[] = [];
+  for (const page of settingsPages()) {
     const last = groups.at(-1);
-    if (last?.group === hit.page.group) last.pages.push(hit);
-    else groups.push({ group: hit.page.group, pages: [hit] });
+    if (last?.group === page.group) last.pages.push(page);
+    else groups.push({ group: page.group, pages: [page] });
   }
   return groups;
 }

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,8 +36,21 @@ describe("SettingsApp", () => {
     });
 
     it("opens on the page named by ?page=", async () => {
-      await renderApp("?page=logging");
-      expect(screen.getByRole("heading", { name: "Logging" })).toBeInTheDocument();
+      await renderApp("?page=status");
+      expect(screen.getByRole("heading", { name: "Status" })).toBeInTheDocument();
+    });
+
+    it("opens the page of the row named by ?page= and highlights the row", async () => {
+      await renderApp("?page=queries-row-limit");
+      expect(screen.getByRole("heading", { name: "Queries" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Row limit").closest("[data-anchor]")).toHaveClass("found");
+    });
+
+    it("opens the row Rust names in open_settings", async () => {
+      await renderApp();
+      act(() => lastHandler<(page: string) => void>(mocked.onOpenSettings)("display-null-label"));
+      expect(screen.getByRole("heading", { name: "Display" })).toBeInTheDocument();
+      expect(screen.getByLabelText("NULL label").closest("[data-anchor]")).toHaveClass("found");
     });
 
     it("switches page when Rust sends open_settings", async () => {
@@ -94,6 +107,13 @@ describe("SettingsApp", () => {
       expect(mocked.hideSettings).not.toHaveBeenCalled();
     });
 
+    it("clears the search on Escape without hiding the window", async () => {
+      await renderApp();
+      await userEvent.type(screen.getByLabelText("Search Settings"), "dark{Escape}");
+      expect(screen.getByLabelText("Search Settings")).toHaveValue("");
+      expect(mocked.hideSettings).not.toHaveBeenCalled();
+    });
+
     it("hides the window on ⌘W, also inside the search field", async () => {
       await renderApp();
       await userEvent.click(screen.getByLabelText("Search Settings"));
@@ -104,10 +124,10 @@ describe("SettingsApp", () => {
     it("keeps the window when Escape cancels a shortcut recording", async () => {
       installCommands();
       await renderApp("?page=shortcuts");
-      await userEvent.type(screen.getByLabelText("Search shortcuts"), "Command palette");
-      await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+      const paletteRow = () => within(screen.getByText("Command palette").closest("[data-anchor]") as HTMLElement);
+      await userEvent.click(paletteRow().getByRole("button", { name: "Record shortcut" }));
       await userEvent.keyboard("{Escape}");
-      expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘K");
+      expect(paletteRow().getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘K");
       expect(mocked.hideSettings).not.toHaveBeenCalled();
     });
 

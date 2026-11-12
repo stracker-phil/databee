@@ -27,7 +27,7 @@ export function ConnectionSlugs() {
   };
 
   return (
-    <Group title="Addresses" anchor="connections-addresses">
+    <Group title="Addresses" anchor="connections-addresses" list>
       {recents.length === 0 && <p className="muted">No saved connections yet.</p>}
       {recents.map((r) => (
         <TextField

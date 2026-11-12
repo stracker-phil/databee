@@ -348,11 +348,33 @@ right, the page title as a drag strip and the page. Every change applies at once
 no Save and no ✕: closing (⌘W, the red light, or Esc outside a field) hides the window, which reopens on the
 same page.
 
-- **Search** (⌘F) narrows the page list to pages whose name, group or section title contains the text;
-  a page found by a section shows that section's title beside it in `--o3`, and opening it scrolls the section
-  to the top. ↵ opens the first hit; nothing matching shows "No Results".
-- **Sections:** every group of a page has a title; Stage and `openSettings` can name a page or a section.
+- **Layout** (the family's System Settings metrics): a 190px page list on `--chrome`; the current page filled
+  with the accent; page title in the drag strip, an optional one-line intro below it; groups 24px apart, each a
+  13px semibold heading 16px in over an inset card (`--chrome`, no border, 12px corners, 16px side padding) of
+  rows: label and description on the left, the control on the right, hairlines between them.
+- **No headline repeats the one above it:** a page with one group (Queries, Display, About) leaves it without a
+  heading; Shortcuts has no "Commands" group, its groups say where the keys work.
+- **Search** (⌘F) finds every row, not only pages: each page lists its rows (`rows`, by anchor) and a test fails
+  when the list and the rendered page differ. Typing replaces the page list with one list of matching pages and
+  rows, ranked like the palette (the label starting with the text, then a word of it, then every word, then the
+  letters in order); a row hit shows two lines, the page and the row's title. ↵ or a click opens the page
+  scrolled to the row and washes it in the accent once (`--motion-highlight`), again on every pick. A first Esc
+  clears the search; nothing matching shows "No Results".
+- **Pages:** Appearance, Shortcuts; Queries, Display, Connections; Presentations (Stage), Status (version and
+  build, the log level, the open connections with their health), About (version, Show Data Folder, Open Log
+  Folder, license, source). There is no Privacy & Data page: DataBee keeps no data of its own beyond settings,
+  saved connections, projects and the query history, all in the data folder About opens.
+- **Text size** is two pixel fields (UI size and Data size, also ⌘= / ⌘- / ⌘0), not the family's
+  Small/Medium/Large: a data tool sets the grid and the chrome apart ([ADR 0044](adr/0044-text-size-stays-two-pixel-sizes.md)).
 - While the window is in the background, its page list dims (`window-blurred`), like an inactive macOS window.
+
+### Shortcuts
+
+One key per command. Rows are grouped by where the key works: Everywhere, With a database open, In a table tab,
+In the SQL editor, In an object tab (module scopes follow under their own label). Recording a key another
+command in an overlapping scope holds asks first ("⌘K is used by “…”"); Reassign moves the key as one change,
+Cancel and Esc keep both. Reset (↺) shows only while a row's key differs from its default and keeps its slot
+when hidden; recording the default key is a reset.
 
 ## Value grammar
 
@@ -737,6 +759,11 @@ rebindable.
 
 Scopes are the registry's (`src/commands/index.ts`, `registerCoreScopes`): `global`, `db` under it, `table`
 (a table tab) and `editor` (a query tab) under `db`, and `object` (an object tab) under `global`.
+
+Menus are in Mac order (DataBee, File, Edit, View, Data, Go, Window, Help); Help holds Keyboard Shortcuts, Open
+Log Folder and Show Data Folder. One binding per command (Settings → Shortcuts moves a taken key after
+asking). Each Settings page can be opened by a command (`settings.<page>`, e.g. `databee command
+settings.status`), also from the palette.
 
 ## Palette prefixes
 

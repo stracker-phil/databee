@@ -6,38 +6,39 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../../test/apiMock")).createApiMock() }));
 
-import { api, LOG_LEVELS } from "../../api";
-import { clearCommands, installCommands, registerCommands, registerScope } from "../../commands";
+import { api } from "../../api";
 import { registerSettingsPage } from "../../registry/settingsPages";
 import { resetStore, useStore } from "../../state/store";
 import { connectedStore, settings } from "../../test/fixtures";
-import { SettingsWindow } from "./SettingsWindow";
+import { Group } from "./controls";
+import { SettingsWindow, type SettingsRequest } from "./SettingsWindow";
 
 const mocked = vi.mocked(api, true);
 const scrollIntoView = vi.fn();
 
-/** The window with the page state its host keeps; `onPage` sees every page the user picks. */
+/** The window with the request state its host keeps (a new object per request); `onOpen` sees every page or row the user picks. */
 function renderWindow(initial?: string) {
-  const onPage = vi.fn();
+  const onOpen = vi.fn();
   function Host() {
-    const [page, setPage] = useState(initial);
+    const [request, setRequest] = useState<SettingsRequest>({ id: initial });
     return (
       <SettingsWindow
-        page={page}
-        onPage={(id) => {
-          onPage(id);
-          setPage(id);
+        request={request}
+        onOpen={(id) => {
+          onOpen(id);
+          setRequest({ id });
         }}
       />
     );
   }
   render(<Host />);
-  return onPage;
+  return onOpen;
 }
 
 const nav = () => screen.getByRole("navigation", { name: "Settings pages" });
 const search = () => screen.getByLabelText("Search Settings");
 const goTo = (page: string) => userEvent.click(within(nav()).getByRole("button", { name: page }));
+const rowOf = (label: string) => screen.getByLabelText(label).closest("[data-anchor]")!;
 
 describe("SettingsWindow", () => {
   beforeEach(() => {
@@ -54,8 +55,10 @@ describe("SettingsWindow", () => {
     });
 
     it("opens on the page it is given", () => {
-      renderWindow("logging");
-      expect(screen.getByRole("heading", { name: "Logging" })).toBeInTheDocument();
+      renderWindow("status");
+      expect(screen.getByRole("heading", { name: "Status" })).toBeInTheDocument();
+      expect(within(nav()).getByRole("button", { name: "Status" })).toHaveAttribute("aria-current", "page");
+      expect(within(nav()).getByRole("button", { name: "Appearance" })).not.toHaveAttribute("aria-current");
     });
 
     it("opens on the first page when the page is unknown", () => {
@@ -69,10 +72,15 @@ describe("SettingsWindow", () => {
       expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
     });
 
+    it("lists the pages under their group headings", () => {
+      renderWindow();
+      expect(within(within(nav()).getByRole("group", { name: "Database" })).getAllByRole("button").map((b) => b.textContent)).toEqual(["Queries", "Display", "Connections"]);
+    });
+
     it("reports the page a nav click picks and shows it", async () => {
-      const onPage = renderWindow();
+      const onOpen = renderWindow();
       await goTo("Queries");
-      expect(onPage).toHaveBeenCalledWith("queries");
+      expect(onOpen).toHaveBeenCalledWith("queries");
       expect(screen.getByRole("heading", { name: "Queries" })).toBeInTheDocument();
       await userEvent.click(screen.getByRole("switch", { name: "Confirm destructive statements" }));
       expect(mocked.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ confirmDestructive: !settings().confirmDestructive }));
@@ -80,11 +88,21 @@ describe("SettingsWindow", () => {
   });
 
   describe("search", () => {
-    it("narrows the page list to the pages whose label matches", async () => {
+    it("replaces the page list with a Results group of the matching pages and rows", async () => {
       renderWindow();
-      await userEvent.type(search(), "log");
-      expect(within(nav()).getByRole("button", { name: "Logging" })).toBeInTheDocument();
-      expect(within(nav()).queryByRole("button", { name: "Queries" })).not.toBeInTheDocument();
+      await userEvent.type(search(), "queries");
+      const results = within(nav()).getByRole("group", { name: "Results" });
+      expect(within(results).getByRole("button", { name: "Queries" })).toBeInTheDocument();
+      expect(within(nav()).queryByRole("group", { name: "Interface" })).not.toBeInTheDocument();
+      expect(within(nav()).queryByRole("button", { name: "Display" })).not.toBeInTheDocument();
+    });
+
+    it("shows a row hit on two lines, the page and below it the row, named by both", async () => {
+      renderWindow();
+      await userEvent.type(search(), "dark");
+      const hit = within(nav()).getByRole("button", { name: "Dark scheme, Appearance" });
+      expect(within(hit).getByText("Appearance")).toBeInTheDocument();
+      expect(within(hit).getByText("Dark scheme")).toBeInTheDocument();
     });
 
     it("says No Results when nothing matches", async () => {
@@ -95,48 +113,91 @@ describe("SettingsWindow", () => {
     });
 
     it("opens the first hit on Enter", async () => {
-      const onPage = renderWindow();
-      await userEvent.type(search(), "logging{Enter}");
-      expect(onPage).toHaveBeenLastCalledWith("logging");
-      expect(screen.getByRole("heading", { name: "Logging" })).toBeInTheDocument();
+      const onOpen = renderWindow();
+      await userEvent.type(search(), "queries{Enter}");
+      expect(onOpen).toHaveBeenLastCalledWith("queries");
+      expect(screen.getByRole("heading", { name: "Queries" })).toBeInTheDocument();
+    });
+
+    it("opens the row of the first hit on Enter", async () => {
+      const onOpen = renderWindow();
+      await userEvent.type(search(), "row limit{Enter}");
+      expect(onOpen).toHaveBeenLastCalledWith("queries-row-limit");
+      expect(screen.getByRole("heading", { name: "Queries" })).toBeInTheDocument();
+      expect(rowOf("Row limit")).toHaveClass("found");
     });
 
     it("does nothing on Enter without a hit", async () => {
-      const onPage = renderWindow();
+      const onOpen = renderWindow();
       await userEvent.type(search(), "zzzz{Enter}");
-      expect(onPage).not.toHaveBeenCalled();
+      expect(onOpen).not.toHaveBeenCalled();
     });
 
-    it("shows a hit found by a section title with that section and opens it", async () => {
-      const onPage = renderWindow();
-      await userEvent.type(search(), "addresses");
-      const hit = within(nav()).getByRole("button", { name: "Connections Addresses" });
-      expect(hit).toHaveTextContent("Addresses");
-      await userEvent.click(hit);
-      expect(onPage).toHaveBeenCalledWith("connections-addresses");
-      expect(screen.getByRole("heading", { name: "Connections" })).toBeInTheDocument();
-      expect(scrollIntoView.mock.contexts).toContain(screen.getByRole("region", { name: "Addresses" }));
+    it("opens the page of a clicked row hit and highlights the row", async () => {
+      const onOpen = renderWindow("queries");
+      await userEvent.type(search(), "dark");
+      await userEvent.click(within(nav()).getByRole("button", { name: "Dark scheme, Appearance" }));
+      expect(onOpen).toHaveBeenCalledWith("appearance-dark-scheme");
+      expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+      const row = rowOf("Dark scheme");
+      expect(row).toHaveClass("found");
+      expect(scrollIntoView.mock.contexts).toContain(row);
     });
 
-    it("opens the section of the first hit on Enter", async () => {
-      const onPage = renderWindow();
-      await userEvent.type(search(), "look{Enter}");
-      expect(onPage).toHaveBeenLastCalledWith("appearance-look");
-      expect(scrollIntoView.mock.contexts).toContain(screen.getByRole("region", { name: "Look" }));
+    it("highlights the row again when the same hit is picked twice", async () => {
+      renderWindow();
+      await userEvent.type(search(), "dark");
+      const hit = () => within(nav()).getByRole("button", { name: "Dark scheme, Appearance" });
+      await userEvent.click(hit());
+      const row = rowOf("Dark scheme");
+      expect(row).toHaveClass("found");
+      row.classList.remove("found");
+      await userEvent.click(hit());
+      expect(row).toHaveClass("found");
+    });
+
+    it("clears the search on a first Escape and brings the page list back", async () => {
+      renderWindow();
+      await userEvent.type(search(), "dark");
+      await userEvent.keyboard("{Escape}");
+      expect(search()).toHaveValue("");
+      expect(within(nav()).getByRole("group", { name: "Interface" })).toBeInTheDocument();
     });
   });
 
-  describe("sections", () => {
-    it("opens the page that holds a section id and scrolls the group with that anchor into view", () => {
-      renderWindow("queries-limits");
+  describe("rows", () => {
+    it("opens the page that holds a row id and scrolls the row into view", () => {
+      renderWindow("queries-row-limit");
       expect(screen.getByRole("heading", { name: "Queries" })).toBeInTheDocument();
       expect(within(nav()).getByRole("button", { name: "Queries" })).toHaveAttribute("aria-current", "page");
-      expect(scrollIntoView.mock.contexts).toContain(screen.getByRole("region", { name: "Queries and checks" }));
+      expect(scrollIntoView.mock.contexts).toContain(rowOf("Row limit"));
+    });
+
+    it("highlights a group when its id is given", () => {
+      renderWindow("appearance-layout");
+      expect(screen.getByRole("region", { name: "Layout" })).toHaveClass("found");
     });
 
     it("does not scroll when a page id is given", () => {
       renderWindow("queries");
       expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it("reveals the anchor named by `under` while the row itself is not shown", () => {
+      registerSettingsPage({
+        id: "test-under",
+        group: "Test Group",
+        label: "Under",
+        icon: Blocks,
+        rows: [{ id: "under-row", title: "Hidden row", under: "under-group" }],
+        Body: () => (
+          <Group title="Shown group" anchor="under-group">
+            <p>Contents</p>
+          </Group>
+        ),
+      });
+      renderWindow("under-row");
+      expect(screen.getByRole("region", { name: "Shown group" })).toHaveClass("found");
     });
   });
 
@@ -259,24 +320,35 @@ describe("SettingsWindow", () => {
       });
     });
 
-    describe("scheme groups", () => {
-      const groupLabels = (select: HTMLElement) => Array.from(select.querySelectorAll("optgroup")).map((g) => g.label);
-      const groupOptions = (select: HTMLElement, label: string) =>
-        within(within(select).getByRole("group", { name: label })).getAllByRole("option").map((o) => o.textContent);
+    describe("scheme pop-ups", () => {
+      const openMenu = async (label: string) => {
+        await userEvent.click(screen.getByLabelText(label));
+        return screen.getByRole("menu", { name: label });
+      };
+      const captions = (menu: HTMLElement) => within(menu).getAllByRole("group").map((g) => g.getAttribute("aria-label"));
+      const choices = (menu: HTMLElement, caption: string) =>
+        within(within(menu).getByRole("group", { name: caption })).getAllByRole("menuitemradio").map((o) => o.textContent);
 
       it.each([
         ["Light scheme", ["Light", "Dark"]],
         ["Dark scheme", ["Dark", "Light"]],
-      ])("lists the %s groups with the slot's own kind first", (label, order) => {
+      ])("lists the %s groups with the slot's own kind first", async (label, order) => {
         renderWindow();
-        expect(groupLabels(screen.getByLabelText(label))).toEqual(order);
+        expect(captions(await openMenu(label))).toEqual(order);
       });
 
-      it("lists the dark and light schemes in their groups", () => {
+      it("lists the dark and light schemes in their groups", async () => {
         renderWindow();
-        const select = screen.getByLabelText("Dark scheme");
-        expect(groupOptions(select, "Dark")).toEqual(["Ayu Mirage", "Monokai", "Nord", "Solarized Dark"]);
-        expect(groupOptions(select, "Light")).toEqual(["Ayu Light", "Catppuccin Latte", "GitHub Light", "Solarized Light"]);
+        const menu = await openMenu("Dark scheme");
+        expect(choices(menu, "Dark")).toEqual(["Ayu Mirage", "Monokai", "Nord", "Solarized Dark"]);
+        expect(choices(menu, "Light")).toEqual(["Ayu Light", "Catppuccin Latte", "GitHub Light", "Solarized Light"]);
+      });
+
+      it("marks the saved scheme as the checked choice", async () => {
+        renderWindow();
+        const menu = await openMenu("Dark scheme");
+        expect(within(menu).getByRole("menuitemradio", { name: "Ayu Mirage" })).toHaveAttribute("aria-checked", "true");
+        expect(within(menu).getByRole("menuitemradio", { name: "Nord" })).toHaveAttribute("aria-checked", "false");
       });
 
       it.each([
@@ -285,7 +357,7 @@ describe("SettingsWindow", () => {
         ["Dark scheme", "Nord", "darkScheme", "nord"],
       ])("saves the %s selection %s", async (label, option, key, id) => {
         renderWindow();
-        await userEvent.selectOptions(screen.getByLabelText(label), option);
+        await userEvent.click(within(await openMenu(label)).getByRole("menuitemradio", { name: option }));
         expect(mocked.updateSettings).toHaveBeenLastCalledWith(expect.objectContaining({ [key]: id }));
       });
     });
@@ -336,107 +408,6 @@ describe("SettingsWindow", () => {
     });
   });
 
-  describe("Shortcuts page", () => {
-    beforeEach(() => {
-      connectedStore();
-      installCommands();
-    });
-
-    it("records, resets and saves shortcut overrides", async () => {
-      renderWindow("shortcuts");
-      await userEvent.type(screen.getByLabelText("Search shortcuts"), "Command palette");
-      const field = screen.getByRole("button", { name: "Record shortcut" });
-      expect(field).toHaveTextContent("⌘K");
-      await userEvent.click(field);
-      await userEvent.keyboard("{Meta>}{Shift>}p{/Shift}{/Meta}");
-      expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘⇧P");
-      expect(mocked.setKeybindings).toHaveBeenLastCalledWith({ "palette.open": "Mod+Shift+P" });
-
-      await userEvent.click(screen.getByRole("button", { name: "Reset Command palette" }));
-      expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘K");
-      expect(mocked.setKeybindings).toHaveBeenLastCalledWith(expect.not.objectContaining({ "palette.open": expect.anything() }));
-    });
-
-    it("records an already-bound shortcut", async () => {
-      renderWindow("shortcuts");
-      await userEvent.type(screen.getByLabelText("Search shortcuts"), "Command palette");
-      await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
-      await userEvent.keyboard("{Meta>}t{/Meta}");
-      expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘T");
-      expect(mocked.setKeybindings).toHaveBeenCalledWith({ "palette.open": "Mod+T" });
-    });
-
-    it("records a shortcut when the click does not focus the field, as in WebKit", async () => {
-      renderWindow("shortcuts");
-      await userEvent.type(screen.getByLabelText("Search shortcuts"), "Command palette");
-      fireEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
-      await userEvent.keyboard("{Meta>}t{/Meta}");
-      expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘T");
-      expect(mocked.setKeybindings).toHaveBeenLastCalledWith({ "palette.open": "Mod+T" });
-
-      fireEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
-      await userEvent.keyboard("{Escape}");
-      expect(screen.getByRole("button", { name: "Record shortcut" })).toHaveTextContent("⌘T");
-    });
-
-    it("finds a command by its id in the shortcut search", async () => {
-      renderWindow("shortcuts");
-      await userEvent.type(screen.getByLabelText("Search shortcuts"), "view.sidebar");
-      expect(screen.getByText("Toggle sidebar")).toBeInTheDocument();
-      expect(screen.queryByText("Zoom in")).not.toBeInTheDocument();
-    });
-
-    it("says so when no command matches the shortcut search", async () => {
-      renderWindow("shortcuts");
-      await userEvent.type(screen.getByLabelText("Search shortcuts"), "zzzz");
-      expect(screen.getByText("No matching commands.")).toBeInTheDocument();
-    });
-
-    it("shows each command's scope label", () => {
-      registerScope({ id: "labelled", parent: "global", label: "Labelled scope", isActive: () => false });
-      clearCommands();
-      registerCommands([{ id: "test.labelled", title: "Labelled command", scope: "labelled", run: () => {} }]);
-      renderWindow("shortcuts");
-      expect(screen.getByText("Labelled scope")).toBeInTheDocument();
-      clearCommands();
-    });
-
-    it.each([
-      ["Zoom in", "Everywhere"],
-      ["Run statement at cursor", "Editor"],
-      ["Value filter", "Table"],
-      ["Show Document", "Object"],
-    ])("shows the scope label of %s", async (title, label) => {
-      renderWindow("shortcuts");
-      await userEvent.type(screen.getByLabelText("Search shortcuts"), title);
-      expect(screen.getByText(label)).toBeInTheDocument();
-    });
-
-    it("warns when two commands in overlapping scopes share a binding", async () => {
-      renderWindow("shortcuts");
-      await userEvent.type(screen.getByLabelText("Search shortcuts"), "Zoom in");
-      await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
-      await userEvent.keyboard("{Meta>}k{/Meta}");
-      expect(screen.getByRole("alert")).toHaveTextContent(/⌘K is used by both/);
-      await userEvent.click(screen.getByRole("button", { name: "Reset Zoom in" }));
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    });
-  });
-
-  describe("Logging page", () => {
-    it("warns that trace logging records SQL", async () => {
-      renderWindow("logging");
-      await userEvent.selectOptions(screen.getByLabelText("Log level"), "trace");
-      expect(screen.getByText(/include the SQL text/)).toBeInTheDocument();
-    });
-
-    it("lists every log level", () => {
-      renderWindow("logging");
-      const options = within(screen.getByLabelText("Log level")).getAllByRole("option");
-      expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual([...LOG_LEVELS]);
-    });
-  });
-
   describe("registered pages", () => {
     const body = (text: string) => () => <p>{text}</p>;
 
@@ -465,6 +436,14 @@ describe("SettingsWindow", () => {
       expect(screen.queryByRole("button", { name: "Late" })).not.toBeInTheDocument();
       act(() => registerSettingsPage({ id: "test-late", group: "Test Group", label: "Late", icon: Blocks, Body: body("Late body") }));
       expect(screen.getByRole("button", { name: "Late" })).toBeInTheDocument();
+    });
+
+    it("finds a registered page's rows in the search", async () => {
+      registerSettingsPage({ id: "test-rows", group: "Test Group", label: "Rows page", icon: Blocks, rows: [{ id: "test-rows-zebra", title: "Zebra stripes" }], Body: body("Rows body") });
+      renderWindow();
+      await userEvent.type(search(), "zebra");
+      await userEvent.click(within(nav()).getByRole("button", { name: "Zebra stripes, Rows page" }));
+      expect(screen.getByRole("heading", { name: "Rows page" })).toBeInTheDocument();
     });
   });
 });

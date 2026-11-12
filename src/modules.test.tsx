@@ -16,11 +16,12 @@ describe("installModules", () => {
 
   it.each(["main", "settings"] as const)("makes the %s window's Settings list the core pages and the Presentations page", (window) => {
     installModules(window);
-    render(<SettingsWindow page={undefined} onPage={() => {}} />);
+    render(<SettingsWindow request={{}} onOpen={() => {}} />);
 
     const nav = screen.getByRole("navigation", { name: "Settings pages" });
-    for (const label of ["Appearance", "Shortcuts", "Queries", "Logging", "Presentations"]) {
+    for (const label of ["Appearance", "Shortcuts", "Queries", "Display", "Connections", "Status", "About", "Presentations"]) {
       expect(within(nav).getByRole("button", { name: label })).toBeInTheDocument();
     }
+    expect(within(nav).queryByRole("button", { name: "Logging" })).not.toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppliedBatch,
+  AppStatus,
   ChangeRequest,
   ColumnEquals,
   NewValue,
@@ -71,6 +72,8 @@ export const api = {
   getUiState: (identity: string) => invoke<UiState>("get_ui_state", { identity }),
   setUiState: (identity: string, ui: UiState) => invoke<UiState>("set_ui_state", { identity, ui }),
   openLogFolder: () => invoke<void>("open_log_folder"),
+  /** Build, folders, log level and open connections, for Settings → Status. */
+  appStatus: () => invoke<AppStatus>("app_status"),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   /** Opens the Settings window at a page or section id, else where it was. */
   openSettings: (page?: string) => invoke<void>("open_settings", { page: page ?? null }),

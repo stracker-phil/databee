@@ -1,16 +1,17 @@
 /** The core settings pages. Modules register their own pages from their install function. */
-import { FolderOpen, Keyboard, Palette, Plug, ScrollText, SquareTerminal, Table2 } from "lucide-react";
+import { Activity, Info, Keyboard, Palette, Plug, SquareTerminal, Table2 } from "lucide-react";
 import { useId, type CSSProperties } from "react";
-import {
-  api, BUNDLED_FONTS, LOG_LEVELS, SCHEMES, SETTINGS_LIMITS, TEXT_SIZES, type LogLevel, type SchemeId,
-} from "../../api";
+import { BUNDLED_FONTS, SCHEMES, SETTINGS_LIMITS, TEXT_SIZES, type SchemeId } from "../../api";
 import { ROW_PADDING_PX, rowPaddingPx } from "../../lib/theme";
-import { registerSettingsPage, type SettingsPageProps } from "../../registry/settingsPages";
+import { registerSettingsPage, type SettingsPageProps, type SettingsRow } from "../../registry/settingsPages";
 import { selectActiveSession, selectDatabaseAccent, useStore } from "../../state/store";
 import { AccentSwatches } from "../Accent";
 import { ConnectionSlugs } from "./ConnectionSlugs";
-import { capitalize, Group, NumberField, Row, Segmented, SegmentedButtons, Switch, TextField } from "./controls";
+import { PopUpButton } from "../PopUpButton";
+import { Group, NumberField, Row, Segmented, SegmentedButtons, Switch, TextField } from "./controls";
+import { shortcutRows } from "../../commands/shortcuts";
 import { ShortcutsPage } from "./ShortcutsPage";
+import { ABOUT_ROWS, AboutPage, STATUS_ROWS, StatusPage } from "./SystemPages";
 
 // Segmented buttons take string options; the keys of the px table are the only list of steps.
 const ROW_PADDING_STEPS: readonly string[] = Object.keys(ROW_PADDING_PX);
@@ -31,8 +32,9 @@ function SchemePreview({ scheme, accent }: { scheme: SchemeId; accent: string })
 }
 
 /** The schemes of the slot's own kind come first. */
-function SchemeSelect({ label, dark, value, accent, stage, onChange }: {
+function SchemeSelect({ label, anchor, dark, value, accent, stage, onChange }: {
   label: string;
+  anchor: string;
   dark: boolean;
   value: SchemeId;
   accent: string;
@@ -41,25 +43,21 @@ function SchemeSelect({ label, dark, value, accent, stage, onChange }: {
 }) {
   const id = useId();
   return (
-    <Row label={label} htmlFor={id}>
+    <Row label={label} htmlFor={id} anchor={anchor}>
       <div className="scheme-select">
         <SchemePreview scheme={value} accent={accent} />
-        <select
+        <PopUpButton
           id={id}
           className="input"
           data-stage={stage}
           data-stage-label={label}
           value={value}
-          onChange={(e) => onChange(toSchemeId(e.target.value))}
-        >
-          {[dark, !dark].map((groupDark) => (
-            <optgroup key={String(groupDark)} label={groupDark ? "Dark" : "Light"}>
-              {SCHEMES.filter((scheme) => scheme.dark === groupDark).map((scheme) => (
-                <option key={scheme.id} value={scheme.id}>{scheme.label}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+          options={[dark, !dark].map((groupDark) => ({
+            caption: groupDark ? "Dark" : "Light",
+            options: SCHEMES.filter((scheme) => scheme.dark === groupDark).map((scheme) => ({ value: scheme.id, label: scheme.label })),
+          }))}
+          onChange={(next) => onChange(toSchemeId(next))}
+        />
       </div>
     </Row>
   );
@@ -82,7 +80,7 @@ function AccentRow({ accent, onChange }: { accent: string; onChange: (accent: st
   const description = "Keys, links, selection and focus. The default accent; a database can override it on its Project page."
     + (own && session?.database ? ` ${session.database} uses its own: ${own}.` : "");
   return (
-    <Row label="Accent" description={description}>
+    <Row label="Accent" description={description} anchor="appearance-accent">
       <AccentSwatches value={accent} stage="appearance:accent" onChange={onChange} />
     </Row>
   );
@@ -94,6 +92,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
       <Group title="Look" anchor="appearance-look">
         <Segmented
           label="Theme"
+          anchor="appearance-theme"
           description="Which scheme applies; System follows macOS."
           options={["system", "light", "dark"] as const}
           value={s.theme}
@@ -102,6 +101,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
         />
         <SchemeSelect
           label="Light scheme"
+          anchor="appearance-light-scheme"
           dark={false}
           value={toSchemeId(s.lightScheme)}
           accent={s.accent}
@@ -110,6 +110,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
         />
         <SchemeSelect
           label="Dark scheme"
+          anchor="appearance-dark-scheme"
           dark
           value={toSchemeId(s.darkScheme)}
           accent={s.accent}
@@ -117,7 +118,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
           onChange={(darkScheme) => set({ darkScheme })}
         />
         <AccentRow accent={s.accent} onChange={(accent) => set({ accent })} />
-        <Row label="Row padding" description="Space above and below every row in grids and lists.">
+        <Row label="Row padding" description="Space above and below every row in grids and lists." anchor="appearance-row-padding">
           <div className="row-padding">
             <SegmentedButtons
               label="Row padding"
@@ -133,6 +134,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
       <Group title="Layout" anchor="appearance-layout">
         <Segmented
           label="Panes side by side"
+          anchor="appearance-max-panes"
           description="Columns of an object tab shown next to each other at most; fewer when the window is narrow."
           options={MAX_PANES_STEPS}
           value={String(s.maxPanes)}
@@ -143,6 +145,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
       <Group title="Text" anchor="appearance-text">
         <NumberField
           label="UI size"
+          anchor="appearance-ui-size"
           description="Sidebar, tabs and labels."
           suffix="px"
           value={s.uiFontSize}
@@ -153,6 +156,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
         />
         <NumberField
           label="Data size"
+          anchor="appearance-data-size"
           description="Table cells, document values and the SQL editor. ⌘= / ⌘- zoom both."
           suffix="px"
           value={s.dataFontSize}
@@ -163,6 +167,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
         />
         <TextField
           label="UI font"
+          anchor="appearance-font-ui"
           description="Any installed family; empty uses the bundled font."
           placeholder={BUNDLED_FONTS.ui}
           value={s.fontUi ?? ""}
@@ -171,6 +176,7 @@ function AppearancePage({ s, set }: SettingsPageProps) {
         />
         <TextField
           label="Mono font"
+          anchor="appearance-font-mono"
           description="Every database value. Any installed family; empty uses the bundled font."
           placeholder={BUNDLED_FONTS.mono}
           value={s.fontMono ?? ""}
@@ -184,22 +190,22 @@ function AppearancePage({ s, set }: SettingsPageProps) {
 
 function QueriesPage({ s, set }: SettingsPageProps) {
   return (
-    <Group title="Queries and checks" anchor="queries-limits">
-      <NumberField label="Row limit" description="Rows fetched per query in the SQL editor." value={s.rowLimit} {...SETTINGS_LIMITS.rowLimit} onCommit={(rowLimit) => set({ rowLimit })} />
-      <NumberField label="Query timeout" description="Queries running longer are stopped." suffix="s" value={s.queryTimeoutSecs} {...SETTINGS_LIMITS.queryTimeoutSecs} onCommit={(queryTimeoutSecs) => set({ queryTimeoutSecs })} />
-      <NumberField stage="queries:live-interval" label="Live interval" description="How often a live object reads its row again (w)." suffix="s" value={s.liveIntervalSecs} {...SETTINGS_LIMITS.liveIntervalSecs} onCommit={(liveIntervalSecs) => set({ liveIntervalSecs })} />
-      <Switch label="Live check in table tabs" description="The active table tab reads the rows it shows again every 4 s and marks those changed in the database." checked={s.tableLiveCheck} onChange={(tableLiveCheck) => set({ tableLiveCheck })} />
-      <Switch label="Confirm destructive statements" description="Ask before DROP, TRUNCATE and DELETE/UPDATE without WHERE." checked={s.confirmDestructive} onChange={(confirmDestructive) => set({ confirmDestructive })} />
+    <Group>
+      <NumberField anchor="queries-row-limit" label="Row limit" description="Rows fetched per query in the SQL editor." value={s.rowLimit} {...SETTINGS_LIMITS.rowLimit} onCommit={(rowLimit) => set({ rowLimit })} />
+      <NumberField anchor="queries-timeout" label="Query timeout" description="Queries running longer are stopped." suffix="s" value={s.queryTimeoutSecs} {...SETTINGS_LIMITS.queryTimeoutSecs} onCommit={(queryTimeoutSecs) => set({ queryTimeoutSecs })} />
+      <NumberField anchor="queries-live-interval" stage="queries:live-interval" label="Live interval" description="How often a live object reads its row again (w)." suffix="s" value={s.liveIntervalSecs} {...SETTINGS_LIMITS.liveIntervalSecs} onCommit={(liveIntervalSecs) => set({ liveIntervalSecs })} />
+      <Switch anchor="queries-live-check" label="Live check in table tabs" description="The active table tab reads the rows it shows again every 4 s and marks those changed in the database." checked={s.tableLiveCheck} onChange={(tableLiveCheck) => set({ tableLiveCheck })} />
+      <Switch anchor="queries-confirm-destructive" label="Confirm destructive statements" description="Ask before DROP, TRUNCATE and DELETE/UPDATE without WHERE." checked={s.confirmDestructive} onChange={(confirmDestructive) => set({ confirmDestructive })} />
     </Group>
   );
 }
 
 function DisplayPage({ s, set }: SettingsPageProps) {
   return (
-    <Group title="Values and schemas" anchor="display-values">
-      <TextField label="NULL label" description="Shown in cells that hold NULL." value={s.nullLabel} onCommit={(nullLabel) => set({ nullLabel })} />
-      <NumberField label="Max characters per cell" description="Longer values are truncated in the grid." value={s.maxCellChars} {...SETTINGS_LIMITS.maxCellChars} onCommit={(maxCellChars) => set({ maxCellChars })} />
-      <Switch label="Show system databases" description="mysql, sys, information_schema and performance_schema." checked={s.showSystemSchemas} onChange={(showSystemSchemas) => set({ showSystemSchemas })} />
+    <Group>
+      <TextField anchor="display-null-label" label="NULL label" description="Shown in cells that hold NULL." value={s.nullLabel} onCommit={(nullLabel) => set({ nullLabel })} />
+      <NumberField anchor="display-max-cell-chars" label="Max characters per cell" description="Longer values are truncated in the grid." value={s.maxCellChars} {...SETTINGS_LIMITS.maxCellChars} onCommit={(maxCellChars) => set({ maxCellChars })} />
+      <Switch anchor="display-system-databases" label="Show system databases" description="mysql, sys, information_schema and performance_schema." checked={s.showSystemSchemas} onChange={(showSystemSchemas) => set({ showSystemSchemas })} />
     </Group>
   );
 }
@@ -208,38 +214,57 @@ function ConnectionsPage({ s, set }: SettingsPageProps) {
   return (
     <>
       <Group title="New connections" anchor="connections-defaults">
-        <NumberField label="Connect timeout" suffix="s" value={s.connectTimeoutSecs} {...SETTINGS_LIMITS.connectTimeoutSecs} onCommit={(connectTimeoutSecs) => set({ connectTimeoutSecs })} />
-        <NumberField label="Default port" description="Used when a connection doesn't name one." value={s.defaultPort} {...SETTINGS_LIMITS.defaultPort} onCommit={(defaultPort) => set({ defaultPort })} />
+        <NumberField anchor="connections-timeout" label="Connect timeout" suffix="s" value={s.connectTimeoutSecs} {...SETTINGS_LIMITS.connectTimeoutSecs} onCommit={(connectTimeoutSecs) => set({ connectTimeoutSecs })} />
+        <NumberField anchor="connections-default-port" label="Default port" description="Used when a connection doesn't name one." value={s.defaultPort} {...SETTINGS_LIMITS.defaultPort} onCommit={(defaultPort) => set({ defaultPort })} />
       </Group>
       <ConnectionSlugs />
     </>
   );
 }
 
-function LoggingPage({ s, set }: SettingsPageProps) {
-  return (
-    <Group title="Log" anchor="logging-log">
-      <Row label="Log level" htmlFor="settings-log-level" description={s.logLevel === "trace" ? "Trace logs include the SQL text of every query." : "Higher levels write more detail."}>
-        <select id="settings-log-level" className="input" value={s.logLevel} onChange={(e) => set({ logLevel: e.target.value as LogLevel })}>
-          {LOG_LEVELS.map((l) => (
-            <option key={l} value={l}>{capitalize(l)}</option>
-          ))}
-        </select>
-      </Row>
-      <Row label="Log files" description="The three most recent files are kept.">
-        <button type="button" className="btn" onClick={() => void api.openLogFolder()}>
-          <FolderOpen size="1.077rem" /> Open log folder
-        </button>
-      </Row>
-    </Group>
-  );
-}
+const APPEARANCE_ROWS: SettingsRow[] = [
+  { id: "appearance-look", title: "Look" },
+  { id: "appearance-theme", title: "Theme", keywords: ["dark mode", "light mode"] },
+  { id: "appearance-light-scheme", title: "Light scheme", keywords: ["colors", "theme"] },
+  { id: "appearance-dark-scheme", title: "Dark scheme", keywords: ["colors", "theme"] },
+  { id: "appearance-accent", title: "Accent", keywords: ["color"] },
+  { id: "appearance-row-padding", title: "Row padding", keywords: ["density", "spacing"] },
+  { id: "appearance-layout", title: "Layout" },
+  { id: "appearance-max-panes", title: "Panes side by side", keywords: ["columns"] },
+  { id: "appearance-text", title: "Text" },
+  { id: "appearance-ui-size", title: "UI size", keywords: ["font size", "zoom"] },
+  { id: "appearance-data-size", title: "Data size", keywords: ["font size", "zoom"] },
+  { id: "appearance-font-ui", title: "UI font", keywords: ["typeface"] },
+  { id: "appearance-font-mono", title: "Mono font", keywords: ["typeface", "monospace"] },
+];
+
+const QUERIES_ROWS: SettingsRow[] = [
+  { id: "queries-row-limit", title: "Row limit" },
+  { id: "queries-timeout", title: "Query timeout" },
+  { id: "queries-live-interval", title: "Live interval", keywords: ["refresh"] },
+  { id: "queries-live-check", title: "Live check in table tabs", keywords: ["refresh", "changes"] },
+  { id: "queries-confirm-destructive", title: "Confirm destructive statements", keywords: ["drop", "truncate", "delete"] },
+];
+
+const DISPLAY_ROWS: SettingsRow[] = [
+  { id: "display-null-label", title: "NULL label" },
+  { id: "display-max-cell-chars", title: "Max characters per cell", keywords: ["truncate"] },
+  { id: "display-system-databases", title: "Show system databases", keywords: ["information_schema", "mysql", "sys"] },
+];
+
+const CONNECTIONS_ROWS: SettingsRow[] = [
+  { id: "connections-defaults", title: "New connections" },
+  { id: "connections-timeout", title: "Connect timeout" },
+  { id: "connections-default-port", title: "Default port", keywords: ["3306"] },
+  { id: "connections-addresses", title: "Addresses", keywords: ["slug", "databee://"] },
+];
 
 export function registerCoreSettingsPages() {
-  registerSettingsPage({ id: "appearance", group: "Interface", label: "Appearance", icon: Palette, order: 10, intro: "How DataBee looks. Changes apply right away.", sections: [{ id: "appearance-look", title: "Look" }, { id: "appearance-layout", title: "Layout" }, { id: "appearance-text", title: "Text" }], Body: AppearancePage });
-  registerSettingsPage({ id: "shortcuts", group: "Interface", label: "Shortcuts", icon: Keyboard, order: 20, intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.", sections: [{ id: "shortcuts-list", title: "Commands" }], Body: ShortcutsPage });
-  registerSettingsPage({ id: "queries", group: "Database", label: "Queries", icon: SquareTerminal, order: 10, intro: "Limits and safety checks for the SQL editor and table views.", sections: [{ id: "queries-limits", title: "Queries and checks" }], Body: QueriesPage });
-  registerSettingsPage({ id: "display", group: "Database", label: "Display", icon: Table2, order: 20, intro: "How values and schemas show up in grids, documents and the sidebar.", sections: [{ id: "display-values", title: "Values and schemas" }], Body: DisplayPage });
-  registerSettingsPage({ id: "connections", group: "Database", label: "Connections", icon: Plug, order: 30, intro: "Defaults for new connections, and the name each saved connection has in addresses.", sections: [{ id: "connections-defaults", title: "New connections" }, { id: "connections-addresses", title: "Addresses" }], Body: ConnectionsPage });
-  registerSettingsPage({ id: "logging", group: "System", label: "Logging", icon: ScrollText, order: 20, intro: "What DataBee writes to its log file.", sections: [{ id: "logging-log", title: "Log" }], Body: LoggingPage });
+  registerSettingsPage({ id: "appearance", group: "Interface", label: "Appearance", icon: Palette, order: 10, intro: "How DataBee looks. Changes apply right away.", rows: APPEARANCE_ROWS, Body: AppearancePage });
+  registerSettingsPage({ id: "shortcuts", group: "Interface", label: "Shortcuts", icon: Keyboard, order: 20, intro: "Click a shortcut and press the new keys. Backspace unbinds, Escape cancels.", keywords: ["keys", "keyboard"], rows: shortcutRows, Body: ShortcutsPage });
+  registerSettingsPage({ id: "queries", group: "Database", label: "Queries", icon: SquareTerminal, order: 10, intro: "Limits and safety checks for the SQL editor and table views.", rows: QUERIES_ROWS, Body: QueriesPage });
+  registerSettingsPage({ id: "display", group: "Database", label: "Display", icon: Table2, order: 20, intro: "How values and schemas show up in grids, documents and the sidebar.", rows: DISPLAY_ROWS, Body: DisplayPage });
+  registerSettingsPage({ id: "connections", group: "Database", label: "Connections", icon: Plug, order: 30, intro: "Defaults for new connections, and the name each saved connection has in addresses.", rows: CONNECTIONS_ROWS, Body: ConnectionsPage });
+  registerSettingsPage({ id: "status", group: "System", label: "Status", icon: Activity, order: 20, intro: "This build, its log and the connections open now.", keywords: ["diagnostics", "logging"], rows: STATUS_ROWS, Body: StatusPage });
+  registerSettingsPage({ id: "about", group: "System", label: "About", icon: Info, order: 30, keywords: ["version", "license"], rows: ABOUT_ROWS, Body: AboutPage });
 }

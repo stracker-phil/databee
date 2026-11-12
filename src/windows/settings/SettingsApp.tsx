@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api";
 import { setOverrides } from "../../commands";
-import { SettingsWindow } from "../../components/settings/SettingsWindow";
+import { SettingsWindow, type SettingsRequest } from "../../components/settings/SettingsWindow";
 import { Toasts } from "../../components/Toasts";
 import { TooltipHost } from "../../components/TooltipHost";
 import { applyAppearance, syncRowHeight, useSystemDark } from "../../lib/theme";
@@ -38,11 +38,11 @@ function useSettings() {
   }, []);
 }
 
-function useOpenSettings(setPage: (page: string) => void) {
+function useOpenSettings(open: (id: string) => void) {
   useEffect(() => {
-    const unlisten = api.onOpenSettings(setPage);
+    const unlisten = api.onOpenSettings(open);
     return () => void unlisten.then((fn) => fn()).catch(() => {});
-  }, [setPage]);
+  }, [open]);
 }
 
 /** ⌘F focuses the search; ⌘W hides the window, and so does Esc unless a field or a recording shortcut takes it. */
@@ -78,16 +78,17 @@ function useAppearance() {
 }
 
 export function SettingsApp() {
-  const [page, setPage] = useState(initialPage);
+  const [request, setRequest] = useState<SettingsRequest>(() => ({ id: initialPage() }));
+  const open = useCallback((id: string) => setRequest({ id }), []);
   useSettings();
-  useOpenSettings(setPage);
+  useOpenSettings(open);
   useWindowKeys();
   useAppearance();
   useEffect(trackWindowFocus, []);
 
   return (
     <>
-      <SettingsWindow page={page} onPage={setPage} />
+      <SettingsWindow request={request} onOpen={open} />
       <Toasts />
       <TooltipHost />
     </>

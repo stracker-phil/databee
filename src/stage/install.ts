@@ -13,7 +13,16 @@ function registerStageSettingsPage() {
     icon: Presentation,
     order: 10,
     intro: "Lets a presenter app such as Stage highlight parts of DataBee and click through it for a demo. Only apps on this Mac can connect.",
-    sections: [{ id: "presentations-api", title: "Presentation API" }],
+    keywords: ["stage", "demo"],
+    rows: [
+      { id: "presentations-api", title: "Presentation API" },
+      { id: "presentations-allow", title: "Allow presentations" },
+      { id: "presentations-status", title: "Status" },
+      { id: "presentations-port", title: "Port" },
+      { id: "presentations-token", title: "Token" },
+      { id: "presentations-register", title: "Register with Stage", under: "presentations-api" },
+      { id: "presentations-last-request", title: "Last presenter request" },
+    ],
     Body: PresentationsPage,
   });
 }

@@ -384,17 +384,23 @@ Settings is a window of its own ([ADR 0031](adr/0031-settings-is-a-window-of-its
 `components/settings/SettingsWindow.tsx`. `src/registry/settingsPages.ts` holds the pages.
 
 ```ts
-interface SettingsPage { id, group, label, icon, intro?, Body, order?, sections? }
+interface SettingsRow { id, title, keywords?, under? }   // id = the row's (or group's) anchor
+interface SettingsPage { id, group, label, icon, intro?, Body, order?, keywords?, rows? }  // rows: a list or a function
 registerSettingsPage(page)   // replaces a page with the same id
 settingsPages()              // by group (Interface, Database, System, then others by name), order, label
-resolveSettingsPage(id)      // a page id, else the page holding that section id, else the first page
-settingsGroups(query?)       // the nav groups, narrowed to pages whose label, group or section title matches
+resolveSettingsPage(id)      // a page id, else the page holding that row id, else the first page
+searchSettings(query)        // every matching page and row, best first (lib/rank.ts `ranked`, shared with the palette)
+settingsGroups()             // the page list under its group headings
 ```
 
 - `Body` gets `{ s, set }`: the current `Settings` and a patch function that saves quietly. A page with its
   own settings file (Stage's Presentations page) ignores them and loads its own.
-- Every `Group` has a title and an `anchor`, which the page lists in `sections`, so the nav's search finds it
-  and `openSettings("<section id>")` opens the page scrolled to it (`SectionTarget`).
+- Every `Row` and titled `Group` has an `anchor` (`data-anchor`), which the page lists in `rows` with the same
+  title, so the search finds it and `openSettings("<row id>")` opens the page scrolled to it and washed in the
+  accent once (`ScrollTarget`, a `RevealTarget` per request; `under` names what to reveal while the row isn't
+  shown). Rows that come from data (open connections, connection slugs) sit in a `Group list` and the search finds
+  the group. `components/settings/searchIndex.test.tsx` renders every page and fails when a shown anchor has no
+  entry, an entry isn't shown, or a title differs.
 - Opening: `openSettings(page?)` in the store (the ⌘, command, the toolbar button, Stage) calls Rust's
   `open_settings`; Rust builds the window on first use, else emits `open_settings` with the page to it.
   Closing hides the window (Esc outside a field does too), so it reopens on its last page.
@@ -403,15 +409,16 @@ settingsGroups(query?)       // the nav groups, narrowed to pages whose label, g
   settings and keybinding overrides, so scheme, accent and text size apply in both at once. Rust tells the
   main page `settings_shown` (true or false), kept as `settingsWindow` for the Stage hook.
 - The window re-renders on registration (`useSettingsPagesVersion`), so a page may register after it opened.
-  Search: the field above the page list (⌘F) narrows it; ↵ opens the first hit; "No Results" when none
-  matches. `lib/windowFocus.ts` dims the page list while the window is in the background (`window-blurred`).
+  Search: typing in the field above the page list (⌘F) replaces it with the ranked pages and rows (two-line
+  row hits); ↵ opens the first hit, a first Esc clears it; "No Results" when none matches. `lib/windowFocus.ts` dims the page list while the window is in the background (`window-blurred`).
 - The Stage hook lists `settingsPages()` as the settings window's sections and the `settings:open:<page>`
   choices, so a registered page is reachable from Stage without further code. Stage opens and closes the
   window but reaches no anchor inside it.
 - `components/settings/`: `controls.tsx` (`Group`, `Row`, `Switch`, `Segmented`, `TextField`,
-  `NumberField`), `ShortcutsPage.tsx`, `pages.tsx` (`registerCoreSettingsPages()`: Appearance, Shortcuts,
-  Queries, Display, Connections, Logging). Numeric bounds come from `SETTINGS_LIMITS` /
-  `TEXT_SIZES`, the log levels from `LOG_LEVELS`.
+  `NumberField`), `ShortcutsPage.tsx` (grouped by scope; a taken key opens the Reassign sheet; `shortcutRows`
+  for the search), `SystemPages.tsx` (Status from `api.appStatus`, Rust's `diagnostics::app_status`; About),
+  `pages.tsx` (`registerCoreSettingsPages()`: Appearance, Shortcuts, Queries, Display, Connections, Status,
+  About). Numeric bounds come from `SETTINGS_LIMITS` / `TEXT_SIZES`, the log levels from `LOG_LEVELS`.
 
 Adding a page from a module: write the component next to the module's code (it may import the shared
 controls), then call `registerSettingsPage` from the module's install function:

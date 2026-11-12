@@ -9,6 +9,7 @@ pub mod decode;
 mod deep_link;
 #[cfg(debug_assertions)]
 mod dev;
+mod diagnostics;
 mod document;
 pub mod error;
 mod folders;
@@ -279,6 +280,7 @@ fn start_app(
             commands::get_ui_state,
             commands::set_ui_state,
             commands::open_log_folder,
+            diagnostics::app_status,
             commands::open_url,
             commands::open_settings,
             commands::hide_settings,
