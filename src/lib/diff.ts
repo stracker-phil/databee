@@ -120,5 +120,5 @@ export function clockTime(at: number): string {
   return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
-/** How long a changed value flashes, in ms (the `.flash` animation in app.css). */
+/** How long a changed value flashes, in ms (the `.flash` animation in `styles/live.css`). */
 export const FLASH_MS = 1600;

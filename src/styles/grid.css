@@ -1,0 +1,155 @@
+/* ---------- grid ---------- */
+/* Row anatomy (docs/ux.md): a --line hairline under every row, --row-hover on the hovered row, --value-hover on
+   the hovered value, no row numbers. Kinds show through alignment and opacity, never color. */
+.grid {
+  flex: 1; overflow: auto; min-height: 0; background: var(--bg);
+  font-family: var(--font-mono); font-size: var(--data-font-size);
+}
+.grid-inner { position: relative; }
+/* The header's height is the token the Rows view sizes its grids by (.rows-grid). */
+.grid-head {
+  position: sticky; top: 0; z-index: 2; display: flex; background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  /* fractional scroll offsets leave a hairline above a sticky header; paint over it */
+  box-shadow: 0 -2px 0 0 var(--bg);
+}
+.grid-row { display: flex; position: absolute; left: 0; border-bottom: 1px solid var(--line); }
+.grid-row:hover { background: var(--row-hover); }
+/* The cell fills the row above its hairline (border-bottom), so its line is 1px short of --row-h. A cell draws its
+   ring (selection, editing) and its row's change mark (live check) as two shadows, so neither hides the other. */
+.grid-cell {
+  flex: none; padding: 0 0.769rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  height: 100%; line-height: calc(var(--row-h) - 1px); border-radius: 3px;
+  box-shadow: var(--cell-ring, 0 0 transparent), var(--change-mark, 0 0 transparent);
+}
+.grid-cell:hover { background: var(--value-hover); }
+.grid-cell.num { text-align: right; font-variant-numeric: tabular-nums; }
+.grid-cell.null { color: var(--o3); font-style: italic; }
+.grid-cell.bytes { color: var(--o3); }
+.grid-cell.selected { --cell-ring: inset 0 0 0 1.5px var(--accent); }
+/* The grid's own outline would be clipped by the pane around it and covered by the sticky header, so focus shows
+   as the selected cell's outline, like the Document view's focused value, or under the header without one. */
+.grid:focus-visible { outline: none; }
+.grid:focus-visible:not(:has(.grid-cell.selected)) .grid-head::after {
+  content: ""; position: absolute; inset: auto 0 0; height: 2px; background: var(--accent); pointer-events: none;
+}
+/* A first column holding the rows' primary key (.pinned) stays at the left while the grid scrolls sideways, header
+   cell included (above the other columns' resize handles), on the opaque row background (a hovered cell lays
+   its tint over it), with a hairline at its edge while scrolled (data-scrolled). revealColumn keeps
+   the selected cell right of it. */
+.grid.pinned { --pin-bg: var(--bg); }
+.grid.pinned .grid-row:hover { --pin-bg: var(--row-hover); }
+.grid.pinned :is(.grid-hcell, .grid-cell):first-child { position: sticky; left: 0; z-index: 1; background: var(--pin-bg); border-radius: 0; }
+.grid.pinned .grid-hcell:first-child { z-index: 2; }
+.grid.pinned .grid-hcell.sortable:first-child:hover { background: var(--row-hover); }
+.grid.pinned .grid-cell:first-child:hover { background: linear-gradient(var(--value-hover), var(--value-hover)) var(--pin-bg); }
+.grid.pinned[data-scrolled] :is(.grid-hcell, .grid-cell):first-child::after {
+  content: ""; position: absolute; inset: 0 0 0 auto; width: 1px; background: var(--line); pointer-events: none;
+}
+/* Header: the column name, then its type on a second line. */
+.grid-hcell {
+  flex: none; position: relative; display: flex; flex-direction: column; justify-content: flex-end;
+  padding: var(--pad) 0.769rem; line-height: 1.3; overflow: hidden;
+}
+.grid-hcell .name { display: flex; align-items: center; gap: 0.231rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grid-hcell .type { color: var(--o3); font-size: 0.808rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grid-hcell.sortable:hover { background: var(--row-hover); }
+.col-resize { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 1; }
+.col-resize:hover, .col-resize:active { background: var(--accent); opacity: 0.6; }
+.filter-chip { display: inline-flex; align-items: center; gap: 0.308rem; min-width: 0; max-width: 40rem; height: 1.692rem; padding: 0 0.615rem; border-radius: 0.846rem; border: none; background: var(--sel); color: var(--accent-text); font-weight: 600; white-space: nowrap; }
+.filter-chip code { overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-weight: 400; font-size: var(--data-font-size); }
+
+/* ---------- table tab ---------- */
+.table-head { display: flex; align-items: center; gap: 0.615rem; padding: 0.462rem 0.769rem; border-bottom: 1px solid var(--line); background: var(--bg); }
+.table-head .filter { flex: 1; max-width: 40rem; }
+.filter-mode { flex: none; height: 1.385rem; padding: 0 0.385rem; border: none; border-radius: 5px; background: none; color: var(--o2); font-size: var(--fs-small); }
+.filter-mode:hover { background: var(--row-hover); color: var(--text); }
+.structure { container: structure / inline-size; overflow: auto; padding: 1.077rem 1.385rem 1.846rem; display: flex; flex-direction: column; gap: 1.385rem; user-select: text; }
+.structure h3 { margin: 0 0 0.462rem; font-size: var(--fs-small); text-transform: uppercase; letter-spacing: 0.04em; color: var(--o2); }
+.structure table { border-collapse: collapse; width: 100%; }
+.structure th, .structure td { text-align: left; padding: 0.308rem 0.769rem 0.308rem 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.structure th { font-weight: 600; color: var(--o2); font-size: var(--fs-small); }
+/* One row per column: name, type, keys, then the rules on it (kind, references, value styles), each rule a
+   line with its origin and the Project page's controls; table-level blocks below. */
+.structure-grid { display: grid; grid-template-columns: max-content minmax(min-content, 15rem) max-content minmax(min-content, 0.9fr) minmax(min-content, 1.6fr) minmax(min-content, 1.1fr) max-content; }
+.structure-row { display: contents; }
+.structure-row > * { padding: 0.462rem 0.769rem 0.462rem 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.structure-row:not(.head):hover > * { background: var(--row-hover); }
+.structure-row.head > * { font-weight: 600; color: var(--o2); font-size: var(--fs-small); padding-top: 0.308rem; padding-bottom: 0.308rem; }
+.structure .col-name { font-family: var(--font-mono); font-size: var(--data-font-size); font-weight: 600; }
+.structure .col-type { font-size: var(--data-font-size); }
+.structure .col-facts { display: block; font-size: var(--fs-small); }
+.structure .key-marks { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-family: var(--font-mono); font-size: var(--fs-small); white-space: nowrap; }
+.structure .rule-cell { display: flex; flex-direction: column; gap: 0.462rem; }
+/* Too narrow for the rule columns: each row keeps name, type and keys, and lists its rules below them, labelled. */
+@container structure (width < 76rem) {
+  .structure-grid { grid-template-columns: max-content minmax(min-content, 15rem) minmax(min-content, 1fr) max-content; }
+  .structure-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; border-bottom: 1px solid var(--line); }
+  .structure-row > * { border-bottom: none; }
+  .structure-row:not(.head):hover { background: var(--row-hover); }
+  .structure-row:not(.head):hover > * { background: none; }
+  .structure-row .rule-head { display: none; }
+  .structure-row .col-menu { grid-row: 1; grid-column: -2; }
+  .structure .rule-cell { grid-column: 2 / -2; display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.462rem 0; padding-top: 0; }
+  .structure .rule-cell:empty { display: none; }
+  .structure .rule-cell::before { content: attr(data-label); grid-column: 1; grid-row: 1; font-size: var(--fs-small); color: var(--o3); line-height: 1.7; }
+  .structure .rule-cell > * { grid-column: 2; }
+}
+.structure .rule-item { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.structure .rule-item.off .rule-main { color: var(--o3); text-decoration: line-through; }
+.structure .rule-main { font-family: var(--font-mono); font-size: var(--data-font-size); overflow-wrap: break-word; }
+.structure .rule-main .unbroken { white-space: nowrap; }
+.structure .rule-main.dashed .link { text-decoration: underline dashed; text-underline-offset: 3px; }
+.structure .rule-meta { display: flex; align-items: center; gap: 0.769rem; white-space: nowrap; font-size: var(--fs-small); color: var(--o2); }
+.structure .origin { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o3); white-space: nowrap; }
+.structure .origin .mono { font-size: var(--fs-small); }
+.structure .link { color: inherit; }
+.structure .link:hover { color: var(--accent-text); text-decoration: underline; }
+.structure .act { color: var(--accent-text); white-space: nowrap; }
+.structure .act:hover { color: var(--text); }
+.structure-block h3 .mono { text-transform: none; letter-spacing: 0; }
+.structure-block { display: flex; flex-direction: column; gap: 0.462rem; }
+.structure-block .block-line { display: grid; grid-template-columns: minmax(10rem, 22rem) minmax(0, 1fr); gap: 1.231rem; align-items: baseline; padding-bottom: 0.462rem; border-bottom: 1px solid var(--line); }
+.structure-block .facts { display: flex; flex-wrap: wrap; gap: 2px 1.231rem; align-items: baseline; }
+.structure-block > .rule-item { padding-bottom: 0.462rem; border-bottom: 1px solid var(--line); }
+.structure .mono { font-family: var(--font-mono); font-size: var(--data-font-size); }
+.ddl { margin: 0; padding: 0.923rem; border-radius: var(--radius-sm); background: var(--chrome); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; }
+
+/* ---------- splitter: a hairline with a wider invisible grab area ---------- */
+.splitter { position: relative; z-index: 3; background: var(--line); outline: none; }
+.splitter-x { width: 1px; cursor: col-resize; }
+.splitter-y { height: 1px; cursor: row-resize; }
+.splitter::after { content: ""; position: absolute; }
+.splitter-x::after { inset: 0 -3px; }
+.splitter-y::after { inset: -3px 0; }
+.splitter:hover, .splitter:focus-visible, .resizing-x .splitter-x:active, .resizing-y .splitter-y:active { background: var(--accent); }
+.splitter:hover, .splitter:focus-visible { box-shadow: 0 0 0 1px var(--accent); }
+body.resizing-x, body.resizing-x * { cursor: col-resize !important; user-select: none; }
+body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select: none; }
+
+/* ---------- value column ---------- */
+/* Serialized data or long text opened from a value: next to a stack's columns or a table or query tab's grid. */
+.value-view { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.value-head { display: flex; align-items: center; gap: 0.462rem; padding: 0.615rem 0.769rem; border-bottom: 1px solid var(--line); }
+.value-head .tn { color: var(--o2); font-family: var(--font-mono); font-size: var(--data-font-size); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.value-head .key { color: var(--accent-text); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: nowrap; }
+.value-body { flex: 1; overflow: auto; padding: 0.769rem; }
+.value-body pre { margin: 0; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; word-break: break-word; user-select: text; }
+.value-body .hint { margin-top: 8px; }
+.tab-columns { flex: 1; min-height: 0; display: flex; }
+.tab-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.tab-columns > .value-column { flex: 0 0 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* ---------- status bar ---------- */
+/* Plain text, no chips (docs/ux.md, Layout). */
+.statusbar {
+  display: flex; align-items: center; gap: 0.769rem; padding: 0 0.923rem 0 0.385rem; font-size: var(--fs-small);
+  color: var(--o3); background: var(--chrome); border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; min-width: 0;
+}
+.statusbar > span { white-space: nowrap; }
+.statusbar .address { color: var(--o2); overflow: hidden; text-overflow: ellipsis; }
+.statusbar .warn { color: var(--style-yellow); }
+.status-icon { width: 1.692rem; height: 1.538rem; }
+.status-text { padding: 0; border: none; background: none; color: inherit; white-space: nowrap; cursor: default; }
+.status-text:hover { color: var(--text); }
+.status-text.pending { color: var(--text); }

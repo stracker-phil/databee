@@ -20,7 +20,7 @@ export function OpenHint({ effect }: { effect: ClickEffect }) {
 
 /**
  * A link's leading icon (`children`: a table icon, the serialized marker) in a box of 1em that shows the indicator
- * of `effect` in its place while its cell, line or link is hovered (CSS only, `styles/app.css`); just `children`
+ * of `effect` in its place while its cell, line or link is hovered (CSS only, `styles/values.css`); just `children`
  * without an effect.
  */
 export function OpenSwap({ effect, children }: { effect: ClickEffect | null; children: ReactNode }) {

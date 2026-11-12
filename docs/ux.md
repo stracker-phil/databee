@@ -35,7 +35,7 @@ Adopted from Taskboard (2026-11-03), for every control, list and popover (`.clau
 ## Motion
 
 Nothing jumps from one state to another. What appears fades in (overlays `fade` .12s, dialogs `pop` .14s,
-`app.css`); hover and toggles answer within .12–.15s; the live flash fades over 1.6s. When a change first needs
+`menus.css`); hover and toggles answer within .12–.15s; the live flash fades over 1.6s. When a change first needs
 a glide or an exit animation, it ports Taskboard's `src/lib/motion.ts` (`useGlide`, `usePresence`) and
 `src/styles/motion.css` (the `--motion-*` and `--ease-*` tokens, `prefers-reduced-motion`), and new durations
 use those tokens instead of literals.
@@ -424,7 +424,7 @@ value, else the current address. The Hover column is what the status bar shows.
   macOS's overlay scrollbars, shown only while scrolling (with "Show scroll bars: Automatically"); no
   `::-webkit-scrollbar` rule exists, because one makes WebKit draw a permanent bar. A bar takes no room, so
   nothing reserves a gutter and content never shifts when it starts to scroll. Every scroll box carries the
-  `.scroller` class (`app.css`, scrollers): `overflow: auto` (a box narrows it, e.g. `.object` scrolls only
+  `.scroller` class (`base.css`, scrollers): `overflow: auto` (a box narrows it, e.g. `.object` scrolls only
   down) and its own stacking context (`isolation: isolate`), because WebKit keeps a nested scroller's bar with
   its own layers only then; overlays therefore never render inside one (menus and `Modal` portal to `body`).
   The tab bar scrolls sideways without a bar (`scrollbar-width: none`). A scroll box starts below its title

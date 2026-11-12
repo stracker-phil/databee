@@ -1,0 +1,69 @@
+/* ---------- connect screen ---------- */
+.connect-screen { display: grid; place-items: center; height: 100%; background: var(--chrome); padding: 3.077rem 1.538rem; overflow: auto; }
+.connect-card {
+  display: grid; grid-template-columns: minmax(0, 1fr) 23.077rem; width: min(53.846rem, 100%);
+  background: var(--pop); border: 1px solid var(--field-line); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden;
+}
+.connect-form { padding: 1.692rem; display: flex; flex-direction: column; gap: 0.923rem; }
+.connect-form h1 { margin: 0; font-size: 1.385rem; letter-spacing: -0.02em; }
+.recents { background: var(--chrome); border-left: 1px solid var(--line); padding: 1.385rem 0.769rem; overflow: auto; max-height: 40rem; }
+.recents h2 { margin: 0 0.615rem 0.615rem; font-size: var(--fs-small); text-transform: uppercase; letter-spacing: 0.04em; color: var(--o2); }
+.recent { display: flex; align-items: center; gap: 0.615rem; padding: 0.538rem 0.615rem; border-radius: 5px; }
+.recent:hover { background: var(--row-hover); }
+.recent-main { display: flex; flex: 1; min-width: 0; align-items: center; gap: 0.615rem; padding: 0; border: none; background: none; text-align: left; }
+.recent .info { flex: 1; min-width: 0; }
+.recent .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent .sub { font-size: var(--fs-small); color: var(--o3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent .icon-btn { opacity: 0; }
+.recent:hover .icon-btn, .recent .icon-btn:focus-visible { opacity: 1; }
+.form-error { padding: 0.615rem 0.769rem; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-red) 12%, transparent); color: var(--style-red); font-size: var(--fs-small); user-select: text; }
+.drag-strip { position: fixed; top: 0; left: 0; right: 0; height: var(--title-bar); }
+
+/* ---------- dialogs ---------- */
+/* Overlays (dialogs, palette, menus, toasts, popovers): --pop, a --field-line border, 10px radius and a
+   zero-offset glow; modal sheets sit over --scrim (docs/ux.md, Overlays). */
+.overlay { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 50; animation: fade .12s ease-out; }
+/* Modal's sheet (`variant`): a padded .sheet for forms and messages, a .panel surface laid out by its content
+   (palette, rule sheets, settings), or bare (the connect dialog brings its own card). */
+.dialog { animation: pop .14s ease-out; }
+.dialog:is(.sheet, .panel) { background: var(--pop); border: 1px solid var(--field-line); border-radius: 10px; box-shadow: var(--shadow); }
+.dialog.sheet {
+  width: min(33.846rem, calc(100vw - 2.462rem)); max-height: calc(100vh - 4.615rem); overflow: auto;
+  padding: 1.538rem; display: flex; flex-direction: column; gap: 0.923rem;
+}
+.dialog.panel { overflow: hidden; }
+.dialog.connect-dialog { max-height: calc(100vh - 4.615rem); overflow: auto; display: flex; flex-direction: column; }
+.dialog.wide { width: min(43.077rem, calc(100vw - 2.462rem)); }
+.action-sheet h2 + .o3 { margin-top: 0.308rem; }
+.action-param { display: grid; grid-template-columns: minmax(8rem, auto) 1fr; gap: 0.615rem; align-items: center; }
+.action-writes { display: flex; flex-direction: column; gap: 0.769rem; max-height: 40vh; overflow: auto; }
+.action-writes p { margin: 0; }
+.action-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 0.231rem 0.615rem; align-items: baseline; }
+.action-row-head { grid-column: 1 / -1; }
+.action-row-head .key { color: var(--accent-text); font-weight: 600; }
+.action-column { display: contents; }
+.action-column > :first-child { padding-left: 1.231rem; }
+.action-sql { margin: 0; font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; user-select: text; }
+.action-error { margin: 0; color: var(--style-red); }
+.dialog.sheet h2 { margin: 0; font-size: 1.154rem; }
+.form-contents { display: contents; }
+.dialog .actions { display: flex; justify-content: flex-end; gap: 0.615rem; margin-top: 0.308rem; }
+.accent-swatches { display: flex; gap: 0.615rem; }
+.accent-swatches button { width: 1.538rem; height: 1.538rem; border-radius: 50%; border: none; }
+.accent-swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pop), 0 0 0 0.308rem var(--o2); }
+.accent-swatches.small { gap: 0.462rem; }
+.accent-swatches.small button { width: 1rem; height: 1rem; }
+.accent-swatches.small button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--pop), 0 0 0 0.231rem var(--o2); }
+.accent-dot { display: inline-block; flex: none; align-self: center; width: 0.538rem; height: 0.538rem; margin-right: 0.385rem; border-radius: 50%; }
+.scheme-select { display: flex; align-items: center; gap: 0.615rem; }
+.scheme-preview { display: inline-flex; gap: 0.308rem; }
+.scheme-preview > span {
+  display: inline-grid; place-items: center; width: 1.538rem; height: 1.538rem; border-radius: 0.385rem;
+  border: 1px solid var(--field-line); font-size: var(--fs-small);
+}
+.row-padding { display: flex; flex-direction: column; align-items: flex-end; gap: 0.462rem; }
+.row-padding-preview {
+  display: flex; gap: 1.538rem; width: 15.385rem; padding: var(--pad) 0.923rem; line-height: 20px;
+  border-bottom: 1px solid var(--line); background: var(--bg); font-family: var(--font-mono); font-size: var(--data-font-size);
+}
+.row-padding-preview > :first-child { color: var(--o2); }

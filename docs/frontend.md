@@ -22,7 +22,7 @@ renders and forwards intent; [Rust owns the logic](architecture.md#design-rules)
 5. `main.tsx` assigns the store to `window.databee` only when `import.meta.env.VITE_DEV_HOOKS` is `"1"`, which
    `bun run build:app` sets for the debug bundle the dev scripts drive; `bun run build`
    (release) leaves it out. It renders `<ErrorBoundary><App/></ErrorBoundary>`.
-6. `App.tsx` imports the stylesheets (fonts, the scheme files, `theme.css`, `app.css`) and calls
+6. `App.tsx` imports the stylesheets (fonts, the scheme files, `theme.css`, `app.css` with its area files) and calls
    `useBackendEvents()` once:
    1. `loadSettings()` loads settings and keybindings. `installCommands()` runs again to apply the user's
       bindings, then `drainLaunches()` pulls the queued launch requests (`take_launch_events`) into
@@ -173,7 +173,7 @@ Conventions:
   `"separator"`) and call `open(anchor, entries)`
   from `useContextMenu()`, rendering its `element`; the anchor is a pointer event (its default menu is
   suppressed) or a point. The menu portals into `document.body`, so it never inherits the font of the grid or
-  document it opened from, and `.menu` in `app.css` sets the UI font itself. It focuses its first item, moves
+  document it opened from, and `.menu` in `menus.css` sets the UI font itself. It focuses its first item, moves
   with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
 - Writes: `queueChange` asks Rust to plan a row edit (`planChange`), keeps the returned plan with the table it
   writes (`target`) and resolves to its id (null when refused); `queueActionPreview(sessionId, id)` queues the plan of a rule action's preview (`queueActionPreview`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
@@ -327,7 +327,7 @@ sending its keys to a rendered `<App/>`.
 | Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `WideTable` (a row table that scrolls sideways in its own box; `pinned` keeps a primary-key first column in view; used by `groups` and `ChangeList`), `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
 | Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsWindow` (in its own window, see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
-| Readout | `readout/Readout.tsx`, see [Readout](#readout) |
+| Readout | `readout/Readout.tsx` (the sections: `Section.tsx`, `StatusHeader.tsx`, `Anomalies.tsx`, `WatchedSection.tsx`, `CreatedSection.tsx`, `PinnedSection.tsx`, `RecentSection.tsx`; loading: `useReadout.ts`), see [Readout](#readout) |
 
 ### Saved queries
 
@@ -471,7 +471,7 @@ the same hover; links outside values without a table icon use it too (a readout 
 "Show rows"). `LEAD_ICON_CH` (2.5ch) is the width a leading icon adds, `hasLeadIcon(value)` says whether a value
 has one; `ResultsGrid` passes them as `leads` to `useColumnSizing` (`fitWidth(…, lead)`), `groups.tsx` to
 `charWidth(…, LEAD_ICON_CH)`. A secret (`SecretText`) reveals on click, and while its ⌥ peek is on it (`useAltPeek`, `data-peek`; a timestamp's `TimeValue` and a collapsed serialized value's `SerializedPeek`, which decodes the whole text and reads a `longText` cell again with `fetchStoredValue`, likewise). A style sets `color: var(--style-<name>)`. CSS classes are `val`
-and `val-<kind>` (`styles/app.css`, values).
+and `val-<kind>` (`styles/values.css`).
 
 Every value carries `data-src` (`provenanceText`) and `data-table` (its provenance table). `useValueHover`
 (`AppShell` in `App.tsx`) adds one delegated `mouseover`/`mouseleave` listener to the app, reads the nearest
@@ -1036,8 +1036,8 @@ address call it. It has no history (`nav` stays empty).
 The readout tab (`ReadoutTab`, one per session, first in the tab bar; `readout` slice) shows the home address of
 a database (`databee://<slug>/<db>/`, [presets.md](presets.md#the-readout)). `connect` opens it for the
 session's database, `openAddress` for a home address, the `readout.open` command for the active database;
-`switchDatabase` moves an existing one to the new database. `Readout.tsx` (`components/readout/`) loads it
-through `loadReadout(sessionId, database, force?)`: once per `dataVersion`, so counts refresh after every
+`switchDatabase` moves an existing one to the new database. `Readout.tsx` (`components/readout/`, one file per section, the band and `LineError` in `Section.tsx`) loads it
+through `useReadout` → `loadReadout(sessionId, database, force?)`: once per `dataVersion`, so counts refresh after every
 apply, and again (`force`) whenever the tab is shown, since recent objects change without a data change. A
 failed load shows `ErrorPanel`; a failed part or line shows its error in its place.
 
@@ -1153,7 +1153,14 @@ the long group and the Rows grid in the app.
 
 The CSS is plain and global, imported in this order by `App.tsx`: `styles/fonts.css` (`@font-face` for the
 bundled fonts), `styles/schemes/<id>.css` (one file per color scheme), `styles/theme.css` (derived tokens and
-aliases) and `styles/app.css` (components, sectioned with `/* ---------- name ---------- */` comments). There
+aliases) and `styles/app.css` (components). `app.css` only `@import`s one file per area, in cascade order:
+`base.css` (reset, scrollers, primitives), `layout.css`, `sidebar.css`, `tabs.css` (tabs, query tab), `grid.css`
+(grid, table tab, splitter, value column, status bar), `dialogs.css` (connect screen, dialogs),
+`settings-window.css`, `menus.css` (menus, toasts, keyframes), `values.css` (value tree, values), `object.css`
+(column stack, trail, value counts, peek, summary line, shortcut overview, object view), `project.css`,
+`readout.css`, `utilities.css`, `editing.css`, `palette.css` (palette, shortcuts settings) and `live.css` (live
+mode, table icons, live check, connection health); each is sectioned with `/* ---------- name ---------- */`
+comments. The Settings window adds `styles/settings.css` after `app.css`. There
 are no CSS modules. Icons come from `lucide-react`. Token names, values and roles are in
 [ux.md](ux.md#color-schemes-and-tokens).
 
@@ -1184,7 +1191,7 @@ are no CSS modules. Icons come from `lucide-react`. Token names, values and role
   shares them. `setAccent(sessionId, database, accent)` stores one through `api.projectSetAccent` and patches
   `accents`; nothing reloads. `selectDatabaseAccent(s, slug, database)` reads one. `components/Accent.tsx` has
   `AccentSwatches` (Settings → Appearance and the Project header; Stage anchors `<stage>:<accent>` in list
-  `<stage>`) and `AccentDot` (toolbar, connection switcher), both colored by `--a-<accent>`. Old names that older rules in `app.css` still read remain as aliases
+  `<stage>`) and `AccentDot` (toolbar, connection switcher), both colored by `--a-<accent>`. Old names that older rules in the stylesheets still read remain as aliases
   onto scheme tokens; new CSS and components use only the new names.
 - **Sizing.** Chrome is in rem: `html { font-size: var(--ui-font-size) }`, so ⌘= and ⌘- scale it. The row
   anatomy (the 20px line, `--pad`, `--row-gap`, `--row-inset`, `--focus-out`) and the window's own buttons

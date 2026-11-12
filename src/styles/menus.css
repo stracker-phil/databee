@@ -1,0 +1,33 @@
+/* ---------- menus & toasts ---------- */
+/* The one context menu (ContextMenu.tsx), portaled to <body>; it sets its own type so no area restyles it. */
+.menu {
+  position: fixed; z-index: 60; min-width: 13.846rem; padding: 0.385rem; border-radius: 10px;
+  background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow);
+  font-family: var(--font-ui); font-size: var(--fs-base); font-weight: 400; line-height: normal; color: var(--text); white-space: nowrap;
+}
+.menu button { display: flex; width: 100%; align-items: center; gap: 0.615rem; height: 1.846rem; padding: 0 0.615rem; border: none; border-radius: 5px; background: none; text-align: left; }
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
+.menu button:disabled { color: var(--o3); }
+.menu button.with-detail { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0.154rem; height: auto; min-height: 1.846rem; padding: 0.308rem 0.615rem; }
+.menu-key { margin-left: auto; padding-left: 1.538rem; color: var(--o3); font-variant-numeric: tabular-nums; }
+.menu button:hover:not(:disabled) .menu-key, .menu button:focus-visible .menu-key { color: inherit; opacity: 0.8; }
+.menu-detail { max-width: 36rem; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-small); color: var(--o3); }
+.menu button:hover:not(:disabled) .menu-detail, .menu button:focus-visible .menu-detail { color: inherit; opacity: 0.8; }
+.menu hr { border: none; border-top: 1px solid var(--line); margin: 0.308rem 0; }
+.toasts { position: fixed; right: 1.231rem; bottom: 2.769rem; z-index: 70; display: flex; flex-direction: column; gap: 0.615rem; align-items: flex-end; }
+.toast {
+  display: flex; align-items: flex-start; gap: 0.615rem; max-width: 32.308rem; padding: 0.692rem 0.769rem 0.692rem 0.923rem;
+  border-radius: 10px; background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); animation: pop .16s ease-out;
+}
+.toast.error svg:first-child { color: var(--style-red); }
+.toast.success svg:first-child { color: var(--style-green); }
+.toast.info svg:first-child { color: var(--accent-text); }
+.toast .text { flex: 1; user-select: text; line-height: 1.35; }
+
+.crash { padding: 3.077rem; display: flex; flex-direction: column; gap: 0.923rem; align-items: flex-start; }
+.crash pre { font-family: var(--font-mono); font-size: var(--data-font-size); color: var(--style-red); white-space: pre-wrap; user-select: text; }
+
+.spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { from { opacity: 0; transform: scale(0.97); } }

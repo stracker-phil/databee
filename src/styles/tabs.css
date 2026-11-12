@@ -1,0 +1,45 @@
+/* ---------- tabs ---------- */
+/* The hairline is an inset shadow, so the active tab's --bg paints over it and joins the content. */
+.tabbar {
+  display: flex; align-items: stretch; height: 2.462rem; flex: none; overflow-x: auto; scrollbar-width: none;
+  background: var(--chrome); box-shadow: inset 0 -1px 0 var(--line); font-size: var(--fs-small);
+}
+.tab {
+  display: flex; align-items: center; gap: 0.462rem; padding: 0 0.385rem 0 1.231rem; min-width: 8.462rem; max-width: 16.923rem;
+  border-right: 1px solid var(--line); color: var(--o2); position: relative; flex: none;
+}
+.tab:hover { color: var(--text); }
+.tab .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .close { opacity: 0; width: 1.385rem; height: 1.385rem; }
+.tab:hover .close, .tab.active .close { opacity: 1; }
+.tab.active { background: var(--bg); color: var(--text); }
+.tab.preview .title { font-style: italic; }
+.tab-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.tab-content[hidden] { display: none; }
+.tabbar .new-tab { align-self: center; margin-left: 0.308rem; width: 1.692rem; height: 1.692rem; }
+
+/* ---------- query tab ---------- */
+.query { display: grid; min-height: 0; height: 100%; }
+.editor { min-height: 0; overflow: hidden; }
+.editor .cm-editor { height: 100%; font-size: var(--data-font-size); background: var(--bg); }
+.editor .cm-scroller { font-family: var(--font-mono); }
+.editor .cm-gutters { background: var(--bg); border-right: none; color: var(--o3); }
+.editor .cm-activeLine, .editor .cm-activeLineGutter { background: var(--row-hover); }
+.editor .cm-focused { outline: none; }
+.editor .cm-tooltip-autocomplete { border-radius: 10px; box-shadow: var(--shadow); border: 1px solid var(--field-line); overflow: hidden; }
+.action-bar {
+  display: flex; align-items: center; gap: 0.615rem; padding: 0.462rem 0.769rem;
+  border-bottom: 1px solid var(--line); background: var(--bg);
+}
+.kbd { font-size: var(--fs-small); color: var(--o3); }
+.results { min-height: 0; display: flex; flex-direction: column; }
+
+.message-panel { padding: 1.846rem; display: flex; flex-direction: column; gap: 0.462rem; align-items: flex-start; }
+.message-panel .big { font-size: 1.154rem; font-weight: 600; }
+.error-panel {
+  margin: 1.077rem; padding: 0.923rem 1.077rem; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--style-red) 12%, transparent);
+  color: var(--style-red); display: flex; gap: 0.769rem; align-items: flex-start;
+}
+.error-panel .msg { font-family: var(--font-mono); font-size: var(--data-font-size); white-space: pre-wrap; color: var(--text); user-select: text; }
+.error-panel .code { font-weight: 600; }
+.empty-state { flex: 1; display: grid; place-items: center; color: var(--o3); text-align: center; padding: 1.538rem; }

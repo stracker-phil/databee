@@ -1,0 +1,187 @@
+/* ---------- column stack ---------- */
+/* The trail above the panes, then the panes side by side with hairline dividers (Splitter); the active pane has
+   an accent line on top while others show next to it. Those others are quiet (docs/ux.md, Layout): their accent
+   leans toward graphite (keys, links, focus, selection; theme.css derives --cell, --sel, --value-hover, --lit-solid from it again),
+   their background darker (--bg-quiet) and their content fainter, so one pane and one focus ring stand out. */
+.object-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.stack { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
+.stack > .column { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; outline: none; }
+.stack > .splitter { flex: none; }
+.stack > .column.active::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: var(--accent); z-index: 1; pointer-events: none; }
+.stack > .column.quiet { --accent: var(--accent-quiet); --bg: var(--bg-quiet); background: var(--bg); }
+.stack > .column.quiet > * { opacity: 0.85; }
+
+/* ---------- trail ---------- */
+/* One line in the UI font; the crumbs of the shown panes share a --band pill. Folded crumbs sit in "…" menus,
+   so crumbs never shrink, unless nothing is left to fold (.tight), then names end in an ellipsis. */
+.trail {
+  flex: none; display: flex; align-items: center; gap: 0.154rem; min-width: 0; height: 2rem; padding: 0 0.615rem;
+  overflow: hidden; white-space: nowrap; font-size: var(--fs-small); background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.trail-panes { flex: none; display: inline-flex; align-items: center; gap: 0.154rem; min-width: 0; border-radius: var(--radius-sm); background: var(--band); }
+.trail-crumb {
+  flex: none; display: inline-flex; align-items: baseline; column-gap: 0.3em; min-width: 0; padding: 0.154rem 0.385rem; border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--o2); font: inherit; cursor: default;
+}
+.trail-crumb:hover { color: var(--accent-text); }
+.trail-panes .trail-crumb { color: var(--text); }
+.trail-panes .trail-crumb:hover { color: var(--accent-text); }
+.trail-crumb[aria-current="location"] { font-weight: 600; }
+.trail-name { overflow: hidden; text-overflow: ellipsis; }
+.trail-key { color: var(--o3); }
+.trail-key.active { color: var(--accent-text); }
+.trail-sep { flex: none; color: var(--o3); }
+.trail.tight .trail-panes, .trail.tight .trail-crumb { flex-shrink: 1; }
+
+/* ---------- value counts ---------- */
+/* Value counts of a grid column: a --pop popover at the header, one row per value. */
+.value-counts {
+  position: fixed; z-index: 60; width: 23rem; max-height: 60vh; display: flex; flex-direction: column; gap: 0.308rem; padding: 0.462rem;
+  border-radius: 10px; background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); animation: pop .12s ease-out;
+}
+.value-counts-head { padding: 0.154rem 0.462rem; font-size: var(--fs-small); color: var(--o2); }
+.value-counts-list { list-style: none; margin: 0; padding: 0; overflow: auto; }
+.value-counts-list li {
+  display: flex; align-items: center; gap: 0.769rem; padding: var(--pad) 0.462rem; border-bottom: 1px solid var(--line);
+  border-radius: 5px; cursor: default; font-size: var(--data-font-size);
+}
+.value-counts-list li:hover:not([aria-disabled="true"]), .value-counts-list li:focus-visible { background: var(--row-hover); outline: none; }
+.value-counts-list li[aria-disabled="true"] { color: var(--o3); }
+.value-counts-list .count { flex: none; font-variant-numeric: tabular-nums; color: var(--o2); }
+.pin-rows { display: flex; align-items: center; gap: 0.769rem; }
+.pin-rows .input { width: 6rem; }
+
+/* ---------- peek ---------- */
+.peek { position: fixed; z-index: 50; width: max-content; min-width: 320px; max-width: min(560px, calc(100vw - 16px)); overflow: hidden; border-radius: 10px; background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); animation: pop .12s ease-out; pointer-events: none; }
+.peek-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 14px; }
+.peek-head .tn { font-weight: 600; }
+.peek-head .key { color: var(--accent-text); }
+.peek-head .o3 { font-size: var(--fs-small); white-space: nowrap; }
+.peek-row {
+  display: grid; grid-template-columns: 130px minmax(0, 1fr); column-gap: 20px; padding: var(--pad) 14px; line-height: 20px;
+  border-top: 1px solid var(--field-line); font-family: var(--font-mono); font-size: var(--data-font-size);
+}
+.peek-row > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peek-foot { padding: 8px 14px; border-top: 1px solid var(--field-line); color: var(--o3); font-size: var(--fs-small); }
+
+.peek-count { font-family: var(--font-ui); font-size: var(--fs-small); }
+.peek-match { display: flex; gap: 14px; width: 100%; border: none; border-top: 1px solid var(--field-line); background: none; text-align: left; pointer-events: auto; }
+.peek-match:hover { background: var(--row-hover); }
+.peek-match .key { flex: none; color: var(--accent-text); }
+.peek-match .summary-line { overflow: hidden; }
+.peek-table { width: 100%; border-collapse: collapse; border-top: 1px solid var(--field-line); font-family: var(--font-mono); font-size: var(--data-font-size); line-height: 20px; }
+.peek-table tbody { display: grid; grid-template-columns: fit-content(200px) minmax(0, 1fr); column-gap: 20px; padding: var(--pad) 14px; }
+.peek-table tr { display: contents; }
+.peek-table :is(th, td) { min-width: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.peek-table th { color: var(--o2); font-weight: normal; }
+
+/* ---------- summary line ---------- */
+.summary-line { display: inline-flex; gap: 0.308rem 1.538rem; min-width: 0; max-width: 100%; overflow: hidden; font-family: var(--font-mono); }
+.summary-pair { display: inline-flex; flex: none; gap: 0.462rem; white-space: nowrap; }
+.summary-name { color: var(--o3); }
+.object-summary .summary-line { flex-wrap: wrap; }
+.object-summary .summary-pair { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- shortcut overview ---------- */
+.dialog.shortcuts { max-height: 80vh; }
+.shortcuts section { display: flex; flex-direction: column; gap: 0.769rem; }
+.shortcuts section + section { border-top: 1px solid var(--line); padding-top: 0.923rem; }
+.shortcuts h3 { margin: 12px 0 4px; font-size: var(--fs-small); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--o3); }
+.shortcuts dl { margin: 0; }
+.shortcut-row { display: flex; justify-content: space-between; gap: 16px; padding: var(--pad) 0; border-bottom: 1px solid var(--line); }
+.shortcut-row dd { margin: 0; }
+
+/* ---------- object view ---------- */
+/* The header block, section bands (.sh) and rows (.row, .kv, .hdr) share the row anatomy. */
+.object { flex: 1; min-height: 0; overflow: hidden auto; overflow-anchor: none; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.object-head { display: flex; flex-direction: column; gap: 0.462rem; padding: 1.538rem 0.923rem 1.231rem; border-bottom: 1px solid var(--line); }
+.object-title { display: flex; align-items: center; gap: 0.923rem; min-width: 0; }
+.object-title > * { flex: none; }
+.object-title > .tn { flex: 0 1 auto; min-width: min(12ch, 45%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.object-title > .spacer { flex: 1 1 0; }
+.object-title .tn { font-family: var(--font-mono); font-size: var(--fs-large); color: var(--o2); }
+.object-title button.tn { border: none; background: none; padding: 0; }
+.object-title button.tn:hover { color: var(--accent-text); text-decoration: underline; }
+.object-title .key { font-family: var(--font-mono); font-size: var(--fs-large); font-weight: 600; color: var(--accent-text); }
+/* The view of a pane beside the active one, where the Document / Rows toggle would be (it acts on the active pane). */
+.object-title .view-label { color: var(--o3); white-space: nowrap; }
+.object-summary { display: flex; flex-wrap: wrap; gap: 0.462rem 1.846rem; font-family: var(--font-mono); font-size: var(--data-font-size); }
+.object-alternatives { color: var(--o3); font-size: var(--fs-small); }
+.document { display: flex; flex-direction: column; }
+:is(.object, .project, .readout) .sh {
+  display: flex; align-items: baseline; gap: 0.923rem; margin-top: 28px; padding: 6px 12px;
+  background: var(--band); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: default;
+}
+/* The name keeps its icon on its line and ends in an ellipsis only when nothing else is left to give; the count stays. */
+:is(.object, .project, .readout) .sh .tn {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: none; background: none; padding: 0; font-family: var(--font-mono); font-size: var(--fs-base); font-weight: 600; color: var(--text);
+}
+:is(.object, .project, .readout) .sh .tn.sans { font-family: var(--font-ui); }
+.object .sh button.tn:hover { text-decoration: underline; }
+/* The relation takes the free space (the spacer after it goes), so it is cut first and the name only once it is gone. */
+:is(.object, .project, .readout) .sh .via { flex: 1 1 0; color: var(--o2); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+:is(.object, .project, .readout) .sh .via + .spacer { display: none; }
+:is(.object, .project, .readout) .sh .cnt { flex: none; color: var(--o3); font-size: var(--fs-small); white-space: nowrap; }
+/* TableFocus dims and lights these by table while a table link is hovered. */
+.main :is([data-row-table], .readout .row, .attention) > *, .main :is(.sh, .entity-chip) { transition: opacity 0.12s; }
+:is(.object, .project, .readout) .sh .sh-toggle {
+  flex: none; align-self: center; display: inline-flex; margin-left: -0.462rem; padding: 0.154rem; border: none; border-radius: 3px;
+  background: none; color: var(--o3);
+}
+:is(.object, .project, .readout) .sh .sh-toggle:hover { color: var(--text); }
+:is(.object, .project, .readout) .sh .sh-toggle:focus-visible { outline: 1.5px solid var(--accent); }
+:is(.object, .project, .readout) .row {
+  display: grid; column-gap: var(--row-gap); padding: var(--pad) var(--row-inset); line-height: 20px; border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono); font-size: var(--data-font-size);
+}
+:is(.object, .project, .readout) .row > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+:is(.object, .project, .readout) .row:not(.hdr, :disabled):hover { background: var(--row-hover); }
+/* One box per value: hover tints it, focus outlines it, and the two never mix, so a focused value stays as
+   readable as any other. A cell of several values tints the hovered one instead. */
+.object .row > .field {
+  margin: calc(-1 * var(--pad)) calc(-1 * var(--focus-out)); padding: var(--pad) var(--focus-out); border-radius: 3px;
+  background: var(--field-bg, transparent); box-shadow: var(--field-ring, none);
+}
+.object .row > .field:hover:not(:has(.summary-pair)) { --field-bg: var(--value-hover); }
+.object .row > .focus { --field-ring: inset 0 0 0 1.5px var(--accent); }
+.object .row .summary-pair .val[data-src] { border-radius: 3px; padding: 0 3px; margin: 0 -3px; }
+.object .row .summary-pair .val[data-src]:hover { background: var(--value-hover); }
+:is(.object, .project, .readout) .row .r { text-align: right; }
+.object .row.kv { grid-template-columns: min(300px, 60%) minmax(0, 1fr); }
+.object .row.kv > :first-child { color: var(--o2); }
+:is(.object, .project, .readout) .row.hdr { color: var(--o3); font-family: var(--font-ui); font-size: var(--fs-small); }
+.object .row.group-error { color: var(--style-red); white-space: normal; }
+.object .more { align-self: flex-start; border: none; background: none; padding: var(--pad) 12px; color: var(--accent-text); font-size: var(--fs-small); }
+/* The pane only scrolls down: a table of rows (related rows, events, changes) scrolls sideways in its own box
+   (WideTable), its header with it, below a band that keeps the pane's width. Rows take the column template
+   from --cols and are at least as wide as their columns, gaps and insets; the header row
+   resolves `ch` in the data font too, so its columns line up. */
+.wide-table { overflow: auto hidden; font-family: var(--font-mono); font-size: var(--data-font-size); }
+.object .wide-table > .row { grid-template-columns: var(--cols); min-width: calc(var(--cols-sum) + (var(--col-count) - 1) * var(--row-gap) + 2 * var(--row-inset)); }
+.object .wide-table > .row.hdr { font-family: var(--font-mono); font-size: var(--data-font-size); }
+.object .wide-table > .row.hdr > * { font-family: var(--font-ui); font-size: var(--fs-small); }
+/* A primary key first column (.pinned) stays at the left while the table scrolls: the cell covers the row's
+   inset and half the gap on the opaque row background, carries the row's change mark (inherited --change-mark),
+   draws hover and focus as the other cells do (::before), and has a hairline at its edge while scrolled (data-scrolled).
+   scroll-padding keeps a revealed value right of it. */
+.wide-table.pinned { --pin-bg: var(--bg); scroll-padding-left: calc(var(--first-col) + var(--row-inset) + var(--row-gap) / 2); }
+.wide-table.pinned > .row:not(.hdr):hover { --pin-bg: var(--row-hover); }
+.object .wide-table.pinned > .row > :first-child:not(input) {
+  position: sticky; left: 0; z-index: 1;
+  margin: calc(-1 * var(--pad)) calc(var(--row-gap) / -2) calc(-1 * var(--pad)) calc(-1 * var(--row-inset));
+  padding: var(--pad) calc(var(--row-gap) / 2) var(--pad) var(--row-inset); background: var(--pin-bg); box-shadow: var(--change-mark, none); border-radius: 0;
+}
+.object .wide-table.pinned > .row > .field:first-child::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  inset: 0 calc(var(--row-gap) / 2 - var(--focus-out)) 0 calc(var(--row-inset) - var(--focus-out));
+  background: var(--field-bg, transparent); box-shadow: var(--field-ring, none); border-radius: 3px;
+}
+.wide-table.pinned[data-scrolled] > .row > :first-child::after {
+  content: ""; position: absolute; inset: 0 0 0 auto; width: 1px; background: var(--line); pointer-events: none;
+}
+.rows-view section { display: flex; flex-direction: column; }
+/* A group's grid (.rows-grid) is at most its header (--grid-head-h, the tallest .grid-head) and 12 rows tall;
+   beyond that it scrolls. */
+.rows-grid > .grid { max-height: calc(12 * var(--row-h) + var(--grid-head-h)); }
+.rows-filter { padding: 4px 12px; color: var(--o3); font-family: var(--font-mono); font-size: var(--fs-small); overflow-wrap: anywhere; }

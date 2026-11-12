@@ -1,0 +1,60 @@
+/* ---------- project page ---------- */
+/* One header row, then the overview (bands "Your changes" and "Problems", one sentence-like row each) or every
+   rule: a filter and a band per table with its rules as in the object view; read-only rows in --o2, switched
+   off ones struck. The rule forms open in a palette-styled sheet (.rule-sheet). */
+.project { flex: 1; min-height: 0; overflow: auto; padding: 0 1.846rem 3.692rem; background: var(--bg); }
+.project section { display: flex; flex-direction: column; }
+:is(.project, .rule-sheet) .act { color: var(--accent-text); white-space: nowrap; }
+:is(.project, .rule-sheet) .act:hover:not(:disabled) { color: var(--text); }
+:is(.project, .rule-sheet) .act.o2 { color: var(--o2); }
+.project .acts { text-align: right; }
+.project .row.o2 { color: var(--o2); }
+.project .row.off { color: var(--o3); }
+.project .row.off .src, .project .referenced-by .off { text-decoration: line-through; }
+.project .row .dashed { text-decoration: underline dashed; text-underline-offset: 3px; }
+.project .row.empty { font-family: var(--font-ui); }
+.project .row.refs { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 0.8fr) max-content minmax(5.5rem, max-content); align-items: center; }
+.project .row.styles { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 0.5fr) minmax(0, 1.2fr) max-content minmax(5.5rem, max-content); align-items: center; }
+.project .row.kinds { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(5.5rem, max-content); }
+.project .row.referenced-by, .project .row.facts { grid-template-columns: minmax(0, 1fr); }
+.project .project-table .sh { margin-top: 14px; }
+.project .row.hdr.caption { grid-template-columns: minmax(0, 1fr); padding-top: 10px; padding-bottom: 2px; }
+.project .row .origin { font-family: var(--font-ui); font-size: var(--fs-small); }
+.project .project-head { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.615rem 1.846rem; padding: 1.231rem 0.923rem; border-bottom: 1px solid var(--line); font-size: var(--fs-small); }
+.project-head .head-field { display: inline-flex; align-items: center; gap: 0.462rem; white-space: nowrap; }
+.project-head .head-field .input { width: 8rem; }
+.project-head .head-presets { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.462rem 1.231rem; }
+.project-head .field-error { color: var(--style-red); }
+.project-filter { display: flex; align-items: center; gap: 0.923rem; padding: 0.923rem 0.923rem 0; font-size: var(--fs-small); }
+.project-filter .input { width: 18rem; }
+.project .row.change { grid-template-columns: minmax(10rem, max-content) minmax(0, 1fr) minmax(5.5rem, max-content); align-items: baseline; }
+.project .row.problem { grid-template-columns: minmax(0, 1fr) minmax(5.5rem, max-content); align-items: baseline; }
+.project .row .what { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o2); }
+.project .row .link { color: inherit; text-align: left; }
+.project .row .link:hover { color: var(--accent-text); text-decoration: underline; }
+.project .project-more { padding: 14px 12px 0; font-size: var(--fs-small); }
+.switch.small { width: 1.846rem; height: 1.077rem; vertical-align: middle; }
+.switch.small::after { width: calc(1.077rem - 4px); height: calc(1.077rem - 4px); }
+.switch.small:checked::after { transform: translateX(calc(1.846rem - 1.077rem)); }
+.coverage-cell { display: inline-flex; align-items: center; gap: 0.462rem; }
+.coverage-bar { display: inline-flex; flex: none; width: 3.077rem; height: 0.462rem; border-radius: 2px; overflow: hidden; background: var(--cell); box-shadow: inset 0 0 0 1px var(--line); }
+.coverage-bar .resolved { background: var(--o2); }
+.coverage-bar .zero { background: var(--o3); opacity: .5; }
+.rule-sheet .rule-form { display: flex; flex-direction: column; gap: 0.769rem; }
+.rule-sheet .sheet-head { display: flex; align-items: baseline; gap: 0.923rem; padding: 1.077rem 1.231rem; border-bottom: 1px solid var(--line); }
+.rule-sheet .sheet-title { font-size: 1.154rem; font-weight: 600; }
+.rule-sheet .sheet-head .o3 { font-family: var(--font-mono); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rule-sheet .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; padding: 1.077rem 1.231rem; }
+.rule-sheet .form-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rule-sheet .form-field > .o3 { font-size: var(--fs-small); }
+.rule-sheet .picker { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.rule-sheet .picker > .input { flex: 1; min-width: 0; }
+.rule-sheet .field-error { color: var(--style-red); font-size: var(--fs-small); white-space: normal; }
+.rule-sheet .form-foot { display: flex; flex-wrap: wrap; gap: 0.615rem 18px; align-items: baseline; padding: 0.769rem 1.231rem; border-top: 1px solid var(--line); font-size: var(--fs-small); }
+.rule-sheet .form-foot .kbd { margin-left: 0.308rem; }
+.rule-sheet .coverage-line { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--font-mono); font-size: var(--data-font-size); }
+.rule-sheet .warning { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o2); }
+.rule-sheet .swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.rule-sheet .swatch-choice { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; font-family: var(--font-mono); }
+.rule-sheet .swatch-choice[aria-pressed="true"] { border-color: var(--field-line); background: var(--field); }
+.rule-sheet .swatch { width: 10px; height: 10px; border-radius: 3px; }

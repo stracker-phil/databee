@@ -1,0 +1,41 @@
+/* ---------- sidebar ---------- */
+.sidebar { display: flex; flex-direction: column; min-height: 0; background: var(--chrome); border-right: 1px solid var(--line); }
+.sidebar-switch { display: flex; margin: 0.769rem 0.615rem 0; }
+.sidebar-switch button { flex: 1; }
+.sidebar-head { display: flex; gap: 0.308rem; padding: 0.615rem 0.462rem 0.462rem 0.615rem; align-items: center; }
+.sidebar-filter { flex: 1; }
+.sidebar-filter input { font-size: var(--fs-small); }
+.sidebar-caption { padding: 0.154rem 1.231rem 0.308rem; font-size: var(--fs-small); color: var(--o3); }
+.sidebar-head .sidebar-caption { flex: 1; padding: 0 0.308rem; }
+.sidebar-body { flex: 1; overflow: auto; padding: 0 0 0.769rem; }
+/* Sidebar items share the row anatomy: --pad around a 20px line, 8px inset, 5px radius (docs/ux.md). */
+.si {
+  display: flex; align-items: center; gap: 0.462rem; margin: 0 8px; padding: var(--pad) 8px; line-height: 20px;
+  border-radius: 5px; color: var(--o2); cursor: default; white-space: nowrap;
+  font-family: var(--font-mono); font-size: var(--data-font-size);
+}
+.si:hover { background: var(--row-hover); color: var(--text); }
+.si.sel { background: var(--sel); color: var(--text); }
+.si.sel .label { color: var(--accent-text); }
+.si:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.si .label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.si .label.current { color: var(--text); font-weight: 600; }
+/* The whole name of a cut-off entry, over the row and past the sidebar's edge (useOverflowReveal sets box, ring, font, color and background). */
+.overflow-reveal { position: fixed; z-index: 60; box-sizing: border-box; white-space: nowrap; pointer-events: none; }
+.si .meta { color: var(--o3); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.si svg { flex: none; color: var(--o3); }
+.si.system .label { color: var(--o3); }
+/* Linked table highlight (docs/ux.md): only the selected table has a background, so a lit entry changes its name
+   alone; the icon keeps its color. The selected table, lit as well, adds a 1px accent outline. */
+.si.lit .label { color: var(--accent-text); }
+.si.sel.lit { box-shadow: inset 0 0 0 1px var(--accent); }
+.tree-children { padding-left: 1.077rem; }
+.sidebar-empty { padding: 0.462rem 1.231rem; color: var(--o3); font-size: var(--fs-small); }
+
+.si.history-item { display: block; white-space: normal; }
+.history-item .sql {
+  white-space: pre-wrap; word-break: break-all;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.history-item .when { font-family: var(--font-ui); font-size: var(--fs-small); color: var(--o3); display: flex; gap: 0.462rem; }
+.history-item.failed .when { color: var(--style-red); }

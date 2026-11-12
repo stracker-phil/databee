@@ -1,0 +1,112 @@
+* { box-sizing: border-box; }
+
+html { font-size: var(--ui-font-size); background: transparent; }
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--chrome);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+input, textarea, select, button { font: inherit; color: inherit; }
+input, textarea, .selectable { user-select: text; -webkit-user-select: text; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* ---------- scrollers ---------- */
+/* macOS draws its own overlay scrollbars, only while scrolling, as long as no ::-webkit-scrollbar rule exists
+   (docs/ux.md, Scrollbars). A scroller is its own stacking context: WebKit keeps a nested scroller's bar with
+   its own layers only then, so it never stays behind while an outer box scrolls. Overlays therefore render
+   outside scrollers (menus and modals portal to <body>). */
+.scroller { overflow: auto; isolation: isolate; }
+
+/* ---------- primitives ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 0.462rem;
+  height: 2rem; padding: 0 0.769rem;
+  border: 1px solid var(--field-line); border-radius: var(--radius-sm);
+  background: var(--pop); cursor: default; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { background: var(--row-hover); }
+.btn:active:not(:disabled) { background: color-mix(in srgb, var(--text) 12%, transparent); }
+.btn:disabled { opacity: 0.45; }
+.btn-primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+/* The accent 12% toward black, without a color literal. */
+.btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--shade)); }
+.btn-danger { background: var(--style-red); border-color: transparent; color: var(--on-accent); }
+.icon-btn {
+  display: inline-grid; place-items: center; width: 2rem; height: 2rem; flex: none;
+  border: none; border-radius: var(--radius-sm); background: transparent; color: var(--o2);
+}
+.icon-btn:hover:not(:disabled) { background: var(--row-hover); color: var(--text); }
+.icon-btn:disabled { opacity: 0.35; }
+/* Buttons that read as their text: links and actions in rows and rules, secrets and serialized values. A selector
+   list, not :is(), so each keeps its own specificity. */
+.structure .link, .structure .act, .project .row .link, :is(.project, .rule-sheet) .act, .readout .line-open, .icon-rule .link,
+.val-secret > button, button.val-ser, button.val-ref { padding: 0; border: none; background: none; font: inherit; }
+
+/* Inputs look like inputs, never like rows (docs/ux.md, Inputs). */
+.input {
+  height: 2rem; padding: 0 0.615rem; width: 100%;
+  border: 1px solid var(--field-line); border-radius: var(--radius-sm);
+  background: var(--field); box-shadow: var(--shadow-inset); outline: none;
+}
+.input::placeholder { color: var(--o3); }
+.input:focus { border-color: var(--accent); box-shadow: var(--shadow-inset), 0 0 0 0.231rem var(--sel); }
+.input.mono { font-family: var(--font-mono); font-size: var(--data-font-size); }
+
+/* The macOS field: leading icon, the control, an optional key cap (`InsetField` in Field.tsx). */
+.inset-field {
+  display: flex; align-items: center; gap: 0.462rem; min-width: 0; height: 1.846rem; padding: 0 0.462rem 0 0.615rem;
+  border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field); box-shadow: var(--shadow-inset);
+  color: var(--text); cursor: text;
+}
+.inset-field:has(> .keycap) { padding-right: calc((1.846rem - 2px - var(--keycap-h)) / 2); }
+.inset-field:focus-within { border-color: var(--accent); }
+.inset-field input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; outline: none; color: var(--text); }
+.inset-field input::placeholder { color: var(--o3); }
+.inset-field-icon { display: inline-flex; flex: none; color: var(--o3); }
+.keycap {
+  flex: none; padding: 0 0.308rem; border: 1px solid var(--field-line); border-radius: 4px;
+  font-family: var(--font-mono); font-size: 0.846rem; line-height: calc(var(--keycap-h) - 2px); color: var(--o3); white-space: nowrap;
+}
+
+.field { display: flex; flex-direction: column; gap: 0.308rem; }
+.field > span, .field > label { font-size: var(--fs-small); color: var(--o2); font-weight: 500; }
+.field-row { display: flex; gap: 0.769rem; }
+.field-row > * { flex: 1; }
+.check { display: flex; align-items: center; gap: 0.538rem; }
+.hint { font-size: var(--fs-small); color: var(--o3); }
+.muted { color: var(--o2); }
+.mono { font-family: var(--font-mono); }
+.o2 { color: var(--o2); }
+.o3 { color: var(--o3); }
+.spacer { flex: 1; }
+
+/* A field-styled track; the selected segment is a rounded tile in the border color, 1px inside the track, its
+   label in the strongest text color. A key cap sits `--seg-inset` from the segment's top, bottom and right edge: a
+   block, so no line box offsets it. On the tile its border matches the tile, so only its glyphs show. */
+.segmented {
+  --seg-h: 1.538rem; --seg-inset: 3px;
+  display: inline-flex; padding: 1px; border: 1px solid var(--field-line); border-radius: var(--radius-sm); background: var(--field);
+}
+.segmented button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.308rem; white-space: nowrap;
+  height: var(--seg-h); padding: 0 0.923rem; border: none; border-radius: calc(var(--radius-sm) - 1px); background: transparent; color: var(--o2);
+}
+.segmented button .keycap { --keycap-h: calc(var(--seg-h) - 2 * var(--seg-inset)); display: block; }
+.segmented button:has(.keycap) { padding-right: var(--seg-inset); }
+.segmented button:hover { color: var(--text); }
+.segmented button[aria-pressed="true"] { background: var(--field-line); color: var(--text-strong); }
+
+.badge {
+  display: inline-flex; align-items: center; height: 1.308rem; padding: 0 0.462rem;
+  border-radius: 0.692rem; font-size: 0.808rem; font-weight: 600; background: color-mix(in srgb, var(--text) 12%, transparent); color: var(--o2);
+}

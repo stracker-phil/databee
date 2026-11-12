@@ -1,0 +1,51 @@
+/* ---------- settings window: sidebar of pages, grouped cards of label/control rows ---------- */
+.settings-nav {
+  flex: none; width: 13.5rem; padding: 0 0.769rem 1.231rem;
+  background: var(--chrome); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 0.769rem;
+}
+.settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-heading { padding: 0 0.615rem 0.308rem; font-size: var(--fs-small); font-weight: 500; color: var(--o3); }
+.settings-nav button {
+  display: flex; align-items: center; gap: 0.615rem; height: 2rem; padding: 0 0.615rem;
+  border: none; border-radius: 5px; background: transparent; color: var(--text); text-align: left;
+}
+.settings-nav button svg { color: var(--o2); flex: none; }
+.settings-nav button:hover { background: var(--row-hover); }
+.settings-nav button[aria-current="page"] { background: var(--sel); }
+/* The title bar stays put; only the page below it scrolls. */
+.settings-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+.settings-pane > header { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 0.769rem; padding: 1.231rem 1.538rem 0.769rem; border-bottom: 1px solid var(--line); }
+.settings-body { flex: 1; min-height: 0; overflow: auto; padding: 0.923rem 1.538rem 1.846rem; display: flex; flex-direction: column; gap: 0.923rem; }
+.settings-pane h2 { margin: 0; font-size: 1.231rem; }
+.settings-intro { margin: 0 0 0.154rem; color: var(--o2); line-height: 1.45; }
+.settings-group { display: flex; flex-direction: column; gap: 0.462rem; }
+.settings-group h3 { margin: 0 0 0 0.923rem; font-size: 0.923rem; font-weight: 600; }
+.settings-card { background: var(--chrome); border: 1px solid var(--line); border-radius: 8px; padding: 0 0.923rem; }
+.settings-row { display: flex; align-items: center; gap: 1.231rem; min-height: 2.923rem; padding: 0.615rem 0; }
+.settings-row + .settings-row { border-top: 1px solid var(--line); }
+.settings-row.stacked { flex-direction: column; align-items: stretch; gap: 0.462rem; }
+.settings-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.154rem; }
+.settings-row-text label, .settings-row-label { color: var(--text); }
+.settings-row-desc { font-size: var(--fs-small); color: var(--o2); line-height: 1.4; }
+.settings-row-control { flex: none; display: flex; align-items: center; gap: 0.462rem; }
+.settings-row-control select.input { width: 9rem; }
+.settings-input { display: flex; align-items: center; gap: 0.462rem; }
+.settings-input .input { width: 12rem; }
+.settings-input .input.number { width: 6.5rem; text-align: right; }
+.settings-search { flex: none; }
+.shortcut-control { display: flex; align-items: center; gap: 0.308rem; }
+
+/* macOS-style toggle */
+.switch {
+  appearance: none; flex: none; position: relative; width: 2.462rem; height: 1.385rem; margin: 0;
+  border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent); box-shadow: inset 0 0 0 1px var(--field-line);
+  transition: background .15s;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.385rem - 4px); height: calc(1.385rem - 4px);
+  border-radius: 50%; background: var(--knob); box-shadow: var(--shadow-small); transition: transform .15s;
+}
+.switch:checked { background: var(--accent); box-shadow: none; }
+.switch:checked::after { background: var(--on-accent); transform: translateX(calc(2.462rem - 1.385rem)); }
+.switch:focus-visible { outline: none; box-shadow: 0 0 0 0.231rem var(--sel); }

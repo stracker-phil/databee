@@ -1,0 +1,11 @@
+/* ---------- utilities ---------- */
+.icon-btn.tiny { width: 1.385rem; height: 1.385rem; }
+/* An inline text button in the accent (toast details, the live check's refresh). */
+.link-btn { margin: 0; padding: 0; border: none; border-radius: 0.308rem; background: none; color: var(--accent-text); font-size: inherit; }
+.grow-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pill { display: inline-flex; align-items: center; height: 1.538rem; padding: 0 0.692rem; border-radius: 0.769rem; font-size: 0.885rem; font-weight: 600; white-space: nowrap; }
+.pill.tone-green { background: color-mix(in srgb, var(--chart-green) 20%, transparent); color: var(--chart-green); }
+.pill.tone-orange { background: color-mix(in srgb, var(--chart-orange) 22%, transparent); color: var(--chart-orange); }
+
+.text-small { font-size: var(--fs-small); }

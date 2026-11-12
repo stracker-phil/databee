@@ -1,0 +1,72 @@
+/* ---------- value tree ---------- */
+/* No type tints: keys secondary, container types tertiary, values in primary text (docs/ux.md, Trees). */
+.vt { font-family: var(--font-mono); font-size: var(--data-font-size); line-height: 1.55; user-select: text; }
+.vt-line { display: flex; align-items: baseline; gap: 0.385rem; padding: var(--pad) 2px; line-height: 20px; border-bottom: 1px solid var(--line); }
+.vt-line:hover { background: var(--row-hover); }
+.vt-toggle { width: 0.846rem; flex: none; color: var(--o3); display: inline-flex; align-self: center; }
+.vt-children { padding-left: 1.077rem; border-left: 1px solid var(--line); margin-left: 0.385rem; }
+.vt-key { color: var(--code-property); }
+.vt-key.int { color: var(--o2); }
+.vt-key::after { content: ":"; color: var(--o3); }
+.vt-vis { font-size: 0.808rem; color: var(--o3); }
+.vt-string { color: var(--code-string); word-break: break-word; white-space: pre-wrap; }
+.vt-quote { color: var(--o3); }
+/* A pair never shrinks: squeezed, its string would wrap one letter per line. */
+.vt-pair { display: inline-flex; flex: none; gap: 0.385rem; margin-left: 0.615rem; }
+.vt-int, .vt-float { color: var(--code-number); font-variant-numeric: tabular-nums; }
+.vt-bool { color: var(--code-number); }
+.vt-enum { color: var(--code-type); }
+.vt-null { color: var(--code-number); font-style: italic; }
+.vt-ref, .vt-muted { color: var(--o3); }
+.vt-warning, .vt-error { display: flex; gap: 0.462rem; align-items: flex-start; padding: 0.462rem 0.615rem; border-radius: var(--radius-sm); margin-bottom: 0.615rem; font-family: var(--font-ui); font-size: var(--fs-small); }
+.vt-warning { background: color-mix(in srgb, var(--style-yellow) 14%, transparent); color: var(--style-yellow); }
+.vt-error { background: color-mix(in srgb, var(--style-red) 12%, transparent); color: var(--style-red); }
+
+/* ---------- values ---------- */
+/* One look per kind (docs/ux.md, Value grammar): accent only on interactive kinds, color only from value
+   styles (set inline as var(--style-<name>)), everything else through opacity. */
+.val { font-family: var(--font-mono); }
+.val-pk { color: var(--accent-text); }
+.val-ref { color: var(--accent-text); text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.val-ref.inferred { text-decoration-style: dashed; }
+.val-dang { color: var(--o3); text-decoration: line-through; }
+.val-o3, .val-ser, .val-secret { color: var(--o3); }
+.val-null { color: var(--o3); font-style: italic; }
+.val-num { font-variant-numeric: tabular-nums; }
+.val-sec { color: var(--o2); margin-left: 0.6em; }
+.val-time .val-sec { font-size: calc(1em - 3px); }
+.time-peek {
+  position: fixed; z-index: 60; padding: 0.231rem 0.462rem; border-radius: var(--radius-sm); background: var(--pop);
+  box-shadow: var(--shadow-small); font-family: var(--font-mono); font-size: var(--data-font-size); white-space: nowrap;
+  pointer-events: none;
+}
+.val-note { color: var(--o3); margin-left: 0.6em; font-family: var(--font-ui); font-size: var(--fs-small); }
+.val-secret > button { color: inherit; cursor: pointer; }
+.val-secret:hover, .val-ser:hover, .val-secret > .revealed { color: var(--text); }
+.val-secret > .revealed { outline: none; user-select: text; -webkit-user-select: text; }
+.val-tree { display: inline-flex; flex-direction: column; min-width: 0; max-width: 100%; }
+.val-tree > .val-ser { align-self: flex-start; }
+/* What a click does (OpenHint, OpenSwap). A link with a leading icon (a table icon, the serialized marker) holds it
+   in a 1em box with the indicator beside it, hidden; while its cell, line or link is hovered (or the selected grid
+   cell has focus) the two trade places, so nothing shifts or cuts. Links without one show the indicator after
+   their text (.open-hint). A cell or line that holds a summary swaps per pair. */
+.open-swap { display: inline-block; flex: none; width: 1em; margin-right: 0.308em; white-space: nowrap; color: var(--o2); pointer-events: none; }
+.open-swap > .tbl-icon { margin-right: 0; }
+.open-swap > .open-glyph { display: none; vertical-align: -0.125em; }
+.open-swap > .ser-mark { display: inline-block; width: 1em; text-align: center; color: var(--o3); }
+.open-hint { display: inline-flex; vertical-align: -0.125em; margin-left: 0.308rem; color: var(--o2); pointer-events: none; visibility: hidden; }
+:is(
+  .grid-cell:hover, .grid:focus .grid-cell.selected, .summary-pair:hover,
+  :is(.object, .project, .readout) .row > :hover:not(:has(.summary-pair)), .object .row > .focus:not(:has(.summary-pair))
+) {
+  & .open-swap > :not(.open-glyph) { display: none; }
+  & .open-swap > .open-glyph { display: inline; }
+  & .val .open-hint { visibility: visible; }
+}
+:hover {
+  & > .open-swap > :not(.open-glyph) { display: none; }
+  & > .open-swap > .open-glyph { display: inline; }
+  & > .open-hint { visibility: visible; }
+}
+/* A table's icon (TableIcon) before its name, a reference into it or a key of its rows, sized to the text. */
+.tbl-icon { flex: none; vertical-align: -0.125em; margin-right: 0.308em; color: var(--o2); }

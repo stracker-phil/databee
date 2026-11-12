@@ -1,0 +1,90 @@
+/* ---------- live mode, snapshots, compare ---------- */
+/* A changed value flashes once (--cell to transparent), then keeps its old value struck through; changed
+   and new rows carry a 3px accent mark, removed rows stay struck through until dismissed. */
+.object .row.chg { --change-mark: inset 3px 0 0 var(--accent); box-shadow: var(--change-mark); }
+.object .row.removed { color: var(--o3); text-decoration: line-through; }
+.object .row.removed .val { color: inherit; }
+.object .flash { border-radius: 3px; animation: change-flash 1.6s ease-out; }
+@keyframes change-flash { from { background: var(--cell); } to { background: transparent; } }
+.object .old { margin-left: 0.8em; color: var(--o3); text-decoration: line-through; }
+.changes { display: flex; flex-direction: column; }
+.object button.row.change-line {
+  width: 100%; border: none; border-bottom: 1px solid var(--line); background: none; color: inherit; text-align: left; cursor: default;
+}
+.object button.row.change-line:focus-visible { outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
+.object.query-changes { flex: 0 1 auto; max-height: 40%; padding-bottom: 0.923rem; border-top: 1px solid var(--line); }
+.statusbar .status-text.live { color: var(--accent-text); }
+.compare { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.compare-summary { padding: 0.615rem 1.846rem; font-size: var(--fs-small); border-bottom: 1px solid var(--line); }
+.compare-sides { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.object.compare-side { padding: 0 0.923rem 3.692rem; }
+.compare-side + .compare-side { border-left: 1px solid var(--line); }
+.snapshot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.snapshot-item { display: flex; align-items: center; gap: 0.615rem; border-bottom: 1px solid var(--line); }
+.snapshot-pick {
+  flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 0.923rem; padding: var(--pad) 0.462rem; line-height: 20px;
+  border: none; background: none; color: inherit; text-align: left; font-size: var(--fs-small);
+}
+.snapshot-pick:hover { background: var(--row-hover); }
+.snapshot-label { font-family: var(--font-mono); font-size: var(--data-font-size); color: var(--text); }
+
+/* ---------- table icons ---------- */
+/* The icon line of a table (IconControl) and its picker sheet: a filter field over a grid of the curated icons. */
+.icon-rule { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.462rem; }
+.icon-rule .tbl-icon { margin-right: 0; }
+.icon-rule .origin { color: var(--o3); font-size: var(--fs-small); }
+.icon-rule .link { color: var(--o2); }
+.icon-rule .link:hover:not(:disabled) { color: var(--accent-text); text-decoration: underline; }
+.structure-icon { font-size: var(--fs-base); }
+.icon-sheet .icon-filter { padding: 0.923rem 1.231rem 0; }
+.icon-sheet .icon-none { grid-column: 1 / -1; padding: 0.615rem 0; font-size: var(--fs-small); }
+.icon-sheet .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.462rem, 1fr)); gap: 0.308rem; padding: 1.077rem 1.231rem; }
+.icon-sheet .icon-choice {
+  display: inline-flex; align-items: center; justify-content: center; height: 2.462rem; border: 1px solid transparent;
+  border-radius: var(--radius-sm); background: none; color: var(--o2); font-size: 1.231rem;
+}
+.icon-sheet .icon-choice:hover { color: var(--text); background: var(--row-hover); }
+.icon-sheet .icon-choice[aria-pressed="true"] { border-color: var(--field-line); background: var(--field); color: var(--accent-text); }
+
+/* ---------- table live check ---------- */
+/* A table tab's live check (TableCheck) in its grid: a changed row carries the 3px accent mark on its first cell
+   (--change-mark, beside any selection ring), a changed value an accent corner (flashing once when first seen), a
+   removed row stays struck through in --o3. Above the grid one bar counts them; ⌥ on a marked value opens a small
+   --pop overlay with old → new (ChangePeek). */
+.grid-row.db-changed > .grid-cell:first-child { --change-mark: inset 3px 0 0 var(--accent); }
+.grid-row.db-removed > .grid-cell, .grid-row.db-removed > .grid-cell * { color: var(--o3); text-decoration: line-through; }
+.grid-cell.db-changed { position: relative; }
+.grid-cell.db-changed::before {
+  content: ""; position: absolute; top: 0; right: 0; pointer-events: none;
+  border-style: solid; border-width: 0 6px 6px 0; border-color: transparent var(--accent) transparent transparent;
+}
+.grid-cell.db-flash { animation: change-flash 1.6s ease-out; }
+/* Rows and cells a plan waiting for review touches (pendingRowMarks): a row to delete is struck through in red on a
+   red tint, a row to duplicate carries a --o3 mark, an edited cell an accent underline. */
+.grid-row.pending-delete { background: color-mix(in srgb, var(--style-red) 8%, transparent); }
+.grid-row.pending-delete > .grid-cell, .grid-row.pending-delete > .grid-cell * { color: var(--style-red); text-decoration: line-through; }
+.grid-row.pending-duplicate > .grid-cell:first-child { --change-mark: inset 3px 0 0 var(--o3); }
+.grid-cell.pending-edit { --change-mark: inset 0 -2px 0 var(--accent); }
+.db-changes {
+  display: flex; align-items: center; gap: 0.462rem; padding: 0.231rem 0.769rem; border-bottom: 1px solid var(--line);
+  background: var(--bg); box-shadow: inset 3px 0 0 var(--accent); font-size: var(--fs-small);
+}
+.db-changes .db-changes-hint { margin-left: auto; }
+.db-peek {
+  position: fixed; z-index: 60; max-width: 36rem; padding: 0.462rem 0.769rem; border-radius: 10px; pointer-events: none;
+  background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); color: var(--text);
+}
+.db-peek-head { margin-bottom: 0.154rem; font-size: var(--fs-small); color: var(--o2); }
+.db-peek-values { font-size: var(--data-font-size); overflow-wrap: anywhere; }
+
+/* The ⌥ peek of a serialized value (`Value`'s `SerializedPeek`). */
+.value-peek {
+  position: fixed; z-index: 60; min-width: 16rem; max-width: 36rem; max-height: 60vh; overflow: hidden;
+  padding: 0.462rem 0.769rem; border-radius: 10px; pointer-events: none;
+  background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); color: var(--text);
+}
+
+/* ---------- connection health ---------- */
+.conn-health { display: inline-flex; align-items: center; gap: 0.462rem; flex: none; }
+.conn-health-icon { flex: none; color: var(--style-red); }
+.conn-health .conn-retry { height: 1.692rem; padding: 0 0.615rem; font-size: var(--fs-small); }
