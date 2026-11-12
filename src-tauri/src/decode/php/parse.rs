@@ -1,83 +1,4 @@
-//! Lossless parser/serializer for PHP's `serialize()` format. Never executes anything:
-//! objects are kept as class name + properties. Strings are bytes because `s:N` counts
-//! bytes, and real databases contain broken UTF-8 and wrong lengths.
-
-use std::borrow::Cow;
-use std::fmt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PhpKey {
-    Int(i64),
-    Str(Vec<u8>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PhpValue {
-    Null,
-    Bool(bool),
-    Int(i64),
-    /// Raw text (`0.1`, `INF`, `1.0E+25`) so re-serializing never drifts.
-    Float(String),
-    Str(Vec<u8>),
-    Array(Vec<(PhpKey, PhpValue)>),
-    Object {
-        class: Vec<u8>,
-        props: Vec<(PhpKey, PhpValue)>,
-    },
-    /// `C:` objects implementing Serializable: opaque payload.
-    Custom {
-        class: Vec<u8>,
-        data: Vec<u8>,
-    },
-    /// `r:` (value reference) or `R:` (variable reference) to the Nth value.
-    Ref {
-        strong: bool,
-        index: i64,
-    },
-    /// PHP 8.1 enum case, e.g. `Suit:Hearts`.
-    Enum(Vec<u8>),
-}
-
-impl PhpValue {
-    /// The entry of an array or object by key text; int keys match their decimal form.
-    pub fn get(&self, key: &str) -> Option<&PhpValue> {
-        let (PhpValue::Array(entries) | PhpValue::Object { props: entries, .. }) = self else {
-            return None;
-        };
-        entries.iter().find(|(k, _)| k.is(key)).map(|(_, v)| v)
-    }
-
-    /// Strings (lossy UTF-8), ints and floats as text.
-    pub fn as_text(&self) -> Option<Cow<'_, str>> {
-        match self {
-            PhpValue::Str(s) => Some(String::from_utf8_lossy(s)),
-            PhpValue::Int(i) => Some(Cow::Owned(i.to_string())),
-            PhpValue::Float(f) => Some(Cow::Borrowed(f)),
-            _ => None,
-        }
-    }
-}
-
-impl PhpKey {
-    fn is(&self, key: &str) -> bool {
-        match self {
-            PhpKey::Int(i) => i.to_string() == key,
-            PhpKey::Str(s) => s == key.as_bytes(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ParseError {
-    pub offset: usize,
-    pub message: String,
-}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} at byte {}", self.message, self.offset)
-    }
-}
+use super::{ParseError, PhpKey, PhpValue, is_php_float};
 
 const MAX_DEPTH: usize = 128;
 /// Caps preallocation from declared counts, which can't be trusted.
@@ -120,58 +41,6 @@ fn parse_with(input: &[u8], mode: Mode) -> Result<PhpValue, ParseError> {
         return Err(p.error("unexpected data after the value"));
     }
     Ok(value)
-}
-
-/// Mirrors a strict `is_serialized()`, plus `C:` objects: a cheap check before
-/// trying to parse.
-pub fn looks_serialized(text: &str) -> bool {
-    let t = text.trim();
-    if t == "N;" {
-        return true;
-    }
-    let b = t.as_bytes();
-    if b.len() < 4 || b[1] != b':' || !matches!(b[b.len() - 1], b';' | b'}') {
-        return false;
-    }
-    match b[0] {
-        b's' => b[b.len() - 2] == b'"' && counted_prefix(&b[2..]),
-        b'a' | b'O' | b'E' | b'C' => counted_prefix(&b[2..]),
-        b'b' | b'i' | b'd' => {
-            let body = &b[2..b.len() - 1];
-            !body.is_empty()
-                && body
-                    .iter()
-                    .all(|c| c.is_ascii_digit() || matches!(c, b'.' | b'E' | b'+' | b'-'))
-        }
-        _ => false,
-    }
-}
-
-/// `<digits>:` as after `a:`, `O:` or `s:`.
-fn counted_prefix(rest: &[u8]) -> bool {
-    let digits = rest.iter().take_while(|c| c.is_ascii_digit()).count();
-    digits > 0 && rest.get(digits) == Some(&b':')
-}
-
-/// The float syntax `unserialize()` reads after `d:`. Rust spellings (`inf`, `nan`,
-/// `infinity`) would produce a value PHP rejects.
-pub fn is_php_float(s: &str) -> bool {
-    if matches!(s, "INF" | "-INF" | "NAN") {
-        return true;
-    }
-    fn unsigned(p: &str) -> &str {
-        p.strip_prefix(['+', '-']).unwrap_or(p)
-    }
-    let digits = |p: &str| p.bytes().all(|b| b.is_ascii_digit());
-    let (mantissa, exponent) = match unsigned(s).split_once(['e', 'E']) {
-        Some((m, e)) => (m, Some(unsigned(e))),
-        None => (unsigned(s), None),
-    };
-    let mantissa_ok = match mantissa.split_once('.') {
-        Some((int, frac)) => digits(int) && digits(frac) && !(int.is_empty() && frac.is_empty()),
-        None => !mantissa.is_empty() && digits(mantissa),
-    };
-    mantissa_ok && exponent.is_none_or(|e| !e.is_empty() && digits(e))
 }
 
 impl Parser<'_> {
@@ -382,71 +251,10 @@ impl Parser<'_> {
     }
 }
 
-/// Serializes back to PHP's format. `serialize(&parse(x)?) == x` for valid input.
-pub fn serialize(value: &PhpValue) -> Vec<u8> {
-    let mut out = Vec::new();
-    write_value(&mut out, value);
-    out
-}
-
-fn write_str(out: &mut Vec<u8>, tag: &str, s: &[u8]) {
-    out.extend_from_slice(format!("{tag}:{}:\"", s.len()).as_bytes());
-    out.extend_from_slice(s);
-    out.push(b'"');
-}
-
-fn write_entries(out: &mut Vec<u8>, entries: &[(PhpKey, PhpValue)]) {
-    out.extend_from_slice(format!("{}:{{", entries.len()).as_bytes());
-    for (k, v) in entries {
-        match k {
-            PhpKey::Int(i) => out.extend_from_slice(format!("i:{i};").as_bytes()),
-            PhpKey::Str(s) => {
-                write_str(out, "s", s);
-                out.push(b';');
-            }
-        }
-        write_value(out, v);
-    }
-    out.push(b'}');
-}
-
-fn write_value(out: &mut Vec<u8>, value: &PhpValue) {
-    match value {
-        PhpValue::Null => out.extend_from_slice(b"N;"),
-        PhpValue::Bool(b) => out.extend_from_slice(if *b { b"b:1;" } else { b"b:0;" }),
-        PhpValue::Int(i) => out.extend_from_slice(format!("i:{i};").as_bytes()),
-        PhpValue::Float(f) => out.extend_from_slice(format!("d:{f};").as_bytes()),
-        PhpValue::Str(s) => {
-            write_str(out, "s", s);
-            out.push(b';');
-        }
-        PhpValue::Array(entries) => {
-            out.extend_from_slice(b"a:");
-            write_entries(out, entries);
-        }
-        PhpValue::Object { class, props } => {
-            write_str(out, "O", class);
-            out.push(b':');
-            write_entries(out, props);
-        }
-        PhpValue::Custom { class, data } => {
-            write_str(out, "C", class);
-            out.extend_from_slice(format!(":{}:{{", data.len()).as_bytes());
-            out.extend_from_slice(data);
-            out.push(b'}');
-        }
-        PhpValue::Ref { strong, index } => out
-            .extend_from_slice(format!("{}:{index};", if *strong { 'R' } else { 'r' }).as_bytes()),
-        PhpValue::Enum(name) => {
-            write_str(out, "E", name);
-            out.push(b';');
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::decode::php::serialize;
 
     fn s(v: &str) -> PhpValue {
         PhpValue::Str(v.as_bytes().to_vec())
@@ -455,7 +263,6 @@ mod tests {
     fn key(v: &str) -> PhpKey {
         PhpKey::Str(v.as_bytes().to_vec())
     }
-
     #[test]
     fn parses_scalars() {
         assert_eq!(parse(b"N;").unwrap(), PhpValue::Null);
@@ -495,25 +302,6 @@ mod tests {
                 props: vec![(key("a"), PhpValue::Int(1))]
             }
         );
-    }
-
-    #[test]
-    fn round_trips_exactly() {
-        let samples: &[&[u8]] = &[
-            br#"a:4:{s:4:"ppcp";s:0:"";s:7:"enabled";s:3:"yes";s:5:"title";s:6:"PayPal";s:5:"price";d:49.9;}"#,
-            br#"O:11:"WC_DateTime":3:{s:4:"date";s:26:"2026-01-01 00:00:00.000000";s:13:"timezone_type";i:3;s:8:"timezone";s:3:"UTC";}"#,
-            br#"a:2:{i:0;r:1;i:1;R:2;}"#,
-            br#"C:11:"ArrayObject":21:{x:i:0;a:0:{};m:a:0:{}}"#,
-            br#"E:11:"Suit:Hearts";"#,
-            "a:1:{s:4:\"name\";s:7:\"Müller\";}".as_bytes(),
-            b"d:INF;",
-            "O:3:\"Foo\":1:{s:6:\"\0*\0bar\";N;}".as_bytes(),
-        ];
-        for raw in samples {
-            let parsed =
-                parse(raw).unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(raw)));
-            assert_eq!(serialize(&parsed), *raw, "{}", String::from_utf8_lossy(raw));
-        }
     }
 
     #[test]
@@ -562,34 +350,6 @@ mod tests {
     }
 
     #[test]
-    fn detects_serialized_looking_text() {
-        assert!(looks_serialized("a:0:{}"));
-        assert!(looks_serialized(" s:3:\"abc\"; "));
-        assert!(looks_serialized("N;"));
-        assert!(!looks_serialized("yes"));
-        assert!(!looks_serialized("{\"a\":1}"));
-    }
-
-    #[test]
-    fn looks_serialized_follows_strict_is_serialized() {
-        for (text, expected) in [
-            ("a:0:{}", true),
-            ("s:3:\"abc\";", true),
-            ("i:5;", true),
-            ("b:1;", true),
-            ("N;", true),
-            ("C:3:\"Foo\":0:{}", true),
-            ("a: note;", false),
-            ("i:abc;", false),
-            ("s:3:\"abc\"", false),
-            ("x:1;", false),
-            ("i:", false),
-        ] {
-            assert_eq!(looks_serialized(text), expected, "{text}");
-        }
-    }
-
-    #[test]
     fn non_canonical_ints_and_bools_are_rejected_in_both_modes() {
         for raw in [
             "i:+1;",
@@ -603,27 +363,6 @@ mod tests {
         ] {
             assert!(parse(raw.as_bytes()).is_err(), "strict {raw}");
             assert!(parse_lenient(raw.as_bytes()).is_err(), "lenient {raw}");
-        }
-    }
-
-    #[test]
-    fn canonical_ints_at_the_i64_edges_round_trip() {
-        for raw in ["i:0;", "i:9223372036854775807;", "i:-9223372036854775808;"] {
-            assert_eq!(
-                serialize(&parse(raw.as_bytes()).unwrap()),
-                raw.as_bytes(),
-                "{raw}"
-            );
-        }
-    }
-
-    #[test]
-    fn php_float_syntax_parses_and_round_trips() {
-        for text in ["-INF", "NAN", "INF", "1.0E+25", "-1.5e-3", ".5", "5.", "0"] {
-            let raw = format!("d:{text};");
-            let parsed = parse(raw.as_bytes()).unwrap_or_else(|e| panic!("{raw}: {e}"));
-            assert_eq!(parsed, PhpValue::Float(text.into()), "{raw}");
-            assert_eq!(serialize(&parsed), raw.as_bytes(), "{raw}");
         }
     }
 
@@ -642,20 +381,6 @@ mod tests {
             assert!(parse(raw.as_bytes()).is_err(), "strict {raw}");
             assert!(parse_lenient(raw.as_bytes()).is_err(), "lenient {raw}");
         }
-    }
-
-    #[test]
-    fn private_properties_round_trip() {
-        let raw = "O:3:\"Foo\":1:{s:8:\"\0Foo\0bar\";i:1;}";
-        let parsed = parse(raw.as_bytes()).unwrap();
-        assert_eq!(
-            parsed,
-            PhpValue::Object {
-                class: b"Foo".to_vec(),
-                props: vec![(PhpKey::Str(b"\0Foo\0bar".to_vec()), PhpValue::Int(1))]
-            }
-        );
-        assert_eq!(serialize(&parsed), raw.as_bytes());
     }
 
     #[test]
@@ -737,47 +462,6 @@ mod tests {
         assert!(parse(too_short).is_err());
         if let Ok(v) = parse_lenient(too_short) {
             assert_eq!(v, expected, "declared too short");
-        }
-    }
-
-    #[test]
-    fn get_finds_array_and_object_entries_by_key_text() {
-        let array = PhpValue::Array(vec![
-            (key("a"), PhpValue::Int(1)),
-            (PhpKey::Int(5), s("five")),
-        ]);
-        assert_eq!(array.get("a"), Some(&PhpValue::Int(1)));
-        assert_eq!(array.get("5"), Some(&s("five")));
-        assert_eq!(array.get("b"), None);
-        assert_eq!(array.get("6"), None);
-
-        let object = parse(br#"O:3:"Foo":1:{s:1:"x";b:1;}"#).unwrap();
-        assert_eq!(object.get("x"), Some(&PhpValue::Bool(true)));
-
-        for scalar in [PhpValue::Null, PhpValue::Int(1), s("a")] {
-            assert_eq!(scalar.get("a"), None, "{scalar:?}");
-        }
-    }
-
-    #[test]
-    fn as_text_covers_strings_ints_and_floats_only() {
-        assert_eq!(s("hi").as_text().as_deref(), Some("hi"));
-        assert_eq!(
-            PhpValue::Str(vec![0xff]).as_text().as_deref(),
-            Some("\u{fffd}")
-        );
-        assert_eq!(PhpValue::Int(-5).as_text().as_deref(), Some("-5"));
-        assert_eq!(
-            PhpValue::Float("1.0E+25".into()).as_text().as_deref(),
-            Some("1.0E+25")
-        );
-        for value in [
-            PhpValue::Null,
-            PhpValue::Bool(true),
-            PhpValue::Array(vec![]),
-            PhpValue::Enum(b"A:B".to_vec()),
-        ] {
-            assert_eq!(value.as_text(), None, "{value:?}");
         }
     }
 }

@@ -43,7 +43,7 @@ api act '{"kind":"keys","keys":"Enter","window":"palette"}'
 | `hub.rs` | `Hub`: request/reply correlation. It emits page work as Tauri events with a fresh request id and waits for the matching reply under `Timeouts` (`pending::PendingReplies`, one per reply type); a reply whose request timed out is dropped. `StageHost` abstracts the native window, so tests use a fake host. |
 | `windows.rs` | The window model: `Frame`, `enum Window { Main, Settings, Palette }` (ts-rs `StageWindow`), `is_shown`, and the serialized `WindowInfo` and `AnchorInfo` in screen points |
 | `requests.rs` | The verbs' requests, parsed before anything reaches the page: `ActKind`, `WindowRequest` (`window`, `WindowAction`, bounds, section), `type_payload`, `scroll_payload`, `wait_timeout` |
-| `verbs.rs` | The verbs (`run`): `describe`, `state`, `window` (`main_window_action` or `sheet_action`) and `act` (by `ActKind`: anchor acts, `wait`, `keys`, `command`), keeping the protocol's status codes (400, 404, 409, 500) and messages. Answers are `Serialize` structs (`Describe`, `ActResult`). |
+| `verbs/` | The verbs, keeping the protocol's status codes (400, 404, 409, 500) and messages; answers are `Serialize` structs. `mod.rs`: `run`, `describe`, `state` (`Describe`) and the shared page errors; `window.rs`: `window` (`main_window_action` or `sheet_action`); `act.rs`: `act` (by `ActKind`: anchor acts, `wait`, `keys`, `command`; `ActResult`). |
 | `test_host.rs` | Tests only: `FakePage`, a host whose page answers like `hooks.ts`, and `hub_with` |
 | `mod.rs` | `init(config_dir)`, the inline Tauri plugin ([ADR 0010](adr/0010-inline-tauri-plugins.md)): commands, managed `Stage`, start on setup, stop on exit. `Stage`: start, stop and restart from its settings, `update_settings`, `rotate_token`, status for the settings page (including the register command), last request time |
 | `settings.rs` | `StageSettings` (enabled, port, token; `Debug` redacts the token) in `<config>/stage.json` through `StageStore` ([ADR 0016](adr/0016-module-settings-files.md)). `sanitized()` clamps the port and generates a token when it is empty (`new_token`: 32 random bytes as hex). `StageStore::open` takes the `stage` object of a legacy `settings.json` once, so a registered token survives the upgrade; it never writes `settings.json`. |
@@ -68,7 +68,7 @@ The page side lives in `src/stage/`:
 
 One verb, for example `act kind=click anchor=toolbar:settings`:
 1. `http.rs` authenticates the request and parses it.
-2. `verbs.rs` validates it into an `ActRequest`; `hub.rs` emits `stage:act {request, kind, …}` to the `main` window.
+2. `verbs/act.rs` validates it into an `ActRequest`; `hub.rs` emits `stage:act {request, kind, …}` to the `main` window.
 3. `hooks.ts` acts (`actions.ts`) and invokes `stage_done({request, ok, …})`.
 4. The hub matches the request id and returns the JSON.
 

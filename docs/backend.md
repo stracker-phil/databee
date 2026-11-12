@@ -452,7 +452,7 @@ Logs go to Tauri's `app_log_dir`, which is `~/Library/Logs/com.philippstracker.d
 
 ## Watches and snapshots
 
-Live mode, snapshots and compare share one model (`document/diff.rs`): a document reduced to its stored cells,
+Live mode, snapshots and compare share one model (`document/diff/`: types and `diff_documents` in `mod.rs`, `compare_documents` in `compare.rs`, the marks in `marks.rs`): a document reduced to its stored cells,
 `FlatDocument { groups: [FlatGroup { id, table, shape, capped, rows: [FlatRow { key, fields: [FlatField { name,
 source, cell }] }] }] }`, keyed by provenance. `FlatDocument::of(document)` leaves out `events` (it repeats
 other groups' values) and failed groups. Two of them give a `DocDelta { changed, added, removed }`:

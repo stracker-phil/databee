@@ -5,7 +5,7 @@ and edits one leaf of it. It is core and knows no application.
 
 | File | Responsibility |
 |---|---|
-| `php.rs` | Lossless parser and serializer for PHP `serialize()` data (`parse`, `parse_lenient`, `serialize`); `PhpValue::get` and `as_text` for lookups; `looks_serialized` (a strict `is_serialized`, plus `C:`); `is_php_float` |
+| `php/` | Lossless parser and serializer for PHP `serialize()` data. `mod.rs`: `PhpValue` (`get` and `as_text` for lookups), `looks_serialized` (a strict `is_serialized`, plus `C:`), `is_php_float`; `parse.rs`: `parse`, `parse_lenient`; `serialize.rs`: `serialize` |
 | `value.rs` | `decode`: stored text (PHP or JSON) as a `DecodedValue` with a generic `ValueNode` tree. Serialized strings inside other values are decoded up to 3 levels deep (`MAX_NESTED_DECODE`). `format_of` tells the format from the first bytes |
 | `edit.rs` | `edit_serialized`: replaces one leaf and re-serializes |
 | `commands.rs` | The `decode_value` and `edit_serialized` Tauri commands |
@@ -16,7 +16,7 @@ The page asks `decode_value` for the tree when a value is opened.
 
 ## PHP serialize
 
-`php.rs` round-trips exactly: `serialize(parse(x)) == x` for every value it accepts. The test suite checks
+`php/` round-trips exactly: `serialize(parse(x)) == x` for every value it accepts. The test suite checks
 this, and `every_serialized_meta_value_round_trips` (`mod real_data` in `src-tauri/src/document/server_tests.rs`) checks it against every serialized value in the `[[meta]]` tables of the database `DATABEE_WP_TEST` names (an `#[ignore]` test run by name). The parser:
 
 - keeps **strings as bytes**, because `s:N` counts bytes; invalid UTF-8 is preserved;

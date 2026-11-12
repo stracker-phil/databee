@@ -2,6 +2,13 @@
 //! (`FlatDocument`), keyed by provenance: a group, a row key and a column. Two of them give a
 //! `DocDelta`, the marks the page draws on the newer document.
 
+mod compare;
+#[cfg(test)]
+pub(crate) mod fixtures;
+mod marks;
+
+pub use compare::compare_documents;
+
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
@@ -10,7 +17,8 @@ use ts_rs::TS;
 
 use super::{Document, GroupLink, GroupShape};
 use crate::db::Cell;
-use crate::value::{Provenance, RowKey, Value, ValueKind};
+use crate::value::{Provenance, RowKey, Value};
+use marks::{changed_fields, mark};
 
 /// A document's stored cells, group by group; `events` repeats values of other groups and is
 /// left out, and so is a group whose query failed.
@@ -166,168 +174,6 @@ fn diff_group(old: &FlatGroup, new: &FlatGroup, delta: &mut DocDelta) {
     );
 }
 
-/// The differences between row `left` and row `right` of one table, `left` as the old side:
-/// groups match by id, the own row column by column, meta rows by key (the n-th row of a key
-/// with the n-th), other rows by position.
-pub fn compare_documents(left: &FlatDocument, right: &FlatDocument) -> DocDelta {
-    let mut delta = DocDelta::default();
-    for group in &right.groups {
-        let Some(before) = left.group(&group.id) else {
-            continue;
-        };
-        let pairs = match group.shape {
-            GroupShape::Meta => pairs_by_meta_key(before, group),
-            GroupShape::Fields | GroupShape::Rows => pairs_by_position(before, group),
-        };
-        for pair in pairs {
-            match pair {
-                Pair::Both(old_row, new_row) => changed_fields(group, old_row, new_row, &mut delta),
-                Pair::Right(row) if !before.capped => delta.added.push(mark(group, row)),
-                Pair::Left(row) if !group.capped => delta.removed.push(mark(before, row)),
-                Pair::Right(_) | Pair::Left(_) => {}
-            }
-        }
-    }
-    delta.sort();
-    delta
-}
-
-enum Pair<'a> {
-    Both(&'a FlatRow, &'a FlatRow),
-    Left(&'a FlatRow),
-    Right(&'a FlatRow),
-}
-
-fn pairs_by_position<'a>(left: &'a FlatGroup, right: &'a FlatGroup) -> Vec<Pair<'a>> {
-    let shared = left.rows.len().min(right.rows.len());
-    let both = left
-        .rows
-        .iter()
-        .zip(&right.rows)
-        .map(|(l, r)| Pair::Both(l, r));
-    both.chain(left.rows[shared..].iter().map(Pair::Left))
-        .chain(right.rows[shared..].iter().map(Pair::Right))
-        .collect()
-}
-
-fn pairs_by_meta_key<'a>(left: &'a FlatGroup, right: &'a FlatGroup) -> Vec<Pair<'a>> {
-    let occurrences = |group: &'a FlatGroup| {
-        let mut seen: HashMap<String, usize> = HashMap::new();
-        group
-            .rows
-            .iter()
-            .map(|row| {
-                let key = meta_key(row).unwrap_or_default();
-                let n = seen.entry(key.clone()).or_default();
-                *n += 1;
-                ((key, *n), row)
-            })
-            .collect::<Vec<_>>()
-    };
-    let lefts = occurrences(left);
-    let rights = occurrences(right);
-    let by_key: HashMap<&(String, usize), &FlatRow> = lefts.iter().map(|(k, r)| (k, *r)).collect();
-    let right_keys: HashSet<&(String, usize)> = rights.iter().map(|(k, _)| k).collect();
-    let mut pairs: Vec<Pair> = rights
-        .iter()
-        .map(|(k, row)| match by_key.get(k) {
-            Some(old_row) => Pair::Both(old_row, row),
-            None => Pair::Right(row),
-        })
-        .collect();
-    pairs.extend(
-        lefts
-            .iter()
-            .filter(|(k, _)| !right_keys.contains(k))
-            .map(|(_, row)| Pair::Left(row)),
-    );
-    pairs
-}
-
-fn changed_fields(group: &FlatGroup, old: &FlatRow, new: &FlatRow, delta: &mut DocDelta) {
-    for field in &new.fields {
-        let Some(source) = &field.source else {
-            continue;
-        };
-        let Some(before) = old.fields.iter().find(|f| f.name == field.name) else {
-            continue;
-        };
-        if before.cell == field.cell {
-            continue;
-        }
-        delta.changed.push(ValueChange {
-            group: group.id.clone(),
-            label: label(group, new, field),
-            source: source.clone(),
-            old_source: before.source.clone().unwrap_or_else(|| source.clone()),
-            old: before.cell.clone(),
-            new: field.cell.clone(),
-        });
-    }
-}
-
-/// The meta key of a meta value (the second field of a meta row), else the column.
-fn label(group: &FlatGroup, row: &FlatRow, field: &FlatField) -> String {
-    let is_meta_value = group.shape == GroupShape::Meta
-        && row.fields.get(1).is_some_and(|f| std::ptr::eq(f, field));
-    match meta_key(row) {
-        Some(key) if is_meta_value => key,
-        _ => field.name.clone(),
-    }
-}
-
-fn meta_key(row: &FlatRow) -> Option<String> {
-    row.fields.first()?.cell.as_text().map(str::to_string)
-}
-
-fn mark(group: &FlatGroup, row: &FlatRow) -> RowMark {
-    let meta = group.shape == GroupShape::Meta;
-    let label = match (meta, meta_key(row), &row.key) {
-        (true, Some(key), _) => key,
-        (_, _, Some(key)) => key_text(key),
-        _ => String::new(),
-    };
-    RowMark {
-        group: group.id.clone(),
-        table: group.table.clone(),
-        key: row.key.clone(),
-        label,
-        value: row.fields.get(1).filter(|_| meta).map(|f| f.cell.clone()),
-        fields: row
-            .fields
-            .iter()
-            .map(|f| (f.name.clone(), stored_value(&f.cell, f.source.clone())))
-            .collect(),
-    }
-}
-
-/// `meta_id 9`, `order_id 4 · product_id 7`.
-fn key_text(key: &RowKey) -> String {
-    key.0
-        .iter()
-        .map(|part| format!("{} {}", part.column, part.value))
-        .collect::<Vec<_>>()
-        .join(" · ")
-}
-
-/// A value read back from a stored cell: its kind is what the cell alone says.
-fn stored_value(cell: &Cell, source: Option<Provenance>) -> Value {
-    let kind = match cell {
-        Cell::Null => ValueKind::Null,
-        Cell::Text(text) if text.is_empty() => ValueKind::Empty,
-        Cell::Bytes { .. } => ValueKind::Binary,
-        Cell::Number(_) => ValueKind::Number,
-        _ => ValueKind::Text,
-    };
-    Value {
-        raw: cell.clone(),
-        kind,
-        source,
-        style: None,
-        secondary: None,
-    }
-}
-
 impl DocDelta {
     pub fn is_empty(&self) -> bool {
         self.changed.is_empty() && self.added.is_empty() && self.removed.is_empty()
@@ -366,129 +212,10 @@ fn key_order(a: &RowKey, b: &RowKey) -> Ordering {
 }
 
 #[cfg(test)]
-pub(crate) mod fixtures {
-    use super::*;
-    use crate::value::KeyPart;
-
-    pub fn key(column: &str, value: &str) -> RowKey {
-        RowKey(vec![KeyPart {
-            column: column.into(),
-            value: value.into(),
-        }])
-    }
-
-    pub fn prov(table: &str, column: &str, key_column: &str, id: &str) -> Provenance {
-        Provenance {
-            table: table.into(),
-            column: column.into(),
-            row: key(key_column, id),
-        }
-    }
-
-    pub fn text(value: &str) -> Cell {
-        Cell::Text(value.into())
-    }
-
-    pub fn number(value: &str) -> Cell {
-        Cell::Number(value.into())
-    }
-
-    pub fn sourced(table: &str, key_column: &str, id: &str, name: &str, cell: Cell) -> FlatField {
-        FlatField {
-            name: name.into(),
-            source: Some(prov(table, name, key_column, id)),
-            cell,
-        }
-    }
-
-    pub fn row(key_column: &str, id: &str, fields: Vec<FlatField>) -> FlatRow {
-        FlatRow {
-            key: Some(key(key_column, id)),
-            fields,
-        }
-    }
-
-    pub fn group(
-        id: &str,
-        table: &str,
-        shape: GroupShape,
-        capped: bool,
-        rows: Vec<FlatRow>,
-    ) -> FlatGroup {
-        FlatGroup {
-            id: id.into(),
-            table: table.into(),
-            shape,
-            capped,
-            rows,
-        }
-    }
-
-    pub fn doc(groups: Vec<FlatGroup>) -> FlatDocument {
-        FlatDocument { groups }
-    }
-
-    pub fn order(id: &str, status: &str) -> FlatRow {
-        row(
-            "id",
-            id,
-            vec![
-                sourced("orders", "id", id, "id", number(id)),
-                sourced("orders", "id", id, "status", text(status)),
-            ],
-        )
-    }
-
-    pub fn status_doc(status: &str) -> FlatDocument {
-        doc(vec![group(
-            "own",
-            "orders",
-            GroupShape::Fields,
-            false,
-            vec![order("1", status)],
-        )])
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::fixtures::*;
     use super::*;
-
-    fn rows_doc(rows: Vec<FlatRow>, capped: bool) -> FlatDocument {
-        doc(vec![group(
-            "orders",
-            "orders",
-            GroupShape::Rows,
-            capped,
-            rows,
-        )])
-    }
-
-    fn meta_row(id: &str, meta_key: &str, value: &str) -> FlatRow {
-        row(
-            "meta_id",
-            id,
-            vec![
-                sourced("ordermeta", "meta_id", id, "k", text(meta_key)),
-                sourced("ordermeta", "meta_id", id, "v", text(value)),
-            ],
-        )
-    }
-
-    fn meta_doc(rows: Vec<FlatRow>) -> FlatDocument {
-        doc(vec![group(
-            "meta",
-            "ordermeta",
-            GroupShape::Meta,
-            false,
-            rows,
-        )])
-    }
-
-    fn labels(marks: &[RowMark]) -> Vec<&str> {
-        marks.iter().map(|m| m.label.as_str()).collect()
-    }
+    use crate::value::ValueKind;
 
     #[test]
     fn a_changed_value_reports_both_cells_and_its_column_as_label() {
@@ -682,83 +409,5 @@ mod tests {
 
             assert_eq!(ordered, expected, "{keys:?}");
         }
-    }
-
-    #[test]
-    fn compare_aligns_meta_rows_by_key_and_names_both_rows_as_sources() {
-        let left = meta_doc(vec![meta_row("1", "a", "1"), meta_row("2", "b", "2")]);
-        let right = meta_doc(vec![meta_row("11", "b", "3"), meta_row("12", "c", "4")]);
-
-        let delta = compare_documents(&left, &right);
-
-        assert_eq!(
-            delta.changed,
-            vec![ValueChange {
-                group: "meta".into(),
-                label: "b".into(),
-                source: prov("ordermeta", "v", "meta_id", "11"),
-                old_source: prov("ordermeta", "v", "meta_id", "2"),
-                old: text("2"),
-                new: text("3"),
-            }]
-        );
-        assert_eq!(labels(&delta.added), ["c"]);
-        assert_eq!(delta.added[0].key, Some(key("meta_id", "12")));
-        assert_eq!(labels(&delta.removed), ["a"]);
-        assert_eq!(delta.removed[0].key, Some(key("meta_id", "1")));
-    }
-
-    #[test]
-    fn compare_pairs_duplicate_meta_keys_by_occurrence() {
-        let left = meta_doc(vec![meta_row("1", "x", "1"), meta_row("2", "x", "2")]);
-        let right = meta_doc(vec![
-            meta_row("11", "x", "1"),
-            meta_row("12", "x", "5"),
-            meta_row("13", "x", "6"),
-        ]);
-
-        let delta = compare_documents(&left, &right);
-
-        assert_eq!(delta.changed.len(), 1);
-        assert_eq!(
-            delta.changed[0].old_source,
-            prov("ordermeta", "v", "meta_id", "2")
-        );
-        assert_eq!(
-            delta.changed[0].source,
-            prov("ordermeta", "v", "meta_id", "12")
-        );
-        assert_eq!(delta.added.len(), 1);
-        assert_eq!(delta.added[0].key, Some(key("meta_id", "13")));
-        assert!(delta.removed.is_empty());
-    }
-
-    #[test]
-    fn compare_aligns_rows_groups_by_position() {
-        let left = rows_doc(vec![order("1", "a"), order("2", "b")], false);
-        let right = rows_doc(vec![order("11", "z")], false);
-
-        let delta = compare_documents(&left, &right);
-
-        assert_eq!(delta.changed.len(), 2);
-        assert_eq!(delta.changed[0].label, "id");
-        assert_eq!(delta.changed[0].old_source, prov("orders", "id", "id", "1"));
-        assert_eq!(delta.changed[0].source, prov("orders", "id", "id", "11"));
-        assert_eq!(delta.changed[1].label, "status");
-        assert_eq!(delta.changed[1].old, text("a"));
-        assert_eq!(delta.changed[1].new, text("z"));
-        assert!(delta.added.is_empty());
-        assert_eq!(labels(&delta.removed), ["id 2"]);
-    }
-
-    #[test]
-    fn compare_marks_surplus_right_rows_as_added() {
-        let left = rows_doc(vec![order("1", "a")], false);
-        let right = rows_doc(vec![order("1", "a"), order("2", "b")], false);
-
-        let delta = compare_documents(&left, &right);
-
-        assert!(delta.changed.is_empty() && delta.removed.is_empty());
-        assert_eq!(labels(&delta.added), ["id 2"]);
     }
 }
