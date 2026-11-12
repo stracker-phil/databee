@@ -219,7 +219,7 @@ describe("Readout", () => {
       const created = value({ raw: { t: "temporal", v: "2026-01-15 10:00:00" }, kind: { kind: "timestamp", utc, zone: null } });
       await shown(withCreated([createdItem("post", "7", { created })]));
       const time = section().getByText("2 h ago");
-      expect(time.getAttribute("title")).toContain("2026-01-15 10:00:00");
+      expect(time.getAttribute("data-tooltip")).toContain("2026-01-15 10:00:00");
     });
 
     it("shows the stored value when it is no timestamp", async () => {

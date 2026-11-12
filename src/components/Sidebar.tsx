@@ -169,7 +169,7 @@ function TablesPanel() {
             }}
           />
         </InsetField>
-        <button data-stage="sidebar:refresh" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => void loadDatabases(session.id)}>
+        <button data-stage="sidebar:refresh" className="icon-btn" aria-label="Refresh" data-tooltip="Refresh" onClick={() => void loadDatabases(session.id)}>
           <RefreshCw size="1rem" />
         </button>
       </div>
@@ -217,13 +217,13 @@ function TablesPanel() {
                       data-stage-label={t.name}
                       className={`si${active ? " sel" : ""}${lit}`}
                       data-table={d.name === current ? t.name : undefined}
-                      title={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}
+                      data-tooltip={[t.comment, t.rowsEstimate != null ? `~${formatCount(t.rowsEstimate)} rows` : "", formatBytes(t.sizeBytes)].filter(Boolean).join(" · ")}
                       onClick={(e) => openPreview(d.name, t.name, !e.metaKey)}
                       onDoubleClick={() => openTableTab(d.name, t.name, undefined, undefined, { preview: false })}
                       onContextMenu={(e) => tableMenu(d.name, t, e)}
                     >
                       <TableIcon database={d.name} table={t.name} sessionId={session.id} />
-                      <span className="label">{t.name}</span>
+                      <span className="label" data-reveals>{t.name}</span>
                       {meta && <span className="meta">{meta}</span>}
                     </div>
                   );
@@ -265,7 +265,7 @@ function HistoryPanel() {
     <>
       <div className="sidebar-head">
         <span className="sidebar-caption">{formatCount(entries.length)} {entries.length === 1 ? "query" : "queries"}</span>
-        <button className="icon-btn" aria-label="Clear history" title="Clear history" disabled={entries.length === 0} onClick={() => void clear()}>
+        <button className="icon-btn" aria-label="Clear history" data-tooltip="Clear history" disabled={entries.length === 0} onClick={() => void clear()}>
           <Trash2 size="1rem" />
         </button>
       </div>
@@ -282,7 +282,7 @@ function HistoryPanel() {
             // Entries carry no id, and executedAt + sql can repeat.
             key={i}
             className={`si history-item${e.error ? " failed" : ""}`}
-            title="Double-click to open in a new tab"
+            data-tooltip="Double-click to open in a new tab"
             onDoubleClick={() => openQueryTab(e.sql)}
           >
             <div className="sql">{e.sql}</div>

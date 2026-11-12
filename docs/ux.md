@@ -310,6 +310,26 @@ disabled items `--o3`, separators a 1px `--line`. An item that runs a command sh
   show the `object.*` keys), its rows being the value's group;
 - sidebar table (`tableMenu` in `Sidebar.tsx`): Open data, Show structure, New query: SELECT …, Copy name.
 
+## Tooltips
+
+`components/TooltipHost.tsx` (`TooltipHost`), mounted once per window (main and Settings), replaces the native
+tooltip. Components write the text as `data-tooltip` (an icon-only control keeps its `aria-label`); any
+`title` left (a library's, a stray one) is taken over as `data-tooltip` when the pointer reaches it, so the
+native tooltip never shows. It draws one bubble (`.tooltip` in `styles/tooltip.css`: `--pop`,
+1px `--field-line` border, `--shadow-small`, small text) below the control, above it when there's no room,
+centered on it but kept 8px inside the window, as wide as its longest line up to 420px; line breaks in the
+text stay. It shows after the pointer rests 450 ms, at once while moving between controls within 600 ms of
+the last one, and on keyboard focus; a press, a key, the wheel or leaving hides it. Text cut off with an
+ellipsis (or clamped) shows its whole text the same way, before any tooltip around it; a label that reveals
+itself on hover (`data-reveals`, the sidebar's table names) is left to that.
+
+A control that runs a catalog command carries its id (`data-command="view.sidebar"`), and its tooltip ends
+with that command's binding as it is now, "Toggle sidebar (⌃⌘S)": the host reads it from the registry with
+the store's keybindings when it shows, so rebinding in Settings → Shortcuts shows up at once. No tooltip
+spells a key itself. Controls with a binding suffix: back and forward, New connection, New query, Settings,
+New query tab, Toggle sidebar, pending n, live, the filter mode, Save query, Pin to the readout and Maximize
+pane.
+
 ## Settings
 
 Settings is a window of its own (⌘,, the toolbar's gear), about 880×720, not maximizable. On the left, under a

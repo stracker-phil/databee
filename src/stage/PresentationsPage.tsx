@@ -59,10 +59,10 @@ export function PresentationsPage() {
       </Row>
       <NumberField label="Port" description="27184 unless another app needs it. Register again after a change." value={s.port} {...PORT_LIMITS} onCommit={(port) => void patchStage({ port })} />
       <Row label="Token" description="A new token disconnects presenters until DataBee is registered again.">
-        <button type="button" className="btn mono" title={revealed ? "Hide" : "Show the token"} onClick={() => setRevealed((r) => !r)}>
+        <button type="button" className="btn mono" data-tooltip={revealed ? "Hide" : "Show the token"} onClick={() => setRevealed((r) => !r)}>
           {revealed ? s.token : "••••••••••••"}
         </button>
-        <button type="button" className="icon-btn" aria-label="Copy token" title="Copy token" onClick={() => void copyText(s.token, "token")}>
+        <button type="button" className="icon-btn" aria-label="Copy token" data-tooltip="Copy token" onClick={() => void copyText(s.token, "token")}>
           <Copy size="1rem" />
         </button>
         <button type="button" className="btn" onClick={() => void newToken()}>

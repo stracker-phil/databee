@@ -97,7 +97,7 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
             role="menuitem"
             className={item.detail ? "with-detail" : undefined}
             disabled={item.disabled}
-            title={item.title}
+            data-tooltip={item.title}
             onClick={() => {
               onClose();
               item.action();

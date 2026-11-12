@@ -28,7 +28,7 @@ function TabItem({ tab, active }: { tab: Tab; active: boolean }) {
       onMouseDown={(e) => e.button === 0 && activateTab(tab.id)}
       onDoubleClick={() => pinTab(tab.id)}
       onAuxClick={(e) => e.button === 1 && closeTab(tab.id)}
-      title={view.tooltip(tab)}
+      data-tooltip={view.tooltip(tab)}
     >
       {view.icon(tab)}
       <span className="title">{tab.title}</span>
@@ -53,7 +53,6 @@ export function TabBar() {
   const sessionId = useStore((s) => s.activeSessionId);
   const tabs = useStore(useShallow((s) => s.tabs.filter((t) => t.sessionId === s.activeSessionId)));
   const activeTabId = useStore((s) => s.activeTabId);
-  const newTabKey = useBindingLabel("tabs.new");
   if (!sessionId) return null;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -74,7 +73,8 @@ export function TabBar() {
       <button
         className="icon-btn new-tab"
         aria-label="New query tab"
-        title={newTabKey ? `New query tab ${newTabKey}` : "New query tab"}
+        data-tooltip="New query tab"
+        data-command="tabs.new"
         data-stage="tabs:new"
         onClick={() => useStore.getState().openQueryTab()}
       >

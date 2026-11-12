@@ -26,7 +26,8 @@ describe("App", () => {
     expect(screen.getByText("Shop")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Query 1/ })).toBeInTheDocument();
     expect(await screen.findByText("wp_options")).toBeInTheDocument();
-    expect(screen.getByTitle(/root@127\.0\.0\.1:32768\/db · .*10\.3\.39-MariaDB/)).toHaveTextContent("Shop");
+    const connection = screen.getByText("Shop").closest("[data-tooltip]");
+    expect(connection).toHaveAttribute("data-tooltip", expect.stringMatching(/root@127\.0\.0\.1:32768\/db · .*10\.3\.39-MariaDB/));
   });
 
   it("runs menu commands by id", async () => {

@@ -62,7 +62,7 @@ function KeyMarks({ column }: { column: ColumnProfile }) {
     <span className="key-marks">
       {column.primaryKey && <span className="badge">PK</span>}
       {indexes.map((i) => (
-        <span key={i.name} className="index-mark" title={`${i.unique ? "unique " : ""}index ${i.name}, column ${i.position}`}>
+        <span key={i.name} className="index-mark" data-tooltip={`${i.unique ? "unique " : ""}index ${i.name}, column ${i.position}`}>
           <span className="o3">{i.unique ? "UNI" : "idx"}</span> {i.name}
           {i.position > 1 && <span className="o3"> {i.position}</span>}
         </span>

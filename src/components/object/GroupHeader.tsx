@@ -49,7 +49,7 @@ export const GroupHeader = memo(function GroupHeader({ group, database, anchor, 
       {events ? (
         <span className="tn sans">{name}</span>
       ) : (
-        <button className="tn" data-stage={anchor} data-stage-label={name} data-stage-list="groups" title="Open these rows in a table tab" onClick={() => openGroupRows(group, database)}>
+        <button className="tn" data-stage={anchor} data-stage-label={name} data-stage-list="groups" data-tooltip="Open these rows in a table tab" onClick={() => openGroupRows(group, database)}>
           <TableIcon database={database} table={group.table} effect="go" />
           {name}
         </button>

@@ -218,7 +218,7 @@ function SummaryTable({ summary }: { summary: Summary }) {
       <tbody>
         {summary.values.map(({ name, value }) => (
           <tr key={name}>
-            <th scope="row" title={name}>
+            <th scope="row" data-tooltip={name}>
               {name}
             </th>
             <td>

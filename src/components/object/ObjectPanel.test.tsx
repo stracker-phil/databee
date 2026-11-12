@@ -474,7 +474,7 @@ describe("ObjectPanel", () => {
       await act(async () => useStore.getState().openEntity("order", "4711"));
       const tab = await screen.findByRole("tab", { name: /^order #4711/ });
       expect(tab).toHaveAttribute("aria-selected", "true");
-      expect(tab).toHaveAttribute("title", ORDER_URL);
+      expect(tab).toHaveAttribute("data-tooltip", ORDER_URL);
       expect(await screen.findByRole("region", { name: "Object header" })).toBeInTheDocument();
       expect(mocked.document).toHaveBeenCalledWith("s1", "order 4711", "db");
       expect(mocked.document).not.toHaveBeenCalledWith("s1", ORDER_URL, "db");

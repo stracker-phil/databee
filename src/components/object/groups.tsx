@@ -49,7 +49,7 @@ const classes = (...names: string[]) => names.filter(Boolean).join(" ");
 function KvRow({ name, value, table, marks }: { name: string; value: StoredValue | null; table: string; marks: Marks }) {
   return (
     <div className={classes("row kv", rowClass([value], marks.diff))} data-row-table={table || undefined}>
-      <span title={name}>{name}</span>
+      <span data-tooltip={name}>{name}</span>
       <Field value={value} {...marksFor(value, marks)} />
     </div>
   );

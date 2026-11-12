@@ -58,7 +58,7 @@ function PinnedCounts({ lines }: { lines: PinnedLine[] }) {
             <PinnedTitle line={line} />
             <LineError error={line.error} />
           </span>
-          <span className="o3" title={line.sql}>
+          <span className="o3" data-tooltip={line.sql}>
             {line.sql}
           </span>
         </div>

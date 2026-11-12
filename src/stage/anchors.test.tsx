@@ -36,7 +36,8 @@ describe("anchors", () => {
       ["data-stage-label inside the element", <div key="b" data-stage="b" data-rect="0,0,10,10" aria-label="Aria"><span data-stage-label="Inner">x</span></div>, "Inner"],
       ["aria-label", <div key="c" data-stage="c" data-rect="0,0,10,10" aria-label="Aria" title="Title">Text</div>, "Aria"],
       ["title", <div key="d" data-stage="d" data-rect="0,0,10,10" title="Title">Text</div>, "Title"],
-      ["collapsed text", <div key="e" data-stage="e" data-rect="0,0,10,10">  Some   spaced{"\n"}text </div>, "Some spaced text"],
+      ["data-tooltip", <div key="f" data-stage="f" data-rect="0,0,10,10" data-tooltip="Tip">Text</div>, "Tip"],
+      ["collapsed text",<div key="e" data-stage="e" data-rect="0,0,10,10">  Some   spaced{"\n"}text </div>, "Some spaced text"],
     ])("takes the label from %s", (_name, element, expected) => {
       render(element);
       expect(collectAnchors()[0].label).toBe(expected);

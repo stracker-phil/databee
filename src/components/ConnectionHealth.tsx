@@ -14,7 +14,7 @@ export function ConnectionHealth({ sessionId }: { sessionId: string }) {
   if (!health) return null;
   const reconnecting = health.state === "reconnecting";
   return (
-    <span className="conn-health" role="status" title={healthTitle(health)} data-stage="toolbar:connection-health" data-stage-label="Connection lost">
+    <span className="conn-health" role="status" data-tooltip={healthTitle(health)} data-stage="toolbar:connection-health" data-stage-label="Connection lost">
       <AlertTriangle size="1rem" className="conn-health-icon" aria-label="Connection lost" />
       <button
         type="button"

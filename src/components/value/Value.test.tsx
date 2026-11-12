@@ -552,7 +552,7 @@ describe("Value", () => {
     it("is masked by default and explains how to reveal it", () => {
       render(<Value value={secret("sk_live_abc")} />);
       expect(screen.queryByText("sk_live_abc")).not.toBeInTheDocument();
-      expect(reveal()).toHaveAttribute("title", "Click to reveal · ⌥ hover to peek");
+      expect(reveal()).toHaveAttribute("data-tooltip", "Click to reveal · ⌥ hover to peek");
     });
 
     it("shows the text and focuses it after a click", async () => {

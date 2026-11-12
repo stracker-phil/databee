@@ -116,7 +116,7 @@ const TAB_VIEWS: { [K in Tab["kind"]]: TabView<TabOfKind<K>> } = {
     ),
     addressHint: (tab) =>
       tab.filter ? (
-        <span className="o3" title={`WHERE ${tab.filter}`}>
+        <span className="o3" data-tooltip={`WHERE ${tab.filter}`}>
           · filtered
         </span>
       ) : null,

@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import { PanelLeft } from "lucide-react";
-import { useBindingLabel } from "../commands";
 import { formatAddress } from "../lib/address";
 import { copyText } from "../lib/clipboard";
 import { provenanceText } from "../lib/provenance";
@@ -14,7 +13,7 @@ function AddressText({ tab }: { tab: Tab }) {
   const text = formatAddress(tab.address);
   return (
     <>
-      <button data-stage="statusbar:address" className="status-text address mono" title="Copy address" onClick={() => void copyText(text, "address")}>
+      <button data-stage="statusbar:address" className="status-text address mono" data-tooltip="Copy address" onClick={() => void copyText(text, "address")}>
         {text}
       </button>
       {tabView(tab).addressHint?.(tab)}
@@ -46,14 +45,14 @@ function Address() {
 
 function SidebarToggle() {
   const hidden = useStore(selectSidebarHidden);
-  const keys = useBindingLabel("view.sidebar");
   return (
     <button
       data-stage="statusbar:sidebar"
       className="icon-btn status-icon"
       aria-label="Toggle sidebar"
       aria-pressed={!hidden}
-      title={keys ? `Toggle sidebar (${keys})` : "Toggle sidebar"}
+      data-tooltip="Toggle sidebar"
+      data-command="view.sidebar"
       onClick={() => useStore.getState().toggleSidebar()}
     >
       <PanelLeft size="1.077rem" />
@@ -63,14 +62,14 @@ function SidebarToggle() {
 
 function PendingCount() {
   const pending = useStore((s) => selectActivePending(s).length);
-  const applyKey = useBindingLabel("changes.apply");
   if (pending === 0) return <span>pending 0</span>;
   return (
     <button
       data-stage="statusbar:pending"
       className="status-text pending"
       aria-label={`${pending} pending ${pending === 1 ? "change" : "changes"}`}
-      title={`Review and apply in the tray${applyKey ? ` (${applyKey})` : ""}`}
+      data-tooltip="Review and apply in the tray"
+      data-command="changes.apply"
       onClick={() => useStore.getState().focusPendingTray()}
     >
       pending {pending}
@@ -91,7 +90,7 @@ function PresetsText() {
   if (!session || !database || !info) return null;
   const presets = info.appliedPresets.length ? info.appliedPresets.join(" · ") : "none";
   return (
-    <button data-stage="statusbar:presets" className="status-text" title="Open the Project page" onClick={() => useStore.getState().openProject()}>
+    <button data-stage="statusbar:presets" className="status-text" data-tooltip="Open the Project page" onClick={() => useStore.getState().openProject()}>
       presets {presets}
     </button>
   );
@@ -100,10 +99,9 @@ function PresetsText() {
 /** `● live 2 s` in the accent while the active object column is live; a click ends live mode. */
 function LiveText() {
   const seconds = useStore(selectActiveLive);
-  const keys = useBindingLabel("object.live");
   if (seconds === null) return null;
   return (
-    <button data-stage="statusbar:live" className="status-text live" title={keys ? `Stop live mode (${keys})` : "Stop live mode"} onClick={() => void useStore.getState().toggleLive()}>
+    <button data-stage="statusbar:live" className="status-text live" data-tooltip="Stop live mode" data-command="object.live" onClick={() => void useStore.getState().toggleLive()}>
       ● live {seconds} s
     </button>
   );

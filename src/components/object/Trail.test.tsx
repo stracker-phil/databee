@@ -79,16 +79,16 @@ describe("Trail", () => {
     await openOrder();
     drillToUser();
     await within(trail()).findByRole("button", { name: "user #12" });
-    expect(crumb("order #4711")).toHaveAttribute("title", "Show order #4711");
-    expect(crumb("user #12")).not.toHaveAttribute("title");
+    expect(crumb("order #4711")).toHaveAttribute("data-tooltip", "Show order #4711");
+    expect(crumb("user #12")).not.toHaveAttribute("data-tooltip");
   });
 
   it("offers no show hint when every column is a pane", async () => {
     await openOrder();
     drillToUser();
     await within(trail()).findByRole("button", { name: "user #12" });
-    expect(crumb("order #4711")).not.toHaveAttribute("title");
-    expect(crumb("user #12")).not.toHaveAttribute("title");
+    expect(crumb("order #4711")).not.toHaveAttribute("data-tooltip");
+    expect(crumb("user #12")).not.toHaveAttribute("data-tooltip");
   });
 
   describe("when it overflows", () => {
@@ -104,7 +104,7 @@ describe("Trail", () => {
 
     it("folds the table and the oldest hidden column into a More columns button, keeping the panes' crumbs", async () => {
       const more = await openCrowded();
-      expect(more).toHaveAttribute("title", "wp_wc_orders › order #4711");
+      expect(more).toHaveAttribute("data-tooltip", "wp_wc_orders › order #4711");
       expect(within(trail()).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["More columns", "user #12", "order #4712"]);
     });
 

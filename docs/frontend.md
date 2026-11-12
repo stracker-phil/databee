@@ -45,6 +45,8 @@ Layout:
 - With sessions, it shows `AppShell` (`Toolbar`, `Workspace`, `PendingTray`, `StatusBar`, `PeekOverlay`;
   `useValueHover` listens on it).
 - `Dialogs`, `CommandPalette` and `Toasts` always render on top.
+- `TooltipHost` (`components/TooltipHost.tsx`) renders the window's one tooltip; the Settings window mounts
+  its own. It shows every `data-tooltip` (components write it instead of `title`), takes a stray `title` over and appends a `data-command` control's binding ([docs/ux.md → Tooltips](ux.md#tooltips)).
 
 ```
 App
@@ -61,7 +63,7 @@ App
    ├─ PendingTray
    ├─ StatusBar                        ▤ sidebar toggle, provenance or address, presets, pending n, live
    └─ PeekOverlay                      while ⌥ is held
-Dialogs (ShortcutsDialog among them) · CommandPalette · Toasts
+Dialogs (ShortcutsDialog among them) · CommandPalette · Toasts · TooltipHost
 ```
 
 ## Store
@@ -326,7 +328,7 @@ sending its keys to a rendered `<App/>`.
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), `value/altPeek.ts` (`useAltPeek`: whether ⌥ is held alone and the element it peeks, by the ⌥ peek rule in [ux.md](ux.md): `[data-db-change]` first, else `[data-peek]` or `[data-ref]`; one shared set of window listeners, so one peek at a time), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `WideTable` (a row table that scrolls sideways in its own box; `pinned` keeps a primary-key first column in view; used by `groups` and `ChangeList`), `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
-| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsWindow` (in its own window, see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts` |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsWindow` (in its own window, see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts`, `TooltipHost` (one per window: every `title` as a styled tooltip, cut-off text in full, a `data-command` control's live binding appended; `styles/tooltip.css`) |
 | Readout | `readout/Readout.tsx` (the sections: `Section.tsx`, `StatusHeader.tsx`, `Anomalies.tsx`, `WatchedSection.tsx`, `CreatedSection.tsx`, `PinnedSection.tsx`, `RecentSection.tsx`; loading: `useReadout.ts`), see [Readout](#readout) |
 
 ### Saved queries
@@ -1159,7 +1161,7 @@ aliases) and `styles/app.css` (components). `app.css` only `@import`s one file p
 `settings-window.css`, `menus.css` (menus, toasts, keyframes), `values.css` (value tree, values), `object.css`
 (column stack, trail, value counts, peek, summary line, shortcut overview, object view), `project.css`,
 `readout.css`, `utilities.css`, `editing.css`, `palette.css` (palette, shortcuts settings) and `live.css` (live
-mode, table icons, live check, connection health); each is sectioned with `/* ---------- name ---------- */`
+mode, table icons, live check, connection health) and `motion.css` first and `tooltip.css` (the `TooltipHost` bubble) last; each is sectioned with `/* ---------- name ---------- */`
 comments. The Settings window adds `styles/settings.css` after `app.css`. There
 are no CSS modules. Icons come from `lucide-react`. Token names, values and roles are in
 [ux.md](ux.md#color-schemes-and-tokens).

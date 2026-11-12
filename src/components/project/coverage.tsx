@@ -52,7 +52,7 @@ function CoverageBar({ coverage }: { coverage: Coverage }) {
   if (coverage.timedOut && coverage.total === 0) return <span className="o3">timed out</span>;
   const detail = coverageDetail(coverage);
   return (
-    <span className="coverage-cell" title={detail || undefined}>
+    <span className="coverage-cell" data-tooltip={detail || undefined}>
       <span className="coverage-bar" aria-hidden="true">
         <span className="resolved" style={{ width: percent(coverage.resolved, coverage.total) }} />
         <span className="zero" style={{ width: percent(coverage.zeroOrNull, coverage.total) }} />
@@ -66,7 +66,7 @@ function CoverageBar({ coverage }: { coverage: Coverage }) {
 
 export function CoverageCell({ state }: { state: CoverageState | undefined }) {
   if (!state || state.status === "running") return <span className="o3">counting…</span>;
-  if (state.status === "error") return <span className="o3" title={state.message}>{state.message}</span>;
+  if (state.status === "error") return <span className="o3" data-tooltip={state.message}>{state.message}</span>;
   return <CoverageBar coverage={state.coverage} />;
 }
 

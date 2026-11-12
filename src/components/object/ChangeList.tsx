@@ -50,7 +50,7 @@ export function ChangeList({ marks, dismissCommand, onJump }: Props) {
             key={i}
             className="row change-line"
             disabled={!line.source}
-            title={line.kind === "changed" ? `${text(line.old)} → ${text(line.new)}` : undefined}
+            data-tooltip={line.kind === "changed" ? `${text(line.old)} → ${text(line.new)}` : undefined}
             data-stage={`change:${i}`}
             data-stage-label={`${line.table} ${line.label}`}
             data-stage-list="changes"

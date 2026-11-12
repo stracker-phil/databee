@@ -95,7 +95,7 @@ export function ReferencedByLine({ incoming }: { incoming: ReferencedBy[] }) {
       <span>
         <span className="o3">referenced by </span>
         {incoming.map((r, i) => (
-          <span key={`${columnsText(r.from)}${r.when}->${columnsText(r.to)}`} className={r.disabled ? "off" : undefined} title={`${referenceLabel(r)}${r.disabled ? " · off" : ""}`}>
+          <span key={`${columnsText(r.from)}${r.when}->${columnsText(r.to)}`} className={r.disabled ? "off" : undefined} data-tooltip={`${referenceLabel(r)}${r.disabled ? " · off" : ""}`}>
             {i > 0 && ", "}
             {columnsText(r.from)}
             {r.when && <span className="o3"> when {r.when}</span>}

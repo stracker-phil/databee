@@ -33,7 +33,7 @@ function EntityChip({ entity, withTable, shown, open, onToggle, onDetails }: Chi
   const name = withTable ? entityKey(entity) : entity.entity;
   return (
     <span className={`entity-chip${shown ? " on" : ""}${entity.error ? " failed" : ""}`}>
-      <button aria-pressed={shown} data-table={entity.table} data-stage={`readout:entity:${name}`} data-stage-label={name} title={entity.error ?? `${entity.table} · preset ${entity.preset}`} onClick={onToggle}>
+      <button aria-pressed={shown} data-table={entity.table} data-stage={`readout:entity:${name}`} data-stage-label={name} data-tooltip={entity.error ?? `${entity.table} · preset ${entity.preset}`} onClick={onToggle}>
         <span>{entity.entity}</span>
         {withTable && <span className="tbl">{entity.table}</span>}{" "}
         <span className="cnt">{entity.error ? "failed" : entity.countInWindow}</span>
@@ -51,7 +51,7 @@ function EntityQuery({ entity, database }: { entity: CreatedEntity; database: st
       <div>
         <span className="o2">{entity.entity}</span>
         <span className="o3"> · </span>
-        <button className="line-open" data-table={entity.table} title="Open the table" onClick={() => useStore.getState().openTableTab(database, entity.table, "data")}>
+        <button className="line-open" data-table={entity.table} data-tooltip="Open the table" onClick={() => useStore.getState().openTableTab(database, entity.table, "data")}>
           <TableIcon database={database} table={entity.table} effect="go" />
           {entity.table}
         </button>
@@ -69,7 +69,7 @@ function CreatedLine({ item, withTable, onOpen }: { item: CreatedItem; withTable
   const key = item.address.target.kind === "row" ? item.address.target.key : "";
   return (
     <div className="row" data-row-table={item.table}>
-      <span className="o3 r" title={time.title}>
+      <span className="o3 r" data-tooltip={time.title}>
         {time.text}
       </span>
       <span className="o2">

@@ -30,7 +30,7 @@ export function PendingTray() {
           </button>
         )}
         {canUndo && pending.length === 0 && (
-          <button data-stage="tray:dismiss" className="icon-btn" aria-label="Dismiss undo" title="Dismiss; Undo Last Apply stays in the File menu and the palette" onClick={dismissUndo}>
+          <button data-stage="tray:dismiss" className="icon-btn" aria-label="Dismiss undo" data-tooltip="Dismiss; Undo Last Apply stays in the File menu and the palette" onClick={dismissUndo}>
             <X size="0.923rem" />
           </button>
         )}
@@ -52,7 +52,7 @@ export function PendingTray() {
                   {open[p.id] ? <ChevronDown size="0.846rem" /> : <ChevronRight size="0.846rem" />}
                 </button>
                 <span className="grow-text">{p.description}</span>
-                {!p.canUndo && <span className="badge" title="No automatic undo">no undo</span>}
+                {!p.canUndo && <span className="badge" data-tooltip="No automatic undo">no undo</span>}
                 <button className="icon-btn tiny" aria-label={`Discard ${p.description}`} onClick={() => void discardChange(p.id)}>
                   <X size="0.846rem" />
                 </button>

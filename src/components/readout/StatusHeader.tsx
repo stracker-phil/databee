@@ -23,7 +23,7 @@ export function StatusHeader({ status, onOpen }: { status: Status; onOpen: OpenV
             const table = v.value?.source?.table;
             return (
               <div key={v.id} className="row" data-row-table={table}>
-                <button className="line-open" data-stage={`readout:value:${v.id}`} data-stage-label={v.title} title={v.sql} onClick={() => openAddress(v.address)}>
+                <button className="line-open" data-stage={`readout:value:${v.id}`} data-stage-label={v.title} data-tooltip={v.sql} onClick={() => openAddress(v.address)}>
                   {v.title}
                   <OpenHint effect="go" />
                 </button>

@@ -8,6 +8,7 @@ import { TableFocus } from "./components/TableFocus";
 import { TabBar, TabPanels } from "./components/Tabs";
 import { Toasts } from "./components/Toasts";
 import { Toolbar } from "./components/Toolbar";
+import { TooltipHost } from "./components/TooltipHost";
 import { CommandPalette } from "./components/CommandPalette";
 import { handleKeydown, installCommands, runMenuCommand, setOverrides } from "./commands";
 import { answerRemote } from "./commands/remote";
@@ -125,6 +126,7 @@ export default function App() {
       <Dialogs />
       <CommandPalette />
       <Toasts />
+      <TooltipHost />
     </>
   );
 }

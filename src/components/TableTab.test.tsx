@@ -422,7 +422,7 @@ describe("TableTab", () => {
       expect(options).toHaveLength(2);
       for (const option of options) {
         expect(option).toHaveAttribute("aria-disabled", "true");
-        expect(option).toHaveAttribute("title", "Binary and long values cannot filter");
+        expect(option).toHaveAttribute("data-tooltip", "Binary and long values cannot filter");
         await userEvent.click(option);
       }
       expect(useStore.getState().tabs[0]).toMatchObject({ where: pages });
@@ -658,7 +658,7 @@ describe("TableTab", () => {
         mocked.tableCheck.mockRejectedValueOnce({ kind: "database", message: "Lost connection", code: null });
         render(<TableTab tab={tab} />);
         const hint = await screen.findByText("live check stopped · Refresh to retry");
-        expect(hint).toHaveAttribute("title", "Lost connection");
+        expect(hint).toHaveAttribute("data-tooltip", "Lost connection");
         await stillOnce();
         mocked.browseTable.mockResolvedValue(keyedPage(2));
         await userEvent.click(screen.getByRole("button", { name: "Reload" }));

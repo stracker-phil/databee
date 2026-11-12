@@ -3,6 +3,7 @@ import { api } from "../../api";
 import { setOverrides } from "../../commands";
 import { SettingsWindow } from "../../components/settings/SettingsWindow";
 import { Toasts } from "../../components/Toasts";
+import { TooltipHost } from "../../components/TooltipHost";
 import { applyAppearance, syncRowHeight, useSystemDark } from "../../lib/theme";
 import { trackWindowFocus } from "../../lib/windowFocus";
 import { useStore } from "../../state/store";
@@ -88,6 +89,7 @@ export function SettingsApp() {
     <>
       <SettingsWindow page={page} onPage={setPage} />
       <Toasts />
+      <TooltipHost />
     </>
   );
 }

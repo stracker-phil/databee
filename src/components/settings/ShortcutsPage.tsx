@@ -69,7 +69,7 @@ export function ShortcutsPage() {
             <Row key={c.id} label={c.title} description={c.menu && overridden ? `${scopeLabel(c.scope)} · menu shortcut applies after restart` : scopeLabel(c.scope)}>
               <div className="shortcut-control">
                 {overridden && (
-                  <button type="button" className="icon-btn tiny" aria-label={`Reset ${c.title}`} title="Reset to default" onClick={() => reset(c.id)}>
+                  <button type="button" className="icon-btn tiny" aria-label={`Reset ${c.title}`} data-tooltip="Reset to default" onClick={() => reset(c.id)}>
                     <RotateCcw size="0.846rem" />
                   </button>
                 )}

@@ -363,14 +363,14 @@ describe("QueryTab", () => {
     it("disables the item for a column that is not read from a table", async () => {
       const item = await openMenu([{ ...statusColumn, origin: null }]);
       expect(item).toBeDisabled();
-      expect(item).toHaveAttribute("title", "This column is not read from a table");
+      expect(item).toHaveAttribute("data-tooltip", "This column is not read from a table");
     });
 
     it("disables the item with the reason when the query cannot be narrowed", async () => {
       mocked.narrowRefusal.mockResolvedValue("A query with GROUP BY cannot be narrowed");
       const item = await openMenu();
       expect(item).toBeDisabled();
-      expect(item).toHaveAttribute("title", "A query with GROUP BY cannot be narrowed");
+      expect(item).toHaveAttribute("data-tooltip", "A query with GROUP BY cannot be narrowed");
       expect(mocked.narrowRefusal).toHaveBeenCalledWith(sql);
     });
 

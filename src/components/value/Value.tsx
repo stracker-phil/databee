@@ -75,7 +75,7 @@ function SecretText({ text }: { text: string }) {
           {text}
         </span>
       ) : (
-        <button aria-label="Reveal secret" title="Click to reveal · ⌥ hover to peek" onClick={() => setShown(true)}>
+        <button aria-label="Reveal secret" data-tooltip="Click to reveal · ⌥ hover to peek" onClick={() => setShown(true)}>
           ••••••••
         </button>
       )}

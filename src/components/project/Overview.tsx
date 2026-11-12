@@ -82,7 +82,7 @@ function ChangeLine({ line, ctx }: { line: ProjectChangeLine; ctx: ProjectContex
       </span>
       <span className="text">
         {table ? (
-          <button className="link" title={`Open the structure of ${table}`} onClick={() => openStructure(tab.database, table)}>
+          <button className="link" data-tooltip={`Open the structure of ${table}`} onClick={() => openStructure(tab.database, table)}>
             {line.text}
           </button>
         ) : (

@@ -23,7 +23,7 @@ export function RecentSection({ part, collapse, onOpen }: { part: Part<RecentLin
                 #{target.key}
               </button>
               <span>{line.error ? <span className="line-error">{line.error}</span> : <SummaryLine summary={line.summary} onOpen={onOpen} />}</span>
-              <span className="o3 r" title={`opened ${new Date(line.at * 1000).toISOString()}`}>
+              <span className="o3 r" data-tooltip={`opened ${new Date(line.at * 1000).toISOString()}`}>
                 {relativeTime(line.at)}
               </span>
             </div>

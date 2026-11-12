@@ -49,3 +49,4 @@ keep their form.
 | [0037](0037-closing-the-window-keeps-the-app-running.md) | Closing the window keeps the app running | Accepted (2026-11-03), implemented |
 | [0038](0038-every-release-gets-a-new-version.md) | Every release gets a new version | Accepted (2026-11-05), implemented, amended by 0039 |
 | [0039](0039-a-major-version-needs-the-owners-approval.md) | A major version needs the owner's approval | Accepted (2026-11-11), implemented |
+| [0040](0040-one-tooltip-host-per-window.md) | One tooltip host per window | Accepted (2026-11-12), implemented |

@@ -78,7 +78,7 @@ export function GridRow({ index, cells, values, change, pending, top, height, wi
     <div
       className={`grid-row${rowChangeClass(change)}${pendingClass(pending)}`}
       role="row"
-      title={pending?.title}
+      data-tooltip={pending?.title}
       data-row-table={rowTable(values)}
       style={{ top, height, width }}
     >

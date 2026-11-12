@@ -72,7 +72,7 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
           <button
             className="tn"
             aria-label={`Open table ${table}`}
-            title={`Open table ${table}`}
+            data-tooltip={`Open table ${table}`}
             data-stage="object-header:table"
             data-stage-label={`Open table ${table}`}
             onClick={() => useStore.getState().navigateTab(place.tabId, wholeTable(document.address))}
@@ -92,7 +92,7 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
         {document.actions.length > 0 && (
           <button
             className="btn"
-            title="Actions for this row"
+            data-tooltip="Actions for this row"
             data-stage="object-actions"
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
@@ -104,7 +104,7 @@ export function ObjectHeader({ document, owner, view, place }: Props) {
         )}
         {place && <PaneMaximize />}
         {place && place.index > 0 && (
-          <button className="icon-btn" aria-label="Close column" title="Close column" data-stage={`column-close:${place.index}`} onClick={() => useStore.getState().popToColumn(place.tabId, place.index - 1)}>
+          <button className="icon-btn" aria-label="Close column" data-tooltip="Close column" data-stage={`column-close:${place.index}`} onClick={() => useStore.getState().popToColumn(place.tabId, place.index - 1)}>
             <X size="1rem" />
           </button>
         )}

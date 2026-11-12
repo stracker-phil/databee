@@ -89,7 +89,6 @@ function FilterBar({ tabId, initial, mode, primaryKey, onApply, onToggleMode }: 
   const inputRef = useRef<HTMLInputElement>(null);
   const isActive = useStore((s) => s.activeTabId === tabId);
   const keys = useBindingLabel("table.focusFilter");
-  const modeKeys = useBindingLabel("table.filterMode");
 
   useEffect(() => {
     if (!isActive) return;
@@ -121,7 +120,8 @@ function FilterBar({ tabId, initial, mode, primaryKey, onApply, onToggleMode }: 
           className="filter-mode"
           data-stage="table:filter-mode"
           aria-label={mode === "sql" ? "SQL filter, switch to smart filter" : "Smart filter, switch to SQL"}
-          title={`${mode === "sql" ? "SQL WHERE condition. Switch to smart filter" : "Smart filter: text in any column, numbers as IDs, '5' as text. Switch to SQL WHERE"}${modeKeys ? ` (${modeKeys})` : ""}`}
+          data-tooltip={mode === "sql" ? "SQL WHERE condition. Switch to smart filter" : "Smart filter: text in any column, numbers as IDs, '5' as text. Switch to SQL WHERE"}
+          data-command="table.filterMode"
           onClick={onToggleMode}
         >
           {mode === "sql" ? "SQL" : "Smart"}
@@ -134,7 +134,7 @@ function FilterBar({ tabId, initial, mode, primaryKey, onApply, onToggleMode }: 
 /** The structured column filter as Rust ran it; read-only, it can only be cleared. */
 function ColumnsFilterChip({ filter, onClear }: { filter: AppliedFilter; onClear: () => void }) {
   return (
-    <span className="filter-chip" title={filter.sql}>
+    <span className="filter-chip" data-tooltip={filter.sql}>
       <Columns3 size="0.846rem" /> <code>{filter.label}</code>
       <button className="icon-btn" aria-label="Clear column filter" onClick={onClear}>
         <X size="0.846rem" />
@@ -258,7 +258,7 @@ function DataView({ tab }: { tab: TableTabState }) {
         {(page?.filter?.kind === "ids" || page?.filter?.kind === "text") && (
           <button
             className="filter-chip"
-            title={`${page.filter.kind === "ids" ? "Interpreted as a primary-key lookup" : "Searched in every column"}; click to see the SQL`}
+            data-tooltip={`${page.filter.kind === "ids" ? "Interpreted as a primary-key lookup" : "Searched in every column"}; click to see the SQL`}
             onClick={() => setShowFilterSql((v) => !v)}
           >
             {page.filter.kind === "ids" ? <Hash size="0.846rem" /> : <TextSearch size="0.846rem" />}{" "}
@@ -269,18 +269,18 @@ function DataView({ tab }: { tab: TableTabState }) {
           className="icon-btn"
           aria-label="Insert row"
           data-stage="table:insert"
-          title={primaryKey ? "Insert row" : "Editing needs a single-column primary key"}
+          data-tooltip={primaryKey ? "Insert row" : "Editing needs a single-column primary key"}
           disabled={!structure}
           onClick={() => structure && useStore.getState().openDialog({ type: "insertRow", database: tab.database, table: tab.table, columns: structure.columns })}
         >
           <Plus size="1rem" />
         </button>
-        <button data-stage="table:reload" className="icon-btn" aria-label="Reload" title="Reload" onClick={() => reloadWithValue(tab.id, reload)}>
+        <button data-stage="table:reload" className="icon-btn" aria-label="Reload" data-tooltip="Reload" onClick={() => reloadWithValue(tab.id, reload)}>
           {loading ? <Loader2 size="1rem" className="spin" /> : <RefreshCw size="1rem" />}
         </button>
         <TableCheckHint status={live.status} />
         {structureError && (
-          <span className="hint" role="alert" title={structureError.message}>
+          <span className="hint" role="alert" data-tooltip={structureError.message}>
             <AlertTriangle size="0.846rem" style={{ verticalAlign: -1 }} /> Editing unavailable: the table structure did not load ({structureError.message})
           </span>
         )}

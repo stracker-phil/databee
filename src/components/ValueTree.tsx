@@ -44,7 +44,7 @@ function LeafEditor({ node, onSave, onCancel }: { node: ValueNode; onSave: (v: N
           if (e.key === "Escape") onCancel();
         }}
       />
-      <button className="btn tiny" onClick={() => onSave({ kind: "null" })} title="Set to null">null</button>
+      <button className="btn tiny" onClick={() => onSave({ kind: "null" })} data-tooltip="Set to null">null</button>
     </span>
   );
 }

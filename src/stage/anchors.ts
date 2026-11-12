@@ -19,7 +19,7 @@ export function rectOf(element: Element): StageRect {
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
-/** `data-stage-label` (on the element or inside it), aria-label, title, or the text. */
+/** `data-stage-label` (on the element or inside it), aria-label, title (or the `data-tooltip` TooltipHost moved it to), or the text. */
 function labelOf(element: Element): string {
   const inner = element.querySelector<HTMLElement>("[data-stage-label]");
   const label =
@@ -27,6 +27,7 @@ function labelOf(element: Element): string {
     text(inner?.getAttribute("data-stage-label")) ||
     text(element.getAttribute("aria-label")) ||
     text(element.getAttribute("title")) ||
+    text(element.getAttribute("data-tooltip")) ||
     text(element.textContent);
   return label.length > MAX_LABEL ? `${label.slice(0, MAX_LABEL - 1)}…` : label;
 }

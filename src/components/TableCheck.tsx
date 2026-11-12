@@ -110,12 +110,12 @@ export function useTableCheck(tab: TableTab, page: BrowsePage | null, { hasPrima
 
 /** Why the tab does not check its rows, in the table head; nothing while it checks. */
 export function TableCheckHint({ status }: { status: TableCheckStatus }) {
-  if (status.kind === "unavailable") return <span className="hint" data-stage="table:live-check" title="The live check reads the shown rows again by primary key">no live check · {status.reason}</span>;
+  if (status.kind === "unavailable") return <span className="hint" data-stage="table:live-check" data-tooltip="The live check reads the shown rows again by primary key">no live check · {status.reason}</span>;
   if (status.kind === "paused") {
     const title = status.reason === "connection lost" ? "Checks again once the connection is back" : "Apply or discard them to check the rows again";
-    return <span className="hint" data-stage="table:live-check" title={title}>live check paused · {status.reason}</span>;
+    return <span className="hint" data-stage="table:live-check" data-tooltip={title}>live check paused · {status.reason}</span>;
   }
-  if (status.kind === "failed") return <span className="hint" data-stage="table:live-check" title={status.message}>live check stopped · Refresh to retry</span>;
+  if (status.kind === "failed") return <span className="hint" data-stage="table:live-check" data-tooltip={status.message}>live check stopped · Refresh to retry</span>;
   return null;
 }
 

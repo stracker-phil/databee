@@ -49,7 +49,7 @@ function PresetSwitch({ preset, ctx }: { preset: PresetRow; ctx: ProjectContext 
   };
   const markers = preset.markerTables.length ? `marker tables ${preset.markerTables.join(", ")}` : "no marker tables";
   return (
-    <label className="head-field" title={markers}>
+    <label className="head-field" data-tooltip={markers}>
       <input
         className="switch"
         type="checkbox"
@@ -110,7 +110,7 @@ export function ProjectHeader({ ctx, children }: { ctx: ProjectContext; children
           <PresetSwitch key={preset.name} preset={preset} ctx={ctx} />
         ))}
         {auto ? (
-          <span className="o3" title="every preset whose marker tables exist">
+          <span className="o3" data-tooltip="every preset whose marker tables exist">
             auto
           </span>
         ) : (

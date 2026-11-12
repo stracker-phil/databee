@@ -142,8 +142,6 @@ function QueryChanges({ tab }: { tab: QueryTabState }) {
 /** Save and Pin, or for a preset query its origin and "Copy to project". */
 function SavedActions({ tab }: { tab: QueryTabState }) {
   const { saveQueryTab, pinQueryTab, copyPresetQuery } = useStore.getState();
-  const saveKeys = useBindingLabel("query.save");
-  const pinKeys = useBindingLabel("query.pin");
   const origin = tab.saved?.origin;
   return (
     <>
@@ -153,10 +151,10 @@ function SavedActions({ tab }: { tab: QueryTabState }) {
           <Copy size="0.923rem" /> Copy to project
         </button>
       )}
-      <button data-stage="query:save" className="btn" disabled={!tab.sql.trim()} title={saveKeys ? `Save query (${saveKeys})` : "Save query"} onClick={() => saveQueryTab(tab.id)}>
+      <button data-stage="query:save" className="btn" disabled={!tab.sql.trim()} data-tooltip="Save query" data-command="query.save" onClick={() => saveQueryTab(tab.id)}>
         <Save size="0.923rem" /> Save
       </button>
-      <button data-stage="query:pin" className="btn" disabled={!tab.saved || isPreset(tab.saved.origin)} title={pinKeys ? `Pin to the readout (${pinKeys} in the results)` : "Pin to the readout"} onClick={() => pinQueryTab(tab.id)}>
+      <button data-stage="query:pin" className="btn" disabled={!tab.saved || isPreset(tab.saved.origin)} data-tooltip="Pin to the readout" data-command="query.pin" onClick={() => pinQueryTab(tab.id)}>
         <Pin size="0.923rem" /> {pinLabel(tab.saved?.pin)}
       </button>
     </>

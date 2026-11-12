@@ -22,7 +22,7 @@ function ConnectionText({ session }: { session: Session }) {
   const { setActiveSession, switchDatabase } = useStore.getState();
   const title = `${session.identity} · ${session.serverVersion}${accent ? ` · accent ${accent} (Project page)` : ""}`;
   return (
-    <div className="conn-text mono" data-stage="toolbar:connection" data-stage-label={`Connection ${session.identity}`} title={title}>
+    <div className="conn-text mono" data-stage="toolbar:connection" data-stage-label={`Connection ${session.identity}`} data-tooltip={title}>
       <span className="menu-text">
         <span>{session.displayName}</span>
         {sessions.length > 1 && (
@@ -63,11 +63,10 @@ function SearchField() {
 function NavButton({ direction }: { direction: "back" | "forward" }) {
   const id = direction === "back" ? "nav.back" : "nav.forward";
   const label = direction === "back" ? "Back" : "Forward";
-  const keys = useBindingLabel(id);
   const enabled = useStore((s) => selectCanNav(s, direction));
   const Icon = direction === "back" ? ChevronLeft : ChevronRight;
   return (
-    <button data-stage={`toolbar:${direction}`} className="icon-btn" aria-label={label} title={keys ? `${label} (${keys})` : label} disabled={!enabled} onClick={() => runCommand(id)}>
+    <button data-stage={`toolbar:${direction}`} className="icon-btn" aria-label={label} data-tooltip={label} data-command={id} disabled={!enabled} onClick={() => runCommand(id)}>
       <Icon size={ICON_SIZE} />
     </button>
   );
@@ -98,7 +97,7 @@ export function Toolbar() {
         <>
           <ConnectionText session={session} />
           <ConnectionHealth sessionId={session.id} />
-          <button data-stage="toolbar:disconnect" className="icon-btn" aria-label="Disconnect" title="Disconnect" onClick={() => void disconnect(session.id)}>
+          <button data-stage="toolbar:disconnect" className="icon-btn" aria-label="Disconnect" data-tooltip="Disconnect" onClick={() => void disconnect(session.id)}>
             <Unplug size={ICON_SIZE} />
           </button>
         </>
@@ -108,13 +107,13 @@ export function Toolbar() {
       {session && <NavButtons />}
       <div className="spacer" data-tauri-drag-region />
       {session && <SearchField />}
-      <button data-stage="toolbar:new-connection" className="icon-btn" aria-label="New connection" title="New connection (⌘N)" onClick={() => openDialog({ type: "connect" })}>
+      <button data-stage="toolbar:new-connection" className="icon-btn" aria-label="New connection" data-tooltip="New connection" data-command="connection.new" onClick={() => openDialog({ type: "connect" })}>
         <PlugZap size={ICON_SIZE} />
       </button>
-      <button data-stage="toolbar:new-query" className="icon-btn" aria-label="New query" title="New query (⌘T)" disabled={!session} onClick={() => openQueryTab()}>
+      <button data-stage="toolbar:new-query" className="icon-btn" aria-label="New query" data-tooltip="New query" data-command="tabs.new" disabled={!session} onClick={() => openQueryTab()}>
         <FilePlus2 size={ICON_SIZE} />
       </button>
-      <button data-stage="toolbar:settings" className="icon-btn" aria-label="Settings" title="Settings (⌘,)" onClick={() => useStore.getState().openSettings()}>
+      <button data-stage="toolbar:settings" className="icon-btn" aria-label="Settings" data-tooltip="Settings" data-command="settings.open" onClick={() => useStore.getState().openSettings()}>
         <SettingsIcon size={ICON_SIZE} />
       </button>
     </header>

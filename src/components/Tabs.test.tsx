@@ -61,9 +61,9 @@ describe("TabBar", () => {
   it("marks a preview tab and keeps it on double-click", async () => {
     useStore.setState({ tabs: [previewTab], activeTabId: previewTab.id });
     render(<TabBar />);
-    expect(tabNamed(/wp_posts/)).toHaveAttribute("title", expect.stringContaining("preview (double-click to keep)"));
+    expect(tabNamed(/wp_posts/)).toHaveAttribute("data-tooltip", expect.stringContaining("preview (double-click to keep)"));
     await userEvent.dblClick(tabNamed(/wp_posts/));
-    expect(tabNamed(/wp_posts/)).toHaveAttribute("title", "db.wp_posts");
+    expect(tabNamed(/wp_posts/)).toHaveAttribute("data-tooltip", "db.wp_posts");
   });
 
   it("makes only the active tab reachable with Tab", () => {

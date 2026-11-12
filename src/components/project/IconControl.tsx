@@ -47,7 +47,7 @@ function IconPicker({ table, ruleName, icon, ctx, onClose }: Props & { ruleName:
       </div>
       <div className="icon-grid" role="group" aria-label="Icons">
         {matches.map((name) => (
-          <button key={name} className="icon-choice" aria-label={name} title={name} aria-pressed={shown === name} onClick={() => set(name)}>
+          <button key={name} className="icon-choice" aria-label={name} data-tooltip={name} aria-pressed={shown === name} onClick={() => set(name)}>
             <IconGlyph name={name} className="icon-choice-glyph" />
           </button>
         ))}
@@ -85,7 +85,7 @@ export function IconControl({ table, ruleName, icon, ctx }: Props) {
         </span>
       )}
       {ruleName && (
-        <button className="link" disabled={!ctx} title="Choose the table's icon (stored in the project)" onClick={() => setOpen(true)}>
+        <button className="link" disabled={!ctx} data-tooltip="Choose the table's icon (stored in the project)" onClick={() => setOpen(true)}>
           icon…
         </button>
       )}

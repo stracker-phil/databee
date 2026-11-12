@@ -223,7 +223,7 @@ describe("column stack", () => {
       expect(screen.queryByRole("region", { name: "wp_wc_orders #4711" })).not.toBeInTheDocument();
 
       const crumb = within(screen.getByRole("navigation", { name: "Trail" })).getByRole("button", { name: "order #4711" });
-      expect(crumb).toHaveAttribute("title", "Show order #4711");
+      expect(crumb).toHaveAttribute("data-tooltip", "Show order #4711");
       expect(crumb).toHaveAttribute("data-stage", "trail:0");
       await userEvent.click(crumb);
 

@@ -54,7 +54,7 @@ const separated = (nodes: ReactNode[], key: string): ReactNode[] =>
 function TableCrumb({ table, onOpen }: { table: string; onOpen: () => void }) {
   const label = `Open table ${table}`;
   return (
-    <button className="trail-crumb" aria-label={label} title="Open the whole table in this tab" data-stage="trail:table" data-stage-label={label} data-stage-list="trail" onClick={onOpen}>
+    <button className="trail-crumb" aria-label={label} data-tooltip="Open the whole table in this tab" data-stage="trail:table" data-stage-label={label} data-stage-list="trail" onClick={onOpen}>
       {table}
     </button>
   );
@@ -67,7 +67,7 @@ function MoreCrumb({ side, labels, onOpen }: { side: TrailMore["side"]; labels: 
       className="trail-crumb"
       aria-label="More columns"
       aria-haspopup="menu"
-      title={title}
+      data-tooltip={title}
       data-stage={`trail:more-${side}`}
       data-stage-label={title}
       data-stage-list="trail"
@@ -85,7 +85,7 @@ function ColumnCrumb({ crumb, index, active, hidden, onShow }: { crumb: Crumb; i
       className="trail-crumb"
       aria-label={label}
       aria-current={active ? "location" : undefined}
-      title={hidden ? `Show ${label}` : undefined}
+      data-tooltip={hidden ? `Show ${label}` : undefined}
       data-stage={`trail:${index}`}
       data-stage-label={label}
       data-stage-list="trail"

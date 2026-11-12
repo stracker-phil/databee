@@ -48,7 +48,7 @@ function WatchedLabel({ line, renaming, onRename, onDone }: { line: WatchedLine;
   const address = line.address;
   if (!address) return <span>{line.label}</span>;
   return (
-    <button className="line-open" data-stage={`readout:watched:${line.id}`} data-stage-label={line.label} title={`Open ${line.source.table} row`} onClick={() => openAddress(address)}>
+    <button className="line-open" data-stage={`readout:watched:${line.id}`} data-stage-label={line.label} data-tooltip={`Open ${line.source.table} row`} onClick={() => openAddress(address)}>
       {line.label}
       <OpenHint effect="go" />
     </button>
@@ -81,7 +81,7 @@ function WatchedRow({ line, sessionId, database, onOpen }: { line: WatchedLine; 
       <span className="watched-value">
         <CurrentValue line={line} onOpen={onOpen} />
       </span>
-      <span className="o3" title={source}>
+      <span className="o3" data-tooltip={source}>
         {source}
       </span>
       <span className="watched-actions">

@@ -15,7 +15,7 @@ export function AccentSwatches({ value, stage, small, onChange }: {
           type="button"
           aria-label={`Accent ${a}`}
           aria-pressed={value === a}
-          title={a}
+          data-tooltip={a}
           data-stage={`${stage}:${a}`}
           data-stage-list={stage}
           style={{ background: `var(--a-${a})` }}

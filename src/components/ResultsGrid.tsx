@@ -204,7 +204,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
               role="columnheader"
               className={`grid-hcell${onSort ? " sortable" : ""}`}
               style={{ width: `var(--col-${i})` }}
-              title={`${c.name} · ${c.typeName}`}
+              data-tooltip={`${c.name} · ${c.typeName}`}
               aria-sort={sorted ? (sort?.descending ? "descending" : "ascending") : undefined}
               onClick={() => onSort?.(c.name)}
               onContextMenu={(e) => void openColumnMenu(e, i)}
@@ -219,7 +219,7 @@ export function ResultsGrid({ columns, rows, source, valueAt, sort, onSort, rowA
                 role="separator"
                 aria-label={`Resize ${c.name}`}
                 aria-orientation="vertical"
-                title="Drag to resize · double-click to fit"
+                data-tooltip="Drag to resize · double-click to fit"
                 onMouseDown={(e) => startResize(e, i)}
                 onDoubleClick={(e) => (e.stopPropagation(), autoFit(i))}
                 onClick={(e) => e.stopPropagation()}

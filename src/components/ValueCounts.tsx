@@ -100,7 +100,7 @@ export function ValueCounts({ target, onPick, pickRefusal, onClose }: Props) {
                 aria-selected={false}
                 aria-disabled={!!reason}
                 tabIndex={reason ? -1 : 0}
-                title={reason ?? "Filter by this value"}
+                data-tooltip={reason ?? "Filter by this value"}
                 data-stage={`grid:value-count:${i}`}
                 data-stage-list="grid:value-counts"
                 onClick={(e) => {

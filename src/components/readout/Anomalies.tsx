@@ -33,7 +33,7 @@ function AnomalyRow({ line }: { line: AnomalyLine }) {
         {line.fix && (
           <button
             className="btn mono"
-            title={`Plan ${line.fix.action} on ${rowTableOf(line.fix.address) ?? ""}`}
+            data-tooltip={`Plan ${line.fix.action} on ${rowTableOf(line.fix.address) ?? ""}`}
             data-stage={`readout:fix:${line.id}`}
             data-stage-label={line.fix.action}
             onClick={() => line.fix && void runTableAction(line.fix.address, line.fix.action)}

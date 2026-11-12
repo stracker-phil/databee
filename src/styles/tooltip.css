@@ -1,0 +1,18 @@
+/* TooltipHost (docs/ux.md, Tooltips): one bubble per window, below the control or above it, kept 8px inside the
+   window. Its own width wherever it starts, so a control at the window's edge doesn't squeeze it. */
+.tooltip {
+  position: fixed; z-index: 1000; width: max-content; max-width: min(420px, calc(100vw - 16px));
+  padding: 0.231rem 0.538rem; border-radius: 6px; transform: translateX(-50%);
+  background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow-small); color: var(--text);
+  font-size: var(--fs-small); line-height: 1.35; white-space: pre-line; pointer-events: none;
+  animation: tooltip-in var(--motion-fast) var(--ease-out);
+}
+@keyframes tooltip-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-2px); }
+  to { opacity: 1; transform: translateX(-50%); }
+}
+.tooltip--above { animation-name: tooltip-in-above; }
+@keyframes tooltip-in-above {
+  from { opacity: 0; transform: translateX(-50%) translateY(2px); }
+  to { opacity: 1; transform: translateX(-50%); }
+}

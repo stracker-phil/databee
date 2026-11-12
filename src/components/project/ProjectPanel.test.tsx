@@ -171,7 +171,7 @@ describe("ProjectPanel", () => {
       ["yoast", "no marker tables"],
     ])("names the marker tables of preset %s in its tooltip", async (name, title) => {
       await openProjectPage();
-      expect(screen.getByRole("switch", { name: `Preset ${name}` }).closest("label")).toHaveAttribute("title", title);
+      expect(screen.getByRole("switch", { name: `Preset ${name}` }).closest("label")).toHaveAttribute("data-tooltip", title);
     });
 
     it("says auto while presets are automatic", async () => {
@@ -702,7 +702,7 @@ describe("ProjectPanel", () => {
       await openProjectPage();
       const row = await screen.findByRole("row", { name: ORDER_ITEMS_ROW });
       const count = await within(row).findByText("6 of 7");
-      expect(count.closest("[title]")).toHaveAttribute("title", "1 is 0 or NULL · unresolved 9");
+      expect(count.closest("[data-tooltip]")).toHaveAttribute("data-tooltip", "1 is 0 or NULL · unresolved 9");
     });
 
     it("says so when the count timed out", async () => {
