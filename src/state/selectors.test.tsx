@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", async (orig) => ({ ...(await orig<object>()), api: (await import("../test/apiMock")).createApiMock() }));
@@ -8,7 +9,10 @@ import { connectedStore, session } from "../test/fixtures";
 import { selectVisibleDatabases } from "./selectors";
 import { useStore } from "./store";
 
-const databaseOptions = () => Array.from(screen.getByRole("combobox", { name: "Database" }).querySelectorAll("option")).map((o) => o.textContent);
+const databaseOptions = async () => {
+  await userEvent.click(screen.getByRole("button", { name: "Database" }));
+  return screen.getAllByRole("menuitemradio").map((o) => o.textContent);
+};
 
 describe("selectVisibleDatabases", () => {
   beforeEach(() => {
@@ -16,24 +20,24 @@ describe("selectVisibleDatabases", () => {
     connectedStore();
   });
 
-  it("hides system schemas by default", () => {
+  it("hides system schemas by default", async () => {
     render(<Toolbar />);
 
-    expect(databaseOptions()).toEqual(["db"]);
+    expect(await databaseOptions()).toEqual(["db"]);
   });
 
-  it("lists system schemas when showSystemSchemas is on", () => {
+  it("lists system schemas when showSystemSchemas is on", async () => {
     connectedStore({ settings: { showSystemSchemas: true } });
     render(<Toolbar />);
 
-    expect(databaseOptions()).toEqual(["db", "mysql"]);
+    expect(await databaseOptions()).toEqual(["db", "mysql"]);
   });
 
-  it("keeps a system schema listed while it is the session's current database", () => {
+  it("keeps a system schema listed while it is the session's current database", async () => {
     useStore.setState({ sessions: [{ ...session, database: "mysql" }] });
     render(<Toolbar />);
 
-    expect(databaseOptions()).toEqual(["db", "mysql"]);
+    expect(await databaseOptions()).toEqual(["db", "mysql"]);
   });
 
   it("returns nothing without an active session", () => {

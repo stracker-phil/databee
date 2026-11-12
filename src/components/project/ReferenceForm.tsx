@@ -2,7 +2,8 @@ import { useState } from "react";
 import { api, type Coverage, type Reference } from "../../api";
 import { fieldError, referenceComplete, referenceRule, type FieldError, type ReferenceForm as Form } from "../../lib/ruleForms";
 import { useApiResult } from "../../lib/useApiResult";
-import { useTableColumns, ColumnPicker, FieldMessage, FormFrame, Labeled } from "./formParts";
+import { PopUpButton } from "../PopUpButton";
+import { useTableColumns, ColumnPicker, FieldMessage, FormFrame, Labeled, withCurrent } from "./formParts";
 import type { ProjectTab } from "../../state/store";
 import type { ProjectContext } from "./context";
 import { CoverageCounts, nothingResolves } from "./coverage";
@@ -46,15 +47,15 @@ function WhenField({ ctx, form, update }: { ctx: ProjectContext; form: Form; upd
   const when = form.when ?? { column: "", value: "" };
   return (
     <span className="picker">
-      <select className="input mono" aria-label="When column" data-stage="project:form:when-column" value={when.column} onChange={(e) => update({ when: e.target.value ? { ...when, column: e.target.value } : null })}>
-        <option value="">always</option>
-        {when.column && !columns.includes(when.column) && <option value={when.column}>{when.column}</option>}
-        {columns.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-      </select>
+      <PopUpButton
+        className="input"
+        mono
+        aria-label="When column"
+        data-stage="project:form:when-column"
+        value={when.column}
+        options={[{ value: "", label: "always" }, ...withCurrent(when.column, columns).map((c) => ({ value: c, label: c }))]}
+        onChange={(column) => update({ when: column ? { ...when, column } : null })}
+      />
       {when.column && (
         <>
           <span className="o3">=</span>

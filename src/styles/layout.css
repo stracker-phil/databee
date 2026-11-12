@@ -22,10 +22,9 @@
 .app-title { font-weight: 600; font-size: 1rem; letter-spacing: -0.01em; }
 
 .conn-text { display: flex; align-items: baseline; min-width: 0; font-size: var(--data-font-size); white-space: nowrap; }
-/* A transparent native select over the text opens the picker as a menu. */
+/* Connection and database names; with more than one choice a plain pop-up button opens the picker. */
 .menu-text { position: relative; display: inline-flex; min-width: 0; }
 .menu-text > span { overflow: hidden; text-overflow: ellipsis; }
 .menu-text:hover { color: var(--text); }
-.menu-text select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: default; }
 .toolbar-search { width: 23rem; flex: none; cursor: default; text-align: left; }
 .toolbar-search .placeholder { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--o3); }

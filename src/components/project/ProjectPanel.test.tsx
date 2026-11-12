@@ -19,6 +19,17 @@ import { ResultsGrid } from "../ResultsGrid";
 
 const mocked = vi.mocked(api, true);
 
+const chosen = async (popUp: HTMLElement) => {
+  await userEvent.click(popUp);
+  const name = screen.getByRole("menuitemradio", { checked: true }).textContent;
+  await userEvent.keyboard("{Escape}");
+  return name;
+};
+const choose = async (popUp: HTMLElement, option: string | RegExp) => {
+  await userEvent.click(popUp);
+  await userEvent.click(screen.getByRole("menuitemradio", { name: option }));
+};
+
 const tables = ["wp_wc_orders", "wp_wc_orders_meta", "wp_wc_order_addresses", "wp_wc_order_items", "wp_wc_order_coupon_lookup"].map((name) => table(name));
 
 const coverage = (patch: Partial<Coverage> = {}): Coverage => ({ total: 0, resolved: 0, zeroOrNull: 0, sampleUnresolved: [], timedOut: false, ...patch });
@@ -367,7 +378,7 @@ describe("ProjectPanel", () => {
         await openOverview();
         await userEvent.click(await screen.findByRole("button", { name: "edit" }));
         const dialog = await screen.findByRole("dialog", { name: "edit reference" });
-        expect(within(dialog).getByRole("combobox", { name: "Source table" })).toHaveValue("wp_wc_order_items");
+        expect(await chosen(within(dialog).getByRole("button", { name: "Source table" }))).toBe("wp_wc_order_items");
       });
 
       it("offers no edit when the rule is not among the listed rules or the change has none", async () => {
@@ -655,7 +666,7 @@ describe("ProjectPanel", () => {
       const shown = await showRow(row);
       await userEvent.click(shown.getByRole("button", { name: "edit" }));
       const dialog = await screen.findByRole("dialog", { name: "edit reference" });
-      expect(within(dialog).getByRole("combobox", { name: "Source table" })).toHaveValue("wp_wc_order_items");
+      expect(await chosen(within(dialog).getByRole("button", { name: "Source table" }))).toBe("wp_wc_order_items");
       await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateReference", id: "p1", reference: expect.objectContaining({ from: "wc_order_items.order_id", to: "wc_orders.id" }) });
     });
@@ -777,7 +788,7 @@ describe("ProjectPanel", () => {
     it("opens as a dialog named after the form", async () => {
       await openProjectPage(form());
       const dialog = await screen.findByRole("dialog", { name: "new reference" });
-      expect(within(dialog).getByRole("combobox", { name: "Target table" })).toHaveValue("wp_wc_orders");
+      expect(await chosen(within(dialog).getByRole("button", { name: "Target table" }))).toBe("wp_wc_orders");
     });
 
     it("saves on ⌘↵ from any field and closes", async () => {
@@ -811,7 +822,7 @@ describe("ProjectPanel", () => {
       await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
       const alert = await within(dialog).findByRole("alert");
       expect(alert).toHaveTextContent("`wp_users` has no column `nope`");
-      expect(alert.parentElement).toContainElement(within(dialog).getByRole("combobox", { name: "Target table" }));
+      expect(alert.parentElement).toContainElement(within(dialog).getByRole("button", { name: "Target table" }));
       expect(screen.getByRole("dialog", { name: "new reference" })).toBeInTheDocument();
     });
 
@@ -853,12 +864,12 @@ describe("ProjectPanel", () => {
       const dialog = await screen.findByRole("dialog", { name: "new reference" });
       expect(selectActiveTab(useStore.getState())).toMatchObject({ kind: "project" });
       expect(mocked.ruleDraft).toHaveBeenCalledWith("s1", "db", paidViaSource);
-      expect(within(dialog).getByRole("combobox", { name: "Source table" })).toHaveValue("wp_wc_orders_meta");
-      expect(within(dialog).getByRole("combobox", { name: "When column" })).toHaveValue("meta_key");
+      expect(await chosen(within(dialog).getByRole("button", { name: "Source table" }))).toBe("wp_wc_orders_meta");
+      expect(await chosen(within(dialog).getByRole("button", { name: "When column" }))).toBe("meta_key");
       expect(within(dialog).getByRole("textbox", { name: "When value" })).toHaveValue("_ppcp_paypal_order_id");
 
-      await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Target table" }), "wp_wc_orders");
-      await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Target column" })).toHaveValue("id"));
+      await choose(within(dialog).getByRole("button", { name: "Target table" }), "wp_wc_orders");
+      await waitFor(async () => expect(await chosen(within(dialog).getByRole("button", { name: "Target column" }))).toBe("id (primary key)"));
       await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
 
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", {
@@ -990,7 +1001,7 @@ describe("ProjectPanel", () => {
       const dialog = await screen.findByRole("dialog", { name: "new kind" });
       expect(within(dialog).getByRole("textbox", { name: "meta keys" })).toHaveValue("_paid_via");
       expect(within(dialog).getByRole("textbox", { name: "in meta tables" })).toHaveValue("wc_orders_meta");
-      await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Kind" }), "secret");
+      await choose(within(dialog).getByRole("button", { name: "Kind" }), "secret");
       await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
       expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "addKind", rule: { columns: [], meta_keys: ["_paid_via"], in: ["wc_orders_meta"], secret: true } });
     });
@@ -1001,7 +1012,7 @@ describe("ProjectPanel", () => {
         await openProjectPage();
         await userEvent.click(within(await screen.findByRole("row", { name: KIND_NAME })).getByRole("button", { name: "edit" }));
         const dialog = await screen.findByRole("dialog", { name: "edit kind" });
-        await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Kind" }), "number");
+        await choose(within(dialog).getByRole("button", { name: "Kind" }), "number");
         await userEvent.click(within(dialog).getByRole("button", { name: "Save to project" }));
         expect(mocked.projectUpdate).toHaveBeenCalledWith("s1", "db", { op: "updateKind", index: 2, rule: expect.objectContaining({ columns: ["wc_orders.status"], number: true }) });
       });

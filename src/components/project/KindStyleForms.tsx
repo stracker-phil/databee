@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { ProjectChange, StyleColor } from "../../api";
-import { fieldError, KIND_CHOICES, kindRule, STYLE_COLORS, STYLE_MATCHES, styleRule, ZONES, type FieldError, type KindChoice, type KindForm as KForm, type ScopeDraft, type StyleForm as SForm } from "../../lib/ruleForms";
+import { fieldError, KIND_CHOICES, kindRule, STYLE_COLORS, STYLE_MATCHES, styleRule, ZONES, type FieldError, type KindForm as KForm, type ScopeDraft, type StyleForm as SForm } from "../../lib/ruleForms";
 import type { ProjectContext } from "./context";
+import { PopUpButton } from "../PopUpButton";
 import { FieldMessage, FormFrame, Labeled } from "./formParts";
 
 /** Saves through `ctx.change`; a field error stays with the form, success closes it. */
@@ -50,21 +51,9 @@ export function KindForm({ form, ctx }: { form: KForm; ctx: ProjectContext }) {
       <ScopeFields scope={form.scope} error={error} onChange={(scope) => update({ scope })} />
       <Labeled label="kind">
         <span className="picker">
-          <select className="input mono" aria-label="Kind" data-stage="project:form:kind" value={form.kind} onChange={(e) => update({ kind: e.target.value as KindChoice })}>
-            {KIND_CHOICES.map((k) => (
-              <option key={k} value={k}>
-                {k}
-              </option>
-            ))}
-          </select>
+          <PopUpButton className="input" mono aria-label="Kind" data-stage="project:form:kind" value={form.kind} options={KIND_CHOICES.map((v) => ({ value: v, label: v }))} onChange={(v) => update({ kind: v })} />
           {form.kind === "timestamp" && (
-            <select className="input mono" aria-label="Zone" data-stage="project:form:zone" value={form.zone} onChange={(e) => update({ zone: e.target.value as KForm["zone"] })}>
-              {ZONES.map((z) => (
-                <option key={z} value={z}>
-                  {z}
-                </option>
-              ))}
-            </select>
+            <PopUpButton className="input" mono aria-label="Zone" data-stage="project:form:zone" value={form.zone} options={ZONES.map((v) => ({ value: v, label: v }))} onChange={(v) => update({ zone: v })} />
           )}
           {form.kind === "money" && (
             <input className="input mono" aria-label="Currency from" data-stage="project:form:currency" placeholder="currency from (columns or meta keys)" value={form.currency} onChange={(e) => update({ currency: e.target.value })} />
@@ -97,13 +86,7 @@ export function StyleForm({ form, ctx }: { form: SForm; ctx: ProjectContext }) {
       <ScopeFields scope={form.scope} error={error} onChange={(scope) => update({ scope })} />
       <Labeled label="match">
         <span className="picker">
-          <select className="input mono" aria-label="Match" data-stage="project:form:match" value={form.match} onChange={(e) => update({ match: e.target.value as SForm["match"] })}>
-            {STYLE_MATCHES.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+          <PopUpButton className="input" mono aria-label="Match" data-stage="project:form:match" value={form.match} options={STYLE_MATCHES.map((v) => ({ value: v, label: v }))} onChange={(v) => update({ match: v })} />
           <input className="input mono" aria-label="Value" data-stage="project:form:value" value={form.value} onChange={(e) => update({ value: e.target.value })} />
         </span>
         <FieldMessage error={error} field="value" />

@@ -43,7 +43,11 @@ describe("InsertRowDialog", () => {
   });
 
   const field = (name: string) => screen.getByRole("textbox", { name: new RegExp(`^${name}\\b`) });
-  const mode = (name: string) => screen.getByRole("combobox", { name: `${name} mode` });
+  const mode = (name: string) => screen.getByRole("button", { name: `${name} mode` });
+  const setMode = async (name: string, option: string) => {
+    await userEvent.click(mode(name));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: option }));
+  };
   const queue = () => userEvent.click(screen.getByRole("button", { name: "Queue insert" }));
 
   it("does not show auto-increment or generated columns", () => {
@@ -51,7 +55,7 @@ describe("InsertRowDialog", () => {
     expect(screen.getByRole("textbox", { name: /^post_title/ })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /^ID\b/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /^slug_hash/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "ID mode" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ID mode" })).not.toBeInTheDocument();
   });
 
   it("shows a column's default as the placeholder in Default mode", () => {
@@ -59,9 +63,12 @@ describe("InsertRowDialog", () => {
     expect(field("post_title")).toHaveAttribute("placeholder", "default");
   });
 
-  it("offers NULL only for nullable columns", () => {
-    expect(within(mode("post_excerpt")).getByRole("option", { name: "NULL" })).toBeInTheDocument();
-    expect(within(mode("post_title")).queryByRole("option", { name: "NULL" })).not.toBeInTheDocument();
+  it("offers NULL only for nullable columns", async () => {
+    await userEvent.click(mode("post_excerpt"));
+    expect(within(screen.getByRole("menu")).getByRole("menuitemradio", { name: "NULL" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(mode("post_title"));
+    expect(within(screen.getByRole("menu")).queryByRole("menuitemradio", { name: "NULL" })).not.toBeInTheDocument();
   });
 
   it("leaves Default columns out of the INSERT and closes after queueing", async () => {
@@ -78,21 +85,21 @@ describe("InsertRowDialog", () => {
   });
 
   it("sends SQL NULL when the column is set to NULL mode", async () => {
-    await userEvent.selectOptions(mode("post_excerpt"), "NULL");
+    await setMode("post_excerpt", "NULL");
     expect(field("post_excerpt")).toHaveValue("");
     await queue();
     expect(mocked.planChange).toHaveBeenCalledWith("s1", planned([["post_excerpt", null]]));
   });
 
   it("sends an empty string for Value mode with nothing typed", async () => {
-    await userEvent.selectOptions(mode("post_title"), "Value");
+    await setMode("post_title", "Value");
     await queue();
     expect(mocked.planChange).toHaveBeenCalledWith("s1", planned([["post_title", ""]]));
   });
 
   it("sends typed values together with the other modes in column order", async () => {
     await userEvent.type(field("post_title"), "Hello");
-    await userEvent.selectOptions(mode("post_excerpt"), "NULL");
+    await setMode("post_excerpt", "NULL");
     await userEvent.type(field("post_status"), "publish");
     await queue();
     expect(mocked.planChange).toHaveBeenCalledWith("s1", planned([["post_title", "Hello"], ["post_excerpt", null], ["post_status", "publish"]]));

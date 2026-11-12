@@ -3,6 +3,7 @@ import type { RuleTable } from "../../api";
 import type { ColumnPick, FieldError, FormField } from "../../lib/ruleForms";
 import { selectStructure, useStore } from "../../state/store";
 import { Modal } from "../Modal";
+import { PopUpButton } from "../PopUpButton";
 
 export function useTableColumns(sessionId: string, database: string, table: string) {
   const entry = useStore((s) => (table ? selectStructure(s, sessionId, database, table) : undefined));
@@ -43,30 +44,33 @@ export function ColumnPicker({ label, anchor, sessionId, database, tables, value
     const key = preferKey && primaryKey.length === 1 ? primaryKey[0] : columns[0];
     onChange({ ...value, column: key });
   }, [value, columns, primaryKey, preferKey, onChange]);
-  const known = tables.some((t) => t.table === value.table);
   return (
     <span className="picker">
-      <select className="input mono" aria-label={`${label} table`} data-stage={`${anchor}-table`} value={value.table} onChange={(e) => onChange({ table: e.target.value, column: "" })}>
-        <option value="">table…</option>
-        {!known && value.table && <option value={value.table}>{value.table}</option>}
-        {tables.map((t) => (
-          <option key={t.table} value={t.table}>
-            {t.table}
-          </option>
-        ))}
-      </select>
-      <select className="input mono" aria-label={`${label} column`} data-stage={`${anchor}-column`} value={value.column} onChange={(e) => onChange({ ...value, column: e.target.value })}>
-        <option value="">column…</option>
-        {value.column && !columns.includes(value.column) && <option value={value.column}>{value.column}</option>}
-        {columns.map((c) => (
-          <option key={c} value={c}>
-            {c}
-            {primaryKey.length === 1 && primaryKey[0] === c ? " (primary key)" : ""}
-          </option>
-        ))}
-      </select>
+      <PopUpButton
+        className="input"
+        mono
+        aria-label={`${label} table`}
+        data-stage={`${anchor}-table`}
+        value={value.table}
+        options={[{ value: "", label: "table…" }, ...withCurrent(value.table, tables.map((t) => t.table)).map((t) => ({ value: t, label: t }))]}
+        onChange={(table) => onChange({ table, column: "" })}
+      />
+      <PopUpButton
+        className="input"
+        mono
+        aria-label={`${label} column`}
+        data-stage={`${anchor}-column`}
+        value={value.column}
+        options={[{ value: "", label: "column…" }, ...withCurrent(value.column, columns).map((c) => ({ value: c, label: primaryKey.length === 1 && primaryKey[0] === c ? `${c} (primary key)` : c }))]}
+        onChange={(column) => onChange({ ...value, column })}
+      />
     </span>
   );
+}
+
+/** The choices, led by the stored one when it is not among them, so it still shows. */
+export function withCurrent(current: string, choices: string[]): string[] {
+  return current && !choices.includes(current) ? [current, ...choices] : choices;
 }
 
 export function Labeled({ label, children }: { label: string; children: ReactNode }) {

@@ -86,6 +86,12 @@ describe("ContextMenu", () => {
       expect(onClose).toHaveBeenCalled();
     });
 
+    it.each([["the window is resized", "resize"], ["the window loses focus", "blur"]])("closes when %s", (_when, type) => {
+      const onClose = renderMenu([{ label: "Open", action: () => {} }]);
+      fireEvent(window, new Event(type));
+      expect(onClose).toHaveBeenCalled();
+    });
+
     it("stays open on a mouse press on the menu itself", async () => {
       const onClose = renderMenu([{ label: "Open", action: () => {} }, "separator"]);
       await userEvent.click(screen.getByRole("menu"));
@@ -119,6 +125,34 @@ describe("ContextMenu", () => {
       expect(screen.getByRole("menuitem", { name: "Remove" })).toHaveFocus();
       await userEvent.keyboard("{ArrowUp}");
       expect(screen.getByRole("menuitem", { name: "Open" })).toHaveFocus();
+    });
+
+    it("jumps to the last and first enabled item with End and Home", async () => {
+      renderMenu(items);
+      await userEvent.keyboard("{End}");
+      expect(screen.getByRole("menuitem", { name: "Remove" })).toHaveFocus();
+      await userEvent.keyboard("{Home}");
+      expect(screen.getByRole("menuitem", { name: "Open" })).toHaveFocus();
+    });
+
+    it("focuses the next enabled item starting with the typed letter and wraps around", async () => {
+      renderMenu([
+        { label: "Copy cell", action: () => {} },
+        { label: "Delete row", action: () => {} },
+        { label: "Copy row", action: () => {} },
+      ]);
+      await userEvent.keyboard("c");
+      expect(screen.getByRole("menuitem", { name: "Copy row" })).toHaveFocus();
+      await userEvent.keyboard("c");
+      expect(screen.getByRole("menuitem", { name: "Copy cell" })).toHaveFocus();
+      await userEvent.keyboard("d");
+      expect(screen.getByRole("menuitem", { name: "Delete row" })).toHaveFocus();
+    });
+
+    it("skips disabled items when jumping by letter", async () => {
+      renderMenu(items);
+      await userEvent.keyboard("r");
+      expect(screen.getByRole("menuitem", { name: "Remove" })).toHaveFocus();
     });
 
     it("returns focus to the element that opened it when it unmounts", () => {

@@ -310,6 +310,17 @@ disabled items `--o3`, separators a 1px `--line`. An item that runs a command sh
   show the `object.*` keys), its rows being the value's group;
 - sidebar table (`tableMenu` in `Sidebar.tsx`): Open data, Show structure, New query: SELECT …, Copy name.
 
+Menus move with ↑↓ (wrapping), Home and End; a letter jumps to the next item starting with it; Enter or Space
+chooses, Esc closes and returns the focus to the opener. A press outside, a scroll, leaving the window or resizing
+it closes them too.
+
+**Pop-up buttons** (`PopUpButton`) replace native selects, which ignore the color schemes: the current choice
+and a chevron in the field frame, as wide as the widest choice so a new choice never resizes it. A click, Space,
+Enter or ↓ opens the same menu under the button, the current choice checked and focused; a second press on the
+button closes it. Choices may be grouped under a small `--o3` caption. Table and column pickers use the data
+font for the button and its menu. In the toolbar the connection and database names are plain pop-up buttons:
+text only, no frame or chevron.
+
 ## Tooltips
 
 `components/TooltipHost.tsx` (`TooltipHost`), mounted once per window (main and Settings), replaces the native
@@ -329,7 +340,6 @@ the store's keybindings when it shows, so rebinding in Settings → Shortcuts sh
 spells a key itself. Controls with a binding suffix: back and forward, New connection, New query, Settings,
 New query tab, Toggle sidebar, pending n, live, the filter mode, Save query, Pin to the readout and Maximize
 pane.
-
 ## Settings
 
 Settings is a window of its own (⌘,, the toolbar's gear), about 880×720, not maximizable. On the left, under a

@@ -5,6 +5,7 @@ import { selectActiveSession, selectActiveTab, selectCanNav, selectDatabaseAccen
 import { AccentDot } from "./Accent";
 import { ConnectionHealth } from "./ConnectionHealth";
 import { KeyCap } from "./Field";
+import { PopUpButton } from "./PopUpButton";
 
 type Session = NonNullable<ReturnType<typeof selectActiveSession>>;
 
@@ -12,8 +13,8 @@ type Session = NonNullable<ReturnType<typeof selectActiveSession>>;
 const ICON_SIZE = "1.077rem";
 
 /**
- * Connection and database as plain mono text. A transparent native select covers each name, so a click opens
- * the existing picker as a menu while the toolbar shows only text. A database with its own accent gets a dot in it.
+ * Connection and database as plain mono text; each name is a plain pop-up button, so a click opens its picker
+ * while the toolbar shows only text. A database with its own accent gets a dot in it.
  */
 function ConnectionText({ session }: { session: Session }) {
   const sessions = useStore((s) => s.sessions);
@@ -23,29 +24,33 @@ function ConnectionText({ session }: { session: Session }) {
   const title = `${session.identity} · ${session.serverVersion}${accent ? ` · accent ${accent} (Project page)` : ""}`;
   return (
     <div className="conn-text mono" data-stage="toolbar:connection" data-stage-label={`Connection ${session.identity}`} data-tooltip={title}>
-      <span className="menu-text">
-        <span>{session.displayName}</span>
-        {sessions.length > 1 && (
-          <select aria-label="Connection" value={session.id} onChange={(e) => setActiveSession(e.target.value)}>
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>{s.displayName}</option>
-            ))}
-          </select>
-        )}
-      </span>
+      {sessions.length > 1 ? (
+        <PopUpButton plain mono className="menu-text" aria-label="Connection" value={session.id} options={sessions.map((s) => ({ value: s.id, label: s.displayName }))} onChange={setActiveSession} />
+      ) : (
+        <span className="menu-text">
+          <span>{session.displayName}</span>
+        </span>
+      )}
       <span className="o3"> / </span>
       {accent && <AccentDot accent={accent} />}
-      <span className="menu-text o2">
-        <span>{session.database ?? "no database"}</span>
-        <select data-stage="toolbar:database" aria-label="Database" value={session.database ?? ""} onChange={(e) => void switchDatabase(session.id, e.target.value)}>
-          {!session.database && <option value="">No database</option>}
-          {databases.map((d) => (
-            <option key={d.name} value={d.name}>{d.name}</option>
-          ))}
-        </select>
-      </span>
+      <PopUpButton
+        plain
+        mono
+        className="menu-text o2"
+        aria-label="Database"
+        data-stage="toolbar:database"
+        value={session.database ?? ""}
+        options={databaseOptions(session.database, databases.map((d) => d.name))}
+        onChange={(name) => void switchDatabase(session.id, name)}
+      />
     </div>
   );
+}
+
+/** The visible databases, led by the current one when it is hidden or there is none. */
+function databaseOptions(current: string | null | undefined, names: string[]) {
+  const lead = current ? (names.includes(current) ? [] : [current]) : [""];
+  return [...lead, ...names].map((name) => ({ value: name, label: name || "no database" }));
 }
 
 /** Opens the command palette on click; it is not a text input. */

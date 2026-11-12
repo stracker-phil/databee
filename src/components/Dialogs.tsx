@@ -4,6 +4,7 @@ import { type ColumnInfo, type ConnectionSpec, type Home } from "../api";
 import { DEFAULT_PIN_ROWS, pinChoice, pinOf, type PinChoice } from "../lib/pins";
 import { useStore } from "../state/store";
 import { Modal } from "./Modal";
+import { PopUpButton } from "./PopUpButton";
 import { CONNECT_TITLE_ID, ConnectForm } from "./ConnectScreen";
 import { ActionSheet } from "./object/ActionSheet";
 import { ShortcutsDialog } from "./ShortcutsDialog";
@@ -179,11 +180,13 @@ function InsertField({ column, mode, value, onChange }: { column: ColumnInfo; mo
           value={mode === "value" ? value : ""}
           onChange={(e) => onChange("value", e.target.value)}
         />
-        <select className="input" aria-label={`${column.name} mode`} value={mode} onChange={(e) => onChange(e.target.value as InsertMode, value)}>
-          <option value="value">Value</option>
-          {column.nullable && <option value="null">NULL</option>}
-          <option value="default">Default</option>
-        </select>
+        <PopUpButton
+          className="input"
+          aria-label={`${column.name} mode`}
+          value={mode}
+          options={[{ value: "value", label: "Value" }, ...(column.nullable ? [{ value: "null" as const, label: "NULL" }] : []), { value: "default", label: "Default" }]}
+          onChange={(next) => onChange(next, value)}
+        />
       </div>
     </div>
   );

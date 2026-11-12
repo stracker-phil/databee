@@ -182,9 +182,9 @@ export function isTextInput(target: EventTarget | null): boolean {
   return false;
 }
 
-/** A shortcut field in Settings is recording: its keys, Escape included, are the new binding. */
+/** A shortcut field in Settings is recording, or a menu is open: its keys, Escape included, belong to it. */
 export function isRecordingTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && !!target.closest("[data-recording]");
+  return target instanceof Element && !!target.closest("[data-recording], [data-own-keys]");
 }
 
 function scopesOverlap(a: Scope, b: Scope): boolean {

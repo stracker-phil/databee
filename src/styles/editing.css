@@ -10,7 +10,7 @@
 .insert-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.769rem; max-height: 50vh; overflow: auto; }
 .insert-field { display: flex; gap: 0.385rem; }
 .insert-field input { flex: 1; min-width: 0; }
-.insert-field select { flex: none; width: auto; }
+.insert-field .popup-button { flex: none; width: auto; }
 .tray { background: var(--bg); border-top: 1px solid var(--line); max-height: 40vh; overflow: auto; }
 .tray-head { display: flex; align-items: center; gap: 0.769rem; padding: 0.615rem 1.077rem; position: sticky; top: 0; z-index: 1; background: var(--bg); }
 .tray-list { list-style: none; margin: 0; padding: 0 1.077rem 0.769rem; }

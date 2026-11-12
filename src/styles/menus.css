@@ -1,14 +1,34 @@
 /* ---------- menus & toasts ---------- */
-/* The one context menu (ContextMenu.tsx), portaled to <body>; it sets its own type so no area restyles it. */
+/* The one menu panel (MenuPanel.tsx) behind context menus and pop-up buttons, portaled to <body>; it sets its own
+   type so no area restyles it. */
 .menu {
-  position: fixed; z-index: 60; min-width: 13.846rem; padding: 0.385rem; border-radius: 10px;
-  background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow);
+  position: fixed; z-index: 60; min-width: 13.846rem; max-height: calc(100vh - 8px); overflow-y: auto; padding: 0.385rem; border-radius: 10px;
+  background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); outline: none;
   font-family: var(--font-ui); font-size: var(--fs-base); font-weight: 400; line-height: normal; color: var(--text); white-space: nowrap;
+  animation: fade var(--motion-fast) var(--ease-out);
 }
+.menu.mono { font-family: var(--font-mono); font-size: var(--data-font-size); }
 .menu button { display: flex; width: 100%; align-items: center; gap: 0.615rem; height: 1.846rem; padding: 0 0.615rem; border: none; border-radius: 5px; background: none; text-align: left; }
 .menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
 .menu button:disabled { color: var(--o3); }
-.menu button.with-detail { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0.154rem; height: auto; min-height: 1.846rem; padding: 0.308rem 0.615rem; }
+.menu button.with-detail { height: auto; min-height: 1.846rem; padding: 0.308rem 0.615rem; }
+.menu-label { display: flex; flex-direction: column; gap: 0.154rem; min-width: 0; }
+.menu-check { display: inline-flex; flex: none; width: 0.923rem; margin-right: -0.231rem; }
+.menu-caption { padding: 0.462rem 0.615rem 0.231rem; font-family: var(--font-ui); font-size: var(--fs-small); font-weight: 600; color: var(--o3); }
+.menu [role="group"] + [role="group"] { margin-top: 0.231rem; }
+
+/* PopUpButton: the current choice and a chevron, as wide as its widest choice (the hidden sizers share its cell and
+   draw their labels as generated content, so the button's text stays the current choice). */
+.popup-button { display: inline-flex; align-items: center; gap: 0.462rem; text-align: left; cursor: default; }
+.popup-button.mono { font-family: var(--font-mono); font-size: var(--data-font-size); }
+.popup-button[aria-expanded="true"]:not(.plain) { border-color: var(--accent); box-shadow: var(--shadow-inset), 0 0 0 0.231rem var(--sel); }
+.popup-button-value { display: grid; flex: 1; min-width: 0; }
+.popup-button-value > span { grid-area: 1 / 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.popup-button-sizer { visibility: hidden; height: 0; }
+.popup-button-sizer::before { content: attr(data-label); }
+.popup-button-chevron { flex: none; color: var(--o2); }
+.popup-button.plain { padding: 0; border: none; background: none; color: inherit; }
+.popup-button.plain:focus-visible { outline: none; text-decoration: underline; text-decoration-color: var(--accent); }
 .menu-key { margin-left: auto; padding-left: 1.538rem; color: var(--o3); font-variant-numeric: tabular-nums; }
 .menu button:hover:not(:disabled) .menu-key, .menu button:focus-visible .menu-key { color: inherit; opacity: 0.8; }
 .menu-detail { max-width: 36rem; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-small); color: var(--o3); }

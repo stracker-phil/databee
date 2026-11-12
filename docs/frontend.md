@@ -168,15 +168,23 @@ Conventions:
   (`.dialog.panel`, the overlay surface laid out by its content: the palette, rule sheets, Settings) or `bare`
   (the connect dialog, whose `.connect-card` is its own surface). It traps Tab inside the sheet, focuses the first control unless a child has `autoFocus`,
   and returns focus to the opener on close unless the closing action focused something else. It handles
-  Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]`
+  Escape in the capture phase and stops it there, so only the sheet closes (keys inside `[data-recording]` or an open menu
   pass through). The palette renders inside `Modal` too. Every context menu is `ContextMenu.tsx`: callers build
   `MenuEntry[]` (items `MenuItem` `{ label, action, disabled?, title?, detail?, command? }`, `detail` a second
   line in `.menu-detail`, used by `actionMenu`, `command` the command whose key shows on the right; and
   `"separator"`) and call `open(anchor, entries)`
   from `useContextMenu()`, rendering its `element`; the anchor is a pointer event (its default menu is
   suppressed) or a point. The menu portals into `document.body`, so it never inherits the font of the grid or
-  document it opened from, and `.menu` in `menus.css` sets the UI font itself. It focuses its first item, moves
-  with ArrowUp/Down, closes on Escape or an outside click, and positions itself from its measured size.
+  document it opened from, and `.menu` in `menus.css` sets the UI font itself. Context menus and pop-up buttons
+  share one panel, `MenuPanel` (`MenuPanel.tsx`, entries `PanelEntry`: items, `"separator"` and `{ caption }`
+  starting a group; placed at a point or below a button, flipped and kept inside the window from its measured
+  size). It focuses the checked item or the first, handles ↑↓, Home/End, letter jump and Escape itself (marked
+  `data-own-keys`, so `isRecordingTarget` keeps the app's shortcuts and `Modal`'s Escape away from it), and closes
+  on an outside press, scroll, window blur or resize, returning the focus to its opener. `PopUpButton`
+  (`PopUpButton.tsx`) replaces native `<select>`: `value`, `options` (`PopUpOption` or `PopUpGroup` with a
+  caption), `onChange`, an accessible name from `aria-label` or a `<label htmlFor={id}>`, `mono` for table and
+  column names, `plain` for the toolbar's text-only names, and `data-stage`/`data-stage-label` passed through.
+  Hidden sizer spans drawing every label as generated content keep its width at the widest choice.
 - Writes: `queueChange` asks Rust to plan a row edit (`planChange`), keeps the returned plan with the table it
   writes (`target`) and resolves to its id (null when refused); `queueActionPreview(sessionId, id)` queues the plan of a rule action's preview (`queueActionPreview`); `applyChanges` sends the active session's plan ids, `undoLast` the newest batch id
   (`undoBatch`); `discardChange` / `discardAll` drop plans in Rust too. The page never sends SQL to write.
@@ -247,7 +255,7 @@ bindings are listed in [ux.md](ux.md#keys).
   commands in `MODAL_ALLOWED` (Settings, the shortcut overview, zoom) run; other keys reach the overlay. Native menu items
   go through `runMenuCommand`, which applies the same rule. Auto-repeated keydowns are swallowed unless the
   command is in `REPEATABLE` (zoom, back/forward, next/previous tab, the focus moves of the column stack). Keys inside a `[data-recording]`
-  element (the Settings → Shortcuts recorder) are left alone, so already-bound combos can be recorded.
+  element (the Settings → Shortcuts recorder) or an open menu (`[data-own-keys]`) are left alone, so already-bound combos can be recorded.
 - **Key names.** `bindingFromEvent` uses `e.key`, so punctuation follows the user's layout. With ⌥ held,
   for dead keys and for non-Latin characters it uses the physical key from `e.code` instead (`KeyK` → `K`,
   `Digit1` → `1`, `Minus` → `-`), so ⌥⌘K records as `Mod+Alt+K`.
@@ -328,7 +336,7 @@ sending its keys to a rendered `<App/>`.
 | Values | `value/Value.tsx` (`Value`: one stored value drawn by its kind), `value/useValueHover.ts` (the status bar's hover listener), `value/useOpenValue.tsx` and `value/open.ts` (what a click or Enter on a value opens, `ColumnContext`), `value/ValueColumnView.tsx` (a value column), `value/Peek.tsx` (`PeekOverlay`), `value/altPeek.ts` (`useAltPeek`: whether ⌥ is held alone and the element it peeks, by the ⌥ peek rule in [ux.md](ux.md): `[data-db-change]` first, else `[data-peek]` or `[data-ref]`; one shared set of window listeners, so one peek at a time), see [Values](#values) |
 | Objects | `object/`: `ObjectPanel` (the stack, pane dividers), `Trail`, `PaneMaximize` (`PaneContext`), `useWidth`, `ObjectColumnView`, `ObjectHeader`, `DocumentView`, `RowsView`, `GroupHeader`, `groups`, `fields`, `actions` (`actionMenu`, `objectActionCommands`), `ChangeList`, `CompareView`, `WideTable` (a row table that scrolls sideways in its own box; `pinned` keeps a primary-key first column in view; used by `groups` and `ChangeList`), `useDocument`, `useViewScroll`, `useCollapsedGroups`, see [Object tabs](#object-tabs) and [Column stack](#column-stack) |
 | Project | `project/`: `ProjectPanel`, `ProjectHeader`, `Overview`, `TableSection`, `ReferenceLines`, `RuleSections`, `ReferenceForm`, `KindStyleForms`, `coverage`, `formParts`, see [Project tabs](#project-tabs) |
-| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsWindow` (in its own window, see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `SnapshotsDialog`, `Toasts`, `TooltipHost` (one per window: every `title` as a styled tooltip, cut-off text in full, a `data-command` control's live binding appended; `styles/tooltip.css`) |
+| Overlays | `Modal`, `Dialogs` (the insert dialog sets each column to a value, NULL or its default; default leaves it out of the INSERT; the pin dialog picks Not pinned, Count, Value or Rows with a row count), `SettingsWindow` (in its own window, see [Settings pages](#settings-pages)), `ShortcutsDialog` (`?`: the bound commands of the scopes active when it opened, most specific first, from the registry), `CommandPalette` (with `palette/`: `parse`, `usePaletteItems`, `useRowHits`, `useSwitchItems`, `PaletteList`), `ContextMenu`, `MenuPanel`, `PopUpButton`, `SnapshotsDialog`, `Toasts`, `TooltipHost` (one per window: every `title` as a styled tooltip, cut-off text in full, a `data-command` control's live binding appended; `styles/tooltip.css`) |
 | Readout | `readout/Readout.tsx` (the sections: `Section.tsx`, `StatusHeader.tsx`, `Anomalies.tsx`, `WatchedSection.tsx`, `CreatedSection.tsx`, `PinnedSection.tsx`, `RecentSection.tsx`; loading: `useReadout.ts`), see [Readout](#readout) |
 
 ### Saved queries
