@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { PaletteHit, SavedEntry, TableInfo } from "../../api";
 import { allCommands, bindingFor, bindingLabel, type Command } from "../../commands";
 import { AddressError, formatAddress, parseAddress } from "../../lib/address";
@@ -6,6 +6,7 @@ import { projectKey } from "../../state/slices/project";
 import { savedOriginText } from "../../state/slices/saved";
 import { selectActiveSession, selectActiveTab, useStore, type RecentNav } from "../../state/store";
 import { objectActionCommands } from "../object/actions";
+import { ranked } from "../../lib/rank";
 import { parsePrefix, score, searchesRows, type Prefix } from "./parse";
 import { useRowHits } from "./useRowHits";
 import { useSwitchItems } from "./useSwitchItems";
@@ -80,14 +81,13 @@ function addressItems(prefix: Prefix, needle: string): Item[] {
   }
 }
 
-function commandItems(prefix: Prefix, needle: string): Item[] {
+/** The commands that can run now, read once per opening so the list holds still while it is open. */
+const enabledCommands = (): Command[] => [...allCommands(), ...objectActionCommands()].filter((c) => c.when?.() !== false);
+
+function commandItems(commands: Command[], prefix: Prefix, needle: string): Item[] {
   if (prefix !== null && prefix !== ">") return [];
-  return [...allCommands(), ...objectActionCommands()]
-    .filter((c: Command) => c.when?.() !== false)
-    .map((c) => ({ c, s: score(c.title, needle) }))
-    .filter(({ s }) => s > 0)
-    .sort((a, b) => b.s - a.s)
-    .map(({ c }): Item => ({ key: `cmd:${c.id}`, section: "Commands", title: c.title, binding: bindingLabel(bindingFor(c.id)), go: () => {
+  return ranked(commands, needle, (c) => [c.title, c.id])
+    .map((c): Item => ({ key: `cmd:${c.id}`, section: "Commands", title: c.title, binding: bindingLabel(bindingFor(c.id)), go: () => {
         close();
         void c.run();
       },
@@ -170,12 +170,14 @@ export function usePaletteItems(query: string) {
   const { prefix, needle } = parsePrefix(query);
   const { hits, searching } = useRowHits(prefix, needle);
   const switchItems = useSwitchItems(prefix, needle);
+  // The palette is remounted on every opening, so this is a snapshot per opening.
+  const [commands] = useState(enabledCommands);
 
   const items: Item[] = useMemo(() => {
     const rows = [...addressItems(prefix, needle), ...hitItems(hits)];
     const queries = savedItems(saved ?? [], session?.id ?? null, database, prefix, needle);
-    return [...recentItems(recent, prefix, needle), ...rows, ...queries, ...switchItems, ...tableItems(tables ?? [], database, prefix, needle), ...commandItems(prefix, needle)].slice(0, MAX_ITEMS);
-  }, [hits, needle, prefix, tables, recent, database, saved, session?.id, switchItems]);
+    return [...recentItems(recent, prefix, needle), ...rows, ...queries, ...switchItems, ...tableItems(tables ?? [], database, prefix, needle), ...commandItems(commands, prefix, needle)].slice(0, MAX_ITEMS);
+  }, [hits, needle, prefix, tables, recent, database, saved, session?.id, switchItems, commands]);
 
   const hasEntities = !!info?.entities.length;
   return { items, searching, prefix, needle, rowSearch: searchesRows(prefix, needle), hasEntities };

@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -151,6 +151,63 @@ describe("CommandPalette", () => {
     it("ranks an exact title before a prefix before a contained text and skips unavailable commands", async () => {
       await userEvent.type(openPalette(), ">zebra");
       expect(optionTitles()).toEqual(["Zebra", "Zebra crossing", "Big zebra"]);
+    });
+  });
+
+  describe("command ranking", () => {
+    beforeEach(() => {
+      registerCommands([
+        { id: "test.letters", title: "Stored ideas", scope: "global", run: () => {} },
+        { id: "test.sideOpen", title: "Open folder", scope: "global", run: () => {} },
+        { id: "test.start", title: "Side notes", scope: "global", run: () => {} },
+      ]);
+    });
+
+    it("ranks a title starting with the query, then a word starting with it, then every word, then letters in order", async () => {
+      await userEvent.type(openPalette(), ">side");
+      const mine = ["Side notes", "Toggle sidebar", "Open folder", "Stored ideas"];
+      expect(optionTitles().filter((title) => mine.includes(title!))).toEqual(["Side notes", "Toggle sidebar", "Open folder", "Stored ideas"]);
+    });
+
+  });
+
+  describe("the command list while the palette is open", () => {
+    let available = true;
+
+    beforeEach(() => {
+      available = true;
+      registerCommands([{ id: "test.snapshot", title: "Snapshot probe", scope: "global", when: () => available, run: () => {} }]);
+    });
+
+    it("keeps a command listed after it becomes unavailable, until the palette opens again", async () => {
+      const input = openPalette();
+      await userEvent.type(input, ">probe");
+      expect(screen.getByRole("option", { name: /Snapshot probe/ })).toBeInTheDocument();
+
+      available = false;
+      await userEvent.clear(input);
+      await userEvent.type(input, ">probe");
+      expect(screen.getByRole("option", { name: /Snapshot probe/ })).toBeInTheDocument();
+
+      cleanup();
+      await userEvent.type(openPalette(), ">probe");
+      expect(screen.queryByRole("option", { name: /Snapshot probe/ })).not.toBeInTheDocument();
+    });
+
+    it("lists a command that becomes available only on the next opening", async () => {
+      available = false;
+      const input = openPalette();
+      await userEvent.type(input, ">probe");
+      expect(screen.queryByRole("option", { name: /Snapshot probe/ })).not.toBeInTheDocument();
+
+      available = true;
+      await userEvent.clear(input);
+      await userEvent.type(input, ">probe");
+      expect(screen.queryByRole("option", { name: /Snapshot probe/ })).not.toBeInTheDocument();
+
+      cleanup();
+      await userEvent.type(openPalette(), ">probe");
+      expect(screen.getByRole("option", { name: /Snapshot probe/ })).toBeInTheDocument();
     });
   });
 
