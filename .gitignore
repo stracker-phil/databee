@@ -11,3 +11,8 @@ src-tauri/gen/schemas/
 # Track project Claude tooling (overrides global ignore), but not local settings
 !.claude/
 .claude/settings.local.json
+
+# Step plans, agent worktrees and scheduler state stay local
+docs/plan/
+.claude/worktrees/
+.claude/scheduled_tasks.lock
