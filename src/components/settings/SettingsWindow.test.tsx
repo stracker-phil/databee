@@ -10,7 +10,7 @@ import { api } from "../../api";
 import { registerSettingsPage } from "../../registry/settingsPages";
 import { resetStore, useStore } from "../../state/store";
 import { connectedStore, settings } from "../../test/fixtures";
-import { Group } from "./controls";
+import { Group, Switch } from "./controls";
 import { SettingsWindow, type SettingsRequest } from "./SettingsWindow";
 
 const mocked = vi.mocked(api, true);
@@ -198,6 +198,37 @@ describe("SettingsWindow", () => {
       });
       renderWindow("under-row");
       expect(screen.getByRole("region", { name: "Shown group" })).toHaveClass("found");
+    });
+
+    describe("a row that waits under another row", () => {
+      const noop = () => {};
+      const register = (id: string, childShown: boolean) =>
+        registerSettingsPage({
+          id,
+          group: "Test Group",
+          label: id,
+          icon: Blocks,
+          rows: [{ id: `${id}-child`, title: "Child", under: `${id}-parent` }],
+          Body: () => (
+            <Group title="Waiting rows">
+              <Switch label="Parent" anchor={`${id}-parent`} checked onChange={noop} />
+              {childShown && <Switch label="Child" anchor={`${id}-child`} checked onChange={noop} />}
+            </Group>
+          ),
+        });
+
+      it("highlights only the row when it is shown", () => {
+        register("test-under-shown", true);
+        renderWindow("test-under-shown-child");
+        expect(rowOf("Child")).toHaveClass("found");
+        expect(rowOf("Parent")).not.toHaveClass("found");
+      });
+
+      it("highlights the row it waits under when the row is not shown", () => {
+        register("test-under-hidden", false);
+        renderWindow("test-under-hidden-child");
+        expect(rowOf("Parent")).toHaveClass("found");
+      });
     });
   });
 

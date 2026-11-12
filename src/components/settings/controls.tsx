@@ -35,6 +35,7 @@ function useScrollTarget<E extends HTMLElement>(anchor: string | undefined) {
     if (!anchor || !target || !element || revealed.has(target)) return;
     if (anchor !== target.id && anchor !== target.under) return;
     if (anchor === target.id) revealed.add(target);
+    else if (element.ownerDocument.querySelector(`[data-anchor="${CSS.escape(target.id)}"]`)) return;
     scrollAndHighlight(element);
   }, [anchor, target]);
   return ref;
