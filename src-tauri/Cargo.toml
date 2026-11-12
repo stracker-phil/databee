@@ -1,6 +1,6 @@
 [package]
 name = "databee"
-version = "0.1.0"
+version = "1.0.0"
 description = "Minimalistic MySQL and MariaDB client for inspecting local WordPress databases"
 authors = ["Philipp Stracker <info@philippstracker.com>"]
 edition = "2024"
