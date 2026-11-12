@@ -91,7 +91,11 @@ src-tauri/                 Rust crate `databee` (lib `databee_lib`)
   src/pending.rs           PendingReplies: requests waiting for the reply with their id (remote::Bridge, Stage hub)
   src/deep_link.rs         databee:// links from other apps
   src/mcp/                 `databee mcp`: the read-only MCP server (rmcp, stdio), headless
-  src/state.rs session.rs  AppState, open sessions
+  src/state.rs             AppState
+  src/session/             open sessions: Session (mod.rs), open/close and passwords (open.rs), the registry
+                           (registry.rs), per-session module data (extensions.rs)
+  src/supervise.rs         restarts background loops after a panic
+  src/folders.rs           opens the log and data folders in Finder
   src/health/              connection health: pings, the guard that refuses calls while a server is gone,
                            retries without a password prompt, `session_health` events (database.md)
   src/schema.rs            per-session schema cache: tables, columns, keys, foreign keys, structures
@@ -140,7 +144,8 @@ src/                       React app
   windows/settings/        the Settings window's entry (index.html, main.tsx, SettingsApp.tsx)
   stage/                   page side of the Stage hook, its Settings page, installStage()
   lib/                     pure helpers (formatting, SQL ranges, theme, addresses, values)
-  styles/                  schemes/ (one file per color scheme), theme.css (derived tokens), fonts.css, app.css
+  styles/                  schemes/ (one file per color scheme), theme.css (derived tokens), motion.css (durations),
+                           fonts.css, app.css (imports one file per area); colors, contrast and motion tests
   assets/fonts/            bundled Geist and JetBrains Mono (OFL)
   test/                    api mock (apiMock.ts), fixtures, the IPC boundary test
 dev/                       Docker fixtures for integration tests
@@ -231,9 +236,9 @@ WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](prese
 - `types.rs`, `kinds.rs`, `icons.rs`, `queries.rs`, `actions.rs`: the rule types (`icons.rs` also resolves the icon of each table, `table_icons`). Each has one serialized form, the TOML
   shape, shared by preset files, projects and the page (exported to `types.gen.ts`). Shapes with exclusive
   fields (`KindRule`, `Action`) read a flat `*Fields` struct and convert with `try_from`.
-- `preset.rs`: `parse(file, src)` reads every rule on its own, so a `PresetError` names the file, the rule
+- `preset/`: `parse(file, src)` (`mod.rs`) reads every rule on its own, so a `PresetError` names the file, the rule
   (`[[reference]] #3 (line 40)`) and the field; `Check` covers what serde cannot (placeholders, names that
-  must exist in the preset). `to_toml` writes a preset back.
+  must exist in the preset, `check.rs`). `to_toml` (`write.rs`) writes a preset back.
 - `placeholder.rs`: `{p}`, `{np}`, `{id}`, `{owner.<column>}`, `{meta.<key>}`, `{param.<name>}`, which
   of them a piece of SQL may use, and `render` for the value placeholders. Prefixes are filled in only by
   `Applied::expand` (`applied.rs`) and `query::Ctx::preset_sql` (qualified with the database first).
@@ -241,15 +246,16 @@ WordPress, WooCommerce and Action Scheduler are preset files ([presets.md](prese
   `src-tauri/presets/*.toml`) plus `<config dir>/presets/*.toml`, reread when the directory's files or
   mtimes change; `requires_order` resolves `requires`.
 - `prefix.rs`: `suggest_prefix`, the shortest prefix under which a preset's marker tables exist.
-- `project.rs`, `project_change.rs`: `Project` per connection slug and database in `ProjectsStore`
-  (`projects.json`, in `AppState`), edited by `ProjectChange`s that are checked against the schema cache;
+- `project/`, `project_change/`: `Project` per connection slug and database (`project/mod.rs`) in `ProjectsStore`
+  (`project/store.rs`, `projects.json`, in `AppState`), edited by `ProjectChange`s that are checked against the
+  schema cache (`project_change/checks.rs`);
   `Project::export` writes it as a preset file.
 - `applied.rs`: `Applied`, which presets apply and the prefix and network prefix their table names
   resolve under (also used to check project changes).
 - `condition.rs`: `when`/`to_when` and value-style matches compiled once (`Matcher`; the `regex` crate for
   LIKE and REGEXP) and evaluated in memory over a page; `conditions_text` says them as SQL-like text for
   the Project page, `conditions_sql` as exact SQL terms (coverage, incoming groups, action plans, search).
-- `effective.rs`: `EffectiveRules` (applied presets ⊕ project, real table names, precedence order, the
+- `effective/`: `EffectiveRules` (types and lookups in `mod.rs`, merging in `build.rs`, the cache in `cache.rs`) (applied presets ⊕ project, real table names, precedence order, the
   `fk → owner` reference of each owned `[[meta]]` table, kind lookups shared with the lens, `rule_for`, the
   rule behind a `ResolvedReference`; `owned_meta`, `entities_of` and `patterns_of` for the meta tables,
   entities and patterns of one table) and its
@@ -348,7 +354,7 @@ meta table's primary key is the key), deleting a meta row is `deleteRow`, and ad
 of `(fk, key, value)` into the meta table (`GroupLink::Meta`), all through `plan_change` like grid edits
 ([database.md](database.md#editing-rows)).
 
-**Live mode, snapshots and compare** (`diff.rs`, `watch.rs`, `snapshot.rs`, `compare.rs`): a document reduced
+**Live mode, snapshots and compare** (`diff/`, `watch.rs`, `snapshot.rs`, `compare.rs`): a document reduced
 to its stored cells (`FlatDocument`), diffed by provenance into a `DocDelta` of changed values and added and
 removed rows; watches keep the last one per row in `Session.ext`, snapshots store it on disk
 (`store/snapshots.rs`), compare aligns two rows of one table ([backend.md](backend.md#watches-and-snapshots)).

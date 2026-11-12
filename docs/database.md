@@ -34,7 +34,7 @@ in `src-tauri/src/db_commands.rs`.
 
 Outside `db/`:
 - `connection.rs` has `ConnectionSpec` and `Secret`.
-- `session.rs` has `Session { id, spec, db: Box<dyn Database>, health, ext, plans, cells }` (plus its connection
+- `session/mod.rs` has `Session { id, spec, db: Box<dyn Database>, health, ext, plans, cells }` (plus its connection
   `slug` and the `ddl_writes` counter) and the `Sessions` map. `Session::ddl_writes()` counts user scripts with DDL. `db` is the engine behind `health::Guarded` and `health`
   its `SessionHealth` ([Connection health](#connection-health)). `ext` is a
   type-keyed `Extensions` map where a module keeps per-session data that dies with the session
