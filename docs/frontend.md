@@ -1161,7 +1161,7 @@ aliases) and `styles/app.css` (components). `app.css` only `@import`s one file p
 `settings-window.css`, `menus.css` (menus, toasts, keyframes), `values.css` (value tree, values), `object.css`
 (column stack, trail, value counts, peek, summary line, shortcut overview, object view), `project.css`,
 `readout.css`, `utilities.css`, `editing.css`, `palette.css` (palette, shortcuts settings) and `live.css` (live
-mode, table icons, live check, connection health) and `motion.css` first and `tooltip.css` (the `TooltipHost` bubble) last; each is sectioned with `/* ---------- name ---------- */`
+mode, table icons, live check, connection health), with `motion.css` (the duration tokens) first and `tooltip.css` (the `TooltipHost` bubble) last; each is sectioned with `/* ---------- name ---------- */`
 comments. The Settings window adds `styles/settings.css` after `app.css`. There
 are no CSS modules. Icons come from `lucide-react`. Token names, values and roles are in
 [ux.md](ux.md#color-schemes-and-tokens).
