@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands::apply_settings;
 use crate::error::{AppError, AppResult};
+use crate::folders;
 use crate::ipc::HandlerResult;
 use crate::remote::{Bridge, RemoteRequest};
 use crate::state::AppState;
@@ -19,7 +20,10 @@ pub const PAGE_COMMAND_EVENT: &str = "page_command";
 
 #[derive(Debug, Clone, Copy)]
 enum RustAction {
-    OpenSettings,
+    /// Settings on its last page, or on the named one.
+    OpenSettings(Option<&'static str>),
+    OpenLogFolder,
+    ShowDataFolder,
     HideWindow,
     /// One text size step up or down; `None` resets.
     Zoom(Option<i8>),
@@ -27,7 +31,16 @@ enum RustAction {
 
 fn rust_action(id: &str) -> Option<RustAction> {
     match id {
-        "settings.open" => Some(RustAction::OpenSettings),
+        "settings.open" => Some(RustAction::OpenSettings(None)),
+        "settings.appearance" => Some(RustAction::OpenSettings(Some("appearance"))),
+        "settings.shortcuts" => Some(RustAction::OpenSettings(Some("shortcuts"))),
+        "settings.queries" => Some(RustAction::OpenSettings(Some("queries"))),
+        "settings.display" => Some(RustAction::OpenSettings(Some("display"))),
+        "settings.connections" => Some(RustAction::OpenSettings(Some("connections"))),
+        "settings.status" => Some(RustAction::OpenSettings(Some("status"))),
+        "settings.about" => Some(RustAction::OpenSettings(Some("about"))),
+        "help.openLogFolder" => Some(RustAction::OpenLogFolder),
+        "help.showDataFolder" => Some(RustAction::ShowDataFolder),
         "window.hide" => Some(RustAction::HideWindow),
         "view.zoomIn" => Some(RustAction::Zoom(Some(1))),
         "view.zoomOut" => Some(RustAction::Zoom(Some(-1))),
@@ -47,7 +60,9 @@ async fn zoom(app: &AppHandle, step: Option<i8>) -> AppResult<()> {
 
 async fn run_in_rust(app: &AppHandle, id: &str) -> AppResult<()> {
     match rust_action(id) {
-        Some(RustAction::OpenSettings) => window::settings::open(app, None),
+        Some(RustAction::OpenSettings(page)) => window::settings::open(app, page),
+        Some(RustAction::OpenLogFolder) => folders::reveal_logs(app)?,
+        Some(RustAction::ShowDataFolder) => folders::reveal_data(app)?,
         Some(RustAction::HideWindow) => window::hide_main(app),
         Some(RustAction::Zoom(step)) => zoom(app, step).await?,
         None => {

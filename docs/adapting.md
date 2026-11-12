@@ -59,8 +59,8 @@ own identity and data ([ADR 0028](adr/0028-debug-build-is-a-separate-app-with-de
 ## Network
 
 DataBee connects only to the database hosts the user configured and listens only on loopback
-([ADR 0033](adr/0033-the-app-talks-only-to-hosts-the-user-configured.md)). There is no HTTP client. A new host or
-listener needs an ADR and a row here.
+([ADR 0033](adr/0033-the-app-talks-only-to-hosts-the-user-configured.md)). There is no HTTP client; `lib.rs` `the_crate_has_no_http_client` fails
+when `Cargo.toml` adds one. A new host or listener needs an ADR and a row here.
 
 | Host | Direction | Why | Where |
 |---|---|---|---|

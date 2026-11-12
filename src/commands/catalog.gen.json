@@ -308,6 +308,105 @@
     "runs": "rust"
   },
   {
+    "id": "settings.appearance",
+    "title": "Settings: Appearance",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": null,
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
+  },
+  {
+    "id": "settings.shortcuts",
+    "title": "Settings: Shortcuts",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": null,
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
+  },
+  {
+    "id": "settings.queries",
+    "title": "Settings: Queries",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": null,
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
+  },
+  {
+    "id": "settings.display",
+    "title": "Settings: Display",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": null,
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
+  },
+  {
+    "id": "settings.connections",
+    "title": "Settings: Connections",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": null,
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
+  },
+  {
+    "id": "settings.status",
+    "title": "Settings: Status",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": null,
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
+  },
+  {
+    "id": "settings.about",
+    "title": "Settings: About",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": null,
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
+  },
+  {
+    "id": "help.openLogFolder",
+    "title": "Open log folder",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": "Open Log Folder",
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
+  },
+  {
+    "id": "help.showDataFolder",
+    "title": "Show data folder",
+    "scope": "global",
+    "defaultBinding": null,
+    "menuLabel": "Show Data Folder",
+    "menuShares": null,
+    "fallbackFor": null,
+    "skipInText": false,
+    "runs": "rust"
+  },
+  {
     "id": "query.save",
     "title": "Save query",
     "scope": "editor",

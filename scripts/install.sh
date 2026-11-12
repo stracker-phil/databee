@@ -11,7 +11,8 @@ APP="$ROOT/src-tauri/target/release/bundle/macos/DataBee.app"
 [[ -d "$APP" ]] || { echo "Not found: $APP (run 'bun run release patch')"; exit 1; }
 LINK="$HOME/Applications/DataBee.app"
 
-running() { pgrep -lf 'DataBee\.app/Contents/MacOS/databee( |$)' | grep -vq ' mcp$'; }
+source "$ROOT/scripts/app-pids.sh"
+running() { app_pids "$APP/Contents/MacOS/databee" >/dev/null; }
 # Re-signing a running app's files can get it killed, so it quits first; a hidden window stays hidden.
 WAS_RUNNING=
 OPEN_ARGS=()

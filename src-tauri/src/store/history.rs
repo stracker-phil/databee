@@ -12,6 +12,7 @@ use ts_rs::TS;
 use super::json_file::JsonFile;
 use crate::error::{AppError, AppResult};
 use crate::lock::MutexExt;
+use crate::supervise::supervise;
 
 /// Across all accounts, not per account.
 const MAX_ENTRIES: usize = 500;
@@ -77,18 +78,8 @@ impl HistoryStore {
     /// write is logged and retried after the next change.
     pub fn start_writer(&self) {
         let shared = Arc::clone(&self.shared);
-        tauri::async_runtime::spawn(async move {
-            loop {
-                shared.changed.notified().await;
-                tokio::time::sleep(WRITE_DELAY).await;
-                let writer = Arc::clone(&shared);
-                let written = tokio::task::spawn_blocking(move || writer.flush())
-                    .await
-                    .unwrap_or_else(|e| Err(AppError::Io(e.to_string())));
-                if let Err(e) = written {
-                    log::warn!("Could not save the query history: {e}");
-                }
-            }
+        supervise("history writer", move || {
+            write_when_changed(Arc::clone(&shared))
         });
     }
 
@@ -176,6 +167,20 @@ fn truncate_sql(sql: &mut String) -> bool {
     }
     sql.truncate(end);
     true
+}
+
+async fn write_when_changed(shared: Arc<Shared>) {
+    loop {
+        shared.changed.notified().await;
+        tokio::time::sleep(WRITE_DELAY).await;
+        let writer = Arc::clone(&shared);
+        let written = tokio::task::spawn_blocking(move || writer.flush())
+            .await
+            .unwrap_or_else(|e| Err(AppError::Io(e.to_string())));
+        if let Err(e) = written {
+            log::warn!("Could not save the query history: {e}");
+        }
+    }
 }
 
 #[cfg(test)]

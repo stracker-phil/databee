@@ -123,6 +123,7 @@ databee open order 4711 --connection shop                 # <entity> <id>; defau
 databee open order 4711 --background                      # without bringing DataBee to the front
 databee command view.sidebar                              # a command id, as `databee commands` lists it
 databee commands [--json]                                 # every command: id, title, default key
+databee show                                              # show the window (starts DataBee if needed; also `focus`)
 databee status [--json]                                   # running? window shown or hidden?
 databee quit                                              # quit DataBee
 ```

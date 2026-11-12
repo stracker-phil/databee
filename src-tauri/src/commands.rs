@@ -3,6 +3,7 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::error::{AppError, AppResult};
+use crate::folders;
 use crate::launch::LaunchEvent;
 use crate::menu;
 use crate::state::AppState;
@@ -114,13 +115,7 @@ pub async fn set_ui_state(
 
 #[tauri::command]
 pub fn open_log_folder(app: AppHandle) -> AppResult<()> {
-    let dir = app
-        .path()
-        .app_log_dir()
-        .map_err(|e| AppError::Io(e.to_string()))?;
-    app.opener()
-        .open_path(dir.to_string_lossy(), None::<&str>)
-        .map_err(|e| AppError::Io(e.to_string()))
+    folders::reveal_logs(&app)
 }
 
 /// A native save panel; the chosen path, or `None` when cancelled.
@@ -222,7 +217,7 @@ mod tests {
 
     #[test]
     fn only_web_links_can_be_opened() {
-        assert!(is_web_url("https://my-shop.ddev.site/checkout"));
+        assert!(is_web_url("https://shop.example.com/checkout"));
         assert!(is_web_url("http://localhost:8080"));
         assert!(!is_web_url("file:///etc/passwd"));
         assert!(!is_web_url("javascript:alert(1)"));

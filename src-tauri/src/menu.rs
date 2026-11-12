@@ -168,7 +168,15 @@ pub fn build<M: Manager<Wry>>(app: &M, bindings: &KeybindingsStore) -> tauri::Re
         .separator()
         .bring_all_to_front()
         .build()?;
-    let help = submenu(app, bindings, "Help", &[&["help.shortcuts"]])?;
+    let help = submenu(
+        app,
+        bindings,
+        "Help",
+        &[
+            &["help.shortcuts"],
+            &["help.openLogFolder", "help.showDataFolder"],
+        ],
+    )?;
     Menu::with_items(
         app,
         &[&app_menu, &file, &edit, &view, &data, &go, &window, &help],

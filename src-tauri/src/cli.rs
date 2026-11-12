@@ -18,7 +18,7 @@ const DEFAULT_USER: &str = "root";
     version,
     about = "Minimalistic SQL client",
     args_conflicts_with_subcommands = true,
-    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/site --password-env DB_PASS\n  echo secret | databee -u wp -d site --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/site/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar\n  databee status --json\n  databee quit\n  claude mcp add databee -- databee mcp"
+    after_help = "Examples:\n  databee mysql://wp@127.0.0.1:3306/site --password-env DB_PASS\n  echo secret | databee -u wp -d site --password-stdin\n  databee --socket ~/Library/.../mysqld.sock -u root -d local\n  databee open databee://shop/site/wp_posts/42\n  databee open order 4711 --connection shop\n  databee command view.sidebar\n  databee show\n  databee status --json\n  databee quit\n  claude mcp add databee -- databee mcp"
 )]
 struct Args {
     #[command(subcommand)]
@@ -94,6 +94,10 @@ enum CliCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Show the window, starting DataBee if it isn't running
+    Show,
+    /// Bring DataBee to the front, starting it if it isn't running (same as `show`)
+    Focus,
     /// Quit the running DataBee
     Quit,
     /// Whether DataBee runs and its window shows
@@ -202,6 +206,13 @@ fn subcommand_outcome(command: CliCommand) -> Result<CliOutcome, String> {
                 bus::catalog::catalog_text()
             };
             return Ok(CliOutcome::Exit { message });
+        }
+        CliCommand::Show | CliCommand::Focus => {
+            return Ok(CliOutcome::Run {
+                launch: None,
+                log_level: None,
+                hidden: false,
+            });
         }
         CliCommand::Mcp => return Ok(CliOutcome::Mcp),
         CliCommand::Quit => return Ok(CliOutcome::Quit),
@@ -410,6 +421,21 @@ mod tests {
                 hidden: false
             }
         );
+    }
+
+    #[test]
+    fn show_and_focus_parse_like_a_bare_launch() {
+        for command in ["show", "focus"] {
+            assert_eq!(
+                run(&[command]).unwrap(),
+                CliOutcome::Run {
+                    launch: None,
+                    log_level: None,
+                    hidden: false
+                },
+                "{command}"
+            );
+        }
     }
 
     #[test]

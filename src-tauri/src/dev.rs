@@ -12,14 +12,23 @@ pub fn background() -> bool {
     std::env::var("DATABEE_BACKGROUND").is_ok_and(|v| v == "1")
 }
 
-/// Runs JavaScript sent by `scripts/dev/js.sh` in the main window.
+/// Runs JavaScript sent by `scripts/dev/js.sh` in the main window, or in another one named by a first
+/// line `@<label>`.
 pub fn eval(app: &tauri::AppHandle, js: &str) {
     use tauri::Manager;
-    let Some(window) = app.get_webview_window(crate::window::MAIN) else {
+    let (label, js) = eval_target(js);
+    let Some(window) = app.get_webview_window(label) else {
         return;
     };
     if let Err(e) = window.eval(js) {
         log::warn!("Couldn't evaluate script from scripts/dev: {e}");
+    }
+}
+
+fn eval_target(js: &str) -> (&str, &str) {
+    match js.strip_prefix('@').and_then(|rest| rest.split_once('\n')) {
+        Some((label, rest)) => (label.trim(), rest),
+        None => (crate::window::MAIN, js),
     }
 }
 
@@ -57,6 +66,27 @@ mod tests {
         for raw in ["NaN,0,10,10", "0,0,inf,10", "0,0,-5,10"] {
             assert_eq!(parse_frame(raw), None, "{raw}");
         }
+    }
+
+    #[test]
+    fn a_leading_at_line_names_the_window_and_is_removed_from_the_script() {
+        assert_eq!(
+            eval_target("@settings\nlocation.reload()"),
+            ("settings", "location.reload()")
+        );
+    }
+
+    #[test]
+    fn a_script_without_an_at_line_runs_in_the_main_window() {
+        assert_eq!(
+            eval_target("location.reload()"),
+            (crate::window::MAIN, "location.reload()")
+        );
+    }
+
+    #[test]
+    fn an_at_line_without_a_newline_is_script_text_for_the_main_window() {
+        assert_eq!(eval_target("@settings"), (crate::window::MAIN, "@settings"));
     }
 
     #[test]

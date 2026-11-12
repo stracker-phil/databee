@@ -11,6 +11,7 @@ mod deep_link;
 mod dev;
 mod document;
 pub mod error;
+mod folders;
 mod health;
 mod instance;
 mod ipc;
@@ -34,6 +35,7 @@ mod state;
 #[cfg(test)]
 mod statement_counts;
 mod store;
+mod supervise;
 mod table_check;
 #[cfg(any(test, debug_assertions, feature = "test-util"))]
 pub mod test_support;
@@ -261,8 +263,8 @@ fn start_app(
             commands::apply_settings(app.handle(), None, &state.settings.get());
             #[cfg(debug_assertions)]
             apply_dev_frame(app);
-            if hidden {
-                window::hide_main(app.handle());
+            if !hidden {
+                window::show_main(app.handle());
             }
             start_ipc(app.handle().clone(), &socket);
             deep_link::listen(app.handle());
@@ -385,6 +387,24 @@ mod tests {
     }
 
     #[test]
+    fn the_crate_has_no_http_client() {
+        let manifest =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
+        let manifest: toml::Table = manifest.parse().unwrap();
+        let dependencies = manifest["dependencies"].as_table().unwrap();
+
+        for name in [
+            "reqwest",
+            "hyper",
+            "ureq",
+            "tauri-plugin-http",
+            "tauri-plugin-updater",
+        ] {
+            assert!(!dependencies.contains_key(name), "{name}");
+        }
+    }
+
+    #[test]
     fn version_is_the_same_in_cargo_tauri_config_and_package_json() {
         let (release, _) = configs();
         let package: serde_json::Value = serde_json::from_str(
@@ -394,7 +414,11 @@ mod tests {
         .unwrap();
         let cargo = env!("CARGO_PKG_VERSION");
 
-        assert_eq!(release["version"], serde_json::json!(cargo), "tauri.conf.json");
+        assert_eq!(
+            release["version"],
+            serde_json::json!(cargo),
+            "tauri.conf.json"
+        );
         assert_eq!(package["version"], serde_json::json!(cargo), "package.json");
         let parts: Vec<&str> = cargo.split('.').collect();
         assert!(

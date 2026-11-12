@@ -183,6 +183,19 @@ pub const CATALOG: &[CommandDef] = &[
         .key("Mod+,")
         .menu("Settings…")
         .in_rust(),
+    page("settings.appearance", "Settings: Appearance", "global").in_rust(),
+    page("settings.shortcuts", "Settings: Shortcuts", "global").in_rust(),
+    page("settings.queries", "Settings: Queries", "global").in_rust(),
+    page("settings.display", "Settings: Display", "global").in_rust(),
+    page("settings.connections", "Settings: Connections", "global").in_rust(),
+    page("settings.status", "Settings: Status", "global").in_rust(),
+    page("settings.about", "Settings: About", "global").in_rust(),
+    page("help.openLogFolder", "Open log folder", "global")
+        .menu("Open Log Folder")
+        .in_rust(),
+    page("help.showDataFolder", "Show data folder", "global")
+        .menu("Show Data Folder")
+        .in_rust(),
     page("query.save", "Save query", "editor")
         .fallback_for("changes.apply")
         .menu("Save Query"),

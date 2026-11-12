@@ -55,6 +55,19 @@ pub fn main_visible(app: &AppHandle) -> bool {
         .is_some_and(|window| window.is_visible().unwrap_or(false))
 }
 
+/// The main window is declared hidden, so `--hidden` never flashes it; a normal launch shows it here.
+pub fn show_main(app: &AppHandle) {
+    let Some(window) = app.get_webview_window(MAIN) else {
+        return;
+    };
+    #[cfg(debug_assertions)]
+    if crate::dev::background() {
+        let _ = window.show();
+        return;
+    }
+    focus(&window);
+}
+
 pub fn bring_to_front(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN) {
         focus(&window);

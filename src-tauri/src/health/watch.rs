@@ -11,42 +11,49 @@ use tokio::time::MissedTickBehavior;
 use super::{Due, HealthEvent, check, retry};
 use crate::session::Session;
 use crate::state::AppState;
+use crate::supervise::supervise;
 
 pub const EVENT: &str = "session_health";
 const TICK: Duration = Duration::from_secs(1);
 
 pub fn start(app: &AppHandle) {
-    let handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut events = handle.state::<AppState>().sessions.health_events();
-        loop {
-            match events.recv().await {
-                Ok(event) => emit(&handle, &event),
-                // Missed changes are made good by sending where every session stands now.
-                Err(RecvError::Lagged(_)) => {
-                    for session in handle.state::<AppState>().sessions.all() {
-                        let event = HealthEvent {
-                            session_id: session.id.clone(),
-                            health: session.health.get(),
-                        };
-                        emit(&handle, &event);
-                    }
-                }
-                Err(RecvError::Closed) => break,
-            }
+    let events_app = app.clone();
+    supervise("health events", move || forward_events(events_app.clone()));
+    let ticks_app = app.clone();
+    supervise("health ticks", move || tick(ticks_app.clone()));
+}
+
+async fn forward_events(handle: AppHandle) {
+    let mut events = handle.state::<AppState>().sessions.health_events();
+    loop {
+        match events.recv().await {
+            Ok(event) => emit(&handle, &event),
+            // Missed changes are made good by sending where every session stands now.
+            Err(RecvError::Lagged(_)) => resend_all(&handle),
+            Err(RecvError::Closed) => break,
         }
-    });
-    let handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut ticks = tokio::time::interval(TICK);
-        ticks.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        loop {
-            ticks.tick().await;
-            for session in handle.state::<AppState>().sessions.all() {
-                tend(session, Instant::now());
-            }
+    }
+}
+
+fn resend_all(handle: &AppHandle) {
+    for session in handle.state::<AppState>().sessions.all() {
+        let event = HealthEvent {
+            session_id: session.id.clone(),
+            health: session.health.get(),
+        };
+        emit(handle, &event);
+    }
+}
+
+async fn tick(handle: AppHandle) {
+    let mut ticks = tokio::time::interval(TICK);
+    ticks.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    loop {
+        ticks.tick().await;
+        for session in handle.state::<AppState>().sessions.all() {
+            tend(session, Instant::now());
         }
-    });
+    }
 }
 
 fn emit(app: &AppHandle, event: &HealthEvent) {

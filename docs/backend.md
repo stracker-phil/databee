@@ -14,7 +14,8 @@ layer and the Stage hook each have their own page.
 2. **CLI.** `cli::parse` returns one of six outcomes:
    - `Exit`: `--help` or `--version`.
    - `Run { launch, log_level, hidden }`: an `IpcMessage::Launch` with a connection, or `Activate` without one.
-     `--hidden` starts the app with its window hidden (`window::hide_main` in setup); while an instance runs it
+     `databee show` and `databee focus` are the same as a bare launch. The main window is declared
+     `visible: false` in `tauri.conf.json`, so `--hidden` never flashes it; while an instance runs `--hidden`
      only sends `Status`, so the running app stays as it is.
    - `Mcp`: `databee mcp` serves MCP on stdio through `mcp::run` and exits with its code, before any
      socket handoff, instance lock or Tauri ([below](#mcp-server)).
@@ -51,11 +52,14 @@ layer and the Stage hook each have their own page.
    Then `setup` runs:
    - It builds the native menu from the keybindings store.
    - It queues the initial launch request. The page pulls it later.
-   - It starts the history writer (`HistoryStore::start_writer`, [Persistence](#persistence)).
+   - It starts the history writer (`HistoryStore::start_writer`, [Persistence](#persistence)). It and the
+     health loops run under `supervise::supervise`, which starts a loop again a second after it panicked;
+     socket and Stage connections need no supervisor, as each runs in a task of its own.
    - It calls `commands::apply_settings(app, None, &settings)`: window theme
      (`window::apply_window_theme`) and log level.
    - In debug builds `apply_dev_frame` applies `DATABEE_WINDOW_FRAME` (see [testing](testing.md#driving-the-app)).
-   - With `--hidden` it hides the main window (`window::hide_main`).
+   - Without `--hidden` it shows the main window (`window::show_main`; with `DATABEE_BACKGROUND=1` it shows
+     it without focus).
    - `start_ipc` binds the IPC socket and serves it in a task; every message goes to
      `launch::on_ipc_message`. A bind error is logged and the app runs without single-instance handoff.
    - `deep_link::listen` handles `databee://` links ([below](#deep-links)).
@@ -225,6 +229,8 @@ connects, through `openFromOutside` in `src/state/outside.ts`).
     unavailable commands fail;
   - `databee commands [--json]`: lists the catalog (id, title, default key; `--json` is
     `src/commands/catalog.gen.json`), without asking the app;
+  - `databee show` / `databee focus`: show the window and bring DataBee to the front, starting it if needed
+    (a bare launch);
   - `databee status [--json]`: whether the app runs and its window shows ([Startup](#startup));
   - `databee quit`: quits the running app (`IpcMessage::Quit`); `scripts/stop-app.sh` uses it.
   Errors print to stderr with exit 1; a result other than `null` prints to stdout.
@@ -564,7 +570,8 @@ click) and every request that brings DataBee forward (`window::bring_to_front`) 
 
 ## Native menu
 
-`menu.rs` builds the menus: DataBee, File, Edit, View, Data, Go, Window and Help. Items that map to app
+`menu.rs` builds the menus: DataBee, File, Edit, View, Data, Go, Window and Help (Keyboard Shortcuts, then Open
+Log Folder and Show Data Folder). Items that map to app
 commands take their label from the command's `Menu::Item` in the catalog (`bus/catalog.rs`); `build()` places
 them (`submenu` takes groups of ids, separated). An item shows its command's binding, or that of the command it
 is a `fallback_for` (`query.save` shows `changes.apply`'s). Bindings come from
@@ -591,8 +598,10 @@ it as `src/commands/catalog.gen.json` (`export_bindings_command_catalog`), which
 and the page imports. `bus/mod.rs` runs commands by id: `run_from_menu` (menu clicks), `run` (CLI and MCP
 through `IpcMessage::Command`; page commands go through `remote::Bridge` as `pageCommand`) and the
 `run_command` IPC command (the page runs Rust commands from a key or the palette). Rust commands today
-(`RustAction`): `settings.open`, `window.hide` and `view.zoomIn` / `zoomOut` / `zoomReset` (`Settings::zoomed`,
-saved like any settings edit, then `settings_changed`). `keybindings.json` keeps only ids the catalog knows.
+(`RustAction`): `settings.open`, one `settings.<page>` per Settings page (opens Settings on that page),
+`help.openLogFolder` and `help.showDataFolder` (the Help menu; `folders::reveal_logs`,
+`reveal_data`), `window.hide` and `view.zoomIn` / `zoomOut` / `zoomReset` (`Settings::zoomed`, saved
+like any settings edit, then `settings_changed`). `keybindings.json` keeps only ids the catalog knows.
 
 To add a command:
 1. Add it to `CATALOG` with its title, scope and default key; `.menu("Label…")` for a native item, or
