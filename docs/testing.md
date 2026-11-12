@@ -13,10 +13,29 @@ out of the main context ([`.claude/rules/testing.md`](../.claude/rules/testing.m
 | `bun run lint` | regenerates the IPC types and the command catalog (`types`: the `export_bindings` tests) and fails when `src/api/types.gen.ts`, `src/stage/types.gen.ts` or `src/commands/catalog.gen.json` changed, then `tsc --noEmit` (app and tests), `eslint .` (`eslint.config.js`: `@eslint/js` and type-checked `typescript-eslint` recommended plus `react-hooks/rules-of-hooks` and `exhaustive-deps`, no style rules; test files and `apiMock.ts` turn off the `no-unsafe-*`, `unbound-method` and `require-await` rules that fight mocks) and `cargo clippy --lib --bins -- -D warnings` (production code only; test code is compiled by `cargo test` but not linted, because tests deliberately use `unwrap`, clones and odd inputs) |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | Rust formatting (run before lint) |
 
+| Agent | Does |
+|---|---|
+| `write-ts-unit-test` | writes and updates Vitest tests |
+| `write-rust-unit-test` | writes and updates Rust unit and Docker-backed integration tests |
+| `ci` | runs a suite (unit, lint, integration, format) and reports pass/fail; never tests and lint at once |
+| `review-code-cleanliness` | reviews changed files read-only; `ship-step` step 2 |
+
+The `ship-step` skill (`.claude/skills/ship-step/SKILL.md`) ends every step: clean up, review, `ci`, build and
+drive the debug app (`e2e.sh` for UI changes), docs and ADR, commit, release.
+
 The project rules for tests are in [`.claude/rules/testing.md`](../.claude/rules/testing.md):
 - Every change ships with tests of its observable behavior.
 - Tests go through public interfaces: command results, CLI parse results, rendered UI.
 - Internals and incidental side effects are never tested.
+
+Contracts and guards that fail before a mismatch ships:
+- `lib.rs` tests keep `APP_NAME`, `IDENTIFIER` and `LINK_SCHEME` equal to both Tauri configs, the version equal
+  in `package.json`, `tauri.conf.json` and `Cargo.toml`, and `Cargo.toml` free of an HTTP client
+  (`the_crate_has_no_http_client`); `bun run types` (`export_bindings`) feeds the lint drift check.
+- `src/test/boundary.test.ts`: only `api.ts` files import `@tauri-apps/*`.
+- `src/styles/colors.test.ts`, `contrast.test.ts`, `motion.test.ts`: no color literal outside a scheme, the
+  text contrast of every scheme, no literal duration outside `motion.css`.
+- `src/components/settings/searchIndex.test.tsx`: every Settings row is in its page's search index.
 
 ## Rust
 
@@ -95,6 +114,9 @@ keep typing in the terminal. They are macOS-only (zsh, Swift, `screencapture`, a
 | `scripts/clean-build.sh` | removes the app's own build artifacts (`cargo clean --package databee`; each test rebuild leaves a copy in `target/debug/deps`) and the incremental caches (`target/*/incremental`); compiled dependencies stay, so the next build takes about a minute. `bun run release` runs it after the commit and tag. The dev profile keeps only line tables and dependencies no debug info (`src-tauri/Cargo.toml`), so `target/` stays small |
 | `scripts/dev/js.sh '<js>'` | runs JavaScript in the running debug app over the IPC socket, in the main window or, with a first line `@<label>`, in another (`$'@settings\n…'`). It is fire-and-forget: there is no return value, and top-level `const` declarations collide across calls, so wrap them in an IIFE. |
 | `scripts/dev/screenshot.sh out.png` | captures the debug app's window (never the release app), also while it is in the background or on another Space |
+| `scripts/dev/e2e.sh [database] [table]` | opens a table tab (default `wp_test` `wp_options`) and clicks the WHERE filter's mode toggle and the table's sidebar row twice each, measuring the sidebar, toolbar, main area, first grid row and the clicked control; exits 1 on 1px of drift. Start the debug app on the fixture first |
+| `scripts/dev/screenshot-looks.sh <dir>` | captures the main window in every color scheme (`<dir>/<scheme>.png`) and puts the theme and schemes back |
+| `scripts/app-pids.sh` | sourced by `install.sh` and `stop-app.sh`: `app_pids <path/to/databee>` lists the release or debug app's processes by name, skipping CLI calls (`mcp`, `status`, `quit`, `command`) |
 
 The store is available as `window.databee` in the debug bundle: `bun run build:app` sets
 `VITE_DEV_HOOKS=1` at build time, and `main.tsx` exposes the store only then. A release build
@@ -104,6 +126,10 @@ The store is available as `window.databee` in the debug bundle: `bun run build:a
 scripts/dev/js.sh 'databee.getState().openSettings("shortcuts")'
 scripts/dev/js.sh 'databee.getState().openTableTab("wp_test", "wp_options")'
 ```
+
+Starting over with fresh demo data: quit the debug app and delete its data folder
+(`~/Library/Application Support/com.philippstracker.databee.debug/`); the next launch adds the fixture
+connections again ([ADR 0046](adr/0046-the-debug-seed-runs-once.md)).
 
 `launch.sh` sets `DATABEE_WINDOW_FRAME` and `DATABEE_BACKGROUND=1`. Rust reads both in `dev.rs`, a module
 compiled into debug builds only. JavaScript eval over the socket is compiled out of release builds as well.

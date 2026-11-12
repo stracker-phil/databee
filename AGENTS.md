@@ -31,6 +31,7 @@ git clone https://github.com/stracker-phil/databee.git
 cd databee
 bun install
 bun run build:app        # debug bundle: src-tauri/target/debug/bundle/macos/DataBee (Debug).app
+scripts/create-signing-cert.sh   # once per Mac without an Apple Development certificate (ADR 0029)
 bun run release patch    # next version (major|minor|patch|X.Y.Z, ADR 0038 and 0039); release bundle, installed for the user (below)
 ```
 
@@ -48,6 +49,7 @@ passwords.
 |---|---|
 | `bun run test` | Vitest and Rust unit tests pass |
 | `bun run lint` | exits 0: generated types and catalog drift check, `tsc`, ESLint, `clippy -D warnings` |
+| `cargo fmt --manifest-path src-tauri/Cargo.toml --check` | no differences |
 | `bun run test:db` | starts MariaDB 11.4 (`127.0.0.1:33306`) and MySQL 8.4 (`127.0.0.1:33307`), user `root`, password `root`, seeded from `dev/fixture.sql`; the integration tests pass |
 
 Try the app against the fixtures: `scripts/dev/launch.sh mysql://root:root@127.0.0.1:33306/wp_write`, and quit it with

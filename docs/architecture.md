@@ -153,6 +153,16 @@ scripts/                   release, install, signing, stop-app; dev/ drives the 
 .claude/                   rules and the ship-step skill for Claude Code
 ```
 
+## Webview hardening
+
+The webview shows arbitrary database content and can call commands, so it is locked down
+([ADR 0030](adr/0030-hardened-runtime-strict-csp-no-navigation.md)): the hardened runtime (`scripts/sign-app.sh`
+`--options runtime`, no entitlements), a strict CSP in both Tauri configs (`script-src 'self'`, `connect-src`
+only IPC, no frames, objects or forms; [backend.md → Content security policy](backend.md#content-security-policy)),
+and the navigation guard on every webview (`window/navigation.rs` `guard`, `is_app_page`); links open in the
+browser through `open_url`. Writes go by id: the page applies plans Rust made and holds
+([ADR 0012](adr/0012-plans-applied-by-id.md)).
+
 ## Modules
 
 A module is an optional capability (Stage) that the core works without. It keeps its

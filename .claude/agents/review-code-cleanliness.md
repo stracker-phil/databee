@@ -54,6 +54,8 @@ If the caller names a file without a mode, default to `CHANGES in`.
 - Rust types crossing to the page without `#[serde(rename_all = "camelCase")]`, or a changed shape whose
   generated types were not regenerated (`bun run types`, `src/api/types.gen.ts`).
 - Passwords or tokens in `Debug`, logs, or serialized structs (use `Secret`).
+- A write to the user's database that bypasses the plan, review and apply path (`db/changes/`, plans applied by
+  id, ADR 0007/0012), or a store file written outside its store (`store/`).
 - Components subscribing to the whole store (`useStore()` with no selector) or deriving arrays without
   `useShallow`.
 - A preset or a rule view that labels values instead of showing the stored name next to them, or attributes

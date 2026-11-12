@@ -78,7 +78,7 @@ Skip sqlx, Tauri and serde internals, and trivial getters.
 ## Anti-patterns (hard no)
 
 - Testing a private helper when the public function covers it.
-- Asserting log output.
+- Asserting log output or call counts.
 - Loose assertions (`assert!(sql.contains("WHERE"))`) where the exact value is known.
 - One `#[test]` per case that belongs in a table.
 - Comment noise and comments about current code state.

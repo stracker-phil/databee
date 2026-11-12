@@ -22,7 +22,7 @@ Run from the repository root. Only run the command for the requested suite, copi
     `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --test <mysql|sql_mode|changes|health> -- --ignored [<filter>]`,
     or for the server tests inside modules (`server_tests.rs` or inline `#[ignore]` tests) `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo test --manifest-path src-tauri/Cargo.toml --lib -- --ignored <path filter>`
     (e.g. `document::server_tests::`, `table_check::`)
-- Lint (tsc incl. tests, ESLint, clippy on production code; warnings are errors): `PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run lint`
+- Lint (IPC types and catalog drift check, tsc incl. tests, ESLint, clippy on production code; warnings are errors): `PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run lint`
 - Format check: `PATH="/opt/homebrew/opt/rustup/bin:$PATH" cargo fmt --manifest-path src-tauri/Cargo.toml --check`
 - All unit tests: `PATH="/opt/homebrew/opt/rustup/bin:$PATH" bun run test`
 

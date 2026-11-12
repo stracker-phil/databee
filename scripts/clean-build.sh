@@ -10,7 +10,9 @@ export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
 [[ -d "$TARGET" ]] || exit 0
 
 before=$(du -sk "$TARGET" | cut -f1)
-cargo clean --manifest-path "$ROOT/src-tauri/Cargo.toml" --package databee --quiet
+MANIFEST="$ROOT/src-tauri/Cargo.toml"
+PACKAGE=$(sed -n '/^\[package\]/,/^\[/s/^name = "\(.*\)"$/\1/p' "$MANIFEST" | head -1)
+cargo clean --manifest-path "$MANIFEST" --package "$PACKAGE" --quiet
 rm -rf "$TARGET/debug/incremental" "$TARGET/release/incremental"
 after=$(du -sk "$TARGET" | cut -f1)
 echo "Cleaned the build folder: $(( before / 1048576 )) GB → $(( after / 1048576 )) GB"

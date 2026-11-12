@@ -4,8 +4,9 @@ Each record (`NNNN-<slug>.md`, Nygard format: Status, Context, Decision, Consequ
 the docs pages explain how. An accepted decision is never edited: a new record supersedes it, and a dated amendment under Status
 only corrects facts that changed.
 
-From 0028 on, the Status is dated (`Accepted (YYYY-MM-DD)`), the Decision names the alternatives it rejected,
-and a record adopted from a sibling app (Taskboard, Daybook, TimeTracker) says so under Status. Older records
+New records start from [0000-template.md](0000-template.md). From 0028 on, the Status is dated (`Accepted (YYYY-MM-DD)`), the Decision names the alternatives it rejected,
+and a record adopted from a sibling app (Taskboard, Daybook, TimeTracker, Launcher) says so under Status; a
+record inherited from the family catalog names its slug and the reference record. Older records
 keep their form.
 
 | No. | Title | Status |
@@ -26,27 +27,35 @@ keep their form.
 | [0014](0014-generated-ipc-types.md) | TypeScript IPC types are generated from Rust with ts-rs | Accepted |
 | [0015](0015-frontend-registries.md) | Frontend modules contribute through registries | Accepted, amended by 0020 and 0036 |
 | [0016](0016-module-settings-files.md) | Module settings live in the module's own JSON file | Accepted |
-| [0017](0017-panic-unwind.md) | Keep `panic = "unwind"` so a panic in one command does not take the app down | Accepted |
+| [0017](0017-panic-unwind.md) | Keep `panic = "unwind"` so a panic in one command does not take the app down | Accepted, amended by 0047 |
 | [0018](0018-escaping-follows-sql-mode.md) | Value escaping follows the server's `sql_mode` | Accepted |
 | [0019](0019-test-doubles-behind-test-util.md) | Test doubles ship behind a `test-util` feature | Accepted |
 | [0020](0020-everything-is-rows.md) | Everything is rows: one workspace, Document and Rows views of one object | Accepted (2026-10-17), implemented, amended |
 | [0021](0021-addresses.md) | Every view has an address | Accepted (2026-10-17), implemented, amended |
 | [0022](0022-presets-and-projects.md) | Presets and projects instead of WordPress code | Accepted (2026-10-17), implemented |
 | [0023](0023-virtual-foreign-keys.md) | References are virtual foreign keys from four sources | Accepted (2026-10-17), implemented, amended |
-| [0024](0024-color-schemes.md) | Color schemes are complete token sets; no color literal outside a scheme | Accepted (2026-10-17), implemented, amended |
+| [0024](0024-color-schemes.md) | Color schemes are complete token sets; no color literal outside a scheme | Accepted (2026-10-17), implemented, amended by 0041 |
 | [0025](0025-standalone-mcp-server.md) | A standalone, read-only MCP server (`databee mcp`) | Accepted (2026-10-17), implemented |
 | [0026](0026-connection-health.md) | Connection health | Accepted (2026-10-20), implemented |
 | [0027](0027-table-live-check.md) | Table live check by per-row checksums | Accepted (2026-10-20), implemented |
 | [0028](0028-debug-build-is-a-separate-app-with-demo-data.md) | The debug build is a separate app with demo data | Accepted (2026-11-03), implemented |
 | [0029](0029-builds-are-signed-with-an-apple-development-certificate.md) | Builds are signed with an Apple Development certificate | Accepted (2026-11-03), implemented |
 | [0030](0030-hardened-runtime-strict-csp-no-navigation.md) | Hardened runtime, a strict CSP and no navigation | Accepted (2026-11-03), implemented |
-| [0031](0031-settings-is-a-window-of-its-own.md) | Settings is a window of its own | Accepted (2026-11-03), implemented |
+| [0031](0031-settings-is-a-window-of-its-own.md) | Settings is a window of its own | Accepted (2026-11-03), implemented, amended by 0042 |
 | [0032](0032-native-overlay-scrollbars.md) | Native overlay scrollbars | Accepted (2026-11-03), implemented |
 | [0033](0033-the-app-talks-only-to-hosts-the-user-configured.md) | The app talks only to hosts the user configured | Accepted (2026-11-03) |
 | [0034](0034-reads-stay-in-the-store-not-tanstack-query.md) | Reads stay in the store, not TanStack Query | Rejected (2026-11-03) |
-| [0035](0035-databee-keeps-its-own-look.md) | DataBee keeps its own look | Rejected (2026-11-03) |
-| [0036](0036-commands-live-in-a-rust-catalog.md) | Commands live in a Rust catalog | Accepted (2026-11-03), implemented |
+| [0035](0035-databee-keeps-its-own-look.md) | DataBee keeps its own look | Rejected (2026-11-03); menus superseded by 0045 |
+| [0036](0036-commands-live-in-a-rust-catalog.md) | Commands live in a Rust catalog | Accepted (2026-11-03), implemented, amended by 0042 |
 | [0037](0037-closing-the-window-keeps-the-app-running.md) | Closing the window keeps the app running | Accepted (2026-11-03), implemented |
 | [0038](0038-every-release-gets-a-new-version.md) | Every release gets a new version | Accepted (2026-11-05), implemented, amended by 0039 |
 | [0039](0039-a-major-version-needs-the-owners-approval.md) | A major version needs the owner's approval | Accepted (2026-11-11), implemented |
 | [0040](0040-one-tooltip-host-per-window.md) | One tooltip host per window | Accepted (2026-11-12), implemented |
+| [0041](0041-motion-tokens-and-text-contrast.md) | Motion tokens and text contrast in every scheme | Accepted (2026-11-12), implemented |
+| [0042](0042-settings-search-finds-every-row.md) | Settings search finds every row; one key per command | Accepted (2026-11-12), implemented |
+| [0043](0043-the-status-bar-stays.md) | The status bar stays | Accepted (2026-11-12) |
+| [0044](0044-text-size-stays-two-pixel-sizes.md) | Text size stays two pixel sizes | Accepted (2026-11-12) |
+| [0045](0045-pop-up-buttons-and-one-menu-panel.md) | Pop-up buttons and one menu panel | Accepted (2026-11-12), implemented |
+| [0046](0046-the-debug-seed-runs-once.md) | The debug seed runs once, no real-source switches | Accepted (2026-11-12) |
+| [0047](0047-background-loops-restart-after-a-panic.md) | Background loops restart after a panic | Accepted (2026-11-12), implemented |
+| [0048](0048-only-the-app-bundle.md) | Only the app bundle is built | Accepted (2026-11-12) |
