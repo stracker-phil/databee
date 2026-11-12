@@ -14,6 +14,9 @@
   --field: #2e3440;
   --field-line: #4c566a;
   --text: #d8dee9;
+  /* secondary and meta text: --text at these strengths, each at least 3:1 on every surface (contrast.test.ts) */
+  --o2-mix: 68%;
+  --o3-mix: 54%;
   --text-strong: #ffffff;
   --line: #434c5e;
   --band: #353c4a;

@@ -4,7 +4,7 @@
 .object .row.chg { --change-mark: inset 3px 0 0 var(--accent); box-shadow: var(--change-mark); }
 .object .row.removed { color: var(--o3); text-decoration: line-through; }
 .object .row.removed .val { color: inherit; }
-.object .flash { border-radius: 3px; animation: change-flash 1.6s ease-out; }
+.object .flash { border-radius: 3px; animation: change-flash var(--motion-highlight) var(--ease-out); }
 @keyframes change-flash { from { background: var(--cell); } to { background: transparent; } }
 .object .old { margin-left: 0.8em; color: var(--o3); text-decoration: line-through; }
 .changes { display: flex; flex-direction: column; }
@@ -58,7 +58,7 @@
   content: ""; position: absolute; top: 0; right: 0; pointer-events: none;
   border-style: solid; border-width: 0 6px 6px 0; border-color: transparent var(--accent) transparent transparent;
 }
-.grid-cell.db-flash { animation: change-flash 1.6s ease-out; }
+.grid-cell.db-flash { animation: change-flash var(--motion-highlight) var(--ease-out); }
 /* Rows and cells a plan waiting for review touches (pendingRowMarks): a row to delete is struck through in red on a
    red tint, a row to duplicate carries a --o3 mark, an edited cell an accent underline. */
 .grid-row.pending-delete { background: color-mix(in srgb, var(--style-red) 8%, transparent); }

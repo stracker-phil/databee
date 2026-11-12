@@ -17,8 +17,8 @@
   --fs-large: 1.308rem;
 
   --accent: var(--a-orange);
-  --o2: color-mix(in srgb, var(--text) 62%, transparent);
-  --o3: color-mix(in srgb, var(--text) 40%, transparent);
+  --o2: color-mix(in srgb, var(--text) var(--o2-mix), transparent);
+  --o3: color-mix(in srgb, var(--text) var(--o3-mix), transparent);
   /* What the linked table highlight leaves of everything else (TableFocus). */
   --dimmed: 0.3;
 

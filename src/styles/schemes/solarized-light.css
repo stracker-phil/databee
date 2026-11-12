@@ -10,7 +10,10 @@
   --pop: #fffbf0;
   --field: #fffbf0;
   --field-line: #d6cfb8;
-  --text: #586e75;
+  --text: #566c73;
+  /* secondary and meta text: --text at these strengths, each at least 3:1 on every surface (contrast.test.ts) */
+  --o2-mix: 88%;
+  --o3-mix: 79%;
   --text-strong: #000000;
   --line: #e6dfc9;
   --band: #f6f0dd;

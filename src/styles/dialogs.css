@@ -22,10 +22,10 @@
 /* ---------- dialogs ---------- */
 /* Overlays (dialogs, palette, menus, toasts, popovers): --pop, a --field-line border, 10px radius and a
    zero-offset glow; modal sheets sit over --scrim (docs/ux.md, Overlays). */
-.overlay { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 50; animation: fade .12s ease-out; }
+.overlay { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 50; animation: fade var(--motion-fast) var(--ease-out); }
 /* Modal's sheet (`variant`): a padded .sheet for forms and messages, a .panel surface laid out by its content
    (palette, rule sheets, settings), or bare (the connect dialog brings its own card). */
-.dialog { animation: pop .14s ease-out; }
+.dialog { animation: pop var(--motion-slow) var(--ease-out); }
 .dialog:is(.sheet, .panel) { background: var(--pop); border: 1px solid var(--field-line); border-radius: 10px; box-shadow: var(--shadow); }
 .dialog.sheet {
   width: min(33.846rem, calc(100vw - 2.462rem)); max-height: calc(100vh - 4.615rem); overflow: auto;

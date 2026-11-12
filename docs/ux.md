@@ -31,14 +31,26 @@ Adopted from Taskboard (2026-11-03), for every control, list and popover (`.clau
   that changes its width. Buttons that only sometimes apply keep their slot, invisible, so their neighbors
   don't move. New controls appear where the row has free room, not where they push others aside.
 - **Nothing jumps; things move.** See Motion. A window resize may move things at once.
+- **Folding into "…" follows the window width only**, never the content of the moment.
 
 ## Motion
 
-Nothing jumps from one state to another. What appears fades in (overlays `fade` .12s, dialogs `pop` .14s,
-`menus.css`); hover and toggles answer within .12–.15s; the live flash fades over 1.6s. When a change first needs
-a glide or an exit animation, it ports Taskboard's `src/lib/motion.ts` (`useGlide`, `usePresence`) and
-`src/styles/motion.css` (the `--motion-*` and `--ease-*` tokens, `prefers-reduced-motion`), and new durations
-use those tokens instead of literals.
+Nothing jumps from one state to another. Every duration is a token of `src/styles/motion.css`; no literal
+duration appears anywhere else (`src/styles/motion.test.ts` scans the CSS and the TSX):
+
+| Token | Value | Used for |
+|---|---|---|
+| `--motion-fast` | 120ms | hover and press, overlays, menus, popovers and the palette appearing |
+| `--motion-base` | 150ms | fades, toggles (the settings switch), popover exit |
+| `--motion-slow` | 200ms | expand and collapse, sheets (`.dialog`) entering |
+| `--motion-highlight` | 1600ms | a changed value (the live flash) or a found Settings row fading back |
+| `--motion-spin` | 900ms | one turn of the busy spinner |
+
+Easing is `--ease-out` (things arriving) or `--ease-in-out` (things moving). With macOS's Reduce motion, movement
+becomes instant, fades shorten to 80ms and the spinner slows down. A container with `.motion-off` shows a new
+state at once where a glide would mislead. A view switch is instant. When a change first needs a glide or an
+exit animation, it ports the helper it needs from Taskboard's `src/lib/motion.ts` (`useGlide`, `usePresence`,
+`useHeightGlide`).
 
 
 ## Surfaces
@@ -161,8 +173,18 @@ right-aligned in grids.
 | Level | Token | Opacity | Used for |
 |---|---|---|---|
 | Primary | `--text` | 100% | the value you came for |
-| Secondary | `--o2` | 62% | keys in key/value rows, units, currency, relation text, relative times, inactive tabs |
-| Tertiary | `--o3` | 40% | column types, column header labels, counts, empty states, `NULL`, `""`, struck old values, key caps |
+| Secondary | `--o2` | `--o2-mix` (68%, more in pale schemes) | keys in key/value rows, units, currency, relation text, relative times, inactive tabs |
+| Tertiary | `--o3` | `--o3-mix` (52%, more in pale schemes) | column types, column header labels, counts, empty states, `NULL`, `""`, struck old values, key caps |
+
+Each scheme sets its own `--o2-mix` and `--o3-mix` so both levels keep 3:1 on every surface and `--text` keeps
+4.5:1; the low-contrast schemes (Ayu Light, Catppuccin Latte, Solarized) raise them.
+
+### Palette checks
+
+- `src/styles/colors.test.ts`: no color literal outside a scheme file; every scheme defines the same tokens.
+- `src/styles/contrast.test.ts`: in every scheme, `--text` reaches 4.5:1 and `--o2`/`--o3` 3:1 on `--bg`,
+  `--chrome` and `--pop`; `--o2-mix` stays above `--o3-mix`.
+- `scripts/dev/screenshot-looks.sh` captures the main window in every scheme for a look at all of them.
 
 ## Row anatomy
 

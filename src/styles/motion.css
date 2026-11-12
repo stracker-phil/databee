@@ -1,0 +1,24 @@
+/* Motion tokens (docs/ux.md → Motion). No literal duration outside this file. */
+:root {
+  --motion-fast: 120ms;   /* hover, press, menus and popovers appearing */
+  --motion-base: 150ms;   /* fades, toggles, popover exit */
+  --motion-slow: 200ms;   /* expand and collapse, sheets entering */
+  --motion-highlight: 1600ms; /* a found or changed value fades back */
+  --motion-spin: 900ms;   /* one turn of a busy spinner */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Movement becomes instant and fades short; the spinner keeps turning, slower. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 1ms;
+    --motion-base: 80ms;
+    --motion-slow: 1ms;
+    --motion-spin: 2400ms;
+  }
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
+
+/* A container that shows a new state at once where a glide would mislead. */
+.motion-off, .motion-off * { transition: none !important; }

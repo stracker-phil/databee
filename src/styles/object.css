@@ -37,7 +37,7 @@
 /* Value counts of a grid column: a --pop popover at the header, one row per value. */
 .value-counts {
   position: fixed; z-index: 60; width: 23rem; max-height: 60vh; display: flex; flex-direction: column; gap: 0.308rem; padding: 0.462rem;
-  border-radius: 10px; background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); animation: pop .12s ease-out;
+  border-radius: 10px; background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); animation: pop var(--motion-fast) var(--ease-out);
 }
 .value-counts-head { padding: 0.154rem 0.462rem; font-size: var(--fs-small); color: var(--o2); }
 .value-counts-list { list-style: none; margin: 0; padding: 0; overflow: auto; }
@@ -52,7 +52,7 @@
 .pin-rows .input { width: 6rem; }
 
 /* ---------- peek ---------- */
-.peek { position: fixed; z-index: 50; width: max-content; min-width: 320px; max-width: min(560px, calc(100vw - 16px)); overflow: hidden; border-radius: 10px; background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); animation: pop .12s ease-out; pointer-events: none; }
+.peek { position: fixed; z-index: 50; width: max-content; min-width: 320px; max-width: min(560px, calc(100vw - 16px)); overflow: hidden; border-radius: 10px; background: var(--pop); border: 1px solid var(--field-line); box-shadow: var(--shadow); animation: pop var(--motion-fast) var(--ease-out); pointer-events: none; }
 .peek-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 14px; }
 .peek-head .tn { font-weight: 600; }
 .peek-head .key { color: var(--accent-text); }
@@ -124,7 +124,7 @@
 :is(.object, .project, .readout) .sh .via + .spacer { display: none; }
 :is(.object, .project, .readout) .sh .cnt { flex: none; color: var(--o3); font-size: var(--fs-small); white-space: nowrap; }
 /* TableFocus dims and lights these by table while a table link is hovered. */
-.main :is([data-row-table], .readout .row, .attention) > *, .main :is(.sh, .entity-chip) { transition: opacity 0.12s; }
+.main :is([data-row-table], .readout .row, .attention) > *, .main :is(.sh, .entity-chip) { transition: opacity var(--motion-fast); }
 :is(.object, .project, .readout) .sh .sh-toggle {
   flex: none; align-self: center; display: inline-flex; margin-left: -0.462rem; padding: 0.154rem; border: none; border-radius: 3px;
   background: none; color: var(--o3);
